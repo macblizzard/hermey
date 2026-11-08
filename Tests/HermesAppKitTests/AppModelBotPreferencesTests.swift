@@ -44,7 +44,7 @@ final class AppModelBotPreferencesTests: XCTestCase {
         first.togglePin(botID: "ops")
         await first.stop()
 
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: key(host)), ["ops", "assistant"],
+        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: key(host)), ["assistant", "ops"],
                        "a set has no order; storage is sorted so the file stays stable")
 
         let reopened = AppModel(client: ScriptedHost(session: "s1"), hostName: host)

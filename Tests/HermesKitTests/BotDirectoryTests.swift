@@ -51,7 +51,7 @@ final class BotDirectoryTests: XCTestCase {
         XCTAssertEqual(params, JSONValue.object([:]), "profiles.list takes no parameters")
 
         XCTAssertEqual(bots.first?.avatarInitials, "D")
-        XCTAssertEqual(bots[3].avatarInitials, "S")
+        XCTAssertEqual(bots[3].avatarInitials, "C")
     }
 
     func testBotFallsBackToTheProfileNameWhenNoDisplayLabelIsSent() async throws {
@@ -74,7 +74,7 @@ final class BotDirectoryTests: XCTestCase {
 
     func testBotInitialsSurviveHyphenatedProfileNames() {
         XCTAssertEqual(Bot(id: "night-ops").avatarInitials, "NO")
-        XCTAssertEqual(Bot(id: "assistant").avatarInitials, "C")
+        XCTAssertEqual(Bot(id: "assistant").avatarInitials, "A")
         XCTAssertEqual(Bot(id: "c").avatarInitials, "C")
     }
 
