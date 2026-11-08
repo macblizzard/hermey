@@ -5,7 +5,7 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
-## [0.1.201]
+## [0.1.4] — 2026-11-08
 
 ### Added
 - `setup/install.sh`: one command installs a Hermey host — service user, venv, loopback bridge,
@@ -19,7 +19,7 @@ All notable changes to Hermey are recorded here. The format follows
 - Scrolling a group chat dismisses the keyboard, as a one-to-one conversation does.
 - A pairing code names the host the requesting client used instead of a fixed domain.
 
-## [0.1.197] and earlier
+## 0.1.3 and earlier
 
 Bot list home screen, endless conversations per bot, group chats with rename/delete from the row's
 context menu, per-message read-aloud through the host voice, copy, reply and reactions, the composer
