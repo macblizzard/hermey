@@ -53,8 +53,8 @@ Payload/
 *.env
 .env*
 secrets/
-*secret*
-!*secret*_example*
+*.secret
+secrets.env
 *.p12
 *.pem
 *.key

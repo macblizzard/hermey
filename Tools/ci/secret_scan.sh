@@ -6,7 +6,7 @@
 # contain canaries such as "gateway-token-do-not-leak", and a scanner that flags those teaches
 # people to ignore it.
 set -uo pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 2
 
 fail=0
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "secret scan: not a git repository — refusing to report clean" >&2; exit 2; }

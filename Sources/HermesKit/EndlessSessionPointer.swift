@@ -119,13 +119,6 @@ public struct BridgeBotSessionPointer: BotSessionPointerStore {
     /// Everything one request needs, resolved per request.
     public typealias Endpoint = @Sendable () async throws -> (baseURL: URL, ticket: String)
 
-    public /// Characters allowed inside one URL path *component* supplied by the host.
-///
-/// `urlPathAllowed` deliberately keeps `/`, so a value that is meant to be a single segment can
-/// escape onto another path. This subtracts the separator; everything else in the segment
-/// (letters, digits, `-`, `_`, `.`) survives.
-let pathComponentAllowed: CharacterSet = CharacterSet.urlPathAllowed
-    .subtracting(CharacterSet(charactersIn: "/"))
 
 enum Failure: Error, Equatable, LocalizedError {
         case noProfile
@@ -326,7 +319,7 @@ enum Failure: Error, Equatable, LocalizedError {
 
     /// Percent-encode the profile segment: the path is built from a name the user typed.
     private static func encoded(_ url: URL, profile: String) throws -> URL {
-        guard let escaped = profile.addingPercentEncoding(withAllowedCharacters: pathComponentAllowed),
+        guard let escaped = profile.addingPercentEncoding(withAllowedCharacters: URLPath.componentAllowed),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw Failure.noProfile
         }
@@ -515,4 +508,14 @@ public enum EndlessSessionPolicy {
         }
         return EndlessSessionPlan(step: .create, origin: .none, publish: true)
     }
+}
+
+/// Characters allowed inside one URL path *component* supplied by the host.
+///
+/// `urlPathAllowed` deliberately keeps `/`, so a value meant to be a single segment can escape onto
+/// another path. Subtracting the separator keeps it one segment; letters, digits, `-`, `_` and `.`
+/// survive.
+public enum URLPath {
+    public static let componentAllowed: CharacterSet = CharacterSet.urlPathAllowed
+        .subtracting(CharacterSet(charactersIn: "/"))
 }
