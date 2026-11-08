@@ -11,7 +11,9 @@ The release page carries an unsigned `.ipa`; you sign it with your own certifica
 1. Install **AltStore** ([altstore.io](https://altstore.io)) or **SideStore**
    ([sidestore.io](https://sidestore.io)) following their setup for your device.
 2. Add this source to the app:
-   `https://macblizzard.github.io/hermey/altstore.json`
+   `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`
+   (It is a release asset on purpose: the latest release always serves the newest build, with no
+   host of our own in the loop.)
 3. Install **Hermey** from the source.
 
 If you prefer to install the `.ipa` by hand, any signing tool that accepts an unsigned IPA works

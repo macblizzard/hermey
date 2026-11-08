@@ -33,7 +33,8 @@ hermey pair
 ```
 
 **2. On your phone or Mac**: install the app ([iOS](docs/APPS.md#ios) · [macOS](docs/APPS.md#macos)),
-then scan the QR that `hermey pair` printed.
+then scan the QR that `hermey pair` printed. For AltStore/SideStore, add the source
+`https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`.
 
 That is the whole setup. The installer reuses the Hermes dashboard you already run, puts the bridge
 on loopback, and exposes it with `tailscale serve` — a real certificate, reachable only from your
