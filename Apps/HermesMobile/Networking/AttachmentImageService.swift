@@ -19,8 +19,8 @@ struct AttachmentImageService {
     func load(profile: String, name: String) async throws -> Data {
         // Both segments are single path components on the host; percent-encoding keeps a name with
         // a space or an odd character from being read as a path.
-        guard let encodedProfile = profile.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+        guard let encodedProfile = profile.addingPercentEncoding(withAllowedCharacters: pathComponentAllowed),
+              let encodedName = name.addingPercentEncoding(withAllowedCharacters: pathComponentAllowed)
         else { throw URLError(.badURL) }
 
         var request = URLRequest(url: baseURL.appendingPathComponent("v1/attachments/\(encodedProfile)/\(encodedName)"))

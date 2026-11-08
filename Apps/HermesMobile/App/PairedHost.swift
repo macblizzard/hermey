@@ -37,6 +37,12 @@ struct PairedHost: Codable, Equatable, Identifiable {
               scheme == "http" || scheme == "https",
               let host = components.host,
               !host.isEmpty else { return nil }
+        if scheme == "http" {
+            // Cleartext is only ever the loopback bridge. Accepting it for a remote host would let a
+            // pasted `hermes://pair` payload decide to send the pairing code somewhere plaintext.
+            let loopback = host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+            guard loopback else { return nil }
+        }
         components.scheme = scheme
         components.path = ""
         components.query = nil
@@ -208,7 +214,7 @@ final class HostStore: ObservableObject {
             return store
         }
         store.save(host: PairedHost(deviceID: "dev-preview",
-                                    deviceName: "Assistant's iPhone",
+                                    deviceName: "Preview iPhone",
                                     host: "hermes.example.ts.net",
                                     baseURL: base,
                                     platform: "ios",

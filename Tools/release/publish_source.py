@@ -21,6 +21,8 @@ import argparse
 import datetime as dt
 import hashlib
 import html
+import re
+import html
 import json
 import plistlib
 import shutil
@@ -34,6 +36,17 @@ CATEGORY = "utilities"
 #: The file server keeps one IPA (the newest); older entries would advertise a `sha256` for bytes
 #: that are no longer on disk, which is worse than offering no history at all.
 MAX_VERSIONS = 1
+
+
+def safe_component(value: object, limit: int = 64) -> str:
+    """A filesystem/HTML-safe single component built from an untrusted string.
+
+    The version and build come out of the IPA's Info.plist, which is exactly as trustworthy as
+    whatever produced the IPA. `../../etc/x` must not become a path and `<script>` must not become
+    markup.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(value))[:limit]
+    return cleaned if cleaned and cleaned not in (".", "..") else "0"
 
 
 def read_ipa(ipa: Path) -> dict:
@@ -68,11 +81,13 @@ def main() -> int:
     # of an older version failed against the only copy on disk.
     version_guess = None
     try:
-        version_guess = str(read_ipa(args.ipa)["CFBundleShortVersionString"])
-        build_guess = str(read_ipa(args.ipa)["CFBundleVersion"])
+        info = read_ipa(args.ipa)
+        # Untrusted: came out of the .ipa. Never a path component until it is one.
+        version_guess = safe_component(info["CFBundleShortVersionString"])
+        build_guess = safe_component(info["CFBundleVersion"])
         ipa_name = f"Hermey-{version_guess}-b{build_guess}.ipa"
     except Exception:
-        ipa_name = args.ipa.name
+        ipa_name = safe_component(args.ipa.name)
     shutil.copy2(args.ipa, out / ipa_name)
     if args.mac_zip:
         published = out / args.mac_zip.name
@@ -138,7 +153,7 @@ def main() -> int:
             {
                 "name": "Hermey",
                 "bundleIdentifier": info["CFBundleIdentifier"],
-                "developerName": "the maintainer",
+                "developerName": "Hermey",
                 "subtitle": "Your Hermes bots, on your phone",
                 "localizedDescription": (
                     "Chats with every Hermes bot, streaming replies, tool cards, inline approvals "
@@ -170,8 +185,8 @@ def main() -> int:
         f"<p style='color:#979797'>Add <code>{base}/source.json</code> to your sideloading app.</p>"
         "<ul>"
         f"<li><a style='color:#42a0ff' href='source.json'>source.json</a></li>"
-        f"<li><a style='color:#42a0ff' href='{ipa_name}'>{ipa_name}</a> ({size // 1024} KB)</li>"
-        + (f"<li><a style='color:#42a0ff' href='{args.mac_zip.name}'>{args.mac_zip.name}</a></li>" if args.mac_zip else "")
+        f"<li><a style='color:#42a0ff' href='{html.escape(ipa_name)}'>{html.escape(ipa_name)}</a> ({size // 1024} KB)</li>"
+        + (f"<li><a style='color:#42a0ff' href='{html.escape(args.mac_zip.name)}'>{html.escape(args.mac_zip.name)}</a></li>" if args.mac_zip else "")
         + "</ul></body>"
     )
 

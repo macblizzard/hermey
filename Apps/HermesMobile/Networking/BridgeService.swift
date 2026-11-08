@@ -265,7 +265,7 @@ struct PreviewBridgeService: BridgeServiceProtocol {
     var pairedHost: PairedHost? {
         PairedHost.baseURL(fromHost: "hermes.example.ts.net").map {
             PairedHost(deviceID: "dev-preview",
-                       deviceName: "Assistant's iPhone",
+                       deviceName: "Preview iPhone",
                        host: "hermes.example.ts.net",
                        baseURL: $0,
                        platform: "ios",
@@ -297,7 +297,7 @@ struct PreviewBridgeService: BridgeServiceProtocol {
 
     func devices(for host: PairedHost, refreshToken: String) async throws -> [PairedDevice] {
         [PairedDevice(deviceID: "dev-preview",
-                      name: "Assistant's iPhone",
+                      name: "Preview iPhone",
                       platform: "ios",
                       createdAt: Date().addingTimeInterval(-86_400 * 3),
                       lastSeenAt: Date().addingTimeInterval(-90),

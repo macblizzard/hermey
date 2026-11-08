@@ -17,6 +17,7 @@ struct PairingSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var code = ""
+    @State private var pendingScannedHost: String?
     @State private var host = ""
     @State private var scannerMessage: String?
 
@@ -52,6 +53,24 @@ struct PairingSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        // A scanned host is confirmed before a code is sent anywhere.
+        .confirmationDialog(
+            "Pair with \(pendingScannedHost ?? "")?",
+            isPresented: Binding(get: { pendingScannedHost != nil },
+                                 set: { if !$0 { pendingScannedHost = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Use \(pendingScannedHost ?? "")") {
+                if let scanned = pendingScannedHost {
+                    host = scanned
+                    scannerMessage = "Using \(scanned). Check the code, then pair."
+                }
+                pendingScannedHost = nil
+            }
+            Button("Keep \(host)", role: .cancel) { pendingScannedHost = nil }
+        } message: {
+            Text("The code came with a host address. Only continue if that is the machine you just ran `hermey pair` on.")
+        }
         .onAppear {
             if host.isEmpty { host = app.store.host?.host ?? "" }
             app.dismissPairingError()
@@ -188,7 +207,7 @@ struct PairingSheet: View {
     }
 
     private var footnote: some View {
-        Text("The code is single use and expires two minutes after the host prints it. This phone keeps an Ed25519 key in the Keychain and a refresh token the host can revoke at any time.")
+        Text("The code is single use and expires two minutes after the host prints it. The host issues this device a refresh token, kept in the Keychain, which you can revoke from the host at any time.")
             .font(TypeScale.font(TypeScale.label))
             .foregroundStyle(Tokens.textDim)
             .fixedSize(horizontal: false, vertical: true)
@@ -199,6 +218,7 @@ struct PairingSheet: View {
     private var canPair: Bool {
         PairingPayload.normalizeCode(code) != nil
             && !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && pendingScannedHost == nil
     }
 
     /// A scanned payload can carry the host with the code; a bare code keeps whatever the
@@ -210,7 +230,15 @@ struct PairingSheet: View {
         }
         code = payload.code
         if let scannedHost = payload.host, !scannedHost.isEmpty {
-            host = PairedHost.displayHost(from: scannedHost)
+            // A QR sticker can be swapped. The host it names is shown for confirmation instead of
+            // being written into the field, so a code is never sent somewhere the user did not read.
+            let shown = PairedHost.displayHost(from: scannedHost)
+            if shown != host.trimmingCharacters(in: .whitespacesAndNewlines) {
+                pendingScannedHost = shown
+                scannerMessage = "Scanned \(payload.code) for \(shown). Confirm the host to continue."
+                Haptics.selection()
+                return
+            }
         }
         scannerMessage = "Scanned \(payload.code). Check the host, then pair."
         Haptics.selection()

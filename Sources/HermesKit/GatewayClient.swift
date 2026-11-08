@@ -314,7 +314,7 @@ public struct Bot: Identifiable, Hashable, Sendable {
             avatarInitials: avatarInitials, description: value)
     }
 
-    /// First letter of the name, or of its first two words ("assistant" → "C", "night-shift" → "NS").
+    /// First letter of the name, or of its first two words ("assistant" → "C", "night-ops" → "NO").
     /// An avatar is never sent on the wire, so it is derived rather than decoded.
     static func initials(for text: String) -> String {
         let words = text.split(whereSeparator: { !$0.isLetter && !$0.isNumber })

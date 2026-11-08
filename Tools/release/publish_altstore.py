@@ -6,7 +6,7 @@ public internet and caches it aggressively. A tailnet-only URL can only be reach
 and the front end kept serving a list it had already fetched. GitHub gives a public HTTPS URL with
 real CDN semantics, and release assets give the IPA a stable, permanent address.
 
-Layout mirrors macblizzard/musike-altstore:
+Layout mirrors a standard AltStore source:
 
   <repo>/altstore.json                                    <- add this URL in the installer
   <repo>/releases/download/v<build>/Hermey-<version>-b<build>.ipa   <- the build itself
@@ -22,6 +22,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -33,7 +34,13 @@ from publish_source import read_ipa  # noqa: E402  (same directory, shared IPA r
 
 SOURCE_NAME = "Hermey"
 SOURCE_ID = "dev.hermey.app.source"
-ICON_URL = "https://raw.githubusercontent.com/macblizzard/hermes-altstore/main/icon-512.png"
+ICON_URL = "https://raw.githubusercontent.com/{repo}/main/icon-512.png"
+
+
+def safe_component(value: object, limit: int = 64) -> str:
+    """A path component built from the IPA's own version strings, which are untrusted input."""
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(value))[:limit]
+    return cleaned if cleaned and cleaned not in (".", "..") else "0"
 
 
 def run(cmd: list[str], **kwargs) -> str:
@@ -64,7 +71,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipa", type=Path, required=True)
     parser.add_argument("--mac-zip", type=Path)
-    parser.add_argument("--repo", default="macblizzard/hermes-altstore")
+    parser.add_argument("--repo", required=True)
     parser.add_argument("--notes", default="")
     parser.add_argument("--keep", type=int, default=5)
     # A copy on the host's own file server, which answers `Cache-Control: no-store`. GitHub's raw
@@ -87,7 +94,7 @@ def main() -> int:
     stamp = dt.datetime.fromtimestamp(args.ipa.stat().st_mtime, dt.timezone.utc)
 
     tag = f"v{build}"
-    asset_name = f"Hermey-{version}-b{build}.ipa"
+    asset_name = f"Hermey-{safe_component(version)}-b{safe_component(build)}.ipa"
     download = f"https://github.com/{args.repo}/releases/download/{tag}/{asset_name}"
 
     if not release_has(args.repo, tag, asset_name):
@@ -131,7 +138,7 @@ def main() -> int:
         app.update({
             "name": SOURCE_NAME,
             "bundleIdentifier": bundle,
-            "developerName": "macblizzard",
+            "developerName": "Hermey",
             "subtitle": "Hermes Agent client",
             "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
             "iconURL": ICON_URL,

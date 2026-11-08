@@ -19,9 +19,9 @@ final class ProjectionDecodingTests: XCTestCase {
         let projected = try json("""
         {"role":"tool",
          "name":"terminal",
-         "context":"tailscale ssh root@cloudhome 'uptime'",
-         "args":{"command":"tailscale ssh root@cloudhome 'uptime'"},
-         "labels":[{"text":"cloudhome","kind":"target"}],
+         "context":"tailscale ssh root@build-host 'uptime'",
+         "args":{"command":"tailscale ssh root@build-host 'uptime'"},
+         "labels":[{"text":"build-host","kind":"target"}],
          "tool_call_id":"call_1",
          "timestamp":1793912000}
         """)
@@ -30,10 +30,10 @@ final class ProjectionDecodingTests: XCTestCase {
         XCTAssertEqual(entry.role, .tool)
         XCTAssertEqual(entry.id, "tcall_1", "the call id is the row's stable identity")
         XCTAssertEqual(entry.tool?.name, "terminal")
-        XCTAssertEqual(entry.tool?.context, "tailscale ssh root@cloudhome 'uptime'")
+        XCTAssertEqual(entry.tool?.context, "tailscale ssh root@build-host 'uptime'")
         XCTAssertTrue(entry.tool?.args?.contains("\"command\"") ?? false,
                       "args must be readable, not a compact one-liner")
-        XCTAssertEqual(entry.tool?.labels, ["cloudhome"])
+        XCTAssertEqual(entry.tool?.labels, ["build-host"])
         XCTAssertEqual(entry.tool?.detail, entry.tool?.args,
                        "with no result in the payload, the call itself is what a tap opens")
     }

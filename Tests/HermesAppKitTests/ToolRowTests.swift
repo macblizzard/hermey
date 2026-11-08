@@ -107,17 +107,17 @@ final class ToolRowTests: XCTestCase {
     /// Reasoning is streamed on its own channel and must outlive the answer that ended it.
     func testReasoningStaysInTheThreadAfterTheAnswer() async throws {
         let (model, host) = await openModel(entries: [
-            TranscriptEntry(id: "u1", role: .user, text: "check cloudhome"),
+            TranscriptEntry(id: "u1", role: .user, text: "check build-host"),
         ])
 
-        host.emit(.thinkingDelta(session: "s1", text: "cloudhome answers over tailscale; read uptime."))
+        host.emit(.thinkingDelta(session: "s1", text: "build-host answers over tailscale; read uptime."))
         await waitUntil { !model.reasoningText.isEmpty }
 
         host.emit(.messageComplete(session: "s1", text: "up 42 days"))
         await waitUntil { model.transcript.count == 3 }
 
         XCTAssertEqual(model.transcript.map(\.role), [.user, .reasoning, .assistant])
-        XCTAssertEqual(model.transcript[1].text, "cloudhome answers over tailscale; read uptime.")
+        XCTAssertEqual(model.transcript[1].text, "build-host answers over tailscale; read uptime.")
         XCTAssertTrue(model.reasoningText.isEmpty, "the live bubble is cleared once the row holds it")
     }
 

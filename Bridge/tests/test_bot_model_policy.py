@@ -13,7 +13,7 @@ def test_only_explicit_profile_model_changes_are_allowed():
 
 
 def test_description_alone_is_allowed():
-    assert is_bot_model_configure_allowed({"name": "assistant", "description": "Lead Developer of Moe's Homelab"})
+    assert is_bot_model_configure_allowed({"name": "assistant", "description": "Lead Developer of Example Labs"})
 
 
 def test_empty_description_is_allowed_so_it_can_be_cleared():

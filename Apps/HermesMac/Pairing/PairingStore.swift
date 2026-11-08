@@ -33,7 +33,10 @@ final class PairingStore {
 
         var query = baseQuery
         query[kSecValueData as String] = data
-        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // Without the data-protection keychain this lands in the file-based login keychain, where the
+        // accessibility attribute is inert and Time Machine copies it to any restored Mac.
+        query[kSecUseDataProtectionKeychain as String] = true
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let status = SecItemAdd(query as CFDictionary, nil)
         persisted = status == errSecSuccess

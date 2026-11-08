@@ -1,5 +1,10 @@
 name: ci
 
+# Read-only by default: this workflow builds installable artifacts, so its token should not be
+# able to write anything it does not need to.
+permissions:
+  contents: read
+
 # What this file optimises: the time between "the change is written" and "the maintainer can install it".
 #
 # Measured 2026-11-08 on the previous shape, for a 3-line UI change: packages 67 s, then apps 301 s
@@ -86,6 +91,9 @@ jobs:
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd-ios \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
       - uses: actions/upload-artifact@v4
+        # Only a push (i.e. `main`) produces a publishable build. A pull request from a fork would
+        # otherwise hand a maintainer an artifact shaped by the PR's own project.yml.
+        if: github.event_name == 'push'
         with:
           name: Hermey-macOS-unsigned
           path: dist/Hermey-macOS-unsigned.zip
@@ -128,6 +136,7 @@ jobs:
           unzip -l dist/Hermey-unsigned.ipa | head -20
           du -h dist/Hermey-unsigned.ipa
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
         with:
           name: Hermey-unsigned-ipa
           path: dist/Hermey-unsigned.ipa

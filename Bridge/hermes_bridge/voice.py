@@ -29,6 +29,7 @@ import os
 import re
 import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional, Tuple
@@ -159,7 +160,11 @@ class VoiceBackend:
     def __post_init__(self) -> None:
         for name, value in (('groq_base_url', self.groq_base_url),
                             ('elevenlabs_base_url', self.elevenlabs_base_url)):
-            if not value.startswith(('https://', 'http://127.0.0.1', 'http://localhost')):
+            # Parsed, not prefix-matched: "http://localhost.attacker.tld" starts with a loopback
+            # string and is not loopback, and the provider key rides on this request.
+            parts = urllib.parse.urlsplit(value)
+            loopback = parts.hostname in ('127.0.0.1', 'localhost', '::1')
+            if parts.scheme != 'https' and not (parts.scheme == 'http' and loopback):
                 raise ValueError(f'{name} must be https (loopback http is allowed for tests)')
         if not _VOICE_ID_PATTERN.match(self.voice_id):
             raise ValueError('voice_id must be a short opaque identifier')

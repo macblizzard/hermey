@@ -76,14 +76,14 @@ final class AppModelBotPreferencesTests: XCTestCase {
         await model.start()
 
         try await model.configureDescription(botID: "assistant",
-                                             description: "  Lead Developer of Moe's Homelab  ")
+                                             description: "  Lead Developer of Example Labs  ")
 
         XCTAssertEqual(scripted.descriptions.count, 1)
         XCTAssertEqual(scripted.descriptions.first?.0, "assistant")
-        XCTAssertEqual(scripted.descriptions.first?.1, "Lead Developer of Moe's Homelab",
+        XCTAssertEqual(scripted.descriptions.first?.1, "Lead Developer of Example Labs",
                        "the text is trimmed before it crosses the wire")
         XCTAssertEqual(model.bots.first(where: { $0.id == "assistant" })?.description,
-                       "Lead Developer of Moe's Homelab",
+                       "Lead Developer of Example Labs",
                        "the list reflects the saved description without waiting for a reload")
         XCTAssertNil(model.bots.first(where: { $0.id == "ops" })?.description)
         await model.stop()

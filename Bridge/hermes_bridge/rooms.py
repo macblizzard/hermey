@@ -34,7 +34,9 @@ import asyncio
 import base64
 import binascii
 import json
+import logging
 import os
+import urllib.parse
 import re
 import time
 import uuid
@@ -46,6 +48,10 @@ from pydantic import BaseModel
 
 from .attachment_validation import MAX_ATTACHMENT_BYTES
 from .device_auth import require_device
+from . import paths
+from .config import is_loopback_host
+
+log = logging.getLogger("hermes_bridge.rooms")
 
 #: Hermes' own identifier rule (`gateway/hosted_rooms_common.py::IDENTIFIER_RE`).
 ROOM_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
@@ -59,8 +65,17 @@ MIN_MEMBERS, MAX_MEMBERS = 2, 6
 MAX_TEXT_BYTES = 16_000
 
 #: The gateway's loopback socket, and the token it was started with (see secrets.env).
+#: Validated like every other upstream: a ws:// or wss:// URL off this box would ship the gateway
+#: token to whoever the environment variable names.
 GATEWAY_WS = os.environ.get("HERMES_BRIDGE_GATEWAY_WS", "ws://127.0.0.1:9120/api/ws")
 GATEWAY_TOKEN = os.environ.get("HERMES_BRIDGE_GATEWAY_TOKEN", "")
+
+
+def _validated_gateway_ws() -> str:
+    parts = urllib.parse.urlsplit(GATEWAY_WS)
+    if parts.scheme not in ("ws", "wss") or not is_loopback_host(parts.hostname or ""):
+        raise HTTPException(status_code=500, detail="gateway socket must be loopback")
+    return GATEWAY_WS
 
 RPC_TIMEOUT = 90
 
@@ -95,7 +110,7 @@ class MessageIn(BaseModel):
 #: Where a room's files are written. Inside the bridge's one writable path, and readable by the
 #: bots' own tools because they run as root on this host — the reference in the message text is a
 #: real absolute path, not a promise.
-ATTACHMENT_ROOT = Path("/var/lib/hermes-bridge/room-attachments")
+ATTACHMENT_ROOT = paths.ROOM_ATTACHMENT_ROOT
 MAX_ATTACHMENTS = 4
 
 
@@ -107,7 +122,8 @@ async def _rpc(method: str, params: dict) -> dict:
     """
     import websockets
 
-    url = f"{GATEWAY_WS}?token={GATEWAY_TOKEN}" if GATEWAY_TOKEN else GATEWAY_WS
+    socket_url = _validated_gateway_ws()
+    url = f"{socket_url}?token={GATEWAY_TOKEN}" if GATEWAY_TOKEN else socket_url
     try:
         async with websockets.connect(url, open_timeout=10, max_size=None, proxy=None) as ws:
             await asyncio.wait_for(ws.recv(), timeout=10)  # hello
@@ -123,8 +139,10 @@ async def _rpc(method: str, params: dict) -> dict:
                     return frame.get("result") or {}
     except HTTPException:
         raise
-    except (OSError, asyncio.TimeoutError) as error:
-        raise HTTPException(status_code=503, detail=f"gateway unavailable: {error}") from error
+    except (OSError, asyncio.TimeoutError):
+        # Exception text here can contain the dial URL, which contains the token.
+        log.warning("rooms rpc %s failed against %s", method, GATEWAY_WS.split("?")[0])
+        raise HTTPException(status_code=503, detail="gateway unavailable") from None
 
 
 def _member_payload(member: RoomMemberIn) -> dict:
@@ -208,7 +226,7 @@ def _last_spoken(room: dict) -> dict:
     """Who spoke last in a room, and when — the two things a list row needs.
 
     Read from the room's own log rather than from `updated_at`, because a turn marker updates the
-    room without anybody having said anything; a row that said "aria" for a cancelled turn would be
+    room without anybody having said anything; a row that said "delta" for a cancelled turn would be
     lying about who spoke.
     """
     room_id = room.get("room_id")

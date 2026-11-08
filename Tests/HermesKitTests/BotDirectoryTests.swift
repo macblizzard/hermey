@@ -23,8 +23,8 @@ final class BotDirectoryTests: XCTestCase {
         "profiles": .array([
             .object(["name": .string("default"), "is_default": .bool(true)]),
             .object(["name": .string("analyst")]),
-            .object(["profile": .string("night-shift")]),
-            .string("scribe"),
+            .object(["profile": .string("night-ops")]),
+            .string("charlie"),
             .object(["unexpected": .string("ignored")]),
         ]),
         "bot_mode_protocol": .int(2),
@@ -41,10 +41,10 @@ final class BotDirectoryTests: XCTestCase {
 
         let bots = try await client.listBots()
 
-        XCTAssertEqual(bots.map(\.id), ["default", "analyst", "night-shift", "scribe"],
+        XCTAssertEqual(bots.map(\.id), ["default", "analyst", "night-ops", "charlie"],
                        "the id is the wire value `profile` takes; an entry without a name is skipped, not fatal")
-        XCTAssertEqual(bots.map(\.name), ["default", "analyst", "night-shift", "scribe"])
-        XCTAssertEqual(bots.map(\.displayName), ["default", "analyst", "night-shift", "scribe"],
+        XCTAssertEqual(bots.map(\.name), ["default", "analyst", "night-ops", "charlie"])
+        XCTAssertEqual(bots.map(\.displayName), ["default", "analyst", "night-ops", "charlie"],
                        "no label on the wire means the profile name is the label")
 
         let params = await fake.params(method: "profiles.list")
@@ -60,20 +60,20 @@ final class BotDirectoryTests: XCTestCase {
             "profiles": .array([
                 .object(["name": .string("assistant"), "display_name": .string("Assistant (work)")]),
                 .object(["name": .string("ops")]),
-                .object(["name": .string("aria"), "label": .string("Aria")]),
+                .object(["name": .string("delta"), "label": .string("Delta")]),
             ]),
         ]), for: "profiles.list")
         let client = makeClient(fake)
         try await client.connect()
 
         let bots = try await client.listBots()
-        XCTAssertEqual(bots.map(\.id), ["assistant", "ops", "aria"], "a label never leaks into the id")
-        XCTAssertEqual(bots.map(\.displayName), ["Assistant (work)", "ops", "Aria"])
+        XCTAssertEqual(bots.map(\.id), ["assistant", "ops", "delta"], "a label never leaks into the id")
+        XCTAssertEqual(bots.map(\.displayName), ["Assistant (work)", "ops", "Delta"])
         XCTAssertEqual(bots[1].label, "ops", "an unlabelled bot is still labelled by its name")
     }
 
     func testBotInitialsSurviveHyphenatedProfileNames() {
-        XCTAssertEqual(Bot(id: "night-shift").avatarInitials, "NS")
+        XCTAssertEqual(Bot(id: "night-ops").avatarInitials, "NO")
         XCTAssertEqual(Bot(id: "assistant").avatarInitials, "C")
         XCTAssertEqual(Bot(id: "c").avatarInitials, "C")
     }

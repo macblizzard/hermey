@@ -20,7 +20,7 @@ set -euo pipefail
 PREFIX=${HERMEY_PREFIX:-/opt/hermey}
 STATE=${HERMEY_STATE:-/var/lib/hermey}
 CONF=${HERMEY_CONF:-/etc/hermey}
-SVC_USER=${HERMEY_USER:-hermey}
+SVC_USER=${HERMEY_USER:-}
 BINDIR=${HERMEY_BINDIR:-/usr/local/bin}
 BRIDGE_PORT=${HERMEY_PORT:-8787}
 HTTPS_PORT=${HERMEY_HTTPS_PORT:-8443}
@@ -33,6 +33,14 @@ PURGE=0
 
 REPO=macblizzard/hermey
 GATEWAY_PORT_DEFAULT=9120
+
+# These knobs arrive from the environment, and `curl | bash` means the environment is attacker
+# territory (sudo -E, env_keep, a wrapper script). Everything below is validated before it is used
+# as a path, a unit name, a port, or interpolated into a root-executed script.
+valid_user() { [[ $1 =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; }
+valid_port() { [[ $1 =~ ^[0-9]{1,5}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+valid_path() { [[ $1 == /* && $1 != *[[:space:]]* && $1 != *..* ]] && [[ $1 != *['$`"\\']* ]]; }
+valid_unit() { [[ $1 =~ ^[A-Za-z0-9_.-]{1,40}$ ]]; }
 
 say()  { printf '\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
@@ -48,13 +56,41 @@ while [ $# -gt 0 ]; do
     --serve) DO_SERVE=yes; shift;;
     --uninstall) UNINSTALL=1; shift;;
     --purge) PURGE=1; shift;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+    -h|--help) cat <<'USAGE'
+Hermey host installer
+
+  sudo bash install.sh [options]
+
+  --ref R          git ref to install (default: main; use a tag to pin)
+  --port N         bridge port on 127.0.0.1 (default 8787)
+  --https-port N   tailnet port for tailscale serve (default 8443)
+  --local DIR      install from a checkout instead of GitHub
+  --no-serve       do not configure tailscale serve
+  --uninstall      remove the units and the serve mapping, keep state
+  --purge          with --uninstall: delete state, config and the service user
+
+Environment overrides: HERMEY_PREFIX, HERMEY_STATE, HERMEY_CONF, HERMEY_USER,
+HERMEY_BINDIR, HERMEY_PORT, HERMEY_HTTPS_PORT, HERMEY_UNIT_PREFIX, HERMEY_REF,
+HERMEY_LOCAL_SRC, HERMEY_SERVE, HERMES_HOME, HERMES_PROFILES_ROOT
+USAGE
+      exit 0;;
     *) die "unknown option $1 (try --help)";;
   esac
 done
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"
 command -v systemctl >/dev/null || die "this installer needs systemd"
+
+[ -z "$SVC_USER" ] || valid_user "$SVC_USER" || die "HERMEY_USER must match ^[a-z_][a-z0-9_-]*$ (got '$SVC_USER')"
+valid_unit "$UNIT_PREFIX"   || die "HERMEY_UNIT_PREFIX must be a unit-name fragment (got '$UNIT_PREFIX')"
+valid_path "$PREFIX"        || die "HERMEY_PREFIX must be an absolute path without spaces or '..'"
+valid_path "$STATE"         || die "HERMEY_STATE must be an absolute path without spaces or '..'"
+valid_path "$CONF"          || die "HERMEY_CONF must be an absolute path without spaces or '..'"
+valid_path "$BINDIR"        || die "HERMEY_BINDIR must be an absolute path without spaces or '..'"
+valid_port "$BRIDGE_PORT"   || die "HERMEY_PORT must be 1-65535"
+valid_port "$HTTPS_PORT"    || die "HERMEY_HTTPS_PORT must be 1-65535"
+[ "$PREFIX" != "/" ] && [ "$STATE" != "/" ] && [ "$CONF" != "/" ] || die "refusing to install into /"
+[ "$PREFIX" != "$STATE" ] && [ "$STATE" != "$CONF" ] || die "prefix, state and config must differ"
 
 GW_UNIT="$UNIT_PREFIX-gateway"
 BR_UNIT="$UNIT_PREFIX-bridge"
@@ -71,7 +107,7 @@ if [ "$UNINSTALL" = 1 ]; then
     tailscale serve --https="$HTTPS_PORT" off >/dev/null 2>&1 || true
   fi
   if [ "$PURGE" = 1 ]; then
-    rm -rf "$PREFIX" "$STATE" "$CONF"
+    rm -rf -- "$PREFIX" "$STATE" "$CONF"
     id -u "$SVC_USER" >/dev/null 2>&1 && userdel "$SVC_USER" >/dev/null 2>&1 || true
     say "Purged $PREFIX, $STATE, $CONF"
   else
@@ -122,17 +158,6 @@ else
 fi
 [ -f "$SRC/Bridge/pyproject.toml" ] || die "$SRC is not a Hermey checkout (no Bridge/pyproject.toml)"
 
-# ---------------------------------------------------------------- service user, dirs
-say "Creating the service account and directories"
-if ! id -u "$SVC_USER" >/dev/null 2>&1; then
-  useradd --system --home "$STATE" --shell /usr/sbin/nologin "$SVC_USER"
-  note "user: $SVC_USER (system, no shell)"
-fi
-install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE"
-install -d -m 0750 "$CONF"
-install -d -m 0755 "$PREFIX"
-install -d -m 0755 "$BINDIR"
-
 # ---------------------------------------------------------------- venv
 say "Installing the bridge into $PREFIX/venv"
 [ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv"
@@ -163,6 +188,43 @@ else
   fi
   note "no dashboard on this host — will run one on 127.0.0.1:$GW_PORT (profile: default)"
 fi
+
+# The bridge reports on the agent's profiles, so it belongs to whoever can read them. Running it as
+# a stranger with no access produced an empty bot list on a clean host.
+if [ -z "${HERMES_HOME:-}" ]; then
+  HERMES_HOME=$(tr '\0' '\n' < "/proc/${GW_PID:-0}/environ" 2>/dev/null | sed -n 's/^HERMES_HOME=//p' | head -1)
+fi
+HERMES_HOME=${HERMES_HOME:-$HOME/.hermes}
+# A running dashboard often carries a *profile* home in HERMES_HOME (`…/profiles/<name>`), so the
+# profiles directory is derived from the shape of the path rather than appended blindly.
+if [ -n "${HERMES_PROFILES_ROOT:-}" ]; then
+  PROFILES_ROOT=$HERMES_PROFILES_ROOT
+elif [ "${HERMES_HOME%%/profiles/*}" != "$HERMES_HOME" ]; then
+  PROFILES_ROOT=${HERMES_HOME%%/profiles/*}/profiles
+else
+  PROFILES_ROOT=$HERMES_HOME/profiles
+fi
+note "hermes home: $HERMES_HOME"
+note "profiles:    $PROFILES_ROOT"
+
+if [ -z "$SVC_USER" ]; then
+  SVC_USER=$(stat -c %U "$HERMES_HOME" 2>/dev/null || echo root)
+fi
+valid_user "$SVC_USER" || die "cannot use '$SVC_USER' as the service user"
+note "service user: $SVC_USER"
+
+# ---------------------------------------------------------------- service user, dirs
+say "Creating the service account and directories"
+if [ "$SVC_USER" = root ]; then
+  note "user: root (the Hermes home is root's; no privilege is gained that the agent did not have)"
+elif ! id -u "$SVC_USER" >/dev/null 2>&1; then
+  useradd --system --home "$STATE" --shell /usr/sbin/nologin -- "$SVC_USER"
+  note "user: $SVC_USER (system, no shell)"
+fi
+install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE"
+install -d -m 0750 "$CONF"
+install -d -m 0755 "$PREFIX"
+install -d -m 0755 "$BINDIR"
 
 umask 077
 cat > "$CONF/gateway.env" <<EOF
@@ -199,7 +261,8 @@ Environment=HERMES_BRIDGE_HOST=127.0.0.1
 Environment=HERMES_BRIDGE_PORT=$BRIDGE_PORT
 Environment=HERMES_BRIDGE_DB=$STATE/bridge.db
 Environment=HERMES_BRIDGE_GATEWAY_URL=ws://127.0.0.1:$GW_PORT/api/ws
-Environment=HERMES_BRIDGE_GATEWAY_TOKEN=$GW_TOKEN
+Environment=HERMES_BRIDGE_STATE_DIR=$STATE
+Environment=HERMES_PROFILES_ROOT=$PROFILES_ROOT
 Environment=XDG_STATE_HOME=$STATE
 Environment=HERMES_BRIDGE_PUBLIC_HOST=${TAIL_HOST:-127.0.0.1}
 ExecStart=$PREFIX/venv/bin/python -m hermes_bridge

@@ -43,9 +43,10 @@ struct KeychainSecretStore: SecretStore {
         ]
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            // The phone must be able to exchange a ticket after a reboot without the
-            // user unlocking first; it is still this-device-only.
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            // Nothing in this app runs before the first unlock (no background modes), so the
+            // stricter class costs nothing and keeps the refresh token unreadable while locked.
+            // This-device-only keeps it out of backups and iCloud Keychain.
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {

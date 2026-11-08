@@ -8,7 +8,7 @@ This document states the trust boundaries, the invariants that hold them up, the
 invariants are for, and the evidence (a test, or an explicit gap) for each one.
 
 Scope: `Bridge/hermes_bridge` (the only new server-side code), the `wss://` path into it, and the
-approval semantics the client relies on. The Swift apps' own storage (Keychain / Secure Enclave) is
+approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain item) is
 described where it matters, but not audited here.
 
 ## 1. Trust boundaries
@@ -53,7 +53,7 @@ Every row is enforced in code and pinned by a test in `Tools/qa` (run with
 |---|---|---|---|
 | 1 | The bridge refuses to bind anything but loopback, and refuses a non-loopback gateway URL | `config.validate()`, `__main__` | `test_config.py` |
 | 2 | Pairing codes are minted **only for a direct host-local caller** — a request carrying `Forwarded`/`X-Forwarded-For`/`Tailscale-User-Login` is refused even though its peer address is loopback | `app._is_local_host_request` | `test_pairing_codes_cannot_be_minted_through_a_proxy` |
-| 3 | Pairing codes: 8 digits, **120 s**, **single use**, stored as SHA-256, max 64 outstanding | `tickets.PairingCodes` | `test_pairing_code_is_single_use`, `test_pairing_code_expires` |
+| 3 | Pairing codes: 8 digits, **600 s** (`HERMES_BRIDGE_PAIRING_TTL`), **single use**, stored as SHA-256, max 64 outstanding | `tickets.PairingCodes` | `test_pairing_code_is_single_use`, `test_pairing_code_expires` |
 | 4 | Pairing claims are throttled per source (**10 / 60 s**, then `429` + `Retry-After`) | `tickets.AttemptThrottle` | `test_pairing_codes_are_rate_limited` |
 | 5 | A public key must be a real 32-byte Ed25519 key (base64/urlsafe, padding optional) — placeholders and private keys are refused | `pairing.normalize_public_key` | `test_a_placeholder_public_key_is_rejected` |
 | 6 | At most 32 active devices | `app.MAX_DEVICES` | `test_the_device_limit_is_enforced` |
@@ -70,7 +70,7 @@ Every row is enforced in code and pinned by a test in `Tools/qa` (run with
 | 17 | A server request blocks the agent until the app answers (or the bridge declines) — nothing auto-answers | `proxy` + `scenarios/turn-approval.ndjson` | `test_approval_round_trip_blocks_the_agent_until_answered`, `test_declining_an_approval_fails_the_tool` |
 | 18 | A server-request id that collides with an in-flight client id is remapped for the app and **restored** upstream | `proxy._handle_server_request` | `test_a_server_request_with_a_colliding_id_is_remapped_and_restored` |
 | 19 | A stale answer (unknown id, e.g. from a second device) is dropped, audited, and not forwarded | `proxy._handle_client_response` | `test_a_stale_answer_is_dropped_and_not_forwarded` |
-| 20 | Every frame is capped at **1 MiB** (configurable, hard max 8 MiB) **in both directions**; an oversize frame is never forwarded and closes with `1009` | `config.frame_cap`, `proxy.split_frames` | `test_oversized_client_frame_is_refused_and_never_forwarded`, `test_oversized_gateway_frame_is_not_relayed`, `test_oversized_binary_frame_cannot_bypass_the_cap` |
+| 20 | Every frame is capped at **1 MiB** (configurable, hard max 16 MiB) **in both directions**; an oversize frame is never forwarded and closes with `1009` | `config.frame_cap`, `proxy.split_frames` | `test_oversized_client_frame_is_refused_and_never_forwarded`, `test_oversized_gateway_frame_is_not_relayed`, `test_oversized_binary_frame_cannot_bypass_the_cap` |
 | 21 | The **gateway token** is used only in the upstream dial URI (loopback) — never in a response, an error string, the audit log, or a frame sent to a device | `config.upstream_url`, `AuditLog` | `test_the_gateway_token_is_not_exposed_by_any_http_surface`, `test_the_gateway_token_travels_upstream_only` |
 | 22 | The audit log records **device, method, direction, duration, bytes** and nothing else — no params, no prompt text, no tool output, no tokens, no ids | `audit.AuditLog.emit` (no parameter for payload), closed key set | `test_the_audit_log_records_the_turn_but_none_of_its_text`, `test_audit_records_have_a_closed_key_set_and_scalar_values`, `test_the_audit_never_contains_a_token_or_ticket` |
 | 23 | A device cannot read another device's secrets from the API: `/v1/devices` returns no token, hash or public key | `app.devices` | `test_the_refresh_token_is_stored_hashed_and_never_on_disk` |
@@ -84,7 +84,7 @@ evidence; this table is the reasoning.
 | # | Threat | Goal | Control | Residual risk |
 |---|---|---|---|---|
 | T1 | A device on the tailnet that was never paired | drive the agent | `/v1/ws` requires a ticket from `/v1/token`, which requires a refresh token from a pairing claim; a claim requires a code only the host can mint (invariant 2, 10–12) | a tailnet member can still reach `/v1/health` and `/v1/pair/claim` (see T2) |
-| T2 | Brute force of the 8-digit pairing code | pair an unauthorised device | 120 s TTL, single use, 64 outstanding max, **10 attempts/minute/source** (invariant 3–4). One source gets ~20 guesses per 120 s window against 10⁸ codes: a 1-in-5 000 000 chance per code | throttling is per source address; an attacker holding 1 000 tailnet addresses gets ~20 000 guesses per window — a 1-in-5 000 chance per code, and a missed code is dead. Holding 1 000 tailnet identities is already a different incident |
+| T2 | Brute force of the 8-digit pairing code | pair an unauthorised device | 600 s TTL, single use, 64 outstanding max, **10 attempts/minute/source** (invariant 3–4). One source gets ~10 guesses per 60 s window against 10⁸ codes: a 1-in-5 000 000 chance per code | throttling is per source address; an attacker holding 1 000 tailnet addresses gets ~20 000 guesses per window — a 1-in-5 000 chance per code, and a missed code is dead. Holding 1 000 tailnet identities is already a different incident |
 | T3 | Stolen `bridge.db` (backup, misconfigured permissions, root on host) | mint tokens | refresh tokens are SHA-256 only (invariant 7); no gateway token in the DB | root on the host is game over regardless (A1) |
 | T4 | Stolen refresh token (malware on the phone, backup extraction) | impersonate the device | the token is useless without the `device_id`, which is not secret — **so a stolen token *is* enough** (invariant 8 is integrity, not proof-of-possession) | see **G1**: no signed assertion. Mitigation today is revocation + 15 min access tokens |
 | T5 | Replay of a captured WS URL | hijack a session | 30 s TTL, single use, consumed before accept (invariant 10–11); TLS prevents capture in transit | a ticket captured *from the phone's memory* within 30 s is usable once — that requires code execution on the device |

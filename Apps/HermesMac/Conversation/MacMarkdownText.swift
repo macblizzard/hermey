@@ -32,6 +32,11 @@ struct MacMarkdownText: View {
             // A link in a reply opens in the user's browser, not in whatever the app's own default
             // would be. Declared here so a run cannot fall through to an empty handler.
             .environment(\.openURL, OpenURLAction { url in
+                // A reply may link to the web. It may not hand `file:` or a custom scheme to the
+                // system: that is a click on a handler, chosen by whatever wrote the reply.
+                guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+                    return .discarded
+                }
                 NSWorkspace.shared.open(url)
                 return .handled
             })

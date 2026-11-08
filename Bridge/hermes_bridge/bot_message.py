@@ -36,6 +36,9 @@ from typing import Optional
 
 import websockets
 from fastapi import APIRouter, HTTPException, Request
+
+from .device_auth import is_local_host_request
+
 logger = logging.getLogger("hermes_bridge.bot_message")
 
 #: Same shape the session pointer accepts: never a path, never a separator.
@@ -52,8 +55,9 @@ REPLY_TIMEOUT_S = 150.0
 
 
 def _is_loopback(request: Request) -> bool:
-    host = request.client.host if request.client else ""
-    return host in ("127.0.0.1", "::1", "localhost")
+    # Delegated on purpose: a proxy makes every caller look like 127.0.0.1, and this route lets the
+    # caller write into a real bot conversation.
+    return is_local_host_request(request)
 
 
 def _labelled(sender: str, target: str, text: str) -> str:

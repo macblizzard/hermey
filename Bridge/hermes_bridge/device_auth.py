@@ -15,7 +15,11 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
+
+#: Headers a reverse proxy adds. Their presence means the request was relayed, whatever the socket
+#: peer says — `tailscale serve` dials 127.0.0.1, so the peer alone cannot tell host from tailnet.
+PROXY_HEADERS = ("forwarded", "x-forwarded-for", "x-real-ip", "tailscale-user-login")
 
 
 def bearer_token(authorization: Optional[str]) -> str:
@@ -35,3 +39,16 @@ def require_device(runtime, authorization: Optional[str]) -> str:
     if not device_id or not runtime.registry.is_active(device_id):
         raise HTTPException(status_code=401, detail='invalid, expired or revoked ticket')
     return device_id
+
+
+def is_local_host_request(request: Request) -> bool:
+    """True only for a direct loopback caller, never a proxied one.
+
+    The single copy of this rule: an operator-only route that re-implements it will get it wrong,
+    and "the peer is 127.0.0.1" is not the same claim once `tailscale serve` is in front.
+    """
+    if any(header in request.headers for header in PROXY_HEADERS):
+        return False
+    from .config import is_loopback_host
+
+    return is_loopback_host(request.client.host if request.client else "")

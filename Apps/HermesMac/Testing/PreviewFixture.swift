@@ -191,7 +191,7 @@ enum FixtureContent {
     static let bots: [Bot] = [
         Bot(id: "assistant", displayName: "Assistant", description: "Runs the workshop"),
         Bot(id: "ops", displayName: "Ops", description: "Reads the archives"),
-        Bot(id: "scribe", displayName: "Scribe", description: "Keeps the minutes"),
+        Bot(id: "charlie", displayName: "Scribe", description: "Keeps the minutes"),
     ]
 
     static let sessions: [SessionSummary] = [

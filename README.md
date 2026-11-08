@@ -72,6 +72,8 @@ voice. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 - The bridge binds `127.0.0.1`. The only way in is `tailscale serve`, which terminates TLS with a
   real certificate — no public listener, no self-signed certificate, no port forward.
+- Operator-only routes (pairing, writing into a bot's chat) are refused when a proxy header is
+  present, so a tailnet peer cannot act as if it were the host.
 - Pairing is a short numeric code minted on the host, redeemed once for a device key pair. Every
   request carries a single-use 30-second bearer ticket; a leaked log is worthless.
 - Devices are individually revocable, and revoking one does not disturb the others.

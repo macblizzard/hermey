@@ -18,12 +18,12 @@ final class BotDescriptionTests: XCTestCase {
         try await client.connect()
 
         try await client.configureDescription(profile: "assistant",
-                                              description: "Lead Developer of Moe's Homelab")
+                                              description: "Lead Developer of Example Labs")
 
         let params = await fake.params(method: "profiles.configure")
         XCTAssertEqual(params, .object([
             "name": .string("assistant"),
-            "description": .string("Lead Developer of Moe's Homelab"),
+            "description": .string("Lead Developer of Example Labs"),
         ]), "exactly two params: no model, no provider, no confirm flag")
     }
 
@@ -47,7 +47,7 @@ final class BotDescriptionTests: XCTestCase {
         let fake = FakeGateway()
         await fake.setResult(.object([
             "profiles": .array([
-                .object(["name": .string("assistant"), "description": .string("Lead Developer of Moe's Homelab")]),
+                .object(["name": .string("assistant"), "description": .string("Lead Developer of Example Labs")]),
                 .object(["name": .string("ops"), "description": .string("  ")]),
                 .object(["name": .string("analyst")]),
             ]),
@@ -57,7 +57,7 @@ final class BotDescriptionTests: XCTestCase {
 
         let bots = try await client.listBots()
         XCTAssertEqual(bots.map(\.id), ["assistant", "ops", "analyst"])
-        XCTAssertEqual(bots[0].description, "Lead Developer of Moe's Homelab")
+        XCTAssertEqual(bots[0].description, "Lead Developer of Example Labs")
         XCTAssertNil(bots[1].description, "a blank description is no description")
         XCTAssertNil(bots[2].description)
     }

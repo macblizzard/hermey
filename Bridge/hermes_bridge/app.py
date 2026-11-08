@@ -34,6 +34,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .audit import AuditLog
+from .device_auth import is_local_host_request as is_local_host_request_shared
 from .bot_icons import create_bot_icons_router
 from .attachment_files import create_attachment_files_router
 from .bot_previews import create_bot_previews_router
@@ -107,10 +108,7 @@ class BridgeRuntime:
 
 def _is_local_host_request(request: Request) -> bool:
     """True only for a direct loopback caller, not a tailscale-serve proxy."""
-    if any(header in request.headers for header in _PROXY_HEADERS):
-        return False
-    client = request.client.host if request.client else ""
-    return is_loopback_host(client)
+    return is_local_host_request_shared(request)
 
 
 def _client_key(request: Request) -> str:
@@ -181,6 +179,10 @@ def create_app(
         """
         limit = MAX_VOICE_BODY_BYTES if request.url.path.startswith("/v1/voice/") else MAX_CONTROL_BODY_BYTES
         declared = request.headers.get("content-length")
+        if declared is None and "chunked" in request.headers.get("transfer-encoding", "").lower():
+            # Every client here knows its size. A chunked body would reach the parser without ever
+            # being counted, which is the one way this middleware can be walked around.
+            return JSONResponse({"detail": "content-length required"}, status_code=411)
         if declared is not None:
             try:
                 if int(declared) > limit:

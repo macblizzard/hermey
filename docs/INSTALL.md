@@ -13,8 +13,10 @@ What it does, in order:
 
 1. **Preflight.** Python 3.11+, systemd, and a `hermes` binary it can find. It stops with a clear
    message if any is missing rather than half-installing.
-2. **Service account.** A `hermey` system user with no shell and `/var/lib/hermey` as its state
-   directory (device registry, SQLite, attachments).
+2. **Service account.** The bridge runs as the owner of your Hermes home — the account that can
+   already read your bots' profiles, which is exactly what it reports on. `HERMEY_USER` names a
+   different account if you prefer (it then needs read access to the profiles directory, granted by
+   `HERMES_PROFILES_ROOT`). State goes to `/var/lib/hermey`: device registry, SQLite, attachments.
 3. **Bridge.** Installed into `/opt/hermey/venv` from this repo, run as `hermey-bridge.service`
    bound to `127.0.0.1:8787`.
 4. **Gateway.** Hermes allows exactly one machine-level dashboard per host, so the installer *reuses*
@@ -70,7 +72,7 @@ apps follow App Transport Security and will refuse it.
 | `/opt/hermey/venv` | the installed bridge |
 | `/var/lib/hermey/bridge.db` | devices, tickets, room attachments index |
 | `/var/lib/hermey/room-attachments/` | uploaded files |
-| `/etc/hermey/gateway.env` | the loopback gateway token, `0600` |
+| `/etc/hermey/gateway.env` | the loopback gateway token, `0600` (the unit reads it as an `EnvironmentFile`, so the token is never in a world-readable unit file) |
 | `/etc/hermey/providers.env` | optional, the same `EnvironmentFile` for voice provider keys |
 | `/etc/systemd/system/hermey-bridge.service` | the service |
 | `/etc/systemd/system/hermey-gateway.service` | only created when this host had no dashboard |

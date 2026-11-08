@@ -23,16 +23,23 @@ first: "delete" is irreversible by design, and a mis-tap should not be.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tarfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException
+
+from . import paths
+from .config import is_loopback_host
+
+log = logging.getLogger("hermes_bridge.bot_admin")
 from pydantic import BaseModel
 
 from .device_auth import require_device
@@ -43,10 +50,10 @@ PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 #: The install's own home. Removing it would leave the host without the profile the gateway serves.
 PROTECTED = frozenset({"default"})
 
-ARCHIVE_DIR = Path("/var/lib/hermes-bridge/deleted-bots")
+ARCHIVE_DIR = paths.ARCHIVE_DIR
 
 #: Where "this bot is off" is recorded: beside the bridge's database, not inside the bot's home.
-STATE_FILE = Path("/var/lib/hermes-bridge/disabled-bots.json")
+STATE_FILE = paths.DISABLED_STATE_FILE
 
 DASHBOARD_URL = os.environ.get("HERMES_BRIDGE_DASHBOARD_URL", "http://127.0.0.1:9120")
 
@@ -58,8 +65,7 @@ class EnabledChange(BaseModel):
 
 
 def _profiles_root() -> Path:
-    home = Path.home() / ".hermes" / "profiles"
-    return home if home.is_dir() else Path.home() / ".hermes" / "profiles"
+    return paths.profiles_root()
 
 
 def _profile_dir(profile: str) -> Path:
@@ -71,22 +77,45 @@ def _profile_dir(profile: str) -> Path:
     return path
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib re-sends the Authorization header on a redirect, including cross-host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102, ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _dashboard_url() -> str:
+    """The dashboard URL, checked: plain http on loopback, or nothing.
+
+    The token in the header is full authority over the agent, so where it is sent must not be
+    something an environment variable can point off the box.
+    """
+    parts = urllib.parse.urlsplit(DASHBOARD_URL)
+    if parts.scheme != "http" or not is_loopback_host(parts.hostname or ""):
+        raise HTTPException(status_code=500, detail="dashboard url must be loopback http")
+    return DASHBOARD_URL.rstrip("/")
+
+
 def _dashboard(method: str, path: str) -> tuple[int, Any]:
     """One call to the loopback dashboard, with the token it was started with."""
     token = os.environ.get("HERMES_DASHBOARD_SESSION_TOKEN", "")
     if not token:
         raise HTTPException(status_code=503, detail="dashboard token is not configured")
-    request = urllib.request.Request(f"{DASHBOARD_URL}{path}", method=method,
+    request = urllib.request.Request(f"{_dashboard_url()}{path}", method=method,
                                      headers={"Authorization": f"Bearer {token}"})
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+        with _OPENER.open(request, timeout=REQUEST_TIMEOUT) as response:
             body = response.read()
             return response.status, json.loads(body) if body.strip() else None
     except urllib.error.HTTPError as error:
-        detail = error.read().decode("utf-8", "replace")[:300]
-        raise HTTPException(status_code=502, detail=f"dashboard refused: {detail}") from error
-    except (urllib.error.URLError, TimeoutError) as error:
-        raise HTTPException(status_code=503, detail=f"dashboard unreachable: {error}") from error
+        # The body can echo the request; the device gets a fixed sentence instead.
+        log.warning("dashboard refused %s %s: %s", method, path, error.code)
+        raise HTTPException(status_code=502, detail="dashboard refused the request") from None
+    except (urllib.error.URLError, TimeoutError):
+        raise HTTPException(status_code=503, detail="dashboard unreachable") from None
 
 
 def _cron_jobs(profile: str) -> list[dict]:

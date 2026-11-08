@@ -1868,8 +1868,8 @@ public final class PreviewGatewayClient: GatewayClientProtocol, @unchecked Senda
     static let bots: [Bot] = [
         Bot(id: "assistant", displayName: "Assistant"),
         Bot(id: "ops", displayName: "Ops"),
-        Bot(id: "scribe", displayName: "Scribe"),
-        Bot(id: "night-shift", displayName: "Night shift"),
+        Bot(id: "charlie", displayName: "Scribe"),
+        Bot(id: "night-ops", displayName: "Night shift"),
     ]
 
     public func listSessions(limit: Int) async throws -> [SessionSummary] {
@@ -1884,8 +1884,8 @@ public final class PreviewGatewayClient: GatewayClientProtocol, @unchecked Senda
         let rows = PreviewGatewayClient.sessions
         switch profile {
         case "ops": return Array(rows.prefix(2))
-        case "scribe": return Array(rows.suffix(1))
-        case "night-shift": return []
+        case "charlie": return Array(rows.suffix(1))
+        case "night-ops": return []
         default: return rows
         }
     }
