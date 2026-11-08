@@ -1,0 +1,182 @@
+name: ci
+
+# What this file optimises: the time between "the change is written" and "the maintainer can install it".
+#
+# Measured 2026-11-08 on the previous shape, for a 3-line UI change: packages 67 s, then apps 301 s
+# (macOS Release build 186 s + iOS simulator Debug 92 s) = 368 s wall per run — and every change ran
+# the whole thing twice, on the PR and again on `main`, because only a `main` run's artifacts were
+# published. About 12 minutes of CI per change, most of it recompiling what Xcode had already
+# compiled, and half of it on an identical tree.
+#
+# Three rules now:
+#   * jobs that need no other job's result start together (only qa waits on bridge);
+#   * DerivedData and SwiftPM are cached, keyed on the project definition rather than the commit;
+#   * the tree is built once per change — publish from the PR run's artifacts (see
+#     CONTRIBUTING.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packages:
+    name: Swift packages (build + test)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build
+        run: swift build --build-tests
+      - name: Test
+        run: swift test --parallel
+
+  apps:
+    name: Apps (macOS + iOS simulator)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/dd
+            build/dd-ios
+          # Keyed on the project definition, not the commit: a code change restores the cache and
+          # recompiles only what changed, which is the thing Xcode is actually good at.
+          key: dd-${{ runner.os }}-${{ hashFiles('project.yml', 'Package.swift') }}
+          restore-keys: dd-${{ runner.os }}-
+      - name: Build macOS app
+        run: |
+          set -o pipefail
+          xcodebuild -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
+            -destination 'platform=macOS' -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} build
+      - name: Zip macOS app (unsigned)
+        run: |
+          mkdir -p dist
+          APP="build/dd/Build/Products/Release/Hermey.app"
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" dist/Hermey-macOS-unsigned.zip
+          ls -la dist
+      # Debug is not redundant with the Release archive: 96 `#if DEBUG` blocks exist across the app
+      # targets and only this job compiles them.
+      - name: Build iOS app (simulator, Debug)
+        run: |
+          set -o pipefail
+          xcodebuild -project HermesApps.xcodeproj -scheme HermesMobile -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd-ios \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hermey-macOS-unsigned
+          path: dist/Hermey-macOS-unsigned.zip
+          if-no-files-found: error
+
+  ipa:
+    name: Unsigned .ipa (for FlareStore)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: build/ipa-dd
+          key: ipadd-${{ runner.os }}-${{ hashFiles('project.yml', 'Package.swift') }}
+          restore-keys: ipadd-${{ runner.os }}-
+      - name: Archive (no signing)
+        run: |
+          set -o pipefail
+          xcodebuild -project HermesApps.xcodeproj -scheme HermesMobile -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/HermesMobile.xcarchive \
+            -derivedDataPath build/ipa-dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" PROVISIONING_PROFILE_SPECIFIER="" \
+            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} archive
+      - name: Package Payload into .ipa
+        run: |
+          set -euo pipefail
+          APP=$(find build/HermesMobile.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -n 1)
+          echo "app: $APP"
+          rm -rf Payload && mkdir -p Payload dist
+          cp -R "$APP" Payload/
+          # Ad-hoc signature so the binary is valid on arm64 even before FlareStore re-signs it.
+          codesign --force --deep --sign - Payload/"$(basename "$APP")" || echo "ad-hoc signing skipped"
+          zip -qry "dist/Hermey-unsigned.ipa" Payload
+          unzip -l dist/Hermey-unsigned.ipa | head -20
+          du -h dist/Hermey-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hermey-unsigned-ipa
+          path: dist/Hermey-unsigned.ipa
+          if-no-files-found: error
+
+  bridge:
+    name: Bridge (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./Bridge pytest httpx fastapi uvicorn websockets
+      - name: Test
+        run: pytest -q Bridge/tests
+
+  qa:
+    name: QA harness (bridge against replay gateway)
+    runs-on: ubuntu-latest
+    needs: bridge
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./Bridge pytest httpx fastapi uvicorn websockets
+      - name: Scenario tests
+        run: pytest -q Tools/qa
+
+  hygiene:
+    name: Secret and script hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No marketplace action: a scanner that needs third-party code to run has its own supply chain.
+      - name: Scan for credential shapes
+        run: bash Tools/ci/secret_scan.sh
+      - name: Shellcheck the installer (it runs as root)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          shellcheck -S warning setup/install.sh Tools/ci/secret_scan.sh
+      - name: Python syntax and imports
+        run: |
+          python3 -m compileall -q Bridge/hermes_bridge

@@ -1,0 +1,15 @@
+# Shared bot icons: integration contract
+
+The router is mounted by `create_app`.
+
+The router stores one icon per exact profile/bot ID in the bridge SQLite database; all paired devices on that bridge see the same dictionary. Last successful write wins. Deleting a profile does not automatically clear its preference. All ten motifs are original vector art; no external artwork is used.
+
+Each GET or PUT requires its own fresh single-use `ws_ticket` from `POST /v1/token` using the paired device ID and Keychain refresh token. Send it in `Authorization: Bearer <ws_ticket>`. Never reuse a socket's ticket. The `/v1/token` `access_token` is currently random and NOT verifiable; do not use it for authorization. The bridge checks revocation when consuming the ticket. Use HTTPS on the tailnet (or loopback for development); credentials are bearer secrets. Do not put tickets in URLs or logs. The existing `devices`/revoke endpoints have their own pre-existing exposure concerns; do not assume they authenticate callers.
+
+* `GET /v1/bot-icons` → `{"icons":{"profile-id":"ember"}}`.
+* `PUT /v1/bot-icons/{url-encoded-profile-id}` body `{"icon":"ember"}` → `{"bot_id":"profile-id","icon":"ember"}`. A null icon removes the preference. Allowed IDs: `ember`, `nova`, `cobalt`, `orbit`, `moss`, `dusk`, `beacon`, `pixel`, `rover`, `prism`. Profile IDs must be 1–256 characters, not whitespace only, and cannot contain `/` in this path-based API.
+* Missing/invalid/expired/used/revoked bearer ticket → 401; invalid icon → 422. Framework validation can reject malformed requests before ticket redemption.
+
+Mobile wiring (not yet wired into `BotListScreen` or `AppEnvironment`): construct `BotIconService(baseURL: host.baseURL, freshTicket: { try await BotIconService.mintTicket(baseURL: host.baseURL, deviceID: host.deviceID, refreshToken: token) })`, reading `host` and `token` from the current `HostStore` on each refresh; never persist the token outside Keychain. `try await service.load()` on connect, foreground and list refresh, replace a host-scoped dictionary, and clear it on disconnect/host switch. Display `BotIconPortrait(icon)` for known choices, otherwise the existing initials `Avatar`. Present `BotIconPicker(botName:selected:save:)` from a context menu; save with `try await service.save(botID: bot.id, icon: choice)` and then reload the dictionary. Guard async results against host changes; show read/save errors. A refresh is required to observe changes made on another device (there is no push). The picker does not dismiss on failure.
+
+Mac: `BotIcon`, `BotIconPortrait`, and `BotIconGallery` are public in OpenBotUI. Its shell needs an authenticated bridge HTTP client using the same ticket protocol and refresh/reload lifecycle; it is not wired by this change. If Mac does not have paired-device credentials, it must first adopt bridge pairing; an arbitrary device ID is insufficient. The router is mounted; this feature is not live until deployed and each app shell is integrated and built.

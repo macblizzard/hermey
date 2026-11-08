@@ -1,0 +1,3 @@
+{"jsonrpc": "2.0", "id": "srq-9f2c1a4b77e0", "method": "approval", "params": {"session_id": "assistant-20261105-1201", "request_id": "apr-73", "command": "rsync -a --delete ~/Documents/notes/ ~/Documents/notes-copy/", "description": "--delete removes 1 file that exists only in the destination", "choices": ["once", "session", "always", "deny"], "allow_session": true, "allow_permanent": true}}
+{"jsonrpc": "2.0", "id": "srq-9f2c1a4b77e0", "result": {"choice": "once"}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "request.cancel", "payload": {"id": "srq-1a2b3c4d5e6f", "method": "approval", "reason": "timeout"}}}

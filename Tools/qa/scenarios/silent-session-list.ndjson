@@ -1,0 +1,4 @@
+{"$qa": {"auto_reply": {"ping": {"result": {"pong": true}}, "client.capabilities": {"result": {"server_requests": ["approval", "clarify", "secret", "sudo", "terminal.read", "vault.code"], "declines_not_shown": true, "canonical_clarify_batch": true}}}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "gateway.ready", "payload": {"change_events": true, "replay_epoch": "qa-silent"}}}
+{"$qa": {"wait_for": {"method": "session.list", "timeout": 10}}}
+{"$qa": {"mark": "session.list received; deliberately no response (fixtures/NOTES.md #4)"}}

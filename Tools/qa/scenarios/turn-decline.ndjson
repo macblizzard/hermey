@@ -1,0 +1,8 @@
+{"$qa": {"auto_reply": {"ping": {"result": {"pong": true}}, "client.capabilities": {"result": {"server_requests": ["approval", "clarify", "secret", "sudo", "terminal.read", "vault.code"], "declines_not_shown": true, "canonical_clarify_batch": true}}}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "gateway.ready", "payload": {"change_events": true, "replay_epoch": "qa-decline"}}}
+{"$qa": {"wait_for": {"method": "prompt.submit", "timeout": 10}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "tool.start", "payload": {"session_id": "sess-2", "name": "terminal", "call_id": "call-2", "input": {"command": "git push --force"}}}}
+{"jsonrpc": "2.0", "id": "srq-2", "method": "approval", "params": {"session_id": "sess-2", "call_id": "call-2", "tool": "terminal", "input": {"command": "git push --force"}, "choices": ["once", "deny"], "reason": "destructive"}}
+{"$qa": {"wait_for_response": {"id": "srq-2", "timeout": 10}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "tool.complete", "payload": {"session_id": "sess-2", "call_id": "call-2", "ok": false, "output": "declined by user", "duration_ms": 3}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.complete", "payload": {"session_id": "sess-2", "text": "Okay, I won't run that."}}}

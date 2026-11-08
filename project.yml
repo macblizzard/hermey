@@ -1,0 +1,146 @@
+name: HermesApps
+options:
+  bundleIdPrefix: dev.hermey.app
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  groupSortPosition: top
+
+packages:
+  HermesApps:
+    path: .
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    DEVELOPMENT_TEAM: ""
+    ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  HermesMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/HermesMac
+    dependencies:
+      - package: HermesApps
+        product: HermesKit
+      - package: HermesApps
+        product: OpenBotUI
+      - package: HermesApps
+        product: HermesRender
+      - package: HermesApps
+        product: HermesAppKit
+    info:
+      path: Apps/HermesMac/Info.plist
+      properties:
+        CFBundleDisplayName: Hermey
+        # The menu bar reads CFBundleName, not the display name: without it the app menu says
+        # "HermesMac" while the Dock says "Hermey".
+        CFBundleName: Hermey
+        # Variables, not literals: CI passes CURRENT_PROJECT_VERSION=<run number> so every
+        # build is strictly newer than the last one, which is what makes a sideload source
+        # show an *update* instead of re-installing the same version forever.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        # The AppIcon.appiconset is compiled into Assets.car by actool; this key is
+        # what Finder/Dock look up on macOS 11+. Harmless if the build also injects it.
+        CFBundleIconName: AppIcon
+        NSHumanReadableCopyright: "Personal build"
+        # Pressing record captures the Mac's default input device. macOS terminates an app that
+        # opens a capture input without this string, so the prompt is the whole feature.
+        NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mac
+        # The bundle *file name* is what Finder, the Dock and Force Quit show; CFBundleName only
+        # names the menu bar. Leaving this as "Hermes" kept the app called Hermes everywhere the
+        # user actually looks.
+        PRODUCT_NAME: Hermey
+        ENABLE_HARDENED_RUNTIME: "NO"
+        COMBINE_HIDPI_IMAGES: "YES"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  HermesMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/HermesMacUITests
+    dependencies:
+      - target: HermesMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: HermesMac
+
+  HermesMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: Apps/HermesMobile
+    dependencies:
+      - package: HermesApps
+        product: HermesKit
+      - package: HermesApps
+        product: OpenBotUI
+      - package: HermesApps
+        product: HermesRender
+      - package: HermesApps
+        product: HermesAppKit
+    info:
+      path: Apps/HermesMobile/Info.plist
+      properties:
+        CFBundleDisplayName: Hermey
+        CFBundleName: Hermey
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIRequiresFullScreen: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        NSLocalNetworkUsageDescription: "Hermes connects to your own Hermes host over your private network."
+        # Required the moment the QR scanner asks for the camera: iOS terminates the app
+        # on first capture input without this string, so pairing would look like a crash.
+        NSCameraUsageDescription: "Scan the pairing code shown by your Hermes host to connect this device, and take photos to attach to a message."
+        NSPhotoLibraryUsageDescription: "Choose a photo to attach to a message."
+        NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile
+        PRODUCT_NAME: Hermey
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+schemes:
+  HermesMac:
+    build:
+      targets:
+        HermesMac: all
+        HermesMacUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - HermesMacUITests
+  HermesMobile:
+    build:
+      targets:
+        HermesMobile: all
+    run:
+      config: Debug

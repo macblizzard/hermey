@@ -1,0 +1,11 @@
+{"$qa": {"auto_reply": {"ping": {"result": {"pong": true}}, "client.capabilities": {"result": {"server_requests": ["approval", "clarify", "secret", "sudo", "terminal.read", "vault.code"], "declines_not_shown": true, "canonical_clarify_batch": true}}}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "gateway.ready", "payload": {"change_events": true, "replay_epoch": "qa-turn"}}}
+{"$qa": {"wait_for": {"method": "prompt.submit", "timeout": 10}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-1", "delta": "I'll run the build."}}}
+{"$qa": {"sleep": 0.01}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-1", "delta": " Checking with you first."}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "tool.start", "payload": {"session_id": "sess-1", "name": "terminal", "call_id": "call-1", "input": {"command": "rm -rf build && make"}}}}
+{"jsonrpc": "2.0", "id": "srq-1", "method": "approval", "params": {"session_id": "sess-1", "call_id": "call-1", "tool": "terminal", "input": {"command": "rm -rf build && make"}, "choices": ["once", "always", "deny"], "reason": "writes outside the workspace"}}
+{"$qa": {"wait_for_response": {"id": "srq-1", "timeout": 10}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "tool.complete", "payload": {"session_id": "sess-1", "call_id": "call-1", "ok": true, "output": "built in 812ms", "duration_ms": 812}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.complete", "payload": {"session_id": "sess-1", "text": "I'll run the build. Checking with you first. Done."}}}

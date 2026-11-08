@@ -1,0 +1,76 @@
+# macOS
+.DS_Store
+build/
+DerivedData/
+*.xcarchive
+*.ipa
+
+# Xcode / XcodeGen
+*.xcodeproj
+*.xcworkspace
+!project.yml
+xcuserdata/
+
+# Swift
+.build/
+.swiftpm/
+Package.resolved
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Local
+.env
+*.log
+fixtures/private/
+
+# CI artifacts pulled down locally
+dist/
+
+# Bridge state and credentials — device rows, refresh-token hashes, bot pointers
+*.db
+*.db-wal
+*.db-shm
+bridge.env
+.env.*
+*.pem
+*.key
+
+# XcodeGen writes these on every generate
+Apps/*/Info.plist
+*.xcresult
+Payload/
+
+# Python tooling caches
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and local state — never commit these
+*.env
+.env*
+secrets/
+*secret*
+!*secret*_example*
+*.p12
+*.pem
+*.key
+*.mobileprovision
+bridge.db
+*.sqlite
+room-attachments/
+
+# Python
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Editors
+.idea/
+.vscode/
+*.swp

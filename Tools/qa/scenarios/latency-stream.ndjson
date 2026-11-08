@@ -1,0 +1,66 @@
+{"$qa": {"auto_reply": {"ping": {"result": {"pong": true}}, "client.capabilities": {"result": {"server_requests": ["approval", "clarify", "secret", "sudo", "terminal.read", "vault.code"], "declines_not_shown": true, "canonical_clarify_batch": true}}}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "gateway.ready", "payload": {"change_events": true, "replay_epoch": "qa-latency"}}}
+{"$qa": {"wait_for": {"method": "prompt.submit", "timeout": 10}}}
+{"$qa": {"mark": "submit-received"}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": "The"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " build"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " finished"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " cleanly."}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " Three"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " targets"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " compiled,"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " no"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " warnings,"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " and"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " the"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " test"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " suite"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " passed"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " in"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " eleven"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " seconds."}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " I"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " have"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " also"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " updated"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " the"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " release"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " notes"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " and"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " staged"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " the"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " changelog"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " entry"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " for"}}}
+{"$qa": {"sleep": 0.008}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.delta", "payload": {"session_id": "sess-lat", "delta": " review."}}}
+{"jsonrpc": "2.0", "method": "event", "params": {"type": "message.complete", "payload": {"session_id": "sess-lat", "text": "The build finished cleanly. Three targets compiled, no warnings, and the test suite passed in eleven seconds. I have also updated the release notes and staged the changelog entry for review."}}}

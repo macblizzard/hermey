@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Hermey — a native client for your own Hermes agent">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b0d"/><stop offset="1" stop-color="#141418"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8be9c0"/><stop offset="1" stop-color="#6ea8fe"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="300" rx="18" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="1199" height="299" rx="18" fill="none" stroke="#242428"/>
+
+  <!-- wordmark -->
+  <text x="72" y="140" font-family="ui-sans-serif, -apple-system, Segoe UI, Helvetica, Arial" font-size="72" font-weight="700" fill="#f5f5f7">Hermey</text>
+  <text x="74" y="184" font-family="ui-sans-serif, -apple-system, Segoe UI, Helvetica, Arial" font-size="24" fill="#9a9aa2">A native client for your own Hermes agent</text>
+  <rect x="74" y="206" width="88" height="4" rx="2" fill="url(#accent)"/>
+
+  <!-- phone -->
+  <g transform="translate(880,60)" opacity="0.95">
+    <rect x="0" y="0" width="120" height="200" rx="20" fill="#1b1b20" stroke="#2e2e34"/>
+    <rect x="10" y="18" width="100" height="164" rx="12" fill="#101014"/>
+    <rect x="20" y="34" width="58" height="9" rx="4.5" fill="#3a3a42"/>
+    <rect x="20" y="52" width="80" height="9" rx="4.5" fill="#26262c"/>
+    <rect x="20" y="70" width="70" height="9" rx="4.5" fill="#26262c"/>
+    <rect x="20" y="96" width="80" height="9" rx="4.5" fill="#26262c"/>
+    <rect x="20" y="114" width="46" height="9" rx="4.5" fill="#26262c"/>
+    <rect x="52" y="140" width="48" height="22" rx="11" fill="#2b3a33"/>
+    <rect x="20" y="140" width="26" height="22" rx="11" fill="#24242a"/>
+  </g>
+
+  <!-- tailnet arc from phone to host -->
+  <path d="M862 160 C 800 160, 780 160, 740 160" stroke="url(#accent)" stroke-width="2.5" fill="none" stroke-dasharray="6 8" opacity="0.8"/>
+  <circle cx="862" cy="160" r="4" fill="#6ea8fe"/>
+  <circle cx="738" cy="160" r="4" fill="#8be9c0"/>
+
+  <!-- host -->
+  <g transform="translate(600,96)">
+    <rect x="0" y="0" width="138" height="128" rx="14" fill="#1b1b20" stroke="#2e2e34"/>
+    <rect x="16" y="18" width="106" height="12" rx="6" fill="#26262c"/>
+    <rect x="16" y="40" width="80" height="10" rx="5" fill="#22222a"/>
+    <rect x="16" y="58" width="94" height="10" rx="5" fill="#22222a"/>
+    <rect x="16" y="82" width="56" height="10" rx="5" fill="#2b3a33"/>
+    <circle cx="24" cy="108" r="4" fill="#8be9c0"/>
+    <text x="36" y="112" font-family="ui-monospace, SFMono-Regular, Menlo" font-size="11" fill="#9a9aa2">127.0.0.1</text>
+  </g>
+</svg>

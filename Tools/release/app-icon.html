@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:'InterVar';src:url('inter.woff2') format('woff2');font-weight:100 900}
+html,body{margin:0;padding:0;width:1024px;height:1024px;overflow:hidden}
+.icon{
+  width:1024px;height:1024px;display:grid;place-items:center;
+  background:
+    radial-gradient(120% 90% at 22% 12%, #2b3f66 0%, rgba(43,63,102,0) 55%),
+    radial-gradient(100% 80% at 82% 88%, #123055 0%, rgba(18,48,85,0) 60%),
+    linear-gradient(160deg,#1e1e21 0%,#101012 100%);
+  font-family:'InterVar',-apple-system,sans-serif;
+}
+.glyph{
+  font-size:520px;font-weight:700;letter-spacing:-28px;line-height:1;
+  background:linear-gradient(180deg,#ffffff 18%,#9fb6cf 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  transform:translateY(-6px);
+  filter:drop-shadow(0 14px 34px rgba(0,124,247,.28));
+}
+.ring{
+  position:absolute;width:640px;height:640px;border-radius:50%;
+  border:2px solid rgba(0,124,247,.35);
+  box-shadow:0 0 90px rgba(0,124,247,.22) inset, 0 0 70px rgba(0,124,247,.16);
+}
+.wrap{position:relative;display:grid;place-items:center;width:1024px;height:1024px}
+</style></head>
+<body>
+  <div class="icon"><div class="wrap"><div class="ring"></div><div class="glyph">H</div></div></div>
+</body></html>

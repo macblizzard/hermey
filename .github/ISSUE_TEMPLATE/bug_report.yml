@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in the app, the bridge or the installer does not work
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does it happen?
+      options:
+        - iOS app
+        - macOS app
+        - Bridge (host API)
+        - Installer (setup/install.sh)
+        - Documentation
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or build number (`hermey doctor` prints the host side).
+      placeholder: v0.1.201 (b201)
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Screenshots help.
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Host side: `hermey doctor` and `hermey logs 50` (this never prints tokens, but skim it anyway).
+        App side: Xcode console output around the failure.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed tokens, hostnames and personal data from any logs or screenshots
+          required: true
+        - label: This is not a security issue (those go to SECURITY.md, not the tracker)
+          required: true

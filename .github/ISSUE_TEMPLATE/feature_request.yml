@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest a capability for the apps or the host side
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that the app makes hard today?
+    validations: {required: true}
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: A sketch is enough. If it changes the wire protocol, say so.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Both, iOS only, macOS only, Host side only]
+    validations: {required: true}
