@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.28",
+          "buildVersion": "28",
+          "date": "2026-11-09T22:02:24Z",
+          "localizedDescription": "Build from CI run 42707458995.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.28/Hermey-0.1.28-b28.ipa",
+          "size": 1892745,
+          "minOSVersion": "17.0",
+          "sha256": "c5beec0ae22d4c1ba45ba5c240ecc29668c99d0271f1d9b43358bd98fd597333"
+        },
+        {
           "version": "0.1.24",
           "buildVersion": "24",
           "date": "2026-11-09T21:36:56Z",
