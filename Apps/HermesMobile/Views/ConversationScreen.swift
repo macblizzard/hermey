@@ -22,6 +22,7 @@ struct ConversationScreen: View {
     @State private var isOpening = true
     @State private var showApprovalSheet = false
     @State private var showResetConfirm = false
+    @State private var showComputer = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
     @State private var hasLoaded = false
@@ -161,6 +162,17 @@ struct ConversationScreen: View {
             guard arrived, model.pendingRequests.first != nil else { return }
             Haptics.approvalArrived()
             showApprovalSheet = true
+        }
+        // The screen gets the whole sheet: a 1440x900 desktop in a half-height cover is a
+        // thumbnail with buttons, which is what the pane already offers before you open it.
+        .sheet(isPresented: $showComputer) {
+            BotComputerPane(profile: bot.id,
+                            displayName: bot.displayName,
+                            client: app.computer,
+                            resources: BotComputerResources(),
+                            onClose: { showComputer = false })
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showBotSettings) {
             BotModelSettingsScreen(
@@ -571,6 +583,16 @@ struct ConversationScreen: View {
                 // No stop control here: the composer's send button already turns into stop while a
                 // turn runs, and a second one in the header was two buttons for one action.
                 Menu {
+                    // The shared desktop, where a bot's own verbs live: one screen for every bot,
+                    // opened from the chat it is doing the errand for.
+                    Button {
+                        showComputer = true
+                    } label: {
+                        Label("Bot computer", systemImage: "display")
+                    }
+
+                    Divider()
+
                     Button {
                         isSearching = true
                         searchFocused = true

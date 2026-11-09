@@ -55,3 +55,22 @@ invalidates its outstanding tickets immediately and leaves the other devices alo
 hermey doctor            # see what is paired and whether it is healthy
 curl -s http://127.0.0.1:8787/v1/devices   # loopback only
 ```
+
+## Bot computer
+
+Both apps show the host's **shared** desktop — one screen, one browser profile, one set of logins for
+every bot. There is no per-bot desktop to choose between.
+
+- **iOS:** a bot's chat → ⋯ → **Bot computer**. The sheet shows a live thumbnail until you open it,
+  then the live screen.
+- **macOS:** the display button in the chat header (or ⋯ → **Bot computer…**) opens a right-hand
+  panel beside the transcript; the panel's arrows put it full screen and bring it back.
+
+**Start screen** brings the desktop up (it otherwise starts itself on a bot's first
+`computer_use`, and stops after 30 idle minutes). **Open screen** attaches the viewer; the picture is
+live but input is inert. **Take over** asks the host for the control lease and enables keyboard and
+pointer; **Hand back** returns it. Closing the pane hands control back on its own, so a bot is never
+locked out by a viewer you forgot.
+
+While you hold control every bot is refused (`human_has_control`), because they share the same
+screen — that is what makes "sign in once, then let the bot continue" work.

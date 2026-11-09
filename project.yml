@@ -31,6 +31,12 @@ targets:
     platform: macOS
     sources:
       - path: Apps/HermesMac
+        excludes:
+          - "Resources/novnc/**"
+      # A folder reference, not a group: noVNC's ES modules import each other by relative path, so
+      # the tree must land in the bundle with its shape intact.
+      - path: Apps/HermesMac/Resources/novnc
+        type: folder
     dependencies:
       - package: HermesApps
         product: HermesKit
@@ -90,6 +96,11 @@ targets:
     platform: iOS
     sources:
       - path: Apps/HermesMobile
+        excludes:
+          - "Resources/novnc/**"
+      # Same reason as the Mac: a folder reference keeps noVNC's relative module imports working.
+      - path: Apps/HermesMobile/Resources/novnc
+        type: folder
     dependencies:
       - package: HermesApps
         product: HermesKit

@@ -210,6 +210,17 @@ struct ConversationHeader: View {
                 store.openFindInChat()
             }
 
+            // The shared desktop, one screen for every bot: a sidebar toggle (the panel lives on
+            // the right of the transcript), not a modal — it has to sit beside the chat it is
+            // working for.
+            OpenBotIconButton("display",
+                              label: store.isComputerPanelPresented ? "Hide the shared computer"
+                                                                   : "Show the shared computer",
+                              size: .small) {
+                store.toggleComputerPanel()
+            }
+            .help(store.isComputerPanelPresented ? "Hide the shared computer" : "Shared computer")
+
             moreMenu
         }
         .padding(.horizontal, Geometry.readingInset)
@@ -218,6 +229,8 @@ struct ConversationHeader: View {
 
     private var moreMenu: some View {
         Menu {
+            Button("Bot computer…") { store.toggleComputerPanel() }
+            Divider()
             if let bot = model.selectedBot {
                 Button("Bot settings") { store.openBotSettings(bot) }
                 Divider()
