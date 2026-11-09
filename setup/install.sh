@@ -94,10 +94,34 @@ valid_port "$HTTPS_PORT"    || die "HERMEY_HTTPS_PORT must be 1-65535"
 
 GW_UNIT="$UNIT_PREFIX-gateway"
 BR_UNIT="$UNIT_PREFIX-bridge"
+UNIT_FILE="/etc/systemd/system/$BR_UNIT.service"
+
+# The account an install created, for `--purge`. `HERMEY_USER` is normally not in the environment
+# when someone runs `--uninstall --purge`, and `SVC_USER` is only resolved further down, so the
+# account is read back from the unit file. It is only deleted when it still looks like the account
+# `useradd --system` made — a system uid, `$STATE` as its home, no login shell — because an install
+# that adopted an existing account (`User=<the owner of the Hermes home>`) must never delete a real
+# person's login.
+purgeable_service_user() {
+  local user=$1 passwd uid home shell
+  [ -n "$user" ] || return 1
+  passwd=$(getent passwd "$user" 2>/dev/null) || return 1
+  [ -n "$passwd" ] || return 1
+  uid=$(printf '%s' "$passwd" | cut -d: -f3)
+  home=$(printf '%s' "$passwd" | cut -d: -f6)
+  shell=$(printf '%s' "$passwd" | cut -d: -f7)
+  [ "$uid" -gt 0 ] && [ "$uid" -lt 1000 ] && [ "$home" = "$STATE" ] || return 1
+  case "$shell" in */nologin|*/false) return 0;; esac
+  return 1
+}
 
 # ---------------------------------------------------------------- uninstall
 if [ "$UNINSTALL" = 1 ]; then
   say "Removing Hermey services"
+  PURGE_USER=$SVC_USER
+  if [ -z "$PURGE_USER" ] && [ -r "$UNIT_FILE" ]; then
+    PURGE_USER=$(sed -n 's/^User=//p' "$UNIT_FILE" | head -1 || true)
+  fi
   systemctl disable --now "$BR_UNIT" >/dev/null 2>&1 || true
   systemctl disable --now "$GW_UNIT" >/dev/null 2>&1 || true
   rm -f "/etc/systemd/system/$BR_UNIT.service" "/etc/systemd/system/$GW_UNIT.service"
@@ -108,8 +132,12 @@ if [ "$UNINSTALL" = 1 ]; then
   fi
   if [ "$PURGE" = 1 ]; then
     rm -rf -- "$PREFIX" "$STATE" "$CONF"
-    id -u "$SVC_USER" >/dev/null 2>&1 && userdel "$SVC_USER" >/dev/null 2>&1 || true
-    say "Purged $PREFIX, $STATE, $CONF"
+    if purgeable_service_user "$PURGE_USER"; then
+      userdel "$PURGE_USER" >/dev/null 2>&1 || true
+      say "Purged $PREFIX, $STATE, $CONF and the $PURGE_USER account"
+    else
+      say "Purged $PREFIX, $STATE, $CONF"
+    fi
   else
     say "Services removed; state kept in $STATE (and $CONF). Re-run with --purge to delete it."
   fi
