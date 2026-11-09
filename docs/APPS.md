@@ -31,8 +31,11 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 2. First launch: right-click the app → **Open** → **Open** again. macOS remembers the choice.
    Recent versions may instead require
    `xattr -dr com.apple.quarantine /Applications/Hermey.app` once.
-3. The Mac app pairs exactly like the phone: run `hermey pair` on the host and paste the deep link
-   (the Mac has no camera).
+3. The Mac app pairs exactly like the phone: run `hermey pair` on the host and paste what it prints
+   into **Pairing code or link** — the eight digits, or the whole `hermes://` link (the Mac has no
+   camera). The code is single use and lives ten minutes.
+   A hand-issued device token still works: open **Advanced — I have a device token** in the same
+   sheet and paste the WebSocket URL, device ID and token.
 
 macOS 14+ is required (SwiftUI features the shell relies on).
 
