@@ -5,6 +5,12 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `Tools/release/sync_store.py` (+ the `Store sync` workflow): regenerates the AltStore/SideStore
+  source from the newest release's `.ipa`, repairs a stale one on the release asset and on `gh-pages`,
+  and fails when either still reports a different build. Verified URLs are part of the check — the
+  previous source pointed its header at an `app-icon-1024.png` that was never uploaded.
+
 ## [0.1.4] — 2026-11-08
 
 ### Added

@@ -1,0 +1,33 @@
+name: Store sync
+
+# The side-load source is the one artefact nobody notices going stale: the release page shows the new
+# build, CI is green, and every AltStore/SideStore client keeps installing the old one. This runs the
+# repair on a schedule and after any change to the script, so a hand-cut release cannot rot.
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Tools/release/sync_store.py
+      - .github/workflows/store-sync.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: store-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync the AltStore source with the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 Tools/release/sync_store.py --repo "$GITHUB_REPOSITORY"
