@@ -3,8 +3,7 @@
   "identifier": "dev.hermey.app.source",
   "subtitle": "Your Hermes bots, on your phone",
   "description": "Native client for a self-hosted Hermes Agent. Every bot (Hermes profile) is reachable through one gateway; approvals, streaming replies and tool output appear in the conversation. Builds are unsigned and must be re-signed by your sideloading app.",
-  "iconURL": "https://macblizzard.github.io/hermey/icon-512.png",
-  "headerURL": "https://macblizzard.github.io/hermey/app-icon-1024.png",
+  "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
   "tintColor": "#007CF7",
   "featuredApps": [
     "dev.hermey.app.mobile"
@@ -16,7 +15,7 @@
       "developerName": "Hermey",
       "subtitle": "Your Hermes bots, on your phone",
       "localizedDescription": "Chats with every Hermes bot, streaming replies, tool cards, inline approvals and per-device pairing.",
-      "iconURL": "https://macblizzard.github.io/hermey/icon-512.png",
+      "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
       "tintColor": "#007CF7",
       "category": "utilities",
       "screenshots": [],
@@ -26,7 +25,7 @@
           "buildVersion": "4",
           "date": "2026-11-08T22:15:35Z",
           "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://macblizzard.github.io/hermey/Hermey-0.1.4-b4.ipa",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.4-b4.ipa",
           "size": 1647278,
           "minOSVersion": "17.0",
           "sha256": "16f10172b4be7cd09ef94b9aa933c4cf75e10a095a1c1fa98b44dd406bf89023"
