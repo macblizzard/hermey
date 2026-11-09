@@ -6,6 +6,10 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Bot computer showed `NSURLErrorDomain Code=-999 "cancelled"` on opening.** That is a cancelled
+  request, not a fault: the poll loop restarts on every state change and SwiftUI cancels the request
+  in flight. Cancellations are now silent, other failures are one sentence instead of an NSError
+  dump, and a healthy poll clears a stale strip.
 - **Bot computer showed nothing at all.** The view loaded the `wss://` socket as if it were a web
   page, so the bundled viewer never ran — no script, no socket, no picture, and a spinner where the
   desktop should be. It now loads `hermey-novnc://local/botcomputer.html?ws=…` with the socket as a
