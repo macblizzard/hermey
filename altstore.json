@@ -24,11 +24,21 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.31",
+          "buildVersion": "31",
+          "date": "2026-11-09T22:27:51Z",
+          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.31-b31.ipa",
+          "size": 1898807,
+          "minOSVersion": "17.0",
+          "sha256": "fb334357ab0a7c881efd8eb964d234401a1b5e782810fb09fe025afac3634700"
+        },
+        {
           "version": "0.1.28",
           "buildVersion": "28",
-          "date": "2026-11-09T22:02:27Z",
-          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.28-b28.ipa",
+          "date": "2026-11-09T22:02:24Z",
+          "localizedDescription": "Build from CI run 42707458995.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.28/Hermey-0.1.28-b28.ipa",
           "size": 1892745,
           "minOSVersion": "17.0",
           "sha256": "c5beec0ae22d4c1ba45ba5c240ecc29668c99d0271f1d9b43358bd98fd597333"
