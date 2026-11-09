@@ -167,8 +167,11 @@ extension BotComputerWebView {
         // noVNC may start audio/notification-less media; nothing else is allowed to pop windows.
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        #if os(iOS)
+        // macOS's WKWebView has neither: `isOpaque` is get-only and there is no backgroundColor.
         webView.isOpaque = false
         webView.backgroundColor = .clear
+        #endif
         webView.load(URLRequest(url: url))
         return webView
     }
