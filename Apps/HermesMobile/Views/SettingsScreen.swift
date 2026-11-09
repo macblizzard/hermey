@@ -247,12 +247,12 @@ struct SettingsScreen: View {
             }
             .tint(Tokens.success)
 
-            Toggle(isOn: $model.showToolOutput) {
+            Toggle(isOn: $model.showToolCalls) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Show tool output")
+                    Text("Show tool calls")
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.textPrimary)
-                    Text("Expandable results under each tool call.")
+                    Text("A card for every command the bot runs, with its result. Off hides them from the chat.")
                         .font(TypeScale.font(TypeScale.label))
                         .foregroundStyle(Tokens.textGroupedSecondary)
                 }
