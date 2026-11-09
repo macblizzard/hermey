@@ -5,6 +5,20 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-11-09
+
+### Added
+- The Mac **Pair a host** sheet takes a code: paste the eight digits from `hermey pair`, or the whole
+  `hermes://pair?…` link, and the app claims its own device row (`PairingClaim`, `PairingLink`).
+  One field up front; the WebSocket URL / device ID / token fields live behind **Advanced**.
+
+### Fixed
+- A code from `hermey pair` could not be used on the Mac at all — the sheet had no claim step, so a
+  pasted code went into the URL field and the host answered "bad response from the server".
+- `Tools/release/sync_store.py` uploads `icon-512.png` when a release lacks it, retries URL checks
+  through the CDN's propagation window instead of calling a good URL broken, and names which field
+  drifted rather than reporting matching versions as drift.
+
 ## [0.1.13] — 2026-11-09
 
 ### Added

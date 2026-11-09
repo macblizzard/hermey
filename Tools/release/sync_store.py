@@ -25,6 +25,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -184,13 +185,43 @@ def manifest_urls(manifest: dict | None) -> list[tuple[str, str]]:
     return urls
 
 
-def url_ok(url: str) -> bool:
-    request = urllib.request.Request(url, method="HEAD")
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            return response.status == 200
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-        return False
+def url_ok(url: str, attempts: int = 4) -> bool:
+    """Does this URL actually load, allowing for the CDN's propagation window.
+
+    A freshly uploaded release asset can answer 404 for several seconds, and a HEAD can be refused
+    where a GET is not, so neither is trusted on the first try: ask up to `attempts` times, spacing
+    the tries out, and fall back to a one-byte ranged GET. Only a URL that stays dark is broken.
+    """
+    for attempt in range(attempts):
+        for method in ("HEAD", "GET"):
+            headers = {"Range": "bytes=0-0"} if method == "GET" else {}
+            request = urllib.request.Request(url, method=method, headers=headers)
+            try:
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    if response.status in (200, 206):
+                        return True
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+                continue
+        if attempt + 1 < attempts:
+            time.sleep(3 * (attempt + 1))
+    return False
+
+
+def ensure_icon(github: "GitHub", repo: str, release: dict) -> None:
+    """A release without its icon is a source that renders as a broken tile.
+
+    The manifest points every icon at `releases/latest/download/icon-512.png`; if the release does not
+    carry that file the whole source is quietly wrong, which is exactly how a hand-cut release broke
+    the feed once. Ship the one the repo already tracks, and let the nightly run heal it.
+    """
+    if asset_named(release, "icon-512.png"):
+        return
+    path = Path(__file__).with_name("app-icon-512.png")
+    if not path.is_file():
+        print("warning   no icon-512.png in the release, and none in the repo to upload")
+        return
+    upload_asset(github, repo, release, "icon-512.png", path.read_bytes(), "image/png")
+    print("uploaded  icon-512.png -> release asset")
 
 
 def served_manifest(github: GitHub, release: dict) -> tuple[dict | None, dict | None]:
@@ -255,6 +286,8 @@ def main() -> int:
         sys.exit(f"sync_store: release {release.get('tag_name')} has no .ipa asset")
     ipa = asset_bytes(github, ipa_asset)
     version, build, bundle = ipa_metadata(ipa)
+    if not args.check:
+        ensure_icon(github, args.repo, release)
     current, current_asset = served_manifest(github, release)
     wanted = desired_manifest(current, args.repo, ipa_asset, ipa, version, build, bundle, args.notes)
 
@@ -271,9 +304,14 @@ def main() -> int:
     if not drift:
         print("manifest  in sync")
     else:
-        have = (current or {}).get("apps", [{}])[0].get("versions", [{}])[0]
-        print(f"manifest  DRIFT — served {have.get('version')} ({have.get('buildVersion')}), "
-              f"wanted {version} ({build})")
+        differ = [k for k in ("version", "buildVersion", "downloadURL", "size", "sha256")
+                  if str(served_entry.get(k)) != str(wanted_entry.get(k))]
+        if differ:
+            print(f"manifest  DRIFT — {', '.join(differ)} differ "
+                  f"(served {served_entry.get('version')} ({served_entry.get('buildVersion')}), "
+                  f"wanted {version} ({build}))")
+        else:
+            print("manifest  DRIFT — a referenced URL does not load")
 
     for label, url in manifest_urls(wanted):
         if not url_ok(url):
