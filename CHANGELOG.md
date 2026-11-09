@@ -5,6 +5,22 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-11-09
+
+### Added
+- Unread counts: each bot's avatar carries a capsule in its bottom-right corner with the number of
+  turns that bot wrote after this device last looked at it (`UnreadBadge`, both apps). The breathing
+  beacon stays at the end of the row — one says something is waiting, the other says how much.
+- `POST /v1/bots/previews` takes this device's read marks and returns the rows plus counts in the one
+  read the list already makes. Only the bot's own turns count, only in the session the app opens, and
+  a bot with no mark is never counted.
+
+### Fixed
+- The AltStore/SideStore source is regenerated from each release's own `.ipa` by
+  `Tools/release/sync_store.py` (release asset and `gh-pages`), so a hand-cut release cannot leave a
+  stale source behind. It found the source pointing at an `app-icon-1024.png` that was never uploaded.
+- The Pages landing page links to the latest release instead of naming one build.
+
 ### Added
 - `Tools/release/sync_store.py` (+ the `Store sync` workflow): regenerates the AltStore/SideStore
   source from the newest release's `.ipa`, repairs a stale one on the release asset and on `gh-pages`,
