@@ -34,7 +34,7 @@ from publish_source import read_ipa  # noqa: E402  (same directory, shared IPA r
 
 SOURCE_NAME = "Hermey"
 SOURCE_ID = "dev.hermey.app.source"
-ICON_URL = "https://raw.githubusercontent.com/{repo}/main/icon-512.png"
+ICON_URL = "https://raw.githubusercontent.com/{repo}/main/icon-512.png"  # .format(repo=…); never emit the braces
 
 
 def safe_component(value: object, limit: int = 64) -> str:
@@ -93,7 +93,11 @@ def main() -> int:
     digest = hashlib.sha256(data).hexdigest()
     stamp = dt.datetime.fromtimestamp(args.ipa.stat().st_mtime, dt.timezone.utc)
 
-    tag = f"v{build}"
+    # The tag names the *app*, not the build: a release whose tag disagrees with the version inside
+    # the IPA is a support thread ("v22" beside an app that says 0.1.22"). Builds still differ per
+    # run, which is what the sideload source compares.
+    tag = f"v{version}"
+    icon_url = ICON_URL.format(repo=args.repo)
     asset_name = f"Hermey-{safe_component(version)}-b{safe_component(build)}.ipa"
     download = f"https://github.com/{args.repo}/releases/download/{tag}/{asset_name}"
 
@@ -141,7 +145,7 @@ def main() -> int:
             "developerName": "Hermey",
             "subtitle": "Hermes Agent client",
             "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
-            "iconURL": ICON_URL,
+            "iconURL": icon_url,
             "tintColor": "#007CF7",
             "category": "utilities",
             "screenshots": [],
@@ -156,8 +160,8 @@ def main() -> int:
             "schemaVersion": source.get("schemaVersion", 1),
             "subtitle": "Hermes Agent",
             "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
-            "iconURL": ICON_URL,
-            "headerURL": ICON_URL,
+            "iconURL": icon_url,
+            "headerURL": icon_url,
             "tintColor": "#007CF7",
             "featuredApps": [bundle],
             "apps": [app],
