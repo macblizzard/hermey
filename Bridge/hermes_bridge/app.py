@@ -44,6 +44,7 @@ from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
 from .config import BridgeConfig, is_loopback_host
 from .device_auth import require_device
+from .display import create_display_router
 from .pairing import InvalidPublicKey, normalize_public_key
 from .proxy import GatewayProxy, LiveSessions
 from .registry import DeviceRegistry
@@ -145,6 +146,8 @@ def create_app(
     registry: Optional[DeviceRegistry] = None,
     audit: Optional[AuditLog] = None,
     voice_backend: Optional[VoiceBackend] = None,
+    display_gateway_call=None,
+    display_ws_url=None,
 ) -> FastAPI:
     cfg = config or BridgeConfig.from_env()
     cfg.validate()
@@ -200,6 +203,10 @@ def create_app(
     app.include_router(create_bot_message_router(runtime))
     app.include_router(create_bot_admin_router(runtime))
     app.include_router(create_rooms_router(runtime))
+    # The shared Bot Computer: status/lease/thumbnail over HTTP, raw RFB over its own WebSocket.
+    # The two hooks exist for tests: production dials the configured gateway.
+    app.include_router(create_display_router(runtime, gateway_call=display_gateway_call,
+                                             display_ws_url=display_ws_url))
     # Keys are read from the bridge EnvironmentFile at construction, never from a
     # request; tests pass a backend with an injected transport.
     app.include_router(create_voice_router(runtime, voice_backend))
