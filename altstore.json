@@ -1,33 +1,45 @@
 {
   "name": "Hermey",
   "identifier": "dev.hermey.app.source",
-  "subtitle": "Your Hermes bots, on your phone",
-  "description": "Native client for a self-hosted Hermes Agent.",
+  "sourceURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/altstore.json",
+  "schemaVersion": 1,
+  "subtitle": "Hermes Agent",
+  "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
   "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
   "tintColor": "#007CF7",
+  "featuredApps": [
+    "dev.hermey.app.mobile"
+  ],
   "apps": [
     {
       "name": "Hermey",
       "bundleIdentifier": "dev.hermey.app.mobile",
       "developerName": "Hermey",
-      "subtitle": "Your Hermes bots, on your phone",
-      "localizedDescription": "Chats with every Hermes bot, streaming replies and pairing.",
-      "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
+      "subtitle": "Hermes Agent client",
+      "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
+      "iconURL": "https://raw.githubusercontent.com/{repo}/main/icon-512.png",
       "tintColor": "#007CF7",
       "category": "utilities",
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.14",
-          "buildVersion": "14",
-          "date": "2026-11-09T11:26:31Z",
-          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.14-b14.ipa",
-          "size": 1657436,
+          "version": "0.1.22",
+          "buildVersion": "22",
+          "date": "2026-11-09T21:30:18Z",
+          "localizedDescription": "Bot computer: every bot's shared desktop, in both apps.\n\nThe Mac opens it as a right-hand panel beside the chat with a full-screen option; the phone opens it\nfrom a bot's overflow menu. Watching is live, Take over enables input, Hand back returns the screen to\nthe bots. One desktop and one browser profile serve every bot, so a site you sign into once is signed\nin for them all.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.22-b22.ipa",
+          "size": 1892576,
           "minOSVersion": "17.0",
-          "sha256": "1cad3375f7c27a64d3bb54b2b9938bc9d52f31d09a1cc404f047a50e0b162bd4"
+          "sha256": "492e9b373b2605d6f901795a36c0de38b1124c7763cd738b1336693013991105"
         }
-      ]
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device."
+        }
+      }
     }
-  ]
+  ],
+  "news": []
 }
