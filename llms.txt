@@ -1,0 +1,41 @@
+# Hermey
+
+> A native iOS and macOS client for your own Hermes agent, plus the one command that installs its
+> host-side bridge. No account, no cloud in the middle: the apps talk to a loopback FastAPI service on
+> the user's own machine, exposed over their tailnet with a real certificate.
+
+The repo is a client, not a server. Installation is: run one shell command as root on the Hermes host,
+then install the app on a phone or Mac and pair it with a short code.
+
+## Install
+
+- Host (root, on a machine already running Hermes):
+  `curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash`
+- Then: `hermey pair` — prints a code, a `hermes://pair?...` deep link and a QR.
+- iOS: add `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json` to
+  AltStore or SideStore.
+- macOS: `Hermey-macOS-unsigned.zip` from the latest release; right-click → Open on first launch.
+
+## Agent runbook
+
+- [docs/FOR-AGENTS.md](docs/FOR-AGENTS.md): the installation procedure written for an agent to
+  execute — preflight, install, verification gates, pairing, hard rules, failure playbook.
+
+## Reference
+
+- [docs/INSTALL.md](docs/INSTALL.md): installer flags, environment variables, paths on disk, uninstall.
+- [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, unpairing and revocation.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom, cause, fix, with real log strings.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the bridge adapts the Hermes dashboard; WS protocol.
+- [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
+- [setup/SKILL.md](setup/SKILL.md): the same install packaged as a Hermes agent skill.
+- [CONTRIBUTING.md](CONTRIBUTING.md): build, test and release from source.
+
+## Facts a tool needs
+
+- Bridge: `127.0.0.1:8787`, loopback only, `GET /v1/health` returns `{"status":"ok"}`.
+- Tailnet front door: `tailscale serve --https=8443` (real certificate; the apps refuse self-signed).
+- Units: `hermey-bridge.service`; `hermey-gateway.service` only on hosts with no dashboard.
+- CLI: `hermey status | pair | logs [n] | doctor | update | uninstall`.
+- Requirements: Linux with systemd, Python 3.11+, Hermes installed, Tailscale (or your own TLS proxy).
+- Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open).

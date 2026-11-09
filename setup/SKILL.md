@@ -24,7 +24,9 @@ curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/instal
 What it does — and what it deliberately does not:
 
 1. Checks the host: Python 3.11+, systemd, and a `hermes` binary (it refuses politely otherwise).
-2. Creates a `hermey` system user and `/var/lib/hermey` (device registry, SQLite, attachments).
+2. Runs the bridge as the owner of your Hermes home — the account that can already read your
+   bots — with state in `/var/lib/hermey` (device registry, SQLite, attachments). `HERMEY_USER` names
+   a different account if you prefer.
 3. Installs the bridge into `/opt/hermey/venv` and runs it as **`hermey-bridge.service`**, bound to
    `127.0.0.1` only.
 4. **Reuses the dashboard this host already runs.** Hermes permits exactly one machine-level

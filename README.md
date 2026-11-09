@@ -40,6 +40,20 @@ That is the whole setup. The installer reuses the Hermes dashboard you already r
 on loopback, and exposes it with `tailscale serve` — a real certificate, reachable only from your
 tailnet.
 
+### Rather hand it to your agent?
+
+Paste this into whatever agent has a root shell on your Hermes host:
+
+> Set up a Hermey host on this machine. The repo is <https://github.com/macblizzard/hermey>; read
+> `docs/FOR-AGENTS.md` and follow it exactly: install the bridge, verify `/v1/health` answers on both
+> loopback and the tailnet URL, then give me the pairing code and the iOS/macOS install links. Don't
+> change anything else on this host, and don't bind the bridge to a public interface.
+
+[`docs/FOR-AGENTS.md`](docs/FOR-AGENTS.md) is a runbook written for an executor, not a reader: state
+detection, the install command, two hard verification gates, the pairing handoff, the rules that keep
+a host intact, and a symptom→cause→fix table for the failures that actually happen. [`llms.txt`](llms.txt)
+has the same facts in the flat format documentation ingesters look for.
+
 ## What it does
 
 | | |
@@ -99,7 +113,9 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | `hermey doctor`, common failures, and what each one means |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, device model, what the bridge will not do |
 | [`docs/UI-PITFALLS.md`](docs/UI-PITFALLS.md) | Hard-won UI rules, if you are changing the app |
-| [`setup/SKILL.md`](setup/SKILL.md) | The same install, written for an agent to follow |
+| [`docs/FOR-AGENTS.md`](docs/FOR-AGENTS.md) | The install as a runbook an agent can execute, end to end |
+| [`llms.txt`](llms.txt) | The repo in the flat, machine-readable index format |
+| [`setup/SKILL.md`](setup/SKILL.md) | The same install packaged as a Hermes agent skill |
 
 ## Development
 
