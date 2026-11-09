@@ -240,3 +240,22 @@ new verbs add is *authority over other bots*, not reach outside the host.
   `/var/lib/hermes-bridge/deleted-bots`. The archive is a mistake-catcher, not a backup contract.
 - The bridge still runs under `ProtectSystem=strict` with only `/var/lib/hermes-bridge` writable.
   Nothing here widened that: management verbs are asked of the dashboard, which runs unconfined.
+
+## Bot computer (shared desktop)
+
+One headless desktop serves every bot on the host, on purpose: one Xvnc, one Chromium user-data-dir,
+one control lease. The consequences, stated rather than implied:
+
+- **Logins are shared.** A site signed into during a takeover is signed in for every bot on that
+  host, and in every later session until the site expires it. That is the feature; it also means a
+  bot can act on any site you signed in to.
+- **The lease is a tool-level fence, not an OS one.** While a human holds it, `computer_use` and the
+  browser tools are refused (`human_has_control`), but a process the agent starts by hand against
+  the published `DISPLAY` is inside the documented same-user boundary.
+- **The viewer path.** `/v1/display/*` is device-authenticated with the same single-use ticket as
+  every other route; `observe` mints a bridge ticket (60 s, single use, bound to device + profile)
+  and holds the gateway's own ticket inside the process. The socket carries its ticket in the query
+  string because noVNC cannot set a header — the same trade-off the dashboard makes, with the same
+  one-minute lifetime. Revoking a device closes an open viewer.
+- **Audit** records `display_open` / `display_close` with device, profile, close code and byte
+  count — never frame content, because a screen shows passwords.

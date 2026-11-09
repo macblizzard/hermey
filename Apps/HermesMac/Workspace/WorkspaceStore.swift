@@ -92,6 +92,12 @@ final class WorkspaceStore: ObservableObject {
     /// (`Apps/HermesMac/Testing/PreviewFixture.swift`, which this branch must not edit). The
     /// right-hand context panel is gone, so nothing in the app reads this and nothing persists it.
     @Published var showsContextPanel = false
+    /// The shared desktop, as a right-hand panel. It is the same screen for every bot, so the
+    /// panel is a property of the window, not of the selected bot — switching bots keeps it open
+    /// and the pane re-labels itself.
+    @Published var isComputerPanelPresented = false
+    /// Full screen is the panel's own verb; closing the panel drops it so the next open is a panel.
+    @Published var isComputerFullScreen = false
 
     // MARK: Init
 
@@ -735,6 +741,22 @@ final class WorkspaceStore: ObservableObject {
             sidebarWidth = min(Geometry.sidebarMax,
                                max(WorkspaceStore.sidebarFloor, CGFloat(saved)))
         }
+    }
+
+    /// The Bot Computer client: one ticket per request, resolved against the host paired *now*.
+    var computer: BotComputerClient {
+        BotComputerClient(endpoint: { [weak self] in
+            guard let address = await MainActor.run(body: { self?.pairing }) else {
+                throw MacDeviceService.Failure.devicePairingRequired
+            }
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
+    }
+
+    func toggleComputerPanel() {
+        isComputerPanelPresented.toggle()
+        if !isComputerPanelPresented { isComputerFullScreen = false }
     }
 
     /// The one place a real socket is built.

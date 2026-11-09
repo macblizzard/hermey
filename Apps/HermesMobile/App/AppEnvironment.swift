@@ -20,6 +20,9 @@ final class AppEnvironment: ObservableObject {
 
     let model: AppModel
     let store: HostStore
+    /// The shared Bot Computer (one desktop for every bot on the host). A value type whose
+    /// endpoint closure mints a ticket per request, so it survives a re-pair and a reconnect.
+    let computer: BotComputerClient
 
     // MARK: Pairing
 
@@ -87,6 +90,15 @@ final class AppEnvironment: ObservableObject {
         // Faces before the wire: the icons are the bot list's own look, and waiting for a round
         // trip meant every launch greeted the user with initials for a second or two.
         self.botIcons = Self.cachedBotIcons(host: store.host)
+        // Same ticket shape as the icon and preview calls: one freshly minted single-use ticket per
+        // request, resolved against whatever host is paired right now.
+        self.computer = BotComputerClient(endpoint: {
+            guard let credentials = await box.credentials() else { throw BridgeError.noHost }
+            let ticket = try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
+                                                             deviceID: credentials.host.deviceID,
+                                                             refreshToken: credentials.token)
+            return (credentials.host.baseURL, ticket)
+        })
     }
 
     // MARK: - Derived

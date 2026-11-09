@@ -185,6 +185,21 @@ struct WorkspaceShell: View {
     /// baseline by 6 and is 2 pt under a standard 28 pt title bar's height.
     static let titlebarStrip: CGFloat = 26
 
+    /// One definition of the pane: the panel and the full-screen overlay differ only in their
+    /// frame and in which way the full-screen button points.
+    @ViewBuilder
+    private func computerPane(fullScreen: Bool) -> some View {
+        BotComputerPane(profile: model.selectedBot?.id ?? "",
+                        displayName: model.selectedBot?.displayName ?? "this bot",
+                        client: store.computer,
+                        isFullScreen: fullScreen,
+                        onToggleFullScreen: { store.isComputerFullScreen = !fullScreen },
+                        onClose: {
+                            store.isComputerPanelPresented = false
+                            store.isComputerFullScreen = false
+                        })
+    }
+
     private var sidebarBinding: Binding<CGFloat> {
         Binding(get: { store.sidebarWidth },
                 set: { store.setSidebarWidth($0) })
@@ -236,8 +251,26 @@ struct WorkspaceShell: View {
                 // A new bot is a new conversation: re-creating the pane drops the old scroll
                 // position and any approval sheet that belonged to the last bot.
                 .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
+
+            // The shared computer, beside the conversation rather than over it: you read what the
+            // bot says about the errand while watching it do the errand. Full screen is the
+            // panel's own verb, so in that state this slot stays empty and the overlay below owns
+            // the window — one pane instance alive either way.
+            if store.isComputerPanelPresented, !store.isComputerFullScreen {
+                Hairline(.vertical)
+                computerPane(fullScreen: false)
+                    .frame(width: 520)
+                    .transition(.move(edge: .trailing))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if store.isComputerPanelPresented, store.isComputerFullScreen {
+                computerPane(fullScreen: true)
+                    .background(Tokens.canvas)
+                    .transition(.opacity)
+            }
+        }
         .background(Tokens.canvas)
         .confirmationDialog(
             pendingRoomDelete.map { "Delete \($0.name)?" } ?? "Delete this group chat?",

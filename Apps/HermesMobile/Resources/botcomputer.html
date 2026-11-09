@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Shared computer</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #screen canvas { outline: none; }
+  /* A tap must reach the remote desktop, not select this page's text. */
+  * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+<script type="module">
+  // The bundled noVNC, served by the app's own URL scheme handler so its ES-module imports resolve.
+  // Nothing here talks to the open internet: the socket is the paired host on the tailnet.
+  import RFB from './novnc/core/rfb.js';
+
+  const params = new URLSearchParams(window.location.search);
+  const target = params.get('ws');
+  const viewOnly = params.get('viewOnly') !== '0';
+  const screen = document.getElementById('screen');
+
+  function post(event, extra) {
+    try {
+      window.webkit.messageHandlers.bridge.postMessage(Object.assign({ event }, extra || {}));
+    } catch (e) { /* a preview/WKWebView without the handler */ }
+  }
+
+  if (!target) {
+    post('error', { message: 'no socket' });
+  } else {
+    const rfb = new RFB(screen, target, { shared: true, wsProtocols: [] });
+    rfb.background = '#000';
+    rfb.scaleViewport = true;      // fit the phone/Mac panel instead of scrolling a 1440x900 desktop
+    rfb.resizeSession = false;     // never make the bot's desktop smaller because of this viewer
+    rfb.showDotCursor = true;      // a dot is how you see where you tapped
+    rfb.focusOnClick = true;       // iOS: tap first so the hidden input takes the keys
+    rfb.viewOnly = viewOnly;       // UI hint only — the host's lease is the actual gate
+
+    rfb.addEventListener('connect', () => post('connected'));
+    rfb.addEventListener('disconnect', (e) => post('disconnected', { clean: !!(e.detail && e.detail.clean) }));
+    rfb.addEventListener('securityfailure', () => post('error', { message: 'security failure' }));
+
+    // Called by the app when the control lease changes hands.
+    window.hermeySetViewOnly = (only) => { rfb.viewOnly = !!only; };
+    window.hermeyDisconnect = () => { try { rfb.disconnect(); } catch (e) {} };
+  }
+</script>
+</body>
+</html>

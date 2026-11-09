@@ -5,6 +5,22 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Bot computer** in both apps: the host's shared headless desktop, opened from a bot's chat — the
+  phone's ⋯ menu, or the Mac's display button / ⋯ menu. The Mac shows it as a **right-hand panel**
+  with a full-screen option; the phone opens a full-height sheet. Watching is live; **Take over**
+  enables input (the host's lease is the gate), **Hand back** returns the screen to the bots.
+- The bridge's `/v1/display` surface: status, thumbnail, start/stop, the takeover lease, and a
+  single-use ticket for the RFB socket (the gateway's own ticket never reaches a device).
+- noVNC 1.7.0 is bundled in both apps (unmodified, MPL-2.0) and served to the viewer over a private
+  URL scheme, so its ES-module imports resolve without a file:// origin problem.
+
+### Notes
+- The desktop is **shared by every bot**: the same browser profile and the same logins, one Xvnc.
+  While a human holds control, every bot's `computer_use` is refused — that is the design, not a bug.
+- iOS keyboard input into a remote desktop is the weakest spot; typing a password or a 2FA code is
+  the supported case, not general typing.
+
 ## [0.1.14] — 2026-11-09
 
 ### Added
