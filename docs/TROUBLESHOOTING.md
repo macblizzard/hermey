@@ -19,11 +19,11 @@ hermey logs 80
 
 | Log line | Meaning |
 |---|---|
-| `address already in use` | something else holds the port — `sudo ss -ltnp | grep 8787`, then reinstall with `--port 8788` |
-| `gateway token refused` | the dashboard it relays to restarted with a different token; re-run the installer so it re-reads it |
+| `address already in use` | something else holds the port — `sudo ss -ltnp \| grep 8787`, then reinstall with `--port 8788` |
+| `"event": "upstream_error"` with `"reason": "connect_failed"` in the audit log | the dashboard it relays to is not answering on the port the unit was given, or restarted with a different token; re-run the installer so it re-reads both |
 | `No module named hermes_bridge` | the venv is broken; re-run the installer (it reinstalls) |
 
-## The dashboard already exists / "this host is already served by PID …"
+## The dashboard already exists / "reusing this host's dashboard: pid …"
 
 Expected. Hermes allows one dashboard per host, and the installer reuses it. If you need a second,
 isolated one for testing, use `HERMEY_UNIT_PREFIX` and a separate `HERMEY_CONF`, and point the second

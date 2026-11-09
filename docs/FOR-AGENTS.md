@@ -130,8 +130,8 @@ Send the human these, verbatim:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `the bridge did not answer on 127.0.0.1:8787` | port taken, venv broken, or a crash on start | `hermey logs 80`; `sudo ss -ltnp \| grep 8787`; reinstall with `--port 8788` |
-| `this host is already served by PID …` | a dashboard exists; Hermes allows one | expected — let the installer reuse it; `hermes dashboard --status` |
-| `hermey doctor` health FAIL, log says `gateway token refused` | the dashboard restarted with a new token | re-run the installer; it re-reads the token |
+| `reusing this host's dashboard: pid …` | a dashboard exists; Hermes allows one | expected — let the installer reuse it; `hermes dashboard --status` |
+| `hermey doctor` health FAIL, audit log says `"event": "upstream_error"` with `"reason": "connect_failed"` | the dashboard is not answering on that port, or restarted with a new token | re-run the installer; it re-reads both |
 | `tailscale serve` refused / permission denied | not root, or serve not enabled on the tailnet | run as root; `tailscale serve status`; check the tailnet policy allows serve |
 | HTTPS fails, loopback healthy | serve mapping points elsewhere, or the tailnet DNS name is wrong | `tailscale serve status`, then `--https-port` if the port was taken |
 | App connects nowhere, host is healthy | phone is not on the tailnet, or ATS rejects a self-signed cert | join the tailnet on the phone; use the `ts.net` name with the real cert |

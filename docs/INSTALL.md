@@ -55,7 +55,8 @@ shell.
 | `--purge` | — | — | with `--uninstall`: also delete state, config and the service user |
 
 Paths are overridable too: `HERMEY_PREFIX` (`/opt/hermey`), `HERMEY_STATE` (`/var/lib/hermey`),
-`HERMEY_CONF` (`/etc/hermey`), `HERMEY_USER` (`hermey`), `HERMEY_UNIT_PREFIX` (`hermey`). The last
+`HERMEY_CONF` (`/etc/hermey`), `HERMEY_USER` (the owner of the Hermes home),
+`HERMEY_UNIT_PREFIX` (`hermey`). The last
 two exist so you can run a second isolated instance for testing.
 
 ## Without Tailscale
