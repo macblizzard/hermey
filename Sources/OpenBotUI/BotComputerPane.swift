@@ -35,6 +35,14 @@ public struct BotComputerPane: View {
     @State private var viewerID: String?
     @State private var holdsControl = false
     @State private var isLive = false
+    /// True once the page reports its socket open. Until then the pane says "Connecting…" instead of
+    /// showing the black rectangle that an unconnected canvas is.
+    @State private var isConnected = false
+    /// Bumped by the keyboard button: the web view focuses noVNC, which is the only way iOS will
+    /// raise the keys.
+    @State private var keyboardNonce = 0
+    /// How many times this sitting has silently retried a dropped stream.
+    @State private var reconnectAttempts = 0
     @State private var isBusy = false
     @State private var errorText: String?
     @State private var loop = 0
@@ -130,6 +138,13 @@ public struct BotComputerPane: View {
     @ViewBuilder
     private var actionButtons: some View {
         if isLive {
+            if holdsControl {
+                Button { keyboardNonce += 1 } label: { Image(systemName: "keyboard") }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Show the keyboard")
+                    .accessibilityLabel("Show the keyboard")
+            }
             Button(holdsControl ? "Hand back" : "Take over") {
                 if holdsControl { handBack() } else { takeOver() }
             }
@@ -158,9 +173,14 @@ public struct BotComputerPane: View {
         ZStack {
             Color.black
             if isLive, let socketURL, let resources {
-                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl) { event in
+                // One web view per socket. A new ticket means a new page: reusing the old one left a
+                // dead viewer drawing nothing but its black background.
+                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl,
+                                   focusKeyboardNonce: keyboardNonce) { event in
                     handle(event)
                 }
+                .id(socketURL)
+                if !isConnected { connectingOverlay }
             } else if let image = thumbnailImage {
                 image.resizable().scaledToFit().opacity(0.9)
                 watchingOverlay
@@ -178,6 +198,17 @@ public struct BotComputerPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var connectingOverlay: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text("Connecting to the shared screen…")
+                .font(TypeScale.font(TypeScale.label))
+                .foregroundStyle(Tokens.textSecondary)
+        }
+        .padding(16)
+        .background(.black.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var watchingOverlay: some View {
@@ -284,9 +315,12 @@ public struct BotComputerPane: View {
     private func openScreen() {
         guard !isBusy else { return }
         isBusy = true
+        isConnected = false
         Task {
             do {
-                let stream = try await client.streamURL(profile: profile, viewerID: viewerID)
+                // A fresh viewer identity every time: the gateway binds a viewer id to the socket
+                // that minted it, and the socket behind the old one is gone by now.
+                let stream = try await client.streamURL(profile: profile, viewerID: nil)
                 let primary = try? await client.status(profile: profile)
                 await MainActor.run {
                     ticket = stream.ticket
@@ -295,6 +329,12 @@ public struct BotComputerPane: View {
                     socketURL = stream.url
                     isLive = true
                     isBusy = false
+                }
+                // The lease has to name the *new* viewer, or the host drops input from it while the
+                // old id still appears to hold control.
+                let held = await MainActor.run { holdsControl }
+                if held, let id = await MainActor.run(body: { viewerID }) {
+                    _ = try? await client.lease(profile: profile, acquire: true, viewerID: id)
                 }
             } catch {
                 await MainActor.run {
@@ -305,17 +345,31 @@ public struct BotComputerPane: View {
         }
     }
 
+    /// Tear the viewer down and open a fresh one, so a lease change is applied to a socket that
+    /// starts in the right mode instead of a page that has to be told about it after the fact.
+    private func reopen() async {
+        await MainActor.run {
+            socketURL = nil
+            isLive = false
+            isConnected = false
+        }
+        openScreen()
+    }
+
     private func takeOver() {
         guard let viewerID, !isBusy else { return }
         isBusy = true
         Task {
             do {
                 let lease = try await client.lease(profile: profile, acquire: true, viewerID: viewerID)
+                let held = lease?.isHuman ?? true
                 await MainActor.run {
-                    holdsControl = lease?.isHuman ?? true
+                    holdsControl = held
                     isBusy = false
                     errorText = nil
                 }
+                // Input, pointer and keyboard are then right from the first frame of the new socket.
+                if held { await reopen() }
             } catch {
                 await MainActor.run {
                     isBusy = false
@@ -330,7 +384,8 @@ public struct BotComputerPane: View {
         Task {
             do {
                 _ = try await client.lease(profile: profile, acquire: false, viewerID: viewerID)
-                await MainActor.run { holdsControl = false }
+                await MainActor.run { holdsControl = false; errorText = nil }
+                await reopen()
             } catch {
                 await MainActor.run { errorText = message(error) }
             }
@@ -343,17 +398,36 @@ public struct BotComputerPane: View {
         Task { _ = try? await client.lease(profile: profile, acquire: false, viewerID: viewerID) }
     }
 
-    private func handle(_ event: String) {
-        switch event {
+    private func handle(_ event: BotComputerEvent) {
+        switch event.name {
+        case "connected":
+            isConnected = true
+            reconnectAttempts = 0
+            errorText = nil
         case "disconnected":
-            // The socket died (host restart, ticket spent, viewer evicted by another takeover).
-            // Fall back to watching the thumbnail and require a fresh observe before typing again:
-            // the lease may belong to someone else now.
+            // The socket died (host restart, spent ticket, viewer evicted). A silent retry keeps a
+            // blip from ending the session; past that, say so rather than leave a black rectangle
+            // standing in for a picture that is never coming.
             isLive = false
+            isConnected = false
             socketURL = nil
             ticket = nil
-            holdsControl = false
-            loop += 1
+            if reconnectAttempts < 2 {
+                reconnectAttempts += 1
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    guard !Task.isCancelled else { return }
+                    await reopen()
+                }
+            } else {
+                holdsControl = false
+                errorText = "The stream stopped. Open the screen again to reconnect."
+                loop += 1
+            }
+        case "error":
+            // The page's own words: a spent ticket, a refused socket and a missing asset all look
+            // like a black rectangle otherwise.
+            errorText = event.message ?? "The viewer reported an error."
         default:
             break
         }

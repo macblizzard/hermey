@@ -165,14 +165,14 @@ struct ConversationScreen: View {
         }
         // The screen gets the whole sheet: a 1440x900 desktop in a half-height cover is a
         // thumbnail with buttons, which is what the pane already offers before you open it.
-        .sheet(isPresented: $showComputer) {
+        // A page, not a sheet: the desktop is dragged, tapped and pinched inside this view, and a
+        // sheet's own drag gesture took those touches and dismissed the window mid-task.
+        .fullScreenCover(isPresented: $showComputer) {
             BotComputerPane(profile: bot.id,
                             displayName: bot.displayName,
                             client: app.computer,
                             resources: BotComputerResources(),
                             onClose: { showComputer = false })
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
         }
         .sheet(isPresented: $showBotSettings) {
             BotModelSettingsScreen(
