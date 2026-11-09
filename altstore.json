@@ -2,51 +2,32 @@
   "name": "Hermey",
   "identifier": "dev.hermey.app.source",
   "subtitle": "Your Hermes bots, on your phone",
-  "description": "Native client for a self-hosted Hermes Agent. Every bot (Hermes profile) is reachable through one gateway; approvals, streaming replies and tool output appear in the conversation. Builds are unsigned and must be re-signed by your sideloading app.",
+  "description": "Native client for a self-hosted Hermes Agent.",
   "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
   "tintColor": "#007CF7",
-  "featuredApps": [
-    "dev.hermey.app.mobile"
-  ],
   "apps": [
     {
       "name": "Hermey",
       "bundleIdentifier": "dev.hermey.app.mobile",
       "developerName": "Hermey",
       "subtitle": "Your Hermes bots, on your phone",
-      "localizedDescription": "Chats with every Hermes bot, streaming replies, tool cards, inline approvals and per-device pairing.",
+      "localizedDescription": "Chats with every Hermes bot, streaming replies and pairing.",
       "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
       "tintColor": "#007CF7",
       "category": "utilities",
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.4",
-          "buildVersion": "4",
-          "date": "2026-11-08T22:15:35Z",
+          "version": "0.1.13",
+          "buildVersion": "13",
+          "date": "2026-11-09T10:03:06Z",
           "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.4-b4.ipa",
-          "size": 1647278,
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.13-b13.ipa",
+          "size": 1657440,
           "minOSVersion": "17.0",
-          "sha256": "16f10172b4be7cd09ef94b9aa933c4cf75e10a095a1c1fa98b44dd406bf89023"
+          "sha256": "302ced78a96dcf7edac56f70c637c18d38b31307f63189671ef7fefa95f66bcb"
         }
-      ],
-      "appPermissions": {
-        "entitlements": [],
-        "privacy": {
-          "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device.",
-          "NSLocalNetworkUsageDescription": "Hermes connects to your own Hermes host over your private network."
-        }
-      }
-    }
-  ],
-  "news": [
-    {
-      "title": "Hermes 0.1.4 (4)",
-      "identifier": "hermes-0.1.4-4",
-      "caption": "Native iOS and macOS client for your own Hermes agent.",
-      "date": "2026-11-08T22:15:35Z",
-      "tintColor": "#007CF7"
+      ]
     }
   ]
 }
