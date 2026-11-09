@@ -6,6 +6,11 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Bot computer showed nothing at all.** The view loaded the `wss://` socket as if it were a web
+  page, so the bundled viewer never ran — no script, no socket, no picture, and a spinner where the
+  desktop should be. It now loads `hermey-novnc://local/botcomputer.html?ws=…` with the socket as a
+  query parameter (one builder in HermesKit, tested), which is what the bridge log showed was missing:
+  tickets minted, viewer socket never opened.
 - **Bot computer: the window, the input and the black pane.** Three defects from the first hands-on
   test. The phone showed it in a sheet, so dragging the desktop dismissed it — it is now a full page
   with its own Close button. "Take over" enabled nothing: the flag was pushed into the page before

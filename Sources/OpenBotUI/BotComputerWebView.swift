@@ -1,4 +1,5 @@
 import SwiftUI
+import HermesKit
 #if canImport(WebKit)
 import WebKit
 
@@ -25,8 +26,9 @@ public struct BotComputerEvent: Sendable, Equatable {
 /// Paths are resolved under `root` only: `..` cannot climb out, because the resolved file must
 /// still be prefixed by the root.
 public final class BotComputerSchemeHandler: NSObject, WKURLSchemeHandler {
-    public static let scheme = "hermey-novnc"
-    public static let host = "local"
+    /// One definition, in HermesKit, because the page address is built from the same two strings.
+    public static let scheme = BotComputerViewer.scheme
+    public static let host = BotComputerViewer.host
 
     private let root: URL
 
@@ -41,7 +43,7 @@ public final class BotComputerSchemeHandler: NSObject, WKURLSchemeHandler {
             return
         }
         var path = url.path
-        if path.isEmpty || path == "/" { path = "/botcomputer.html" }
+        if path.isEmpty || path == "/" { path = BotComputerViewer.page }
         let file = root.appendingPathComponent(String(path.dropFirst())).standardizedFileURL
         guard file.path.hasPrefix(root.path), let data = try? Data(contentsOf: file) else {
             task.didFailWithError(BotComputerViewerError.missingAsset(path))
@@ -197,9 +199,20 @@ extension BotComputerWebView {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         #endif
-        webView.load(URLRequest(url: url))
+        // The page, not the socket. `url` is the `wss://…` the viewer must DIAL; loading it as a
+        // document asks WebKit for a web page at a WebSocket endpoint, which returns nothing — the
+        // pane then waits on a script that never ran. The socket rides in the query string.
+        webView.load(URLRequest(url: BotComputerViewer.pageURL(socket: url, viewOnly: viewOnly)
+                                ?? fallbackURL))
         return webView
     }
+
+    private var fallbackURL: URL {
+        URL(string: "\(BotComputerViewer.scheme)://\(BotComputerViewer.host)\(BotComputerViewer.page)")
+            ?? Self.blank
+    }
+
+    private static let blank = URL(string: "about:blank")!
 
     /// Input is gated on the host by the control lease; `viewOnly` is the UI's own hint, so a
     /// stale value can never let a viewer type into a screen the host says it does not hold.
