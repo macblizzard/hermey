@@ -83,6 +83,8 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
     func botPreviews() async throws -> [String: BotConversationPreview]
+    /// The same rows with this device's read marks applied: per-bot unread counts.
+    func botPreviews(since marks: [String: Double]) async throws -> BotPreviewFeed
 
     /// Delete a bot's profile on the host (`POST /v1/bots/{profile}/purge` on the bridge). The
     /// bridge archives the profile before Hermes removes it.
@@ -206,6 +208,8 @@ extension GatewayClientProtocol {
     /// that has no bridge credentials — the unpaired one, the fixture, a preview — is a valid
     /// conformer while `client.botPreviews()` still dispatches dynamically for the real one.
     public func botPreviews() async throws -> [String: BotConversationPreview] { [:] }
+
+    public func botPreviews(since marks: [String: Double]) async throws -> BotPreviewFeed { BotPreviewFeed() }
 
     /// No bridge, no bot management: a client without the routes fails loudly rather than
     /// reporting a delete that never happened.

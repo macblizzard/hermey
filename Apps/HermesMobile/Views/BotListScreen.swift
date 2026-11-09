@@ -254,6 +254,13 @@ struct BotListScreen: View {
                 BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
                                 size: 48,
                                 isWorking: model.isStreaming && model.selectedBotID == bot.id)
+                    // The count sits on the face, bottom-right, nudged out so it reads as a badge on
+                    // the avatar rather than a chip inside it. The breathing beacon keeps its place
+                    // at the end of the row: one says something is waiting, this says how much.
+                    .overlay(alignment: .bottomTrailing) {
+                        UnreadBadge(count: model.unreadCount(bot.id), size: 19)
+                            .offset(x: 5, y: 4)
+                    }
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {

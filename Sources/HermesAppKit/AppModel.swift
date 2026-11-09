@@ -194,6 +194,13 @@ public final class AppModel: ObservableObject {
     /// a switch never shows one bot's line under another's name.
     @Published public private(set) var botPreviews: [String: String] = [:]
 
+    /// How many turns each bot wrote after this device last looked at it.
+    ///
+    /// Absent and zero are the same thing: nothing waiting. The count comes from the host (it reads
+    /// the profile's message table), so it survives the app being closed — a badge that only counted
+    /// what this device happened to witness would be empty every morning.
+    @Published public private(set) var unreadCounts: [String: Int] = [:]
+
     /// When each bot's newest message landed, by the host's clock. The list shows it beside the
     /// third line: without a time, "the brief from 06:30" and "the one from last Tuesday" look
     /// identical in a row that has room for one sentence.
@@ -335,7 +342,17 @@ public final class AppModel: ObservableObject {
         // `session.list` preview is the first **user** message of the session (a title stand-in),
         // which is why a row built from it repeated the opening request for days.
         var covered: Set<String> = []
-        if let fromBridge = try? await client.botPreviews(), !fromBridge.isEmpty {
+        // The marks travel with the request: the host counts what it wrote after them, in the same
+        // read that produces the third line. A bot this device has never opened has no mark, and
+        // `noteRemoteActivity` seeds one on first sight — so a fresh install does not badge every
+        // row (the same rule the unread dot already follows).
+        let marks: [String: Double] = lastRead.reduce(into: [:]) { into, pair in
+            if ids.contains(pair.key) { into[pair.key] = pair.value.timeIntervalSince1970 }
+        }
+        let feed = (try? await client.botPreviews(since: marks)) ?? BotPreviewFeed()
+        unreadCounts = feed.unread.filter { ids.contains($0.key) }
+        let fromBridge = feed.previews
+        if !fromBridge.isEmpty {
             for (bot, preview) in fromBridge where ids.contains(bot) {
                 covered.insert(bot)
                 if let line = Self.previewLine(preview.text) { botPreviews[bot] = line }
@@ -1064,6 +1081,7 @@ public final class AppModel: ObservableObject {
         visibleBotID = botID
         if let botID {
             unreadBots.remove(botID)
+            unreadCounts[botID] = nil
             markRead(botID)
         }
     }
@@ -1098,6 +1116,10 @@ public final class AppModel: ObservableObject {
     }
 
     public func hasUnread(_ botID: String) -> Bool { unreadBots.contains(botID) }
+
+    /// What the badge on a bot's face shows: how many of its turns landed after this device last
+    /// looked. Zero means no badge at all.
+    public func unreadCount(_ botID: String) -> Int { unreadCounts[botID] ?? 0 }
 
     // MARK: Bot activity
 

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Header
+from pydantic import BaseModel, Field
 
 from .device_auth import require_device
 
@@ -36,6 +37,17 @@ CACHE_SECONDS = 15.0
 
 #: A bot row has one line. Anything past this is clipped by the client anyway.
 MAX_CHARS = 200
+
+
+class UnreadRequest(BaseModel):
+    """The device's read marks: profile -> epoch seconds of the last message it looked at.
+
+    A mark is per device on purpose. Read state across devices would need a shared cursor the host
+    does not keep, and pretending otherwise would clear a count on one phone because it was read on
+    another — the exact lie this counter exists to avoid.
+    """
+
+    since: dict[str, float] = Field(default_factory=dict)
 
 
 def _profiles_root() -> Path:
@@ -116,6 +128,11 @@ def _message_in(conn: sqlite3.Connection, session: str) -> Optional[tuple]:
 
 
 def _last_message(db_path: Path, session_id: Optional[str]) -> Optional[dict]:
+    """Compatibility shim: the preview only."""
+    return _conversation(db_path, session_id)[0]
+
+
+def _conversation(db_path: Path, session_id: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
     """The newest user/assistant message of **the conversation the app opens**.
 
     That is the stored pointer, and only the stored pointer. The earlier version also looked at the
@@ -137,13 +154,36 @@ def _last_message(db_path: Path, session_id: Optional[str]) -> Optional[dict]:
                 if row:
                     payload = _payload(row)
                     if payload:
-                        return payload
+                        return payload, session_id
         newest = _newest_session(conn)
         if newest:
             row = _message_in(conn, newest)
             if row:
-                return _payload(row)
-        return None
+                return _payload(row), newest
+        return None, None
+    finally:
+        conn.close()
+
+
+def _unread_count(db_path: Path, session: Optional[str], since: float) -> int:
+    """How many things this bot *said* after ``since`` in the conversation the app opens.
+
+    Only the bot's own turns count: a user message is not news to the person who wrote it, and the
+    list is a promise about what is waiting for *them*. Same session resolution as the preview, so
+    a mark and its count can never describe two different conversations.
+    """
+    if not session or since <= 0:
+        return 0
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE session_id = ? AND role = 'assistant' "
+            "AND content IS NOT NULL AND TRIM(content) <> '' AND timestamp > ?",
+            (session, since),
+        ).fetchone()
+        return int(row[0] or 0)
+    except sqlite3.Error:
+        return 0
     finally:
         conn.close()
 
@@ -162,8 +202,8 @@ def _payload(row) -> Optional[dict]:
 
 def create_bot_previews_router(runtime) -> APIRouter:
     router = APIRouter(prefix='/v1/bots', tags=['bot-previews'])
-    #: profile -> (expires_at, payload)
-    cache: dict[str, tuple[float, dict]] = {}
+    #: profile -> (expires_at, payload, session the payload came from)
+    cache: dict[str, tuple[float, dict, Optional[str]]] = {}
     #: A profile that is locked, corrupt or absent was retried on every request, each attempt
     #: holding a threadpool worker for up to the sqlite timeout. Remember the failure briefly.
     misses: dict[str, float] = {}
@@ -176,35 +216,38 @@ def create_bot_previews_router(runtime) -> APIRouter:
         return require_device(runtime, authorization)
 
     def preview_for(profile: str) -> Optional[dict]:
+        return conversation_for(profile)[0]
+
+    def conversation_for(profile: str) -> tuple[Optional[dict], Optional[str]]:
         now = time.monotonic()
         cached = cache.get(profile)
         if cached and cached[0] > now:
-            return cached[1]
+            return cached[1], cached[2]
         if misses.get(profile, 0) > now:
-            return None
+            return None, None
         db_path = root / profile / 'state.db'
         if not db_path.is_file():
-            return None
+            return None, None
         try:
             with_stored = None
             try:
                 with_stored = runtime.registry.get_bot_session(profile)
             except Exception:
                 with_stored = None
-            payload = _last_message(db_path, with_stored)
+            payload, session = _conversation(db_path, with_stored)
         except Exception:
             # A profile whose database is being written, or is older than this schema, loses its
             # third line and nothing else.
             misses[profile] = time.monotonic() + 15.0
-            return None
+            return None, None
         if payload is None:
             # No conversation yet is a *memorable* answer too, otherwise a host with fifteen fresh
             # profiles opens fifteen databases on every list refresh.
             misses[profile] = time.monotonic() + CACHE_SECONDS
-            return None
-        cache[profile] = (now + CACHE_SECONDS, payload)
+            return None, None
+        cache[profile] = (now + CACHE_SECONDS, payload, session)
         misses.pop(profile, None)
-        return payload
+        return payload, session
 
     @router.get('/previews')
     def list_previews(authorization: Optional[str] = Header(default=None)) -> dict:
@@ -224,5 +267,34 @@ def create_bot_previews_router(runtime) -> APIRouter:
         runtime.audit.emit('http', device_id=device_id, method='GET',
                            path='/v1/bots/previews', outcome='ok')
         return {'previews': previews}
+
+    @router.post('/previews')
+    def previews_since(body: UnreadRequest, authorization: str | None = Header(default=None)) -> dict:
+        """``POST /v1/bots/previews {"since": {"<profile>": <epoch>}}`` -> previews *and* counts.
+
+        Counts are computed per request rather than cached: the cache is keyed by profile, while a
+        count is keyed by profile *and* the device's mark, and a stale count is the one number a
+        user would notice being wrong. The query is one indexed count.
+        """
+        device_id = authenticate(authorization)
+        previews: dict[str, dict] = {}
+        unread: dict[str, int] = {}
+        try:
+            names = sorted(p.name for p in root.iterdir() if (p / 'state.db').is_file())
+        except OSError:
+            names = []
+        with sweep:
+            for profile in names:
+                payload, session = conversation_for(profile)
+                if payload:
+                    previews[profile] = payload
+                mark = body.since.get(profile)
+                if mark is not None:
+                    count = _unread_count(root / profile / 'state.db', session, float(mark))
+                    if count > 0:
+                        unread[profile] = count
+        runtime.audit.emit('http', device_id=device_id, method='POST',
+                           path='/v1/bots/previews', outcome='ok')
+        return {'previews': previews, 'unread': unread}
 
     return router
