@@ -104,8 +104,8 @@ Accepted risks (by design, not bugs):
 - **A1** Anyone who is root on the host owns the agent; the bridge adds no privilege.
 - **A2** A paired device can read that profile's sessions. There is no per-session ACL; the user model
   is "my devices, my agent".
-- **A3** Pairing is a shared secret shown on the host. Shoulder-surfing a QR code within 120 s is a
-  physical-security problem.
+- **A3** Pairing is a shared secret shown on the host. Shoulder-surfing a QR code within its 600 s
+  lifetime is a physical-security problem.
 - **A4** The tailnet ACL is not enforced by this code. If a device is on the tailnet and not blocked by
   ACLs, it can reach `/v1/health` and attempt claims (T2 covers the cost).
 

@@ -123,7 +123,7 @@ parses.
 non-`ws://` URL, a URL without a path, a zero or absurd frame cap; the gateway token appears only in the
 upstream dial URI, never in the loggable form.
 
-**Identity** (`test_pairing.py`) — 8-digit single-use codes; 120 s expiry; codes cannot be minted by a
+**Identity** (`test_pairing.py`) — 8-digit single-use codes; 600 s expiry; codes cannot be minted by a
 request that came through `tailscale serve` (proxy headers present, even though the peer is loopback);
 claims are throttled (10/minute, then `429`); a placeholder public key is rejected; the device limit
 holds; refresh tokens are stored hashed (the plaintext is not in `bridge.db`, the SHA-256 is); a
