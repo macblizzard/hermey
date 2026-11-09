@@ -6,14 +6,30 @@
 <title>Shared computer</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
-  #screen { position: fixed; inset: 0; width: 100%; height: 100%; }
-  #screen canvas { outline: none; }
-  /* A tap must reach the remote desktop, not select this page's text. */
-  * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* Fixed and gesture-free: a drag on the desktop must reach the remote pointer, not scroll, zoom or
+     rubber-band this page (on iOS that same gesture is what was closing the window around it). */
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #screen canvas { outline: none; touch-action: none; }
+  * { -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
 <body>
 <div id="screen"></div>
+<script>
+  // Defined before noVNC's module runs, because the native side sets this flag on its first layout
+  // pass — long before the module has finished loading. The value is kept and replayed on connect,
+  // and that replay is what makes "Take over" actually enable pointer and keyboard: an earlier build
+  // evaluated the setter once, too early, and input stayed off for the life of the viewer.
+  window.__hermeyViewOnly = true;
+  window.hermeySetViewOnly = function (only) {
+    window.__hermeyViewOnly = !!only;
+    if (window.__hermeyApply) { window.__hermeyApply(); }
+  };
+  // iOS shows no keys until something is focused by a tap, so the app's keyboard button focuses
+  // noVNC and nothing else.
+  window.hermeyFocusKeyboard = function () { if (window.__hermeyFocus) { window.__hermeyFocus(); } };
+</script>
 <script type="module">
   // The bundled noVNC, served by the app's own URL scheme handler so its ES-module imports resolve.
   // Nothing here talks to the open internet: the socket is the paired host on the tailnet.
@@ -21,7 +37,7 @@
 
   const params = new URLSearchParams(window.location.search);
   const target = params.get('ws');
-  const viewOnly = params.get('viewOnly') !== '0';
+  if (params.get('viewOnly') === '0') { window.__hermeyViewOnly = false; }
   const screen = document.getElementById('screen');
 
   function post(event, extra) {
@@ -38,15 +54,25 @@
     rfb.scaleViewport = true;      // fit the phone/Mac panel instead of scrolling a 1440x900 desktop
     rfb.resizeSession = false;     // never make the bot's desktop smaller because of this viewer
     rfb.showDotCursor = true;      // a dot is how you see where you tapped
-    rfb.focusOnClick = true;       // iOS: tap first so the hidden input takes the keys
-    rfb.viewOnly = viewOnly;       // UI hint only — the host's lease is the actual gate
+    rfb.focusOnClick = true;       // a tap grabs focus, which is how the keyboard appears on iOS
+    rfb.viewOnly = window.__hermeyViewOnly;   // UI hint only — the host's lease is the actual gate
 
-    rfb.addEventListener('connect', () => post('connected'));
+    // Enabling input turns off noVNC's view-only mode. It deliberately does *not* keep the keyboard
+    // grabbed: keys arrive when the user taps the canvas or presses the app's keyboard button, which
+    // is the only way iOS reliably raises them, and nothing else steals a gesture from the desktop.
+    window.__hermeyApply = function () {
+      rfb.viewOnly = window.__hermeyViewOnly;
+      if (!window.__hermeyViewOnly) { try { rfb.blur(); } catch (e) {} }
+    };
+    window.__hermeyFocus = function () {
+      try { rfb.focus({ preventScroll: true }); } catch (e) {}
+    };
+
+    rfb.addEventListener('connect', () => { post('connected'); window.__hermeyApply(); });
     rfb.addEventListener('disconnect', (e) => post('disconnected', { clean: !!(e.detail && e.detail.clean) }));
     rfb.addEventListener('securityfailure', () => post('error', { message: 'security failure' }));
 
     // Called by the app when the control lease changes hands.
-    window.hermeySetViewOnly = (only) => { rfb.viewOnly = !!only; };
     window.hermeyDisconnect = () => { try { rfb.disconnect(); } catch (e) {} };
   }
 </script>

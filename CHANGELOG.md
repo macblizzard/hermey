@@ -6,6 +6,14 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Bot computer: the window, the input and the black pane.** Three defects from the first hands-on
+  test. The phone showed it in a sheet, so dragging the desktop dismissed it — it is now a full page
+  with its own Close button. "Take over" enabled nothing: the flag was pushed into the page before
+  noVNC's module had loaded and was never replayed, so pointer and keyboard stayed off; the page now
+  keeps the flag and applies it on connect, and a keyboard button raises the keys on purpose. Taking
+  over or handing back left a black pane: the viewer is now re-opened on a fresh ticket after every
+  lease change, says "Connecting…" until the socket is up, retries a dropped stream twice, and shows
+  the page's own error text instead of a silent black rectangle.
 - **"Show tool calls" off now hides the cards.** The switch was wired to the card's *output*, so a
   user who turned tool calls off still saw every command in the chat and read the setting as broken.
   Off removes the tool rows from the transcript (history is untouched — turning it back on shows them
