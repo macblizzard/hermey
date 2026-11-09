@@ -304,8 +304,10 @@ def main() -> int:
             print(f"{label:<9} unreadable — {error}")
             failures.append(label)
 
-    # Freshly uploaded release assets can 404 for a few seconds while the CDN catches up.
-    if failures and not drift:
+    # Freshly uploaded release assets can 404 for a few seconds while the CDN catches up — but only
+    # a run that actually uploaded something can be looking at that window. A failure with nothing
+    # uploaded is a real one, and waiting ten seconds would only delay the report.
+    if failures and drift:
         import time
         time.sleep(10)
         return main_verify_only(args.repo, version, build)
@@ -320,9 +322,10 @@ def main_verify_only(repo: str, version: str, build: str) -> int:
         try:
             with urllib.request.urlopen(url, timeout=60) as response:
                 newest = json.loads(response.read())["apps"][0]["versions"][0]
-            print(f"{label:<9} {'ok' if newest['version'] == version else 'STALE'}  "
+            ok = newest["version"] == version and str(newest["buildVersion"]) == build
+            print(f"{label:<9} {'ok' if ok else 'STALE'}  "
                   f"{newest['version']} ({newest['buildVersion']})")
-            if newest["version"] != version:
+            if not ok:
                 bad.append(label)
         except Exception as error:  # noqa: BLE001 - report, do not raise, on a retry
             print(f"{label:<9} unreadable — {error}")
