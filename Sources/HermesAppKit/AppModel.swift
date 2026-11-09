@@ -146,8 +146,13 @@ public final class AppModel: ObservableObject {
     @Published public var showReasoning: Bool {
         didSet { Self.defaults.set(showReasoning, forKey: Keys.showReasoning) }
     }
-    @Published public var showToolOutput: Bool {
-        didSet { Self.defaults.set(showToolOutput, forKey: Keys.showToolOutput) }
+    /// Whether the chat draws a card for every command the bot runs — and the card's output with it.
+    ///
+    /// Off means the cards are not rows of the conversation at all. It used to hide only the body,
+    /// which read as the switch doing nothing. The defaults key keeps its old name so an existing
+    /// install's choice is honoured rather than silently reset.
+    @Published public var showToolCalls: Bool {
+        didSet { Self.defaults.set(showToolCalls, forKey: Keys.showToolCalls) }
     }
     /// Tokens at which a completed turn compacts the conversation. `0` disables it.
     @Published public var autoCompactTokens: Int {
@@ -161,7 +166,7 @@ public final class AppModel: ObservableObject {
     enum Keys {
         static let showReasoning = "hermes.showReasoning"
         static let reasoningExpanded = "hermey.showReasoningExpanded"
-        static let showToolOutput = "hermes.showToolOutput"
+        static let showToolCalls = "hermes.showToolOutput"
         static let autoCompactTokens = "hermes.autoCompactTokens"
         /// One stored session id per bot — the endless-chat contract (`docs/ENDLESS-CHAT.md` §2).
         static let endlessSessionPrefix = "hermes.endlessSession."
@@ -235,7 +240,7 @@ public final class AppModel: ObservableObject {
         let defaults = Self.defaults
         showReasoning = defaults.object(forKey: Keys.showReasoning) as? Bool ?? true
         reasoningExpandedByDefault = defaults.object(forKey: Keys.reasoningExpanded) as? Bool ?? false
-        showToolOutput = defaults.object(forKey: Keys.showToolOutput) as? Bool ?? true
+        showToolCalls = defaults.object(forKey: Keys.showToolCalls) as? Bool ?? true
         autoCompactTokens = defaults.object(forKey: Keys.autoCompactTokens) as? Int
             ?? Self.defaultAutoCompactTokens
     }
@@ -1747,6 +1752,18 @@ public final class AppModel: ObservableObject {
     /// were flushed. Same rows, same ids, drawn live.
     public var liveToolEntries: [TranscriptEntry] {
         liveTools.map(Self.toolEntry(for:))
+    }
+
+    /// The rows the transcript draws. Every other reader (counts, search over history, the last
+    /// reply) keeps `transcript`: hiding a card is a display choice, not a loss of history.
+    public var visibleTranscript: [TranscriptEntry] {
+        TranscriptVisibility.rows(transcript, showToolCalls: showToolCalls)
+    }
+
+    /// The running turn's cards, or nothing when the user turned tool calls off.
+    public var visibleLiveToolEntries: [TranscriptEntry] {
+        TranscriptVisibility.showsLiveCards(showToolCalls: showToolCalls, hasLiveTools: !liveTools.isEmpty)
+            ? liveToolEntries : []
     }
 
     /// One live card as the row the transcript keeps.

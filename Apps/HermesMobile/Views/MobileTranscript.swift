@@ -335,7 +335,7 @@ struct MobileTranscriptRow: View {
 ///
 /// The name is always a real name: `tool.start`'s `name` for a live call, the projection's
 /// leading token for a restored one. Output is drawn only when the caller supplies it
-/// (`showToolOutput` and a non-empty result), so the card never claims "No output." about
+/// (a non-empty result), so the card never claims "No output." about
 /// a tool it simply chose not to show. Long output scrolls inside the card rather than
 /// pushing the answer off screen.
 struct MobileToolRow: View {

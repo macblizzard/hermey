@@ -5,6 +5,12 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **"Show tool calls" off now hides the cards.** The switch was wired to the card's *output*, so a
+  user who turned tool calls off still saw every command in the chat and read the setting as broken.
+  Off removes the tool rows from the transcript (history is untouched — turning it back on shows them
+  again) and stops the running turn from drawing live cards either. The label now says what it does.
+
 ### Added
 - **Bot computer** in both apps: the host's shared headless desktop, opened from a bot's chat — the
   phone's ⋯ menu, or the Mac's display button / ⋯ menu. The Mac shows it as a **right-hand panel**

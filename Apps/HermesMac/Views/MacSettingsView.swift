@@ -95,9 +95,9 @@ private struct ChatSettingsTab: View {
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
 
-                Toggle("Show tool output", isOn: toolOutputBinding)
+                Toggle("Show tool calls", isOn: toolCallsBinding)
                     .tint(Tokens.success)
-                Text("Expandable results under each tool call.")
+                Text("A card for every command, with its result. Off hides them from the chat.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
             } header: {
@@ -170,9 +170,9 @@ private struct ChatSettingsTab: View {
                 set: { store.model.reasoningExpandedByDefault = $0 })
     }
 
-    private var toolOutputBinding: Binding<Bool> {
-        Binding(get: { store.model.showToolOutput },
-                set: { store.model.showToolOutput = $0 })
+    private var toolCallsBinding: Binding<Bool> {
+        Binding(get: { store.model.showToolCalls },
+                set: { store.model.showToolCalls = $0 })
     }
 
     /// The field is the source of truth while focused, the model's value otherwise. Off is drawn

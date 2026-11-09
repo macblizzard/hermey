@@ -27,7 +27,7 @@ struct TranscriptScroll: View {
 
     private var matches: [String] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        var ids = model.transcript.filter { $0.text.localizedCaseInsensitiveContains(query) }.map(\.id)
+        var ids = model.visibleTranscript.filter { $0.text.localizedCaseInsensitiveContains(query) }.map(\.id)
         if model.isStreaming && model.streamingText.localizedCaseInsensitiveContains(query) { ids.append(streamingID) }
         return ids
     }
@@ -126,7 +126,7 @@ struct TranscriptScroll: View {
     /// The messages, on the reading measure.
     private var rows: some View {
         LazyVStack(alignment: .leading, spacing: 18) {
-            ForEach(model.transcript) { entry in
+            ForEach(model.visibleTranscript) { entry in
                 TranscriptRowView(entry: entry,
                                   host: model.hostName,
                                   bot: model.selectedBotID ?? "",
@@ -140,7 +140,7 @@ struct TranscriptScroll: View {
             // The cards of the running turn. The phone draws them from `liveTools`; the transcript
             // here only read finished rows, so on the Mac a call appeared *after* the turn ended —
             // and switching bots first was the only way to make the list rebuild.
-            ForEach(model.liveToolEntries) { entry in
+            ForEach(model.visibleLiveToolEntries) { entry in
                 TranscriptRowView(entry: entry,
                                   host: model.hostName,
                                   bot: model.selectedBotID ?? "",

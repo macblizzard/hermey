@@ -326,7 +326,7 @@ struct ConversationScreen: View {
     /// Search visible transcript text, including the summaries of tool and reasoning rows.
     private var searchMatches: [String] {
         guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        var ids = model.transcript.filter { entry in
+        var ids = model.visibleTranscript.filter { entry in
             entry.text.localizedCaseInsensitiveContains(searchText)
         }.map(\.id)
         if !model.streamingText.isEmpty,
@@ -464,7 +464,7 @@ struct ConversationScreen: View {
                 }
             }
 
-            ForEach(model.transcript) { entry in
+            ForEach(model.visibleTranscript) { entry in
                 MobileTranscriptRow(entry: entry)
                     .overlay {
                         if selectedSearchID == entry.id {
@@ -494,7 +494,7 @@ struct ConversationScreen: View {
                                      startsExpanded: model.reasoningExpandedByDefault)
             }
 
-            if !model.liveTools.isEmpty {
+            if model.showToolCalls, !model.liveTools.isEmpty {
                 liveToolsSection
             }
 
@@ -521,10 +521,10 @@ struct ConversationScreen: View {
     }
 
     private var isBlank: Bool {
-        model.transcript.isEmpty
+        model.visibleTranscript.isEmpty
             && !model.isStreaming
             && model.pendingRequests.isEmpty
-            && model.liveTools.isEmpty
+            && !(model.showToolCalls && !model.liveTools.isEmpty)
             && model.reasoningText.isEmpty
     }
 
@@ -552,7 +552,7 @@ struct ConversationScreen: View {
                 let output: String? = tool.output
                 MobileToolRow(name: tool.name,
                               summary: toolSummary(input),
-                              output: model.showToolOutput ? output : nil,
+                              output: output,
                               isRunning: tool.isRunning,
                               durationMS: tool.durationMS)
             }
