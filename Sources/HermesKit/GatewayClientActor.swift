@@ -339,6 +339,13 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.previews()
     }
 
+    /// Rows and unread counts from the same read, so a badge can never describe a different moment
+    /// than the line above it.
+    public func botPreviews(since marks: [String: Double]) async throws -> BotPreviewFeed {
+        guard let sessionPointer else { return BotPreviewFeed() }
+        return try await sessionPointer.previews(since: marks)
+    }
+
     /// Fire-and-forget by nature, but `throws` so the caller can log that the other device will
     /// keep its own pointer. Never retried here: an unreachable bridge is the caller's problem to
     /// ignore, not something to queue behind a conversation that already opened.

@@ -33,6 +33,55 @@ public struct BotConversationPreview: Hashable, Sendable {
     }
 }
 
+/// One round trip's worth of bot-list state: every row's third line, and how much each bot said
+/// after this device last looked at it.
+///
+/// The two travel together on purpose. A count computed against a preview from a different moment
+/// is the kind of number a user can catch being wrong — they open the bot, count two messages, and
+/// the badge said three.
+public struct BotPreviewFeed: Sendable, Equatable {
+    public let previews: [String: BotConversationPreview]
+    /// Profile name -> unread turns. Absent means zero, and zero is never sent.
+    public let unread: [String: Int]
+
+    public init(previews: [String: BotConversationPreview] = [:], unread: [String: Int] = [:]) {
+        self.previews = previews
+        self.unread = unread
+    }
+
+    /// Read either shape the bridge can answer with: `GET /v1/bots/previews` (previews only, older
+    /// hosts) or `POST /v1/bots/previews` (previews + `unread`).
+    public static func decode(_ data: Data) -> BotPreviewFeed {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return BotPreviewFeed()
+        }
+        var previews: [String: BotConversationPreview] = [:]
+        if let rows = object["previews"] as? [String: Any] {
+            for (profile, value) in rows {
+                guard let row = value as? [String: Any],
+                      let text = (row["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty
+                else { continue }
+                previews[profile] = BotConversationPreview(
+                    text: text,
+                    role: (row["role"] as? String) ?? "assistant",
+                    timestamp: row["at"] as? Double
+                )
+            }
+        }
+        var unread: [String: Int] = [:]
+        if let counts = object["unread"] as? [String: Any] {
+            for (profile, value) in counts {
+                // JSON may hand back Int, NSNumber or Double; anything that is not a positive
+                // whole number means "nothing waiting".
+                let raw = (value as? Int) ?? (value as? NSNumber)?.intValue ?? Int((value as? Double) ?? 0)
+                if raw > 0 { unread[profile] = raw }
+            }
+        }
+        return BotPreviewFeed(previews: previews, unread: unread)
+    }
+}
+
 public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/bots/{profile}/session` — the shared stored session id, or `nil` when the bridge
     /// has none for this bot yet (unset, or a route the deployed bridge does not serve).
@@ -47,6 +96,13 @@ public protocol BotSessionPointerStore: Sendable {
     /// Defaulted to empty so a pointer store that predates the route (or a test double) simply
     /// means "no previews from here", which sends the caller to the gateway's coarse fallback.
     func previews() async throws -> [String: BotConversationPreview]
+
+    /// `POST /v1/bots/previews {"since": {profile: epoch}}` — the same rows, plus how many turns
+    /// each bot wrote after the mark this device holds for it.
+    ///
+    /// Defaulted to the plain previews so a store that predates the route (or a test double) simply
+    /// reports nothing unread instead of failing the list.
+    func previews(since marks: [String: Double]) async throws -> BotPreviewFeed
 
     /// `POST /v1/bots/{profile}/purge` — delete a bot's profile on the host.
     ///
@@ -105,6 +161,10 @@ public struct BotAdminUnavailable: LocalizedError {
 
 extension BotSessionPointerStore {
     public func previews() async throws -> [String: BotConversationPreview] { [:] }
+
+    public func previews(since marks: [String: Double]) async throws -> BotPreviewFeed {
+        BotPreviewFeed(previews: try await previews())
+    }
 }
 
 /// The real pointer: one HTTP request, one freshly minted single-use ticket.
@@ -227,21 +287,36 @@ enum Failure: Error, Equatable, LocalizedError {
         guard (200..<300).contains(http.statusCode) else {
             throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
         }
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rows = object["previews"] as? [String: Any]
-        else { return [:] }
+        return BotPreviewFeed.decode(data).previews
+    }
 
-        var previews: [String: BotConversationPreview] = [:]
-        for (profile, value) in rows {
-            guard let row = value as? [String: Any],
-                  let text = (row["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !text.isEmpty
-            else { continue }
-            previews[profile] = BotConversationPreview(text: text,
-                                                       role: (row["role"] as? String) ?? "assistant",
-                                                       timestamp: row["at"] as? Double)
+    /// `POST /v1/bots/previews` — rows plus counts, in the one round trip the list already makes.
+    ///
+    /// An older bridge answers 404 to the POST: fall back to its `GET` so the rows still appear and
+    /// the badges simply stay empty until the host is updated.
+    public func previews(since marks: [String: Double]) async throws -> BotPreviewFeed {
+        let endpoint = try await endpoint()
+        let url = endpoint.baseURL
+            .appendingPathComponent("v1")
+            .appendingPathComponent("bots")
+            .appendingPathComponent("previews")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["since": marks])
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+        if http.statusCode == 404 || http.statusCode == 204 {
+            return BotPreviewFeed(previews: try await previews())
         }
-        return previews
+        guard (200..<300).contains(http.statusCode) else {
+            throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
+        }
+        return BotPreviewFeed.decode(data)
     }
 
     /// `POST /v1/bots/{profile}/purge`.

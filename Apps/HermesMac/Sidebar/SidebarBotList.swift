@@ -171,6 +171,11 @@ struct SidebarBotList: View {
                 BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
                                 size: 26,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
+                    // Same badge as the phone, scaled to a 26 pt face in a 28 pt row: it overhangs
+                    // the portrait by nothing, because the sidebar clips its rows.
+                    .overlay(alignment: .bottomTrailing) {
+                        UnreadBadge(count: model.unreadCount(bot.id), size: 14)
+                    }
 
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 4) {
