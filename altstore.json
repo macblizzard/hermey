@@ -23,11 +23,21 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.24",
+          "buildVersion": "24",
+          "date": "2026-11-09T21:37:00Z",
+          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.24-b24.ipa",
+          "size": 1892578,
+          "minOSVersion": "17.0",
+          "sha256": "978aef8c781b3699c9c230d2074ddba078091b29d8af1122de5ef4199139e8c6"
+        },
+        {
           "version": "0.1.22",
           "buildVersion": "22",
           "date": "2026-11-09T21:30:18Z",
           "localizedDescription": "Bot computer: every bot's shared desktop, in both apps.\n\nThe Mac opens it as a right-hand panel beside the chat with a full-screen option; the phone opens it\nfrom a bot's overflow menu. Watching is live, Take over enables input, Hand back returns the screen to\nthe bots. One desktop and one browser profile serve every bot, so a site you sign into once is signed\nin for them all.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.22-b22.ipa",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v22/Hermey-0.1.22-b22.ipa",
           "size": 1892576,
           "minOSVersion": "17.0",
           "sha256": "492e9b373b2605d6f901795a36c0de38b1124c7763cd738b1336693013991105"
