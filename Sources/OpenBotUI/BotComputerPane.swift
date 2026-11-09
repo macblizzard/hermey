@@ -280,6 +280,9 @@ public struct BotComputerPane: View {
             await MainActor.run {
                 status = fresh
                 if fresh.lease?.isHuman == false { holdsControl = false }
+                // The poll is the health signal: if the host answers, whatever the strip said about
+                // not reaching it a moment ago is no longer true.
+                if !isBusy { errorText = nil }
             }
             if fresh.running, let dataURL = try? await client.thumbnail(profile: profile) {
                 await MainActor.run { thumbnail = dataURL }
@@ -287,7 +290,7 @@ public struct BotComputerPane: View {
                 await MainActor.run { thumbnail = nil }
             }
         } catch {
-            await MainActor.run { errorText = message(error) }
+            await MainActor.run { report(error) }
         }
     }
 
@@ -306,7 +309,7 @@ public struct BotComputerPane: View {
             } catch {
                 await MainActor.run {
                     isBusy = false
-                    errorText = message(error)
+                    report(error)
                 }
             }
         }
@@ -339,7 +342,7 @@ public struct BotComputerPane: View {
             } catch {
                 await MainActor.run {
                     isBusy = false
-                    errorText = message(error)
+                    report(error)
                 }
             }
         }
@@ -373,7 +376,7 @@ public struct BotComputerPane: View {
             } catch {
                 await MainActor.run {
                     isBusy = false
-                    errorText = message(error)
+                    report(error)
                 }
             }
         }
@@ -387,7 +390,7 @@ public struct BotComputerPane: View {
                 await MainActor.run { holdsControl = false; errorText = nil }
                 await reopen()
             } catch {
-                await MainActor.run { errorText = message(error) }
+                await MainActor.run { report(error) }
             }
         }
     }
@@ -433,7 +436,10 @@ public struct BotComputerPane: View {
         }
     }
 
-    private func message(_ error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+    /// Put a failure where the user can read it — unless it is only a cancelled request, which is
+    /// what a torn-down poll loop produces and never a fault of the host.
+    private func report(_ error: Error) {
+        guard let text = RequestOutcome.describe(error) else { return }
+        errorText = text
     }
 }
