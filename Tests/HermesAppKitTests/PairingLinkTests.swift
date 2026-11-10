@@ -6,11 +6,11 @@ import XCTest
 /// refuse anything else loudly instead of claiming a device row it cannot finish pairing.
 final class PairingLinkTests: XCTestCase {
     func testDeepLinkCarriesBothHostAndCode() {
-        let link = PairingLink.parse("hermes://pair?host=https%3A%2F%2Fhermes.corvus-vibes.ts.net%3A8443&code=14639813")
+        let link = PairingLink.parse("hermes://pair?host=https%3A%2F%2Fhermes.example.ts.net%3A8443&code=14639813")
 
         XCTAssertEqual(link?.code, "14639813")
-        XCTAssertEqual(link?.httpBase, "https://hermes.corvus-vibes.ts.net:8443")
-        XCTAssertEqual(link?.websocketBase, "wss://hermes.corvus-vibes.ts.net:8443")
+        XCTAssertEqual(link?.httpBase, "https://hermes.example.ts.net:8443")
+        XCTAssertEqual(link?.websocketBase, "wss://hermes.example.ts.net:8443")
     }
 
     func testABareCodeUsesTheHostThisMacAlreadyKnows() {

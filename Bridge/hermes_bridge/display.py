@@ -1,7 +1,6 @@
 """The Bot Computer for paired devices: status, control lease, a thumbnail, and **raw RFB**.
 
-The host runs one headless Xfce desktop that every bot drives (see
-`/root/patches/bot-desktop-shared-20261109.patch`), and the gateway exposes it as
+The host runs one headless Xfce desktop that every bot drives, and the gateway exposes it as
 ``display.*`` JSON-RPC over ``/api/ws`` plus a raw RFB splice on ``/api/display/ws``. Neither is
 reachable from a phone: the first needs a dashboard token, and the second refuses a browser Origin
 (a ``file://`` shell sends ``Origin: null``). So this module is the door:

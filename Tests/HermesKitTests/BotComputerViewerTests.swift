@@ -6,7 +6,7 @@ import XCTest
 /// "Connecting…" — no page, no script, no socket.
 final class BotComputerViewerTests: XCTestCase {
 
-    private let socket = URL(string: "wss://hermes.corvus-vibes.ts.net:8443/v1/display/ws"
+    private let socket = URL(string: "wss://hermes.example.ts.net:8443/v1/display/ws"
                              + "?display_ticket=abc_DEF-123~xyz")!
 
     func testThePageAddressIsTheLocalViewerNotTheSocket() {

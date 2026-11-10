@@ -24,11 +24,11 @@ final class RequestOutcomeTests: XCTestCase {
     }
 
     func testTheHostThatDidNotAnswerIsNamed() {
-        let url = URL(string: "https://hermes.corvus-vibes.ts.net:8443/v1/display/status?profile=cody")!
+        let url = URL(string: "https://hermes.example.ts.net:8443/v1/display/status?profile=assistant")!
         let error = URLError(.timedOut, userInfo: [NSURLErrorFailingURLErrorKey: url])
         let text = RequestOutcome.describe(error) ?? ""
         XCTAssertTrue(text.contains("did not answer"), text)
-        XCTAssertTrue(text.contains("hermes.corvus-vibes.ts.net"), text)
+        XCTAssertTrue(text.contains("hermes.example.ts.net"), text)
 
         let refused = URLError(.cannotConnectToHost, userInfo: [NSURLErrorFailingURLErrorKey: url])
         XCTAssertTrue((RequestOutcome.describe(refused) ?? "").contains("Cannot reach the host"))
