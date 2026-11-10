@@ -248,7 +248,13 @@ struct WorkspaceShell: View {
                     ConversationPane(model: model, store: store)
                 }
             }
-                .frame(minWidth: Geometry.conversationMin, maxWidth: .infinity, maxHeight: .infinity)
+                // With the computer beside it the reading pane hands back some width rather than
+                // pushing the window's edges out of view.
+                .frame(minWidth: store.isComputerPanelPresented
+                              ? WindowLayout.conversationMinWithComputer
+                              : WindowLayout.conversationMin,
+                       maxWidth: .infinity,
+                       maxHeight: .infinity)
                 // A new bot is a new conversation: re-creating the pane drops the old scroll
                 // position and any approval sheet that belonged to the last bot.
                 .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
@@ -259,12 +265,18 @@ struct WorkspaceShell: View {
             // the window — one pane instance alive either way.
             if store.isComputerPanelPresented, !store.isComputerFullScreen {
                 Hairline(.vertical)
+                // Floors and a ceiling rather than one width: a window that cannot give 520 gives
+                // what it has, down to 320, and the window is widened to fit the rest.
                 computerPane(fullScreen: false)
-                    .frame(width: 520)
+                    .frame(minWidth: WindowLayout.computerMin,
+                           idealWidth: WindowLayout.computerIdeal,
+                           maxWidth: WindowLayout.computerMax)
                     .transition(.move(edge: .trailing))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // A third pane in a narrow window is grown, not clipped.
+        .background(WindowWidthFitter(minimum: store.minimumWindowWidth).frame(width: 0, height: 0))
         .overlay {
             if store.isComputerPanelPresented, store.isComputerFullScreen {
                 computerPane(fullScreen: true)
