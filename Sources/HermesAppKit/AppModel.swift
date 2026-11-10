@@ -478,6 +478,7 @@ public final class AppModel: ObservableObject {
     public func select(_ id: SessionID) async {
         selectedSessionID = id
         transcript = []
+        turnRowStart = 0
         streamingText = ""
         reasoningText = ""
         liveTools = []
@@ -1577,8 +1578,9 @@ public final class AppModel: ObservableObject {
             }
             // Its own row, appended *now*: the cards that follow this commentary belong under it,
             // and waiting for `message.complete` would put the line after the answer it preceded.
-            transcript.append(TranscriptEntry(id: "interim-\(key)", role: .assistant,
-                                              text: text, at: Date()))
+            // The row that a tool call already sealed is this same commentary; the gate inside keeps
+            // it from being written a second time a minute later (which is what was on screen).
+            appendAssistantRow(id: "interim-\(key)", text: text, at: Date())
             // When the host says the words already went out as deltas, they are sitting in the
             // live bubble; the row above replaces it, so the bubble must let go of them.
             if alreadyStreamed { streamingText = "" }
@@ -1620,15 +1622,7 @@ public final class AppModel: ObservableObject {
             // and leaving them in `liveTools` meant the next resume — which answers with the
             // host's messages only — wiped them from the thread.
             flushLiveTools()
-            // A completion whose words are already the trailing row would print the answer twice:
-            // the interim row that carried them keeps its place (and its time) instead.
-            let ending = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let trailing = transcript.last(where: { $0.role == .assistant })?.text
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !finalText.isEmpty, !(ending.count >= 20 && ending == trailing) {
-                transcript.append(TranscriptEntry(id: UUID().uuidString, role: .assistant,
-                                                  text: finalText, at: Date()))
-            }
+            appendAssistantRow(id: UUID().uuidString, text: finalText, at: Date())
             // The list's third line follows the conversation without waiting for a re-list.
             if let bot = selectedBotID, let line = Self.previewLine(finalText) {
                 botPreviews[bot] = line
@@ -1735,16 +1729,34 @@ public final class AppModel: ObservableObject {
         let text = streamingText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         sealedCommentary.append(text)
-        transcript.append(TranscriptEntry(id: "commentary-\(UUID().uuidString)",
-                                          role: .assistant,
-                                          text: text,
-                                          at: Date()))
+        appendAssistantRow(id: "commentary-\(UUID().uuidString)", text: text, at: Date())
         streamingText = ""
     }
 
     private func beginLiveTurn() {
         guard !isStreaming else { return }
         flushLiveTools()
+        turnRowStart = transcript.count
+    }
+
+    /// Where this turn's rows begin in `transcript`, so "the same words again" can be judged against
+    /// what *this* turn has already written rather than the previous answer.
+    private var turnRowStart = 0
+
+    /// Append an assistant row, unless this turn already ends with exactly those words.
+    ///
+    /// The same paragraph arrives by several doors: the commentary is sealed when a tool is called,
+    /// the host seals it again as `message.interim`, and `message.complete` sends the answer. Each
+    /// one used to write its own row, which is the duplicate the user watched appear and then merge.
+    /// Identical words at the end of the same turn are the same message.
+    @discardableResult
+    private func appendAssistantRow(id: String, text: String, at date: Date?) -> Bool {
+        // A resume can replace the transcript with something shorter than this turn's window.
+        let start = min(max(0, turnRowStart), transcript.count)
+        let written = transcript[start...].last(where: { $0.role == .assistant })?.text
+        if TranscriptVisibility.saysTheSame(text, written) { return false }
+        transcript.append(TranscriptEntry(id: id, role: .assistant, text: text, at: date))
+        return true
     }
 
     /// Move the turn's live tool cards into `transcript` as `.tool` rows.

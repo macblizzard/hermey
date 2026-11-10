@@ -6,6 +6,11 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Bot computer clicked in the wrong place while zoomed, taps stopped registering, and the last
+  reply duplicated itself row-by-row.** noVNC counted the zoom twice in every pointer coordinate
+  (patched, with a check under `Tools/verify`); its touch recogniser was being fed a partial event
+  stream and wedged, so this page now owns touch input outright; and the same paragraph arriving as
+  a sealed commentary, an `message.interim` and a completion is now written once.
 - **Right click landed away from the pointer, and pinching stopped working once its menu was open.**
   The click now goes where the pointer stands, not between the fingers; and noVNC's capture proxy
   div — laid over the whole page by its legacy `setCapture()` on a synthetic press — is released
