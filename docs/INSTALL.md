@@ -36,8 +36,9 @@ services restarted.
 hermey pair
 ```
 
-prints a code, a `hermes://pair?host=…&code=…` link and a QR. Codes are short-lived, so mint one when
-the phone is in your hand. Pair as many devices as you like; each is individually revocable.
+prints a code, a `hermes://pair?host=…&code=…` link and — when the `qrcode` package could be
+installed — a QR. Codes are short-lived, so mint one when the phone is in your hand. Pair as many
+devices as you like; each is individually revocable.
 
 ## Options
 
@@ -48,7 +49,7 @@ shell.
 |---|---|---|---|
 | `--port N` | `HERMEY_PORT` | `8787` | bridge port (loopback) |
 | `--https-port N` | `HERMEY_HTTPS_PORT` | `8443` | tailnet port for `tailscale serve` |
-| `--ref R` | `HERMEY_REF` | `main` | git ref to install (`v0.1.4` for a pinned build) |
+| `--ref R` | `HERMEY_REF` | `main` | git ref to install (a release tag pins a build; tags are `v<version>`) |
 | `--local DIR` | `HERMEY_LOCAL_SRC` | — | install from a checkout instead of GitHub |
 | `--no-serve` | `HERMEY_SERVE=no` | auto | do not touch `tailscale serve` |
 | `--uninstall` | — | — | remove the units and the serve mapping, keep state |

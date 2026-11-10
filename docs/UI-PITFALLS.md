@@ -11,7 +11,7 @@ They are listed here so the next change does not rediscover them.
   protocol is meant to dispatch must be a **requirement on the protocol**, with the conformance
   supplying the body.
 - **One view, many `.sheet` modifiers, is a lottery.** After six or seven, a later sheet silently
-  never appears (rename, bug 0.1.170: the request never reached the host). If a feature can live
+  never appears (rename: the request never reached the host). If a feature can live
   inline — a field that drops under a header — prefer that. Otherwise consolidate presentations
   behind one `enum` + `sheet(item:)`.
 - **A `List` inside an `.alert`-free Mac sheet has no intrinsic height**: the sheet collapsed to its

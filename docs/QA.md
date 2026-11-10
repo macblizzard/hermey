@@ -205,7 +205,9 @@ Not covered here:
   `Tools/record_fixtures.py` produces that recording and its output replays directly (see §1), so the
   refresh loop is: upgrade Hermes → record → drop the file in `Tools/qa/scenarios/` → run the suite.
 - **The tailnet leg.** No TLS, no WireGuard, no radio, no ATS. `latency.py` numbers are loopback.
-- **APNs, Secure Enclave, Keychain.** Phase 5 / client-side.
+- **APNs, Secure Enclave.** Phase 5 / client-side. Refresh tokens do live in the Keychain already
+  (`Apps/HermesMobile/App/Secrets.swift`, `Apps/HermesMac/Pairing/PairingStore.swift`), but this
+  harness never reads them.
 - **Approval payload shape.** Envelope only, as noted in §2.
 
 Found while building this harness (all recorded in `docs/SECURITY.md`, "gaps"):
