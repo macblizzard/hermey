@@ -1,56 +1,686 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hermey — a native client for your own Hermes agent</title>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermey — the native client for your own Hermes agent</title>
+<meta name="description" content="Hermey is a native iOS and macOS client for the Hermes agent you run yourself. One endless conversation per bot, streamed live over your own Tailscale network. No cloud, no account, no web wrapper.">
+<meta name="theme-color" content="#08090b">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Hermey — the native client for your own Hermes agent">
+<meta property="og:description" content="Your bots, your machine, your network. A real iOS and macOS app for the agent you host yourself.">
+<meta property="og:url" content="https://macblizzard.github.io/hermey/">
+<meta property="og:image" content="https://macblizzard.github.io/hermey/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
 <style>
-  :root { color-scheme: dark; --bg:#0b0b0d; --card:#151519; --line:#26262c; --text:#f5f5f7; --dim:#9a9aa2; --accent:#8be9c0; }
+  :root {
+    color-scheme: dark;
+    --canvas: #08090b;
+    --canvas-2: #0b0c0f;
+    --surface: #101216;
+    --surface-2: #14171c;
+    --line: #1e2228;
+    --line-strong: #2a2f37;
+    --text: #f2f4f6;
+    --text-2: #b6bcc6;
+    --text-3: #7d848f;
+    --mint: #8be9c0;
+    --mint-dim: #4fae8b;
+    --mint-soft: rgba(139, 233, 192, 0.12);
+    --blue: #7fb2ff;
+    --radius: 16px;
+    --max: 1120px;
+    --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text);
-         font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif; }
-  main { max-width:720px; margin:0 auto; padding:64px 24px 96px; }
-  h1 { font-size:44px; letter-spacing:-0.02em; margin:0 0 8px; }
-  p.lede { color:var(--dim); font-size:19px; margin:0 0 40px; }
-  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:40px 0 12px; }
-  a { color:var(--accent); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 22px; margin:12px 0; }
-  code { background:#1e1e24; border:1px solid var(--line); border-radius:6px; padding:2px 6px;
-         font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
-  pre { background:#1e1e24; border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow:auto; }
-  ul { padding-left:20px; } li { margin:6px 0; }
-  p.build { color:var(--dim); font-size:13px; margin:-28px 0 32px; }
-  footer { color:var(--dim); font-size:14px; margin-top:56px; border-top:1px solid var(--line); padding-top:20px; }
-</style>
-</head><body><main>
-  <h1>Hermey</h1>
-  <p class="lede">A native iOS and macOS client for your own Hermes agent. Your bots, your machine, your network.</p>
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--text);
+    font: 16px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: var(--mint); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--mint); outline-offset: 3px; border-radius: 6px; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  .eyebrow {
+    font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--mint-dim); margin: 0 0 14px;
+  }
+  h1, h2, h3 { letter-spacing: -0.022em; }
 
-  <!-- build:start -->
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 30;
+    backdrop-filter: saturate(140%) blur(14px);
+    background: rgba(8, 9, 11, 0.78);
+    border-bottom: 1px solid rgba(30, 34, 40, 0.9);
+  }
+  .nav-inner {
+    display: flex; align-items: center; gap: 22px;
+    height: 62px; max-width: var(--max); margin: 0 auto; padding: 0 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand span { font-size: 16px; }
+  .nav-links { display: flex; gap: 20px; margin-left: auto; }
+  .nav-links a { color: var(--text-2); font-size: 14px; }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  .nav-cta {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--mint); color: #05231a; font-weight: 640; font-size: 13.5px;
+    padding: 8px 14px; border-radius: 9px; white-space: nowrap;
+  }
+  .nav-cta:hover { text-decoration: none; background: #9df0cb; }
+  @media (max-width: 760px) { .nav-links { display: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; overflow: hidden; padding: 78px 0 40px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -20% 0 auto 0; height: 620px; pointer-events: none;
+    background:
+      radial-gradient(680px 320px at 18% 8%, rgba(139, 233, 192, 0.10), transparent 70%),
+      radial-gradient(560px 300px at 84% 0%, rgba(127, 178, 255, 0.08), transparent 70%);
+  }
+  .hero-grid {
+    position: relative; display: grid; grid-template-columns: 1.05fr 0.95fr;
+    gap: 56px; align-items: center;
+  }
+  .hero h1 { font-size: clamp(34px, 4.6vw, 55px); line-height: 1.05; margin: 0 0 18px; font-weight: 680; }
+  .hero h1 em { font-style: normal; color: var(--mint); }
+  .lede { font-size: 18px; color: var(--text-2); margin: 0 0 26px; max-width: 34em; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 12px 20px; border-radius: 11px; font-weight: 620; font-size: 15px;
+    border: 1px solid transparent; cursor: pointer;
+  }
+  .btn:hover { text-decoration: none; }
+  .btn-primary { background: var(--mint); color: #05231a; }
+  .btn-primary:hover { background: #9df0cb; }
+  .btn-ghost { background: var(--surface); color: var(--text); border-color: var(--line-strong); }
+  .btn-ghost:hover { background: var(--surface-2); }
+  .btn svg { width: 16px; height: 16px; }
+  .fineprint { color: var(--text-3); font-size: 13px; margin: 16px 0 0; }
+
+  /* build chip — the text between the markers is rewritten on every publish */
+  .build {
+    display: block; margin: 14px 0 0; padding: 0; background: none; border: 0;
+    color: var(--text-3); font-size: 12.5px;
+  }
+  .build strong { color: var(--text-2); font-weight: 600; }
+  .build code { background: none; border: 0; padding: 0; color: var(--text-3); font-size: 12px; }
+
+  /* ---------- device mock ---------- */
+  .device {
+    position: relative; justify-self: center; width: 300px;
+    border-radius: 38px; padding: 11px;
+    background: linear-gradient(160deg, #23272e, #101216 55%);
+    border: 1px solid var(--line-strong);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  }
+  .screen {
+    border-radius: 30px; overflow: hidden; background: var(--canvas-2);
+    border: 1px solid #000; height: 528px; display: flex; flex-direction: column;
+  }
+  .screen-top {
+    display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--line); background: var(--canvas-2);
+  }
+  .avatar {
+    width: 26px; height: 26px; border-radius: 8px; flex: none;
+    background: linear-gradient(145deg, var(--mint), var(--mint-dim));
+  }
+  .screen-top b { font-size: 13px; font-weight: 620; }
+  .screen-top small { display: block; color: var(--text-3); font-size: 10.5px; line-height: 1.35; }
+  .dot { margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
+  .thread { padding: 14px 12px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+  .bubble {
+    max-width: 84%; font-size: 12.5px; line-height: 1.5; padding: 9px 11px; border-radius: 13px;
+  }
+  .bubble.bot { background: var(--surface); border: 1px solid var(--line); color: var(--text-2);
+                border-bottom-left-radius: 5px; }
+  .bubble.me { background: rgba(139, 233, 192, 0.14); border: 1px solid rgba(139, 233, 192, 0.26);
+               color: #d7f7ea; align-self: flex-end; border-bottom-right-radius: 5px; }
+  .bubble .code {
+    margin-top: 8px; padding: 8px 9px; border-radius: 8px; background: #0a0c0f;
+    border: 1px solid var(--line); font: 11px/1.55 var(--mono); color: var(--text-2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bubble .code i { color: var(--mint-dim); font-style: normal; }
+  .tick { color: var(--mint); }
+  .composer {
+    margin: 10px; padding: 9px 11px; border-radius: 13px; border: 1px solid var(--line-strong);
+    background: var(--surface); display: flex; align-items: center; gap: 8px;
+    color: var(--text-3); font-size: 11.5px;
+  }
+  .composer .send {
+    margin-left: auto; width: 24px; height: 24px; border-radius: 7px; background: var(--mint);
+    display: grid; place-items: center;
+  }
+  .composer .send svg { width: 12px; height: 12px; }
+  .reactions {
+    display: flex; gap: 5px; align-self: flex-start; margin-top: -4px;
+  }
+  .reactions span {
+    font-size: 11px; line-height: 1; padding: 4px 6px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--text-2);
+  }
+  .typing { display: flex; gap: 3px; align-items: center; padding-left: 2px; }
+  .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--mint-dim); display: block; }
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 44px; }
+    .device { width: 268px; }
+    .screen { height: 500px; }
+  }
+
+  /* ---------- stats ---------- */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--line); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; margin: 56px 0 0;
+  }
+  .stat { background: var(--canvas-2); padding: 18px 20px; }
+  .stat b { display: block; font-size: 15px; font-weight: 650; }
+  .stat span { color: var(--text-2); font-size: 12.5px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- sections ---------- */
+  section.block { padding: 84px 0 0; }
+  .block-head { max-width: 46em; margin: 0 0 34px; }
+  .block-head h2 { font-size: clamp(24px, 3vw, 33px); margin: 0 0 10px; font-weight: 660; }
+  .block-head p { color: var(--text-2); margin: 0; font-size: 16.5px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  /* A grid item's min-content width is the longest unbreakable line inside it — a shell command, in
+     this page's case — and that is what pushed the whole document sideways. */
+  .cards > *, .steps > *, .platforms > *, .stats > * { min-width: 0; }
+  @media (max-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 620px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: linear-gradient(180deg, var(--surface), var(--canvas-2));
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 22px 24px;
+    position: relative; overflow: hidden;
+  }
+  .card::after {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+  }
+  .card h3 { font-size: 16px; margin: 14px 0 7px; font-weight: 640; }
+  .card p { color: var(--text-2); font-size: 14.5px; margin: 0; }
+  .glyph {
+    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--mint-soft); border: 1px solid rgba(139, 233, 192, 0.2); color: var(--mint);
+  }
+  .glyph svg { width: 17px; height: 17px; }
+
+  /* ---------- steps ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+  @media (max-width: 860px) { .steps { grid-template-columns: 1fr; } }
+  .step {
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 22px;
+    background: var(--canvas-2); display: flex; flex-direction: column;
+  }
+  .step-code { margin-top: auto; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .step-code .bar {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px;
+    background: #0c0f12; border-bottom: 1px solid var(--line);
+    color: var(--text-3); font: 600 10.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+  .step-code .bar .copy-btn { margin-left: auto; padding: 6px 9px; font-size: 11px; }
+  .step-code pre { border: 0; border-radius: 0; margin: 0; }
+  .panel {
+    margin-top: 16px; border: 1px solid var(--line-strong); border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--surface), var(--canvas-2)); overflow: hidden;
+  }
+  .panel-bar {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 16px;
+    border-bottom: 1px solid var(--line); background: #0c0f12;
+    color: var(--text-3); font: 600 10.5px/1 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+  }
+  .panel-bar .copy-btn { margin-left: auto; text-transform: none; letter-spacing: 0; font: 600 12px/1 var(--font); }
+  .panel pre { border: 0; border-radius: 0; padding: 16px; font-size: 13px; background: transparent; }
+  .panel-note {
+    margin: 0; padding: 0 16px 16px; color: var(--text-2); font-size: 13.5px;
+  }
+  .step .copy-line { margin-bottom: 0; }
+  .step .n {
+    counter-increment: step; font: 600 12px/1 var(--mono); color: #05231a; background: var(--mint);
+    width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+  }
+  .step .n::before { content: counter(step); }
+  .step h3 { font-size: 15.5px; margin: 13px 0 8px; font-weight: 640; }
+  .step p { margin: 0 0 12px; color: var(--text-2); font-size: 14.5px; }
+  pre {
+    background: #0a0c0f; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; margin: 0; max-width: 100%;
+    /* Scrolls inside the card, never wraps: a wrapped shell command looks like it has a line break in
+       it, and copying a URL that is split across two visual lines is how people break their install.
+       The card is the scroll container because its grid item has `min-width: 0`. */
+    white-space: pre; overflow-x: auto; overscroll-behavior-x: contain;
+    /* A flex child's floor is its content too, not just a grid child's. */
+    min-width: 0; width: 100%;
+    font: 12.5px/1.6 var(--mono); color: var(--text-2);
+  }
+  pre .c { color: var(--text-3); }
+  code { font-family: var(--mono); font-size: .93em; }
+  p code, li code, td code {
+    background: #0e1114; border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+    color: var(--text-2); word-break: break-all;
+  }
+  .copy-line { display: flex; gap: 8px; align-items: center; margin: 0 0 10px; min-width: 0; max-width: 100%; }
+  .copy-line code {
+    flex: 1; min-width: 0; background: #0a0c0f; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .copy-btn {
+    font: 600 12px/1 var(--font); color: var(--text); background: var(--surface-2);
+    border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 12px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .copy-btn:hover { background: #1a1e24; }
+
+  /* ---------- platforms ---------- */
+  .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .platforms { grid-template-columns: 1fr; } }
+  .platform {
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+    background: linear-gradient(180deg, var(--surface), var(--canvas-2));
+    display: flex; flex-direction: column;
+  }
+  .platform .foot { margin-top: auto; padding-top: 18px; }
+  .platform header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .platform h3 { font-size: 17px; margin: 0; font-weight: 650; }
+  .platform .req { color: var(--text-3); font-size: 12.5px; margin: 0 0 16px; }
+  .platform ul { margin: 0 0 18px; padding-left: 19px; color: var(--text-2); font-size: 14.5px; }
+  .platform li { margin: 5px 0; }
+
+  /* ---------- faq ---------- */
+  .faq { border-top: 1px solid var(--line); }
+  .faq details { border-bottom: 1px solid var(--line); padding: 16px 2px; }
+  .faq summary {
+    cursor: pointer; font-weight: 600; font-size: 15.5px; list-style: none;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; margin-left: auto; color: var(--text-2); font-size: 19px; font-weight: 400; }
+  .faq details[open] summary::after { content: "–"; }
+  .faq p { color: var(--text-2); font-size: 14.8px; margin: 10px 0 2px; max-width: 48em; }
+
+  /* ---------- footer ---------- */
+  footer.site {
+    margin-top: 84px; border-top: 1px solid var(--line); padding: 34px 0 54px;
+    color: var(--text-3); font-size: 13.5px;
+  }
+  .foot-grid { display: flex; flex-wrap: wrap; gap: 26px; align-items: flex-start; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 18px; margin-left: auto; }
+  .foot-links a { color: var(--text-2); }
+  .foot-note { margin: 22px 0 0; max-width: 58em; line-height: 1.7; color: var(--text-2); }
+  .skip {
+    position: absolute; left: -9999px; top: 0; background: var(--mint); color: #05231a;
+    padding: 10px 16px; border-radius: 0 0 8px 0; z-index: 100;
+  }
+  .skip:focus { left: 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<nav class="nav" aria-label="Primary">
+  <div class="nav-inner">
+    <a class="brand" href="#top"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:22px;height:22px;border-radius:6px;flex:none">
+          <defs><linearGradient id="hm1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8be9c0"/><stop offset="1" stop-color="#4fae8b"/>
+          </linearGradient></defs>
+          <rect width="24" height="24" rx="6" fill="url(#hm1)"/>
+          <path d="M6.2 8.4h11.6v6.1h-5.3L9 17v-2.5H6.2z" fill="#08251c"/>
+        </svg><span>Hermey</span></a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/macblizzard/hermey">GitHub</a>
+    </div>
+    <a class="nav-cta" href="https://github.com/macblizzard/hermey/releases/latest">Download</a>
+  </div>
+</nav>
+
+<main id="main">
+  <header class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">iOS · macOS · self-hosted</p>
+        <h1>Your agent,<br>in a <em>real app</em>.</h1>
+        <p class="lede">
+          Hermey is a native iOS and macOS app for the Hermes agent you run yourself. One endless
+          conversation per bot, streamed live over your own Tailscale network — no cloud in the middle,
+          no account to create, no web page pretending to be an app.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#install">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h9.2M8.6 4.4 12.2 8l-3.6 3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Install Hermey
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/macblizzard/hermey">View source</a>
+        </div>
+        <p class="fineprint">Free and MIT licensed. The builds are unsigned — you sideload the app with your own certificate. The host stays on your machine.</p>
+
+        <!-- build:start -->
     <p class="build">Serving build <strong>0.1.137</strong> (build 137) · <code>Hermey-0.1.137-b137.ipa</code></p>
   <!-- build:end -->
+      </div>
 
-  <h2>Install the host</h2>
-  <div class="card">
-    <p>On the machine that already runs Hermes:</p>
-    <pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash
-hermey pair</code></pre>
-    <p style="color:var(--dim);margin-bottom:0">Then scan the QR with the app.</p>
+      <div class="device" role="img" aria-label="The Hermey app on iPhone: a bot conversation with streamed markdown and a code block.">
+        <div class="screen">
+          <div class="screen-top">
+            <div class="avatar"></div>
+            <div><b>cody</b><small>Lead developer · direct · 13 ms</small></div>
+            <div class="dot"></div>
+          </div>
+          <div class="thread">
+            <div class="bubble bot">
+              Picked up the fix — the pane was clipping because the window minimum followed the sidebar,
+              not the arrangement.
+              <div class="code"><i>swift</i>&nbsp; window.minWidth = WindowLayout.minimum(…)</div>
+            </div>
+            <div class="bubble me">Ship it and send me the link.</div>
+            <div class="bubble bot">Done. Build 137 is live on your tailnet. <span class="tick">✓</span></div>
+            <div class="reactions" aria-hidden="true"><span>👍 1</span><span>🎉 1</span></div>
+            <div class="typing" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+          <div class="composer">Ask cody anything…
+            <div class="send"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 13V3.4M4.2 7.2 8 3.4l3.8 3.8" stroke="#05231a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><b>Native SwiftUI</b><span>one codebase, two real apps</span></div>
+        <div class="stat"><b>iOS 17+ · macOS 14+</b><span>no web wrapper anywhere</span></div>
+        <div class="stat"><b>Zero telemetry</b><span>no analytics, no accounts</span></div>
+        <div class="stat"><b>MIT licensed</b><span>read it, fork it, host it</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="block-head">
+        <p class="eyebrow">What it does</p>
+        <h2>Built for one person, one machine.</h2>
+        <p>Hermey is not a chat client bolted onto an API. It is the front end to a host you already run,
+           so it can do the things a web page cannot.</p>
+      </div>
+
+      <div class="cards">
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.2 3.6h11.6v7.3H8l-3.1 2.4v-2.4H2.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+          <h3>One conversation per bot</h3>
+          <p>The bot list is the home screen. Tap a bot and you are where you left off — no session
+             list, no titles to manage, nothing to clean up.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.6 8h3l1.6-4.2L8.4 12l1.5-4h3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Live over your own network</h3>
+          <p>Streaming over a WebSocket on your tailnet, with the round trip in the header so a slow
+             link is visible instead of mysterious.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4.2h12M2 8h12M2 11.8h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>Reads like a document</h3>
+          <p>Full markdown — headings, tables, quotes — with code blocks that have their own copy button
+             and tick, and reasoning you can open when you want it.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7 2.6 4.4 8l2.6 5.4M9 2.6 11.6 8 9 13.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Speaks, and shows pictures</h3>
+          <p>Read a long answer aloud in the system voice, attach files and screenshots, and open any
+             image full screen at full resolution.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.8" y="2.6" width="12.4" height="8.6" rx="1.4" stroke="currentColor" stroke-width="1.4"/><path d="M5.4 13.6h5.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>The bot's own computer</h3>
+          <p>Open the headless desktop your agent works on, in a pane beside the chat — mouse and
+             keyboard, so you can watch a run or take over.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.9 13.2 4v4c0 3-2.2 5.3-5.2 6.1C5 13.3 2.8 11 2.8 8V4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+          <h3>Yours alone</h3>
+          <p>Pair once with a device token, then talk. No login, no sync service, no analytics — the app
+             knows your host and nothing else.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="install">
+    <div class="wrap">
+      <div class="block-head">
+        <p class="eyebrow">Install</p>
+        <h2>Three steps, one of which is a scan.</h2>
+        <p>The host runs where Hermes already runs. The apps are unsigned, so they are sideloaded or
+           opened from the command line — that is the price of not having an account.</p>
+      </div>
+
+      <div class="steps">
+        <article class="step">
+          <div class="n"></div>
+          <h3>Install the host</h3>
+          <p>On the machine that already runs Hermes. One command, below — the script lives in the repo,
+             so it can be read before it is run.</p>
+        </article>
+
+        <article class="step">
+          <div class="n"></div>
+          <h3>Pair the app</h3>
+          <p><code>hermey pair</code> prints a pairing link and draws a QR code in that terminal — the QR
+             is not on this page. Paste the link or scan it; the app keeps the token in the Keychain.</p>
+          <div class="step-code">
+            <div class="bar">pairing link</div>
+            <pre>hermey://pair?host=100.x.y.z:8787</pre>
+          </div>
+        </article>
+
+        <article class="step">
+          <div class="n"></div>
+          <h3>Talk to your bots</h3>
+          <p>Every profile on the host shows up as a bot. Pick one and its conversation resumes exactly
+             where it stopped.</p>
+          <div class="step-code">
+            <div class="bar">bots on the host</div>
+            <pre>cody · atlas · crony · sage</pre>
+          </div>
+        </article>
+      </div>
+
+      <!-- Wide enough for the command to be read in one line, which a third of the grid was not. -->
+      <div class="panel">
+        <div class="panel-bar">
+          <span>install · on the host</span>
+          <button class="copy-btn" type="button" data-copy="install-cmd">Copy command</button>
+        </div>
+        <pre id="install-cmd">curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash</pre>
+        <p class="panel-note">Then <code>hermey pair</code> in the same terminal — it prints the pairing link
+          and draws the QR code you scan.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="platforms">
+    <div class="wrap">
+      <div class="block-head">
+        <p class="eyebrow">Platforms</p>
+        <h2>Two apps, one conversation.</h2>
+        <p>The phone is for when you are away from the desk. The Mac app is for when you are not. Both
+           talk to the same host, and each keeps its own place in the same thread.</p>
+      </div>
+
+      <div class="platforms">
+        <article class="platform">
+          <header>
+            <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="4.2" y="1.4" width="7.6" height="13.2" rx="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M7.2 12.9h1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+            <h3>iPhone &amp; iPad</h3>
+          </header>
+          <p class="req">iOS 17 or later · installed with AltStore or SideStore</p>
+          <ul>
+            <li>Add the source to your sideloading app once, then install from it</li>
+            <li>Resigns with your own certificate — no developer account needed</li>
+            <li>Works over any network your tailnet reaches</li>
+          </ul>
+          <p style="margin:0 0 8px;color:var(--text-2);font-size:12.5px">AltStore / SideStore source</p>
+          <div class="copy-line">
+            <code id="source-url">https://macblizzard.github.io/hermey/altstore.json</code>
+            <button class="copy-btn" type="button" data-copy="source-url">Copy</button>
+          </div>
+          <div class="foot">
+            <a class="btn btn-ghost" href="https://github.com/macblizzard/hermey/blob/main/docs/APPS.md" style="padding:10px 16px;font-size:14px">Sideloading guide</a>
+            <p style="margin:12px 0 0;color:var(--text-2);font-size:12.5px">
+              Or <a href="altstore.json">open the source file</a> directly.
+            </p>
+          </div>
+        </article>
+
+        <article class="platform">
+          <header>
+            <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.6" y="2.6" width="12.8" height="8.4" rx="1.4" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 13.6h4.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+            <h3>macOS</h3>
+          </header>
+          <p class="req">macOS 14 or later · unsigned zip</p>
+          <ul>
+            <li>Download, move Hermey to Applications, right-click → Open the first time</li>
+            <li>Sidebar, chat and the bot's computer in one window</li>
+            <li>⌘K for the command palette, ⌘↩ to send, ⌘. to interrupt a run</li>
+          </ul>
+          <div class="foot">
+            <a class="btn btn-ghost" href="https://github.com/macblizzard/hermey/releases/latest" style="padding:10px 16px;font-size:14px">Download for macOS</a>
+            <p style="margin:12px 0 0;color:var(--text-2);font-size:12.5px">
+              Prefer to build it? <code>git clone</code> the repo and open <code>HermesApps.xcodeproj</code>.
+            </p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="faq">
+    <div class="wrap">
+      <div class="block-head">
+        <p class="eyebrow">Questions</p>
+        <h2>The things people ask before installing.</h2>
+      </div>
+
+      <div class="faq">
+        <details open>
+          <summary>Do I need Hermes already running?</summary>
+          <p>Yes. Hermey is a client; the agent, its tools and its memory live on your host. If you have
+             a Hermes install with profiles you talk to, Hermey talks to those same profiles.</p>
+        </details>
+
+        <details>
+          <summary>Why Tailscale?</summary>
+          <p>Because it gives you a private address for your own machine from anywhere, without exposing
+             a port to the internet. The apps speak to that address directly; there is no relay of ours
+             in between.</p>
+        </details>
+
+        <details>
+          <summary>Is it signed? Do I need a developer account?</summary>
+          <p>The builds are unsigned on purpose — signing them would tie them to one team. On iPhone you
+             sideload with AltStore or SideStore, which re-signs with a certificate you already have. On
+             the Mac you right-click → Open once and macOS remembers.</p>
+        </details>
+
+        <details>
+          <summary>Does it send anything anywhere?</summary>
+          <p>No analytics, no crash reporting, no account. The app stores a host address and a token,
+             and talks to that host. Anything that leaves your machine leaves because your agent chose
+             to send it.</p>
+        </details>
+
+        <details>
+          <summary>What does it cost?</summary>
+          <p>Nothing. MIT licensed, source on GitHub, no in-app purchases and nothing to subscribe to.</p>
+        </details>
+
+        <details>
+          <summary>Can I run it against more than one host?</summary>
+          <p>Yes — pair another host from Settings and switch between them. Each host keeps its own
+             pairing, its own bots and its own read state.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <div class="foot-grid">
+      <a class="brand" href="#top"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" style="width:20px;height:20px;border-radius:6px;flex:none">
+          <defs><linearGradient id="hm2" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8be9c0"/><stop offset="1" stop-color="#4fae8b"/>
+          </linearGradient></defs>
+          <rect width="24" height="24" rx="6" fill="url(#hm2)"/>
+          <path d="M6.2 8.4h11.6v6.1h-5.3L9 17v-2.5H6.2z" fill="#08251c"/>
+        </svg><span>Hermey</span></a>
+      <div class="foot-links">
+        <a href="https://github.com/macblizzard/hermey">Source</a>
+        <a href="https://github.com/macblizzard/hermey/blob/main/docs/APPS.md">Docs</a>
+        <a href="https://github.com/macblizzard/hermey/issues">Issues</a>
+        <a href="https://github.com/macblizzard/hermey/releases">Releases</a>
+        <a href="altstore.json">AltStore source</a>
+      </div>
+    </div>
+    <p style="margin:26px 0 0">
+      <a class="btn btn-primary" href="#install" style="padding:10px 16px;font-size:14px">Install Hermey</a>
+    </p>
+    <p class="foot-note">
+      Hermey is a client for the <a href="https://hermes-agent.nousresearch.com/docs">Hermes agent</a>,
+      an open-source agent you host yourself. Not affiliated with Apple. Unsigned builds — sideloading
+      and the certificate are yours to arrange. MIT licensed.
+    </p>
   </div>
+</footer>
 
-  <h2>Install the apps</h2>
-  <ul>
-    <li><strong>iOS</strong> — add this source to AltStore or SideStore:<br><code>https://macblizzard.github.io/hermey/altstore.json</code></li>
-    <li><strong>macOS</strong> — <a href="https://github.com/macblizzard/hermey/releases/latest">download the build</a>, right-click → Open the first time.</li>
-  </ul>
-
-  <h2>Files</h2>
-  <ul>
-    <li><a href="altstore.json">altstore.json</a> — AltStore/SideStore source</li>
-    <li><a href="https://github.com/macblizzard/hermey/releases/latest">the latest unsigned .ipa</a> — sign with your own certificate</li>
-    <li><a href="icon-512.png">icon-512.png</a></li>
-  </ul>
-
-  <footer>
-    Source, docs and issues: <a href="https://github.com/macblizzard/hermey">github.com/macblizzard/hermey</a> ·
-    MIT licensed · unsigned builds, see <a href="https://github.com/macblizzard/hermey/blob/main/docs/APPS.md">docs/APPS.md</a>
-  </footer>
-</main></body></html>
+<script>
+  // Progressive enhancement only: the page is complete and correct without this.
+  document.querySelectorAll('.copy-btn[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = document.getElementById(btn.getAttribute('data-copy'));
+      if (!target) return;
+      var text = target.textContent.trim();
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = was; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var area = document.createElement('textarea');
+        area.value = text; document.body.appendChild(area); area.select();
+        try { document.execCommand('copy'); } catch (e) {}
+        document.body.removeChild(area); done();
+      }
+    });
+  });
+</script>
+</body>
+</html>
