@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.75",
+          "buildVersion": "75",
+          "date": "2026-11-10T08:30:29Z",
+          "localizedDescription": "Back button and bar chrome restored (edge-swipe works again), unread count moved into the chat header strip, shorter menu popups.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.75/Hermey-0.1.75-b75.ipa",
+          "size": 1964973,
+          "minOSVersion": "17.0",
+          "sha256": "ccd33e4ff191afc4acae9311948bcfddefbdf0ddf28d5cbcef89429d1e899413"
+        },
+        {
           "version": "0.1.66",
           "buildVersion": "66",
           "date": "2026-11-10T07:35:43Z",
@@ -62,16 +72,6 @@
           "size": 1907809,
           "minOSVersion": "17.0",
           "sha256": "29db57b99a7a837a8d76c88c1dd128d7b8dbab7a30ebf652b668277b8fe24c55"
-        },
-        {
-          "version": "0.1.49",
-          "buildVersion": "49",
-          "date": "2026-11-10T01:05:06Z",
-          "localizedDescription": "Build from CI run 42732590411.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.49/Hermey-0.1.49-b49.ipa",
-          "size": 1905603,
-          "minOSVersion": "17.0",
-          "sha256": "d4cfc94752d3bda2b27f59b7d7d3ed11181eb49b70f8044466b8b7edc32c4a48"
         }
       ],
       "appPermissions": {
