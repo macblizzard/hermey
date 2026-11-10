@@ -321,6 +321,24 @@ public actor GatewayClient: GatewayClientProtocol {
         return try GatewayPayloadDecoder.history(result, limit: limit)
     }
 
+    /// One page of rows older than the transcript a resume delivered.
+    ///
+    /// `cursor` travels to the bridge, which answers from the copy of this connection's own resume
+    /// — the rows the user is already reading. The gateway itself only holds the live session's
+    /// MODEL history, which is a different (shorter) set, so this call is never forwarded.
+    public func historyPage(_ id: SessionID, profile: String?, cursor: Int, limit: Int) async throws -> HistoryPage {
+        var params: [String: JSONValue] = [
+            "session_id": .string(id),
+            "cursor": .int(Int64(cursor)),
+            "limit": .int(Int64(limit)),
+        ]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        let result = try await perform("session.history",
+                                       params: .object(params),
+                                       timeout: timeouts.call)
+        return try GatewayPayloadDecoder.historyPage(result)
+    }
+
     // MARK: Shared conversation pointer
 
     /// The bridge's answer, not the gateway's: the pointer is HTTP on the bridge surface, so it

@@ -68,6 +68,20 @@ public final class AppModel: ObservableObject {
     /// the row.
     @Published public private(set) var draftSessionIDs: Set<SessionID> = []
     @Published public private(set) var transcript: [TranscriptEntry] = []
+    /// Where "load earlier" continues from, and how many rows the whole conversation holds.
+    ///
+    /// A long conversation is paged: the host ships only its newest page, because one 3.4 MB
+    /// `session.resume` frame is a message iOS refuses to deliver ("Message too long") and the bot
+    /// chat then never opens. `earlierCursor` is nil when the transcript on screen is the whole
+    /// conversation, so the UI only offers the row when there is something behind it.
+    @Published public private(set) var earlierCursor: Int?
+    @Published public private(set) var historyTotal = 0
+    @Published public private(set) var loadingEarlier = false
+    /// Bumped on every prepend, so a view can tell "older rows arrived" from "a new turn landed"
+    /// and keep the reading position instead of jumping to the bottom.
+    @Published public private(set) var earlierLoads = 0
+    /// The row the reader was looking at when a page was prepended (the fold), for re-anchoring.
+    @Published public private(set) var earlierAnchor: TranscriptEntry.ID?
     @Published public private(set) var runningSessions: Set<SessionID> = []
 
     // MARK: Live turn
@@ -462,6 +476,10 @@ public final class AppModel: ObservableObject {
         draftSessionIDs = []
         sessions = []
         transcript = []
+        earlierCursor = nil
+        historyTotal = 0
+        loadingEarlier = false
+        earlierAnchor = nil
         streamingText = ""
         reasoningText = ""
         liveTools = []
@@ -478,6 +496,8 @@ public final class AppModel: ObservableObject {
     public func select(_ id: SessionID) async {
         selectedSessionID = id
         transcript = []
+        earlierCursor = nil
+        historyTotal = 0
         turnRowStart = 0
         streamingText = ""
         reasoningText = ""
@@ -497,6 +517,8 @@ public final class AppModel: ObservableObject {
             let resumed = try await client.resumeSession(id, profile: selectedBotID)
             guard epoch == botEpoch, selectedSessionID == id else { return }
             transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: id)
+            earlierCursor = resumed.earlierCursor
+            historyTotal = resumed.historyTotal
             pendingRequests = resumed.openRequests
             adopt(resumed, session: id)
         } catch is CancellationError {
@@ -568,6 +590,8 @@ public final class AppModel: ObservableObject {
                 entries.append(TranscriptEntry(id: "recovered-\(sid)-\(entries.count)", role: .assistant, text: localText))
             }
             transcript = SentAttachmentVault.decorate(entries, sessionID: sid)
+            earlierCursor = resumed.earlierCursor
+            historyTotal = resumed.historyTotal
             pendingRequests = resumed.openRequests
             streamingText = ""
             reasoningText = ""
@@ -844,6 +868,8 @@ public final class AppModel: ObservableObject {
                 let resumed = try await client.resumeSession(stored, profile: botID)
                 selectedSessionID = stored
                 transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: stored)
+                earlierCursor = resumed.earlierCursor
+                historyTotal = resumed.historyTotal
                 pendingRequests = resumed.openRequests
                 adopt(resumed, session: stored)
                 // Whatever actually opened is the best cache this device can keep — including a
@@ -1780,6 +1806,42 @@ public final class AppModel: ObservableObject {
     /// were flushed. Same rows, same ids, drawn live.
     public var liveToolEntries: [TranscriptEntry] {
         liveTools.map(Self.toolEntry(for:))
+    }
+
+    /// Whether the host holds rows older than the ones on screen.
+    public var hasEarlierHistory: Bool { (earlierCursor ?? 0) > 0 }
+
+    /// Pull the next page of older rows and put them above what is already drawn.
+    ///
+    /// The page ends exactly where the oldest row on screen begins — the bridge slices its copy of
+    /// this connection's own resume by `cursor` — so this can only extend the transcript, never
+    /// repeat or skip a row. Prepending shifts every row down, so the fold is remembered as
+    /// `earlierAnchor` and the views re-anchor to it instead of jumping to the newest message.
+    public func loadEarlierHistory(limit: Int = 150) async {
+        guard !loadingEarlier, let cursor = earlierCursor, cursor > 0,
+              let sid = selectedSessionID else { return }
+        loadingEarlier = true
+        defer { loadingEarlier = false }
+        let fold = transcript.first?.id
+        do {
+            let page = try await client.historyPage(sid, profile: selectedBotID, cursor: cursor, limit: limit)
+            guard selectedSessionID == sid else { return }
+            earlierCursor = page.cursor
+            if page.total > 0 { historyTotal = page.total }
+            guard !page.entries.isEmpty else { return }
+            // A row already on screen is never inserted twice: a page that overlaps the current
+            // transcript (a host that answered with a wider slice) must not double a message.
+            let known = Set(transcript.map(\.id))
+            let fresh = page.entries.filter { !known.contains($0.id) }
+            guard !fresh.isEmpty else { return }
+            transcript.insert(contentsOf: SentAttachmentVault.decorate(fresh, sessionID: sid), at: 0)
+            turnRowStart += fresh.count
+            earlierAnchor = fold
+            earlierLoads += 1
+        } catch {
+            guard selectedSessionID == sid else { return }
+            lastSendError = "could not load earlier messages: \(error.localizedDescription)"
+        }
     }
 
     /// The rows the transcript draws. Every other reader (counts, search over history, the last

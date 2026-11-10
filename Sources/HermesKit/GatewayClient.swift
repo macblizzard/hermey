@@ -79,6 +79,15 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
                        idempotencyKey: String?) async throws -> SessionID
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry]
 
+    /// One page of rows older than the transcript a resume already delivered.
+    ///
+    /// A long conversation does not fit in one WebSocket message: iOS refuses to deliver a
+    /// multi-megabyte frame ("Message too long"), so the bridge ships the newest page with the
+    /// resume and serves older pages from its own copy of it. `cursor` is the offset the resume (or
+    /// the previous page) reported; the page comes back ending exactly where the caller's oldest
+    /// row begins, so prepending it cannot leave a hole.
+    func historyPage(_ id: SessionID, profile: String?, cursor: Int, limit: Int) async throws -> HistoryPage
+
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
@@ -367,6 +376,13 @@ public extension GatewayClientProtocol {
         try await resumeSession(id)
     }
 
+    /// A host that does not page transcripts answers "nothing older", so the UI just has no
+    /// "load earlier" row instead of failing the open.
+    func historyPage(_ id: SessionID, profile: String?, cursor: Int, limit: Int) async throws -> HistoryPage {
+        _ = (id, profile, cursor, limit)
+        return .none
+    }
+
     /// A client that cannot carry an idempotency key still creates the session; it just cannot
     /// coalesce two devices opening the same bot at the same instant.
     func createSession(model: String?, provider: String?, profile: String?,
@@ -430,12 +446,22 @@ public struct SessionResume: Sendable {
     public let inflight: InflightTurn?
     /// Approvals/clarify questions still waiting for an answer.
     public let openRequests: [ServerRequest]
+    /// Offset of `entries.first` in the host's transcript, and how many rows it holds in total.
+    ///
+    /// A long conversation is paged: the host ships only its newest page, and `earlierCursor`
+    /// (nil when the page is the whole transcript) is what `historyPage` continues from. Both were
+    /// added after a 3.4 MB resume frame made a bot chat unopenable on iOS.
+    public let earlierCursor: Int?
+    public let historyTotal: Int
 
-    public init(id: SessionID, entries: [TranscriptEntry], inflight: InflightTurn?, openRequests: [ServerRequest]) {
+    public init(id: SessionID, entries: [TranscriptEntry], inflight: InflightTurn?, openRequests: [ServerRequest],
+                earlierCursor: Int? = nil, historyTotal: Int = 0) {
         self.id = id
         self.entries = entries
         self.inflight = inflight
         self.openRequests = openRequests
+        self.earlierCursor = earlierCursor
+        self.historyTotal = historyTotal
     }
 
     /// Whether a turn is *still running* on the host, as the resume reported it.
@@ -461,6 +487,25 @@ public struct InflightTurn: Sendable {
         self.assistantText = assistantText
         self.streaming = streaming
     }
+}
+
+/// One page of an older transcript, as the bridge serves it.
+///
+/// `cursor` is the offset of `entries.first` in the host's transcript, or nil when the page reached
+/// the start of the conversation — the app renders a "load earlier" row until it is nil.
+public struct HistoryPage: Sendable, Equatable {
+    public let entries: [TranscriptEntry]
+    public let cursor: Int?
+    public let total: Int
+
+    public init(entries: [TranscriptEntry], cursor: Int?, total: Int) {
+        self.entries = entries
+        self.cursor = cursor
+        self.total = total
+    }
+
+    /// A host (or stub) with nothing older to give.
+    public static let none = HistoryPage(entries: [], cursor: nil, total: 0)
 }
 
 public struct TranscriptEntry: Identifiable, Hashable, Sendable {

@@ -42,6 +42,7 @@ EVENTS = frozenset(
         "session_pointer",
         "bot_message", "bots.purge", "rooms.list", "rooms.create", "rooms.send", "rooms.disband", "rooms.rename", "bots.state",
         "display_open", "display_close",
+        "history_page", "history_page_miss", "history_paged",
         "http",
     }
 )

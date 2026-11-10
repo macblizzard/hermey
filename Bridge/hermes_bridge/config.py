@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from .history_paging import DEFAULT_CACHE_BYTES, DEFAULT_PAGE_BYTES, DEFAULT_PAGE_MESSAGES
 from .policy import is_valid_method_name
 
 DEFAULT_FRAME_CAP = 1024 * 1024
@@ -85,6 +86,12 @@ class BridgeConfig:
     # The default has to clear an 8 MiB image in base64 (~10.7 MiB): at 1 MiB every large photo
     # closed the socket with 1009 instead of attaching, so the ceiling is the documented maximum.
     frame_cap: int = MAX_FRAME_CAP
+    # Transcript paging (see ``history_paging``): the resume ships only its newest page, and older
+    # pages come from the copy this connection kept. The byte ceiling is the one that matters — a
+    # 3.4 MB resume frame is what iOS refuses with "Message too long" (EMSGSIZE).
+    history_page_messages: int = DEFAULT_PAGE_MESSAGES
+    history_page_bytes: int = DEFAULT_PAGE_BYTES
+    history_cache_bytes: int = DEFAULT_CACHE_BYTES
     connect_timeout: float = 5.0
     max_pending_requests: int = 256
     audit_logger_name: str = "hermes_bridge.audit"
@@ -104,6 +111,9 @@ class BridgeConfig:
             gateway_token=os.environ.get("HERMES_BRIDGE_GATEWAY_TOKEN") or None,
             db_path=default_db_path(),
             frame_cap=_env_int("HERMES_BRIDGE_FRAME_CAP", MAX_FRAME_CAP),
+            history_page_messages=_env_int("HERMES_BRIDGE_HISTORY_PAGE_MESSAGES", DEFAULT_PAGE_MESSAGES),
+            history_page_bytes=_env_int("HERMES_BRIDGE_HISTORY_PAGE_BYTES", DEFAULT_PAGE_BYTES),
+            history_cache_bytes=_env_int("HERMES_BRIDGE_HISTORY_CACHE_BYTES", DEFAULT_CACHE_BYTES),
             connect_timeout=_env_float("HERMES_BRIDGE_CONNECT_TIMEOUT", 5.0),
             max_pending_requests=_env_int("HERMES_BRIDGE_MAX_PENDING", 256),
             extra_client_methods=extra,
@@ -126,6 +136,12 @@ class BridgeConfig:
             raise ConfigError("connect_timeout must be positive")
         if self.max_pending_requests <= 0:
             raise ConfigError("max_pending_requests must be positive")
+        if self.history_page_messages <= 0:
+            raise ConfigError("history_page_messages must be positive")
+        if self.history_page_bytes <= 0:
+            raise ConfigError("history_page_bytes must be positive")
+        if self.history_cache_bytes < 0:
+            raise ConfigError("history_cache_bytes must not be negative")
         parts = urlsplit(self.gateway_url)
         if parts.scheme not in {"ws", "wss"}:
             raise ConfigError("gateway_url must be a ws:// or wss:// URL")

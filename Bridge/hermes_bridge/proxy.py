@@ -39,6 +39,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from .attachment_validation import ATTACHMENT_METHODS, AttachmentError, validate_attachment_request
 from .audit import AuditLog
 from .config import BridgeConfig
+from .history_paging import HistoryCache, plan_before, plan_newest
 from .policy import (
     build_client_allow_list,
     is_server_request_allowed,
@@ -66,6 +67,10 @@ _ERROR_INVALID_REQUEST = -32600
 _ERROR_METHOD_NOT_FOUND = -32601
 _ERROR_INTERNAL = -32603
 _ERROR_SERVER_BUSY = -32000
+#: The bridge no longer holds the transcript a paging request was cut from (a bridge restart, or a
+#: request for a session this connection never resumed). The app reopens the conversation, which
+#: re-resumes and re-fills the cache.
+_ERROR_HISTORY_UNAVAILABLE = -32001
 
 _JSONRPC = "2.0"
 
@@ -81,10 +86,30 @@ def id_key(value: object) -> Optional[tuple[str, object]]:
     return None
 
 
+def _is_cursor(value: object) -> bool:
+    """Whether *value* is a transcript cursor (a row offset) rather than a bool/str lookalike."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def paging_key(params: object) -> "tuple[Optional[str], str]":
+    """``(session_id, profile)`` a resume is cached under and a page request is looked up by."""
+    if not isinstance(params, dict):
+        return None, ""
+    session_id = params.get("session_id")
+    profile = params.get("profile")
+    return (
+        session_id if isinstance(session_id, str) and session_id else None,
+        profile if isinstance(profile, str) else "",
+    )
+
+
 @dataclass
 class _Pending:
     method: str
     started: float
+    # The resume's own addressing, kept so its answer can be paged by (session, bot) later.
+    session_id: Optional[str] = None
+    profile: str = ""
 
 
 @dataclass
@@ -211,6 +236,11 @@ class GatewayProxy:
         self._audit = audit
         self._allow = build_client_allow_list(config.extra_client_methods)
         self._cap = config.frame_cap
+        # Transcript paging: the resume's full row list, kept per (session, bot) for this
+        # connection's "load earlier" requests, plus the limits each page obeys.
+        self._history = HistoryCache(config.history_cache_bytes)
+        self._page_messages = config.history_page_messages
+        self._page_bytes = config.history_page_bytes
         self._upstream = None
         self._pending: dict[tuple[str, object], _Pending] = {}
         self._server_requests: dict[tuple[str, object], _ServerRequest] = {}
@@ -449,7 +479,21 @@ class GatewayProxy:
             params["server_requests"] = True
             frame["params"] = params
 
-        self._pending[key] = _Pending(method=method, started=time.monotonic())
+        params = frame.get("params")
+        if method == "session.history" and isinstance(params, dict) and _is_cursor(params.get("cursor")):
+            # An older-transcript page: served from this connection's own resume copy, never
+            # forwarded (the gateway answers `session.history` from the live MODEL history, which
+            # is a different, shorter row set than the display transcript the resume returned).
+            await self._serve_history_page(request_id, params)
+            return
+
+        session_id, profile = paging_key(params)
+        self._pending[key] = _Pending(
+            method=method,
+            started=time.monotonic(),
+            session_id=session_id,
+            profile=profile,
+        )
         try:
             await self._send_upstream(self._encode(frame))
         except Exception:
@@ -486,6 +530,86 @@ class GatewayProxy:
             nbytes=len(raw),
             direction="client_to_gateway",
         )
+
+    async def _serve_history_page(self, request_id: object, params: dict) -> None:
+        """Answer one older-transcript page from this connection's own resume copy.
+
+        Never forwarded: the gateway's `session.history` reads the live session's MODEL history
+        (compacted rows dropped — measured 157 rows for a resume that carried 1450), so using it
+        would hand the app a different transcript from the one it is scrolling.
+        """
+        session_id, profile = paging_key(params)
+        known = self._history.get(HistoryCache.key(session_id, profile))
+        if known is None:
+            await self._send_error_to_client(
+                request_id, _ERROR_HISTORY_UNAVAILABLE, "history page unavailable"
+            )
+            self._audit.emit(
+                "history_page_miss",
+                device_id=self._device_id,
+                method="session.history",
+                reason="no_cached_resume",
+                direction="client_to_gateway",
+            )
+            return
+        raw_cursor = params.get("cursor")
+        raw_limit = params.get("limit")
+        cursor = raw_cursor if isinstance(raw_cursor, int) and not isinstance(raw_cursor, bool) else 0
+        limit = (raw_limit if isinstance(raw_limit, int) and not isinstance(raw_limit, bool)
+                 and raw_limit > 0 else self._page_messages)
+        page, next_cursor = plan_before(known, cursor, limit, self._page_bytes)
+        await self._send_to_client(
+            self._encode(
+                {
+                    "jsonrpc": _JSONRPC,
+                    "id": request_id,
+                    "result": {
+                        "messages": page,
+                        "count": len(page),
+                        "cursor": next_cursor,
+                        "total": len(known),
+                    },
+                }
+            )
+        )
+        self._audit.emit(
+            "history_page",
+            device_id=self._device_id,
+            method="session.history",
+            direction="gateway_to_client",
+            profile=profile or None,
+        )
+
+    def page_resume(self, frame: dict, pending: "_Pending") -> dict:
+        """Replace a resume's whole transcript with its newest page, keeping the rest here.
+
+        A long conversation arrives as one multi-megabyte JSON-RPC frame and iOS refuses to deliver
+        a message that size (`Message too long`/EMSGSIZE), so the app could never open the bot at
+        all. The result gains `history: {total, shown, cursor}`; `cursor` is the row offset of the
+        page's oldest message and is what the app sends back to load earlier ones.
+        """
+        result = frame.get("result")
+        if not isinstance(result, dict):
+            return frame
+        messages = result.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return frame
+        key = HistoryCache.key(pending.session_id, pending.profile)
+        self._history.remember(key, messages)
+        page, cursor = plan_newest(messages, self._page_messages, self._page_bytes)
+        out = dict(result)
+        out["messages"] = page
+        out["history"] = {"total": len(messages), "shown": len(page), "cursor": cursor}
+        replaced = dict(frame)
+        replaced["result"] = out
+        self._audit.emit(
+            "history_paged",
+            device_id=self._device_id,
+            method=pending.method,
+            direction="gateway_to_client",
+            profile=pending.profile or None,
+        )
+        return replaced
 
     # -- gateway -> client -------------------------------------------------
 
@@ -633,6 +757,9 @@ class GatewayProxy:
         if pending is not None and pending.method == "profiles.configure" and frame.get("error"):
             frame = dict(frame)
             frame["error"] = {"code": -32603, "message": "profile update failed"}
+        if pending is not None and pending.method == "session.resume":
+            # Page the transcript the app receives; the full copy stays here for "load earlier".
+            frame = self.page_resume(frame, pending)
         if pending is not None and pending.method in ATTACHMENT_METHODS:
             frame = dict(frame)
             if frame.get("error"):
