@@ -27,6 +27,10 @@ final class WorkspaceStore: ObservableObject {
     /// The per-window model. Replaced when the host changes; never mutated from outside.
     @Published private(set) var model: AppModel
     @Published private(set) var pairing: PairingAddress? = nil
+    /// Where this Mac's pairing is kept — Keychain, or the 0600 file an unsigned build falls back to.
+    /// Settings reads it, because a build that cannot use the Keychain should say so rather than
+    /// leave the next relaunch looking like a lost pairing.
+    @Published private(set) var pairingStorage: PairingStore.Storage?
 
     @Published var isPairSheetPresented = false
     @Published var isPalettePresented = false
@@ -103,9 +107,12 @@ final class WorkspaceStore: ObservableObject {
 
     /// The real app. Reads what was paired last time, and dials nothing.
     init() {
-        if let saved = PairingStore().savedAddress() {
+        let store = PairingStore()
+        if let saved = store.savedAddress() {
             pairing = saved
+            pairingStorage = store.storage
             model = WorkspaceStore.makeModel(for: saved)
+            ClientLog.note("pairing restored from \(store.storage?.rawValue ?? "unknown")", category: "pairing")
         } else {
             model = AppModel(client: UnpairedGatewayClient(), hostName: "hermes")
         }
@@ -274,7 +281,7 @@ final class WorkspaceStore: ObservableObject {
     /// calls `connect()` straight after, which is the user's deliberate second half.
     func pair(urlText: String, deviceID: String = "", token: String) throws {
         let address = try PairingAddress.parse(urlText, deviceID: deviceID, token: token)
-        pairingStore.save(address)
+        pairingStorage = pairingStore.save(address)
 
         clearBotIcons()
         stopLatencyLoop()
@@ -289,11 +296,21 @@ final class WorkspaceStore: ObservableObject {
     /// to be re-paired after a relaunch.
     var pairingIsSessionOnly: Bool { !pairingStore.persisted && pairing != nil }
 
+    /// One sentence about where the pairing lives, for Settings.
+    var pairingStorageDescription: String? {
+        guard pairing != nil else { return nil }
+        guard let storage = pairingStorage else {
+            return "This session only — nothing could be stored, so a relaunch will ask for a code."
+        }
+        return "Stored in \(storage.description)."
+    }
+
     func unpair() async {
         clearBotIcons()
         stopLatencyLoop()
         await model.stop()
         pairingStore.clear()
+        pairingStorage = nil
         pairing = nil
         model = AppModel(client: UnpairedGatewayClient(), hostName: "hermes")
         drafts.removeAll()

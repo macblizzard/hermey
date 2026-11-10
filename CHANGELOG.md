@@ -31,6 +31,13 @@ All notable changes to Hermey are recorded here. The format follows
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **The Mac stays paired across launches.** The pairing was written only to a data-protection
+  Keychain item, which needs an application identifier — and the app ships unsigned, so
+  `SecItemAdd` answered `errSecMissingEntitlement` (-34018), nothing was stored, and every relaunch
+  asked for a fresh code from `hermey pair`. `PairingStore` now writes all three tiers it can
+  (data-protection Keychain, login Keychain, and a `0600` file excluded from backups under
+  Application Support) and reads the Keychain first, the file second; Settings says which one holds
+  it, and the pairing log records the `OSStatus` when a tier refuses.
 - **A pairing code is now accepted by the host instead of answered 422.** The Mac app sent the claim
   body as `publicKey`/`deviceName`; the host's model is `public_key`/`device_name`, so the request
   failed validation ("field required") and the sheet could only report the status code. The body and

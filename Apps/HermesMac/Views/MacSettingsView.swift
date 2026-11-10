@@ -336,8 +336,10 @@ private struct ConnectionSettingsTab: View {
             } header: {
                 Text("Host")
             } footer: {
+                // Where it is kept matters on an unsigned build: the Keychain can refuse, and then the
+                // pairing lives in a user-only file. Saying which one is why a relaunch is predictable.
                 Text(store.isPaired
-                     ? "Disconnecting closes the socket but keeps this Mac paired. Pair again only when the host revoked this Mac or moved."
+                     ? "Disconnecting closes the socket but keeps this Mac paired. \(store.pairingStorageDescription ?? "")"
                      : "Nothing is paired yet. Pair with the bridge running on your Hermes host.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
