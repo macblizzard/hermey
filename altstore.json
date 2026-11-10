@@ -1,18 +1,24 @@
 {
   "name": "Hermey",
   "identifier": "dev.hermey.app.source",
-  "subtitle": "Your Hermes bots, on your phone",
-  "description": "Native client for a self-hosted Hermes Agent.",
-  "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
+  "sourceURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/altstore.json",
+  "schemaVersion": 1,
+  "subtitle": "Hermes Agent",
+  "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
+  "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
+  "headerURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
   "tintColor": "#007CF7",
+  "featuredApps": [
+    "dev.hermey.app.mobile"
+  ],
   "apps": [
     {
       "name": "Hermey",
       "bundleIdentifier": "dev.hermey.app.mobile",
       "developerName": "Hermey",
-      "subtitle": "Your Hermes bots, on your phone",
-      "localizedDescription": "Chats with every Hermes bot, streaming replies and pairing.",
-      "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
+      "subtitle": "Hermes Agent client",
+      "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
+      "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
       "tintColor": "#007CF7",
       "category": "utilities",
       "screenshots": [],
@@ -20,14 +26,61 @@
         {
           "version": "0.1.75",
           "buildVersion": "75",
-          "date": "2026-11-10T08:30:37Z",
-          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.75-b75.ipa",
+          "date": "2026-11-10T08:30:29Z",
+          "localizedDescription": "Back button and bar chrome restored (edge-swipe works again), unread count moved into the chat header strip, shorter menu popups.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.75/Hermey-0.1.75-b75.ipa",
           "size": 1964973,
           "minOSVersion": "17.0",
           "sha256": "ccd33e4ff191afc4acae9311948bcfddefbdf0ddf28d5cbcef89429d1e899413"
+        },
+        {
+          "version": "0.1.66",
+          "buildVersion": "66",
+          "date": "2026-11-10T07:35:43Z",
+          "localizedDescription": "Unread counts on the back button and on group chats, one gutter for a chat and its composer, a compact themed \u22ef menu, and Settings \u2192 View log.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.66/Hermey-0.1.66-b66.ipa",
+          "size": 1971354,
+          "minOSVersion": "17.0",
+          "sha256": "fc47b350554b09243e01e740eb25b9ef97673bd2885b43c90140a79a024a53da"
+        },
+        {
+          "version": "0.1.63",
+          "buildVersion": "63",
+          "date": "2026-11-10T06:47:56Z",
+          "localizedDescription": "A streamed reply is printed once (no more re-printed paragraphs under themselves) and a large bot can compact again (the client no longer cuts the host's 600 s summary off at 120 s).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.63/Hermey-0.1.63-b63.ipa",
+          "size": 1919427,
+          "minOSVersion": "17.0",
+          "sha256": "1389b9265dac4e4ff9dcbcb7a3a4d6e3b1663da243f7a0417315684750e4ff40"
+        },
+        {
+          "version": "0.1.58",
+          "buildVersion": "58",
+          "date": "2026-11-10T05:21:41Z",
+          "localizedDescription": "A long conversation opens again: transcripts are paged (newest page first, 'Load earlier messages' for the rest), so a 3.4 MB resume frame no longer kills the phone's socket.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.58/Hermey-0.1.58-b58.ipa",
+          "size": 1918702,
+          "minOSVersion": "17.0",
+          "sha256": "5bfb71cd0eb79b67088a32a9796e33fe8c161edfe7e2cf7d4bc371b9fb4e248f"
+        },
+        {
+          "version": "0.1.52",
+          "buildVersion": "52",
+          "date": "2026-11-10T01:28:35Z",
+          "localizedDescription": "Build from CI run 42735677542.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.52/Hermey-0.1.52-b52.ipa",
+          "size": 1907809,
+          "minOSVersion": "17.0",
+          "sha256": "29db57b99a7a837a8d76c88c1dd128d7b8dbab7a30ebf652b668277b8fe24c55"
         }
-      ]
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device."
+        }
+      }
     }
-  ]
+  ],
+  "news": []
 }
