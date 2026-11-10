@@ -83,9 +83,7 @@ struct MacBlockView: View {
                         .foregroundStyle(Tokens.textDim)
                 }
 
-                OpenBotIconButton("doc.on.doc", label: "Copy this code block", size: .small) {
-                    copy(body)
-                }
+                CodeCopyButton(code: body)
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
@@ -113,13 +111,6 @@ struct MacBlockView: View {
         return language
     }
 
-    private func copy(_ body: String) {
-        Haptics.selection()
-        #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(body, forType: .string)
-        #endif
-    }
 }
 
 // MARK: - Tables
