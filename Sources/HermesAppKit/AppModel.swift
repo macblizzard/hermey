@@ -1074,6 +1074,17 @@ public final class AppModel: ObservableObject {
 
     /// When each bot's conversation was last looked at, by this device.
     ///
+    /// What the live bubble prints: only the words no row has printed yet.
+    ///
+    /// The host streams a commentary and also seals it as `message.interim`, which becomes a row of
+    /// its own with a time stamp. Both then showed the same paragraph — one of them with a caret
+    /// under it — and it collapsed into a single one the moment the turn settled.
+    public var visibleStreamingText: String {
+        TranscriptVisibility.streamingRemainder(
+            streamingText,
+            afterRow: transcript.last(where: { $0.role == .assistant })?.text)
+    }
+
     /// The dot used to be raised only by `message.complete` for the session on screen — which the
     /// app does not receive for a bot it is not looking at, so a message that arrived on another bot
     /// (from the phone, from another agent, from cron) could never light it. Unread is now a
@@ -1609,7 +1620,12 @@ public final class AppModel: ObservableObject {
             // and leaving them in `liveTools` meant the next resume — which answers with the
             // host's messages only — wiped them from the thread.
             flushLiveTools()
-            if !finalText.isEmpty {
+            // A completion whose words are already the trailing row would print the answer twice:
+            // the interim row that carried them keeps its place (and its time) instead.
+            let ending = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trailing = transcript.last(where: { $0.role == .assistant })?.text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !finalText.isEmpty, !(ending.count >= 20 && ending == trailing) {
                 transcript.append(TranscriptEntry(id: UUID().uuidString, role: .assistant,
                                                   text: finalText, at: Date()))
             }

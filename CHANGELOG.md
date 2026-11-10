@@ -6,6 +6,13 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Right click landed away from the pointer, and pinching stopped working once its menu was open.**
+  The click now goes where the pointer stands, not between the fingers; and noVNC's capture proxy
+  div — laid over the whole page by its legacy `setCapture()` on a synthetic press — is released
+  afterwards instead of swallowing every later touch.
+- **The last reply appeared twice while it streamed.** A commentary sealed as `message.interim`
+  became both a row and the live bubble; the bubble now prints only what the trailing row has not
+  already said, and a completion that repeats that row does not append a second copy.
 - **Bot computer: pinching froze the pointer, and there were two keyboard buttons.** The pinch
   swallowed the `touchend` noVNC needed to close the gesture it had opened, leaving a button pressed
   for the rest of the session; it now releases the pointer explicitly and lets the touchend through.

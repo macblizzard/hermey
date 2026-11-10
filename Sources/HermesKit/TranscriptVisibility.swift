@@ -27,6 +27,26 @@ public enum TranscriptVisibility {
         return entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// What the live bubble should print, given the last assistant row on screen.
+    ///
+    /// The host streams a commentary and also seals it as `message.interim`, which the app turns into
+    /// a row with a time stamp. Both then showed the same paragraph — one with a caret under it — and
+    /// it collapsed into one when the turn settled. Words a row already says are not words to write
+    /// again; only what follows them belongs to the bubble.
+    public static func streamingRemainder(_ streaming: String, afterRow row: String?) -> String {
+        let stream = streaming.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stream.isEmpty else { return "" }
+        let said = (row ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // A short row ("Done.") is not a header for the next reply, so only a real paragraph is
+        // treated as the same words arriving twice.
+        guard said.count >= 20 else { return stream }
+        if stream == said { return "" }
+        if stream.hasPrefix(said) {
+            return String(stream.dropFirst(said.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return stream
+    }
+
     /// Whether a row has anything to say, which is also the condition for showing its time.
     public static func hasContent(_ entry: TranscriptEntry) -> Bool {
         !entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !entry.attachments.isEmpty

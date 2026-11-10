@@ -47,6 +47,27 @@ final class TranscriptVisibilityTests: XCTestCase {
         XCTAssertFalse(TranscriptVisibility.showsLiveCards(showToolCalls: true, hasLiveTools: false))
     }
 
+    func testTheLiveBubbleDoesNotRepeatTheRowAboveIt() {
+        // The duplicate the user photographed: the same paragraph twice, the lower copy with a
+        // caret, collapsing into one when the turn settled.
+        let paragraph = "Two clear causes. The mouse freeze is my pinch swallowing noVNC's touchend, "
+            + "so its gesture handler stays stuck with a finger down."
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(paragraph, afterRow: paragraph), "")
+        // Same paragraph, then the next sentence starts arriving: only the new part is the bubble's.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(paragraph + " And more.", afterRow: paragraph),
+                       "And more.")
+        // A previous reply is not a header for this one.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder("Something else entirely",
+                                                               afterRow: paragraph),
+                       "Something else entirely")
+        // A short row like "Done." must never swallow the next reply.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder("Done. All five checks are green now.",
+                                                               afterRow: "Done."),
+                       "Done. All five checks are green now.")
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder("   ", afterRow: paragraph), "")
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder("Hello", afterRow: nil), "Hello")
+    }
+
     func testWordlessAssistantRowsAreNotRows() {
         // The host writes an assistant row with no text as a banner for the commands that follow.
         // With the cards hidden it survives as an empty bubble and a lone timestamp — the "blank
