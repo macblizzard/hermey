@@ -21,10 +21,14 @@ final class ConversationCacheTests: XCTestCase {
     /// `start()` matters: without a live transport the shared-session pointer is never asked, the
     /// model takes the create-a-draft path, and a draft is empty by definition — while the bug under
     /// test lives on the resume path.
+    /// A session id shaped the way the host mints them — `EndlessSessionPolicy.storedID` refuses
+    /// anything else, and a refused id silently drops the test onto the create-a-draft path.
+    private static let sessionID = "20260101_000002_cache"
+
     private func opened(_ label: String,
                         entries: [TranscriptEntry]) async -> (AppModel, ScriptedHost) {
-        let client = ScriptedHost(session: "s1", entries: entries)
-        client.hostPointer = "s1"
+        let client = ScriptedHost(session: Self.sessionID, entries: entries)
+        client.hostPointer = Self.sessionID
         let model = AppModel(client: client, hostName: "cache-\(label)-\(UUID().uuidString)")
         await model.start()
         return (model, client)
