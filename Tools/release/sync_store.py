@@ -129,7 +129,11 @@ def desired_manifest(current: dict | None, repo: str, ipa: dict, ipa_bytes: byte
         "buildVersion": build,
         "date": previous.get("date") if same_build else (ipa.get("updated_at") or ipa.get("created_at")),
         "localizedDescription": previous.get("localizedDescription") if same_build else notes,
-        "downloadURL": f"{base}/{ipa['name']}",
+        # The *versioned* URL, exactly as GitHub reports it. `releases/latest/download/<name>` looks
+        # tidier but resolves against the newest release, so an older entry that keeps it would
+        # serve (or 404) the wrong file the moment the next build ships — and the two publish tools
+        # disagreeing about the shape meant every night's sync rewrote what every release wrote.
+        "downloadURL": ipa.get("browser_download_url") or f"{base}/{ipa['name']}",
         "size": len(ipa_bytes),
         "minOSVersion": MIN_IOS,
         "sha256": digest,
