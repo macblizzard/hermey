@@ -188,6 +188,11 @@ public struct OpenBotIconButton: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)
         .accessibilityLabel(label)
+        // Every glyph is a question until it is hovered; the label was already written for
+        // VoiceOver, so the tooltip costs nothing and answers the same question.
+        #if os(macOS)
+        .help(label)
+        #endif
     }
 }
 

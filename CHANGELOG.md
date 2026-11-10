@@ -54,6 +54,22 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The emoji picker hangs off the smiley, and 👍 is not ringed.** The popover was attached to the
+  message row, so it anchored to the row's whole width — opening below and to the right of the button,
+  465 pt wide, arrow pointing at nothing. It is attached to the smiley now
+  (`attachmentAnchor: .rect(.bounds)`, `arrowEdge: .bottom`) and sized to its six emoji. The square
+  outline around the first emoji was macOS handing focus to the popover's first control: focus is off
+  and the focus effect disabled, and each emoji has a name for its tooltip.
+
+### Added
+- **Tooltips on the desktop's buttons.** Glyph buttons had no answer on hover while every one of them
+  already carried a `label` for VoiceOver and the message row already passed a `help:` that was never
+  used. `OpenBotIconButton` now shows its label as the tooltip (macOS only — iOS has no hover), the
+  message action glyphs show theirs, and the composer's dismiss/cancel-reply/remove-attachment ✕, the
+  jump-to-latest button and read-aloud are all named. Menu items and alert buttons are left alone:
+  macOS does not draw tooltips inside menus.
+
+### Fixed
 - **Double-clicking the top strip zooms the window everywhere, not just over the chat.** The stand-in
   title bar started 96 pt in — past the traffic lights — which left the band above the sidebar's
   search field dead: the same gesture that zoomed the window over the conversation did nothing there.

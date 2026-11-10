@@ -25,7 +25,7 @@ class ReactionPickerRegressionTests(unittest.TestCase):
         self.assertNotIn('Label("Add reaction"', SOURCE)
 
     def test_the_shared_row_is_accessible_and_toggles(self):
-        self.assertIn('.accessibilityLabel(emoji)', ROW)
+        self.assertIn('.accessibilityLabel(ReactionEmoji.name(emoji))', ROW)
         self.assertIn('"React with \\(emoji)"', ROW)
         self.assertIn('"Select again to remove this reaction"', ROW)
 
