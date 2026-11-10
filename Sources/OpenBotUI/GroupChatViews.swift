@@ -264,6 +264,9 @@ public struct RoomChatView: View {
     private let send: (String, String, [RoomAttachment]) async throws -> Void
     /// Called after the newest message arrives, so the list row behind this window keeps up.
     private let onActivity: (() -> Void)?
+    /// The room's high-water `seq`, reported whenever it moves. The model turns it into the
+    /// device's read mark, which is what keeps a room you are looking at from badging itself.
+    private let onLatestSeq: ((Int) -> Void)?
     /// Only the pane uses this: outside a sheet there is nothing for `dismiss()` to dismiss.
     private let onClose: (() -> Void)?
     /// The pane's own chrome, the same verbs the Mac puts on a bot's header.
@@ -330,6 +333,7 @@ public struct RoomChatView: View {
                 load: @escaping (String, Int?) async throws -> RoomPage,
                 send: @escaping (String, String, [RoomAttachment]) async throws -> Void,
                 onActivity: (() -> Void)? = nil,
+                onLatestSeq: ((Int) -> Void)? = nil,
                 onClose: (() -> Void)? = nil,
                 sidebarHidden: Bool = false,
                 onToggleSidebar: (() -> Void)? = nil,
@@ -345,6 +349,7 @@ public struct RoomChatView: View {
         self.load = load
         self.send = send
         self.onActivity = onActivity
+        self.onLatestSeq = onLatestSeq
         self.onClose = onClose
         self.sidebarHidden = sidebarHidden
         self.onToggleSidebar = onToggleSidebar
@@ -421,8 +426,11 @@ public struct RoomChatView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: "ellipsis")
+                        // The same three dots the bot list and a conversation wear, at the same
+                        // compact size: one glyph, one look, three screens.
+                        MenuDotsLabel()
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Group chat menu")
                 }
             }
@@ -489,10 +497,7 @@ public struct RoomChatView: View {
                     Button("Delete group chat…", role: .destructive) { onDelete() }
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Tokens.textMuted)
-                    .frame(width: 22, height: 22)
+                MenuDotsLabel()
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -575,7 +580,7 @@ public struct RoomChatView: View {
                         .foregroundStyle(Tokens.textDim)
                         .monospacedDigit()
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, Geometry.chatGutter)
                 .padding(.vertical, 7)
                 Hairline(color: Tokens.border)
             }
@@ -630,7 +635,7 @@ public struct RoomChatView: View {
                     }
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, Geometry.chatGutter)
             .padding(.vertical, 7)
         }
     }
@@ -657,7 +662,9 @@ public struct RoomChatView: View {
                         .id("pending")
                     }
                 }
-                .padding(.horizontal, 12)
+                // The conversation's own gutter, so a room's bubbles start exactly where a bot
+                // chat's do and where this room's composer will.
+                .padding(.horizontal, Geometry.chatGutter)
                 .padding(.vertical, 12)
             }
             // Scrolling the transcript puts the keyboard away, the way a conversation does: reading
@@ -920,7 +927,7 @@ public struct RoomChatView: View {
                         .buttonStyle(.plain)
                         .foregroundStyle(Tokens.textDim)
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, Geometry.chatGutter)
                 .padding(.bottom, 4)
             }
             Composer(text: $draft,
@@ -943,6 +950,11 @@ public struct RoomChatView: View {
                          })
                      })
                 .onChange(of: draft) { _, text in mentionQuery = Self.trailingMention(text) }
+                // The field is the same `Composer` a bot's chat uses, so it stops at the same
+                // gutter — and at the same 8 pt above and below it.
+                .padding(.horizontal, Geometry.chatGutter)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
         }
         .background(Tokens.canvas)
     }
@@ -973,7 +985,7 @@ public struct RoomChatView: View {
                     .clipShape(Capsule())
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, Geometry.chatGutter)
             .padding(.vertical, 6)
         }
     }
@@ -1054,7 +1066,9 @@ public struct RoomChatView: View {
                 if !page.messages.filter({ !$0.isOwner }).isEmpty { sending = false }
                 if !page.messages.isEmpty { onActivity?() }
             }
+            let previousSeq = latestSeq
             latestSeq = max(latestSeq, page.latestSeq)
+            if latestSeq > previousSeq { onLatestSeq?(latestSeq) }
             failure = nil
         } catch {
             failure = error.localizedDescription
@@ -1096,15 +1110,25 @@ public struct RoomChatView: View {
 public struct GroupChatRow: View {
     private let room: RoomSummary
     private let icons: [String: BotIcon]
+    /// How many bot messages are waiting in this room, drawn on its faces the way a bot's count
+    /// sits on its portrait. Zero draws nothing.
+    private let unread: Int
 
-    public init(room: RoomSummary, icons: [String: BotIcon]) {
+    public init(room: RoomSummary, icons: [String: BotIcon], unread: Int = 0) {
         self.room = room
         self.icons = icons
+        self.unread = unread
     }
 
     public var body: some View {
         HStack(alignment: .center, spacing: 9) {
+            // The count lives on the room's faces — the same corner a bot's badge uses on its
+            // portrait — because the number belongs to the chat, not to the row's chrome.
             faces
+                .overlay(alignment: .bottomTrailing) {
+                    UnreadBadge(count: unread, size: 17)
+                        .offset(x: 4, y: 3)
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text(room.name)
                     .font(TypeScale.font(TypeScale.md, weight: .medium))

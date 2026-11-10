@@ -42,6 +42,9 @@ struct AboutSettingsTab: View {
     @ObservedObject var store: WorkspaceStore
 
     @State private var copied = false
+    /// The log is read in a sheet: the About tab is a page of facts, and a log is a tool that
+    /// scrolls.
+    @State private var showLog = false
 
     private var diagnostics: String {
         """
@@ -86,6 +89,11 @@ struct AboutSettingsTab: View {
                 }
                 .accessibilityIdentifier("aboutCopyDiagnostics")
 
+                // The reason behind "something went wrong", one click from the version number
+                // people are asked for first. Same viewer as the phone's Settings → View log.
+                Button("View log…") { showLog = true }
+                    .accessibilityIdentifier("aboutViewLog")
+
                 Spacer()
 
                 Text("Updates arrive through the same source you installed from.")
@@ -98,6 +106,16 @@ struct AboutSettingsTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.canvas)
+        .sheet(isPresented: $showLog) {
+            ClientLogView(title: "Log", header: logHeader)
+        }
+    }
+
+    /// What the log is *about*: build, OS, host, connection. The same header the phone puts above
+    /// the same lines.
+    private var logHeader: String {
+        let host = store.isPaired ? store.model.hostName : "not paired"
+        return "Hermey \(AppVersion.marketing) (build \(AppVersion.build))\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString) · host: \(host) · \(store.model.connection.label)"
     }
 
     private func row(_ name: String, _ value: String) -> some View {

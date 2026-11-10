@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import HermesKit
 import HermesAppKit
 import OpenBotUI
@@ -19,6 +20,9 @@ struct SettingsScreen: View {
     @FocusState private var thresholdFocused: Bool
     @State private var thresholdText: String = MobileTokens.digits(AppModel.defaultAutoCompactTokens)
     @State private var showUnpairConfirm = false
+    /// Whether the log sheet is up. The log is a tool, not a setting, so it opens from a row and
+    /// closes with nothing remembered.
+    @State private var showLog = false
 
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {
@@ -35,6 +39,7 @@ struct SettingsScreen: View {
             appearanceSection
             chatSection
             devicesSection
+            diagnosticsSection
             aboutSection
         }
         .listStyle(.insetGrouped)
@@ -50,6 +55,9 @@ struct SettingsScreen: View {
             }
         }
         .task { await app.loadDevices() }
+        .sheet(isPresented: $showLog) {
+            ClientLogView(title: "Log", header: logHeader)
+        }
         .mobileConnectionBanner(connection: app.visibleConnection,
                                 turnRunning: model.isStreaming,
                                 host: app.hostLabel,
@@ -336,6 +344,64 @@ struct SettingsScreen: View {
         let active = app.devices.filter { !$0.revoked }.count
         if app.devices.isEmpty { return "None listed by the host" }
         return active == 1 ? "1 device with access" : "\(active) devices with access"
+    }
+
+    // MARK: Diagnostics
+
+    /// Where the app explains itself.
+    ///
+    /// Every failure the user can see is a sentence in this app; the reason is in the log behind
+    /// this row. It is one row because a log is a tool, not a setting — nothing here changes how
+    /// the app behaves.
+    private var diagnosticsSection: some View {
+        Section {
+            Button {
+                showLog = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(Tokens.textMuted)
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
+                                .fill(Tokens.control)
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("View log")
+                            .font(TypeScale.font(TypeScale.md))
+                            .foregroundStyle(Tokens.textPrimary)
+
+                        Text("What this app did, and where it failed.")
+                            .font(TypeScale.font(TypeScale.label))
+                            .foregroundStyle(Tokens.textGroupedSecondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Tokens.textDim)
+                }
+                .padding(.vertical, 2)
+            }
+        } header: {
+            sectionHeader("Diagnostics")
+        } footer: {
+            Text("A timestamped record of this phone's connections, retries and failures. When something goes wrong, open this and copy the line at the time it happened.")
+                .font(TypeScale.font(TypeScale.label))
+        }
+    }
+
+    /// The facts a reader needs before the first log line: which build, on what, against which
+    /// host, over which connection.
+    private var logHeader: String {
+        let version = bundleValue("CFBundleShortVersionString")
+        let build = bundleValue("CFBundleVersion")
+        let system = UIDevice.current.systemName + " " + UIDevice.current.systemVersion
+        return "Hermey \(version) (build \(build))\n\(system) · host: \(app.hostLabel) · \(app.visibleConnection.label)"
     }
 
     // MARK: About

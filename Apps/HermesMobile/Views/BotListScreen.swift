@@ -166,7 +166,14 @@ struct BotListScreen: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Coming back to the app is the moment the other device's turn should show up here.
-            if phase == .active { Task { await model.loadBotPreviews() } }
+            if phase == .active {
+                Task {
+                    await model.loadBotPreviews()
+                    // A room's badge is only as fresh as its refresh: coming back to the app is
+                    // exactly when the other bots' replies landed.
+                    await model.refreshRooms()
+                }
+            }
         }
         .toolbar { toolbarContent }
         .sheet(item: $settingsBot) { bot in
@@ -186,16 +193,12 @@ struct BotListScreen: View {
                     try await model.startGroupChat(name: name.isEmpty ? "Group chat" : name,
                                                    members: members)
                 },
-                onCreated: { room in
-                    if let onOpenRoom { onOpenRoom(room) } else { openRoom = room }
-                })
+                onCreated: { room in open(room) })
         }
         .sheet(isPresented: $showGroupChats) {
             GroupChatsSheet(
                 load: { try await model.groupChats() },
-                onOpen: { room in
-                    if let onOpenRoom { onOpenRoom(room) } else { openRoom = room }
-                },
+                onOpen: { room in open(room) },
                 onNew: { showStartGroupChat = true })
         }
         .fullScreenCover(item: $openRoom) { room in
@@ -207,6 +210,7 @@ struct BotListScreen: View {
                     try await model.sendRoomMessage(roomID, text: text, attachments: files)
                 },
                 onActivity: { Task { await model.refreshRooms() } },
+                onLatestSeq: { model.markRoomRead(room.id, seq: $0) },
                 onRename: { name in try await model.renameRoom(room.id, to: name) },
                 renameSignal: $model.renameRequest,
                 speak: { try await roomVoice.speakAndWait($0) },
@@ -381,6 +385,8 @@ struct BotListScreen: View {
     /// Open a room the one way the list opens rooms: pushed by the app, or covered by this screen
     /// when it is on its own.
     private func open(_ room: RoomSummary) {
+        // Reading it counts as read: the badge clears now, not when the list next refreshes.
+        model.markRoomRead(room)
         if let onOpenRoom { onOpenRoom(room) } else { openRoom = room }
     }
 
@@ -408,7 +414,9 @@ struct BotListScreen: View {
         Button {
             open(room)
         } label: {
-            GroupChatRow(room: room, icons: app.botIcons)
+            GroupChatRow(room: room,
+                         icons: app.botIcons,
+                         unread: model.roomUnreadCount(room.id))
                 .padding(.vertical, 3)
         }
         .buttonStyle(.plain)
@@ -654,12 +662,10 @@ struct BotListScreen: View {
                     }
                 } label: {
                     // Three dots, because this is a menu and not a filter: the old funnel icon
-                    // promised "narrow the list" and then offered to add a bot.
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+                    // promised "narrow the list" and then offered to add a bot. The frame is the
+                    // kit's own compact control — the search glyph and this one are drawn at the
+                    // same size, on the same surface, from the same theme.
+                    MenuDotsLabel(isActive: showHidden)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Bot list menu")

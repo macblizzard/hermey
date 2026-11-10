@@ -15,6 +15,8 @@ import OpenBotUI
 struct ConversationScreen: View {
     @ObservedObject var model: AppModel
     @EnvironmentObject private var app: AppEnvironment
+    /// The custom back button below is the only way out, so this view needs the dismissal itself.
+    @Environment(\.dismiss) private var dismiss
 
     let bot: Bot
 
@@ -105,6 +107,33 @@ struct ConversationScreen: View {
 
     private var title: String { bot.displayName }
 
+    // MARK: Back
+
+    /// Back, with what is waiting elsewhere on it.
+    ///
+    /// The bubble counts every unread chat that is **not** this one — other bots' replies and any
+    /// group chat with something new — because the reason to leave a conversation is usually
+    /// another one asking. Zero draws nothing, the same rule the bot list's badges follow.
+    private var backButton: some View {
+        let waiting = model.unreadElsewhere(excludingBot: bot.id)
+        return Button {
+            dismiss()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                if waiting > 0 {
+                    UnreadBadge(count: waiting, size: 17)
+                }
+            }
+            .foregroundStyle(Tokens.textPrimary)
+            .frame(minWidth: 30, minHeight: 36, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(waiting > 0 ? "Back, \(waiting) unread chats elsewhere" : "Back")
+    }
+
     var body: some View {
         transcriptScroll
         // Tapping the thread closes the paperclip's menu, the way any transient menu behaves.
@@ -124,11 +153,19 @@ struct ConversationScreen: View {
                                 retry: { Task { await app.reconnect() } })
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        // The system chevron cannot carry a count, and the count is the point: the chats you left
+        // behind keep moving while you answer this one. The bar draws its own back button below.
+        .navigationBarBackButtonHidden(true)
         .toolbar {
             // The bot's own face in the title bar, sparks and all: the list taught the eye which
             // portrait means which bot, and a header that showed only a name made the two places
             // disagree. `isWorking` is the same flag the list uses, so the antenna arcs while this
             // bot is the one answering — and not while another one is.
+            // Back, wearing what is waiting elsewhere: a bubble with this device's unread replies
+            // from the other bots (and rooms) so leaving a chat is a decision, not a surprise.
+            ToolbarItem(placement: .topBarLeading) {
+                backButton
+            }
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
                     BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
@@ -146,9 +183,22 @@ struct ConversationScreen: View {
         .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
         .onAppear { model.setVisibleBot(bot.id) }
         .onDisappear { model.setVisibleBot(nil) }
+        // The bar draws its own back button (it carries the unread bubble), which switches off the
+        // edge-swipe pop; this puts the gesture back without a second bar button.
+        .background(SwipeBackEnabler().frame(width: 0, height: 0))
         .task(id: bot.id) {
             voice.transport = app.makeVoiceTransport()
             await openConversation()
+        }
+        // Another chat's unread is this screen's badge, so the counts are swept while the
+        // conversation is open instead of waiting for the list to reappear. Both calls are one
+        // request each and only answer rooms that moved, so an idle chat costs two pings.
+        .task {
+            while !Task.isCancelled {
+                await model.loadBotPreviews()
+                await model.refreshRooms()
+                try? await Task.sleep(nanoseconds: 25_000_000_000)
+            }
         }
         .onChange(of: app.store.host) { _, _ in
             // A re-pair or host switch changes the endpoint the controller may talk to.
@@ -396,7 +446,9 @@ struct ConversationScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 transcriptList
-                    .padding(.horizontal, 16)
+                    // The one gutter a conversation uses, shared with the composer and with a
+                    // group chat: `Geometry.chatGutter`, never a number typed here.
+                    .padding(.horizontal, Geometry.chatGutter)
                     .padding(.top, 12)
                     .padding(.bottom, 20)
             }
@@ -651,9 +703,9 @@ struct ConversationScreen: View {
                         Label("Reset conversation", systemImage: "arrow.counterclockwise")
                     }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(Tokens.textSecondary)
+                    MenuDotsLabel()
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Conversation actions")
             }
         }
@@ -744,7 +796,9 @@ struct ConversationScreen: View {
                      },
                      onMic: { toggleRecording() },
                      onInterrupt: { Task { await model.interrupt() } })
-                .padding(.horizontal, 12)
+                // The same gutter the bubbles stop at: a composer 4 pt wider on each side is what
+                // made a chat look tilted against its own text.
+                .padding(.horizontal, Geometry.chatGutter)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 // Anchored to the paperclip, above it: the card is an overlay, not a
@@ -1056,3 +1110,59 @@ struct ConversationScreen: View {
     .task { await environment.start() }
 }
 #endif
+
+
+// MARK: - Swipe back
+
+/// Keeps UIKit's edge-swipe pop alive under a screen that hides the system back button.
+///
+/// `.navigationBarBackButtonHidden(true)` is what lets this bar draw its own back button, and it
+/// also disables `interactivePopGestureRecognizer` — so a chat opened from the list could only be
+/// left with a tap on a 30 pt control. The gesture is given a delegate that answers the one
+/// question it has: is there a screen to go back to? Rendered at zero size purely to borrow the
+/// navigation controller it is hosted in.
+private struct SwipeBackEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController { Proxy() }
+
+    func updateUIViewController(_ controller: UIViewController, context: Context) {
+        (controller as? Proxy)?.attach()
+    }
+
+    final class Proxy: UIViewController {
+        private weak var attached: UINavigationController?
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            attach()
+        }
+
+        func attach() {
+            // One runloop later: the hosting controller's `navigationController` is nil during the
+            // representable's first update, and asking too early is why the gesture used to stay
+            // dead after the screen had drawn.
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      let navigation = self.navigationController,
+                      self.attached !== navigation else { return }
+                self.attached = navigation
+                SwipeBackDelegate.shared.adopt(navigation)
+                navigation.interactivePopGestureRecognizer?.delegate = SwipeBackDelegate.shared
+                navigation.interactivePopGestureRecognizer?.isEnabled = true
+            }
+        }
+    }
+}
+
+/// Only ever says "yes, there is a stack to pop" — the gesture must not fire at the root, where a
+/// half-finished swipe would freeze the navigation controller.
+private final class SwipeBackDelegate: NSObject, UIGestureRecognizerDelegate {
+    static let shared = SwipeBackDelegate()
+
+    private weak var navigation: UINavigationController?
+
+    func adopt(_ navigation: UINavigationController) { self.navigation = navigation }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        (navigation?.viewControllers.count ?? 0) > 1
+    }
+}

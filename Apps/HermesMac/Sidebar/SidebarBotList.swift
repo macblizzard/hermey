@@ -100,7 +100,9 @@ struct SidebarBotList: View {
 
                     ForEach(roomRows) { room in
                         Button { onOpenRoom?(room) } label: {
-                            GroupChatRow(room: room, icons: icons)
+                            GroupChatRow(room: room,
+                                         icons: icons,
+                                         unread: model.roomUnreadCount(room.id))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
                                 .frame(maxWidth: .infinity, alignment: .leading)

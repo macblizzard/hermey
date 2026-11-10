@@ -102,6 +102,7 @@ struct BotsTab: View {
                             try await model.sendRoomMessage(roomID, text: text, attachments: files)
                         },
                         onActivity: { Task { await model.refreshRooms() } },
+                        onLatestSeq: { model.markRoomRead(room.id, seq: $0) },
                         onRename: { name in try await model.renameRoom(room.id, to: name) },
                         renameSignal: $model.renameRequest,
                         speak: { try await roomVoice.speakAndWait($0) },

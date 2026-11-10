@@ -273,6 +273,7 @@ public final class AppModel: ObservableObject {
             await observeEvents()
             loadBotActivity()
             loadLastRead()
+            loadRoomReadSeq()
             loadHiddenBots()
             loadPinnedBots()
             await loadBots()
@@ -280,6 +281,8 @@ public final class AppModel: ObservableObject {
             await loadSessions()
         } catch {
             connection = .failed(error.localizedDescription)
+            ClientLog.note("connect to \(hostName) failed: \(error.localizedDescription)",
+                           level: .error, category: "connection")
         }
     }
 
@@ -313,6 +316,8 @@ public final class AppModel: ObservableObject {
             await loadBotPreviews()
         } catch {
             botsError = error.localizedDescription
+            ClientLog.note("profiles.list failed: \(error.localizedDescription)",
+                           level: .error, category: "bots")
         }
     }
 
@@ -343,6 +348,8 @@ public final class AppModel: ObservableObject {
             guard epoch == botEpoch else { return }
             // A silent gateway must not look like "no sessions" — surface it.
             connection = .failed("could not load sessions: \(error.localizedDescription)")
+            ClientLog.note("session.list failed for \(bot ?? "no profile"): \(error.localizedDescription)",
+                           level: .error, category: "sessions")
         }
     }
 
@@ -532,6 +539,8 @@ public final class AppModel: ObservableObject {
             // the connection here painted "cannot connect to the server" over a session-level
             // error (and then suppressed the reconnect that would have fixed a real drop).
             lastSendError = "could not open this session: \(error.localizedDescription)"
+            ClientLog.note("session.resume failed for \(id): \(error.localizedDescription)",
+                           level: .error, category: "session")
         }
     }
 
@@ -643,6 +652,8 @@ public final class AppModel: ObservableObject {
             } catch {
                 sending = false
                 lastSendError = error.localizedDescription
+                ClientLog.note("send with attachments failed: \(error.localizedDescription)",
+                               level: .error, category: "send")
                 draft = text
                 return // keep both the words and the attachments: nothing was sent
             }
@@ -693,6 +704,8 @@ public final class AppModel: ObservableObject {
         } catch {
             if !isMidTurn { isStreaming = false }
             lastSendError = error.localizedDescription
+            ClientLog.note("prompt.submit failed: \(error.localizedDescription)",
+                           level: .error, category: "send")
             draft = text // never lose what the user typed
             // By id, not by position: switching bots or sessions while the submit was in flight
             // empties the transcript, and a blind `removeLast()` would trap on it.
@@ -824,6 +837,8 @@ public final class AppModel: ObservableObject {
             sessions = try await client.listSessions(limit: 50, profile: selectedBotID, includeHidden: true)
         } catch {
             lastSendError = "could not start a session: \(error.localizedDescription)"
+            ClientLog.note("session.create failed: \(error.localizedDescription)",
+                           level: .error, category: "session")
         }
     }
 
@@ -887,6 +902,8 @@ public final class AppModel: ObservableObject {
                 // socket must be reported, never papered over with a new empty conversation.
                 guard let gateway = error as? GatewayError, Self.isForgottenSession(gateway) else {
                     lastSendError = "could not open the conversation: \(error.localizedDescription)"
+                    ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
+                                   level: .error, category: "session")
                     return nil
                 }
                 // Forget it locally too, so an offline open does not retry a dead id.
@@ -911,6 +928,8 @@ public final class AppModel: ObservableObject {
             return created
         } catch {
             lastSendError = "could not start a conversation: \(error.localizedDescription)"
+            ClientLog.note("session.create for \(botID) failed: \(error.localizedDescription)",
+                           level: .error, category: "session")
             return nil
         }
     }
@@ -1055,6 +1074,8 @@ public final class AppModel: ObservableObject {
             compactionNotice = "conversation compacted"
         } catch {
             lastSendError = "could not compact: \(error.localizedDescription)"
+            ClientLog.note("session.compress failed: \(error.localizedDescription)",
+                           level: .error, category: "compaction")
         }
     }
 
@@ -1340,6 +1361,95 @@ public final class AppModel: ObservableObject {
     /// any window, so the list survives a closed sheet, a relaunch and the other device.
     @Published public private(set) var rooms: [RoomSummary] = []
 
+    /// How many bot messages each room has that this device has not read yet.
+    ///
+    /// Rooms get the same promise a bot's row makes: a count of what is waiting, computed from the
+    /// host's own log rather than from a socket the app is not holding.
+    @Published public private(set) var roomUnreadCounts: [String: Int] = [:]
+
+    /// The high-water `seq` each room was read to, by this device, persisted per host.
+    private var roomReadSeq: [String: Int] = [:]
+
+    private var roomReadKey: String { "hermey.roomRead.\(hostName)" }
+
+    private func loadRoomReadSeq() {
+        guard let raw = Self.defaults.dictionary(forKey: roomReadKey) as? [String: Int] else { return }
+        roomReadSeq = raw
+    }
+
+    private func saveRoomReadSeq() {
+        Self.defaults.set(roomReadSeq, forKey: roomReadKey)
+    }
+
+    /// What the room's badge shows. Zero draws nothing, the same rule the bot badge follows.
+    public func roomUnreadCount(_ roomID: String) -> Int { roomUnreadCounts[roomID] ?? 0 }
+
+    public func hasUnreadRoom(_ roomID: String) -> Bool { roomUnreadCount(roomID) > 0 }
+
+    /// Everything waiting in chats that are **not** the one on screen.
+    ///
+    /// This is what the back button's bubble counts: a bot's chat can be quiet while four other
+    /// chats are not, and leaving that fact behind on the list is why answering one bot felt like
+    /// starting over. A room's unread counts too — it is a chat with bots in it.
+    public func unreadElsewhere(excludingBot botID: String?) -> Int {
+        var total = 0
+        for (id, count) in unreadCounts where id != botID { total += count }
+        for count in roomUnreadCounts.values { total += count }
+        return total
+    }
+
+    /// Mark a room read up to `seq`. Called when it opens and by its own view as new lines arrive,
+    /// so reading a room can never leave a badge behind on the list.
+    public func markRoomRead(_ roomID: String, seq: Int) {
+        guard !roomID.isEmpty else { return }
+        let mark = max(seq, 0)
+        if mark > (roomReadSeq[roomID] ?? 0) {
+            roomReadSeq[roomID] = mark
+            saveRoomReadSeq()
+        }
+        if roomUnreadCounts[roomID] != nil { roomUnreadCounts[roomID] = nil }
+    }
+
+    public func markRoomRead(_ room: RoomSummary) {
+        markRoomRead(room.id, seq: room.latestSeq ?? 0)
+    }
+
+    /// Count what the bots said in each room after this device's mark.
+    ///
+    /// `groups.list` reports each room's `latest_seq` but not how much of it is news, so the count
+    /// comes from the room's own log — and only for rooms that moved since the mark, which makes an
+    /// idle list cost zero extra requests. A room this device has never opened is seeded rather
+    /// than badged, exactly like a bot on first launch: its history is not unread.
+    public func refreshRoomUnread(in list: [RoomSummary]) async {
+        let known = Set(list.map(\.id))
+        roomUnreadCounts = roomUnreadCounts.filter { known.contains($0.key) }
+
+        for room in list {
+            let latest = room.latestSeq ?? 0
+            guard let mark = roomReadSeq[room.id] else {
+                markRoomRead(room.id, seq: latest)
+                continue
+            }
+            guard latest > mark else {
+                if roomUnreadCounts[room.id] != nil { roomUnreadCounts[room.id] = nil }
+                continue
+            }
+            do {
+                let page = try await client.roomPage(room.id, since: mark)
+                let fresh = page.messages.filter { !$0.isOwner && $0.seq > mark }
+                if fresh.isEmpty {
+                    // Only the owner spoke (or only bookkeeping moved the seq): nothing to badge.
+                    markRoomRead(room.id, seq: max(latest, page.latestSeq))
+                } else {
+                    roomUnreadCounts[room.id] = fresh.count
+                }
+            } catch {
+                ClientLog.note("room \(room.id): unread read failed: \(error.localizedDescription)",
+                               level: .warning, category: "rooms")
+            }
+        }
+    }
+
     /// The room on screen, if any. A room and a bot share the one conversation pane — opening a
     /// room is not a window, it is the same place a bot's chat appears, so Escape/back and the pane
     /// behave identically for both.
@@ -1352,8 +1462,12 @@ public final class AppModel: ObservableObject {
     public func requestRefresh() { refreshTick += 1 }
 
     /// Show a room in the conversation pane, and remember it so the pane can be re-created.
+    ///
+    /// Opening is reading: the room's mark moves to its newest line the moment it is on screen, so
+    /// the list cannot keep badging a chat the user is looking at.
     public func openRoom(_ room: RoomSummary) {
         activeRoom = room
+        markRoomRead(room)
     }
 
     /// Leave the room; the pane falls back to the selected bot.
@@ -1362,8 +1476,19 @@ public final class AppModel: ObservableObject {
     }
 
     /// Re-read the host's room list. Cheap (one call, a handful of rooms) and safe to spam.
+    ///
+    /// The unread sweep rides along: a room list is only worth showing if it says what is waiting
+    /// in each room, and both halves come from the same host read.
     public func refreshRooms() async {
-        do { rooms = try await client.rooms() } catch { /* a stale list beats an empty one */ }
+        do {
+            let list = try await client.rooms()
+            rooms = list
+            await refreshRoomUnread(in: list)
+        } catch {
+            // A stale list beats an empty one — but the log remembers why it is stale.
+            ClientLog.note("rooms.list failed: \(error.localizedDescription)",
+                           level: .warning, category: "rooms")
+        }
     }
 
     /// Open a room and put it at the top of the list immediately, without waiting for a re-read.
@@ -1594,9 +1719,15 @@ public final class AppModel: ObservableObject {
             switch state {
             case .open: connection = .connected
             case .connecting: connection = .connecting
-            case .reconnecting(let n): connection = .reconnecting(attempt: n)
+            case .reconnecting(let n):
+                connection = .reconnecting(attempt: n)
+                // The one line that explains every "it stopped answering": the socket dropped and
+                // is being retried, and how many times.
+                ClientLog.note("socket reconnecting (attempt \(n))", level: .warning, category: "connection")
             case .closed, .idle: break
-            case .failed(let why): connection = .failed(why)
+            case .failed(let why):
+                connection = .failed(why)
+                ClientLog.note("socket failed: \(why)", level: .error, category: "connection")
             }
         case .interimMessage(let session, let text, let alreadyStreamed, let key):
             guard session == selectedSessionID else { return }
@@ -1743,6 +1874,7 @@ public final class AppModel: ObservableObject {
             break
         case .error(_, let message):
             lastSendError = message
+            ClientLog.note("host reported an error: \(message)", level: .error, category: "gateway")
         case .unknown:
             break
         }
@@ -1851,6 +1983,8 @@ public final class AppModel: ObservableObject {
         } catch {
             guard selectedSessionID == sid else { return }
             lastSendError = "could not load earlier messages: \(error.localizedDescription)"
+            ClientLog.note("session.history failed: \(error.localizedDescription)",
+                           level: .warning, category: "paging")
         }
     }
 
