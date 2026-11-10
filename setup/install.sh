@@ -392,13 +392,28 @@ case "\${1:-status}" in
     out=\$(curl -fsS -X POST "\$base/v1/pair/start") || { echo "could not mint a code — is the bridge running?" >&2; exit 1; }
     code=\$(printf '%s' "\$out" | sed -n 's/.*"code"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
     host=\$(printf '%s' "\$out" | sed -n 's/.*"host"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-    link="hermes://pair?host=https://\$host:\$HTTPS&code=\$code"
-    echo "Pair in the Hermey app: add server → paste this, or scan the QR"
-    echo "  \$link"
-    if "$PREFIX/venv/bin/python" -c 'import qrcode' 2>/dev/null; then
-      "$PREFIX/venv/bin/python" -c 'import qrcode,sys
+    # The Host header of this loopback call carries the bridge port; the link wants the
+    # outside port, so a host that already names one must not end up with two.
+    host=\${host%%:*}
+    case "\$host" in
+      ""|127.*|localhost|::1)
+        # No tailnet name was configured, so nothing this prints could be pasted into the app:
+        # 127.0.0.1 from the phone is the phone. The code is still good — it is entered against
+        # whatever address reaches this host.
+        echo "Pair in the Hermey app: add this host's address, then enter this code"
+        echo "  code: \$code"
+        echo "  (no address is configured for this host, so there is no link to scan)"
+        ;;
+      *)
+        link="hermes://pair?host=https://\$host:\$HTTPS&code=\$code"
+        echo "Pair in the Hermey app: add server → paste this, or scan the QR"
+        echo "  \$link"
+        if "$PREFIX/venv/bin/python" -c 'import qrcode' 2>/dev/null; then
+          "$PREFIX/venv/bin/python" -c 'import qrcode,sys
 qr=qrcode.QRCode(border=1); qr.add_data(sys.argv[1]); qr.print_ascii(invert=True)' "\$link" || true
-    fi
+        fi
+        ;;
+    esac
     ;;
   logs)   journalctl -u "\$UNIT" -n "\${2:-50}" --no-pager;;
   doctor)
