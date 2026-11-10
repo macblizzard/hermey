@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.93",
+          "buildVersion": "93",
+          "date": "2026-11-10T11:23:39Z",
+          "localizedDescription": "Headings and labels keep their weight again and glyphs sit on a half-point grid, so Mac text stops looking washed out.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.93/Hermey-0.1.93-b93.ipa",
+          "size": 1970531,
+          "minOSVersion": "17.0",
+          "sha256": "76b7aa05dd3deadaf18419747ab5428a82a144d47822b51937b338d36596811a"
+        },
+        {
           "version": "0.1.90",
           "buildVersion": "90",
           "date": "2026-11-10T11:09:17Z",
@@ -62,16 +72,6 @@
           "size": 1966778,
           "minOSVersion": "17.0",
           "sha256": "6821168ef7443c2ab9f484ea4302bad3a6c8ce634bd59412aef1f54e5e4368a8"
-        },
-        {
-          "version": "0.1.75",
-          "buildVersion": "75",
-          "date": "2026-11-10T08:30:29Z",
-          "localizedDescription": "Back button and bar chrome restored (edge-swipe works again), unread count moved into the chat header strip, shorter menu popups.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.75/Hermey-0.1.75-b75.ipa",
-          "size": 1964973,
-          "minOSVersion": "17.0",
-          "sha256": "ccd33e4ff191afc4acae9311948bcfddefbdf0ddf28d5cbcef89429d1e899413"
         }
       ],
       "appPermissions": {
