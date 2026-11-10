@@ -40,6 +40,9 @@ All notable changes to Hermey are recorded here. The format follows
   again) and stops the running turn from drawing live cards either. The label now says what it does.
 
 ### Added
+- **Bot computer: right click.** A two-finger tap while in control is a right click at the point
+  between the fingers (`MouseEvent.buttons: 2` through noVNC's own pointer path), with a one-time
+  hint on take-over.
 - **Bot computer** in both apps: the host's shared headless desktop, opened from a bot's chat — the
   phone's ⋯ menu, or the Mac's display button / ⋯ menu. The Mac shows it as a **right-hand panel**
   with a full-screen option; the phone opens a full-height sheet. Watching is live; **Take over**
