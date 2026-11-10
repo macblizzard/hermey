@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.66",
+          "buildVersion": "66",
+          "date": "2026-11-10T07:35:43Z",
+          "localizedDescription": "Unread counts on the back button and on group chats, one gutter for a chat and its composer, a compact themed \u22ef menu, and Settings \u2192 View log.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.66/Hermey-0.1.66-b66.ipa",
+          "size": 1971354,
+          "minOSVersion": "17.0",
+          "sha256": "fc47b350554b09243e01e740eb25b9ef97673bd2885b43c90140a79a024a53da"
+        },
+        {
           "version": "0.1.63",
           "buildVersion": "63",
           "date": "2026-11-10T06:47:56Z",
@@ -62,16 +72,6 @@
           "size": 1905603,
           "minOSVersion": "17.0",
           "sha256": "d4cfc94752d3bda2b27f59b7d7d3ed11181eb49b70f8044466b8b7edc32c4a48"
-        },
-        {
-          "version": "0.1.46",
-          "buildVersion": "46",
-          "date": "2026-11-10T00:46:03Z",
-          "localizedDescription": "Build from CI run 42730444746.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.46/Hermey-0.1.46-b46.ipa",
-          "size": 1904415,
-          "minOSVersion": "17.0",
-          "sha256": "c991ff880eb4bb68f6a7efd019bd8ad815fecd293f925e221d4017d76adf38d9"
         }
       ],
       "appPermissions": {
