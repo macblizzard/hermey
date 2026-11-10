@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.100",
+          "buildVersion": "100",
+          "date": "2026-11-10T13:06:16Z",
+          "localizedDescription": "The image viewer's footer no longer truncates Done, and a picture you sent has no Save \u2014 it is already yours.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.100/Hermey-0.1.100-b100.ipa",
+          "size": 1997470,
+          "minOSVersion": "17.0",
+          "sha256": "d8940066adc2e6ebd995704fb76cb633eaea1e00e6c22b854decc53701504424"
+        },
+        {
           "version": "0.1.97",
           "buildVersion": "97",
           "date": "2026-11-10T11:55:10Z",
@@ -62,16 +72,6 @@
           "size": 1968893,
           "minOSVersion": "17.0",
           "sha256": "057f53ad6aa25db99ead91cdcbcf1d8a2dc1896bd1fe37a8ec311528479771bd"
-        },
-        {
-          "version": "0.1.84",
-          "buildVersion": "84",
-          "date": "2026-11-10T10:30:26Z",
-          "localizedDescription": "Pairing fixed end to end: a code pairs on a fresh Mac, and the claim now sends public_key/device_name so the host stops answering 422.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.84/Hermey-0.1.84-b84.ipa",
-          "size": 1968896,
-          "minOSVersion": "17.0",
-          "sha256": "331e2a667e680e0ba2b3d43e6d4ab1834d0d18e78f59f15981f4ffca600e529f"
         }
       ],
       "appPermissions": {
