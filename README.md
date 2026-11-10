@@ -14,6 +14,10 @@
   <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/macblizzard/hermey?color=black"></a>
 </p>
 
+<!-- build:start -->
+<p align="center"><sub>Latest published build <b>0.1.66</b> (build 66)</sub></p>
+<!-- build:end -->
+
 ---
 
 Hermes is an agent that runs on your own machine. Hermey is the phone and desktop client for it:
