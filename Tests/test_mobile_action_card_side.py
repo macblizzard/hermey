@@ -31,6 +31,23 @@ class TheCardChoosesItsSide(unittest.TestCase):
         self.assertLess(raise_block.index("opensAbove ="), raise_block.index("showingActions = true"),
                         "the side must be chosen while the popover is still closed")
 
+    def test_the_arrow_points_at_the_press_not_at_the_row(self) -> None:
+        # A long message's rectangle is taller than the screen: anchoring to it put the card at the
+        # top of the page. The anchor is the press point.
+        self.assertIn("attachmentAnchor: .point(anchorPoint)", VIEW)
+        self.assertNotIn("attachmentAnchor: .rect(.bounds)", VIEW)
+        self.assertIn("DragGesture(minimumDistance: 0, coordinateSpace: .local)", VIEW)
+        self.assertIn("value.startLocation", VIEW)
+        self.assertEqual(VIEW.count("simultaneousGesture(pressLocator)"), 2,
+                         "both kinds of message must report where the press landed")
+
+    def test_the_side_is_judged_from_the_pressed_line(self) -> None:
+        raise_block = VIEW.split("private func raiseActions()", 1)[1].split("private var actionCard", 1)[0]
+        self.assertIn("let pressedY = rowFrame.minY + pressPoint.y", raise_block,
+                      "the row's middle says nothing about a message taller than the screen")
+        self.assertIn("spaceAbove > spaceBelow", raise_block,
+                      "with room on neither side, the larger half wins")
+
     def test_both_message_kinds_go_through_one_door(self) -> None:
         self.assertEqual(VIEW.count("onLongPressGesture(minimumDuration: 0.35) { raiseActions() }"), 2,
                          "the owner's bubble and the bot's reply must not disagree")

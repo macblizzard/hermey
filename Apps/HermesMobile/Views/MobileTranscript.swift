@@ -30,6 +30,15 @@ struct MobileTranscriptRow: View {
     @State private var showingActions = false
     /// Where this row sits on screen, so the card can open on the side that has room.
     @State private var rowFrame: CGRect = .zero
+    /// The row's size, needed to turn a touch into a unit point.
+    @State private var rowSize: CGSize = .zero
+    /// Where in this row the press landed, in the row's own coordinates.
+    ///
+    /// The card used to hang off the row's whole rectangle, which is fine for a one-line message and
+    /// wrong for a long one: the anchor is then taller than the screen, and "above the row" means
+    /// the top of the page rather than the line under the thumb. A press point keeps the card where
+    /// the finger was.
+    @State private var pressPoint: CGPoint = .zero
     /// True when the card must open *above* the message.
     ///
     /// A word-processor's worth of text sits under a long press at the bottom of the screen: with the
@@ -78,12 +87,15 @@ struct MobileTranscriptRow: View {
         // emoji behind a second menu ("Add reaction").
         .background(
             GeometryReader { geo in
-                Color.clear.preference(key: RowFrameKey.self, value: geo.frame(in: .global))
+                Color.clear
+                    .preference(key: RowFrameKey.self, value: geo.frame(in: .global))
+                    .onAppear { rowSize = geo.size }
+                    .onChange(of: geo.size) { _, size in rowSize = size }
             }
         )
         .onPreferenceChange(RowFrameKey.self) { rowFrame = $0 }
         .popover(isPresented: $showingActions,
-                 attachmentAnchor: .rect(.bounds),
+                 attachmentAnchor: .point(anchorPoint),
                  arrowEdge: opensAbove ? .bottom : .top) {
             actionCard
                 .presentationCompactAdaptation(.popover)
@@ -169,12 +181,30 @@ struct MobileTranscriptRow: View {
 
     // MARK: Action card
 
+    /// Where the finger is, in the row's own coordinates. Fires on touch-down and on drags, so the
+    /// long press that follows always has a fresh point.
+    private var pressLocator: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in pressPoint = value.startLocation }
+    }
+
+    /// The press, as a unit point inside this row — where the card's arrow must point.
+    private var anchorPoint: UnitPoint {
+        guard rowSize.width > 0, rowSize.height > 0 else { return .center }
+        let x = min(max(pressPoint.x / rowSize.width, 0.08), 0.92)
+        let y = min(max(pressPoint.y / rowSize.height, 0.02), 0.98)
+        return UnitPoint(x: x, y: y)
+    }
+
     /// Open the card on whichever side has room for it.
     private func raiseActions() {
-        // Half the card's height is roughly 130 pt; below that margin the bottom edge wins.
+        // The card is ~250 pt tall; it opens above the pressed line when there is less room than
+        // that below it, and below the line otherwise.
         let screen = UIScreen.main.bounds
-        let spaceBelow = screen.height - rowFrame.maxY
-        opensAbove = spaceBelow < 260 || rowFrame.midY > screen.height * 0.6
+        let pressedY = rowFrame.minY + pressPoint.y
+        let spaceBelow = screen.height - pressedY
+        let spaceAbove = pressedY
+        opensAbove = spaceBelow < 250 && spaceAbove > spaceBelow
         Haptics.selection()
         showingActions = true
     }
@@ -398,6 +428,7 @@ struct MobileTranscriptRow: View {
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
+                .simultaneousGesture(pressLocator)
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -411,6 +442,7 @@ struct MobileTranscriptRow: View {
                 .accessibilityLabel(entry.text)
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
+                .simultaneousGesture(pressLocator)
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
             messageTime
         }

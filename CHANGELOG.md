@@ -54,6 +54,12 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The long-press card opens where your finger is.** It was anchored to the message's whole
+  rectangle: for a long message that rectangle is taller than the screen, so "above the row" meant the
+  top of the page. The card now anchors to the press point inside the row, and chooses its side from
+  the pressed line rather than from the row's middle.
+
+### Fixed
 - **The long-press card opens above a message at the bottom of the screen.** It was asked for with a
   fixed `arrowEdge: .top` — always below the row — and at the bottom of the screen there is no room
   below, so iOS placed what fitted and clipped the rest. The reactions are the first thing in the card,
