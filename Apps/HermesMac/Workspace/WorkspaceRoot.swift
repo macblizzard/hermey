@@ -60,11 +60,12 @@ struct WorkspaceRoot: View {
                 .opacity(windowOpacity)
 
             // The title bar is hidden, so nothing owns the "drag me / double-click me" strip at the
-            // top of the window. This transparent view does, and stays clear of the traffic lights.
+            // top of the window. This transparent view does — across the **whole** width, because
+            // the traffic lights are hit-tested by the window's own frame before this content, and
+            // insetting past them by hand left the band above the sidebar's search field dead.
             TitlebarDragArea()
                 .frame(height: WorkspaceShell.titlebarStrip)
-                .padding(.leading, 96)
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(true)
 
             paletteOverlay

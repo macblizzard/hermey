@@ -54,6 +54,12 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **Double-clicking the top strip zooms the window everywhere, not just over the chat.** The stand-in
+  title bar started 96 pt in — past the traffic lights — which left the band above the sidebar's
+  search field dead: the same gesture that zoomed the window over the conversation did nothing there.
+  It now covers the full width (the traffic lights are hit-tested by the window's own frame first),
+  and a double-click follows the system preference (Desktop & Dock → "Double-click a window's title
+  bar to": zoom, minimise, or nothing) instead of always zooming.
 - **The shared computer takes a physical keyboard.** Keys were only read from the viewer's hidden text
   area, and on a Mac nothing ever focused it — no soft keyboard, the ⌨ button hidden for coarse
   pointers, the pane opening with the caret nowhere — so typing went into the void while the remote

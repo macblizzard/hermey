@@ -8,9 +8,11 @@ import SwiftUI
 /// one interaction every Mac user has in their fingers: drag it to move the window, double-click it
 /// to zoom. Neither worked, because there was no title bar left to receive the click.
 ///
-/// So this view stands in for one: it is transparent, it covers only the empty band across the top,
-/// and it stays clear of the traffic lights (the caller insets it past them) so the close, minimise
-/// and zoom buttons keep their own clicks.
+/// So this view stands in for one: it is transparent, it covers the empty band across the top, and
+/// it is **full width**. It used to start 96 pt in, which left exactly the band a person aims at —
+/// the space above the sidebar's search field — dead: a double-click there did nothing while the
+/// same gesture over the conversation zoomed the window. The traffic lights need no gap: they live
+/// in the window's own frame view, above this content, and are hit-tested before it.
 struct TitlebarDragArea: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { DragView() }
 
@@ -20,12 +22,14 @@ struct TitlebarDragArea: NSViewRepresentable {
         override var isOpaque: Bool { false }
 
         /// A title bar takes the click *and* the drag: one press moves the window, a double press
-        /// zooms it. `performDrag(with:)` is the same loop AppKit runs for a real title bar, so
-        /// momentum, edge snapping and Spaces all behave.
+        /// does whatever the system says a double press on a title bar does.
+        ///
+        /// `performDrag(with:)` is the same loop AppKit runs for a real title bar, so momentum,
+        /// edge snapping and Spaces all behave.
         override func mouseDown(with event: NSEvent) {
-            guard let window = window else { return }
+            guard let window else { return }
             if event.clickCount == 2 {
-                window.zoom(nil)
+                Self.actOnDoubleClick(window)
             } else {
                 window.performDrag(with: event)
             }
@@ -34,5 +38,21 @@ struct TitlebarDragArea: NSViewRepresentable {
         /// The window has no focusable chrome here; a click should not steal first responder from
         /// the composer while the user is typing.
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        /// What a double-click on a title bar means is a **system** preference — Desktop & Dock →
+        /// "Double-click a window's title bar to". Honouring it is what separates a stand-in title
+        /// bar from a Mac that suddenly zooms when its owner asked it not to.
+        static func actOnDoubleClick(_ window: NSWindow) {
+            switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+            case "Minimize"?:
+                window.miniaturize(nil)
+            case "None"?:
+                break
+            default:
+                // `zoom(nil)` is the same call the green button makes, so the window returns to the
+                // size it came from rather than to some computed "maximised" frame.
+                window.zoom(nil)
+            }
+        }
     }
 }
