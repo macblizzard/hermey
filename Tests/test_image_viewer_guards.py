@@ -30,6 +30,13 @@ class ImageViewerGuards(unittest.TestCase):
         self.assertIn("UIPasteboard.general.image", VIEWER)
         self.assertIn("NSPasteboard.general", VIEWER)
 
+    def test_a_picture_you_sent_has_no_save(self) -> None:
+        # "i guess i dont need to download image that im sending to u"
+        self.assertIn("public let canExport: Bool", VIEWER)
+        self.assertIn("if canExport {", VIEWER)
+        for name, text in (("TranscriptRowView", MAC_ROW), ("MobileTranscript", IOS_ROW)):
+            self.assertIn("canExport: false", text, f"{name} shows a picture the person already owns")
+
     def test_zoom_is_a_control_and_a_gesture(self) -> None:
         self.assertIn("MagnificationGesture", VIEWER)
         self.assertIn("Button(\"Fit\")", VIEWER)
@@ -37,12 +44,12 @@ class ImageViewerGuards(unittest.TestCase):
         self.assertIn("plus.magnifyingglass", VIEWER)
 
     def test_the_mac_thumbnail_opens_the_viewer(self) -> None:
-        self.assertIn("ImageViewer(data: item.data, title: item.name)", MAC_ROW)
+        self.assertIn("ImageViewer(data: item.data, title: item.name, canExport: false)", MAC_ROW)
         self.assertIn("viewingImage = ViewedImage(", MAC_ROW)
         self.assertIn(".sheet(item: $viewingImage)", MAC_ROW)
 
     def test_the_phone_thumbnail_opens_the_viewer(self) -> None:
-        self.assertIn("ImageViewer(data: item.data, title: item.name)", IOS_ROW)
+        self.assertIn("ImageViewer(data: item.data, title: item.name, canExport: false)", IOS_ROW)
         self.assertIn("viewingImage = ViewedAttachment(", IOS_ROW)
         self.assertIn(".fullScreenCover(item: $viewingImage)", IOS_ROW)
 

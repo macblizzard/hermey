@@ -178,7 +178,7 @@ struct TranscriptRowView: View {
             // The picture, at its own size, with Save and Copy — the same viewer a generated
             // artifact opens.
             .sheet(item: $viewingImage) { item in
-                ImageViewer(data: item.data, title: item.name) { viewingImage = nil }
+                ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
                     .frame(minWidth: 640, minHeight: 460)
             }
         }

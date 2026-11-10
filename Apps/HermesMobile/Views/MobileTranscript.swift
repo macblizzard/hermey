@@ -70,7 +70,7 @@ struct MobileTranscriptRow: View {
         }
         // The viewer fills the screen: a picture at 132 pt is a preview, not the picture.
         .fullScreenCover(item: $viewingImage) { item in
-            ImageViewer(data: item.data, title: item.name) { viewingImage = nil }
+            ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showingSelection) {

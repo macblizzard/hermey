@@ -6,13 +6,21 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A picture you sent has no Save.** The viewer takes `canExport`: off for your own attachment (it is
+  already on your disk — saving it back is busywork), on for a picture the host produced or one that
+  arrived from elsewhere. Copy stays either way.
 - **Pictures open.** Clicking an attached image on the Mac, or tapping one on the phone, now opens a
   viewer instead of doing nothing: the picture at its own size with zoom (+/−, `Fit`, pinch), the
-  pixel dimensions and file size, Copy, and Save (Mac: a save panel; phone: the share sheet). The
+  pixel dimensions and file size, Copy, and — for pictures you did not send — Save (Mac: a save panel;
+  phone: the share sheet). The
   bytes are shown exactly as they arrived — nothing is re-encoded. `ImageViewer` lives in
   `OpenBotUI`, so the artifacts a host generates will open in the same one once they are rendered in
   a transcript (they are not drawn anywhere yet — the host sends no attachment metadata for its own
   replies, so that needs a host-side fetch, not a view).
+- **The footer fits a phone.** The bar was four text controls plus a primary button, so on a narrow
+  screen `Done` was squeezed to `D…`; the secondary verbs are glyphs with 30 pt targets now, the
+  report ("Copied", "Saved") is a word over the picture instead of a fifth control, and `Done` has
+  `fixedSize` and the highest layout priority.
 - **"N unread" in a bot chat's header strip:** the replies waiting in the *other* chats (other bots
   plus any group chat with new lines), refreshed while the chat is open. It sits beside the model
   chip and takes the entries count's place while it is showing — one count per row — and tapping it
