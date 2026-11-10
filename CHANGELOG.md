@@ -31,6 +31,11 @@ All notable changes to Hermey are recorded here. The format follows
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **A pairing code is now accepted by the host instead of answered 422.** The Mac app sent the claim
+  body as `publicKey`/`deviceName`; the host's model is `public_key`/`device_name`, so the request
+  failed validation ("field required") and the sheet could only report the status code. The body and
+  its field names moved to `PairClaimBody` in the kit (the phone had always spelled them itself), and
+  refusals now carry the host's own reason — including FastAPI's array-shaped `detail`.
 - **A code from `hermey pair` pairs on a Mac that has never paired.** A fresh Mac has no remembered
   host, so a bare eight-digit code parsed to nothing and the sheet called it "not a pairing code" —
   the digits were refused on the device and never reached the host; only the full `hermes://` link

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HermesAppKit
 
 /// Redeems a pairing code for a device row on the host — the step the Mac sheet could not do, and
 /// the reason a code from `hermey pair` was useless on this platform.
@@ -36,13 +37,6 @@ enum PairingClaim {
         }
     }
 
-    private struct ClaimBody: Encodable {
-        let code: String
-        let publicKey: String
-        let deviceName: String
-        let platform: String
-    }
-
     private struct ClaimResponse: Decodable {
         let deviceID: String
         let refreshToken: String
@@ -59,17 +53,19 @@ enum PairingClaim {
         }
 
         let key = Curve25519.Signing.PrivateKey()
-        let body = ClaimBody(code: code,
-                             publicKey: key.publicKey.rawRepresentation.base64EncodedString(),
-                             deviceName: deviceName,
-                             platform: "macos")
+        // The host's field names are snake_case and `PairClaimBody` owns them: spelling them here as
+        // `publicKey`/`deviceName` is what the host answered 422 to.
+        let body = PairClaimBody(code: code,
+                                 publicKey: key.publicKey.rawRepresentation.base64EncodedString(),
+                                 deviceName: deviceName,
+                                 platform: "macos")
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONEncoder().encode(body)
+        request.httpBody = try body.encoded()
 
         let data: Data
         let response: URLResponse
@@ -81,11 +77,13 @@ enum PairingClaim {
 
         guard let http = response as? HTTPURLResponse else { throw Failure.malformed }
         guard (200..<300).contains(http.statusCode) else {
-            let detail = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["detail"] as? String
+            // Every refusal carries the host's own words when it wrote any — a 422 used to reach the
+            // screen as a bare status code because its `detail` is an array, not a string.
+            let detail = PairClaimBody.detail(in: data)
             if http.statusCode == 400 || http.statusCode == 404 || http.statusCode == 409 {
                 throw Failure.badCode
             }
-            throw Failure.refused(http.statusCode, detail ?? "")
+            throw Failure.refused(http.statusCode, detail)
         }
         guard let decoded = try? JSONDecoder().decode(ClaimResponse.self, from: data) else {
             throw Failure.malformed
