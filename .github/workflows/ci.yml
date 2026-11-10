@@ -92,8 +92,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
       - uses: actions/upload-artifact@v4
         # Only a push (i.e. `main`) produces a publishable build. A pull request from a fork would
-        # otherwise hand a maintainer an artifact shaped by the PR's own project.yml.
-        if: github.event_name == 'push'
+        # otherwise hand a maintainer an artifact shaped by the PR's own project.yml. A dispatch
+        # counts too: it runs the same committed tree, and without this a re-run for a starved
+        # macOS pool built the app and then threw it away.
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
           name: Hermey-macOS-unsigned
           path: dist/Hermey-macOS-unsigned.zip
@@ -136,7 +138,7 @@ jobs:
           unzip -l dist/Hermey-unsigned.ipa | head -20
           du -h dist/Hermey-unsigned.ipa
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
           name: Hermey-unsigned-ipa
           path: dist/Hermey-unsigned.ipa
