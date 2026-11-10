@@ -89,6 +89,7 @@ struct MacComposerBar: View {
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
+                    .help("Dismiss this notice")
                     .accessibilityLabel("Dismiss")
                 }
                 .foregroundStyle(Tokens.accentText)
@@ -119,6 +120,7 @@ struct MacComposerBar: View {
                     }
                     .buttonStyle(.plain)
                     .focusable(false)
+                    .help("Cancel this reply")
                     .accessibilityLabel("Cancel reply")
                 }
                 .foregroundStyle(Tokens.textMuted)
@@ -243,6 +245,7 @@ struct MacComposerBar: View {
                                 .foregroundStyle(Tokens.textMuted)
                         }
                         .buttonStyle(.plain)
+                        .help("Remove \(attachment.name)")
                         .accessibilityLabel("Remove \(attachment.name)")
                     }
                     .padding(.horizontal, 8)

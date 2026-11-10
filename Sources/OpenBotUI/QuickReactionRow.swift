@@ -6,6 +6,19 @@ import SwiftUI
 /// desktop as on the phone — and so a picker never has to be a submenu of a menu of a long press.
 public enum ReactionEmoji {
     public static let basic = ["👍", "❤️", "😂", "😮", "😢", "🎉"]
+
+    /// What to call each one out loud and in a tooltip — an emoji alone is not a label.
+    public static func name(_ emoji: String) -> String {
+        switch emoji {
+        case "👍": return "Thumbs Up"
+        case "❤️": return "Heart"
+        case "😂": return "Laughing"
+        case "😮": return "Surprised"
+        case "😢": return "Sad"
+        case "🎉": return "Celebrate"
+        default: return "React"
+        }
+    }
 }
 
 /// One horizontal row of the basic reactions, with the chosen one ringed.
@@ -39,10 +52,16 @@ public struct QuickReactionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(emoji)
+                // A popover hands focus to its first control, and the focus ring drew a square
+                // around 👍 — a ring on a bare emoji reads as a selection, which it is not.
+                .focusable(false)
+                .focusEffectDisabled()
+                .help(ReactionEmoji.name(emoji))
+                .accessibilityLabel(ReactionEmoji.name(emoji))
                 .accessibilityHint(selected == emoji ? "Select again to remove this reaction"
                                                      : "React with \(emoji)")
             }
         }
+        .fixedSize()
     }
 }

@@ -67,21 +67,9 @@ struct TranscriptRowView: View {
             content.contextMenu { messageMenu }
             if let key = reactionKey, let emoji = reactions[key] {
                 Button(emoji) { toggleReaction(emoji) }
+                    .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
                     .accessibilityLabel("Remove local reaction \(emoji)")
             }
-        }
-        .popover(isPresented: $showingReactions) {
-            VStack(spacing: 6) {
-                QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
-                    toggleReaction(emoji)
-                    showingReactions = false
-                }
-                Text("Saved on this Mac")
-                    .font(TypeScale.font(10))
-                    .foregroundStyle(Tokens.textDim)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
         }
     }
 
@@ -255,17 +243,39 @@ struct TranscriptRowView: View {
 
     // MARK: Actions
 
+    private var reactionPicker: some View {
+        VStack(spacing: 5) {
+            QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
+                toggleReaction(emoji)
+                showingReactions = false
+            }
+            Text("Saved on this Mac")
+                .font(TypeScale.font(10))
+                .foregroundStyle(Tokens.textDim)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+    }
+
     private var messageActions: some View {
         HStack(spacing: 2) {
             // Six reactions on one press. It sits first because it is the lightest verb on the row
             // and the one a person reaches for while reading.
             if reactionKey != nil {
+                // The popover hangs off this button, not off the row. On the row it anchored to the
+                // message's whole width — so it opened below and to the right of the smiley, 465 pt
+                // wide, pointing its arrow at nothing in particular.
                 actionGlyph("react",
                             systemImage: "face.smiling",
                             tint: reactionKey.flatMap { reactions[$0] } != nil ? Tokens.accentText
                                                                                 : Tokens.textMuted,
                             help: "React to this message") {
                     showingReactions = true
+                }
+                .popover(isPresented: $showingReactions,
+                         attachmentAnchor: .rect(.bounds),
+                         arrowEdge: .bottom) {
+                    reactionPicker
                 }
             }
 
