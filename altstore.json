@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.84",
+          "buildVersion": "84",
+          "date": "2026-11-10T10:30:26Z",
+          "localizedDescription": "Pairing fixed end to end: a code pairs on a fresh Mac, and the claim now sends public_key/device_name so the host stops answering 422.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.84/Hermey-0.1.84-b84.ipa",
+          "size": 1968896,
+          "minOSVersion": "17.0",
+          "sha256": "331e2a667e680e0ba2b3d43e6d4ab1834d0d18e78f59f15981f4ffca600e529f"
+        },
+        {
           "version": "0.1.80",
           "buildVersion": "80",
           "date": "2026-11-10T09:20:00Z",
@@ -62,16 +72,6 @@
           "size": 1919427,
           "minOSVersion": "17.0",
           "sha256": "1389b9265dac4e4ff9dcbcb7a3a4d6e3b1663da243f7a0417315684750e4ff40"
-        },
-        {
-          "version": "0.1.58",
-          "buildVersion": "58",
-          "date": "2026-11-10T05:21:41Z",
-          "localizedDescription": "A long conversation opens again: transcripts are paged (newest page first, 'Load earlier messages' for the rest), so a 3.4 MB resume frame no longer kills the phone's socket.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.58/Hermey-0.1.58-b58.ipa",
-          "size": 1918702,
-          "minOSVersion": "17.0",
-          "sha256": "5bfb71cd0eb79b67088a32a9796e33fe8c161edfe7e2cf7d4bc371b9fb4e248f"
         }
       ],
       "appPermissions": {
