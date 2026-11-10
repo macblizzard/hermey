@@ -26,6 +26,10 @@
                     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
   #keyboardButton[hidden] { display: none; }
   #keyboardButton:active { background: rgba(70,70,76,0.95); }
+  #toast { position: fixed; left: 50%; top: 14px; transform: translateX(-50%);
+           padding: 7px 13px; border-radius: 14px; background: rgba(18,18,20,0.82);
+           color: rgba(255,255,255,0.9); font: 12.5px -apple-system, system-ui, sans-serif;
+           white-space: nowrap; opacity: 0; transition: opacity 0.35s; pointer-events: none; }
   #zoomBadge { position: fixed; right: 14px; bottom: 70px; padding: 3px 8px; border-radius: 10px;
                background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.8);
                font: 11px -apple-system, system-ui, sans-serif; opacity: 0; transition: opacity 0.3s;
@@ -38,6 +42,7 @@
           spellcheck="false" aria-label="Type on the shared computer"></textarea>
 <button id="keyboardButton" hidden aria-label="Show the keyboard">⌨</button>
 <div id="zoomBadge"></div>
+<div id="toast"></div>
 <script>
   // Defined before noVNC's module runs, because the native side sets this flag on its first layout
   // pass — long before the module has finished loading. The value is kept and replayed on connect,
@@ -65,6 +70,15 @@
   // Touch devices only: on a Mac the physical keyboard is already there and a floating ⌨ is noise.
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
   const zoomBadge = document.getElementById('zoomBadge');
+  const toastBox = document.getElementById('toast');
+
+  let toastTimer;
+  function toast(text, milliseconds = 3200) {
+    toastBox.textContent = text;
+    toastBox.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastBox.style.opacity = '0'; }, milliseconds);
+  }
 
   function post(event, extra) {
     try {
@@ -128,6 +142,20 @@
       window.__hermeyFocus();
     });
 
+    // ---- right click -----------------------------------------------------------------------
+    // noVNC has no gesture for this on a touch screen. Its handler reads `buttons`, not `button`,
+    // and converts 2 to the right-button bit — so a synthetic press/release pair with `buttons: 2`
+    // is exactly a right click, at the same point noVNC would have computed for a real tap.
+    function rightClick(x, y) {
+      if (window.__hermeyViewOnly) { return; }   // watching is not driving
+      const canvas = screen.querySelector('canvas');
+      if (!canvas) { return; }
+      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window,
+                                                         clientX: x, clientY: y, button: 2, buttons: 2 }));
+      canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window,
+                                                       clientX: x, clientY: y, button: 2, buttons: 0 }));
+    }
+
     // ---- pinch to zoom, two fingers to pan --------------------------------------------------
     // The picture is scaled with a CSS transform on the element noVNC draws into. Its pointer
     // mapping reads the canvas's bounding rect, which already includes the transform, so a tap
@@ -178,7 +206,8 @@
     screen.addEventListener('touchstart', (event) => {
       if (event.touches.length !== 2) { return; }
       swallow(event);
-      pinch = { span: Math.max(1, span(event.touches)), scale, tx, ty, middle: middle(event.touches) };
+      pinch = { span: Math.max(1, span(event.touches)), scale, tx, ty, middle: middle(event.touches),
+                startedAt: Date.now(), moved: 0 };
       releasePointer();
     }, { capture: true, passive: false });
 
@@ -188,6 +217,10 @@
       const next = Math.min(MAX_SCALE, Math.max(1, pinch.scale * span(event.touches) / pinch.span));
       const ratio = next / pinch.scale;
       const now = middle(event.touches);
+      // How far this gesture has travelled, so a two-finger *tap* can be told from a pinch or pan.
+      pinch.moved = Math.max(pinch.moved,
+                             Math.abs(now.x - pinch.middle.x) + Math.abs(now.y - pinch.middle.y),
+                             Math.abs(span(event.touches) - pinch.span));
       // Keep the point between the fingers under the fingers (this also pans, since the midpoint
       // moves when both fingers are dragged together).
       tx = now.x - (pinch.middle.x - pinch.tx) * ratio;
@@ -201,8 +234,12 @@
       if (event.touches.length !== 0) { return; }
       // Deliberately NOT swallowed: noVNC saw the first finger go down, so it must see the last one
       // come up — swallowing the touchend was what left it holding a button forever.
+      const wasTap = pinch && pinch.moved < 14 && Date.now() - pinch.startedAt < 400;
       if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
       if (pinch) { releasePointer(); }
+      // A two-finger tap that neither moved nor resized is the right click: the desktop equivalent
+      // of pressing the right button, which a phone has no other way to do.
+      if (wasTap) { rightClick(pinch.middle.x, pinch.middle.y); }
       pinch = null;
     }
     screen.addEventListener('touchend', endPinch, { capture: true, passive: false });
@@ -213,10 +250,15 @@
     // ---- connection -------------------------------------------------------------------------
     // Enabling input turns off noVNC's view-only mode and offers the keyboard. Nothing here grabs
     // keys: they arrive through the text area above, so no gesture is taken from the desktop.
+    let toldOnce = false;
     window.__hermeyApply = function () {
       rfb.viewOnly = window.__hermeyViewOnly;
       keyboardButton.hidden = window.__hermeyViewOnly || !isTouch;
-      if (window.__hermeyViewOnly) { keys.blur(); }
+      if (window.__hermeyViewOnly) { keys.blur(); return; }
+      if (!toldOnce && isTouch) {
+        toldOnce = true;
+        toast('Pinch to zoom · two-finger tap to right-click');
+      }
     };
 
     rfb.addEventListener('connect', () => { post('connected'); window.__hermeyApply(); });
