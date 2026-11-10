@@ -18,6 +18,9 @@ final class ConversationCacheTests: XCTestCase {
 
     private func host(_ label: String, entries: [TranscriptEntry] = []) -> ScriptedHost {
         let client = ScriptedHost(session: "s1")
+        // Without a shared-session pointer the model takes the create-a-draft path, which is empty
+        // by definition — the bug under test lives on the resume path, so point the host at it.
+        client.hostPointer = "s1"
         client.entries = entries
         return client
     }
