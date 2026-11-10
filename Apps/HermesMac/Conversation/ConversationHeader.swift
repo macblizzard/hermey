@@ -229,8 +229,8 @@ struct ConversationHeader: View {
 
     private var moreMenu: some View {
         Menu {
-            Button("Bot computer…") { store.toggleComputerPanel() }
-            Divider()
+            // No "Bot computer…" here: the header's own display button is the door, and a verb that
+            // duplicates the button next to it makes the menu read as a second toolbar.
             if let bot = model.selectedBot {
                 Button("Bot settings") { store.openBotSettings(bot) }
                 Divider()
@@ -257,6 +257,9 @@ struct ConversationHeader: View {
             }
             .disabled(!model.canActOnConversation)
 
+            Divider()
+            Button("Mark all as read") { model.markAllRead() }
+                .disabled(!model.hasAnyUnread)
             Divider()
             Button("Command palette…") { store.openPalette() }
             Button("Settings…") { openSettings() }

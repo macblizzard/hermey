@@ -122,6 +122,12 @@ struct BotSidebarView: View {
                 Button { store.isStartGroupChatPresented = true } label: {
                     Label("Start group chat…", systemImage: "person.3")
                 }
+                Divider()
+                // One act for the whole list: opening nine chats to clear nine dots is not reading.
+                Button { store.model.markAllRead() } label: {
+                    Label("Mark all as read", systemImage: "checkmark.circle")
+                }
+                .disabled(!store.model.hasAnyUnread)
             } label: {
                 // Three dots on the Mac too: the same menu, wearing the same glyph as on the phone,
                 // instead of a funnel that promised filtering and then offered "Add bot".

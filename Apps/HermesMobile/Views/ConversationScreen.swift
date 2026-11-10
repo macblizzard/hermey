@@ -667,6 +667,13 @@ struct ConversationScreen: View {
 
                     Divider()
 
+                    Button { model.markAllRead() } label: {
+                        Label("Mark all as read", systemImage: "checkmark.circle")
+                    }
+                    .disabled(!model.hasAnyUnread)
+
+                    Divider()
+
                     // Reading aloud, where a switch with a name belongs — not as a bare glyph
                     // above the composer.
                     Toggle(isOn: Binding(get: { speakReplies },

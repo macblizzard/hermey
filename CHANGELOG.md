@@ -6,6 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Mark all as read.** The ⋯ menu on both apps — the bot list's and the conversation's — now clears
+  every badge at once. Opening a chat has always read it; this is the same act for the list, so nine
+  badged bots and a couple of badged rooms no longer have to be opened one by one to clear dots the
+  person never meant to read. The marks are written the same way opening a chat writes them, so a dot
+  cannot return on the next refresh, and each room is read up to its own `latest_seq` rather than a
+  number this side invents. The item greys out when nothing is waiting.
 - **The app says what is on screen at launch.** A blank rounded panel appeared over the sidebar on a
   first launch and closed with Esc, and no surface in the app presents itself: every overlay is behind
   a flag the user raises. Rather than guess, the workspace now writes two lines to the log a second
@@ -51,7 +57,9 @@ All notable changes to Hermey are recorded here. The format follows
   A room's composer used to sit flush against the screen edges while its bubbles stopped 12 pt in,
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
-### Fixed
+### Changed
+- **The Mac's ⋯ menu no longer offers "Bot computer…"**: the header's own display button is the door,
+  and a verb that repeats the button beside it made the menu read as a second toolbar.
 - **Text is no longer washed out on the Mac.** `TypeScale.font` accepted a `Font.Weight` and dropped
   it: `.custom("Inter", size:)` cannot take one, so all 64 call sites that asked for `.semibold` or
   `.medium` drew the regular face — and Inter is not bundled, so the request fell back to the regular

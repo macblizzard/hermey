@@ -1159,6 +1159,32 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Every conversation read, in one deliberate act.
+    ///
+    /// Opening a chat reads it; this is the same act for the whole list, so nine badged bots and two
+    /// badged rooms do not have to be opened one by one to clear a badge the person has no intention
+    /// of reading. The marks are written the same way `setVisibleBot` writes them, so a dot cannot
+    /// come back on the next refresh.
+    public func markAllRead(at date: Date = Date()) {
+        var ids = Set(bots.map(\.id))
+        ids.formUnion(unreadBots)
+        ids.formUnion(unreadCounts.keys)
+        for id in ids { markRead(id, at: date) }
+
+        unreadBots.removeAll()
+        unreadCounts.removeAll()
+
+        // A room is read up to its own latest seq, not to a number this side invents: a mark past
+        // the host's counter would hide the room's next message for good.
+        for room in rooms where roomUnreadCounts[room.id] != nil {
+            markRoomRead(room.id, seq: room.latestSeq ?? 0)
+        }
+        roomUnreadCounts.removeAll()
+    }
+
+    /// Whether there is anything to mark: the menu item greys out rather than promising a no-op.
+    public var hasAnyUnread: Bool { !unreadCounts.isEmpty || !roomUnreadCounts.isEmpty }
+
     public func markRead(_ botID: String, at date: Date = Date()) {
         guard !botID.isEmpty else { return }
         if let existing = lastRead[botID], existing >= date { return }
