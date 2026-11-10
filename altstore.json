@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.128",
+          "buildVersion": "128",
+          "date": "2026-11-10T20:40:22Z",
+          "localizedDescription": "Switching bots is instant: each conversation is kept in memory and painted before the host is asked.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.128/Hermey-0.1.128-b128.ipa",
+          "size": 2020334,
+          "minOSVersion": "17.0",
+          "sha256": "ac42d7ab5ec84846ec9e2022e24f9f9ad059973a49a46a7446b12d9f8d3f988e"
+        },
+        {
           "version": "0.1.120",
           "buildVersion": "120",
           "date": "2026-11-10T16:33:45Z",
@@ -62,16 +72,6 @@
           "size": 2006038,
           "minOSVersion": "17.0",
           "sha256": "a90196e9b9afe9a004ac009e1651fa3202e6107c5dde414a52ca809c9d7e5048"
-        },
-        {
-          "version": "0.1.106",
-          "buildVersion": "106",
-          "date": "2026-11-10T13:41:27Z",
-          "localizedDescription": "Mark all as read in both apps' menus, and the Mac menu no longer repeats the toolbar's computer button.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.106/Hermey-0.1.106-b106.ipa",
-          "size": 1999812,
-          "minOSVersion": "17.0",
-          "sha256": "b736e517e19658e02c701b3aeb366e835f391e6b867bb51f62b5f52f60871a39"
         }
       ],
       "appPermissions": {
