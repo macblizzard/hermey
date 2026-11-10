@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.120",
+          "buildVersion": "120",
+          "date": "2026-11-10T16:33:45Z",
+          "localizedDescription": "The emoji picker now hangs off the smiley that opens it, no focus ring on the first emoji, and the desktop's buttons answer on hover.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.120/Hermey-0.1.120-b120.ipa",
+          "size": 2014954,
+          "minOSVersion": "17.0",
+          "sha256": "25fd3de5d138f9d0241f439107ca67f7dc848e925b4b35f84b7fd1905738bf45"
+        },
+        {
           "version": "0.1.115",
           "buildVersion": "115",
           "date": "2026-11-10T14:42:34Z",
@@ -62,16 +72,6 @@
           "size": 1999812,
           "minOSVersion": "17.0",
           "sha256": "b736e517e19658e02c701b3aeb366e835f391e6b867bb51f62b5f52f60871a39"
-        },
-        {
-          "version": "0.1.100",
-          "buildVersion": "100",
-          "date": "2026-11-10T13:06:16Z",
-          "localizedDescription": "The image viewer's footer no longer truncates Done, and a picture you sent has no Save \u2014 it is already yours.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.100/Hermey-0.1.100-b100.ipa",
-          "size": 1997470,
-          "minOSVersion": "17.0",
-          "sha256": "d8940066adc2e6ebd995704fb76cb633eaea1e00e6c22b854decc53701504424"
         }
       ],
       "appPermissions": {
