@@ -23,7 +23,6 @@ struct TranscriptRowView: View {
     var onReply: ((TranscriptEntry) -> Void)? = nil
     @State private var showingReactions = false
     @AppStorage("mac.messageReactions.v1") private var storedReactions = "{}"
-    private static let emojis = ["👍", "❤️", "😂", "😮", "😢", "🎉"]
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
     @ObservedObject private var speech = SpeechReader.shared
@@ -72,17 +71,17 @@ struct TranscriptRowView: View {
             }
         }
         .popover(isPresented: $showingReactions) {
-            VStack {
-                Text("Reactions are local to this Mac").font(.caption)
-                HStack {
-                    ForEach(Self.emojis, id: \.self) { emoji in
-                        Button(emoji) { toggleReaction(emoji); showingReactions = false }
-                            .buttonStyle(.plain)
-                            .font(.title2)
-                            .accessibilityLabel("React with \(emoji)")
-                    }
+            VStack(spacing: 6) {
+                QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
+                    toggleReaction(emoji)
+                    showingReactions = false
                 }
-            }.padding()
+                Text("Saved on this Mac")
+                    .font(TypeScale.font(10))
+                    .foregroundStyle(Tokens.textDim)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
         }
     }
 
@@ -258,6 +257,18 @@ struct TranscriptRowView: View {
 
     private var messageActions: some View {
         HStack(spacing: 2) {
+            // Six reactions on one press. It sits first because it is the lightest verb on the row
+            // and the one a person reaches for while reading.
+            if reactionKey != nil {
+                actionGlyph("react",
+                            systemImage: "face.smiling",
+                            tint: reactionKey.flatMap { reactions[$0] } != nil ? Tokens.accentText
+                                                                                : Tokens.textMuted,
+                            help: "React to this message") {
+                    showingReactions = true
+                }
+            }
+
             actionGlyph("speak",
                         systemImage: isSpeaking ? "stop.fill" : "speaker.wave.2",
                         tint: isSpeaking ? Tokens.accentText : Tokens.textMuted,
