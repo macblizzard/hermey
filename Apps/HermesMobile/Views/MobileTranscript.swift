@@ -28,6 +28,15 @@ struct MobileTranscriptRow: View {
     }
     /// The compact action card, raised by a long press on a message.
     @State private var showingActions = false
+    /// Where this row sits on screen, so the card can open on the side that has room.
+    @State private var rowFrame: CGRect = .zero
+    /// True when the card must open *above* the message.
+    ///
+    /// A word-processor's worth of text sits under a long press at the bottom of the screen: with the
+    /// card always opening below, iOS had nowhere to put it and clipped the top of the content — the
+    /// six reactions vanished and only slivers of colour showed. The side is decided before the
+    /// popover is asked for, from the row's own frame.
+    @State private var opensAbove = false
     @AppStorage("mobile.messageReactions.v1") private var storedReactions = "{}"
     private static let speaker = AVSpeechSynthesizer()
 
@@ -67,7 +76,15 @@ struct MobileTranscriptRow: View {
         // A long press raises one small card: the six reactions on top, the verbs under them.
         // The system menu it replaces was taller than the message it was about, and it hid the
         // emoji behind a second menu ("Add reaction").
-        .popover(isPresented: $showingActions, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: RowFrameKey.self, value: geo.frame(in: .global))
+            }
+        )
+        .onPreferenceChange(RowFrameKey.self) { rowFrame = $0 }
+        .popover(isPresented: $showingActions,
+                 attachmentAnchor: .rect(.bounds),
+                 arrowEdge: opensAbove ? .bottom : .top) {
             actionCard
                 .presentationCompactAdaptation(.popover)
         }
@@ -151,6 +168,16 @@ struct MobileTranscriptRow: View {
     }
 
     // MARK: Action card
+
+    /// Open the card on whichever side has room for it.
+    private func raiseActions() {
+        // Half the card's height is roughly 130 pt; below that margin the bottom edge wins.
+        let screen = UIScreen.main.bounds
+        let spaceBelow = screen.height - rowFrame.maxY
+        opensAbove = spaceBelow < 260 || rowFrame.midY > screen.height * 0.6
+        Haptics.selection()
+        showingActions = true
+    }
 
     /// The card a long press raises: six reactions, then four rows, then share.
     ///
@@ -371,7 +398,7 @@ struct MobileTranscriptRow: View {
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
-                .onLongPressGesture(minimumDuration: 0.35) { showingActions = true }
+                .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -384,7 +411,7 @@ struct MobileTranscriptRow: View {
                 .accessibilityLabel(entry.text)
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.35) { showingActions = true }
+                .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
             messageTime
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -795,3 +822,12 @@ struct MobileTranscriptEmpty: View {
         .preferredColorScheme(.dark)
 }
 #endif
+
+/// Where a message row sits, in screen coordinates.
+private struct RowFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero { value = next }
+    }
+}
