@@ -90,7 +90,7 @@ final class WorkspaceStore: ObservableObject {
 
     /// The narrowest the bot panel may be dragged: below this a row's name and description
     /// collide with the unread dot.
-    static let sidebarFloor: CGFloat = 200
+    static let sidebarFloor: CGFloat = WindowLayout.sidebarFloor
 
     /// Retained only because the frozen UI-test fixture assigns it
     /// (`Apps/HermesMac/Testing/PreviewFixture.swift`, which this branch must not edit). The
@@ -295,6 +295,14 @@ final class WorkspaceStore: ObservableObject {
     /// True when the keychain refused the pairing, so the sheet can say the host will have
     /// to be re-paired after a relaunch.
     var pairingIsSessionOnly: Bool { !pairingStore.persisted && pairing != nil }
+
+    /// The narrowest window that holds what is on screen right now: two panes, or three while the
+    /// shared computer is open. `WorkspaceRoot` draws to this and `WindowWidthFitter` grows the window
+    /// to it, so a pane opening can never clip the shell's edges.
+    var minimumWindowWidth: CGFloat {
+        WindowLayout.minimumWidth(sidebarWidth: isSidebarHidden ? nil : sidebarWidth,
+                                  panelOpen: isComputerPanelPresented)
+    }
 
     /// One sentence about where the pairing lives, for Settings.
     var pairingStorageDescription: String? {

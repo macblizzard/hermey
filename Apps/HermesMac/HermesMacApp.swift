@@ -24,13 +24,9 @@ struct HermesMacApp: App {
                 // window surround on each side, the bot panel at its floor, the divider strip and
                 // its hairline. Leaving any of it out is what clipped the conversation's right
                 // edge at 624 pt.
-                .frame(minWidth: 8
-                                + WorkspaceStore.sidebarFloor
-                                + Geometry.paneDivider
-                                + 1
-                                + Geometry.conversationMin
-                                + 8,
-                       minHeight: 560)
+                // The minimum is the arrangement's, not one pane's: opening the shared computer adds
+                // a pane and a hairline, and a window held to the two-pane sum clipped both edges.
+                .frame(minWidth: store.minimumWindowWidth, minHeight: WindowLayout.heightMin)
                 .preferredColorScheme(.dark)
                 // No-op unless the fixture launch argument was given: the real window connects
                 // nothing at launch, on purpose.

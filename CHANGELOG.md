@@ -31,6 +31,12 @@ All notable changes to Hermey are recorded here. The format follows
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **Opening the shared computer no longer clips the window.** The computer pane was a fixed 520 pt
+  added to a window whose minimum width was computed for two panes, so the `HStack` overflowed and the
+  shell was cut on *both* sides — the bot panel's labels on the left, the pane's buttons on the right.
+  The pane now has a floor (320), an ideal (520) and a ceiling (760), the conversation hands back some
+  width while it shares the window, the window's minimum follows the arrangement
+  (`WindowLayout.minimumWidth`), and a narrow window is grown to fit rather than clipped.
 - **The Mac stays paired across launches.** The pairing was written only to a data-protection
   Keychain item, which needs an application identifier — and the app ships unsigned, so
   `SecItemAdd` answered `errSecMissingEntitlement` (-34018), nothing was stored, and every relaunch
