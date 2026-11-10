@@ -6,6 +6,14 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **A long bot conversation would not open at all on the phone.** `session.resume` answers with the
+  whole transcript in one frame; this bot's chat is 3.4 MB, and iOS refuses to deliver a message
+  that size — "could not open the conversation: … Message too long" — so the screen stayed empty
+  while the socket reconnected to retry the same oversized frame. The bridge now ships the newest
+  page with the resume (200 rows / 512 KB, whichever comes first) and serves older pages from its
+  own copy of that resume, which the transcript reaches through a new **Load earlier messages** row
+  on the phone and the Mac. Measured through the live bridge: 3,396,481-byte resume became 423,243
+  bytes, and paging walked all 1,450 rows back to the start with no gap.
 - **Bot computer clicked in the wrong place while zoomed, taps stopped registering, and the last
   reply duplicated itself row-by-row.** noVNC counted the zoom twice in every pointer coordinate
   (patched, with a check under `Tools/verify`); its touch recogniser was being fed a partial event

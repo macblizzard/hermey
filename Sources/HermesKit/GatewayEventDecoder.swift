@@ -262,10 +262,19 @@ enum GatewayPayloadDecoder {
         // `stored_session_id` is the durable key, and the only thing a later resume accepts.
         let runtimeID = result["session_id"]?.stringValue ?? requestedID
         let storedID = result["stored_session_id"]?.stringValue ?? requestedID
+        // A paged resume names the offset of its first row and how many rows exist in total, so
+        // "load earlier" can continue exactly where this page starts. Absent (an older bridge or a
+        // short conversation) means the page is the whole transcript.
+        let history = result["history"]?.objectValue
+        let cursor = history?["cursor"]?.intValue.map(Int.init)
+        let total = history?["total"]?.intValue ?? result["message_count"]?.intValue ?? 0
         let resume = SessionResume(id: runtimeID,
-                                   entries: transcript(result["messages"]?.arrayValue ?? []),
+                                   entries: transcript(result["messages"]?.arrayValue ?? [],
+                                                       baseOffset: cursor ?? 0),
                                    inflight: inflight(result["inflight"]),
-                                   openRequests: (result["open_requests"]?.arrayValue ?? []).compactMap(serverRequest))
+                                   openRequests: (result["open_requests"]?.arrayValue ?? []).compactMap(serverRequest),
+                                   earlierCursor: cursor,
+                                   historyTotal: Int(total))
         return Resume(resume: resume, storedID: storedID, runtimeID: runtimeID)
     }
 
@@ -282,7 +291,11 @@ enum GatewayPayloadDecoder {
         return ServerRequest(id: id, method: method, params: value["params"] ?? .null)
     }
 
-    static func transcript(_ messages: [JSONValue]) -> [TranscriptEntry] {
+    /// - Parameter baseOffset: the page's position in the host's transcript. Rows without a durable
+    ///   id fall back to a positional one, and two pages of the same conversation would otherwise
+    ///   both start at `user-0` — the same identity for two different messages, which makes a
+    ///   prepended page fight the list it is joining.
+    static func transcript(_ messages: [JSONValue], baseOffset: Int = 0) -> [TranscriptEntry] {
         messages.enumerated().map { index, message in
             let rowID = message["row_id"]?.intValue
             let role = TranscriptEntry.Role(rawValue: message["role"]?.stringValue ?? "") ?? .system
@@ -294,7 +307,7 @@ enum GatewayPayloadDecoder {
             } else if let callID = message["tool_call_id"]?.stringValue {
                 id = "t\(callID)"
             } else {
-                id = "\(role.rawValue)-\(index)"
+                id = "\(role.rawValue)-\(baseOffset + index)"
             }
             let text = GatewayJSON.text(message["text"]) ?? GatewayJSON.text(message["content"]) ?? ""
             return TranscriptEntry(id: id,
@@ -391,6 +404,17 @@ enum GatewayPayloadDecoder {
                                   preview: row["preview"]?.stringValue,
                                   running: row["running"]?.boolValue ?? false)
         }
+    }
+
+    /// One older page: rows, the offset its first row sits at, and the conversation's row count.
+    static func historyPage(_ result: JSONValue?) throws -> HistoryPage {
+        guard let result, let messages = result["messages"]?.arrayValue else {
+            throw GatewayError.malformedResponse(method: "session.history")
+        }
+        let cursor = result["cursor"]?.intValue.map(Int.init)
+        let entries = transcript(messages, baseOffset: cursor ?? 0)
+        return HistoryPage(entries: entries, cursor: cursor,
+                           total: Int(result["total"]?.intValue ?? 0))
     }
 
     static func history(_ result: JSONValue?, limit: Int) throws -> [TranscriptEntry] {

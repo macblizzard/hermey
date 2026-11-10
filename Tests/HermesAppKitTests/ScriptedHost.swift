@@ -75,8 +75,12 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         return resume()
     }
 
+    /// The paging state a resume reports: nil `earlierCursor` means "this is the whole transcript".
+    var earlierCursor: Int?
+    var historyTotal = 0
     private func resume() -> SessionResume {
-        SessionResume(id: session, entries: entries, inflight: nil, openRequests: [])
+        SessionResume(id: session, entries: entries, inflight: nil, openRequests: [],
+                      earlierCursor: earlierCursor, historyTotal: historyTotal)
     }
 
     func createSession(model: String?, provider: String?) async throws -> SessionID { session }
@@ -88,6 +92,20 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         return session
     }
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] { entries }
+
+    // MARK: Older transcript pages
+
+    /// Pages keyed by the cursor the model sent. A missing key answers `HistoryPage.none`, which is
+    /// what "the host thinks this was the whole conversation" looks like.
+    var pages: [Int: HistoryPage] = [:]
+    /// Every page request that crossed the client boundary, in order.
+    private(set) var pageRequests: [(cursor: Int, limit: Int)] = []
+
+    func historyPage(_ id: SessionID, profile: String?, cursor: Int,
+                     limit: Int) async throws -> HistoryPage {
+        pageRequests.append((cursor, limit))
+        return pages[cursor] ?? .none
+    }
 
     // MARK: Shared conversation pointer
 

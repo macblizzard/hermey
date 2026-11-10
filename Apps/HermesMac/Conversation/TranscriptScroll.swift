@@ -126,6 +126,12 @@ struct TranscriptScroll: View {
     /// The messages, on the reading measure.
     private var rows: some View {
         LazyVStack(alignment: .leading, spacing: 18) {
+            if model.hasEarlierHistory {
+                EarlierHistoryRow(isLoading: model.loadingEarlier, total: model.historyTotal) {
+                    Task { await model.loadEarlierHistory() }
+                }
+            }
+
             ForEach(model.visibleTranscript) { entry in
                 TranscriptRowView(entry: entry,
                                   host: model.hostName,

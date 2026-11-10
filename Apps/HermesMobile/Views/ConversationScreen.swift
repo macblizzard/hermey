@@ -25,6 +25,8 @@ struct ConversationScreen: View {
     @State private var showComputer = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
+    /// The prepend counter this screen has already reacted to (see the transcript's onChange).
+    @State private var lastSeenEarlierLoads = 0
     @State private var hasLoaded = false
     @State private var keyboardHeight: CGFloat = 0
     @State private var keyboardScreenSize: CGSize = .zero
@@ -422,6 +424,13 @@ struct ConversationScreen: View {
                 settleAtBottom(proxy)
             }
             .onChange(of: model.transcript.count) {
+                // Older rows arriving is the one change that is *above* the reading position:
+                // follow to the bottom and the user loses the page they just asked for.
+                if model.earlierLoads != lastSeenEarlierLoads {
+                    lastSeenEarlierLoads = model.earlierLoads
+                    if let anchor = model.earlierAnchor { proxy.scrollTo(anchor, anchor: .top) }
+                    return
+                }
                 // A message the user just sent is a reason to go down even from mid-history;
                 // anything else follows only when the view was already at the end.
                 if model.transcript.last?.role == .user {
@@ -461,6 +470,12 @@ struct ConversationScreen: View {
                     openingState
                 } else {
                     MobileTranscriptEmpty(title: title)
+                }
+            }
+
+            if model.hasEarlierHistory {
+                EarlierHistoryRow(isLoading: model.loadingEarlier, total: model.historyTotal) {
+                    Task { await model.loadEarlierHistory() }
                 }
             }
 
