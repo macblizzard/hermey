@@ -270,9 +270,11 @@ struct ConversationHeader: View {
                     .disabled(!store.isPaired)
             }
         } label: {
-            // The kit's three dots, at the Mac's size: the same control the pane header and the
-            // bot panel wear, so no menu in this app looks like a different app's menu.
-            MenuDotsLabel()
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Tokens.textMuted)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

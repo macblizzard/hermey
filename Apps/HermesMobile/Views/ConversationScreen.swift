@@ -107,32 +107,13 @@ struct ConversationScreen: View {
 
     private var title: String { bot.displayName }
 
-    // MARK: Back
-
-    /// Back, with what is waiting elsewhere on it.
+    /// What is waiting in chats that are not this one.
     ///
-    /// The bubble counts every unread chat that is **not** this one — other bots' replies and any
-    /// group chat with something new — because the reason to leave a conversation is usually
-    /// another one asking. Zero draws nothing, the same rule the bot list's badges follow.
-    private var backButton: some View {
-        let waiting = model.unreadElsewhere(excludingBot: bot.id)
-        return Button {
-            dismiss()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
-                if waiting > 0 {
-                    UnreadBadge(count: waiting, size: 17)
-                }
-            }
-            .foregroundStyle(Tokens.textPrimary)
-            .frame(minWidth: 30, minHeight: 36, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(waiting > 0 ? "Back, \(waiting) unread chats elsewhere" : "Back")
-    }
+    /// The count cannot live on the back button: iOS draws a custom bar button inside its own glass
+    /// capsule, which pushed the title off centre and cost the edge-swipe (hiding the system back
+    /// button disables it). It sits in the header strip instead, next to the model, and a tap goes
+    /// back to the list where every row carries its own badge.
+    private var unreadElsewhere: Int { model.unreadElsewhere(excludingBot: bot.id) }
 
     var body: some View {
         transcriptScroll
@@ -153,19 +134,11 @@ struct ConversationScreen: View {
                                 retry: { Task { await app.reconnect() } })
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
-        // The system chevron cannot carry a count, and the count is the point: the chats you left
-        // behind keep moving while you answer this one. The bar draws its own back button below.
-        .navigationBarBackButtonHidden(true)
         .toolbar {
             // The bot's own face in the title bar, sparks and all: the list taught the eye which
             // portrait means which bot, and a header that showed only a name made the two places
             // disagree. `isWorking` is the same flag the list uses, so the antenna arcs while this
             // bot is the one answering — and not while another one is.
-            // Back, wearing what is waiting elsewhere: a bubble with this device's unread replies
-            // from the other bots (and rooms) so leaving a chat is a decision, not a surprise.
-            ToolbarItem(placement: .topBarLeading) {
-                backButton
-            }
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
                     BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
@@ -183,9 +156,6 @@ struct ConversationScreen: View {
         .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
         .onAppear { model.setVisibleBot(bot.id) }
         .onDisappear { model.setVisibleBot(nil) }
-        // The bar draws its own back button (it carries the unread bubble), which switches off the
-        // edge-swipe pop; this puts the gesture back without a second bar button.
-        .background(SwipeBackEnabler().frame(width: 0, height: 0))
         .task(id: bot.id) {
             voice.transport = app.makeVoiceTransport()
             await openConversation()
@@ -300,11 +270,26 @@ struct ConversationScreen: View {
             }
 
             HStack(spacing: 6) {
+                // Other chats, while this one is on screen. Zero draws nothing.
+                if unreadElsewhere > 0 {
+                    Button {
+                        dismiss()
+                    } label: {
+                        StatusChip("\(unreadElsewhere) unread", tone: .success, showsDot: true, size: .small)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(unreadElsewhere) unread chats elsewhere — back to the bot list")
+                }
+
                 if let label = modelChipLabel {
                     StatusChip(label, tone: .neutral, size: .small)
                 }
 
-                if let entries = entryCountLabel {
+                // One count in this row, never two: a phone-width strip fits the model chip, a
+                // count, the context gauge and the latency pill — and "3 unread" is the only one of
+                // those that is asking to be acted on, so it takes the entries label's place while
+                // it is showing.
+                if unreadElsewhere == 0, let entries = entryCountLabel {
                     Text(entries)
                         .font(TypeScale.font(TypeScale.micro))
                         .foregroundStyle(Tokens.textDim)
@@ -655,7 +640,7 @@ struct ConversationScreen: View {
                     Button {
                         showComputer = true
                     } label: {
-                        Label("Bot computer", systemImage: "display")
+                        Label("Computer", systemImage: "display")
                     }
 
                     Divider()
@@ -664,19 +649,19 @@ struct ConversationScreen: View {
                         isSearching = true
                         searchFocused = true
                     } label: {
-                        Label("Search conversation", systemImage: "magnifyingglass")
+                        Label("Search", systemImage: "magnifyingglass")
                     }
 
                     Button {
                         showBotSettings = true
                     } label: {
-                        Label("Bot settings", systemImage: "gearshape")
+                        Label("Settings", systemImage: "gearshape")
                     }
 
                     Button {
                         Task { await model.compressNow() }
                     } label: {
-                        Label("Compact now", systemImage: "arrow.down.right.and.arrow.up.left")
+                        Label("Compact", systemImage: "arrow.down.right.and.arrow.up.left")
                     }
                     .disabled(sessionID == nil)
 
@@ -691,7 +676,7 @@ struct ConversationScreen: View {
                                              // History is not replayed: mark what exists now.
                                              if enabled { lastSpokenEntryID = lastAssistantReply?.id }
                                          })) {
-                        Label("Speak replies aloud", systemImage: "speaker.wave.2")
+                        Label("Speak replies", systemImage: "speaker.wave.2")
                     }
                     .disabled(lastAssistantReply == nil)
 
@@ -700,12 +685,12 @@ struct ConversationScreen: View {
                     Button(role: .destructive) {
                         showResetConfirm = true
                     } label: {
-                        Label("Reset conversation", systemImage: "arrow.counterclockwise")
+                        Label("Reset chat", systemImage: "arrow.counterclockwise")
                     }
                 } label: {
-                    MenuDotsLabel()
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Tokens.textSecondary)
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Conversation actions")
             }
         }
@@ -1112,57 +1097,3 @@ struct ConversationScreen: View {
 #endif
 
 
-// MARK: - Swipe back
-
-/// Keeps UIKit's edge-swipe pop alive under a screen that hides the system back button.
-///
-/// `.navigationBarBackButtonHidden(true)` is what lets this bar draw its own back button, and it
-/// also disables `interactivePopGestureRecognizer` — so a chat opened from the list could only be
-/// left with a tap on a 30 pt control. The gesture is given a delegate that answers the one
-/// question it has: is there a screen to go back to? Rendered at zero size purely to borrow the
-/// navigation controller it is hosted in.
-private struct SwipeBackEnabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController { Proxy() }
-
-    func updateUIViewController(_ controller: UIViewController, context: Context) {
-        (controller as? Proxy)?.attach()
-    }
-
-    final class Proxy: UIViewController {
-        private weak var attached: UINavigationController?
-
-        override func didMove(toParent parent: UIViewController?) {
-            super.didMove(toParent: parent)
-            attach()
-        }
-
-        func attach() {
-            // One runloop later: the hosting controller's `navigationController` is nil during the
-            // representable's first update, and asking too early is why the gesture used to stay
-            // dead after the screen had drawn.
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      let navigation = self.navigationController,
-                      self.attached !== navigation else { return }
-                self.attached = navigation
-                SwipeBackDelegate.shared.adopt(navigation)
-                navigation.interactivePopGestureRecognizer?.delegate = SwipeBackDelegate.shared
-                navigation.interactivePopGestureRecognizer?.isEnabled = true
-            }
-        }
-    }
-}
-
-/// Only ever says "yes, there is a stack to pop" — the gesture must not fire at the root, where a
-/// half-finished swipe would freeze the navigation controller.
-private final class SwipeBackDelegate: NSObject, UIGestureRecognizerDelegate {
-    static let shared = SwipeBackDelegate()
-
-    private weak var navigation: UINavigationController?
-
-    func adopt(_ navigation: UINavigationController) { self.navigation = navigation }
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        (navigation?.viewControllers.count ?? 0) > 1
-    }
-}

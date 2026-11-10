@@ -642,30 +642,34 @@ struct BotListScreen: View {
                     Button {
                         showHidden.toggle()
                     } label: {
-                        Label("Show hidden bots", systemImage: showHidden ? "checkmark" : "circle")
+                        Label("Hidden bots", systemImage: showHidden ? "checkmark" : "circle")
                     }
                     .accessibilityValue(showHidden ? "On" : "Off")
 
                     Divider()
 
                     Button { showAddBot = true } label: {
-                        Label("Add bot…", systemImage: "plus.circle")
+                        Label("Add bot", systemImage: "plus.circle")
                     }
                     Button { showManageBots = true } label: {
-                        Label("Manage bots…", systemImage: "slider.horizontal.3")
+                        Label("Manage bots", systemImage: "slider.horizontal.3")
                     }
 
                     Divider()
 
                     Button { showStartGroupChat = true } label: {
-                        Label("Start group chat…", systemImage: "person.3")
+                        Label("New group chat", systemImage: "person.3")
                     }
                 } label: {
                     // Three dots, because this is a menu and not a filter: the old funnel icon
-                    // promised "narrow the list" and then offered to add a bot. The frame is the
-                    // kit's own compact control — the search glyph and this one are drawn at the
-                    // same size, on the same surface, from the same theme.
-                    MenuDotsLabel(isActive: showHidden)
+                    // promised "narrow the list" and then offered to add a bot. A bare glyph: the
+                    // bar already draws its own control chrome, and a second surface inside it read
+                    // as a box in a circle.
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(showHidden ? Tokens.accentText : Tokens.textPrimary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Bot list menu")

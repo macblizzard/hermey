@@ -414,7 +414,7 @@ public struct RoomChatView: View {
                             // from the menu is the only way to reach it on the phone.
                             findOpen = true
                         } label: {
-                            Label("Search conversation", systemImage: "magnifyingglass")
+                            Label("Search", systemImage: "magnifyingglass")
                         }
                         Button { Task { await refresh(reset: true) } } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
@@ -422,15 +422,12 @@ public struct RoomChatView: View {
                         if let onDelete {
                             Divider()
                             Button(role: .destructive) { onDelete() } label: {
-                                Label("Delete group chat…", systemImage: "trash")
+                                Label("Delete chat", systemImage: "trash")
                             }
                         }
                     } label: {
-                        // The same three dots the bot list and a conversation wear, at the same
-                        // compact size: one glyph, one look, three screens.
-                        MenuDotsLabel()
+                        Image(systemName: "ellipsis")
                     }
-                    .buttonStyle(.plain)
                     .accessibilityLabel("Group chat menu")
                 }
             }
@@ -497,7 +494,10 @@ public struct RoomChatView: View {
                     Button("Delete group chat…", role: .destructive) { onDelete() }
                 }
             } label: {
-                MenuDotsLabel()
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Tokens.textMuted)
+                    .frame(width: 22, height: 22)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)

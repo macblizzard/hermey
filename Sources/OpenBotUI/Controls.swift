@@ -191,53 +191,6 @@ public struct OpenBotIconButton: View {
     }
 }
 
-/// The label a three-dot menu wears.
-///
-/// A menu's glyph used to be a bare `ellipsis` — 17 pt of SF Symbol floating on the bar with no
-/// chrome around it, next to a search button that looked nothing like it. This is that glyph
-/// wearing the app: the control surface, the hairline, the theme's own colours, and a side small
-/// enough to read as a bar button rather than a card (30 pt on the phone, 24 on the Mac).
-///
-/// The *hit* area is not the frame: a `.contentShape(Rectangle())` plus the platform's own bar
-/// padding keeps a 44 pt touch target on the phone while the drawn control stays compact.
-public struct MenuDotsLabel: View {
-    private let isActive: Bool
-    private let compact: Bool
-
-    /// - Parameters:
-    ///   - isActive: draw the glyph in the accent, for a menu whose setting is currently on
-    ///     (the bot list's "Show hidden bots").
-    ///   - compact: the bar-button size. `false` is the roomier 36/28 pt control.
-    public init(isActive: Bool = false, compact: Bool = true) {
-        self.isActive = isActive
-        self.compact = compact
-    }
-
-    #if os(iOS)
-    private var side: CGFloat { compact ? 30 : 36 }
-    private var glyph: CGFloat { compact ? 14 : 16 }
-    #else
-    private var side: CGFloat { compact ? 24 : 28 }
-    private var glyph: CGFloat { compact ? 11.5 : 13 }
-    #endif
-
-    public var body: some View {
-        Image(systemName: "ellipsis")
-            .font(.system(size: glyph, weight: .semibold))
-            .foregroundStyle(isActive ? Tokens.accentText : Tokens.textSecondary)
-            .frame(width: side, height: side)
-            .background(
-                RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
-                    .fill(Tokens.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
-                    .strokeBorder(Tokens.border, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
-    }
-}
-
 /// An inline text action ("Retry", "Show all"). 11 pt, semibold, no fill — for the place
 /// where a bordered button would be too heavy.
 public struct TextButton: View {

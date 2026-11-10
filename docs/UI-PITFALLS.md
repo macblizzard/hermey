@@ -43,13 +43,16 @@ They are listed here so the next change does not rediscover them.
   that touched both edges. One value, `Geometry.chatGutter`, is now read by the transcript, the
   composer and the strips between them, in **both** conversation kinds, on both platforms. A new
   message surface copies it rather than picking a number.
-- **A bare SF Symbol is not a bar button.** The ⋯ menu was an `ellipsis` floating on the canvas next
-  to a search glyph, and on the room it was a 22 pt hit target. `MenuDotsLabel` draws the kit's
-  control surface at 30 pt (phone) / 24 pt (Mac), and every menu in both apps uses it.
-- **`.navigationBarBackButtonHidden(true)` also kills the edge-swipe pop.** It is the only way to
-  draw a back button that carries a badge, so the gesture needs its delegate back:
-  `SwipeBackEnabler` in `ConversationScreen.swift` lends UIKit a delegate that only answers "is
-  there a stack to pop" (answering `true` at the root freezes the navigation controller).
+- **Do not put a custom view in a bar if the system one will do.** A `ToolbarItem` whose label is
+  not a plain glyph is wrapped by iOS 26 in its own glass capsule: the hand-drawn back button became
+  a 44 pt disc, the ⋯ button was a rounded square inside a circle, and the title stopped centring
+  between them. A bar button is a glyph; chrome belongs to the bar.
+- **`.navigationBarBackButtonHidden(true)` also kills the edge-swipe pop, and a delegate does not
+  bring it back.** It was handed `interactivePopGestureRecognizer`'s delegate in `onAppear`; the
+  swipe still did nothing on device, because SwiftUI re-establishes the bar (and the recogniser's
+  state) on its own layout passes. Keep the system back button: the swipe, the centred title and the
+  bar's padding are one package, and a badge is not worth trading them for. The unread count belongs
+  in the header strip (it takes the entries label's slot, so the row cannot overflow).
 
 ## State and identity
 
