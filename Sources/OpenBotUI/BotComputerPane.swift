@@ -38,9 +38,6 @@ public struct BotComputerPane: View {
     /// True once the page reports its socket open. Until then the pane says "Connecting…" instead of
     /// showing the black rectangle that an unconnected canvas is.
     @State private var isConnected = false
-    /// Bumped by the keyboard button: the web view focuses noVNC, which is the only way iOS will
-    /// raise the keys.
-    @State private var keyboardNonce = 0
     /// How many times this sitting has silently retried a dropped stream.
     @State private var reconnectAttempts = 0
     @State private var isBusy = false
@@ -138,13 +135,8 @@ public struct BotComputerPane: View {
     @ViewBuilder
     private var actionButtons: some View {
         if isLive {
-            if holdsControl {
-                Button { keyboardNonce += 1 } label: { Image(systemName: "keyboard") }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Show the keyboard")
-                    .accessibilityLabel("Show the keyboard")
-            }
+            // No keyboard button here: the viewer draws its own over the picture, where a tap is a
+            // gesture WebKit accepts. A second one up here only raised a keyboard sometimes.
             Button(holdsControl ? "Hand back" : "Take over") {
                 if holdsControl { handBack() } else { takeOver() }
             }
@@ -175,8 +167,7 @@ public struct BotComputerPane: View {
             if isLive, let socketURL, let resources {
                 // One web view per socket. A new ticket means a new page: reusing the old one left a
                 // dead viewer drawing nothing but its black background.
-                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl,
-                                   focusKeyboardNonce: keyboardNonce) { event in
+                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl) { event in
                     handle(event)
                 }
                 .id(socketURL)
