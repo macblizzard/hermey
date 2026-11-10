@@ -2,6 +2,9 @@ import HermesAppKit
 import HermesKit
 import OpenBotUI
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// The window: a `Tokens.frame` surround with the workspace clipped inside it.
 ///
@@ -75,6 +78,7 @@ struct WorkspaceRoot: View {
             // A stored choice must be in place before the first frame is read.
             ThemeRuntime.restoreFromDefaults()
             TypeScale.restoreScale()
+            auditLaunchSurfaces()
         }
         // One animation owner for the palette's whole lifecycle: the backdrop fades, the panel
         // rises a few points, and closing is the same motion in reverse.
@@ -134,6 +138,42 @@ struct WorkspaceRoot: View {
         )
     }
 
+    // MARK: - Launch audit
+
+    /// Say, once, what is on screen a second after launch.
+    ///
+    /// A blank panel appeared over the sidebar on first run and closed with Esc, and nothing in the
+    /// code presents one: every surface that can be up is either a flag the user has to raise or a
+    /// fixed frame the panel was not. Rather than guess at a fix, the app now names what it actually
+    /// has open — its windows with their frames, plus every flag that could raise an overlay — so the
+    /// culprit is read out of Settings → View log instead of inferred from a photograph.
+    private func auditLaunchSurfaces() {
+        #if os(macOS)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let windows = NSApplication.shared.windows.map { window in
+                let frame = window.frame
+                return "\(window.className)|title=\(window.title)|id=\(window.identifier?.rawValue ?? "-")"
+                    + "|visible=\(window.isVisible)|level=\(window.level.rawValue)"
+                    + "|\(Int(frame.width))x\(Int(frame.height))@\(Int(frame.minX)),\(Int(frame.minY))"
+            }
+            ClientLog.note("launch audit: windows=\(windows.count) [\(windows.joined(separator: " ; "))]",
+                           category: "launch")
+            ClientLog.note("launch audit: flags palette=\(store.isPalettePresented)"
+                           + " pairSheet=\(store.isPairSheetPresented)"
+                           + " botSettings=\(store.botSettingsBot?.id ?? "-")"
+                           + " computer=\(store.isComputerPanelPresented)"
+                           + " reset=\(store.isResetConfirmationPresented)"
+                           + " addBot=\(store.isAddBotPresented)"
+                           + " manageBots=\(store.isManageBotsPresented)"
+                           + " groupChat=\(store.isStartGroupChatPresented)"
+                           + " groupChats=\(store.isGroupChatsPresented)"
+                           + " paired=\(store.isPaired) bots=\(store.model.bots.count)",
+                           category: "launch")
+        }
+        #endif
+    }
+
     // MARK: - Command palette (⌘K)
 
     /// A floating palette, not a sheet.
@@ -144,7 +184,9 @@ struct WorkspaceRoot: View {
     /// `isPalettePresented`, which means it covers nothing and captures nothing once closed.
     @ViewBuilder
     private var paletteOverlay: some View {
-        if store.isPalettePresented {
+        // A palette with nothing to offer is a blank box; on a fresh launch the verb list is empty
+        // until a bot arrives, and an empty panel is worse than no panel.
+        if store.isPalettePresented && !store.commands.isEmpty {
             ZStack(alignment: .top) {
                 // The backdrop dismisses; the panel is a sibling drawn above it, so its own
                 // clicks never reach the backdrop's gesture.

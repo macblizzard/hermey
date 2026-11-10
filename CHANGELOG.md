@@ -6,6 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The app says what is on screen at launch.** A blank rounded panel appeared over the sidebar on a
+  first launch and closed with Esc, and no surface in the app presents itself: every overlay is behind
+  a flag the user raises. Rather than guess, the workspace now writes two lines to the log a second
+  after launch — every window with its class, title, identifier, visibility, level, size and origin,
+  and the state of every flag that can raise a surface — readable in Settings → View log. A palette
+  with no verbs is also refused now instead of drawing an empty box.
 - **A picture you sent has no Save.** The viewer takes `canExport`: off for your own attachment (it is
   already on your disk — saving it back is busywork), on for a picture the host produced or one that
   arrived from elsewhere. Copy stays either way.
