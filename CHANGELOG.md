@@ -54,6 +54,13 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The long-press card opens above a message at the bottom of the screen.** It was asked for with a
+  fixed `arrowEdge: .top` — always below the row — and at the bottom of the screen there is no room
+  below, so iOS placed what fitted and clipped the rest. The reactions are the first thing in the card,
+  so they were exactly what disappeared, leaving slivers of colour along the top edge. The row now
+  reports its own frame and the card opens on whichever side has room.
+
+### Fixed
 - **Switching bots no longer flashes an empty chat.** Every switch cleared the pane and then waited
   for `resumeSession` — one round trip, 1–2 s, every time, including going back to a conversation that
   was on screen moments earlier. Nothing was cached. Each bot's transcript is now kept in memory (the
