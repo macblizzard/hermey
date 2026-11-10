@@ -31,19 +31,25 @@ class TheCardChoosesItsSide(unittest.TestCase):
         self.assertLess(raise_block.index("opensAbove ="), raise_block.index("showingActions = true"),
                         "the side must be chosen while the popover is still closed")
 
-    def test_the_arrow_points_at_the_press_not_at_the_row(self) -> None:
+    def test_the_anchor_is_the_visible_slice_of_the_message(self) -> None:
         # A long message's rectangle is taller than the screen: anchoring to it put the card at the
-        # top of the page. The anchor is the press point.
+        # top of the page. The anchor is the middle of the part you can see.
         self.assertIn("attachmentAnchor: .point(anchorPoint)", VIEW)
         self.assertNotIn("attachmentAnchor: .rect(.bounds)", VIEW)
-        self.assertIn("DragGesture(minimumDistance: 0, coordinateSpace: .local)", VIEW)
-        self.assertIn("value.startLocation", VIEW)
-        self.assertEqual(VIEW.count("simultaneousGesture(pressLocator)"), 2,
-                         "both kinds of message must report where the press landed")
+        self.assertIn("private func visibleAnchorY()", VIEW)
+        self.assertIn("let visibleTop = max(rowFrame.minY, 96)", VIEW)
+        self.assertIn("let visibleBottom = min(rowFrame.maxY, screen - 150)", VIEW)
+
+    def test_no_row_gesture_competes_with_scrolling(self) -> None:
+        # A `DragGesture(minimumDistance: 0)` on every message took the touch from the scroll view and
+        # the chat stopped scrolling. Location must come from measurement, not from a gesture.
+        self.assertNotIn("simultaneousGesture(pressLocator)", VIEW)
+        self.assertNotIn("DragGesture(minimumDistance: 0, coordinateSpace: .local)", VIEW)
+        self.assertEqual(VIEW.count("onLongPressGesture(minimumDuration: 0.35) { raiseActions() }"), 2)
 
     def test_the_side_is_judged_from_the_pressed_line(self) -> None:
         raise_block = VIEW.split("private func raiseActions()", 1)[1].split("private var actionCard", 1)[0]
-        self.assertIn("let pressedY = rowFrame.minY + pressPoint.y", raise_block,
+        self.assertIn("let anchorY = rowFrame.minY + visibleAnchorY() * rowSize.height", raise_block,
                       "the row's middle says nothing about a message taller than the screen")
         self.assertIn("spaceAbove > spaceBelow", raise_block,
                       "with room on neither side, the larger half wins")

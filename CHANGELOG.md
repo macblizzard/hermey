@@ -54,6 +54,12 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The chat scrolls again on iOS.** A `DragGesture(minimumDistance: 0)` on every message row took each
+  touch from the scroll view, so nothing scrolled. The press location it was added for is not worth a
+  dead chat: the card's arrow now points at the middle of the message's **visible** slice, measured from
+  the row's frame against the screen, and the long press is the only gesture on a row again.
+
+### Fixed
 - **The long-press card opens where your finger is.** It was anchored to the message's whole
   rectangle: for a long message that rectangle is taller than the screen, so "above the row" meant the
   top of the page. The card now anchors to the press point inside the row, and chooses its side from
