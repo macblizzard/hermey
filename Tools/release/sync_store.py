@@ -22,6 +22,7 @@ import hashlib
 import io
 import json
 import os
+from pathlib import Path
 import plistlib
 import subprocess
 import sys
