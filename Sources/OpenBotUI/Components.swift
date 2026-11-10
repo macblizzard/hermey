@@ -92,12 +92,48 @@ public enum TypeScale {
     /// that reaches the spec's line height (22 pt on iOS, 1.62 on the desktop).
     public static var chatLineSpacing: CGFloat { max(0, chatLine - chatBody * 1.2) }
 
-    /// Inter with the system font as its fallback, as the design system asks. `custom`
-    /// falls back silently when the family is absent — which it is until Inter is
-    /// bundled — and still scales with Dynamic Type on iOS.
+    /// Inter when the family is actually available, the system font otherwise — and always at the
+    /// weight asked for.
+    ///
+    /// Two faults made every word on the Mac look washed out:
+    ///
+    /// * **The weight was thrown away.** `.custom("Inter", size:)` cannot take a `Font.Weight`, so the
+    ///   parameter was accepted and never used: all 64 call sites that asked for `.semibold` or
+    ///   `.medium` drew the regular face, and headings, titles and buttons had no weight contrast at
+    ///   all.
+    /// * **Inter is not bundled**, so `.custom` fell back to the system font anyway — a silent
+    ///   downgrade to the *regular* system face. Asking for a family the app does not ship buys
+    ///   nothing; asking for the system face with the right weight is what the fallback was meant to
+    ///   be.
+    ///
+    /// The size is also rounded to a half point: the scale steps are 0.85…1.3, and 13.42 pt draws
+    /// soft, unhinted glyphs on a 1× display and muddy ones even at 2×.
     public static func font(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .custom("Inter", size: size * factor, relativeTo: .body)
+        let points = pointSize(size)
+        if interIsInstalled {
+            return .custom("Inter", size: points).weight(weight)
+        }
+        return .system(size: points, weight: weight)
     }
+
+    /// The size a step actually draws at: the design size times the user's step, on a half-point grid
+    /// so the glyphs stay hinted.
+    public static func pointSize(_ size: CGFloat) -> CGFloat {
+        max(1, (size * factor * 2).rounded() / 2)
+    }
+
+    /// Whether this app can actually draw Inter. Building a `Font` from an absent family is not an
+    /// error in SwiftUI — it silently renders the default face, which is how the weight went missing
+    /// without anybody noticing.
+    private static let interIsInstalled: Bool = {
+        #if os(macOS)
+        return NSFontManager.shared.availableFontFamilies.contains("Inter")
+        #elseif os(iOS)
+        return UIFont.familyNames.contains("Inter")
+        #else
+        return false
+        #endif
+    }()
 }
 
 // MARK: - Motion
