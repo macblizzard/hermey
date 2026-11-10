@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.115",
+          "buildVersion": "115",
+          "date": "2026-11-10T14:42:34Z",
+          "localizedDescription": "Double-clicking the top strip zooms the window anywhere now, and follows your macOS double-click setting.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.115/Hermey-0.1.115-b115.ipa",
+          "size": 2013699,
+          "minOSVersion": "17.0",
+          "sha256": "10d24a4e1740fbfc5d202cd7ea0d02b11b63b6b385cc02faa327e2a13e1faddb"
+        },
+        {
           "version": "0.1.112",
           "buildVersion": "112",
           "date": "2026-11-10T14:27:35Z",
@@ -62,16 +72,6 @@
           "size": 1997470,
           "minOSVersion": "17.0",
           "sha256": "d8940066adc2e6ebd995704fb76cb633eaea1e00e6c22b854decc53701504424"
-        },
-        {
-          "version": "0.1.97",
-          "buildVersion": "97",
-          "date": "2026-11-10T11:55:10Z",
-          "localizedDescription": "Attached pictures open: click a thumbnail on the Mac or tap one on the phone for the full image with zoom, Copy and Save.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.97/Hermey-0.1.97-b97.ipa",
-          "size": 1993276,
-          "minOSVersion": "17.0",
-          "sha256": "d1df19d1fe1e9d6b34a71dd6ea1ed72b180ed9c0323abb6b9681b7f8e9516441"
         }
       ],
       "appPermissions": {
