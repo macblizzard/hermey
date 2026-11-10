@@ -6,6 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Typing, zooming and empty timestamps.** The Bot Computer keyboard did nothing (iOS raises keys
+  only for an editable focused by a tap inside the page, so there is now a hidden text area, a real
+  ⌨ button, and keys sent through noVNC's `sendKey`); there was no way to zoom (pinch 1×–4× and
+  two-finger pan, with one finger still the remote pointer); and hiding tool calls left wordless
+  assistant banner rows as blank bubbles with a timestamp — those rows are gone, and times now show
+  only on messages with something to read.
 - **Bot computer showed `NSURLErrorDomain Code=-999 "cancelled"` on opening.** That is a cancelled
   request, not a fault: the poll loop restarts on every state change and SwiftUI cancels the request
   in flight. Cancellations are now silent, other failures are one sentence instead of an NSError

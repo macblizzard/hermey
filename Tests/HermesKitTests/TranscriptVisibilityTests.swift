@@ -47,6 +47,29 @@ final class TranscriptVisibilityTests: XCTestCase {
         XCTAssertFalse(TranscriptVisibility.showsLiveCards(showToolCalls: true, hasLiveTools: false))
     }
 
+    func testWordlessAssistantRowsAreNotRows() {
+        // The host writes an assistant row with no text as a banner for the commands that follow.
+        // With the cards hidden it survives as an empty bubble and a lone timestamp — the "blank
+        // lines with timestamps" from the report — and with them shown it is an empty bubble above
+        // its own cards. It is not a message either way.
+        let entries = [entry("u1", .user, "book me a flight"),
+                       entry("banner", .assistant, "   \n "),
+                       entry("t1", .tool),
+                       entry("a1", .assistant, "on it")]
+        let hidden = TranscriptVisibility.rows(entries, showToolCalls: false)
+        XCTAssertEqual(hidden.map(\.id), ["u1", "a1"])
+        let shown = TranscriptVisibility.rows(entries, showToolCalls: true)
+        XCTAssertEqual(shown.map(\.id), ["u1", "t1", "a1"])
+        XCTAssertFalse(TranscriptVisibility.hasContent(entries[1]))
+    }
+
+    func testAMessageWithOnlyAPictureStillHasContent() {
+        let picture = TranscriptEntry(id: "img", role: .assistant, text: "  ",
+                                      attachments: [SentAttachment(id: "a", name: "shot.png", isImage: true)])
+        XCTAssertTrue(TranscriptVisibility.hasContent(picture))
+        XCTAssertEqual(TranscriptVisibility.rows([picture], showToolCalls: false).map(\.id), ["img"])
+    }
+
     func testAConversationOfNothingButCardsBecomesEmpty() {
         let onlyCards = [entry("t1", .tool), entry("t2", .tool)]
         XCTAssertTrue(TranscriptVisibility.rows(onlyCards, showToolCalls: false).isEmpty)
