@@ -26,10 +26,10 @@ struct MobileTranscriptRow: View {
         let name: String
         let data: Data
     }
-    @State private var showingReactionPicker = false
+    /// The compact action card, raised by a long press on a message.
+    @State private var showingActions = false
     @AppStorage("mobile.messageReactions.v1") private var storedReactions = "{}"
     private static let speaker = AVSpeechSynthesizer()
-    private static let emojis = ["👍", "❤️", "😂", "😮", "😢", "🎉"]
 
     private var reactionKey: String? {
         guard let session = app.model.selectedSessionID else { return nil }
@@ -64,8 +64,11 @@ struct MobileTranscriptRow: View {
                     .accessibilityLabel("Remove reaction \(emoji)")
             }
         }
-        .popover(isPresented: $showingReactionPicker, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
-            reactionPicker
+        // A long press raises one small card: the six reactions on top, the verbs under them.
+        // The system menu it replaces was taller than the message it was about, and it hid the
+        // emoji behind a second menu ("Add reaction").
+        .popover(isPresented: $showingActions, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+            actionCard
                 .presentationCompactAdaptation(.popover)
         }
         // The viewer fills the screen: a picture at 132 pt is a preview, not the picture.
@@ -126,11 +129,6 @@ struct MobileTranscriptRow: View {
             Button { app.model.reply(to: entry) } label: {
                 Label("Reply", systemImage: "arrowshape.turn.up.left")
             }
-            if reactionKey != nil {
-                Button { showingReactionPicker = true } label: {
-                    Label("Add reaction", systemImage: "face.smiling")
-                }
-            }
         }
         ShareLink(item: entry.text) {
             Label("Share", systemImage: "square.and.arrow.up")
@@ -152,25 +150,105 @@ struct MobileTranscriptRow: View {
         }
     }
 
-    private var reactionPicker: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 4), count: 3), spacing: 4) {
-            ForEach(Self.emojis, id: \.self) { emoji in
-                Button {
+    // MARK: Action card
+
+    /// The card a long press raises: six reactions, then four rows, then share.
+    ///
+    /// Small on purpose. The system menu it replaces drew a full-height icon list for six verbs and
+    /// put the reactions behind another menu, so a person who wanted to react pressed two things and
+    /// read a menu taller than the message. Here the emoji are the first thing under the thumb and
+    /// every verb is one 32 pt row.
+    private var actionCard: some View {
+        VStack(spacing: 0) {
+            if reactionKey != nil {
+                QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
                     setReaction(emoji)
-                    showingReactionPicker = false
-                } label: {
-                    Text(emoji)
-                        .font(.system(size: 26))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    Haptics.selection()
+                    showingActions = false
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("React with \(emoji)")
-                .accessibilityHint("Select again to remove this reaction")
+                .padding(.horizontal, 5)
+
+                Rectangle()
+                    .fill(Tokens.borderStrong)
+                    .frame(height: 1)
+                    .padding(.top, 2)
             }
+
+            actionRow("Copy", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = entry.text
+                Haptics.success()
+                showingActions = false
+            }
+            actionRow("Reply", systemImage: "arrowshape.turn.up.left") {
+                showingActions = false
+                app.model.reply(to: entry)
+            }
+            actionRow("Select", systemImage: "text.cursor") {
+                showingActions = false
+                showingSelection = true
+            }
+            actionRow(Self.speaker.isSpeaking ? "Stop" : "Read",
+                      systemImage: Self.speaker.isSpeaking ? "stop.fill" : "speaker.wave.2") {
+                if Self.speaker.isSpeaking {
+                    Self.speaker.stopSpeaking(at: .immediate)
+                } else {
+                    Self.speaker.speak(AVSpeechUtterance(string: entry.text))
+                }
+                showingActions = false
+            }
+            if let code = Self.firstCodeBlock(in: entry.text) {
+                actionRow("Copy code", systemImage: "chevron.left.forwardslash.chevron.right") {
+                    UIPasteboard.general.string = code
+                    Haptics.success()
+                    showingActions = false
+                }
+            }
+
+            Rectangle()
+                .fill(Tokens.borderStrong)
+                .frame(height: 1)
+
+            ShareLink(item: entry.text) {
+                HStack(spacing: 9) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Tokens.textMuted)
+                        .frame(width: 16)
+                    Text("Share")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 11)
+                .frame(height: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(8)
-        .frame(width: 156)
+        .padding(.vertical, 5)
+        .frame(width: 232)
+    }
+
+    private func actionRow(_ title: String,
+                           systemImage: String,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Tokens.textMuted)
+                    .frame(width: 16)
+                Text(title)
+                    .font(TypeScale.font(TypeScale.md))
+                    .foregroundStyle(Tokens.textPrimary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 11)
+            .frame(height: 32)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     /// The first fenced block, so a long answer with code does not force a whole-message copy.
@@ -293,7 +371,7 @@ struct MobileTranscriptRow: View {
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
-                .contextMenu { menu }
+                .onLongPressGesture(minimumDuration: 0.35) { showingActions = true }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -306,7 +384,7 @@ struct MobileTranscriptRow: View {
                 .accessibilityLabel(entry.text)
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
-                .contextMenu { menu }
+                .onLongPressGesture(minimumDuration: 0.35) { showingActions = true }
             messageTime
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -53,6 +53,18 @@ All notable changes to Hermey are recorded here. The format follows
   sends, compaction failures, room reads — with Copy, Share and Clear. The log survives a relaunch,
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
+### Fixed
+- **The shared computer takes a physical keyboard.** Keys were only read from the viewer's hidden text
+  area, and on a Mac nothing ever focused it — no soft keyboard, the ⌨ button hidden for coarse
+  pointers, the pane opening with the caret nowhere — so typing went into the void while the remote
+  desktop sat there looking ready. The page now reads keys at the document (one capture-phase
+  listener, covering the text area, the canvas and the body), focuses the text area on a pointer press
+  on desktops so paste and dictation still have a target, and leaves ⌘ chords to the Mac.
+- **Reactions are on the message, not behind a menu.** The desktop's action row (speak, copy, reply)
+  gained a smiley that opens the six basic reactions; the phone's long press now raises one compact
+  card — the six emoji on top, four 32 pt rows under them — instead of a system menu taller than the
+  message with the emoji hidden behind "Add reaction".
+
 ### Changed
 - **The three-dot menus open smaller.** The bar button is unchanged (a bare glyph, as before) — the
   popup was what was wrong: every row's label is shorter ("Search", "Compact", "Reset chat",

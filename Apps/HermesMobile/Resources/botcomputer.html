@@ -113,12 +113,38 @@
     }
 
     let lastKeydownAt = 0;
-    keys.addEventListener('keydown', (event) => {
+    // Keys are read at the document, not only at the hidden text area.
+    //
+    // On the phone the text area is focused by a tap, so its own listener was enough. On a Mac
+    // nothing ever focused it — there is no soft keyboard, the ⌨ button is hidden, and the pane
+    // opened with the caret nowhere — so a physical keyboard typed into nothing at all. One
+    // capture-phase listener covers every focus state: the text area, the canvas, the body.
+    function handleKeydown(event) {
       if (window.__hermeyViewOnly) { return; }
+      // A modifier on its own is not a keystroke: the remote side gets them as part of a chord.
       if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) { return; }
+      // ⌘ chords are the Mac's own grammar (⌘C/⌘V/⌘W). They are left to AppKit — paste reaches the
+      // desktop through the text area's `input` event, which is why that element is focused below.
+      if (event.metaKey) { return; }
       lastKeydownAt = Date.now();
-      if (sendKeystroke(event)) { event.preventDefault(); }
-    });
+      if (sendKeystroke(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+    document.addEventListener('keydown', handleKeydown, true);
+
+    // A pointer on the picture focuses the text area, so paste, dictation and IME have a target and
+    // ⌘V still works. Touch devices are excluded on purpose: focusing there raises the soft
+    // keyboard on every tap, which is what the ⌨ button exists to avoid.
+    if (!isTouch) {
+      const focusKeys = () => {
+        if (window.__hermeyViewOnly) { return; }
+        if (document.activeElement !== keys) { keys.focus({ preventScroll: true }); }
+      };
+      screen.addEventListener('pointerdown', focusKeys, true);
+      window.addEventListener('focus', focusKeys);
+    }
 
     // Dictation, autocomplete and paste arrive as text with no usable keydown.
     keys.addEventListener('input', () => {
