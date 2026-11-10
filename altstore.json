@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.109",
+          "buildVersion": "109",
+          "date": "2026-11-10T14:05:01Z",
+          "localizedDescription": "Code blocks can be copied on the phone too, and the copy button turns into a tick when it worked.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.109/Hermey-0.1.109-b109.ipa",
+          "size": 2006038,
+          "minOSVersion": "17.0",
+          "sha256": "a90196e9b9afe9a004ac009e1651fa3202e6107c5dde414a52ca809c9d7e5048"
+        },
+        {
           "version": "0.1.106",
           "buildVersion": "106",
           "date": "2026-11-10T13:41:27Z",
@@ -62,16 +72,6 @@
           "size": 1970531,
           "minOSVersion": "17.0",
           "sha256": "76b7aa05dd3deadaf18419747ab5428a82a144d47822b51937b338d36596811a"
-        },
-        {
-          "version": "0.1.90",
-          "buildVersion": "90",
-          "date": "2026-11-10T11:09:17Z",
-          "localizedDescription": "The shared computer no longer clips the window: the pane negotiates its width, the conversation gives some back, and a narrow window grows to fit.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.90/Hermey-0.1.90-b90.ipa",
-          "size": 1969477,
-          "minOSVersion": "17.0",
-          "sha256": "ea88fcf5efd546757e9107a2ba0afa1833f179b1fc8735949155639c0df2194c"
         }
       ],
       "appPermissions": {
