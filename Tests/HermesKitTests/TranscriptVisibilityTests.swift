@@ -47,6 +47,18 @@ final class TranscriptVisibilityTests: XCTestCase {
         XCTAssertFalse(TranscriptVisibility.showsLiveCards(showToolCalls: true, hasLiveTools: false))
     }
 
+    func testTheSameWordsAreOneRowWithinATurn() {
+        // The duplicate on screen: a tool call sealed the commentary, then `message.interim`
+        // delivered the very same paragraph a minute later as its own row.
+        let paragraph = "Two regressions, and I've been guessing. Reading noVNC's actual pointer "
+            + "plumbing before changing anything else."
+        XCTAssertTrue(TranscriptVisibility.saysTheSame(paragraph, paragraph))
+        XCTAssertTrue(TranscriptVisibility.saysTheSame(paragraph, paragraph + "\n"))
+        XCTAssertFalse(TranscriptVisibility.saysTheSame(paragraph, "Something else"))
+        XCTAssertFalse(TranscriptVisibility.saysTheSame(paragraph, nil))
+        XCTAssertFalse(TranscriptVisibility.saysTheSame("   ", "   "))
+    }
+
     func testTheLiveBubbleDoesNotRepeatTheRowAboveIt() {
         // The duplicate the user photographed: the same paragraph twice, the lower copy with a
         // caret, collapsing into one when the turn settled.

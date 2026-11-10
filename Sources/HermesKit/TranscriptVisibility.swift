@@ -27,6 +27,17 @@ public enum TranscriptVisibility {
         return entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Whether two assistant texts are the same words, once whitespace is ignored.
+    ///
+    /// The host can send one paragraph as three separate events — the commentary sealed at a tool
+    /// call, the same text as `message.interim`, and the answer at completion — and each used to get
+    /// its own row. Within one turn, identical words are the same message.
+    public static func saysTheSame(_ text: String, _ other: String?) -> Bool {
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return false }
+        return words == (other ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// What the live bubble should print, given the last assistant row on screen.
     ///
     /// The host streams a commentary and also seals it as `message.interim`, which the app turns into

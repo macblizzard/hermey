@@ -143,47 +143,56 @@
       window.__hermeyFocus();
     });
 
-    // ---- right click -----------------------------------------------------------------------
-    // noVNC has no gesture for this on a touch screen. Its handler reads `buttons`, not `button`,
-    // and converts 2 to the right-button bit — so a synthetic press/release pair with `buttons: 2`
-    // is exactly a right click, at the same point noVNC would have computed for a real tap.
-    // Where the pointer already is — noVNC keeps it in canvas coordinates, so it is converted back
-    // to page coordinates with the canvas's own rect (which includes the zoom transform). A right
-    // click belongs to the pointer, not to wherever the two fingers happened to land.
-    function pointerPoint() {
-      const canvas = screen.querySelector('canvas');
-      const pos = rfb._mousePos;
-      if (!canvas || !pos || typeof pos.x !== 'number' || !canvas.width) { return null; }
-      const rect = canvas.getBoundingClientRect();
-      return { x: rect.left + pos.x * rect.width / canvas.width,
-               y: rect.top + pos.y * rect.height / canvas.height };
-    }
+    // ---- touch input -----------------------------------------------------------------------
+    // noVNC's own recogniser is switched off. It reads a two-finger pinch as "scroll the viewport"
+    // and a two-finger drag as wheel events — the opposite of what a phone wants here — and teaching
+    // it only *some* of the events it expects left its state machine stuck: it had seen the first
+    // finger go down and never the second, so taps stopped registering until an unrelated tap reset
+    // it. This page now emits the same mouse events that recogniser would have produced, and owns
+    // the two-finger gestures outright.
+    if (rfb._gestures) { rfb._gestures.detach(); }
 
-    function rightClick(fallbackX, fallbackY) {
-      if (window.__hermeyViewOnly) { return; }   // watching is not driving
-      const canvas = screen.querySelector('canvas');
-      if (!canvas) { return; }
-      const point = pointerPoint() || { x: fallbackX, y: fallbackY };
-      canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window,
-                                                         clientX: point.x, clientY: point.y,
-                                                         button: 2, buttons: 2 }));
-      canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window,
-                                                       clientX: point.x, clientY: point.y,
-                                                       button: 2, buttons: 0 }));
-      // noVNC's setCapture() is the old IE fallback: on a real mousedown it puts a full-screen proxy
-      // div at zIndex 10000 over everything, and only that div's own mouseup removes it. A synthetic
-      // press dispatched straight at the canvas creates it and leaves it behind — swallowing every
-      // later touch, which is why pinching stopped working until the user tapped once.
-      releaseCapture();
-    }
-
-    // ---- pinch to zoom, two fingers to pan --------------------------------------------------
-    // The picture is scaled with a CSS transform on the element noVNC draws into. Its pointer
-    // mapping reads the canvas's bounding rect, which already includes the transform, so a tap
-    // still lands where the finger is. One finger is always the remote pointer: two fingers are
-    // the view, and are swallowed before noVNC's gesture handler can read them as a drag.
     const MAX_SCALE = 4;
-    let scale = 1, tx = 0, ty = 0, pinch = null, badgeTimer = 0;
+    let scale = 1, tx = 0, ty = 0, badgeTimer = 0;
+    let single = null;     // the one finger that is down
+    let pinch = null;      // the two fingers
+
+    const canvasOf = () => screen.querySelector('canvas');
+
+    function mouse(type, point, buttons) {
+      const element = canvasOf();
+      if (!element || window.__hermeyViewOnly) { return; }
+      element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window,
+                                                   clientX: point.x, clientY: point.y,
+                                                   button: 0, buttons }));
+    }
+
+    // noVNC's setCapture() is its old IE fallback: a press makes it lay a full-screen proxy div at
+    // zIndex 10000 over everything, and only that div's own mouseup removes it. A press dispatched
+    // straight at the canvas leaves that div behind, swallowing every later touch — which is what
+    // "pinching stops working until I tap once" was. Release it ourselves, every time.
+    function releaseCaptureIfAny() { try { releaseCapture(); } catch (e) {} }
+
+    function click(point) {
+      mouse('mousemove', point, 0);
+      mouse('mousedown', point, 1);
+      mouse('mouseup', point, 0);
+      releaseCaptureIfAny();
+    }
+
+    // noVNC derives the button from `MouseEvent.buttons`, not `button`, and maps bit 1 to the
+    // protocol's right button — so this is indistinguishable from a real right press.
+    function rightClick(point) {
+      mouse('mousemove', point, 0);
+      mouse('mousedown', point, 2);
+      mouse('mouseup', point, 0);
+      releaseCaptureIfAny();
+    }
+
+    const spanOf = (touches) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const middleOf = (touches) => ({ x: (touches[0].clientX + touches[1].clientX) / 2,
+                                     y: (touches[0].clientY + touches[1].clientY) / 2 });
 
     function applyTransform() {
       screen.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
@@ -202,72 +211,86 @@
       tx = Math.min(0, Math.max(screen.clientWidth - width, tx));
       ty = Math.min(0, Math.max(screen.clientHeight - height, ty));
     }
-    const span = (touches) =>
-      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
-    const middle = (touches) => ({ x: (touches[0].clientX + touches[1].clientX) / 2,
-                                   y: (touches[0].clientY + touches[1].clientY) / 2 });
-    function swallow(event) {
-      event.stopPropagation();
-      event.preventDefault();
-    }
-
-    // A second finger arriving is the end of whatever the first one started. noVNC tracks touches
-    // itself, so it is told the pointer is up — otherwise the remote button stays pressed and the
-    // pointer stops moving for the rest of the session.
-    function releasePointer() {
-      const canvas = screen.querySelector('canvas');
-      if (!canvas) { return; }
-      const last = pinch && pinch.middle ? pinch.middle : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-      canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true,
-                                                       clientX: last.x, clientY: last.y, button: 0 }));
-      canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true,
-                                                          clientX: last.x, clientY: last.y }));
-      releaseCapture();
-    }
 
     screen.addEventListener('touchstart', (event) => {
-      if (event.touches.length !== 2) { return; }
-      swallow(event);
-      pinch = { span: Math.max(1, span(event.touches)), scale, tx, ty, middle: middle(event.touches),
-                startedAt: Date.now(), moved: 0 };
-      releasePointer();
-    }, { capture: true, passive: false });
+      if (event.touches.length === 1) {
+        const touch = event.touches[0];
+        single = { startX: touch.clientX, startY: touch.clientY,
+                   x: touch.clientX, y: touch.clientY, pressed: false, moved: false };
+      } else if (event.touches.length === 2) {
+        // A second finger makes this the view's gesture: let go of any drag in progress first.
+        if (single && single.pressed) {
+          mouse('mouseup', { x: single.x, y: single.y }, 0);
+          releaseCaptureIfAny();
+        }
+        single = null;
+        pinch = { span: Math.max(1, spanOf(event.touches)), scale, tx, ty,
+                  mid: middleOf(event.touches), startedAt: Date.now(), moved: 0 };
+      }
+    }, { passive: false });
 
     screen.addEventListener('touchmove', (event) => {
-      if (!pinch || event.touches.length !== 2) { return; }
-      swallow(event);
-      const next = Math.min(MAX_SCALE, Math.max(1, pinch.scale * span(event.touches) / pinch.span));
-      const ratio = next / pinch.scale;
-      const now = middle(event.touches);
+      if (event.touches.length === 1 && single) {
+        const touch = event.touches[0];
+        single.x = touch.clientX;
+        single.y = touch.clientY;
+        if (Math.hypot(single.x - single.startX, single.y - single.startY) > 6) { single.moved = true; }
+        if (single.moved) {
+          event.preventDefault();
+          if (!single.pressed) {
+            // Press where the finger started, so a drag grabs what it touched, not what it reached.
+            single.pressed = true;
+            mouse('mousemove', { x: single.startX, y: single.startY }, 0);
+            mouse('mousedown', { x: single.startX, y: single.startY }, 1);
+          }
+          mouse('mousemove', { x: single.x, y: single.y }, 1);
+        }
+        return;
+      }
+      if (event.touches.length !== 2 || !pinch) { return; }
+      event.preventDefault();
+      const now = middleOf(event.touches);
       // How far this gesture has travelled, so a two-finger *tap* can be told from a pinch or pan.
       pinch.moved = Math.max(pinch.moved,
-                             Math.abs(now.x - pinch.middle.x) + Math.abs(now.y - pinch.middle.y),
-                             Math.abs(span(event.touches) - pinch.span));
+                             Math.abs(now.x - pinch.mid.x) + Math.abs(now.y - pinch.mid.y),
+                             Math.abs(spanOf(event.touches) - pinch.span));
+      const next = Math.min(MAX_SCALE, Math.max(1, pinch.scale * spanOf(event.touches) / pinch.span));
+      const ratio = next / pinch.scale;
       // Keep the point between the fingers under the fingers (this also pans, since the midpoint
       // moves when both fingers are dragged together).
-      tx = now.x - (pinch.middle.x - pinch.tx) * ratio;
-      ty = now.y - (pinch.middle.y - pinch.ty) * ratio;
+      tx = now.x - (pinch.mid.x - pinch.tx) * ratio;
+      ty = now.y - (pinch.mid.y - pinch.ty) * ratio;
       scale = next;
       clampPan();
       applyTransform();
-    }, { capture: true, passive: false });
+    }, { passive: false });
 
-    function endPinch(event) {
+    function endTouches(event) {
       if (event.touches.length !== 0) { return; }
-      // Deliberately NOT swallowed: noVNC saw the first finger go down, so it must see the last one
-      // come up — swallowing the touchend was what left it holding a button forever.
-      const wasTap = pinch && pinch.moved < 14 && Date.now() - pinch.startedAt < 400;
-      if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
-      if (pinch) { releasePointer(); releaseCapture(); }
+      if (single) {
+        if (single.pressed) {
+          mouse('mouseup', { x: single.x, y: single.y }, 0);
+          releaseCaptureIfAny();
+        } else if (!single.moved) {
+          click({ x: single.x, y: single.y });
+        }
+        single = null;
+        return;
+      }
+      if (!pinch) { return; }
       // A two-finger tap that neither moved nor resized is the right click: the desktop equivalent
       // of pressing the right button, which a phone has no other way to do.
-      if (wasTap) { rightClick(pinch.middle.x, pinch.middle.y); }
+      const wasTap = pinch.moved < 14 && Date.now() - pinch.startedAt < 400;
+      if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
+      const middle = pinch.mid;
       pinch = null;
+      if (wasTap) { rightClick(middle); }
     }
-    screen.addEventListener('touchend', endPinch, { capture: true, passive: false });
-    screen.addEventListener('touchcancel', endPinch, { capture: true, passive: false });
+    screen.addEventListener('touchend', endTouches, { passive: false });
+    screen.addEventListener('touchcancel', endTouches, { passive: false });
 
-    window.hermeyResetZoom = function () { scale = 1; tx = 0; ty = 0; applyTransform(); };
+    window.__hermeyResetZoom = function () { scale = 1; tx = 0; ty = 0; applyTransform(); };
+    window.hermeyResetZoom = window.__hermeyResetZoom;
 
     // ---- connection -------------------------------------------------------------------------
     // Enabling input turns off noVNC's view-only mode and offers the keyboard. Nothing here grabs
@@ -283,7 +306,13 @@
       }
     };
 
-    rfb.addEventListener('connect', () => { post('connected'); window.__hermeyApply(); });
+    rfb.addEventListener('connect', () => {
+      // connect() attaches the recogniser again; it is detached for as long as this page drives
+      // touches itself.
+      if (rfb._gestures) { rfb._gestures.detach(); }
+      post('connected');
+      window.__hermeyApply();
+    });
     rfb.addEventListener('disconnect', (e) => post('disconnected', { clean: !!(e.detail && e.detail.clean) }));
     rfb.addEventListener('securityfailure', () => post('error', { message: 'security failure' }));
 
