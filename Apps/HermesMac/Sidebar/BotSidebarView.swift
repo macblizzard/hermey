@@ -123,10 +123,13 @@ struct BotSidebarView: View {
                     Label("Start group chat…", systemImage: "person.3")
                 }
             } label: {
-                // Three dots on the Mac too: the same menu, wearing the same control the phone
-                // draws — one glyph, one surface, one theme across both apps — instead of a funnel
-                // that promised filtering and then offered "Add bot".
-                MenuDotsLabel(isActive: showsHiddenBots)
+                // Three dots on the Mac too: the same menu, wearing the same glyph as on the phone,
+                // instead of a funnel that promised filtering and then offered "Add bot".
+                Image(systemName: "ellipsis")
+                    .font(TypeScale.font(TypeScale.label))
+                    .foregroundStyle(showsHiddenBots ? Tokens.accentText : Tokens.textDim)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)

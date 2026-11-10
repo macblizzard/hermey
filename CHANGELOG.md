@@ -6,10 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
-- **A badge on the back button:** leaving a bot's chat now shows how many replies are waiting in
-  the *other* chats, so answering one bot is not a decision made blind. The count covers other
-  bots' replies and any group chat with new lines, and it refreshes while a chat is open instead of
-  waiting for the list to reappear.
+- **"N unread" in a bot chat's header strip:** the replies waiting in the *other* chats (other bots
+  plus any group chat with new lines), refreshed while the chat is open. It sits beside the model
+  chip and takes the entries count's place while it is showing — one count per row — and tapping it
+  goes back to the list. It is **not** on the back button: a custom bar button is drawn by iOS inside
+  its own glass capsule, which pushed the title off centre, and hiding the system back button
+  disabled the edge-swipe, so that version could not ship.
 - **Unread badges on group chats.** A room row now carries the number of bot messages that landed
   since this device last read it, drawn on the room's faces exactly where a bot's count sits on its
   portrait. `groups.list` reports only each room's newest `seq`, so the count comes from the room's
@@ -20,16 +22,19 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Changed
-- **The three-dot menu is one control everywhere.** It wears the app's own surface, hairline and
-  theme colour instead of being a bare glyph, and is compact enough to read as a bar button (30 pt on
-  the phone, 24 on the Mac). The bot list, a bot's chat, a group chat and the Mac's sidebar and pane
-  header all draw `MenuDotsLabel`.
+- **The three-dot menus open smaller.** The bar button is unchanged (a bare glyph, as before) — the
+  popup was what was wrong: every row's label is shorter ("Search", "Compact", "Reset chat",
+  "New group chat", "Hidden bots"), so the panel is narrower without losing a single verb.
 - **A conversation has one gutter.** `Geometry.chatGutter` (16 pt on the phone, the Mac's 24 pt
   reading inset) is used by the transcript *and* the composer, in both a bot chat and a group chat.
   A room's composer used to sit flush against the screen edges while its bubbles stopped 12 pt in,
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **The edge-swipe stopped going back.** Hiding the system back button to draw one that carried the
+  unread bubble also switches off `interactivePopGestureRecognizer`, and the delegate it was handed
+  back did not survive SwiftUI's layout passes. The bar keeps its system back button, so the swipe,
+  the centred title and the bar's own chrome are the ones iOS draws.
 - **A reply printed itself twice while it streamed.** The host streams the whole message of the turn
   while each paragraph it seals (at a tool call, again as `message.interim`) becomes a row of its
   own, and the rules only compared against the *last* row — so a turn whose two earlier paragraphs
