@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.63",
+          "buildVersion": "63",
+          "date": "2026-11-10T06:47:56Z",
+          "localizedDescription": "A streamed reply is printed once (no more re-printed paragraphs under themselves) and a large bot can compact again (the client no longer cuts the host's 600 s summary off at 120 s).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.63/Hermey-0.1.63-b63.ipa",
+          "size": 1919427,
+          "minOSVersion": "17.0",
+          "sha256": "1389b9265dac4e4ff9dcbcb7a3a4d6e3b1663da243f7a0417315684750e4ff40"
+        },
+        {
           "version": "0.1.58",
           "buildVersion": "58",
           "date": "2026-11-10T05:21:41Z",
@@ -62,16 +72,6 @@
           "size": 1904415,
           "minOSVersion": "17.0",
           "sha256": "c991ff880eb4bb68f6a7efd019bd8ad815fecd293f925e221d4017d76adf38d9"
-        },
-        {
-          "version": "0.1.43",
-          "buildVersion": "43",
-          "date": "2026-11-10T00:30:40Z",
-          "localizedDescription": "Build from CI run 42728386981.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.43/Hermey-0.1.43-b43.ipa",
-          "size": 1903760,
-          "minOSVersion": "17.0",
-          "sha256": "46f9542fd6ed232e678e2a4de83fbdb33348e6f47330d50120ffa8e2e2d2bf32"
         }
       ],
       "appPermissions": {
