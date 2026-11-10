@@ -36,18 +36,48 @@ public struct PairingLink: Equatable, Sendable {
         PairingLink.rewritingScheme(of: host, to: "wss")
     }
 
-    /// - Parameter defaultHost: the host to use when the input is only a code (or a link that omits
-    ///   `host=`). Pass the host this Mac is already pointed at, if there is one.
-    public static func parse(_ raw: String, defaultHost: String? = nil) -> PairingLink? {
-        let text = cleaned(raw)
-        guard !text.isEmpty else { return nil }
+    /// What a paste turns out to be.
+    ///
+    /// `parse` answers only what can be delivered, which loses a distinction the sheet needs: a code
+    /// with nowhere to send it is not a *wrong* code. Reporting it as one ("That is not a pairing
+    /// code") left a fresh Mac unable to pair from `hermey pair`'s digits at all — the code was
+    /// refused on the device and never reached the host.
+    public enum Input: Equatable, Sendable {
+        /// Everything the claim needs.
+        case link(PairingLink)
+        /// Eight digits (or a future length), and no address to claim it against. Keep the code and
+        /// ask for the address; do not call the code invalid.
+        case codeNeedingHost(String)
+        /// Neither a code nor a link carrying one.
+        case unusable
+    }
 
-        // A bare code. The eight digits are the whole message; the host is the context.
+    /// - Parameter defaultHost: the host to use when the input is only a code (or a link that omits
+    ///   `host=`). Pass the address typed in the sheet first, then the host this Mac was last
+    ///   paired with — an address somebody just typed beats one that was remembered.
+    public static func classify(_ raw: String, defaultHost: String? = nil) -> Input {
+        let text = cleaned(raw)
+        guard !text.isEmpty else { return .unusable }
+
+        // A bare code. The digits are the whole message; the host is the context.
         if isCode(text) {
-            guard let fallback = defaultHost.map(normalised) else { return nil }
-            return PairingLink(host: fallback, code: text)
+            guard let fallback = defaultHost.map(normalised), !fallback.isEmpty else {
+                return .codeNeedingHost(text)
+            }
+            return .link(PairingLink(host: fallback, code: text))
         }
 
+        guard let link = parseLink(text, defaultHost: defaultHost) else { return .unusable }
+        return .link(link)
+    }
+
+    /// The old entry point: the link, or nil when there is not enough to claim one.
+    public static func parse(_ raw: String, defaultHost: String? = nil) -> PairingLink? {
+        if case .link(let link) = classify(raw, defaultHost: defaultHost) { return link }
+        return nil
+    }
+
+    private static func parseLink(_ text: String, defaultHost: String?) -> PairingLink? {
         // Anything else has to be a URL carrying `code=` (with `host=` optional). A paste without a
         // scheme (`hermes.example.ts.net:8443/?code=…`) is still a URL — add the scheme the host
         // actually serves before asking `URLComponents`, which would otherwise read the host as one.
@@ -74,7 +104,8 @@ public struct PairingLink: Equatable, Sendable {
                 return PairingLink(host: string, code: code)
             }
         }
-        if let fallback = defaultHost.map(normalised) {
+        // An address typed into the sheet, or the one this Mac remembers. Empty is not an address.
+        if let fallback = defaultHost.map(normalised), !fallback.isEmpty {
             return PairingLink(host: fallback, code: code)
         }
         return nil

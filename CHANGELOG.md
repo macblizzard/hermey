@@ -31,6 +31,13 @@ All notable changes to Hermey are recorded here. The format follows
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **A code from `hermey pair` pairs on a Mac that has never paired.** A fresh Mac has no remembered
+  host, so a bare eight-digit code parsed to nothing and the sheet called it "not a pairing code" —
+  the digits were refused on the device and never reached the host; only the full `hermes://` link
+  worked. `PairingLink.classify` now separates *a code with no address* from *not a code*, and the
+  sheet answers the first by keeping the digits, opening Advanced and focusing the address field
+  (which it then claims against). An address typed there also outranks one remembered from the last
+  pairing, so re-pairing to a different host no longer needs the link.
 - **The edge-swipe stopped going back.** Hiding the system back button to draw one that carried the
   unread bubble also switches off `interactivePopGestureRecognizer`, and the delegate it was handed
   back did not survive SwiftUI's layout passes. The bar keeps its system back button, so the swipe,

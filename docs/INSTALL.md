@@ -37,7 +37,9 @@ hermey pair
 ```
 
 prints a code, a `hermes://pair?host=…&code=…` link and — when the `qrcode` package could be
-installed — a QR. Codes are short-lived, so mint one when the phone is in your hand. Pair as many
+installed — a QR. The **link carries the address**, so it is the one to paste on a Mac that has never
+paired; the eight digits work on their own only once the app already knows the host (or has the
+address typed under Advanced). Codes are short-lived, so mint one when the phone is in your hand. Pair as many
 devices as you like; each is individually revocable.
 
 ## Options
