@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.49",
+          "buildVersion": "49",
+          "date": "2026-11-10T01:05:06Z",
+          "localizedDescription": "Build from CI run 42732590411.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.49/Hermey-0.1.49-b49.ipa",
+          "size": 1905603,
+          "minOSVersion": "17.0",
+          "sha256": "d4cfc94752d3bda2b27f59b7d7d3ed11181eb49b70f8044466b8b7edc32c4a48"
+        },
+        {
           "version": "0.1.46",
           "buildVersion": "46",
           "date": "2026-11-10T00:46:03Z",
@@ -62,16 +72,6 @@
           "size": 1902256,
           "minOSVersion": "17.0",
           "sha256": "172647a493bd51211431253ae1d9bf97d68fe9b662dfef946657705307153fd2"
-        },
-        {
-          "version": "0.1.34",
-          "buildVersion": "34",
-          "date": "2026-11-09T23:02:45Z",
-          "localizedDescription": "Build from CI run 42716542734.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.34/Hermey-0.1.34-b34.ipa",
-          "size": 1901205,
-          "minOSVersion": "17.0",
-          "sha256": "41555721971ea841c4c53dd05903140a38d008a2ad4a5d4de1b1ff2b2089976a"
         }
       ],
       "appPermissions": {
