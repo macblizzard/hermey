@@ -30,6 +30,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import build_stamp  # noqa: E402  (same directory: the visible build line)
 from publish_source import read_ipa  # noqa: E402  (same directory, shared IPA reader)
 
 SOURCE_NAME = "Hermey"
@@ -206,11 +207,28 @@ def main() -> int:
         staged = ["altstore.json"]
         if (work / "icon-512.png").exists():
             staged.append("icon-512.png")
-        run(["git", "-C", str(work), "add", *staged])
-        run(["git", "-C", str(work), "-c", "user.name=assistant",
-             "-c", "user.email=hermey@users.noreply.github.com",
-             "commit", "-m", f"publish {version} ({build})"])
-        run(["git", "-C", str(work), "push", "origin", "HEAD:main"])
+
+        # The README carries the same marked build line as the landing page, stamped from this IPA
+        # and committed *with* the manifest, so "which build is current?" cannot answer differently
+        # in the two places a person looks.
+        readme_path = work / "README.md"
+        if readme_path.is_file():
+            original = readme_path.read_text()
+            stamped = build_stamp.replace(original, build_stamp.readme_body(version, build))
+            if stamped is not None and stamped != original:
+                readme_path.write_text(stamped)
+                staged.append("README.md")
+
+        # Nothing to write is not a failure: re-running a publish to repair the mirror or the release
+        # assets leaves the manifest byte-identical, and `git commit` then exits 1.
+        if not run(["git", "-C", str(work), "status", "--porcelain"]).strip():
+            print("  manifest already published — nothing to commit")
+        else:
+            run(["git", "-C", str(work), "add", *staged])
+            run(["git", "-C", str(work), "-c", "user.name=assistant",
+                 "-c", "user.email=hermey@users.noreply.github.com",
+                 "commit", "-m", f"publish {version} ({build})"])
+            run(["git", "-C", str(work), "push", "origin", "HEAD:main"])
     finally:
         shutil.rmtree(work, ignore_errors=True)
 

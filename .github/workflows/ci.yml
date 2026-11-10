@@ -189,3 +189,24 @@ jobs:
       - name: Python syntax and imports
         run: |
           python3 -m compileall -q Bridge/hermes_bridge
+      # Source-text guards that need no simulator: the bot-list bar, the reaction picker, and the
+      # two files that advertise a build (README markers, no versioned download URLs).
+      - name: Source guards
+        run: python3 -m unittest discover -s Tests -p 'test_*.py'
+
+  published-docs:
+    name: Published pages and README match the release
+    # Only on main: the check compares what gh-pages and README advertise against the newest
+    # *release*, and a PR branch cannot repair them. This is the alarm that a hand-cut release left
+    # the landing page or the README on an older build — the failure nobody notices by hand.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compare the served build line with the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 Tools/release/sync_store.py --check --repo "$GITHUB_REPOSITORY"
