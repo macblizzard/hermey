@@ -36,6 +36,21 @@ They are listed here so the next change does not rediscover them.
   actually in the hierarchy: a modifier added to a computed subview that was later refactored away
   is silently dropped (the paperclip bug — it set state nothing listened to).
 
+## Alignment and chrome
+
+- **Two different gutters in one conversation read as a tilted screen.** A room's transcript was
+  padded 12 and its composer 0 (the chat's were 16 and 12), so every bubble floated over a field
+  that touched both edges. One value, `Geometry.chatGutter`, is now read by the transcript, the
+  composer and the strips between them, in **both** conversation kinds, on both platforms. A new
+  message surface copies it rather than picking a number.
+- **A bare SF Symbol is not a bar button.** The ⋯ menu was an `ellipsis` floating on the canvas next
+  to a search glyph, and on the room it was a 22 pt hit target. `MenuDotsLabel` draws the kit's
+  control surface at 30 pt (phone) / 24 pt (Mac), and every menu in both apps uses it.
+- **`.navigationBarBackButtonHidden(true)` also kills the edge-swipe pop.** It is the only way to
+  draw a back button that carries a badge, so the gesture needs its delegate back:
+  `SwipeBackEnabler` in `ConversationScreen.swift` lends UIKit a delegate that only answers "is
+  there a stack to pop" (answering `true` at the root freezes the navigation controller).
+
 ## State and identity
 
 - A selection guard that returns early before dismissing a *different* presentation makes a list

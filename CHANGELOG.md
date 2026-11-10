@@ -5,6 +5,30 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A badge on the back button:** leaving a bot's chat now shows how many replies are waiting in
+  the *other* chats, so answering one bot is not a decision made blind. The count covers other
+  bots' replies and any group chat with new lines, and it refreshes while a chat is open instead of
+  waiting for the list to reappear.
+- **Unread badges on group chats.** A room row now carries the number of bot messages that landed
+  since this device last read it, drawn on the room's faces exactly where a bot's count sits on its
+  portrait. `groups.list` reports only each room's newest `seq`, so the count comes from the room's
+  own log — fetched only for rooms that moved, and seeded rather than badged on first sight.
+- **Settings → Diagnostics → View log** (About → *View log…* on the Mac): a timestamped, on-device
+  record of what the app did — connects, socket drops and reconnects, failed session opens, refused
+  sends, compaction failures, room reads — with Copy, Share and Clear. The log survives a relaunch,
+  is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
+
+### Changed
+- **The three-dot menu is one control everywhere.** It wears the app's own surface, hairline and
+  theme colour instead of being a bare glyph, and is compact enough to read as a bar button (30 pt on
+  the phone, 24 on the Mac). The bot list, a bot's chat, a group chat and the Mac's sidebar and pane
+  header all draw `MenuDotsLabel`.
+- **A conversation has one gutter.** `Geometry.chatGutter` (16 pt on the phone, the Mac's 24 pt
+  reading inset) is used by the transcript *and* the composer, in both a bot chat and a group chat.
+  A room's composer used to sit flush against the screen edges while its bubbles stopped 12 pt in,
+  and a bot's composer was 4 pt wider than its own text; both now line up.
+
 ### Fixed
 - **A reply printed itself twice while it streamed.** The host streams the whole message of the turn
   while each paragraph it seals (at a tool call, again as `message.interim`) becomes a row of its

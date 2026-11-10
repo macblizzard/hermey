@@ -235,6 +235,7 @@ struct WorkspaceShell: View {
                                      try await model.sendRoomMessage(roomID, text: text, attachments: files)
                                  },
                                  onActivity: { Task { await model.refreshRooms() } },
+                                 onLatestSeq: { model.markRoomRead(room.id, seq: $0) },
                                  onClose: { model.closeRoom() },
                                  sidebarHidden: store.isSidebarHidden,
                                  onToggleSidebar: { store.toggleSidebar() },

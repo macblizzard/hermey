@@ -93,6 +93,20 @@ public enum Geometry {
     /// One inset for the conversation column: header, transcript, approval cards, composer and
     /// error strips all start here, so their left edges cannot drift apart.
     public static let readingInset: CGFloat = 24
+    /// The one gutter a conversation draws **both** its bubbles and its composer at.
+    ///
+    /// Read by a bot's chat and a group chat, on both platforms, so the two kinds of conversation
+    /// align with themselves and with each other: `16` on the phone (a 393 pt screen cannot spare
+    /// the desktop's 24 on both sides), the `24` reading inset on the Mac, where the composer and
+    /// the transcript already sit at it. A per-view number is what made a room's composer reach the
+    /// screen edges while its bubbles stopped 12 pt short.
+    public static var chatGutter: CGFloat {
+        #if os(macOS)
+        return readingInset
+        #else
+        return 16
+        #endif
+    }
     /// One inset for the bot panel: its header, rows, empty states and host chip agree.
     public static let sidebarInset: CGFloat = 12
     /// The window's own rounded clip, and the floating palette's.

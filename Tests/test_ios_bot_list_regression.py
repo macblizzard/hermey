@@ -17,10 +17,15 @@ class BotListRegressionTests(unittest.TestCase):
         self.assertIn("showHidden.toggle()", source)
         self.assertIn('showHidden ? "checkmark"', source)
 
-    def test_title_and_filter_share_navigation_bar(self):
+    def test_bar_holds_search_and_menu_and_no_title(self):
+        # The bar carries two round controls and nothing between them — search on the leading
+        # corner, the menu on the trailing one — because the icon the user tapped already named
+        # the app. The old guard asserted an inline title that the design deliberately dropped.
         source = SOURCE.read_text()
-        self.assertIn('.navigationBarTitleDisplayMode(.inline)', source)
+        self.assertIn('ToolbarItem(placement: .topBarLeading)', source)
         self.assertIn('ToolbarItem(placement: .topBarTrailing)', source)
+        self.assertIn('.accessibilityLabel("Bot list menu")', source)
+        self.assertNotIn('.navigationBarTitleDisplayMode', source)
 
 
 if __name__ == "__main__":
