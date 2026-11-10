@@ -24,6 +24,45 @@ final class PairingLinkTests: XCTestCase {
         XCTAssertNil(PairingLink.parse("64251508"), "no host to pair with — the sheet must ask for one")
     }
 
+    /// The bug this guards: a fresh Mac has no remembered host, so a code from `hermey pair` parsed
+    /// to nil and the sheet told the person it was "not a pairing code" — the digits never reached
+    /// the host. A code with nowhere to go is a *code plus a missing address*, and the sheet has to
+    /// be able to tell that from a bad paste.
+    func testABareCodeWithNoHostAnywhereAsksForTheAddress() {
+        XCTAssertEqual(PairingLink.classify("64251508"), .codeNeedingHost("64251508"))
+        XCTAssertEqual(PairingLink.classify("  64251508\n"), .codeNeedingHost("64251508"))
+        XCTAssertEqual(PairingLink.classify("64251508", defaultHost: ""), .codeNeedingHost("64251508"),
+                       "an empty address is not an address")
+    }
+
+    /// The address typed into the sheet is what the digits are claimed against on a first pairing.
+    func testACodeAndATypedAddressPair() {
+        guard case .link(let link) = PairingLink.classify("64251508", defaultHost: "https://new.example.ts.net:8443") else {
+            return XCTFail("a code plus an address must be a link")
+        }
+        XCTAssertEqual(link.code, "64251508")
+        XCTAssertEqual(link.httpBase, "https://new.example.ts.net:8443")
+        XCTAssertEqual(link.websocketBase, "wss://new.example.ts.net:8443")
+    }
+
+    /// A known host still fills in for a link that omits `host=` — the phone's `hermes://pair?code=`
+    /// shape — so re-pairing does not need the address typed again.
+    func testALinkWithoutAHostUsesTheAddressItIsGiven() {
+        guard case .link(let link) = PairingLink.classify("hermes://pair?code=12345678", defaultHost: "h.example:8443") else {
+            return XCTFail("the address in the sheet must be used")
+        }
+        XCTAssertEqual(link.websocketBase, "wss://h.example:8443")
+    }
+
+    /// Everything that is neither a code nor a link carrying one stays unusable, so the sheet can
+    /// still say so.
+    func testSomethingElseIsUnusable() {
+        XCTAssertEqual(PairingLink.classify("hello"), .unusable)
+        XCTAssertEqual(PairingLink.classify("hermes://pair?host=https%3A%2F%2Fh.example"), .unusable)
+        XCTAssertEqual(PairingLink.classify("wss://hermes.example.ts.net:8443"), .unusable,
+                       "an address alone is not a pairing")
+    }
+
     func testAUrlThatCarriesACodeInItsQueryNamesItsOwnHost() {
         let link = PairingLink.parse("https://hermes.example.ts.net:8443/?code=12345678")
 

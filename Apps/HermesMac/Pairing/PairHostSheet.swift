@@ -86,7 +86,7 @@ struct PairHostSheet: View {
         if let host = store.pairing?.displayHost {
             return "Paste the code your host prints with `hermey pair` — or the whole hermes:// link. Previously paired with \(host)."
         }
-        return "Paste the code your host prints with `hermey pair`, or the whole hermes:// link."
+        return "Paste the whole hermes:// link from `hermey pair`. Only have the code? Plant the host's address under Advanced first — the digits do not say which host is waiting for them."
     }
 
     // MARK: Fields
@@ -258,15 +258,38 @@ struct PairHostSheet: View {
         guard !isConnecting else { return }
         errorText = nil
 
-        // A code, pasted as digits or as the whole link. The host comes from the link, or from the
-        // host this Mac already knows.
-        if let link = PairingLink.parse(code, defaultHost: store.pairing?.baseURL) {
+        // A code, pasted as digits or as the whole link. The host comes from the link, then from an
+        // address typed under Advanced, then from the host this Mac was last paired with — and a
+        // *code with no address anywhere* is half a pairing, not a bad code. This Mac used to call
+        // it invalid and never send it, which made `hermey pair`'s digits useless on a fresh
+        // install.
+        let typedHost = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rememberedHost = store.pairing?.baseURL
+        let fallbackHost = typedHost.isEmpty ? rememberedHost : typedHost
+
+        switch PairingLink.classify(code, defaultHost: fallbackHost) {
+        case .link(let link):
             pair(with: link)
             return
+        case .codeNeedingHost(let digits):
+            // Keep the digits — the code is spent only when it is claimed — and ask for the half
+            // that is missing.
+            code = digits
+            if !showAdvanced {
+                showAdvanced = true
+            }
+            focus = .url
+            // The digits are kept and the address field is opened: half a pairing is not an error,
+            // it is the next question.
+            errorText = "That code is fine — it needs the address of the host that printed it. Paste it above (for example https://name.ts.net:8443), then press Pair again."
+            return
+        case .unusable:
+            break
         }
+
         if !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errorText = store.pairing == nil
-                ? "That is not a pairing code. Paste the hermes:// link, or open Advanced and enter the host address."
+            errorText = rememberedHost == nil
+                ? "That is not a pairing code. Paste the whole hermes:// link, or open Advanced and enter the host address."
                 : "That is not a pairing code or a hermes:// link."
             return
         }
