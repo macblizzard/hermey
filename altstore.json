@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.58",
+          "buildVersion": "58",
+          "date": "2026-11-10T05:21:41Z",
+          "localizedDescription": "A long conversation opens again: transcripts are paged (newest page first, 'Load earlier messages' for the rest), so a 3.4 MB resume frame no longer kills the phone's socket.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.58/Hermey-0.1.58-b58.ipa",
+          "size": 1918702,
+          "minOSVersion": "17.0",
+          "sha256": "5bfb71cd0eb79b67088a32a9796e33fe8c161edfe7e2cf7d4bc371b9fb4e248f"
+        },
+        {
           "version": "0.1.52",
           "buildVersion": "52",
           "date": "2026-11-10T01:28:35Z",
@@ -62,16 +72,6 @@
           "size": 1903760,
           "minOSVersion": "17.0",
           "sha256": "46f9542fd6ed232e678e2a4de83fbdb33348e6f47330d50120ffa8e2e2d2bf32"
-        },
-        {
-          "version": "0.1.40",
-          "buildVersion": "40",
-          "date": "2026-11-10T00:11:55Z",
-          "localizedDescription": "Build from CI run 42725984617.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.40/Hermey-0.1.40-b40.ipa",
-          "size": 1904957,
-          "minOSVersion": "17.0",
-          "sha256": "51fbdc15ad58f4100634cb591bbeeb15bccaa680bba63aab736fbc329f0ad4f7"
         }
       ],
       "appPermissions": {
