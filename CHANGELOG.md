@@ -31,6 +31,13 @@ All notable changes to Hermey are recorded here. The format follows
   and a bot's composer was 4 pt wider than its own text; both now line up.
 
 ### Fixed
+- **Text is no longer washed out on the Mac.** `TypeScale.font` accepted a `Font.Weight` and dropped
+  it: `.custom("Inter", size:)` cannot take one, so all 64 call sites that asked for `.semibold` or
+  `.medium` drew the regular face — and Inter is not bundled, so the request fell back to the regular
+  system face as well. The helper now asks for Inter only when the family is actually installed and
+  otherwise draws the system face *at the weight requested*, at sizes rounded to a half point (a 0.85
+  step used to draw 11.9 pt). The Mac composer's text view follows the same rule instead of asking
+  `NSFont(name:)` for a family name, which always answered nil.
 - **Opening the shared computer no longer clips the window.** The computer pane was a fixed 520 pt
   added to a window whose minimum width was computed for two panes, so the `HStack` overflowed and the
   shell was cut on *both* sides — the bot panel's labels on the left, the pane's buttons on the right.
