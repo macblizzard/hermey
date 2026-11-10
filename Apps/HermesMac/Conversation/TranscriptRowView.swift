@@ -31,6 +31,16 @@ struct TranscriptRowView: View {
     /// Which glyph the pointer is over. One shared flag lit every button at once, which read as a
     /// selection rather than a hover.
     @State private var hoveredAction: String?
+    /// The attachment whose viewer is open. Held here rather than in the transcript so a scroll
+    /// cannot take the sheet's data away with it.
+    @State private var viewingImage: ViewedImage?
+
+    /// One decoded attachment, ready for `ImageViewer`.
+    struct ViewedImage: Identifiable {
+        let id = UUID()
+        let name: String
+        let data: Data
+    }
 
     private var reactionKey: String? {
         guard let session else { return nil }
@@ -116,16 +126,7 @@ struct TranscriptRowView: View {
                     HStack(spacing: 6) {
                         ForEach(bubbleAttachments.filter { $0.isImage && $0.imageData != nil }) { attachment in
                             if let data = attachment.imageData, let image = NSImage(data: data) {
-                                Image(nsImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 96, height: 96)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .strokeBorder(Tokens.borderStrong, lineWidth: 1)
-                                    )
-                                    .accessibilityLabel("Attached image \(attachment.name)")
+                                imageThumbnail(attachment, data: data, image: image)
                             }
                         }
                         ForEach(bubbleAttachments.filter { !$0.isImage || $0.imageData == nil }) { attachment in
@@ -174,6 +175,12 @@ struct TranscriptRowView: View {
             }
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.12), value: isHovered)
+            // The picture, at its own size, with Save and Copy — the same viewer a generated
+            // artifact opens.
+            .sheet(item: $viewingImage) { item in
+                ImageViewer(data: item.data, title: item.name) { viewingImage = nil }
+                    .frame(minWidth: 640, minHeight: 460)
+            }
         }
     }
 
@@ -188,6 +195,39 @@ struct TranscriptRowView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .accessibilityLabel("Sent \(MessageTime.label(for: at))")
         }
+    }
+
+    /// The pictures that went with the words, each of them a door to the viewer.
+    ///
+    /// A thumbnail is a promise that the picture is here: clicking it opens `ImageViewer` rather than
+    /// doing nothing, and the corner glyph says so before the cursor tries.
+    private func imageThumbnail(_ attachment: SentAttachment, data: Data, image: NSImage) -> some View {
+        Button {
+            viewingImage = ViewedImage(name: attachment.name, data: data)
+        } label: {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Tokens.textSecondary)
+                        .padding(3)
+                        .background(Tokens.canvas.opacity(0.75), in: Circle())
+                        .padding(4)
+                        .opacity(isHovered ? 1 : 0.55)
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Open \(attachment.name)")
+        .accessibilityLabel("Attached image \(attachment.name)")
+        .accessibilityHint("Opens the image")
     }
 
     /// Pictures the row remembers, or the host's references looked up in the image cache.
