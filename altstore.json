@@ -1,96 +1,33 @@
 {
   "name": "Hermey",
   "identifier": "dev.hermey.app.source",
-  "sourceURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/altstore.json",
-  "schemaVersion": 1,
-  "subtitle": "Hermes Agent",
-  "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
-  "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
-  "headerURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
+  "subtitle": "Your Hermes bots, on your phone",
+  "description": "Native client for a self-hosted Hermes Agent.",
+  "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
   "tintColor": "#007CF7",
-  "featuredApps": [
-    "dev.hermey.app.mobile"
-  ],
   "apps": [
     {
       "name": "Hermey",
       "bundleIdentifier": "dev.hermey.app.mobile",
       "developerName": "Hermey",
-      "subtitle": "Hermes Agent client",
-      "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
-      "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
+      "subtitle": "Your Hermes bots, on your phone",
+      "localizedDescription": "Chats with every Hermes bot, streaming replies and pairing.",
+      "iconURL": "https://github.com/macblizzard/hermey/releases/latest/download/icon-512.png",
       "tintColor": "#007CF7",
       "category": "utilities",
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.52",
-          "buildVersion": "52",
-          "date": "2026-11-10T01:28:38Z",
+          "version": "0.1.58",
+          "buildVersion": "58",
+          "date": "2026-11-10T05:21:50Z",
           "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.52-b52.ipa",
-          "size": 1907809,
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.58-b58.ipa",
+          "size": 1918702,
           "minOSVersion": "17.0",
-          "sha256": "29db57b99a7a837a8d76c88c1dd128d7b8dbab7a30ebf652b668277b8fe24c55"
-        },
-        {
-          "version": "0.1.49",
-          "buildVersion": "49",
-          "date": "2026-11-10T01:05:06Z",
-          "localizedDescription": "Build from CI run 42732590411.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.49/Hermey-0.1.49-b49.ipa",
-          "size": 1905603,
-          "minOSVersion": "17.0",
-          "sha256": "d4cfc94752d3bda2b27f59b7d7d3ed11181eb49b70f8044466b8b7edc32c4a48"
-        },
-        {
-          "version": "0.1.46",
-          "buildVersion": "46",
-          "date": "2026-11-10T00:46:03Z",
-          "localizedDescription": "Build from CI run 42730444746.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.46/Hermey-0.1.46-b46.ipa",
-          "size": 1904415,
-          "minOSVersion": "17.0",
-          "sha256": "c991ff880eb4bb68f6a7efd019bd8ad815fecd293f925e221d4017d76adf38d9"
-        },
-        {
-          "version": "0.1.43",
-          "buildVersion": "43",
-          "date": "2026-11-10T00:30:40Z",
-          "localizedDescription": "Build from CI run 42728386981.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.43/Hermey-0.1.43-b43.ipa",
-          "size": 1903760,
-          "minOSVersion": "17.0",
-          "sha256": "46f9542fd6ed232e678e2a4de83fbdb33348e6f47330d50120ffa8e2e2d2bf32"
-        },
-        {
-          "version": "0.1.40",
-          "buildVersion": "40",
-          "date": "2026-11-10T00:11:55Z",
-          "localizedDescription": "Build from CI run 42725984617.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.40/Hermey-0.1.40-b40.ipa",
-          "size": 1904957,
-          "minOSVersion": "17.0",
-          "sha256": "51fbdc15ad58f4100634cb591bbeeb15bccaa680bba63aab736fbc329f0ad4f7"
-        },
-        {
-          "version": "0.1.37",
-          "buildVersion": "37",
-          "date": "2026-11-09T23:49:48Z",
-          "localizedDescription": "Build from CI run 42723132845.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.37/Hermey-0.1.37-b37.ipa",
-          "size": 1902256,
-          "minOSVersion": "17.0",
-          "sha256": "172647a493bd51211431253ae1d9bf97d68fe9b662dfef946657705307153fd2"
+          "sha256": "5bfb71cd0eb79b67088a32a9796e33fe8c161edfe7e2cf7d4bc371b9fb4e248f"
         }
-      ],
-      "appPermissions": {
-        "entitlements": [],
-        "privacy": {
-          "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device."
-        }
-      }
+      ]
     }
-  ],
-  "news": []
+  ]
 }
