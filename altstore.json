@@ -24,11 +24,21 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.49",
+          "buildVersion": "49",
+          "date": "2026-11-10T01:05:09Z",
+          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.49-b49.ipa",
+          "size": 1905603,
+          "minOSVersion": "17.0",
+          "sha256": "d4cfc94752d3bda2b27f59b7d7d3ed11181eb49b70f8044466b8b7edc32c4a48"
+        },
+        {
           "version": "0.1.46",
           "buildVersion": "46",
-          "date": "2026-11-10T00:46:06Z",
-          "localizedDescription": "Native iOS and macOS client for your own Hermes agent.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/latest/download/Hermey-0.1.46-b46.ipa",
+          "date": "2026-11-10T00:46:03Z",
+          "localizedDescription": "Build from CI run 42730444746.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.46/Hermey-0.1.46-b46.ipa",
           "size": 1904415,
           "minOSVersion": "17.0",
           "sha256": "c991ff880eb4bb68f6a7efd019bd8ad815fecd293f925e221d4017d76adf38d9"
@@ -72,16 +82,6 @@
           "size": 1901205,
           "minOSVersion": "17.0",
           "sha256": "41555721971ea841c4c53dd05903140a38d008a2ad4a5d4de1b1ff2b2089976a"
-        },
-        {
-          "version": "0.1.31",
-          "buildVersion": "31",
-          "date": "2026-11-09T22:27:47Z",
-          "localizedDescription": "Build from CI run 42711542655.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.31/Hermey-0.1.31-b31.ipa",
-          "size": 1898807,
-          "minOSVersion": "17.0",
-          "sha256": "fb334357ab0a7c881efd8eb964d234401a1b5e782810fb09fe025afac3634700"
         }
       ],
       "appPermissions": {
