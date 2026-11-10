@@ -6,6 +6,16 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **A reply printed itself twice while it streamed.** The host streams the whole message of the turn
+  while each paragraph it seals (at a tool call, again as `message.interim`) becomes a row of its
+  own, and the rules only compared against the *last* row — so a turn whose two earlier paragraphs
+  were already on screen got them printed again in the bubble underneath (screenshot, 03:16: "Two
+  answers change the plan…" and "Chrome 157 is in…" twice). The bubble and the completion gate now
+  compare against every row the turn has written and keep only the paragraphs nobody has said.
+- **"could not compact: session.compress timed out after 120s".** A compaction is a real model turn
+  on the host, budgeted there to 600 s (`compression.context_total_ceiling_seconds`); the app cut it
+  off at 120 s, so a large bot (218k tokens) could never compact from the phone. The client ceiling
+  is now 660 s, the host's own budget plus a margin.
 - **A long bot conversation would not open at all on the phone.** `session.resume` answers with the
   whole transcript in one frame; this bot's chat is 3.4 MB, and iOS refuses to deliver a message
   that size — "could not open the conversation: … Message too long" — so the screen stayed empty

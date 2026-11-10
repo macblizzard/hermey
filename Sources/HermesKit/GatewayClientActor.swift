@@ -71,15 +71,17 @@ public actor GatewayClient: GatewayClientProtocol {
         public var sessionList: TimeInterval
         public var sessionResume: TimeInterval
         public var handshake: TimeInterval
-        /// `session.compress` is a real model turn on the host (write a summary of the session), so
-        /// it is bounded like a resume rather than like a bookkeeping call.
+        /// `session.compress` is a real model turn on the host (write a summary of the session) and
+        /// the host budgets it to `compression.context_total_ceiling_seconds` (600 s by default). A
+        /// 120 s client ceiling cut that turn off mid-summary and reported "session.compress timed
+        /// out after 120s" on a 218k-token bot, so this is the host's ceiling plus a margin.
         public var compress: TimeInterval
 
         public init(call: TimeInterval = 30,
                     sessionList: TimeInterval = 120,
                     sessionResume: TimeInterval = 120,
                     handshake: TimeInterval = 20,
-                    compress: TimeInterval = 120) {
+                    compress: TimeInterval = 660) {
             self.call = call
             self.sessionList = sessionList
             self.sessionResume = sessionResume
