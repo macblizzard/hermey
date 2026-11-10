@@ -111,17 +111,13 @@ public struct BotComputerWebView: NSViewRepresentable {
     public let url: URL
     public let resources: BotComputerResources
     public let viewOnly: Bool
-    /// Bumped when the user asks for the keyboard; the page focuses noVNC so iOS raises the keys.
-    public let focusKeyboardNonce: Int
     public var onEvent: (BotComputerEvent) -> Void
 
     public init(url: URL, resources: BotComputerResources, viewOnly: Bool,
-                focusKeyboardNonce: Int = 0,
                 onEvent: @escaping (BotComputerEvent) -> Void = { _ in }) {
         self.url = url
         self.resources = resources
         self.viewOnly = viewOnly
-        self.focusKeyboardNonce = focusKeyboardNonce
         self.onEvent = onEvent
     }
 
@@ -132,8 +128,7 @@ public struct BotComputerWebView: NSViewRepresentable {
     }
 
     public func updateNSView(_ webView: WKWebView, context: Context) {
-        apply(viewOnly: viewOnly, focusKeyboardNonce: focusKeyboardNonce,
-              to: webView, coordinator: context.coordinator)
+        apply(viewOnly: viewOnly, to: webView)
     }
 }
 #else
@@ -141,17 +136,13 @@ public struct BotComputerWebView: UIViewRepresentable {
     public let url: URL
     public let resources: BotComputerResources
     public let viewOnly: Bool
-    /// Bumped when the user asks for the keyboard; the page focuses noVNC so iOS raises the keys.
-    public let focusKeyboardNonce: Int
     public var onEvent: (BotComputerEvent) -> Void
 
     public init(url: URL, resources: BotComputerResources, viewOnly: Bool,
-                focusKeyboardNonce: Int = 0,
                 onEvent: @escaping (BotComputerEvent) -> Void = { _ in }) {
         self.url = url
         self.resources = resources
         self.viewOnly = viewOnly
-        self.focusKeyboardNonce = focusKeyboardNonce
         self.onEvent = onEvent
     }
 
@@ -162,8 +153,7 @@ public struct BotComputerWebView: UIViewRepresentable {
     }
 
     public func updateUIView(_ webView: WKWebView, context: Context) {
-        apply(viewOnly: viewOnly, focusKeyboardNonce: focusKeyboardNonce,
-              to: webView, coordinator: context.coordinator)
+        apply(viewOnly: viewOnly, to: webView)
     }
 }
 #endif
@@ -173,9 +163,6 @@ public struct BotComputerWebView: UIViewRepresentable {
 extension BotComputerWebView {
     public final class Coordinator: NSObject, WKScriptMessageHandler {
         let onEvent: (BotComputerEvent) -> Void
-        /// The nonce last pushed to the page. `nil` until the first layout pass, so opening the pane
-        /// never pops the keyboard: only a later bump (the keyboard button) does.
-        var lastKeyboardNonce: Int?
         init(onEvent: @escaping (BotComputerEvent) -> Void) { self.onEvent = onEvent }
 
         public func userContentController(_ controller: WKUserContentController,
@@ -220,15 +207,9 @@ extension BotComputerWebView {
     /// The page keeps the flag itself and replays it on connect, because this call can arrive before
     /// noVNC's module has loaded — the old build lost the update in exactly that gap and input never
     /// worked again for the life of the viewer.
-    func apply(viewOnly: Bool, focusKeyboardNonce: Int, to webView: WKWebView,
-               coordinator: Coordinator) {
+    func apply(viewOnly: Bool, to webView: WKWebView) {
         let js = "window.hermeySetViewOnly && window.hermeySetViewOnly(\(viewOnly ? "true" : "false"))"
         webView.evaluateJavaScript(js, completionHandler: nil)
-        if let last = coordinator.lastKeyboardNonce, last != focusKeyboardNonce {
-            webView.evaluateJavaScript("window.hermeyFocusKeyboard && window.hermeyFocusKeyboard()",
-                                       completionHandler: nil)
-        }
-        coordinator.lastKeyboardNonce = focusKeyboardNonce
     }
 }
 #endif

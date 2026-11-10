@@ -62,6 +62,8 @@
   const screen = document.getElementById('screen');
   const keys = document.getElementById('keys');
   const keyboardButton = document.getElementById('keyboardButton');
+  // Touch devices only: on a Mac the physical keyboard is already there and a floating ⌨ is noise.
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
   const zoomBadge = document.getElementById('zoomBadge');
 
   function post(event, extra) {
@@ -160,10 +162,24 @@
       event.preventDefault();
     }
 
+    // A second finger arriving is the end of whatever the first one started. noVNC tracks touches
+    // itself, so it is told the pointer is up — otherwise the remote button stays pressed and the
+    // pointer stops moving for the rest of the session.
+    function releasePointer() {
+      const canvas = screen.querySelector('canvas');
+      if (!canvas) { return; }
+      const last = pinch && pinch.middle ? pinch.middle : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true,
+                                                       clientX: last.x, clientY: last.y, button: 0 }));
+      canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true,
+                                                          clientX: last.x, clientY: last.y }));
+    }
+
     screen.addEventListener('touchstart', (event) => {
       if (event.touches.length !== 2) { return; }
       swallow(event);
       pinch = { span: Math.max(1, span(event.touches)), scale, tx, ty, middle: middle(event.touches) };
+      releasePointer();
     }, { capture: true, passive: false });
 
     screen.addEventListener('touchmove', (event) => {
@@ -183,8 +199,10 @@
 
     function endPinch(event) {
       if (event.touches.length !== 0) { return; }
-      if (pinch) { swallow(event); }
+      // Deliberately NOT swallowed: noVNC saw the first finger go down, so it must see the last one
+      // come up — swallowing the touchend was what left it holding a button forever.
       if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
+      if (pinch) { releasePointer(); }
       pinch = null;
     }
     screen.addEventListener('touchend', endPinch, { capture: true, passive: false });
@@ -197,7 +215,7 @@
     // keys: they arrive through the text area above, so no gesture is taken from the desktop.
     window.__hermeyApply = function () {
       rfb.viewOnly = window.__hermeyViewOnly;
-      keyboardButton.hidden = window.__hermeyViewOnly;
+      keyboardButton.hidden = window.__hermeyViewOnly || !isTouch;
       if (window.__hermeyViewOnly) { keys.blur(); }
     };
 

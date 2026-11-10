@@ -6,6 +6,11 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Bot computer: pinching froze the pointer, and there were two keyboard buttons.** The pinch
+  swallowed the `touchend` noVNC needed to close the gesture it had opened, leaving a button pressed
+  for the rest of the session; it now releases the pointer explicitly and lets the touchend through.
+  The header keyboard button is gone — the floating ⌨ in the picture (touch devices only) is the one
+  that works, because a tap in the page is the only focus WebKit accepts as a user gesture.
 - **Typing, zooming and empty timestamps.** The Bot Computer keyboard did nothing (iOS raises keys
   only for an editable focused by a tap inside the page, so there is now a hidden text area, a real
   ⌨ button, and keys sent through noVNC's `sendKey`); there was no way to zoom (pinch 1×–4× and
