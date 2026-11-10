@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.137",
+          "buildVersion": "137",
+          "date": "2026-11-10T22:32:24Z",
+          "localizedDescription": "Scrolling is back on the phone, and the long-press card opens beside the visible text.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.137/Hermey-0.1.137-b137.ipa",
+          "size": 2024908,
+          "minOSVersion": "17.0",
+          "sha256": "e20414053f6c516f0e39fd22ed378d76618878d71fa940185fadd93db2ecbcb4"
+        },
+        {
           "version": "0.1.134",
           "buildVersion": "134",
           "date": "2026-11-10T21:26:14Z",
@@ -62,16 +72,6 @@
           "size": 2014954,
           "minOSVersion": "17.0",
           "sha256": "25fd3de5d138f9d0241f439107ca67f7dc848e925b4b35f84b7fd1905738bf45"
-        },
-        {
-          "version": "0.1.115",
-          "buildVersion": "115",
-          "date": "2026-11-10T14:42:34Z",
-          "localizedDescription": "Double-clicking the top strip zooms the window anywhere now, and follows your macOS double-click setting.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.115/Hermey-0.1.115-b115.ipa",
-          "size": 2013699,
-          "minOSVersion": "17.0",
-          "sha256": "10d24a4e1740fbfc5d202cd7ea0d02b11b63b6b385cc02faa327e2a13e1faddb"
         }
       ],
       "appPermissions": {
