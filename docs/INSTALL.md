@@ -67,6 +67,10 @@ If the host has no tailnet, put your own TLS proxy in front of `127.0.0.1:8787` 
 certificate is the least work) and pass `--no-serve`. A self-signed certificate will not work: the
 apps follow App Transport Security and will refuse it.
 
+In that arrangement `hermey pair` prints the code alone: with no host name configured there is no
+address to put in a `hermes://` link (a link naming `127.0.0.1` would point the phone at itself), so
+add your public address in the app first, then enter the code against it.
+
 ## What is on disk
 
 | Path | What |
