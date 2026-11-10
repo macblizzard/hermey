@@ -11,10 +11,25 @@ import Foundation
 /// Pure and free-standing on purpose: both apps and the history path go through it, and it is the
 /// one thing a test can pin without a socket, a model or SwiftUI.
 public enum TranscriptVisibility {
-    /// `entries` without the tool cards, when the user asked for no tool calls.
+    /// `entries` without the tool cards, when the user asked for no tool calls — and without the
+    /// wordless assistant rows either way.
     public static func rows(_ entries: [TranscriptEntry], showToolCalls: Bool) -> [TranscriptEntry] {
-        guard !showToolCalls else { return entries }
-        return entries.filter { $0.role != .tool }
+        let withoutCards = showToolCalls ? entries : entries.filter { $0.role != .tool }
+        return withoutCards.filter { !isScaffold($0) }
+    }
+
+    /// An assistant row with no words and no pictures was never a message: the host writes one as a
+    /// banner for the commands that follow it. With the cards hidden it renders as an empty bubble
+    /// and a timestamp — "blank lines with timestamps" — and with them shown it is an empty bubble
+    /// above its own cards. Neither is worth a row.
+    static func isScaffold(_ entry: TranscriptEntry) -> Bool {
+        guard entry.role == .assistant, entry.tool == nil, entry.attachments.isEmpty else { return false }
+        return entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether a row has anything to say, which is also the condition for showing its time.
+    public static func hasContent(_ entry: TranscriptEntry) -> Bool {
+        !entry.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !entry.attachments.isEmpty
     }
 
     /// Whether the running turn has any card to draw.

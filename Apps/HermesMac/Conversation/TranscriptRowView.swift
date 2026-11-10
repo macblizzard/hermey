@@ -179,7 +179,9 @@ struct TranscriptRowView: View {
 
     /// When a message was sent, quiet enough to ignore until it is looked for.
     @ViewBuilder private var messageTime: some View {
-        if let at = entry.at {
+        // Times belong to messages: a row with no words and no pictures is a tool-call banner, and
+        // its time is what was left showing after the cards were hidden.
+        if let at = entry.at, TranscriptVisibility.hasContent(entry) {
             Text(MessageTime.label(for: at))
                 .font(.system(size: 10, design: .monospaced))
                 .monospacedDigit()

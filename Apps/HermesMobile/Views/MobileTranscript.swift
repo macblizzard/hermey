@@ -285,7 +285,9 @@ struct MobileTranscriptRow: View {
 
     /// When it was sent, dim and small: something to check, not something to read.
     @ViewBuilder private var messageTime: some View {
-        if let at = entry.at {
+        // A time under an empty row is just a lone line of grey digits — the "blank lines with
+        // timestamps" that surviving tool-call hides left behind. Times belong to messages.
+        if let at = entry.at, TranscriptVisibility.hasContent(entry) {
             Text(MessageTime.label(for: at))
                 .font(.system(size: 10, design: .monospaced))
                 .monospacedDigit()

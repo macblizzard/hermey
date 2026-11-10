@@ -7,38 +7,62 @@
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
   /* Fixed and gesture-free: a drag on the desktop must reach the remote pointer, not scroll, zoom or
-     rubber-band this page (on iOS that same gesture is what was closing the window around it). */
-  #screen { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+     rubber-band this page (on iOS that same gesture is what was closing the window around the picture). */
+  #screen { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none;
+            transform-origin: 0 0; }
   #screen canvas { outline: none; touch-action: none; }
   * { -webkit-user-select: none; user-select: none;
       -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+
+  /* The keyboard. iOS raises keys only for an editable element focused by a tap *inside the page*;
+     a focus() call from native code is not a user gesture, which is why the app's button did
+     nothing. So there is a real (invisible) text area, and a visible button that taps it. */
+  #keys { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0.01;
+          border: 0; padding: 0; margin: 0; font-size: 16px; background: transparent;
+          -webkit-user-select: text; user-select: text; }
+  #keyboardButton { position: fixed; right: 14px; bottom: 16px; width: 46px; height: 46px;
+                    border-radius: 23px; border: 1px solid rgba(255,255,255,0.22);
+                    background: rgba(20,20,22,0.78); color: #fff; font-size: 21px; line-height: 1;
+                    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  #keyboardButton[hidden] { display: none; }
+  #keyboardButton:active { background: rgba(70,70,76,0.95); }
+  #zoomBadge { position: fixed; right: 14px; bottom: 70px; padding: 3px 8px; border-radius: 10px;
+               background: rgba(0,0,0,0.6); color: rgba(255,255,255,0.8);
+               font: 11px -apple-system, system-ui, sans-serif; opacity: 0; transition: opacity 0.3s;
+               pointer-events: none; }
 </style>
 </head>
 <body>
 <div id="screen"></div>
+<textarea id="keys" autocorrect="off" autocapitalize="off" autocomplete="off"
+          spellcheck="false" aria-label="Type on the shared computer"></textarea>
+<button id="keyboardButton" hidden aria-label="Show the keyboard">⌨</button>
+<div id="zoomBadge"></div>
 <script>
   // Defined before noVNC's module runs, because the native side sets this flag on its first layout
   // pass — long before the module has finished loading. The value is kept and replayed on connect,
-  // and that replay is what makes "Take over" actually enable pointer and keyboard: an earlier build
-  // evaluated the setter once, too early, and input stayed off for the life of the viewer.
+  // which is what makes "Take over" enable pointer and keyboard at all.
   window.__hermeyViewOnly = true;
   window.hermeySetViewOnly = function (only) {
     window.__hermeyViewOnly = !!only;
     if (window.__hermeyApply) { window.__hermeyApply(); }
   };
-  // iOS shows no keys until something is focused by a tap, so the app's keyboard button focuses
-  // noVNC and nothing else.
+  // Convenience path for the app's own keyboard button; the in-page button is the reliable one.
   window.hermeyFocusKeyboard = function () { if (window.__hermeyFocus) { window.__hermeyFocus(); } };
 </script>
 <script type="module">
   // The bundled noVNC, served by the app's own URL scheme handler so its ES-module imports resolve.
   // Nothing here talks to the open internet: the socket is the paired host on the tailnet.
   import RFB from './novnc/core/rfb.js';
+  import { getKeycode, getKeysym } from './novnc/core/input/util.js';
 
   const params = new URLSearchParams(window.location.search);
   const target = params.get('ws');
   if (params.get('viewOnly') === '0') { window.__hermeyViewOnly = false; }
   const screen = document.getElementById('screen');
+  const keys = document.getElementById('keys');
+  const keyboardButton = document.getElementById('keyboardButton');
+  const zoomBadge = document.getElementById('zoomBadge');
 
   function post(event, extra) {
     try {
@@ -54,25 +78,133 @@
     rfb.scaleViewport = true;      // fit the phone/Mac panel instead of scrolling a 1440x900 desktop
     rfb.resizeSession = false;     // never make the bot's desktop smaller because of this viewer
     rfb.showDotCursor = true;      // a dot is how you see where you tapped
-    rfb.focusOnClick = true;       // a tap grabs focus, which is how the keyboard appears on iOS
+    rfb.focusOnClick = false;      // the keyboard belongs to the text area, not the canvas
     rfb.viewOnly = window.__hermeyViewOnly;   // UI hint only — the host's lease is the actual gate
 
-    // Enabling input turns off noVNC's view-only mode. It deliberately does *not* keep the keyboard
-    // grabbed: keys arrive when the user taps the canvas or presses the app's keyboard button, which
-    // is the only way iOS reliably raises them, and nothing else steals a gesture from the desktop.
+    // ---- keyboard --------------------------------------------------------------------------
+    // The text area is the event source, so keys are sent with noVNC's own keysym mapping rather
+    // than by re-dispatching synthetic events (whose keyCode the constructor cannot set).
+    function sendKeystroke(event) {
+      const keysym = getKeysym(event);
+      if (!keysym) { return false; }
+      const code = getKeycode(event);
+      // Press and release together: a soft keyboard often never sends keyup, and a key left down
+      // keeps typing into the remote desktop forever.
+      rfb.sendKey(keysym, code, true);
+      rfb.sendKey(keysym, code, false);
+      return true;
+    }
+
+    let lastKeydownAt = 0;
+    keys.addEventListener('keydown', (event) => {
+      if (window.__hermeyViewOnly) { return; }
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) { return; }
+      lastKeydownAt = Date.now();
+      if (sendKeystroke(event)) { event.preventDefault(); }
+    });
+
+    // Dictation, autocomplete and paste arrive as text with no usable keydown.
+    keys.addEventListener('input', () => {
+      const text = keys.value;
+      keys.value = '';
+      if (window.__hermeyViewOnly || Date.now() - lastKeydownAt < 80) { return; }
+      for (const character of text) {
+        const keysym = getKeysym({ key: character, code: '', keyCode: 0, shiftKey: false });
+        if (keysym) { rfb.sendKey(keysym, '', true); rfb.sendKey(keysym, '', false); }
+      }
+    });
+
+    window.__hermeyFocus = function () {
+      if (window.__hermeyViewOnly) { return; }
+      keys.focus({ preventScroll: true });
+    };
+    // A tap inside the page IS a user gesture, which is the only thing iOS accepts before it will
+    // show a keyboard.
+    keyboardButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      window.__hermeyFocus();
+    });
+
+    // ---- pinch to zoom, two fingers to pan --------------------------------------------------
+    // The picture is scaled with a CSS transform on the element noVNC draws into. Its pointer
+    // mapping reads the canvas's bounding rect, which already includes the transform, so a tap
+    // still lands where the finger is. One finger is always the remote pointer: two fingers are
+    // the view, and are swallowed before noVNC's gesture handler can read them as a drag.
+    const MAX_SCALE = 4;
+    let scale = 1, tx = 0, ty = 0, pinch = null, badgeTimer = 0;
+
+    function applyTransform() {
+      screen.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      if (scale > 1.01) {
+        zoomBadge.textContent = `${Math.round(scale * 100)}% · two fingers to move`;
+        zoomBadge.style.opacity = '1';
+        clearTimeout(badgeTimer);
+        badgeTimer = setTimeout(() => { zoomBadge.style.opacity = '0'; }, 1600);
+      } else {
+        zoomBadge.style.opacity = '0';
+      }
+    }
+    function clampPan() {
+      const width = screen.clientWidth * scale;
+      const height = screen.clientHeight * scale;
+      tx = Math.min(0, Math.max(screen.clientWidth - width, tx));
+      ty = Math.min(0, Math.max(screen.clientHeight - height, ty));
+    }
+    const span = (touches) =>
+      Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+    const middle = (touches) => ({ x: (touches[0].clientX + touches[1].clientX) / 2,
+                                   y: (touches[0].clientY + touches[1].clientY) / 2 });
+    function swallow(event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+
+    screen.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 2) { return; }
+      swallow(event);
+      pinch = { span: Math.max(1, span(event.touches)), scale, tx, ty, middle: middle(event.touches) };
+    }, { capture: true, passive: false });
+
+    screen.addEventListener('touchmove', (event) => {
+      if (!pinch || event.touches.length !== 2) { return; }
+      swallow(event);
+      const next = Math.min(MAX_SCALE, Math.max(1, pinch.scale * span(event.touches) / pinch.span));
+      const ratio = next / pinch.scale;
+      const now = middle(event.touches);
+      // Keep the point between the fingers under the fingers (this also pans, since the midpoint
+      // moves when both fingers are dragged together).
+      tx = now.x - (pinch.middle.x - pinch.tx) * ratio;
+      ty = now.y - (pinch.middle.y - pinch.ty) * ratio;
+      scale = next;
+      clampPan();
+      applyTransform();
+    }, { capture: true, passive: false });
+
+    function endPinch(event) {
+      if (event.touches.length !== 0) { return; }
+      if (pinch) { swallow(event); }
+      if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
+      pinch = null;
+    }
+    screen.addEventListener('touchend', endPinch, { capture: true, passive: false });
+    screen.addEventListener('touchcancel', endPinch, { capture: true, passive: false });
+
+    window.hermeyResetZoom = function () { scale = 1; tx = 0; ty = 0; applyTransform(); };
+
+    // ---- connection -------------------------------------------------------------------------
+    // Enabling input turns off noVNC's view-only mode and offers the keyboard. Nothing here grabs
+    // keys: they arrive through the text area above, so no gesture is taken from the desktop.
     window.__hermeyApply = function () {
       rfb.viewOnly = window.__hermeyViewOnly;
-      if (!window.__hermeyViewOnly) { try { rfb.blur(); } catch (e) {} }
-    };
-    window.__hermeyFocus = function () {
-      try { rfb.focus({ preventScroll: true }); } catch (e) {}
+      keyboardButton.hidden = window.__hermeyViewOnly;
+      if (window.__hermeyViewOnly) { keys.blur(); }
     };
 
     rfb.addEventListener('connect', () => { post('connected'); window.__hermeyApply(); });
     rfb.addEventListener('disconnect', (e) => post('disconnected', { clean: !!(e.detail && e.detail.clean) }));
     rfb.addEventListener('securityfailure', () => post('error', { message: 'security failure' }));
 
-    // Called by the app when the control lease changes hands.
     window.hermeyDisconnect = () => { try { rfb.disconnect(); } catch (e) {} };
   }
 </script>
