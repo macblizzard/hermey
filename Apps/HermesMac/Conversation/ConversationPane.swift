@@ -96,6 +96,7 @@ private struct ConversationEmptyState: View {
     @ObservedObject var store: WorkspaceStore
 
     private var title: String {
+        if model.isOpeningConversation { return "Opening \(store.botTitle)…" }
         if !store.isPaired { return "No host paired" }
         if !model.connection.isLive { return "Not connected" }
         if model.bots.isEmpty { return "No bots found on this host" }
@@ -104,6 +105,11 @@ private struct ConversationEmptyState: View {
     }
 
     private var subtitle: String {
+        // The pane is empty for one round trip, not because there is nothing to show: saying
+        // "start the conversation" here told the user their history was gone.
+        if model.isOpeningConversation {
+            return "Resuming the conversation you already have — it comes back where you left it."
+        }
         if !store.isPaired {
             return "Paste your host's wss:// URL and device token. Nothing leaves this Mac until you do."
         }
@@ -120,6 +126,7 @@ private struct ConversationEmptyState: View {
     }
 
     private var icon: String {
+        if model.isOpeningConversation { return "ellipsis.bubble" }
         if !store.isPaired { return "link.badge.plus" }
         if model.connection.isLive && model.bots.isEmpty { return "person.2.slash" }
         return "bubble.left.and.bubble.right"
@@ -160,7 +167,7 @@ private struct ConversationEmptyState: View {
                 OpenBotButton("Check again", systemImage: "arrow.clockwise", kind: .secondary, size: .small) {
                     Task { await store.loadBots() }
                 }
-            } else if model.selectedBotID != nil {
+            } else if model.selectedBotID != nil && !model.isOpeningConversation {
                 OpenBotButton("Open conversation",
                               systemImage: "bubble.left",
                               kind: .secondary,

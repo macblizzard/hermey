@@ -63,14 +63,20 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         SessionSummary(id: session, title: "test thread")
     }
 
+    /// How long a resume takes. Zero for every existing test; a test that needs to look at the
+    /// screen *while* the host is still thinking sets it.
+    var resumeDelay: Duration?
+
     func resumeSession(_ id: SessionID) async throws -> SessionResume {
         resumed.append(id)
+        if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
         if let resumeError { throw resumeError }
         return resume()
     }
 
     func resumeSession(_ id: SessionID, profile: String?) async throws -> SessionResume {
         resumed.append(id)
+        if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
         if let resumeError { throw resumeError }
         return resume()
     }

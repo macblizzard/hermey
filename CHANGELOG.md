@@ -54,6 +54,15 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **Switching bots no longer flashes an empty chat.** Every switch cleared the pane and then waited
+  for `resumeSession` — one round trip, 1–2 s, every time, including going back to a conversation that
+  was on screen moments earlier. Nothing was cached. Each bot's transcript is now kept in memory (the
+  eight most recent, oldest evicted), the pane paints that snapshot *before* anything is asked of the
+  host, and the resume still runs and silently replaces it. A bot with nothing cached says "Opening
+  cody…" instead of the "Start the conversation with cody" placeholder, which claimed the history was
+  gone. "Reset conversation" evicts the snapshot, so a reset stays reset.
+
+### Fixed
 - **The emoji picker hangs off the smiley, and 👍 is not ringed.** The popover was attached to the
   message row, so it anchored to the row's whole width — opening below and to the right of the button,
   465 pt wide, arrow pointing at nothing. It is attached to the smiley now

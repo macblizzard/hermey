@@ -196,6 +196,38 @@ public final class AppModel: ObservableObject {
 
     @Published public private(set) var pendingRequests: [ServerRequest] = []
 
+    /// True while a conversation is being resumed from the host and there is nothing to show yet.
+    ///
+    /// Switching bots used to clear the pane and then wait for a round trip, which the view painted
+    /// as "Start the conversation with …" — a lie about a conversation that exists. This flag lets
+    /// the pane say what is actually happening, and it is false the moment anything is on screen.
+    @Published public private(set) var isOpeningConversation = false
+
+    /// What a bot's conversation looked like the last time it was on screen.
+    ///
+    /// Switching bots has to clear everything the previous bot left behind (its transcript under
+    /// another bot's name is worse than a blank pane), so the old behaviour was: wipe, then wait
+    /// for `resumeSession` to answer — 1–2 s of an empty chat every single time, including going
+    /// back to a conversation that was on screen five seconds earlier. Almost none of that state
+    /// changed while it was away. Keeping one snapshot per bot turns the switch into a paint, with
+    /// the round trip demoted to a silent refresh that replaces it when it lands.
+    public struct ConversationSnapshot {
+        public var sessionID: SessionID
+        public var entries: [TranscriptEntry]
+        public var earlierCursor: Int?
+        public var historyTotal: Int
+        public var openRequests: [ServerRequest]
+        public var contextUsed: Int?
+        public var contextMax: Int?
+    }
+
+    private var conversationCache: [String: ConversationSnapshot] = [:]
+    /// Bots in the order they were last *left*, so the cache can shed the oldest instead of growing
+    /// with every bot the user ever clicked. Eight transcripts of a few hundred rows is small;
+    /// unbounded is not.
+    private var conversationCacheOrder: [String] = []
+    private static let conversationCacheLimit = 8
+
     // MARK: Composer
 
     /// Last message exchanged per bot, so the list can order by real activity rather than by
@@ -468,12 +500,48 @@ public final class AppModel: ObservableObject {
             await loadSessions()
             return
         }
+        captureConversation(for: selectedBotID)
         resetForBotSwitch()
         selectedBotID = resolved
         // Picking a bot is picking a different conversation: the room it is replacing must not come
         // back when the next launch restores the pane.
         activeRoom = nil
+        restoreConversation(for: resolved)
         await loadSessions()
+    }
+
+    /// Remember what is on screen for the bot being left.
+    ///
+    /// Called before anything is cleared: at this point `transcript` still holds the rows the user
+    /// was reading, which is exactly what should come back instantly on a return visit.
+    func captureConversation(for botID: String?) {
+        guard let botID, let sessionID = selectedSessionID, !transcript.isEmpty else { return }
+        conversationCache[botID] = ConversationSnapshot(sessionID: sessionID,
+                                                       entries: transcript,
+                                                       earlierCursor: earlierCursor,
+                                                       historyTotal: historyTotal,
+                                                       openRequests: pendingRequests,
+                                                       contextUsed: contextUsed,
+                                                       contextMax: contextMax)
+        conversationCacheOrder.removeAll { $0 == botID }
+        conversationCacheOrder.append(botID)
+        while conversationCacheOrder.count > Self.conversationCacheLimit {
+            conversationCache.removeValue(forKey: conversationCacheOrder.removeFirst())
+        }
+    }
+
+    /// Put a remembered conversation back on screen, before any network call is made.
+    @discardableResult
+    func restoreConversation(for botID: String) -> Bool {
+        guard let snapshot = conversationCache[botID] else { return false }
+        selectedSessionID = snapshot.sessionID
+        transcript = snapshot.entries
+        earlierCursor = snapshot.earlierCursor
+        historyTotal = snapshot.historyTotal
+        pendingRequests = snapshot.openRequests
+        contextUsed = snapshot.contextUsed
+        contextMax = snapshot.contextMax
+        return true
     }
 
     private func resetForBotSwitch() {
@@ -870,10 +938,18 @@ public final class AppModel: ObservableObject {
     /// history behind a new empty one.
     public func endlessSession(for botID: String) async -> SessionID? {
         if botID != selectedBotID {
-            // The transcript, tools and streaming state on screen belong to the bot being left.
+            // The transcript, tools and streaming state on screen belong to the bot being left —
+            // but they are worth keeping first: a return visit paints from the snapshot and lets
+            // the resume below refresh it, instead of starting from an empty pane.
+            captureConversation(for: selectedBotID)
             resetForBotSwitch()
             selectedBotID = botID
         }
+        // Cached, so the pane has something the instant it is asked; nothing cached means the
+        // resume is the first thing that will exist, and the pane should say "opening", not
+        // "start the conversation".
+        isOpeningConversation = !restoreConversation(for: botID)
+        defer { isOpeningConversation = false }
         await loadModelLabel()
         let key = Self.endlessKey(botID)
         let plan = EndlessSessionPolicy.plan(host: await sharedSessionPointer(for: botID),
@@ -887,6 +963,7 @@ public final class AppModel: ObservableObject {
                 historyTotal = resumed.historyTotal
                 pendingRequests = resumed.openRequests
                 adopt(resumed, session: stored)
+                captureConversation(for: botID)
                 // Whatever actually opened is the best cache this device can keep — including a
                 // host id that replaced a different local one.
                 Self.defaults.set(stored, forKey: key)
@@ -956,6 +1033,8 @@ public final class AppModel: ObservableObject {
         guard let stored, selectedSessionID == stored else { return }
         // The conversation on screen is the one just forgotten: leaving its bubbles up would let
         // the user keep typing into a session nothing will reopen.
+        conversationCache.removeValue(forKey: botID)
+        conversationCacheOrder.removeAll { $0 == botID }
         selectedSessionID = nil
         transcript = []
         pendingRequests = []
