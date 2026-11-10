@@ -1107,9 +1107,18 @@ public final class AppModel: ObservableObject {
     /// its own with a time stamp. Both then showed the same paragraph — one of them with a caret
     /// under it — and it collapsed into a single one the moment the turn settled.
     public var visibleStreamingText: String {
-        TranscriptVisibility.streamingRemainder(
-            streamingText,
-            afterRow: transcript.last(where: { $0.role == .assistant })?.text)
+        TranscriptVisibility.streamingRemainder(streamingText, afterRows: turnAssistantRows)
+    }
+
+    /// The assistant words this turn has already written as rows.
+    ///
+    /// A turn can own several: the host seals a commentary at every tool call and again as
+    /// `message.interim`, so one message reaches the transcript as a handful of paragraphs. The
+    /// bubble and the completion gate both compare against all of them — comparing against only the
+    /// last one is what printed two already-visible rows a second time (screenshot, 2026-11-10).
+    private var turnAssistantRows: [String] {
+        let start = min(max(0, turnRowStart), transcript.count)
+        return transcript[start...].filter { $0.role == .assistant }.map(\.text)
     }
 
     /// The dot used to be raised only by `message.complete` for the session on screen — which the
@@ -1777,11 +1786,12 @@ public final class AppModel: ObservableObject {
     /// Identical words at the end of the same turn are the same message.
     @discardableResult
     private func appendAssistantRow(id: String, text: String, at date: Date?) -> Bool {
-        // A resume can replace the transcript with something shorter than this turn's window.
-        let start = min(max(0, turnRowStart), transcript.count)
-        let written = transcript[start...].last(where: { $0.role == .assistant })?.text
-        if TranscriptVisibility.saysTheSame(text, written) { return false }
-        transcript.append(TranscriptEntry(id: id, role: .assistant, text: text, at: date))
+        // What this turn has not already written. The completion repeats the whole message of the
+        // turn, whose sealed commentaries are rows already — appending it verbatim printed them a
+        // second time under themselves. Only the unsaid paragraphs are worth a row.
+        let fresh = TranscriptVisibility.unsaid(text, by: turnAssistantRows)
+        guard !fresh.isEmpty else { return false }
+        transcript.append(TranscriptEntry(id: id, role: .assistant, text: fresh, at: date))
         return true
     }
 

@@ -40,22 +40,59 @@ public enum TranscriptVisibility {
 
     /// What the live bubble should print, given the last assistant row on screen.
     ///
-    /// The host streams a commentary and also seals it as `message.interim`, which the app turns into
-    /// a row with a time stamp. Both then showed the same paragraph — one with a caret under it — and
-    /// it collapsed into one when the turn settled. Words a row already says are not words to write
-    /// again; only what follows them belongs to the bubble.
+    /// Kept for callers with a single row; `afterRows:` is the honest form — a turn can already own
+    /// several rows (see `streamingRemainder(_:afterRows:)`).
     public static func streamingRemainder(_ streaming: String, afterRow row: String?) -> String {
-        let stream = streaming.trimmingCharacters(in: .whitespacesAndNewlines)
+        streamingRemainder(streaming, afterRows: row.map { [$0] } ?? [])
+    }
+
+    /// What the live bubble should print, given every assistant row THIS TURN already wrote.
+    ///
+    /// The host streams the whole message of the turn, while each paragraph it seals (at a tool
+    /// call, or as `message.interim`) becomes a row with a time stamp of its own. Comparing only
+    /// against the trailing row left the *earlier* paragraphs in the bubble: measured 2026-11-10, a
+    /// turn whose bubble re-printed two rows that were already on screen above it — the same words
+    /// twice, one copy with a caret. So every paragraph a row already says is dropped wherever it
+    /// sits in the stream, and a paragraph whose sealed row is a prefix of it keeps only its tail.
+    public static func streamingRemainder(_ streaming: String, afterRows rows: [String]) -> String {
+        unsaid(streaming, by: rows)
+    }
+
+    /// The part of *text* that *rows* do not already say.
+    ///
+    /// Paragraphs are the unit: a sealed commentary is a paragraph, and the stream repeats it as a
+    /// paragraph of the turn's message. A paragraph identical to a row is dropped; one that is still
+    /// being re-streamed (a prefix of its row) is dropped too, because nothing new has arrived yet;
+    /// one that continues its row keeps the continuation. Rows shorter than 20 characters are
+    /// ignored — a short row ("Done.") is not a header for the next reply, and the old single-row
+    /// rule said the same thing.
+    public static func unsaid(_ text: String, by rows: [String]) -> String {
+        let stream = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !stream.isEmpty else { return "" }
-        let said = (row ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        // A short row ("Done.") is not a header for the next reply, so only a real paragraph is
-        // treated as the same words arriving twice.
-        guard said.count >= 20 else { return stream }
-        if stream == said { return "" }
-        if stream.hasPrefix(said) {
-            return String(stream.dropFirst(said.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let said = rows.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 20 }
+        guard !said.isEmpty else { return stream }
+        let kept = splitParagraphs(stream).compactMap { paragraph -> String? in
+            var remainder = paragraph
+            for row in said {
+                if remainder == row { return nil }
+                if row.hasPrefix(remainder) { return nil }
+                if remainder.hasPrefix(row) {
+                    remainder = String(remainder.dropFirst(row.count))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+            return remainder.isEmpty ? nil : remainder
         }
-        return stream
+        return kept.joined(separator: "\n\n")
+    }
+
+    /// Split on blank lines, which is how this app's markdown separates paragraphs. Runs of spaces
+    /// inside a paragraph are irrelevant to "same words", so they are collapsed.
+    static func splitParagraphs(_ text: String) -> [String] {
+        text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     /// Whether a row has anything to say, which is also the condition for showing its time.

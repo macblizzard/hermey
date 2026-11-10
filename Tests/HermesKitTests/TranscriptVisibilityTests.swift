@@ -80,6 +80,52 @@ final class TranscriptVisibilityTests: XCTestCase {
         XCTAssertEqual(TranscriptVisibility.streamingRemainder("Hello", afterRow: nil), "Hello")
     }
 
+    func testTheBubbleDoesNotRepeatAnyRowOfTheTurnOnlyTheTrailingOne() {
+        // Photographed 2026-11-10 (cody, 03:16). The host streamed the whole message of the turn,
+        // while two of its paragraphs were already rows with time stamps of their own — so the
+        // bubble printed them again, under themselves. The single-row rule stripped nothing,
+        // because the stream did NOT start with the trailing row.
+        let firstSealed = "Two answers change the plan; the rest I can build as specified."
+        let secondSealed = "Chrome 157 is in and the launcher already passes `--no-sandbox` at root, "
+            + "so it'll start."
+        let newest = "Two of those I can do as asked; auto-unlock is the one where the honest answer "
+            + "changes the design, so let me check 1Password on Linux first."
+        let stream = [newest, firstSealed, secondSealed].joined(separator: "\n\n")
+
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(stream, afterRows: [firstSealed, secondSealed]),
+                       newest,
+                       "only the paragraph no row has written belongs to the bubble")
+        // Nothing new at all: the bubble goes away instead of echoing the transcript.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(stream, afterRows: [newest, firstSealed, secondSealed]),
+                       "")
+    }
+
+    func testARowStillStreamingIsNotPrintedTwice() {
+        let sealed = "Chrome 157 is in and the launcher already passes --no-sandbox at root."
+        // The host re-streams the paragraph that already became a row: nothing new has arrived.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(String(sealed.prefix(30)),
+                                                              afterRows: [sealed]),
+                       "")
+        // …and once it moves past the row, only the continuation shows.
+        XCTAssertEqual(TranscriptVisibility.streamingRemainder(sealed + "\n\nNext: 1Password.",
+                                                              afterRows: [sealed]),
+                       "Next: 1Password.")
+    }
+
+    func testUnsaidKeepsNewParagraphsAndDropsSaidOnesAnywhereInTheText() {
+        let one = "The first paragraph is long enough to count as a real row of its own."
+        let two = "The second paragraph is also long enough to be judged on its own words."
+        let three = "A third paragraph nobody has written yet, and it must survive."
+        XCTAssertEqual(TranscriptVisibility.unsaid([one, two, three].joined(separator: "\n\n"),
+                                                   by: [one, two]),
+                       three)
+        XCTAssertEqual(TranscriptVisibility.unsaid([one, three].joined(separator: "\n\n"),
+                                                   by: [one, two]),
+                       three, "the middle paragraph being absent changes nothing")
+        XCTAssertEqual(TranscriptVisibility.unsaid(one, by: []), one,
+                       "a turn with no rows says everything")
+    }
+
     func testWordlessAssistantRowsAreNotRows() {
         // The host writes an assistant row with no text as a banner for the commands that follow.
         // With the cards hidden it survives as an empty bubble and a lone timestamp — the "blank
