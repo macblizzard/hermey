@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import HermesAppKit
 
 /// Redeems a pairing code for a device row on the host — the step the Mac sheet could not do, and
 /// the reason a code from `hermey pair` was useless on this platform.
