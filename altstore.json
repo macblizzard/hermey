@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.112",
+          "buildVersion": "112",
+          "date": "2026-11-10T14:27:35Z",
+          "localizedDescription": "Reactions on the message itself on both apps, and the shared computer now takes your Mac's keyboard.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.112/Hermey-0.1.112-b112.ipa",
+          "size": 2013699,
+          "minOSVersion": "17.0",
+          "sha256": "112c8762e1e8303417f8b70db7cf5db28e02b44dc0926d72c0a75cc0a3c7a304"
+        },
+        {
           "version": "0.1.109",
           "buildVersion": "109",
           "date": "2026-11-10T14:05:01Z",
@@ -62,16 +72,6 @@
           "size": 1993276,
           "minOSVersion": "17.0",
           "sha256": "d1df19d1fe1e9d6b34a71dd6ea1ed72b180ed9c0323abb6b9681b7f8e9516441"
-        },
-        {
-          "version": "0.1.93",
-          "buildVersion": "93",
-          "date": "2026-11-10T11:23:39Z",
-          "localizedDescription": "Headings and labels keep their weight again and glyphs sit on a half-point grid, so Mac text stops looking washed out.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.93/Hermey-0.1.93-b93.ipa",
-          "size": 1970531,
-          "minOSVersion": "17.0",
-          "sha256": "76b7aa05dd3deadaf18419747ab5428a82a144d47822b51937b338d36596811a"
         }
       ],
       "appPermissions": {
