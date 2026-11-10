@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.106",
+          "buildVersion": "106",
+          "date": "2026-11-10T13:41:27Z",
+          "localizedDescription": "Mark all as read in both apps' menus, and the Mac menu no longer repeats the toolbar's computer button.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.106/Hermey-0.1.106-b106.ipa",
+          "size": 1999812,
+          "minOSVersion": "17.0",
+          "sha256": "b736e517e19658e02c701b3aeb366e835f391e6b867bb51f62b5f52f60871a39"
+        },
+        {
           "version": "0.1.100",
           "buildVersion": "100",
           "date": "2026-11-10T13:06:16Z",
@@ -62,16 +72,6 @@
           "size": 1969477,
           "minOSVersion": "17.0",
           "sha256": "ea88fcf5efd546757e9107a2ba0afa1833f179b1fc8735949155639c0df2194c"
-        },
-        {
-          "version": "0.1.87",
-          "buildVersion": "87",
-          "date": "2026-11-10T10:54:19Z",
-          "localizedDescription": "The Mac stays paired across launches: the pairing is written to the Keychain where possible and to a private 0600 file when this unsigned build cannot, and Settings says which.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.87/Hermey-0.1.87-b87.ipa",
-          "size": 1968893,
-          "minOSVersion": "17.0",
-          "sha256": "057f53ad6aa25db99ead91cdcbcf1d8a2dc1896bd1fe37a8ec311528479771bd"
         }
       ],
       "appPermissions": {
