@@ -17,6 +17,15 @@ struct MobileTranscriptRow: View {
     @State private var showingSelection = false
     /// Pictures fetched back from the host, by attachment name.
     @State private var fetchedImages: [String: Data] = [:]
+    /// The picture the viewer is showing, if any.
+    @State private var viewingImage: ViewedAttachment?
+
+    /// One decoded attachment, ready for `ImageViewer`.
+    struct ViewedAttachment: Identifiable {
+        let id = UUID()
+        let name: String
+        let data: Data
+    }
     @State private var showingReactionPicker = false
     @AppStorage("mobile.messageReactions.v1") private var storedReactions = "{}"
     private static let speaker = AVSpeechSynthesizer()
@@ -58,6 +67,11 @@ struct MobileTranscriptRow: View {
         .popover(isPresented: $showingReactionPicker, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
             reactionPicker
                 .presentationCompactAdaptation(.popover)
+        }
+        // The viewer fills the screen: a picture at 132 pt is a preview, not the picture.
+        .fullScreenCover(item: $viewingImage) { item in
+            ImageViewer(data: item.data, title: item.name) { viewingImage = nil }
+                .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showingSelection) {
             NavigationStack {
@@ -203,13 +217,28 @@ struct MobileTranscriptRow: View {
         VStack(alignment: .trailing, spacing: 4) {
             ForEach(bubbleAttachments.filter { $0.isImage }) { attachment in
                 if let data = attachment.imageData ?? fetchedImages[attachment.name] {
-                    AttachmentThumbnail(data: data, size: 132)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Tokens.borderStrong, lineWidth: 1)
-                        )
-                        .accessibilityLabel("Attached image \(attachment.name)")
+                    // A tap on a picture opens it: the thumbnail promises the full image is here.
+                    Button {
+                        viewingImage = ViewedAttachment(name: attachment.name, data: data)
+                    } label: {
+                        AttachmentThumbnail(data: data, size: 132)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                            )
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(Tokens.textSecondary)
+                                    .padding(4)
+                                    .background(Tokens.canvas.opacity(0.7), in: Circle())
+                                    .padding(6)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Attached image \(attachment.name)")
+                    .accessibilityHint("Opens the image")
                 } else {
                     // The host holds the picture; ask for it once per bubble. Until it arrives —
                     // or if this device cannot reach the host — the file is named, not invented.
