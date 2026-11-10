@@ -6,6 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Mark all as read.** The ⋯ menu on both apps — the bot list's and the conversation's — now clears
+  every badge at once. Opening a chat has always read it; this is the same act for the list, so nine
+  badged bots and a couple of badged rooms no longer have to be opened one by one to clear dots the
+  person never meant to read. The marks are written the same way opening a chat writes them, so a dot
+  cannot return on the next refresh, and each room is read up to its own `latest_seq` rather than a
+  number this side invents. The item greys out when nothing is waiting.
 - **The app says what is on screen at launch.** A blank rounded panel appeared over the sidebar on a
   first launch and closed with Esc, and no surface in the app presents itself: every overlay is behind
   a flag the user raises. Rather than guess, the workspace now writes two lines to the log a second

@@ -258,6 +258,9 @@ struct ConversationHeader: View {
             .disabled(!model.canActOnConversation)
 
             Divider()
+            Button("Mark all as read") { model.markAllRead() }
+                .disabled(!model.hasAnyUnread)
+            Divider()
             Button("Command palette…") { store.openPalette() }
             Button("Settings…") { openSettings() }
             Divider()

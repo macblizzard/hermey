@@ -660,6 +660,15 @@ struct BotListScreen: View {
                     Button { showStartGroupChat = true } label: {
                         Label("New group chat", systemImage: "person.3")
                     }
+
+                    Divider()
+
+                    // Clears every badge on the list at once: a person who is done with the app
+                    // should not have to open each chat to say so.
+                    Button { model.markAllRead() } label: {
+                        Label("Mark all as read", systemImage: "checkmark.circle")
+                    }
+                    .disabled(!model.hasAnyUnread)
                 } label: {
                     // Three dots, because this is a menu and not a filter: the old funnel icon
                     // promised "narrow the list" and then offered to add a bot. A bare glyph: the
