@@ -119,6 +119,13 @@ def main() -> int:
     else:
         print(f"  release {tag} already exists — reusing it")
 
+    # The one-line installer in every doc is `releases/latest/download/install.sh`, so the script has
+    # to be an asset of the release — it was not, and that URL answered 404 while the release page
+    # looked complete (the same way a missing icon did). `gh release upload` keeps the file's name.
+    installer = Path(__file__).resolve().parent.parent.parent / "setup" / "install.sh"
+    if installer.is_file():
+        run(["gh", "release", "upload", tag, str(installer), "-R", args.repo, "--clobber"])
+
     entry = {
         "version": version,
         "buildVersion": build,

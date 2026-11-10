@@ -143,6 +143,21 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     func interrupt(session: SessionID) async throws {}
     func rewind(session: SessionID, toRowID: Int64, then text: String) async throws {}
 
+    // MARK: Rooms
+
+    /// The room list this host answers with, and each room's log after the highest `seq` asked for.
+    var roomList: [RoomSummary] = []
+    var roomLogs: [String: [RoomMessage]] = [:]
+
+    func rooms() async throws -> [RoomSummary] { roomList }
+
+    func roomPage(_ roomID: String, since: Int?) async throws -> RoomPage {
+        let all = roomLogs[roomID] ?? []
+        let floor = since ?? 0
+        return RoomPage(messages: all.filter { $0.seq > floor },
+                        latestSeq: all.map(\.seq).max() ?? 0)
+    }
+
     // MARK: Discovery
 
     func modelOptions() async throws -> [ModelOption] { [] }
