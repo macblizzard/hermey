@@ -220,12 +220,12 @@ struct PairHostSheet: View {
 
     private var footnote: String {
         if store.pairingIsSessionOnly {
-            return "The login keychain refused the pairing, so it lasts until you quit. Paste it again next launch."
+            return "Nothing could be stored on this Mac, so this pairing lasts until you quit."
         }
         if showAdvanced, !deviceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "The app mints a fresh 30 s socket ticket from this refresh token each time it connects, so a reconnect does not need a new paste. The pairing is stored in your login keychain."
+            return "The app mints a fresh 30 s socket ticket from this refresh token each time it connects, so a reconnect does not need a new paste. It is kept in the Keychain, or in a user-only file when this unsigned build cannot use the Keychain."
         }
-        return "The pairing is stored in your login keychain. Nothing is sent until you press Pair."
+        return "The pairing survives quitting and relaunching. Nothing is sent until you press Pair."
     }
 
     // MARK: Footer
