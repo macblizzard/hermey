@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.97",
+          "buildVersion": "97",
+          "date": "2026-11-10T11:55:10Z",
+          "localizedDescription": "Attached pictures open: click a thumbnail on the Mac or tap one on the phone for the full image with zoom, Copy and Save.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.97/Hermey-0.1.97-b97.ipa",
+          "size": 1993276,
+          "minOSVersion": "17.0",
+          "sha256": "d1df19d1fe1e9d6b34a71dd6ea1ed72b180ed9c0323abb6b9681b7f8e9516441"
+        },
+        {
           "version": "0.1.93",
           "buildVersion": "93",
           "date": "2026-11-10T11:23:39Z",
@@ -62,16 +72,6 @@
           "size": 1968896,
           "minOSVersion": "17.0",
           "sha256": "331e2a667e680e0ba2b3d43e6d4ab1834d0d18e78f59f15981f4ffca600e529f"
-        },
-        {
-          "version": "0.1.80",
-          "buildVersion": "80",
-          "date": "2026-11-10T09:20:00Z",
-          "localizedDescription": "Pairing: an eight-digit code now pairs on a Mac that has never paired (it asks for the host address instead of rejecting the code).",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.80/Hermey-0.1.80-b80.ipa",
-          "size": 1966778,
-          "minOSVersion": "17.0",
-          "sha256": "6821168ef7443c2ab9f484ea4302bad3a6c8ce634bd59412aef1f54e5e4368a8"
         }
       ],
       "appPermissions": {
