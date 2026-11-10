@@ -506,7 +506,7 @@ public final class AppModel: ObservableObject {
         // Picking a bot is picking a different conversation: the room it is replacing must not come
         // back when the next launch restores the pane.
         activeRoom = nil
-        restoreConversation(for: resolved)
+        if let resolved { restoreConversation(for: resolved) }
         await loadSessions()
     }
 
