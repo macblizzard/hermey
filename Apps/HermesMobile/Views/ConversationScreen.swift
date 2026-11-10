@@ -498,8 +498,8 @@ struct ConversationScreen: View {
                 liveToolsSection
             }
 
-            if model.isStreaming || !model.streamingText.isEmpty {
-                MobileStreamingBubble(text: model.streamingText)
+            if model.isStreaming || !model.visibleStreamingText.isEmpty {
+                MobileStreamingBubble(text: model.visibleStreamingText)
                     .overlay {
                         if selectedSearchID == Self.streamingSearchID {
                             RoundedRectangle(cornerRadius: 8)

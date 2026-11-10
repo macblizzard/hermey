@@ -60,6 +60,7 @@
   // Nothing here talks to the open internet: the socket is the paired host on the tailnet.
   import RFB from './novnc/core/rfb.js';
   import { getKeycode, getKeysym } from './novnc/core/input/util.js';
+  import { releaseCapture } from './novnc/core/util/events.js';
 
   const params = new URLSearchParams(window.location.search);
   const target = params.get('ws');
@@ -146,14 +147,34 @@
     // noVNC has no gesture for this on a touch screen. Its handler reads `buttons`, not `button`,
     // and converts 2 to the right-button bit — so a synthetic press/release pair with `buttons: 2`
     // is exactly a right click, at the same point noVNC would have computed for a real tap.
-    function rightClick(x, y) {
+    // Where the pointer already is — noVNC keeps it in canvas coordinates, so it is converted back
+    // to page coordinates with the canvas's own rect (which includes the zoom transform). A right
+    // click belongs to the pointer, not to wherever the two fingers happened to land.
+    function pointerPoint() {
+      const canvas = screen.querySelector('canvas');
+      const pos = rfb._mousePos;
+      if (!canvas || !pos || typeof pos.x !== 'number' || !canvas.width) { return null; }
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.left + pos.x * rect.width / canvas.width,
+               y: rect.top + pos.y * rect.height / canvas.height };
+    }
+
+    function rightClick(fallbackX, fallbackY) {
       if (window.__hermeyViewOnly) { return; }   // watching is not driving
       const canvas = screen.querySelector('canvas');
       if (!canvas) { return; }
+      const point = pointerPoint() || { x: fallbackX, y: fallbackY };
       canvas.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window,
-                                                         clientX: x, clientY: y, button: 2, buttons: 2 }));
+                                                         clientX: point.x, clientY: point.y,
+                                                         button: 2, buttons: 2 }));
       canvas.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window,
-                                                       clientX: x, clientY: y, button: 2, buttons: 0 }));
+                                                       clientX: point.x, clientY: point.y,
+                                                       button: 2, buttons: 0 }));
+      // noVNC's setCapture() is the old IE fallback: on a real mousedown it puts a full-screen proxy
+      // div at zIndex 10000 over everything, and only that div's own mouseup removes it. A synthetic
+      // press dispatched straight at the canvas creates it and leaves it behind — swallowing every
+      // later touch, which is why pinching stopped working until the user tapped once.
+      releaseCapture();
     }
 
     // ---- pinch to zoom, two fingers to pan --------------------------------------------------
@@ -201,6 +222,7 @@
                                                        clientX: last.x, clientY: last.y, button: 0 }));
       canvas.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true, cancelable: true,
                                                           clientX: last.x, clientY: last.y }));
+      releaseCapture();
     }
 
     screen.addEventListener('touchstart', (event) => {
@@ -236,7 +258,7 @@
       // come up — swallowing the touchend was what left it holding a button forever.
       const wasTap = pinch && pinch.moved < 14 && Date.now() - pinch.startedAt < 400;
       if (scale <= 1.02) { scale = 1; tx = 0; ty = 0; applyTransform(); }
-      if (pinch) { releasePointer(); }
+      if (pinch) { releasePointer(); releaseCapture(); }
       // A two-finger tap that neither moved nor resized is the right click: the desktop equivalent
       // of pressing the right button, which a phone has no other way to do.
       if (wasTap) { rightClick(pinch.middle.x, pinch.middle.y); }

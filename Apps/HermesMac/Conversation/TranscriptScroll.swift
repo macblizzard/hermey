@@ -159,7 +159,7 @@ struct TranscriptScroll: View {
             }
 
             if model.isStreaming {
-                StreamingAssistantBubble(text: model.streamingText)
+                StreamingAssistantBubble(text: model.visibleStreamingText)
                     .id(streamingID)
                     .background(selectedMatch == streamingID ? Tokens.accentSoft : Color.clear)
                     .transition(.opacity)
