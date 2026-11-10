@@ -32,13 +32,6 @@ struct MobileTranscriptRow: View {
     @State private var rowFrame: CGRect = .zero
     /// The row's size, needed to turn a touch into a unit point.
     @State private var rowSize: CGSize = .zero
-    /// Where in this row the press landed, in the row's own coordinates.
-    ///
-    /// The card used to hang off the row's whole rectangle, which is fine for a one-line message and
-    /// wrong for a long one: the anchor is then taller than the screen, and "above the row" means
-    /// the top of the page rather than the line under the thumb. A press point keeps the card where
-    /// the finger was.
-    @State private var pressPoint: CGPoint = .zero
     /// True when the card must open *above* the message.
     ///
     /// A word-processor's worth of text sits under a long press at the bottom of the screen: with the
@@ -181,29 +174,33 @@ struct MobileTranscriptRow: View {
 
     // MARK: Action card
 
-    /// Where the finger is, in the row's own coordinates. Fires on touch-down and on drags, so the
-    /// long press that follows always has a fresh point.
-    private var pressLocator: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { value in pressPoint = value.startLocation }
+    /// Where the card's arrow points: the middle of the part of this message you can actually see.
+    ///
+    /// Anchoring to the row's whole rectangle is right for a one-line bubble and wrong for a long
+    /// message — that rectangle can start above the header and end under the composer, so "above the
+    /// row" means the top of the page. Measuring the *visible* slice keeps the card beside the text
+    /// the reader is looking at, and it needs no gesture: a `DragGesture` on every row competed with
+    /// the scroll view for each touch and stopped the chat scrolling altogether.
+    private func visibleAnchorY() -> CGFloat {
+        guard rowSize.height > 0, rowFrame.height > 0 else { return 0.5 }
+        let screen = UIScreen.main.bounds.height
+        let visibleTop = max(rowFrame.minY, 96)
+        let visibleBottom = min(rowFrame.maxY, screen - 150)
+        let middle = (visibleTop + visibleBottom) / 2
+        let unit = (middle - rowFrame.minY) / rowSize.height
+        return min(max(unit, 0.02), 0.98)
     }
 
-    /// The press, as a unit point inside this row — where the card's arrow must point.
-    private var anchorPoint: UnitPoint {
-        guard rowSize.width > 0, rowSize.height > 0 else { return .center }
-        let x = min(max(pressPoint.x / rowSize.width, 0.08), 0.92)
-        let y = min(max(pressPoint.y / rowSize.height, 0.02), 0.98)
-        return UnitPoint(x: x, y: y)
-    }
+    private var anchorPoint: UnitPoint { UnitPoint(x: 0.5, y: visibleAnchorY()) }
 
     /// Open the card on whichever side has room for it.
     private func raiseActions() {
-        // The card is ~250 pt tall; it opens above the pressed line when there is less room than
-        // that below it, and below the line otherwise.
+        // The card is ~250 pt tall; it opens above the visible slice when there is less room than
+        // that below it, and below the slice otherwise.
         let screen = UIScreen.main.bounds
-        let pressedY = rowFrame.minY + pressPoint.y
-        let spaceBelow = screen.height - pressedY
-        let spaceAbove = pressedY
+        let anchorY = rowFrame.minY + visibleAnchorY() * rowSize.height
+        let spaceBelow = screen.height - anchorY
+        let spaceAbove = anchorY
         opensAbove = spaceBelow < 250 && spaceAbove > spaceBelow
         Haptics.selection()
         showingActions = true
@@ -428,7 +425,6 @@ struct MobileTranscriptRow: View {
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
-                .simultaneousGesture(pressLocator)
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -442,7 +438,6 @@ struct MobileTranscriptRow: View {
                 .accessibilityLabel(entry.text)
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
-                .simultaneousGesture(pressLocator)
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
             messageTime
         }
