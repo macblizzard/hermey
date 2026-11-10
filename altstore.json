@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.80",
+          "buildVersion": "80",
+          "date": "2026-11-10T09:20:00Z",
+          "localizedDescription": "Pairing: an eight-digit code now pairs on a Mac that has never paired (it asks for the host address instead of rejecting the code).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.80/Hermey-0.1.80-b80.ipa",
+          "size": 1966778,
+          "minOSVersion": "17.0",
+          "sha256": "6821168ef7443c2ab9f484ea4302bad3a6c8ce634bd59412aef1f54e5e4368a8"
+        },
+        {
           "version": "0.1.75",
           "buildVersion": "75",
           "date": "2026-11-10T08:30:29Z",
@@ -62,16 +72,6 @@
           "size": 1918702,
           "minOSVersion": "17.0",
           "sha256": "5bfb71cd0eb79b67088a32a9796e33fe8c161edfe7e2cf7d4bc371b9fb4e248f"
-        },
-        {
-          "version": "0.1.52",
-          "buildVersion": "52",
-          "date": "2026-11-10T01:28:35Z",
-          "localizedDescription": "Build from CI run 42735677542.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.52/Hermey-0.1.52-b52.ipa",
-          "size": 1907809,
-          "minOSVersion": "17.0",
-          "sha256": "29db57b99a7a837a8d76c88c1dd128d7b8dbab7a30ebf652b668277b8fe24c55"
         }
       ],
       "appPermissions": {
