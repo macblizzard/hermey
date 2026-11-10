@@ -126,35 +126,7 @@ struct TranscriptRowView: View {
                     HStack(spacing: 6) {
                         ForEach(bubbleAttachments.filter { $0.isImage && $0.imageData != nil }) { attachment in
                             if let data = attachment.imageData, let image = NSImage(data: data) {
-                                // A thumbnail is a promise that the picture is here: clicking it
-                                // opens the viewer rather than doing nothing.
-                                Button {
-                                    viewingImage = ViewedImage(name: attachment.name, data: data)
-                                } label: {
-                                    Image(nsImage: image)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 96, height: 96)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                .strokeBorder(Tokens.borderStrong, lineWidth: 1)
-                                        )
-                                        .overlay(alignment: .bottomTrailing) {
-                                            // A quiet corner glyph: the cursor cannot say "this opens".
-                                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                                .font(.system(size: 8, weight: .semibold))
-                                                .foregroundStyle(Tokens.textSecondary)
-                                                .padding(3)
-                                                .background(Tokens.canvas.opacity(0.75), in: Circle())
-                                                .padding(4)
-                                                .opacity(isHovered ? 1 : 0.55)
-                                        }
-                                }
-                                .buttonStyle(.plain)
-                                .help("Open \(attachment.name)")
-                                .accessibilityLabel("Attached image \(attachment.name)",
-                                                    hint: "Opens the image")
+                                imageThumbnail(attachment, data: data, image: image)
                             }
                         }
                         ForEach(bubbleAttachments.filter { !$0.isImage || $0.imageData == nil }) { attachment in
@@ -223,6 +195,39 @@ struct TranscriptRowView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .accessibilityLabel("Sent \(MessageTime.label(for: at))")
         }
+    }
+
+    /// The pictures that went with the words, each of them a door to the viewer.
+    ///
+    /// A thumbnail is a promise that the picture is here: clicking it opens `ImageViewer` rather than
+    /// doing nothing, and the corner glyph says so before the cursor tries.
+    private func imageThumbnail(_ attachment: SentAttachment, data: Data, image: NSImage) -> some View {
+        Button {
+            viewingImage = ViewedImage(name: attachment.name, data: data)
+        } label: {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Tokens.textSecondary)
+                        .padding(3)
+                        .background(Tokens.canvas.opacity(0.75), in: Circle())
+                        .padding(4)
+                        .opacity(isHovered ? 1 : 0.55)
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Open \(attachment.name)")
+        .accessibilityLabel("Attached image \(attachment.name)")
+        .accessibilityHint("Opens the image")
     }
 
     /// Pictures the row remembers, or the host's references looked up in the image cache.
