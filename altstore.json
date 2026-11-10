@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.131",
+          "buildVersion": "131",
+          "date": "2026-11-10T21:08:41Z",
+          "localizedDescription": "The long-press card opens above a message at the bottom, so the reactions stay visible.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.131/Hermey-0.1.131-b131.ipa",
+          "size": 2022048,
+          "minOSVersion": "17.0",
+          "sha256": "9117b6611bc73d7e99b338fa4ad4fa0938c0673665848ea777bcee829966e872"
+        },
+        {
           "version": "0.1.128",
           "buildVersion": "128",
           "date": "2026-11-10T20:40:22Z",
@@ -62,16 +72,6 @@
           "size": 2013699,
           "minOSVersion": "17.0",
           "sha256": "112c8762e1e8303417f8b70db7cf5db28e02b44dc0926d72c0a75cc0a3c7a304"
-        },
-        {
-          "version": "0.1.109",
-          "buildVersion": "109",
-          "date": "2026-11-10T14:05:01Z",
-          "localizedDescription": "Code blocks can be copied on the phone too, and the copy button turns into a tick when it worked.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.109/Hermey-0.1.109-b109.ipa",
-          "size": 2006038,
-          "minOSVersion": "17.0",
-          "sha256": "a90196e9b9afe9a004ac009e1651fa3202e6107c5dde414a52ca809c9d7e5048"
         }
       ],
       "appPermissions": {
