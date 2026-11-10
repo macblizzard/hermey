@@ -6,6 +6,11 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The phone can copy a code block — and both apps say when they did.** The desktop's code cards had a
+  copy button that copied in silence, so the same press happened twice; the phone's had no button at
+  all, leaving a long press and two drag handles as the only way to take a command off the screen. One
+  shared `CodeCopyButton` now sits in both headers — language on the left, verb on the right — and the
+  glyph turns into a tick where it stands for a second and a half, with a haptic, before going back.
 - **Mark all as read.** The ⋯ menu on both apps — the bot list's and the conversation's — now clears
   every badge at once. Opening a chat has always read it; this is the same act for the list, so nine
   badged bots and a couple of badged rooms no longer have to be opened one by one to clear dots the

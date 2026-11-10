@@ -107,8 +107,8 @@ private struct MobileMarkdownBlock: View {
                     .lineSpacing(TypeScale.chatLineSpacing)
             }
 
-        case .code(_, let body, _):
-            codeBlock(body)
+        case .code(let language, let body, _):
+            codeBlock(language: language, body: body)
 
         case .table(let table):
             MobileMarkdownTable(table: table)
@@ -141,17 +141,40 @@ private struct MobileMarkdownBlock: View {
 
     // MARK: Code
 
-    private func codeBlock(_ body: String) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            Text(body.isEmpty ? " " : body)
-                .font(.system(.footnote, design: .monospaced))
-                .foregroundStyle(Tokens.textSecondary)
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(10)
+    /// A code block wears its own copy button, the way the desktop's does.
+    ///
+    /// The phone used to draw the floating card and nothing else, so the only way to take a command
+    /// off the screen was to select it with a long press and drag the handles. The header row is the
+    /// desktop's: the language on the left, the verb on the right.
+    private func codeBlock(language: String?, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text(language.flatMap { $0.isEmpty ? nil : $0 } ?? "code")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Tokens.textDim)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                CodeCopyButton(code: body)
+                    // A glyph in a card corner is a small target on a phone; the button's own 24 × 22
+                    // sits inside this, and the padding is what makes it reachable with a thumb.
+                    .padding(.vertical, 4)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(body.isEmpty ? " " : body)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Tokens.textSecondary)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(10)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
                 .fill(Tokens.sheetInset)
