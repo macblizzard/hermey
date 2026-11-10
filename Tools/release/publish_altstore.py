@@ -31,6 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_stamp  # noqa: E402  (same directory: the visible build line)
+import sync_store  # noqa: E402  (same directory: the Pages/manifest plumbing)
 from publish_source import read_ipa  # noqa: E402  (same directory, shared IPA reader)
 
 SOURCE_NAME = "Hermey"
@@ -49,6 +50,34 @@ def run(cmd: list[str], **kwargs) -> str:
     if result.returncode != 0:
         raise SystemExit(f"{' '.join(cmd[:3])} failed:\n{result.stderr.strip()}")
     return result.stdout
+
+
+def publish_pages(repo: str, tag: str, work: Path, version: str, build: str, ipa_name: str) -> None:
+    """Write everything the release advertises *before* `main` is pushed.
+
+    The `Published pages and README match the release` job runs the second the publish commit
+    lands, and it compares the newest release with the Pages landing page — so a publish that left
+    the landing page (or the release's own `altstore.json` asset) for a later repair turned that job
+    red on every release. Ordering is the fix: release asset, Pages, then the commit.
+    """
+    manifest = (work / "altstore.json").read_bytes()
+    run(["gh", "release", "upload", tag, str(work / "altstore.json"), "-R", repo, "--clobber"])
+    print("  manifest altstore.json -> release asset")
+
+    github = sync_store.GitHub(sync_store.resolve_token(None))
+    if sync_store.update_pages(github, repo, "gh-pages", "altstore.json", manifest):
+        print("  pages    altstore.json updated")
+
+    text, sha = sync_store.contents(github, repo, "gh-pages", "index.html")
+    if text is None:
+        return
+    wanted = build_stamp.index_body(version, build, ipa_name)
+    if not build_stamp.matches(text, wanted):
+        stamped = build_stamp.replace(text, wanted)
+        if stamped is not None:
+            sync_store.put_contents(github, repo, "gh-pages", "index.html", stamped,
+                                    f"pages: build {version} ({build})", sha)
+            print("  pages    index.html stamped")
 
 
 def release_has(repo: str, tag: str, asset: str) -> bool:
@@ -218,6 +247,9 @@ def main() -> int:
             if stamped is not None and stamped != original:
                 readme_path.write_text(stamped)
                 staged.append("README.md")
+
+        # The release asset and the landing page are written before `main` moves: see `publish_pages`.
+        publish_pages(args.repo, tag, work, version, build, asset_name)
 
         # Nothing to write is not a failure: re-running a publish to repair the mirror or the release
         # assets leaves the manifest byte-identical, and `git commit` then exits 1.
