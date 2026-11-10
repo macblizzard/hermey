@@ -371,17 +371,21 @@ def main() -> int:
     # version that no longer exists.
     page_wanted = build_stamp.index_body(version, build, ipa_asset["name"])
     page_text, page_sha = contents(github, args.repo, args.pages_branch, "index.html")
-    page_drift = page_text is not None and not build_stamp.matches(page_text, page_wanted)
+    page_stamped = page_text is not None and build_stamp.current(page_text) is not None
+    page_drift = page_stamped and not build_stamp.matches(page_text, page_wanted)
     if page_text is not None:
         print("pages     DRIFT — index.html advertises another build" if page_drift
-              else "pages     in sync")
+              else "pages     in sync" if page_stamped
+              else "pages     no build markers — left alone")
 
     readme_wanted = build_stamp.readme_body(version, build)
     readme_text, readme_sha = contents(github, args.repo, args.readme_branch, "README.md")
-    readme_drift = readme_text is not None and not build_stamp.matches(readme_text, readme_wanted)
+    readme_stamped = readme_text is not None and build_stamp.current(readme_text) is not None
+    readme_drift = readme_stamped and not build_stamp.matches(readme_text, readme_wanted)
     if readme_text is not None:
         print("readme    DRIFT — README.md advertises another build" if readme_drift
-              else "readme    in sync")
+              else "readme    in sync" if readme_stamped
+              else "readme    no build markers — left alone")
 
     dead = dead_pages_files(github, args.repo, args.pages_branch)
     for name, _sha, why in dead:
