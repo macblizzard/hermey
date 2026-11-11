@@ -242,10 +242,6 @@ extension GatewayClientProtocol {
     public func configureSoul(profile: String, soul: String) async throws {
         throw BotAdminUnavailable()
     }
-    public func configureFeatures(profile: String, disabledSkills: [String]?,
-                                  enabledMCPServers: [String]?) async throws {
-        throw BotAdminUnavailable()
-    }
     public func rooms() async throws -> [RoomSummary] { [] }
     public func createRoom(name: String, members: [String]) async throws -> RoomSummary {
         throw BotAdminUnavailable()
