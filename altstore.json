@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.155",
+          "buildVersion": "155",
+          "date": "2026-11-11T19:41:52Z",
+          "localizedDescription": "Streaming no longer scrolls the chat on every token, and scrolling up stays put while a bot is working.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.155/Hermey-0.1.155-b155.ipa",
+          "size": 2028542,
+          "minOSVersion": "17.0",
+          "sha256": "1e0c1b34d6a3badf023a80f57657797fc0fbbbf01c35e0caa9f3d1e7d81dbc33"
+        },
+        {
           "version": "0.1.152",
           "buildVersion": "152",
           "date": "2026-11-11T11:47:15Z",
@@ -62,16 +72,6 @@
           "size": 2024905,
           "minOSVersion": "17.0",
           "sha256": "1a8f9572d491b6730b7cf7d61f34348e1e3152f15a286cbeb8f7b76ce0749524"
-        },
-        {
-          "version": "0.1.137",
-          "buildVersion": "137",
-          "date": "2026-11-10T22:32:24Z",
-          "localizedDescription": "Scrolling is back on the phone, and the long-press card opens beside the visible text.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.137/Hermey-0.1.137-b137.ipa",
-          "size": 2024908,
-          "minOSVersion": "17.0",
-          "sha256": "e20414053f6c516f0e39fd22ed378d76618878d71fa940185fadd93db2ecbcb4"
         }
       ],
       "appPermissions": {
