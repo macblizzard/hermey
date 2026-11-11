@@ -100,9 +100,8 @@ def release_has(repo: str, tag: str, asset: str) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipa", type=Path, required=True)
-    parser.add_argument("--mac-zip", type=Path)
-    # The disk image is the friendly download; the zip is kept for anything that expands archives.
-    # Either can be published alone.
+    # The Mac build is a disk image: it opens as a window with the app beside an Applications
+    # shortcut, so installing is a drag rather than unzip-then-move.
     parser.add_argument("--mac-dmg", type=Path)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--notes", default="")
@@ -139,10 +138,9 @@ def main() -> int:
         try:
             shutil.copy2(args.ipa, staging / asset_name)
             files = [str(staging / asset_name)]
-            for extra in (args.mac_zip, args.mac_dmg):
-                if extra and extra.exists():
-                    shutil.copy2(extra, staging / extra.name)
-                    files.append(str(staging / extra.name))
+            if args.mac_dmg and args.mac_dmg.exists():
+                shutil.copy2(args.mac_dmg, staging / args.mac_dmg.name)
+                files.append(str(staging / args.mac_dmg.name))
             run(["gh", "release", "create", tag, *files,
                  "-R", args.repo,
                  "--title", f"{SOURCE_NAME} {version} ({build})",
@@ -219,9 +217,6 @@ def main() -> int:
             # name silently left the new build out of the mirror and the rewrite skipped it.
             if args.ipa and Path(args.ipa).is_file():
                 shutil.copy2(args.ipa, args.mirror_to / asset_name)
-            if args.mac_zip and Path(args.mac_zip).is_file():
-                shutil.copy2(args.mac_zip, args.mirror_to / Path(args.mac_zip).name)
-                shutil.copy2(args.mac_zip, args.mirror_to / "Hermey-macOS-unsigned.zip")
             if args.mac_dmg and Path(args.mac_dmg).is_file():
                 shutil.copy2(args.mac_dmg, args.mirror_to / Path(args.mac_dmg).name)
                 shutil.copy2(args.mac_dmg, args.mirror_to / "Hermey-macOS-unsigned.dmg")

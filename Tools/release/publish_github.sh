@@ -40,12 +40,12 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 gh run download "$RUN_ID" -D "$TMP" >/dev/null
 IPA=$(find "$TMP" -name '*.ipa' | head -1)
-MAC=$(find "$TMP" -name '*.zip' | head -1)
+MAC=$(find "$TMP" -name '*.dmg' | head -1)
 [ -n "$IPA" ] || { echo "run $RUN_ID has no .ipa artifact" >&2; exit 1; }
 
 python3 Tools/release/publish_altstore.py \
   --ipa "$IPA" \
-  ${MAC:+--mac-zip "$MAC"} \
+  ${MAC:+--mac-dmg "$MAC"} \
   --repo "$REPO" \
   ${MIRROR_ARGS[@]+"${MIRROR_ARGS[@]}"} \
   --notes "${NOTES:-Build from CI run $RUN_ID.}"
