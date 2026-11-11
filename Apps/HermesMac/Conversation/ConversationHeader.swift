@@ -232,6 +232,12 @@ struct ConversationHeader: View {
             // No "Bot computer…" here: the header's own display button is the door, and a verb that
             // duplicates the button next to it makes the menu read as a second toolbar.
             if let bot = model.selectedBot {
+                // The same three surfaces the phone carries in this menu, in the same order: the
+                // documents, then what the bot may reach for, then the bot itself.
+                Button("Workspace…") { store.openWorkspace(bot) }
+                Button("Skills…") { store.openSkills(bot) }
+                Button("MCP servers…") { store.openMCP(bot) }
+                Divider()
                 Button("Bot settings") { store.openBotSettings(bot) }
                 Divider()
             }
