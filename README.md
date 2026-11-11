@@ -15,7 +15,7 @@
 </p>
 
 <!-- build:start -->
-<p align="center"><sub>Latest published build <b>0.1.137</b> (build 137)</sub></p>
+<p align="center"><sub>Latest published build <b>0.1.143</b> (build 143)</sub></p>
 <!-- build:end -->
 
 ---

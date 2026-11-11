@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.143",
+          "buildVersion": "143",
+          "date": "2026-11-11T10:14:49Z",
+          "localizedDescription": "Mac app now ships as a disk image (drag to Applications); zip kept for scripts.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.143/Hermey-0.1.143-b143.ipa",
+          "size": 2024905,
+          "minOSVersion": "17.0",
+          "sha256": "1a8f9572d491b6730b7cf7d61f34348e1e3152f15a286cbeb8f7b76ce0749524"
+        },
+        {
           "version": "0.1.137",
           "buildVersion": "137",
           "date": "2026-11-10T22:32:24Z",
@@ -62,16 +72,6 @@
           "size": 2020334,
           "minOSVersion": "17.0",
           "sha256": "ac42d7ab5ec84846ec9e2022e24f9f9ad059973a49a46a7446b12d9f8d3f988e"
-        },
-        {
-          "version": "0.1.120",
-          "buildVersion": "120",
-          "date": "2026-11-10T16:33:45Z",
-          "localizedDescription": "The emoji picker now hangs off the smiley that opens it, no focus ring on the first emoji, and the desktop's buttons answer on hover.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.120/Hermey-0.1.120-b120.ipa",
-          "size": 2014954,
-          "minOSVersion": "17.0",
-          "sha256": "25fd3de5d138f9d0241f439107ca67f7dc848e925b4b35f84b7fd1905738bf45"
         }
       ],
       "appPermissions": {
