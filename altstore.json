@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.168",
+          "buildVersion": "168",
+          "date": "2026-11-11T22:27:30Z",
+          "localizedDescription": "Skills lists the bot's real index (236 here), and the two switches now reach the host.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.168/Hermey-0.1.168-b168.ipa",
+          "size": 2103192,
+          "minOSVersion": "17.0",
+          "sha256": "1da62237c75b074c012177d95961165644249646f234d06928b23fff720bbfca"
+        },
+        {
           "version": "0.1.164",
           "buildVersion": "164",
           "date": "2026-11-11T21:59:54Z",
@@ -62,16 +72,6 @@
           "size": 2024912,
           "minOSVersion": "17.0",
           "sha256": "cfb2bbe9b8397b8f03ddf4c869e10b57da54b78df675462ce94ff058bdd67d5a"
-        },
-        {
-          "version": "0.1.149",
-          "buildVersion": "149",
-          "date": "2026-11-11T11:22:07Z",
-          "localizedDescription": "Mac app is ad-hoc signed so Apple silicon will actually run it; the image is mounted and verified in CI before upload.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.149/Hermey-0.1.149-b149.ipa",
-          "size": 2024917,
-          "minOSVersion": "17.0",
-          "sha256": "fe6219bc9c77ce81f3627836b2daea92b7bdc2caa1fe1086bf4b81d8d78ceaac"
         }
       ],
       "appPermissions": {
