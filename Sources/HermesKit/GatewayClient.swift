@@ -191,6 +191,11 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Only `{name, soul}` go on the wire: sending the description or the model alongside would
     /// turn "edit the soul" into three section writes, and the bridge's allow-list is per-field.
     func configureSoul(profile: String, soul: String) async throws
+    /// `profiles.configure` for the two feature lists. Both are *replacements*: what is sent is the
+    /// whole set of disabled skills / enabled servers, not a delta.
+    func configureFeatures(profile: String,
+                           disabledSkills: [String]?,
+                           enabledMCPServers: [String]?) async throws
 
     // Compaction
     /// Attach bytes to the session's next turn.
@@ -237,6 +242,10 @@ extension GatewayClientProtocol {
     public func configureSoul(profile: String, soul: String) async throws {
         throw BotAdminUnavailable()
     }
+    public func configureFeatures(profile: String, disabledSkills: [String]?,
+                                  enabledMCPServers: [String]?) async throws {
+        throw BotAdminUnavailable()
+    }
     public func rooms() async throws -> [RoomSummary] { [] }
     public func createRoom(name: String, members: [String]) async throws -> RoomSummary {
         throw BotAdminUnavailable()
@@ -272,14 +281,52 @@ public struct ProfileDescription: Sendable, Equatable {
     public var soul: String
     public var model: String?
     public var provider: String?
+    /// Every skill installed for this bot, with whether it is currently offered to it.
+    public var skills: [ProfileSkill]
+    /// Every MCP server configured for this bot, with whether it is currently started for it.
+    public var mcpServers: [ProfileMCPServer]
 
     public init(name: String, description: String, soul: String,
-                model: String? = nil, provider: String? = nil) {
+                model: String? = nil, provider: String? = nil,
+                skills: [ProfileSkill] = [], mcpServers: [ProfileMCPServer] = []) {
         self.name = name
         self.description = description
         self.soul = soul
         self.model = model
         self.provider = provider
+        self.skills = skills
+        self.mcpServers = mcpServers
+    }
+}
+
+/// One skill as `profiles.describe` reports it: installed, and on unless it is in `skills.disabled`.
+public struct ProfileSkill: Sendable, Equatable, Identifiable {
+    public let name: String
+    public var enabled: Bool
+    public var id: String { name }
+
+    public init(name: String, enabled: Bool) {
+        self.name = name
+        self.enabled = enabled
+    }
+
+    /// `grill-me` reads better than `grill-me` with a stray capital; the host's names are the ids.
+    public var title: String {
+        name.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+    }
+}
+
+/// One MCP server as `profiles.describe` reports it. `transport` is `stdio` or `http`.
+public struct ProfileMCPServer: Sendable, Equatable, Identifiable {
+    public let name: String
+    public var enabled: Bool
+    public let transport: String
+    public var id: String { name }
+
+    public init(name: String, enabled: Bool, transport: String) {
+        self.name = name
+        self.enabled = enabled
+        self.transport = transport
     }
 }
 
@@ -353,6 +400,14 @@ public extension GatewayClientProtocol {
     /// Stubs have no profiles to configure; say so instead of pretending the change landed.
     func configureModel(profile: String, model: String, provider: String, confirm: Bool) async throws -> ProfileModelChange {
         _ = (profile, model, provider, confirm)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "this client cannot configure a profile"))
+    }
+
+    /// Same for the feature lists: a switch that did not reach the host must move back.
+    func configureFeatures(profile: String, disabledSkills: [String]?,
+                           enabledMCPServers: [String]?) async throws {
+        _ = (profile, disabledSkills, enabledMCPServers)
         throw GatewayError.rpc(RPCError(code: -32601,
                                         message: "this client cannot configure a profile"))
     }

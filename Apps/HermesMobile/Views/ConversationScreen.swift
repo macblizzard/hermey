@@ -26,6 +26,8 @@ struct ConversationScreen: View {
     @State private var showResetConfirm = false
     @State private var showComputer = false
     @State private var showWorkspace = false
+    @State private var showSkills = false
+    @State private var showMCP = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
     /// The prepend counter this screen has already reacted to (see the transcript's onChange).
@@ -203,6 +205,12 @@ struct ConversationScreen: View {
         // sheet's own drag gesture took those touches and dismissed the window mid-task.
         .sheet(isPresented: $showWorkspace) {
             WorkspaceSheet(bot: bot, client: app.workspace)
+        }
+        .sheet(isPresented: $showSkills) {
+            BotToolsSheet(bot: bot, kind: .skills, model: model)
+        }
+        .sheet(isPresented: $showMCP) {
+            BotToolsSheet(bot: bot, kind: .mcp, model: model)
         }
         .fullScreenCover(isPresented: $showComputer) {
             BotComputerPane(profile: bot.id,
@@ -701,6 +709,22 @@ struct ConversationScreen: View {
                         showWorkspace = true
                     } label: {
                         Label("Workspace", systemImage: "folder")
+                    }
+
+                    Divider()
+
+                    // What this bot may reach for. Two panels because they are two different kinds of
+                    // reach: instructions it follows, and tools from outside Hermes it can call.
+                    Button {
+                        showSkills = true
+                    } label: {
+                        Label("Skills", systemImage: "book.closed")
+                    }
+
+                    Button {
+                        showMCP = true
+                    } label: {
+                        Label("MCP servers", systemImage: "puzzlepiece.extension")
                     }
 
                     Divider()

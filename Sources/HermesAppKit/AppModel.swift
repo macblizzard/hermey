@@ -1440,6 +1440,30 @@ public final class AppModel: ObservableObject {
         try await client.describeProfile(profile)
     }
 
+    /// Turn one skill on or off for a bot.
+    ///
+    /// `profiles.configure` **replaces** `skills.disabled`, so the list sent is every skill that is off
+    /// after this tap — computed from the host's own snapshot, never a one-item delta, which would
+    /// silently re-enable everything else.
+    public func setSkill(_ name: String, enabled: Bool, for profile: String,
+                         using description: ProfileDescription) async throws {
+        var disabled = Set(description.skills.filter { !$0.enabled }.map(\.name))
+        if enabled { disabled.remove(name) } else { disabled.insert(name) }
+        try await client.configureFeatures(profile: profile,
+                                           disabledSkills: Array(disabled).sorted(),
+                                           enabledMCPServers: nil)
+    }
+
+    /// Turn one MCP server on or off for a bot. Same replace rule, on `enabled_mcp_servers`.
+    public func setMCPServer(_ name: String, enabled: Bool, for profile: String,
+                             using description: ProfileDescription) async throws {
+        var servers = Set(description.mcpServers.filter(\.enabled).map(\.name))
+        if enabled { servers.insert(name) } else { servers.remove(name) }
+        try await client.configureFeatures(profile: profile,
+                                           disabledSkills: nil,
+                                           enabledMCPServers: Array(servers).sorted())
+    }
+
     /// Replace a bot's SOUL.md. The host caches the prompt per session, so a running conversation
     /// keeps the old soul until it is reset — the editor says so rather than pretending.
     public func saveSoul(_ text: String, for profile: String) async throws {
