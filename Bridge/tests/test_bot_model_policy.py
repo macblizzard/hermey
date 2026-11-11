@@ -45,9 +45,10 @@ def test_soul_is_editable_from_the_app_within_a_ceiling():
 
 
 def test_description_does_not_open_the_other_sections():
+    # `disabled_skills` and `enabled_mcp_servers` are deliberately not in this list any more: the app's
+    # Skills and MCP panels write them, as validated name lists (see test_feature_toggle_policy.py).
     for bad in ({"name": "assistant", "description": "Lead Developer", "ui_meta": {}},
-                {"name": "assistant", "description": "Lead Developer", "enabled_toolsets": []},
-                {"name": "assistant", "description": "Lead Developer", "disabled_skills": []}):
+                {"name": "assistant", "description": "Lead Developer", "enabled_toolsets": []}):
         assert not is_bot_model_configure_allowed(bad)
 
 
