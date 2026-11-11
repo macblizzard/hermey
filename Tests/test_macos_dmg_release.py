@@ -27,6 +27,20 @@ class TheJobBuildsIt(unittest.TestCase):
                       "without the shortcut there is nothing to drag the app onto")
         self.assertIn("cp -R \"$APP\" dist/dmg-root/Hermey.app", CI)
 
+    def test_the_app_is_ad_hoc_signed_before_packaging(self) -> None:
+        # A universal binary with no signature is not "untrusted", it is not executable on Apple
+        # silicon: the kernel kills it and macOS calls the app damaged. xattr does not repair that.
+        self.assertIn('codesign --force --sign - --timestamp=none "$APP"', CI)
+        self.assertLess(CI.index("codesign --force --sign -"), CI.index("hdiutil create"),
+                        "signing after packaging would sign nothing")
+
+    def test_the_shipped_image_is_mounted_and_checked(self) -> None:
+        self.assertIn('hdiutil attach dist/Hermey-macOS-unsigned.dmg', CI,
+                      "verify the artifact, not the build tree")
+        self.assertIn('codesign --verify --strict --verbose=2 "$MNT/Hermey.app"', CI)
+        self.assertIn('test -L "$MNT/Applications"', CI,
+                      "the drag target is the whole point of the image")
+
     def test_the_image_is_verified_before_it_is_published(self) -> None:
         self.assertIn("hdiutil verify dist/Hermey-macOS-unsigned.dmg", CI,
                       "a truncated image mounts as 'no mountable file systems' for the user, not for us")
