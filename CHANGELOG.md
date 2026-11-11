@@ -87,6 +87,15 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The bridge is a managed service again, deployed from this repo.** The unit pointed at an older
+  tree (`/opt/hermes-apps/Bridge`, system `python3`) while the running process came from
+  `/opt/hermey/venv`, so a restart would have silently run different code — and its sandbox
+  (`ReadWritePaths=/var/lib/hermes-bridge`) did not match the database the deployment actually uses.
+  The unit now runs the venv, with `/var/lib/hermey` and the profile tree writable, `Restart=always`,
+  and its state directory named in `bridge.env`, so paired devices survive a restart. Deploys are one
+  command: `Tools/release/deploy_bridge.sh` installs `./Bridge` into that venv and restarts the unit.
+
+### Fixed
 - **The Skills panel now lists the bot's real skill index, not its own folder.** `profiles.describe`
   reports only the skills installed inside a bot's profile directory — one or two on this host — while
   the bot actually draws on the shared library (236 skills across 25 categories here). The panel merges
