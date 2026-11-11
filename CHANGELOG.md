@@ -6,6 +6,15 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A workspace, with a viewer.** The ⋯ menu in a conversation now opens the bot's workspace: the
+  documents it prepared, and the files you sent it, in one list with sizes and ages. Tap one and it
+  opens — text as text, PDFs in a real PDF view, images at full bleed. Anything that cannot be laid out
+  from its bytes (`.docx`, `.xlsx`) says so plainly instead of showing a blank page, and the list is
+  strictly read-only: a stray gesture cannot tidy away a document a bot is still working on.
+  The bridge grew `GET /v1/workspace/<profile>` and `GET /v1/workspace/<profile>/file?path=`; both are
+  device-authenticated, refuse symlinks, refuse traversal, and serve byte ranges so a PDF can page.
+
+### Added
 - **The Mac app is published as a `.dmg` as well as a `.zip`.** The image opens as a window with
   `Hermey` beside an `Applications` shortcut, so installing is one drag instead of unzip-then-move. The
   zip stays for scripts and build servers, and both are `hdiutil verify`-checked before upload. No
