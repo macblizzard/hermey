@@ -25,6 +25,7 @@ struct ConversationScreen: View {
     @State private var showApprovalSheet = false
     @State private var showResetConfirm = false
     @State private var showComputer = false
+    @State private var showWorkspace = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
     /// The prepend counter this screen has already reacted to (see the transcript's onChange).
@@ -200,6 +201,9 @@ struct ConversationScreen: View {
         // thumbnail with buttons, which is what the pane already offers before you open it.
         // A page, not a sheet: the desktop is dragged, tapped and pinched inside this view, and a
         // sheet's own drag gesture took those touches and dismissed the window mid-task.
+        .sheet(isPresented: $showWorkspace) {
+            WorkspaceSheet(bot: bot, client: app.workspace)
+        }
         .fullScreenCover(isPresented: $showComputer) {
             BotComputerPane(profile: bot.id,
                             displayName: bot.displayName,
@@ -690,6 +694,13 @@ struct ConversationScreen: View {
                         showComputer = true
                     } label: {
                         Label("Computer", systemImage: "display")
+                    }
+
+                    // The documents behind the conversation: what the bot made, and what it was given.
+                    Button {
+                        showWorkspace = true
+                    } label: {
+                        Label("Workspace", systemImage: "folder")
                     }
 
                     Divider()

@@ -37,6 +37,7 @@ from .audit import AuditLog
 from .device_auth import is_local_host_request as is_local_host_request_shared
 from .bot_icons import create_bot_icons_router
 from .attachment_files import create_attachment_files_router
+from .workspace import create_workspace_router
 from .bot_previews import create_bot_previews_router
 from .bot_admin import create_bot_admin_router
 from .rooms import create_rooms_router
@@ -198,6 +199,7 @@ def create_app(
     app.include_router(create_bot_previews_router(runtime))
     # An uploaded picture lives on this host; a device that lost its copy asks for it here.
     app.include_router(create_attachment_files_router(runtime))
+    app.include_router(create_workspace_router(runtime))
     app.include_router(create_bot_sessions_router(runtime))
     # Operator-side: the agent on this host messages another bot in that bot's own chat.
     app.include_router(create_bot_message_router(runtime))

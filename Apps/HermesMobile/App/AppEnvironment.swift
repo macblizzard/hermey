@@ -23,6 +23,8 @@ final class AppEnvironment: ObservableObject {
     /// The shared Bot Computer (one desktop for every bot on the host). A value type whose
     /// endpoint closure mints a ticket per request, so it survives a re-pair and a reconnect.
     let computer: BotComputerClient
+    /// The bot's workspace: the list of documents and the bytes of one.
+    let workspace: WorkspaceClient
 
     // MARK: Pairing
 
@@ -93,6 +95,13 @@ final class AppEnvironment: ObservableObject {
         // Same ticket shape as the icon and preview calls: one freshly minted single-use ticket per
         // request, resolved against whatever host is paired right now.
         self.computer = BotComputerClient(endpoint: {
+            guard let credentials = await box.credentials() else { throw BridgeError.noHost }
+            let ticket = try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
+                                                             deviceID: credentials.host.deviceID,
+                                                             refreshToken: credentials.token)
+            return (credentials.host.baseURL, ticket)
+        })
+        self.workspace = WorkspaceClient(endpoint: {
             guard let credentials = await box.credentials() else { throw BridgeError.noHost }
             let ticket = try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
                                                              deviceID: credentials.host.deviceID,
