@@ -26,8 +26,10 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 
 ## macOS
 
-1. Download `Hermey-macOS-unsigned.zip` from the [latest release](../releases/latest) and move
-   `Hermey.app` to `/Applications`.
+1. Download `Hermey-macOS-unsigned.dmg` from the [latest release](../releases/latest), open it, and
+   drag `Hermey` onto the `Applications` shortcut in the same window. (A
+   [`.zip`](../releases/latest/download/Hermey-macOS-unsigned.zip) of the same app is published too,
+   for scripts and build servers that would rather expand an archive than mount a disk image.)
 2. First launch: right-click the app → **Open** → **Open** again. macOS remembers the choice.
    Recent versions may instead require
    `xattr -dr com.apple.quarantine /Applications/Hermey.app` once.

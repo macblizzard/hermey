@@ -101,6 +101,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipa", type=Path, required=True)
     parser.add_argument("--mac-zip", type=Path)
+    # The disk image is the friendly download; the zip is kept for anything that expands archives.
+    # Either can be published alone.
+    parser.add_argument("--mac-dmg", type=Path)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--notes", default="")
     parser.add_argument("--keep", type=int, default=5)
@@ -136,9 +139,10 @@ def main() -> int:
         try:
             shutil.copy2(args.ipa, staging / asset_name)
             files = [str(staging / asset_name)]
-            if args.mac_zip and args.mac_zip.exists():
-                shutil.copy2(args.mac_zip, staging / args.mac_zip.name)
-                files.append(str(staging / args.mac_zip.name))
+            for extra in (args.mac_zip, args.mac_dmg):
+                if extra and extra.exists():
+                    shutil.copy2(extra, staging / extra.name)
+                    files.append(str(staging / extra.name))
             run(["gh", "release", "create", tag, *files,
                  "-R", args.repo,
                  "--title", f"{SOURCE_NAME} {version} ({build})",
@@ -218,6 +222,9 @@ def main() -> int:
             if args.mac_zip and Path(args.mac_zip).is_file():
                 shutil.copy2(args.mac_zip, args.mirror_to / Path(args.mac_zip).name)
                 shutil.copy2(args.mac_zip, args.mirror_to / "Hermey-macOS-unsigned.zip")
+            if args.mac_dmg and Path(args.mac_dmg).is_file():
+                shutil.copy2(args.mac_dmg, args.mirror_to / Path(args.mac_dmg).name)
+                shutil.copy2(args.mac_dmg, args.mirror_to / "Hermey-macOS-unsigned.dmg")
             mirrored = json.loads(path.read_text())
             for entry in mirrored.get("apps", []):
                 for published in entry.get("versions", []):
