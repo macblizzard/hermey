@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.152",
+          "buildVersion": "152",
+          "date": "2026-11-11T11:47:15Z",
+          "localizedDescription": "The macOS download is served from Pages now, so the release CDN cannot stall it.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.152/Hermey-0.1.152-b152.ipa",
+          "size": 2024912,
+          "minOSVersion": "17.0",
+          "sha256": "cfb2bbe9b8397b8f03ddf4c869e10b57da54b78df675462ce94ff058bdd67d5a"
+        },
+        {
           "version": "0.1.149",
           "buildVersion": "149",
           "date": "2026-11-11T11:22:07Z",
@@ -62,16 +72,6 @@
           "size": 2024908,
           "minOSVersion": "17.0",
           "sha256": "e20414053f6c516f0e39fd22ed378d76618878d71fa940185fadd93db2ecbcb4"
-        },
-        {
-          "version": "0.1.134",
-          "buildVersion": "134",
-          "date": "2026-11-10T21:26:14Z",
-          "localizedDescription": "The long-press card now opens next to the line you pressed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.134/Hermey-0.1.134-b134.ipa",
-          "size": 2026147,
-          "minOSVersion": "17.0",
-          "sha256": "f8459efd81293e886ec89746159a0b485d51a44df5add69214a2cba2df208c4a"
         }
       ],
       "appPermissions": {
