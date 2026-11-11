@@ -568,12 +568,20 @@
             <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.6" y="2.6" width="12.8" height="8.4" rx="1.4" stroke="currentColor" stroke-width="1.4"/><path d="M5.6 13.6h4.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
             <h3>macOS</h3>
           </header>
-          <p class="req">macOS 14 or later · unsigned disk image (.dmg)</p>
+          <p class="req">macOS 14 or later · disk image (.dmg), unsigned</p>
           <ul>
-            <li>Open the disk image, drag Hermey to Applications, right-click → Open the first time</li>
+            <li>Open the disk image, drag Hermey onto the Applications shortcut</li>
             <li>Sidebar, chat and the bot's computer in one window</li>
             <li>⌘K for the command palette, ⌘↩ to send, ⌘. to interrupt a run</li>
           </ul>
+          <p style="margin:0 0 8px;color:var(--text-2);font-size:12.5px">
+            Unsigned, so macOS quarantines the first launch. Authorise it once — right-click →
+            <strong>Open</strong>, or run this in Terminal:
+          </p>
+          <div class="copy-line">
+            <code id="quarantine-cmd">xattr -dr com.apple.quarantine /Applications/Hermey.app</code>
+            <button class="copy-btn" type="button" data-copy="quarantine-cmd">Copy</button>
+          </div>
           <div class="foot">
             <a class="btn btn-ghost" href="https://github.com/macblizzard/hermey/releases/latest/download/Hermey-macOS-unsigned.dmg" style="padding:10px 16px;font-size:14px">Download for macOS</a>
             <p style="margin:12px 0 0;color:var(--text-2);font-size:12.5px">
