@@ -61,6 +61,14 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The macOS download no longer routes through GitHub's release CDN.** That CDN stalls mid-transfer
+  on some networks — the transfer starts and stops making progress while the file is otherwise fine.
+  CI now publishes the image to a small Pages repo as well, and the site links *that*: a plain `200`
+  with a `Content-Length`, `accept-ranges`, and no redirect in front of it.
+  <https://macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg> The release asset is
+  still attached for anyone who prefers it.
+
+### Fixed
 - **The Mac app launches on Apple silicon again.** CI built with `CODE_SIGNING_ALLOWED=NO`, so the
   universal binary carried no code signature at all — and an arm64 binary with no signature is not
   merely untrusted, the kernel refuses to execute it and macOS reports the app as **damaged**, which

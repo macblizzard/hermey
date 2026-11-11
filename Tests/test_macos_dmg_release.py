@@ -52,6 +52,21 @@ class TheJobBuildsIt(unittest.TestCase):
         self.assertNotIn("ditto -c -k", CI, "the zip step is gone, not merely unlisted")
 
 
+class TheDownloadDoesNotStall(unittest.TestCase):
+    def test_the_publisher_can_push_to_a_pages_repo(self) -> None:
+        # GitHub's release CDN stalls mid-download on some networks; the image is also published to a
+        # Pages repo whose URL is a plain 200 with a Content-Length and no redirect.
+        self.assertIn('parser.add_argument("--downloads-repo"', PUBLISH)
+        self.assertIn("def push_to_downloads_repo(", PUBLISH)
+
+    def test_the_pages_push_replaces_history(self) -> None:
+        self.assertIn('"push", "-q", "-f"', PUBLISH,
+                      "a fresh single commit each release, or the repo gains 7 MB per version")
+
+    def test_the_docs_name_the_direct_url(self) -> None:
+        self.assertIn("macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg", DOCS)
+
+
 class TheReleaseCarriesIt(unittest.TestCase):
     def test_the_publisher_takes_a_dmg(self) -> None:
         self.assertIn('parser.add_argument("--mac-dmg"', PUBLISH)

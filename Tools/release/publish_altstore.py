@@ -22,6 +22,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -97,12 +98,53 @@ def release_has(repo: str, tag: str, asset: str) -> bool:
     return any(item.get("name") == asset for item in assets)
 
 
+DOWNLOADS_PAGE = """<!doctype html><meta charset="utf-8"><title>Hermey downloads</title>
+<style>body{{font:16px/1.6 -apple-system,system-ui,sans-serif;max-width:44rem;margin:4rem auto;
+padding:0 1.5rem;color:#111}}a{{color:#0b6bcb}}code{{background:#f2f2f2;padding:.15em .35em;border-radius:4px}}</style>
+<h1>Hermey downloads</h1>
+<p>This repo exists so the app has a download URL that does not go through GitHub's release CDN,
+which stalls mid-transfer on some networks. The site links these files directly.</p>
+<ul>
+  <li><a href="{name}">Hermey for macOS</a> &mdash; disk image, unsigned, {version}</li>
+</ul>
+<p>iPhone builds live with each release:
+<a href="https://github.com/{repo}/releases">github.com/{repo}/releases</a>.</p>
+<p>First launch on macOS: right-click &rarr; <strong>Open</strong>, or run
+<code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code>.</p>
+"""
+
+
+def push_to_downloads_repo(slug: str, dmg: Path, version: str, repo: str) -> str:
+    """Force-push a fresh single commit carrying the image, so the repo never accumulates 7 MB blobs."""
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise SystemExit("--downloads-repo needs GITHUB_TOKEN in the environment")
+    work = Path(tempfile.mkdtemp(prefix="hermey-downloads-"))
+    try:
+        run(["git", "init", "-q", "-b", "gh-pages"], cwd=work)
+        shutil.copy2(dmg, work / dmg.name)
+        (work / "index.html").write_text(
+            DOWNLOADS_PAGE.format(name=dmg.name, version=version, repo=repo), encoding="utf-8")
+        (work / ".nojekyll").write_text("", encoding="utf-8")
+        run(["git", "add", "-A"], cwd=work)
+        run(["git", "-c", "user.name=Hermey release", "-c", "user.email=release@hermey.local",
+             "commit", "-q", "-m", f"downloads: {dmg.name} for {version}"], cwd=work)
+        url = f"https://x-access-token:{token}@github.com/{slug}.git"
+        run(["git", "push", "-q", "-f", url, "gh-pages:gh-pages"], cwd=work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/{dmg.name}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipa", type=Path, required=True)
     # The Mac build is a disk image: it opens as a window with the app beside an Applications
     # shortcut, so installing is a drag rather than unzip-then-move.
     parser.add_argument("--mac-dmg", type=Path)
+    # GitHub's release CDN stalls mid-download on some networks. With this, the image is also pushed
+    # to a small Pages repo whose URL is a plain 200 with Content-Length and no redirect at all.
+    parser.add_argument("--downloads-repo", help="owner/name whose gh-pages branch carries the image")
     parser.add_argument("--repo", required=True)
     parser.add_argument("--notes", default="")
     parser.add_argument("--keep", type=int, default=5)
@@ -265,6 +307,11 @@ def main() -> int:
             run(["git", "-C", str(work), "push", "origin", "HEAD:main"])
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+    if args.downloads_repo and args.mac_dmg and args.mac_dmg.exists():
+        published_dmg = push_to_downloads_repo(
+            args.downloads_repo, args.mac_dmg, f"{version} (build {build})", args.repo)
+        print(f"\n  mac      {published_dmg}")
 
     print(f"\n  source   https://raw.githubusercontent.com/{args.repo}/main/altstore.json")
     print(f"  ipa      {download}  ({len(data)} bytes)")

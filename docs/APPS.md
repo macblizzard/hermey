@@ -26,8 +26,11 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 
 ## macOS
 
-1. Download `Hermey-macOS-unsigned.dmg` from the [latest release](../releases/latest), open it, and
-   drag `Hermey` onto the `Applications` shortcut in the same window.
+1. Download `Hermey-macOS-unsigned.dmg` — a direct link, with no release-CDN redirect in front of it:
+   <https://macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg>
+   (the same file is attached to the [latest release](../releases/latest), but GitHub's release CDN
+   stalls mid-transfer on some networks). Open the image and drag `Hermey` onto the `Applications`
+   shortcut in the same window.
 2. The app is unsigned, so macOS quarantines it on first launch. Authorise it once, either way:
 
    ```bash
