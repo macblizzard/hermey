@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.164",
+          "buildVersion": "164",
+          "date": "2026-11-11T21:59:54Z",
+          "localizedDescription": "Per-bot Skills and MCP servers in the \u22ef menu, alongside the workspace.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.164/Hermey-0.1.164-b164.ipa",
+          "size": 2094923,
+          "minOSVersion": "17.0",
+          "sha256": "348e884e1ec91daa21365e6fc8b2e69040be26f96ab9aa83f6ec1fef877eb2f7"
+        },
+        {
           "version": "0.1.160",
           "buildVersion": "160",
           "date": "2026-11-11T21:18:24Z",
@@ -62,16 +72,6 @@
           "size": 2024917,
           "minOSVersion": "17.0",
           "sha256": "fe6219bc9c77ce81f3627836b2daea92b7bdc2caa1fe1086bf4b81d8d78ceaac"
-        },
-        {
-          "version": "0.1.146",
-          "buildVersion": "146",
-          "date": "2026-11-11T10:37:05Z",
-          "localizedDescription": "Mac app ships as a disk image only; the unsigned first launch is documented, xattr command included.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.146/Hermey-0.1.146-b146.ipa",
-          "size": 2024909,
-          "minOSVersion": "17.0",
-          "sha256": "0900d2c783ec395480c650fb20d4290fb9c7c3c0e16a47497890183e04b15e56"
         }
       ],
       "appPermissions": {
