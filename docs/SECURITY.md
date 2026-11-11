@@ -8,8 +8,9 @@ This document states the trust boundaries, the invariants that hold them up, the
 invariants are for, and the evidence (a test, or an explicit gap) for each one.
 
 Scope: `Bridge/hermes_bridge` (the only new server-side code), the `wss://` path into it, and the
-approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain item) is
-described where it matters, but not audited here.
+approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
+item, or a `0600` file on the unsigned Mac build) is described where it matters, but not audited
+here.
 
 ## 1. Trust boundaries
 
@@ -24,6 +25,10 @@ described where it matters, but not audited here.
                                        │  agent runtime · tools · approvals · vault          │
                                        └─────────────────────────────────────────────────────┘
 ```
+
+The Mac build ships unsigned and has no keychain entitlement, so it keeps those same items in a
+`0600` file under `~/Library/Application Support/Hermey/`, excluded from backups; the phone uses the
+Keychain alone.
 
 | Boundary | Crossing it requires | What is on the other side |
 |---|---|---|
@@ -119,7 +124,8 @@ Each is a real difference between the design and the implementation, with the im
 a signed assertion (`02-architecture.md` §6.4 asks for one). A stolen refresh token is therefore a
 bearer credential. *Fix:* sign `{device_id, timestamp, nonce}` with the device key, verify with the
 stored public key, reject clock skew > 60 s, and rate-limit per device. Until then, keep the refresh
-token in the Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and rely on revocation.
+token in the Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and rely on revocation. The
+unsigned Mac build cannot use the Keychain, so there it lives in the `0600` file described above.
 
 **G2 — revoking a device does not drop its live socket (medium).**
 `test_revoking_a_device_drops_its_live_socket` is `xfail`. Revocation blocks the next token and the

@@ -96,7 +96,10 @@ voice. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - Pairing is a short numeric code minted on the host, redeemed once for a device key pair. Every
   request carries a single-use 30-second bearer ticket; a leaked log is worthless.
 - Devices are individually revocable, and revoking one does not disturb the others.
-- The apps store their private key in the Keychain; nothing is written to `UserDefaults`.
+- The apps store their private key in the Keychain; nothing is written to `UserDefaults`. An unsigned
+  Mac build has no keychain entitlement, so it also keeps the same item in a `0600` file under
+  `~/Library/Application Support/Hermey/` (excluded from backups) — Settings → Host says which tier
+  holds it.
 
 Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a problem.
 

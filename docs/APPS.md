@@ -48,8 +48,9 @@ macOS 14+ is required (SwiftUI features the shell relies on).
 
 ## Unpairing and revocation
 
-Removing a device in the app deletes its key from the Keychain. On the host, revoking a device
-invalidates its outstanding tickets immediately and leaves the other devices alone:
+Removing a device in the app deletes its key — from the Keychain, and from the `0600` file an
+unsigned Mac build keeps it in. On the host, revoking a device invalidates its outstanding tickets
+immediately and leaves the other devices alone:
 
 ```bash
 hermey doctor            # see what is paired and whether it is healthy
