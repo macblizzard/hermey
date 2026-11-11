@@ -1440,6 +1440,11 @@ public final class AppModel: ObservableObject {
         try await client.describeProfile(profile)
     }
 
+    /// Every skill this host offers this bot, flattened — what the Skills panel lists.
+    public func availableSkills(_ profile: String) async throws -> [String] {
+        try await client.availableSkills(profile: profile)
+    }
+
     /// Turn one skill on or off for a bot.
     ///
     /// `profiles.configure` **replaces** `skills.disabled`, so the list sent is every skill that is off

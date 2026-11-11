@@ -139,7 +139,7 @@ struct BotToolsSheet: View {
                 }
             } footer: {
                 Text(kind == .skills
-                     ? "\(skills.filter(\.enabled).count) of \(skills.count) on for this bot."
+                     ? "\(skills.filter(\.enabled).count) of \(skills.count) on for this bot — a skill this host cannot run is listed but never on."
                      : "\(servers.filter(\.enabled).count) of \(servers.count) on for this bot.")
                     .font(TypeScale.font(TypeScale.sm))
             }
@@ -206,7 +206,22 @@ struct BotToolsSheet: View {
         isLoading = description == nil
         failure = nil
         do {
-            description = try await model.describeBot(bot.id)
+            var described = try await model.describeBot(bot.id)
+            if kind == .skills {
+                // `profiles.describe` only knows the skills sitting in the bot's own folder — one or
+                // two on this host. The full index is the hub's list, which the host has already
+                // filtered by what is disabled and by what this platform can run.
+                let available = Set(try await model.availableSkills(bot.id))
+                var merged: [ProfileSkill] = described.skills
+                let known = Set(merged.map(\.name))
+                merged.append(contentsOf: available.subtracting(known)
+                    .sorted()
+                    .map { ProfileSkill(name: $0, enabled: true) })
+                described.skills = merged.map { skill in
+                    ProfileSkill(name: skill.name, enabled: available.contains(skill.name))
+                }.sorted { $0.name < $1.name }
+            }
+            description = described
         } catch {
             failure = error.localizedDescription
         }

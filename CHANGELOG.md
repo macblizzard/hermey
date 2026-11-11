@@ -79,6 +79,18 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The Skills panel now lists the bot's real skill index, not its own folder.** `profiles.describe`
+  reports only the skills installed inside a bot's profile directory — one or two on this host — while
+  the bot actually draws on the shared library (236 skills across 25 categories here). The panel merges
+  the host's filtered hub list with the profile's own entries, so a skill this host cannot run shows as
+  off rather than missing.
+- **The bridge lets a device flip those two lists, and nothing else.** `disabled_skills` /
+  `enabled_mcp_servers` are now accepted by `profiles.configure` from a paired device — names only,
+  capped at 500, each matching `[A-Za-z0-9][A-Za-z0-9._-]*`, with `enabled_toolsets` and `ui_meta` still
+  host-only. `skills.manage` is allowed for `action: list` alone; an `install` from a phone is refused
+  before it reaches the gateway.
+
+### Fixed
 - **The chat no longer flickers while a reply streams, and scrolling up while a bot is working stays
   put.** Both had one cause: every streaming change scrolled the transcript, so a reply arriving at
   tens of tokens a second re-laid out the view tens of times a second, and the drag was overridden by

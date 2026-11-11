@@ -633,6 +633,23 @@ public actor GatewayClient: GatewayClientProtocol {
         }
     }
 
+    /// `skills.manage {action: list}` — the bot's real skill index, flattened out of its categories.
+    public func availableSkills(profile: String) async throws -> [String] {
+        let result = try await perform("skills.manage", params: .object([
+            "action": .string("list"),
+            "profile": .string(profile),
+        ]), timeout: timeouts.sessionResume)
+        // The host groups by category: `{"skills": {"research": ["arxiv", …], …}}`.
+        guard let grouped = result?["skills"] else { return [] }
+        if case let .object(byCategory) = grouped {
+            return byCategory.values
+                .flatMap { $0.arrayValue ?? [] }
+                .compactMap { $0.stringValue }
+                .sorted()
+        }
+        return grouped.arrayValue?.compactMap { $0.stringValue }.sorted() ?? []
+    }
+
     /// `profiles.configure` for the two feature lists.
     ///
     /// The host replaces each list rather than merging into it, which is why this takes the whole set:
