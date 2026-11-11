@@ -45,6 +45,7 @@ from .policy import (
     is_server_request_allowed,
     is_valid_method_name,
     is_bot_model_configure_allowed,
+    is_skills_manage_allowed,
 )
 
 # Close codes: 4401 is "re-authenticate" (bridge-defined), the rest are RFC 6455.
@@ -413,7 +414,9 @@ class GatewayProxy:
         if (not is_valid_method_name(method) or method not in self._allow
                 or (method in {"image.attach", "pdf.attach", "clipboard.paste", "image.detach"})
                 or (method == "profiles.configure"
-                    and not is_bot_model_configure_allowed(frame.get("params")))):
+                    and not is_bot_model_configure_allowed(frame.get("params")))
+                or (method == "skills.manage"
+                    and not is_skills_manage_allowed(frame.get("params")))):
             shown = method if is_valid_method_name(method) else None
             await self._send_error_to_client(
                 request_id,

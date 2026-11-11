@@ -48,6 +48,8 @@ CLIENT_METHODS = frozenset(
         # Removing one is not on this list on purpose — the gateway has no such method, so the
         # bridge owns it (`bot_admin.py`, which archives before it deletes).
         "profiles.create",
+        # The skills hub, read side only — see `is_skills_manage_allowed` for the action check.
+        "skills.manage",
         # sessions
         "session.list",
         "session.active_list",
@@ -112,15 +114,36 @@ SERVER_REQUEST_METHODS = frozenset(
 
 _METHOD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 
-#: The only sections of the gateway's broad profile editor the app may write: the model pair and
-#: the human-readable description. Everything else (``soul``, ``ui_meta``, skills, toolsets, MCP…)
+#: The only sections of the gateway's broad profile editor the app may write: the model pair, the
+#: human-readable description, and — because the owner asked for switches in the app — the two
+#: feature lists ``disabled_skills`` and ``enabled_mcp_servers``. Each is a list of *names*, validated
+#: below, capped, and never free text. Everything else (``ui_meta``, skills as files, toolsets…)
 #: stays host-only.
 #: `soul` is here because the owner asked to edit a bot's SOUL.md from the app. It is a text
 #: section with a hard ceiling: a SOUL.md is injected into every turn of that bot, so an accidental
 #: paste of a megabyte file would be paid for on every message it ever answers.
 _ALLOWED_PROFILE_SECTIONS = frozenset(
-    {"name", "model", "provider", "confirm_expensive_model", "description", "soul"}
+    {"name", "model", "provider", "confirm_expensive_model", "description", "soul",
+     "disabled_skills", "enabled_mcp_servers"}
 )
+
+#: A feature list is a list of installed names, not a place to smuggle a path or a shell fragment.
+_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+MAX_FEATURE_NAMES = 500
+
+
+def _is_name_list(value: object) -> bool:
+    return (isinstance(value, list) and len(value) <= MAX_FEATURE_NAMES
+            and all(isinstance(item, str) and _NAME_RE.match(item) for item in value))
+
+
+def is_skills_manage_allowed(params: object) -> bool:
+    """Only the read side of the skills hub: the app lists what a bot has, it does not install.
+
+    ``skills.manage`` also carries ``install``/``browse``/``inspect`` — writes to the profile's own
+    skills directory — so presence on the allow-list is not enough; the action is checked.
+    """
+    return isinstance(params, dict) and params.get("action", "list") == "list" and set(params) <= {"action", "profile"}
 
 MAX_SOUL_CHARS = 64_000
 
@@ -143,9 +166,14 @@ def is_bot_model_configure_allowed(params: object) -> bool:
     has_description = "description" in params
     has_model = "model" in params or "provider" in params
     has_soul = "soul" in params
-    if not has_description and not has_model and not has_soul:
+    has_features = "disabled_skills" in params or "enabled_mcp_servers" in params
+    if not has_description and not has_model and not has_soul and not has_features:
         return False
     if has_description and not isinstance(params["description"], str):
+        return False
+    if "disabled_skills" in params and not _is_name_list(params["disabled_skills"]):
+        return False
+    if "enabled_mcp_servers" in params and not _is_name_list(params["enabled_mcp_servers"]):
         return False
     if has_soul and not (isinstance(params["soul"], str) and len(params["soul"]) <= MAX_SOUL_CHARS):
         return False

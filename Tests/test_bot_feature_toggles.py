@@ -47,6 +47,26 @@ class TheHostContractIsTheOneWeRead(unittest.TestCase):
         self.assertIn("let transport: String", kit)
 
 
+class TheListIsTheWholeIndex(unittest.TestCase):
+    def test_the_hub_list_is_merged_with_the_profiles_own(self) -> None:
+        sheet = read(SHEET)
+        self.assertIn("model.availableSkills(bot.id)", sheet,
+                      "describe alone reports one or two skills on this host")
+        self.assertIn("available.subtracting(known)", sheet)
+        self.assertIn("enabled: available.contains(skill.name)", sheet)
+
+    def test_a_client_without_a_hub_reports_none(self) -> None:
+        kit = read(KIT)
+        default = kit.split("func availableSkills(profile: String) async throws -> [String] {", 1)[1].split("}", 1)[0]
+        self.assertIn("[]", default)
+
+    def test_the_hub_call_is_read_only(self) -> None:
+        actor = read(ACTOR)
+        body = actor.split("public func availableSkills(", 1)[1].split("/// `profiles.configure`", 1)[0]
+        self.assertIn('"action": .string("list")', body)
+        self.assertNotIn("install", body)
+
+
 class ItReplacesInsteadOfPatching(unittest.TestCase):
     def test_a_skill_toggle_sends_the_whole_disabled_set(self) -> None:
         model = read(MODEL)

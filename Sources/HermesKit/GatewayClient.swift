@@ -185,6 +185,12 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Everything the bot editor needs for one bot (`profiles.describe`): the SOUL text, the
     /// description the host stores, and the model pin.
     func describeProfile(_ profile: String) async throws -> ProfileDescription
+    /// `skills.manage {action: list}` — every skill this host offers this bot, flattened.
+    ///
+    /// `profiles.describe` only reports skills installed *in the bot's own folder*, which on this host
+    /// is one or two; the shared library is what a bot actually works with, and the host's list already
+    /// excludes the disabled ones and the ones this platform cannot run.
+    func availableSkills(profile: String) async throws -> [String]
 
     /// Replace a bot's SOUL.md (`profiles.configure`, soul section only).
     ///
@@ -399,6 +405,9 @@ public extension GatewayClientProtocol {
         throw GatewayError.rpc(RPCError(code: -32601,
                                         message: "this client cannot configure a profile"))
     }
+
+    /// A client with no skills hub reports none, rather than inventing a list.
+    func availableSkills(profile: String) async throws -> [String] { [] }
 
     /// Same for the feature lists: a switch that did not reach the host must move back.
     func configureFeatures(profile: String, disabledSkills: [String]?,
