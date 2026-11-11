@@ -6,6 +6,15 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Skills and MCP servers, per bot, from the ⋯ menu.** Two new panels list what a bot may reach for —
+  its skills under *Skills*, its MCP servers under *MCP servers* — each row a switch. Flipping one
+  rewrites that bot's own config on the host, so it survives a relaunch and applies only to that bot:
+  a disabled skill leaves the bot's index entirely (it cannot be called by name either), and a disabled
+  MCP server stops being started for it. `profiles.configure` **replaces** both lists wholesale, so the
+  app sends the complete set computed from `profiles.describe` — sending a one-item delta would silently
+  switch off everything else the bot had.
+
+### Added
 - **A workspace, with a viewer.** The ⋯ menu in a conversation now opens the bot's workspace: the
   documents it prepared, and the files you sent it, in one list with sizes and ages. Tap one and it
   opens — text as text, PDFs in a real PDF view, images at full bleed. Anything that cannot be laid out

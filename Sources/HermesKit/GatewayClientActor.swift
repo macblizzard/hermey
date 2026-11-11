@@ -597,12 +597,24 @@ public actor GatewayClient: GatewayClientProtocol {
         let result = try await perform("profiles.describe", params: .object(["name": .string(profile)]),
                                        timeout: timeouts.sessionResume)
         guard let result else { throw GatewayError.malformedResponse(method: "profiles.describe") }
+        let skills = (result["skills"]?.arrayValue ?? []).compactMap { entry -> ProfileSkill? in
+            guard let name = entry["name"]?.stringValue else { return nil }
+            return ProfileSkill(name: name, enabled: entry["enabled"]?.boolValue ?? true)
+        }
+        let servers = (result["mcp_servers"]?.arrayValue ?? []).compactMap { entry -> ProfileMCPServer? in
+            guard let name = entry["name"]?.stringValue else { return nil }
+            return ProfileMCPServer(name: name,
+                                    enabled: entry["enabled"]?.boolValue ?? true,
+                                    transport: entry["transport"]?.stringValue ?? "stdio")
+        }
         return ProfileDescription(
             name: result["name"]?.stringValue ?? profile,
             description: result["description"]?.stringValue ?? "",
             soul: result["soul"]?.stringValue ?? "",
             model: result["model"]?["default"]?.stringValue,
-            provider: result["model"]?["provider"]?.stringValue
+            provider: result["model"]?["provider"]?.stringValue,
+            skills: skills.sorted { $0.name < $1.name },
+            mcpServers: servers
         )
     }
 
@@ -614,6 +626,25 @@ public actor GatewayClient: GatewayClientProtocol {
         ]), timeout: timeouts.sessionResume)
         if result?["confirm_required"]?.boolValue == true {
             // A SOUL.md is never an expensive model; if the host asks, something is wrong.
+            throw GatewayError.malformedResponse(method: "profiles.configure")
+        }
+        guard result?["ok"]?.boolValue != false else {
+            throw GatewayError.malformedResponse(method: "profiles.configure")
+        }
+    }
+
+    /// `profiles.configure` for the two feature lists.
+    ///
+    /// The host replaces each list rather than merging into it, which is why this takes the whole set:
+    /// sending "the one skill I turned off" would silently enable every other skill on the bot.
+    public func configureFeatures(profile: String, disabledSkills: [String]?,
+                                  enabledMCPServers: [String]?) async throws {
+        var params: [String: JSONValue] = ["name": .string(profile)]
+        if let disabledSkills { params["disabled_skills"] = .array(disabledSkills.map { .string($0) }) }
+        if let enabledMCPServers { params["enabled_mcp_servers"] = .array(enabledMCPServers.map { .string($0) }) }
+        let result = try await perform("profiles.configure", params: .object(params),
+                                       timeout: timeouts.sessionResume)
+        if result?["confirm_required"]?.boolValue == true {
             throw GatewayError.malformedResponse(method: "profiles.configure")
         }
         guard result?["ok"]?.boolValue != false else {
