@@ -123,6 +123,16 @@ All notable changes to Hermey are recorded here. The format follows
   message with the emoji hidden behind "Add reaction".
 
 ### Changed
+- **One Mac artifact: the `.dmg`.** The zip was a wrapper around the same `Hermey.app`, so CI now
+  builds only the disk image and the release publishes only it. `publish_altstore.py` and the shell
+  wrappers dropped `--mac-zip` in favour of `--mac-dmg`.
+- **The unsigned first launch is documented where people look.** `docs/APPS.md` and the landing page
+  both give the one-liner that authorises the app —
+  `xattr -dr com.apple.quarantine /Applications/Hermey.app` — next to the right-click → Open route,
+  because "cannot be opened because the developer cannot be verified" is the first thing a Mac user
+  meets and the fix is not obvious.
+
+### Changed
 - **The three-dot menus open smaller.** The bar button is unchanged (a bare glyph, as before) — the
   popup was what was wrong: every row's label is shorter ("Search", "Compact", "Reset chat",
   "New group chat", "Hidden bots"), so the panel is narrower without losing a single verb.

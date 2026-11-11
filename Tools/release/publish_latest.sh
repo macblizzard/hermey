@@ -24,13 +24,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 gh run download "$RUN_ID" -D "$TMP" >/dev/null
 IPA=$(find "$TMP" -name '*.ipa' | head -1)
-MAC=$(find "$TMP" -name '*.zip' | head -1)
+MAC=$(find "$TMP" -name '*.dmg' | head -1)
 [ -n "$IPA" ] || { echo "run $RUN_ID has no .ipa artifact" >&2; exit 1; }
 
 NOTES=${NOTES:-"Build from CI run $RUN_ID."}
 python3 Tools/release/publish_source.py \
   --ipa "$IPA" \
-  ${MAC:+--mac-zip "$MAC"} \
+  ${MAC:+--mac-dmg "$MAC"} \
   --base-url "$BASE_URL" \
   --out "$OUT" \
   --notes "$NOTES"

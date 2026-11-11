@@ -65,7 +65,7 @@ def read_ipa(ipa: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipa", required=True, type=Path)
-    parser.add_argument("--mac-zip", type=Path, help="optional macOS build to publish alongside")
+    parser.add_argument("--mac-dmg", type=Path, help="optional macOS disk image to publish alongside")
     parser.add_argument("--base-url", required=True, help="public origin that serves this directory")
     parser.add_argument("--out", required=True, type=Path, help="directory to write into (served as-is)")
     parser.add_argument("--notes", default="", help="release notes for this version")
@@ -89,12 +89,12 @@ def main() -> int:
     except Exception:
         ipa_name = safe_component(args.ipa.name)
     shutil.copy2(args.ipa, out / ipa_name)
-    if args.mac_zip:
-        published = out / args.mac_zip.name
-        shutil.copy2(args.mac_zip, published)
+    if args.mac_dmg:
+        published = out / args.mac_dmg.name
+        shutil.copy2(args.mac_dmg, published)
         # The old name keeps working: somebody's bookmark, a README, a message thread. One more file
         # on disk is cheaper than a dead download link.
-        legacy = out / "Hermes-macOS-unsigned.zip"
+        legacy = out / "Hermes-macOS-unsigned.dmg"
         if published.name != legacy.name:
             shutil.copy2(published, legacy)
     if args.icon and args.icon.resolve() != (out / "icon-512.png").resolve():
@@ -186,7 +186,7 @@ def main() -> int:
         "<ul>"
         f"<li><a style='color:#42a0ff' href='source.json'>source.json</a></li>"
         f"<li><a style='color:#42a0ff' href='{html.escape(ipa_name)}'>{html.escape(ipa_name)}</a> ({size // 1024} KB)</li>"
-        + (f"<li><a style='color:#42a0ff' href='{html.escape(args.mac_zip.name)}'>{html.escape(args.mac_zip.name)}</a></li>" if args.mac_zip else "")
+        + (f"<li><a style='color:#42a0ff' href='{html.escape(args.mac_dmg.name)}'>{html.escape(args.mac_dmg.name)}</a></li>" if args.mac_dmg else "")
         + "</ul></body>"
     )
 

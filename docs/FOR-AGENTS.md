@@ -102,7 +102,7 @@ Send the human these, verbatim:
   ([sidestore.io](https://sidestore.io)), then add this source in its *Sources* tab:
   `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`
   and install **Hermey** from it. Unsigned builds need re-signing every ~7 days with a free Apple ID.
-- **macOS** — download `Hermey-macOS-unsigned.zip` from
+- **macOS** — download `Hermey-macOS-unsigned.dmg` from
   <https://github.com/macblizzard/hermey/releases/latest>, move `Hermey.app` to `/Applications`, then
   right-click → **Open** → **Open**. If macOS still refuses:
   `xattr -dr com.apple.quarantine /Applications/Hermey.app`.

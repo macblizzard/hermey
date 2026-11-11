@@ -27,12 +27,17 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 ## macOS
 
 1. Download `Hermey-macOS-unsigned.dmg` from the [latest release](../releases/latest), open it, and
-   drag `Hermey` onto the `Applications` shortcut in the same window. (A
-   [`.zip`](../releases/latest/download/Hermey-macOS-unsigned.zip) of the same app is published too,
-   for scripts and build servers that would rather expand an archive than mount a disk image.)
-2. First launch: right-click the app → **Open** → **Open** again. macOS remembers the choice.
-   Recent versions may instead require
-   `xattr -dr com.apple.quarantine /Applications/Hermey.app` once.
+   drag `Hermey` onto the `Applications` shortcut in the same window.
+2. The app is unsigned, so macOS quarantines it on first launch. Authorise it once, either way:
+
+   ```bash
+   # the quiet way, in Terminal
+   xattr -dr com.apple.quarantine /Applications/Hermey.app
+   ```
+
+   or by hand: right-click `Hermey` → **Open** → **Open** again. macOS remembers the choice, so this
+   is a first-launch step and not a routine one. If you move or re-download the app, the mark comes
+   back with the new copy — run the command again.
 3. The Mac app pairs exactly like the phone: run `hermey pair` on the host and paste what it prints
    into **Pairing code or link** — the eight digits, or the whole `hermes://` link (the Mac has no
    camera). The code is single use and lives ten minutes.

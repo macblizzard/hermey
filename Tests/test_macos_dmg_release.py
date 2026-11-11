@@ -31,23 +31,21 @@ class TheJobBuildsIt(unittest.TestCase):
         self.assertIn("hdiutil verify dist/Hermey-macOS-unsigned.dmg", CI,
                       "a truncated image mounts as 'no mountable file systems' for the user, not for us")
 
-    def test_the_zip_is_still_built(self) -> None:
-        self.assertIn("ditto -c -k --sequesterRsrc --keepParent", CI,
-                      "scripts and build servers expand archives; both are published")
-
-    def test_both_are_uploaded(self) -> None:
+    def test_only_the_image_is_published(self) -> None:
         block = CI.split("name: Hermey-macOS-unsigned", 1)[1].split("if-no-files-found", 1)[0]
-        self.assertIn("dist/Hermey-macOS-unsigned.zip", block)
         self.assertIn("dist/Hermey-macOS-unsigned.dmg", block)
+        self.assertNotIn(".zip", block, "the zip was a wrapper around the same .app; one artifact is enough")
+        self.assertNotIn("ditto -c -k", CI, "the zip step is gone, not merely unlisted")
 
 
 class TheReleaseCarriesIt(unittest.TestCase):
     def test_the_publisher_takes_a_dmg(self) -> None:
         self.assertIn('parser.add_argument("--mac-dmg"', PUBLISH)
 
-    def test_a_dmg_alone_is_enough(self) -> None:
-        # The release assets loop must not require the zip to exist as well.
-        self.assertIn("for extra in (args.mac_zip, args.mac_dmg):", PUBLISH)
+    def test_the_publisher_knows_one_mac_artifact(self) -> None:
+        self.assertIn("--mac-dmg", PUBLISH)
+        self.assertNotIn("--mac-zip", PUBLISH, "two Mac artifacts was the old contract; one is the new")
+        self.assertNotIn("mac_zip", PUBLISH)
 
     def test_the_mirror_gets_a_stable_name(self) -> None:
         self.assertIn('args.mirror_to / "Hermey-macOS-unsigned.dmg"', PUBLISH,
@@ -57,8 +55,12 @@ class TheReleaseCarriesIt(unittest.TestCase):
 class TheDocsSaySo(unittest.TestCase):
     def test_the_mac_instructions_lead_with_the_image(self) -> None:
         self.assertIn("Hermey-macOS-unsigned.dmg", DOCS)
-        self.assertLess(DOCS.index("Hermey-macOS-unsigned.dmg"), DOCS.index("`.zip`"),
-                        "the image is the instruction; the zip is the alternative")
+
+    def test_the_quarantine_command_is_written_out(self) -> None:
+        # An unsigned app that will not open is the first thing a Mac user hits; the command that
+        # fixes it is one line, and it belongs in the instructions rather than in a support thread.
+        self.assertIn("xattr -dr com.apple.quarantine /Applications/Hermey.app", DOCS)
+        self.assertIn("right-click", DOCS.lower(), "the GUI route is offered too, for people who prefer it")
 
 
 if __name__ == "__main__":
