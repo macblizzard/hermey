@@ -96,6 +96,12 @@ struct WorkspaceRoot: View {
             switch route {
             case .pair:
                 PairHostSheet(store: store)
+            case .workspace(let bot):
+                MacWorkspaceSheet(bot: bot, client: store.workspace)
+            case .skills(let bot):
+                MacBotToolsSheet(bot: bot, kind: .skills, model: store.model)
+            case .mcp(let bot):
+                MacBotToolsSheet(bot: bot, kind: .mcp, model: store.model)
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,
@@ -111,11 +117,17 @@ struct WorkspaceRoot: View {
     /// store's flags does not re-present a sheet that is already on screen.
     private enum WorkspacePresentation: Identifiable {
         case pair
+        case workspace(Bot)
+        case skills(Bot)
+        case mcp(Bot)
         case botSettings(Bot)
 
         var id: String {
             switch self {
             case .pair: return "pair"
+            case .workspace(let bot): return "workspace:\(bot.id)"
+            case .skills(let bot): return "skills:\(bot.id)"
+            case .mcp(let bot): return "mcp:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             }
         }
@@ -128,12 +140,18 @@ struct WorkspaceRoot: View {
         Binding(
             get: {
                 if store.isPairSheetPresented { return .pair }
+                if let bot = store.workspaceBot { return .workspace(bot) }
+                if let bot = store.skillsBot { return .skills(bot) }
+                if let bot = store.mcpBot { return .mcp(bot) }
                 if let bot = store.botSettingsBot { return .botSettings(bot) }
                 return nil
             },
             set: { route in
                 guard route == nil else { return }
                 store.isPairSheetPresented = false
+                store.workspaceBot = nil
+                store.skillsBot = nil
+                store.mcpBot = nil
                 store.botSettingsBot = nil
             }
         )

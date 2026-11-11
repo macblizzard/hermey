@@ -6,6 +6,14 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The Mac has the three per-bot panels the phone got.** ⋯ → **Workspace…** opens a sheet with the
+  documents on the left and the document on the right — same viewer rules, same read-only rule: text in
+  a monospaced reader, PDFs in `PDFView`, images at full size, and "no preview for this kind of file"
+  instead of a blank pane. **Skills…** and **MCP servers…** are the same two lists with switches, read
+  from the same host calls as the phone. All three share the window's single modal route, so opening one
+  closes the others rather than queueing a sheet behind a sheet.
+
+### Added
 - **Skills and MCP servers, per bot, from the ⋯ menu.** Two new panels list what a bot may reach for —
   its skills under *Skills*, its MCP servers under *MCP servers* — each row a switch. Flipping one
   rewrites that bot's own config on the host, so it survives a relaunch and applies only to that bot:

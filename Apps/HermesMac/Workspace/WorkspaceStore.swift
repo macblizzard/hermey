@@ -100,6 +100,21 @@ final class WorkspaceStore: ObservableObject {
     /// panel is a property of the window, not of the selected bot — switching bots keeps it open
     /// and the pane re-labels itself.
     @Published var isComputerPanelPresented = false
+    /// Which of the three per-bot panels is up. One at a time, like every other sheet here.
+    @Published var workspaceBot: Bot?
+    @Published var skillsBot: Bot?
+    @Published var mcpBot: Bot?
+
+    /// Open one of them, closing any other: the window's one modal is shared.
+    func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
+    func openSkills(_ bot: Bot) { closePanels(); skillsBot = bot }
+    func openMCP(_ bot: Bot) { closePanels(); mcpBot = bot }
+
+    private func closePanels() {
+        workspaceBot = nil
+        skillsBot = nil
+        mcpBot = nil
+    }
     /// Full screen is the panel's own verb; closing the panel drops it so the next open is a panel.
     @Published var isComputerFullScreen = false
 
@@ -771,6 +786,17 @@ final class WorkspaceStore: ObservableObject {
     /// The Bot Computer client: one ticket per request, resolved against the host paired *now*.
     var computer: BotComputerClient {
         BotComputerClient(endpoint: { [weak self] in
+            guard let address = await MainActor.run(body: { self?.pairing }) else {
+                throw MacDeviceService.Failure.devicePairingRequired
+            }
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
+    }
+
+    /// The workspace client: same minted-ticket-per-request rule as the computer.
+    var workspace: WorkspaceClient {
+        WorkspaceClient(endpoint: { [weak self] in
             guard let address = await MainActor.run(body: { self?.pairing }) else {
                 throw MacDeviceService.Failure.devicePairingRequired
             }
