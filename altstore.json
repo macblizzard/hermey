@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.149",
+          "buildVersion": "149",
+          "date": "2026-11-11T11:22:07Z",
+          "localizedDescription": "Mac app is ad-hoc signed so Apple silicon will actually run it; the image is mounted and verified in CI before upload.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.149/Hermey-0.1.149-b149.ipa",
+          "size": 2024917,
+          "minOSVersion": "17.0",
+          "sha256": "fe6219bc9c77ce81f3627836b2daea92b7bdc2caa1fe1086bf4b81d8d78ceaac"
+        },
+        {
           "version": "0.1.146",
           "buildVersion": "146",
           "date": "2026-11-11T10:37:05Z",
@@ -62,16 +72,6 @@
           "size": 2026147,
           "minOSVersion": "17.0",
           "sha256": "f8459efd81293e886ec89746159a0b485d51a44df5add69214a2cba2df208c4a"
-        },
-        {
-          "version": "0.1.131",
-          "buildVersion": "131",
-          "date": "2026-11-10T21:08:41Z",
-          "localizedDescription": "The long-press card opens above a message at the bottom, so the reactions stay visible.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.131/Hermey-0.1.131-b131.ipa",
-          "size": 2022048,
-          "minOSVersion": "17.0",
-          "sha256": "9117b6611bc73d7e99b338fa4ad4fa0938c0673665848ea777bcee829966e872"
         }
       ],
       "appPermissions": {
