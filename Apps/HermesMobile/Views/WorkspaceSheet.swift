@@ -103,7 +103,7 @@ struct WorkspaceSheet: View {
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(file.name)
-                        .font(TypeScale.font(TypeScale.base, weight: .medium))
+                        .font(TypeScale.font(TypeScale.md, weight: .medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Text("\(file.sizeDescription) · \(file.whenText())")
