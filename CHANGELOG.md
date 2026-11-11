@@ -61,6 +61,15 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The chat no longer flickers while a reply streams, and scrolling up while a bot is working stays
+  put.** Both had one cause: every streaming change scrolled the transcript, so a reply arriving at
+  tens of tokens a second re-laid out the view tens of times a second, and the drag was overridden by
+  the next token. Scrolling is now coalesced to one in flight at a time, and "at the bottom" comes
+  from a measured distance rather than from a sentinel row appearing — with the reader's own intent
+  (`followsStream`, set false the moment a finger drags) deciding whether a token may pull the view
+  down at all.
+
+### Fixed
 - **The macOS download no longer routes through GitHub's release CDN.** That CDN stalls mid-transfer
   on some networks — the transfer starts and stops making progress while the file is otherwise fine.
   CI now publishes the image to a small Pages repo as well, and the site links *that*: a plain `200`

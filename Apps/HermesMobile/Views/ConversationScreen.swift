@@ -35,10 +35,21 @@ struct ConversationScreen: View {
     @State private var keyboardScrollTask: Task<Void, Never>?
     @State private var isDraggingTranscript = false
 
-    /// Whether the transcript's own end is on screen. Fed by the bottom sentinel appearing and
-    /// disappearing, so it is a fact about the scroll position rather than a guess — it decides
-    /// both whether new tokens may pull the view down and whether the way back is offered.
+    /// Whether the transcript's own end is on screen, and whether the reader still wants it there.
+    ///
+    /// Two facts, deliberately separate. `bottomDistance` is measured — how far the sentinel sits
+    /// below the viewport — so it cannot be fooled by a lazy row being re-laid out. `followsStream`
+    /// is intent: a reader who drags upward stops being followed until they come back to the end,
+    /// which is why the transcript no longer yanks itself down while a bot is still writing.
     @State private var isAtBottom = true
+    @State private var followsStream = true
+    @State private var bottomDistance: CGFloat = .greatestFiniteMagnitude
+    /// The scroll view's own height, needed to turn the sentinel's position into a distance.
+    @State private var transcriptHeight: CGFloat = 0
+    /// At most one coalesced scroll in flight: a token arriving while one is queued must not queue
+    /// a second. That, not the scrolling itself, is what made the screen flicker.
+    @State private var followTask: Task<Void, Never>?
+    private static let scrollSpace = "conversation-scroll"
 
     /// Bumped when a conversation finishes opening. The jump runs a few times because a lazy
     /// transcript lays its rows out over several frames, and a single scroll taken on the first
@@ -437,15 +448,33 @@ struct ConversationScreen: View {
                     .padding(.top, 12)
                     .padding(.bottom, 20)
             }
+            // The sentinel reports its position in this space; without a name there is nothing to
+            // measure against and the bottom has to be inferred from `onAppear`, which lies during
+            // streaming.
+            .coordinateSpace(name: Self.scrollSpace)
+            .background(GeometryReader { geo in
+                Color.clear
+                    .onAppear { transcriptHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { _, height in transcriptHeight = height }
+            })
             .scrollDismissesKeyboard(.interactively)
             // The way back to the newest message, on the same rule as the desktop's: it appears
             // only while the transcript's end is off screen.
-            .overlay(alignment: .bottomTrailing) { scrollToBottomControl(proxy) }
-            .animation(.easeOut(duration: 0.18), value: isAtBottom)
+            // The fade belongs to the button alone. Animating the scroll view is what made a
+            // streaming reply shimmer: every token's layout pass went through the animation.
+            .overlay(alignment: .bottomTrailing) {
+                scrollToBottomControl(proxy)
+                    .animation(.easeOut(duration: 0.18), value: isAtBottom)
+            }
+
             .simultaneousGesture(DragGesture(minimumDistance: 5)
                 .onChanged { _ in
                     isDraggingTranscript = true
                     keyboardScrollTask?.cancel()
+                    // Dragging is the reader saying where they want to look. A finger on the
+                    // transcript outranks a bot that is still writing.
+                    followTask?.cancel()
+                    followsStream = false
                 }
                 .onEnded { _ in isDraggingTranscript = false })
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
@@ -476,14 +505,30 @@ struct ConversationScreen: View {
                     follow(proxy, animated: true)
                 }
             }
+            // Streaming changes faster than the screen refreshes. Each of these used to call
+            // `scrollTo` directly, so a reply arriving at 40 tokens a second asked the transcript to
+            // re-lay itself out 40 times a second — the flicker — and any drag was overridden by the
+            // next token. `followStreaming` queues one scroll at a time instead.
             .onChange(of: model.streamingText) {
-                follow(proxy, animated: false)
+                followStreaming(proxy)
             }
             .onChange(of: model.liveTools.count) {
-                follow(proxy, animated: false)
+                followStreaming(proxy)
             }
             .onChange(of: model.reasoningText) {
-                follow(proxy, animated: false)
+                followStreaming(proxy)
+            }
+            .onPreferenceChange(BottomDistanceKey.self) { distance in
+                // Before the first layout pass the key holds its default; a sentinel nobody has
+                // measured is not evidence that the reader is somewhere else.
+                guard distance.isFinite else { return }
+                bottomDistance = distance
+                guard !isDraggingTranscript else { return }
+                let atEnd = distance <= Self.bottomSlack
+                if atEnd != isAtBottom {
+                    isAtBottom = atEnd
+                    followsStream = atEnd
+                }
             }
             .onChange(of: searchText) {
                 searchIndex = 0
@@ -565,10 +610,14 @@ struct ConversationScreen: View {
             Color.clear
                 .frame(height: 1)
                 .id(ConversationScreen.bottomID)
-                // On screen only when the newest message is. A lazy row's appearance is the one
-                // scroll fact a SwiftUI ScrollView gives without a preference dance.
-                .onAppear { isAtBottom = true }
-                .onDisappear { isAtBottom = false }
+                // Reports where the end of the transcript is, in the scroll view's own space, on
+                // every layout pass — including the ones a growing reply causes. Reading a position
+                // is honest; watching a lazy row appear and disappear is not.
+                .background(GeometryReader { geo in
+                    Color.clear.preference(
+                        key: BottomDistanceKey.self,
+                        value: geo.frame(in: .named(ConversationScreen.scrollSpace)).minY - transcriptHeight)
+                })
         }
     }
 
@@ -1021,6 +1070,10 @@ struct ConversationScreen: View {
         }
     }
 
+    /// The transcript is "at the bottom" when its end is this close to the bottom of the viewport.
+    /// A slack of one line, so a reader sitting on the last message is not asked to chase it.
+    private static let bottomSlack: CGFloat = 24
+
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
         guard !isSearching, (!model.transcript.isEmpty || model.isStreaming) else { return }
         if animated {
@@ -1035,8 +1088,25 @@ struct ConversationScreen: View {
     /// Pull down only while the end was already on screen: a reader mid-history keeps their place
     /// and gets the button instead of being dragged back by every token.
     private func follow(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard isAtBottom else { return }
+        guard followsStream, !isDraggingTranscript else { return }
         scroll(proxy, animated: animated)
+    }
+
+    /// One queued scroll at a time for a stream that changes hundreds of times a second.
+    ///
+    /// Coalescing matters twice over: it stops the transcript re-laying itself out per token (the
+    /// flicker), and it means a drag started mid-token wins, because the queued scroll re-checks
+    /// intent when it runs rather than when it was asked for.
+    private func followStreaming(_ proxy: ScrollViewProxy) {
+        guard followsStream, !isDraggingTranscript, followTask == nil else { return }
+        followTask = Task { @MainActor in
+            defer { followTask = nil }
+            try? await Task.sleep(nanoseconds: 60_000_000)
+            guard !Task.isCancelled, followsStream, !isDraggingTranscript else { return }
+            // Already there: a scroll that lands where the view sits is not free, it is a layout.
+            guard bottomDistance > 2 else { return }
+            scroll(proxy, animated: false)
+        }
     }
 
     @ViewBuilder
@@ -1058,10 +1128,20 @@ struct ConversationScreen: View {
             .buttonStyle(.plain)
             .padding(.trailing, 16)
             .padding(.bottom, 12)
+            .transition(.opacity)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
             .accessibilityIdentifier("conversationScrollToBottom")
             .accessibilityLabel("Scroll to latest message")
         }
+    }
+}
+
+/// How far the end of the transcript sits below the bottom of the viewport. Negative means it is on
+/// screen; the smallest reported value wins, because a `LazyVStack` can report several.
+private struct BottomDistanceKey: PreferenceKey {
+    static var defaultValue: CGFloat = .greatestFiniteMagnitude
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = min(value, nextValue())
     }
 }
 
