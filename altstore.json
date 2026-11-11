@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.171",
+          "buildVersion": "171",
+          "date": "2026-11-11T23:07:47Z",
+          "localizedDescription": "The Mac has the three panels: Workspace, Skills and MCP servers.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.171/Hermey-0.1.171-b171.ipa",
+          "size": 2103193,
+          "minOSVersion": "17.0",
+          "sha256": "4834d41c451a443994d9865b76224d8569f17009ce00914ccaa272936a1aca66"
+        },
+        {
           "version": "0.1.168",
           "buildVersion": "168",
           "date": "2026-11-11T22:27:30Z",
@@ -62,16 +72,6 @@
           "size": 2028542,
           "minOSVersion": "17.0",
           "sha256": "1e0c1b34d6a3badf023a80f57657797fc0fbbbf01c35e0caa9f3d1e7d81dbc33"
-        },
-        {
-          "version": "0.1.152",
-          "buildVersion": "152",
-          "date": "2026-11-11T11:47:15Z",
-          "localizedDescription": "The macOS download is served from Pages now, so the release CDN cannot stall it.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.152/Hermey-0.1.152-b152.ipa",
-          "size": 2024912,
-          "minOSVersion": "17.0",
-          "sha256": "cfb2bbe9b8397b8f03ddf4c869e10b57da54b78df675462ce94ff058bdd67d5a"
         }
       ],
       "appPermissions": {
