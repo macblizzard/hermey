@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.146",
+          "buildVersion": "146",
+          "date": "2026-11-11T10:37:05Z",
+          "localizedDescription": "Mac app ships as a disk image only; the unsigned first launch is documented, xattr command included.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.146/Hermey-0.1.146-b146.ipa",
+          "size": 2024909,
+          "minOSVersion": "17.0",
+          "sha256": "0900d2c783ec395480c650fb20d4290fb9c7c3c0e16a47497890183e04b15e56"
+        },
+        {
           "version": "0.1.143",
           "buildVersion": "143",
           "date": "2026-11-11T10:14:49Z",
@@ -62,16 +72,6 @@
           "size": 2022048,
           "minOSVersion": "17.0",
           "sha256": "9117b6611bc73d7e99b338fa4ad4fa0938c0673665848ea777bcee829966e872"
-        },
-        {
-          "version": "0.1.128",
-          "buildVersion": "128",
-          "date": "2026-11-10T20:40:22Z",
-          "localizedDescription": "Switching bots is instant: each conversation is kept in memory and painted before the host is asked.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.128/Hermey-0.1.128-b128.ipa",
-          "size": 2020334,
-          "minOSVersion": "17.0",
-          "sha256": "ac42d7ab5ec84846ec9e2022e24f9f9ad059973a49a46a7446b12d9f8d3f988e"
         }
       ],
       "appPermissions": {
