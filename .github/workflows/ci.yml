@@ -81,6 +81,12 @@ jobs:
           mkdir -p dist
           APP="build/dd/Build/Products/Release/Hermey.app"
           test -d "$APP"
+          # Ad-hoc sign before packaging. A universal binary with no signature at all is not merely
+          # "untrusted" — on Apple silicon the kernel refuses to execute it and macOS reports the app
+          # as damaged, which xattr cannot repair. `-s -` costs no certificate: it is a local signature,
+          # enough to run, and it does not make the app trusted by Gatekeeper (that needs notarization).
+          codesign --force --sign - --timestamp=none "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
           # One Mac artifact, and it is the one a person double-clicks: the volume opens as a window
           # with the app beside a shortcut to /Applications, so installing is one drag. (The zip this
           # replaced was only ever a wrapper around the same .app.)
@@ -92,6 +98,15 @@ jobs:
             -ov dist/Hermey-macOS-unsigned.dmg
           rm -rf dist/dmg-root
           hdiutil verify dist/Hermey-macOS-unsigned.dmg
+          # And prove the artifact, not the build tree: mount what will be uploaded and check the
+          # signature and the drag target from inside the mounted volume.
+          MNT="$(mktemp -d)"
+          hdiutil attach dist/Hermey-macOS-unsigned.dmg -nobrowse -readonly -mountpoint "$MNT" >/dev/null
+          codesign --verify --strict --verbose=2 "$MNT/Hermey.app"
+          test -L "$MNT/Applications" || { echo "the volume has no Applications shortcut to drag onto"; exit 1; }
+          test -x "$MNT/Hermey.app/Contents/MacOS/Hermey" || { echo "the app inside the image is not executable"; exit 1; }
+          hdiutil detach "$MNT" >/dev/null
+          rmdir "$MNT"
           ls -la dist
       # Debug is not redundant with the Release archive: 96 `#if DEBUG` blocks exist across the app
       # targets and only this job compiles them.

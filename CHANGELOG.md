@@ -61,6 +61,15 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **The Mac app launches on Apple silicon again.** CI built with `CODE_SIGNING_ALLOWED=NO`, so the
+  universal binary carried no code signature at all — and an arm64 binary with no signature is not
+  merely untrusted, the kernel refuses to execute it and macOS reports the app as **damaged**, which
+  `xattr` cannot fix. The build now ad-hoc signs (`codesign --force --sign -`) before packaging, then
+  mounts the finished image and verifies the signature and the `/Applications` shortcut from *inside*
+  the artifact that gets uploaded. Ad-hoc needs no certificate and changes nothing about Gatekeeper's
+  verdict: the first-launch quarantine step, and the `xattr` line, stay exactly as documented.
+
+### Fixed
 - **The chat scrolls again on iOS.** A `DragGesture(minimumDistance: 0)` on every message row took each
   touch from the scroll view, so nothing scrolled. The press location it was added for is not worth a
   dead chat: the card's arrow now points at the middle of the message's **visible** slice, measured from
