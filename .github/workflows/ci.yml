@@ -75,12 +75,24 @@ jobs:
             -destination 'platform=macOS' -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} build
-      - name: Zip macOS app (unsigned)
+      - name: Package the macOS app (zip and dmg)
         run: |
+          set -euo pipefail
           mkdir -p dist
           APP="build/dd/Build/Products/Release/Hermey.app"
           test -d "$APP"
+          # The zip stays: it is what a script or a build server can expand without mounting
+          # anything. The dmg is what a person double-clicks — it opens as a window with the app
+          # beside a shortcut to /Applications, so installing is one drag.
           ditto -c -k --sequesterRsrc --keepParent "$APP" dist/Hermey-macOS-unsigned.zip
+          mkdir -p dist/dmg-root
+          cp -R "$APP" dist/dmg-root/Hermey.app
+          ln -s /Applications dist/dmg-root/Applications
+          hdiutil create -volname "Hermey" -srcfolder dist/dmg-root \
+            -fs HFS+ -format UDZO -imagekey zlib-level=9 \
+            -ov dist/Hermey-macOS-unsigned.dmg
+          rm -rf dist/dmg-root
+          hdiutil verify dist/Hermey-macOS-unsigned.dmg
           ls -la dist
       # Debug is not redundant with the Release archive: 96 `#if DEBUG` blocks exist across the app
       # targets and only this job compiles them.
@@ -98,7 +110,9 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
           name: Hermey-macOS-unsigned
-          path: dist/Hermey-macOS-unsigned.zip
+          path: |
+            dist/Hermey-macOS-unsigned.zip
+            dist/Hermey-macOS-unsigned.dmg
           if-no-files-found: error
 
   ipa:

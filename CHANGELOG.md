@@ -6,6 +6,13 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The Mac app is published as a `.dmg` as well as a `.zip`.** The image opens as a window with
+  `Hermey` beside an `Applications` shortcut, so installing is one drag instead of unzip-then-move. The
+  zip stays for scripts and build servers, and both are `hdiutil verify`-checked before upload. No
+  notarization is involved: a disk image is not what Gatekeeper objects to — the unsigned app is, and
+  it behaves the same inside an image as inside an archive.
+
+### Added
 - **The phone can copy a code block — and both apps say when they did.** The desktop's code cards had a
   copy button that copied in silence, so the same press happened twice; the phone's had no button at
   all, leaving a long press and two drag handles as the only way to take a command off the screen. One
