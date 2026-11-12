@@ -38,12 +38,9 @@ jobs:
         run: |
           swift --version
           xcodebuild -version
-      - name: Cache SwiftPM build
-        uses: actions/cache@v4
-        with:
-          path: .build
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
-          restore-keys: spm-${{ runner.os }}-
+      # No `actions/cache` anywhere in this workflow, on purpose: `.build` and DerivedData are
+      # hundreds of megabytes, and a free plan's 500 MB of Actions storage is shared by caches *and*
+      # artifacts. The builds are slower; the account is not suspended.
       - name: Build
         run: swift build --build-tests
       - name: Test
@@ -58,16 +55,6 @@ jobs:
         run: command -v xcodegen >/dev/null || brew install xcodegen
       - name: Generate project
         run: xcodegen generate
-      - name: Cache DerivedData
-        uses: actions/cache@v4
-        with:
-          path: |
-            build/dd
-            build/dd-ios
-          # Keyed on the project definition, not the commit: a code change restores the cache and
-          # recompiles only what changed, which is the thing Xcode is actually good at.
-          key: dd-${{ runner.os }}-${{ hashFiles('project.yml', 'Package.swift') }}
-          restore-keys: dd-${{ runner.os }}-
       - name: Build macOS app
         run: |
           set -o pipefail
@@ -126,6 +113,9 @@ jobs:
           name: Hermey-macOS-unsigned
           path: dist/Hermey-macOS-unsigned.dmg
           if-no-files-found: error
+          # Published within minutes of the run ending; 90 days of every build is what filled the
+          # account's 500 MB of Actions storage.
+          retention-days: 2
 
   ipa:
     name: Unsigned .ipa (for FlareStore)
@@ -136,12 +126,6 @@ jobs:
         run: command -v xcodegen >/dev/null || brew install xcodegen
       - name: Generate project
         run: xcodegen generate
-      - name: Cache DerivedData
-        uses: actions/cache@v4
-        with:
-          path: build/ipa-dd
-          key: ipadd-${{ runner.os }}-${{ hashFiles('project.yml', 'Package.swift') }}
-          restore-keys: ipadd-${{ runner.os }}-
       - name: Archive (no signing)
         run: |
           set -o pipefail
@@ -169,6 +153,7 @@ jobs:
           name: Hermey-unsigned-ipa
           path: dist/Hermey-unsigned.ipa
           if-no-files-found: error
+          retention-days: 2
 
   bridge:
     name: Bridge (python)
