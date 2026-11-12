@@ -31,10 +31,10 @@ that is not loopback (the gateway token must never cross a network).
 | `HERMES_BRIDGE_GATEWAY_URL` | `ws://127.0.0.1:8080/api/ws` | local gateway WS endpoint |
 | `HERMES_BRIDGE_GATEWAY_TOKEN` | — | gateway credential; never sent to a client |
 | `HERMES_BRIDGE_DB` | `~/.local/state/hermes-bridge/bridge.db` | device registry |
-| `HERMES_BRIDGE_FRAME_CAP` | `1048576` | max bytes per JSON-RPC frame |
+| `HERMES_BRIDGE_FRAME_CAP` | `16777216` | max bytes per JSON-RPC frame (16 MiB ceiling) |
 | `HERMES_BRIDGE_MAX_PENDING` | `256` | in-flight client requests per socket |
 | `HERMES_BRIDGE_EXTRA_METHODS` | — | comma-separated additions to the allow-list |
-| `HERMES_BRIDGE_PUBLIC_HOST` | `hermes.example.ts.net` | host shown in `pair/start` |
+| `HERMES_BRIDGE_PUBLIC_HOST` | — (the request's `Host` header) | host shown in `pair/start`; the installer sets it to the tailnet name |
 
 ## Endpoints
 
@@ -81,7 +81,7 @@ Per connection:
    gateway's original id. An id collision with an in-flight request is remapped
    (`brq-N`) and restored on the way back. Anything else is answered `-32601`
    upstream so the agent fails fast instead of hanging.
-5. A frame over the cap (1 MiB, UTF-8 bytes) closes the socket with `1009`;
+5. A frame over the cap (16 MiB by default, UTF-8 bytes) closes the socket with `1009`;
    gateway failure is `1011`; a bad ticket is `403` before upgrade.
 
 ## Security invariants
