@@ -87,6 +87,18 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **Compact does something now, on both platforms.** The button asked the host to compact a session by
+  its *stored* id; the host addresses sessions by the *runtime* id, which this process only learns from a
+  resume. A conversation restored from the last launch therefore answered `4001 session not found` — and
+  that error went to a field no view renders, so the button looked dead. It now opens the session first
+  and retries once, and a refusal (including "session busy — stop the reply first") is written into the
+  header notice instead of vanishing.
+- **A long chat no longer opens on a blank pane.** Measured on a real 2,503-row conversation: a resume
+  costs the host ~4 s. The rows this process already has are now painted immediately and replaced by the
+  host's answer when it lands, so returning to a chat is a refresh rather than a wait. Memory only — the
+  host stays the authority.
+
+### Fixed
 - **CI stopped filling the account's Actions storage.** The plan includes 500 MB shared by caches and
   artifacts; the repo was at 100% with 1.4 GB of DerivedData caches and 214 build artifacts kept for 90
   days. Caching is gone from the workflow (`.build` and DerivedData are hundreds of megabytes a key),
