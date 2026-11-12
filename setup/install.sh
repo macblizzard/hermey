@@ -385,7 +385,10 @@ case "\${1:-status}" in
   status)
     systemctl --no-pager --lines=0 status "\$UNIT" | head -3 || true
     if curl -fsS "\$base/v1/health" >/dev/null 2>&1; then echo "bridge:   healthy on \$base"; else echo "bridge:   NOT answering on \$base"; fi
-    [ -n "\$HOST_DNS" ] && echo "tailnet:  https://\$HOST_DNS:\$HTTPS (tailscale serve)"
+    # An if, not a chained test: as the arm's last statement a failing [ -n ] became the script's
+    # exit status, so a --no-serve install (no tailnet name) exited 1 while the bridge was healthy,
+    # and "hermey status exits 0" is the installer's own pass condition.
+    if [ -n "\$HOST_DNS" ]; then echo "tailnet:  https://\$HOST_DNS:\$HTTPS (tailscale serve)"; fi
     ;;
   pair)
     # A pairing code lives for minutes, so it is minted when you ask, not at install time.
@@ -422,8 +425,15 @@ qr=qrcode.QRCode(border=1); qr.add_data(sys.argv[1]); qr.print_ascii(invert=True
     echo "gateway:   \$(systemctl show -p Environment "\$UNIT" --value | tr ' ' '\n' | sed -n 's/^HERMES_BRIDGE_GATEWAY_URL=//p' | head -1)"
     if command -v tailscale >/dev/null; then
       echo "tailscale: \$(tailscale status --json 2>/dev/null | sed -n 's/.*"BackendState": *"\([A-Za-z]*\)".*/\1/p' | head -1)"
-      [ -n "\$HOST_DNS" ] && curl -fsS --max-time 10 "https://\$HOST_DNS:\$HTTPS/v1/health" >/dev/null 2>&1 \\
-        && echo "https:     ok" || true
+      if [ -n "\$HOST_DNS" ]; then
+        # A failed check used to print nothing at all (a chained test with || true), so doctor went
+        # quiet exactly when the certificate or the serve mapping was the broken part.
+        if curl -fsS --max-time 10 "https://\$HOST_DNS:\$HTTPS/v1/health" >/dev/null 2>&1; then
+          echo "https:     ok"
+        else
+          echo "https:     FAIL"
+        fi
+      fi
     fi
     ;;
   update)  curl -fsSL "https://github.com/$REPO/releases/latest/download/install.sh" | bash;;

@@ -8,7 +8,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VENV="${HERMES_BRIDGE_VENV:-/opt/hermey/venv}"
-UNIT="${HERMES_BRIDGE_UNIT:-hermes-native-bridge}"
+# The unit `setup/install.sh` creates. It used to default to the retired predecessor unit
+# (`hermes-native-bridge`), so a deploy could install the new package and restart a unit nobody was
+# serving from — reporting success while the live bridge kept the old code in memory.
+UNIT="${HERMES_BRIDGE_UNIT:-hermey-bridge}"
 
 if [[ ! -x "$VENV/bin/python" ]]; then
   echo "no python in $VENV — set HERMES_BRIDGE_VENV to the venv the unit runs" >&2

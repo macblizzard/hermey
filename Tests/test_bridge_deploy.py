@@ -28,7 +28,24 @@ class TheDeployIsOneCommand(unittest.TestCase):
     def test_it_restarts_the_unit_it_names(self) -> None:
         body = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('systemctl restart "$UNIT"', body)
-        self.assertIn('HERMES_BRIDGE_UNIT:-hermes-native-bridge', body)
+        self.assertIn('HERMES_BRIDGE_UNIT:-hermey-bridge', body)
+
+    def test_the_default_unit_is_the_one_the_installer_creates(self) -> None:
+        """A deploy must restart the unit the bridge actually runs as.
+
+        The guard used to pin `hermes-native-bridge`, the retired predecessor unit: the script then
+        installed the new package and restarted something nothing was serving from, so it printed a
+        green deploy while the live bridge kept running the old code.
+        """
+        body = SCRIPT.read_text(encoding="utf-8")
+        installer = (ROOT / "setup" / "install.sh").read_text(encoding="utf-8")
+        self.assertIn('UNIT_PREFIX=${HERMEY_UNIT_PREFIX:-hermey}', installer)
+        self.assertIn('$UNIT_PREFIX-bridge', installer, "the installer's unit name moved; follow it")
+        self.assertIn('UNIT="${HERMES_BRIDGE_UNIT:-hermey-bridge}"', body)
+        unit_line = [line for line in body.splitlines() if line.startswith("UNIT=")]
+        self.assertEqual(len(unit_line), 1, "one place decides the unit")
+        self.assertNotIn("hermes-native-bridge", unit_line[0],
+                         "the predecessor unit is stopped, not deleted — deploying to it is a silent no-op")
 
     def test_it_refuses_a_venv_without_python(self) -> None:
         body = SCRIPT.read_text(encoding="utf-8")
