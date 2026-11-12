@@ -6,6 +6,17 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Compacting no longer fails when the phone goes to sleep.** A compaction is 2–3 minutes of *host*
+  work (measured 74 s, 123 s, 163 s here) and iOS tears the socket down the moment the app leaves the
+  foreground — the bridge logs `client_closed` 1001 about 200 ms after the request, and the app then
+  told you "could not compact — The operation couldn't be completed. Software caused connection
+  abort" while the host was still working. A lost answer is no longer treated as a refusal: the state
+  stays "compacting… the host keeps working while the app is away", nothing can start a second one,
+  and the next transcript the host hands back settles it — "conversation compacted" if it changed, and
+  an honest "compacting did not report back" once five minutes have passed with no reconnect. A real
+  refusal still says so, and an errno never reaches the screen as the reason.
+
+### Fixed
 - **Minimising the app no longer blanks the chat, and coming back lands at the newest message.** A
   foreground sends `gateway.ready` again, and the answer used to be a fresh `select()` — which empties
   the transcript before it asks the host anything and then replaces every row after a new layout pass.

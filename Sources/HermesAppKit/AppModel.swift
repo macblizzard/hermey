@@ -154,6 +154,34 @@ public final class AppModel: ObservableObject {
     /// does not go in `lastSendError`.
     @Published public private(set) var compactionNotice: String?
 
+    /// A compaction whose answer never reached this process because the socket went away first.
+    ///
+    /// Compacting is **host work**, not a phone-side request: measured 74 s, 123 s and 163 s on this
+    /// profile. iOS suspends the socket the moment the app leaves the foreground (the bridge logs
+    /// `client_closed` / 1001 about 200 ms after the request), so a compaction asked for and then put
+    /// in a pocket threw `Software caused connection abort` at the user while the host was happily
+    /// working. This record is what makes the difference between "the host refused" and "the answer
+    /// had nowhere to land": it keeps the state alive across the reconnect and is settled by the next
+    /// transcript that differs, or by patience running out.
+    private struct CompactionWait {
+        let session: SessionID
+        let entriesBefore: Int
+        let totalBefore: Int
+        let startedAt: Date
+    }
+    private var compactionWait: CompactionWait?
+    /// True while the running compaction's answer is known to have been lost with its socket, so a
+    /// reconnect settles it. A refresh during a *live* request must never settle anything: the
+    /// transcript may change for other reasons and the compaction has not started yet.
+    private var compactionAnswerLost = false
+    private var compactionWatchdog: Task<Void, Never>?
+
+    /// How long a compaction may stay unaccounted for before the app stops pretending it knows.
+    ///
+    /// The slowest measured compaction on this host is 163 s; five minutes is comfortably past it and
+    /// still short enough that nobody stares at a spinner for an afternoon.
+    public static let compactionPatience: TimeInterval = 300
+
     /// Bumped every time a reconnect re-reads the open transcript in place.
     ///
     /// The rows are *replaced*, not cleared and refilled, so the scroll view keeps its offset — which
@@ -609,6 +637,13 @@ public final class AppModel: ObservableObject {
     /// opaque NSError text does not help anyone decide what to do next.
     private static func compactionReason(_ error: Error) -> String {
         if case let GatewayError.rpc(rpc) = error, !rpc.message.isEmpty { return rpc.message }
+        if let gateway = error as? GatewayError { return gateway.message }
+        let ns = error as NSError
+        // "The operation couldn't be completed. Software caused connection abort" is errno 53, which
+        // is a sentence about a socket, not about the conversation the user asked to compact.
+        if ns.domain == NSURLErrorDomain || ns.domain == NSPOSIXErrorDomain {
+            return "the connection dropped before the host answered"
+        }
         return error.localizedDescription
     }
 
@@ -753,6 +788,7 @@ public final class AppModel: ObservableObject {
             adopt(resumed, session: sid)
             remember(sid, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
             transcriptReloads += 1
+            settleCompactionWait()
         } catch is CancellationError {
             return
         } catch {
@@ -1225,7 +1261,8 @@ public final class AppModel: ObservableObject {
         }
         guard let sid = selectedSessionID else { return }
         isCompressing = true
-        defer { isCompressing = false }
+        compactionWait = CompactionWait(session: sid, entriesBefore: transcript.count,
+                                        totalBefore: historyTotal, startedAt: Date())
         do {
             do {
                 try await client.compress(session: sid)
@@ -1237,26 +1274,96 @@ public final class AppModel: ObservableObject {
                 // first records the mapping; the retry is the same call the user asked for.
                 ClientLog.note("session.compress: opening the session first (\(error.localizedDescription))",
                                level: .info, category: "compaction")
-                await select(sid)
-                guard selectedSessionID == sid else {
-                    isCompressing = false
-                    return
-                }
+                await refreshTranscript(sid)
+                guard selectedSessionID == sid else { return finishCompaction() }
                 try await client.compress(session: sid)
             }
             // Refresh first, then report: the notice is set last so nothing inside the refresh can
             // overwrite it, and the context gauge is cleared because it showed the *pre*-compaction
             // size. The next turn's `usage` is the first honest number after a compaction.
-            await select(sid)
+            await refreshTranscript(sid)
             contextUsed = nil
             compactionNotice = "conversation compacted"
+            finishCompaction()
         } catch {
+            if Self.isLostAnswer(error) {
+                // The socket went away; the host did not. Keep saying so, and let the next reconnect
+                // settle it: a transcript that differs means it landed, and patience bounds the wait.
+                compactionAnswerLost = true
+                compactionNotice = "compacting… the host keeps working while the app is away"
+                ClientLog.note("session.compress: no answer in this socket (\(error.localizedDescription))"
+                               + " — the host may still be working",
+                               level: .warning, category: "compaction")
+                // Nothing may promise "still working" forever: if no reconnect ever settles it, the
+                // app says it no longer knows rather than spinning for an afternoon.
+                compactionWatchdog?.cancel()
+                compactionWatchdog = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(Self.compactionPatience))
+                    guard !Task.isCancelled, let self, self.compactionWait != nil else { return }
+                    self.compactionNotice =
+                        "compacting did not report back — open the chat again to see where it stands"
+                    self.finishCompaction()
+                }
+                return
+            }
             // Say it in the place the header already draws. A silent failure is why this looked like
             // a dead button: the error only ever reached `lastSendError`, which nothing renders.
-            let reason = error.localizedDescription
+            let reason = Self.compactionReason(error)
             lastSendError = "could not compact: \(reason)"
-            compactionNotice = "could not compact — \(Self.compactionReason(error))"
+            compactionNotice = "could not compact — \(reason)"
             ClientLog.note("session.compress failed: \(reason)", level: .error, category: "compaction")
+            finishCompaction()
+        }
+    }
+
+    /// Clear the compaction state — both the spinner and the wait for a lost answer.
+    private func finishCompaction() {
+        compactionWatchdog?.cancel()
+        compactionWatchdog = nil
+        compactionWait = nil
+        compactionAnswerLost = false
+        isCompressing = false
+    }
+
+    /// Was this a request that simply never got its answer, rather than a refusal?
+    ///
+    /// A compaction is minutes of host work; iOS tears the socket down when the app is backgrounded,
+    /// so `transportClosed("… Software caused connection abort")`, `notConnected`, a URLError and a
+    /// POSIX 53/54/60 are all "the answer had nowhere to land". None of them mean the host said no.
+    private static func isLostAnswer(_ error: Error) -> Bool {
+        if let gateway = error as? GatewayError {
+            switch gateway {
+            case .notConnected, .transportClosed:
+                return true
+            case .timeout(let method, _):
+                return method == "session.compress"
+            default:
+                return false
+            }
+        }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            return [-1001, -1003, -1004, -1005, -1009].contains(ns.code)
+        }
+        if ns.domain == NSPOSIXErrorDomain {
+            return [53, 54, 57, 60].contains(ns.code)  // ECONNABORTED, ECONNRESET, ENOTCONN, ETIMEDOUT
+        }
+        return false
+    }
+
+    /// Settle a compaction that outlived its socket, from the transcript the host just handed back.
+    ///
+    /// Compacting rewrites the conversation, so *any* change in what the host holds is the outcome —
+    /// and no change after `compactionPatience` is an honest "I no longer know", not silence.
+    private func settleCompactionWait() {
+        guard compactionAnswerLost,
+              let wait = compactionWait, wait.session == selectedSessionID else { return }
+        if transcript.count != wait.entriesBefore || historyTotal != wait.totalBefore {
+            compactionNotice = "conversation compacted"
+            finishCompaction()
+        } else if Date().timeIntervalSince(wait.startedAt) > Self.compactionPatience {
+            compactionNotice = "compacting did not report back — open the chat again to see where it stands"
+            finishCompaction()
         }
     }
 

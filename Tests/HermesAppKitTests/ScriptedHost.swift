@@ -171,7 +171,19 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
 
     // MARK: Compaction and requests
 
-    func compress(session: SessionID) async throws {}
+    /// What the host answers a compaction with. `nil` means "it worked"; the case that matters is a
+    /// transport failure thrown a heartbeat after the request, which is what a backgrounded phone
+    /// does to a compaction that is still running on the host.
+    var compressError: Error?
+    /// How long a compaction takes before it answers. A real one is 74–163 s on this host.
+    var compressDelay: Duration?
+    var compressCalls = 0
+
+    func compress(session: SessionID) async throws {
+        compressCalls += 1
+        if let compressDelay { try? await Task.sleep(for: compressDelay) }
+        if let compressError { throw compressError }
+    }
     func answer(_ request: ServerRequestID, with result: JSONValue) async throws {}
     func decline(_ request: ServerRequestID, with error: RPCError) async throws {}
 }
