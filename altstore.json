@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.191",
+          "buildVersion": "191",
+          "date": "2026-11-12T15:44:30Z",
+          "localizedDescription": "Compacting no longer fails when the phone sleeps: the host keeps working and the app reports the outcome when it reconnects. Also: minimising the app no longer blanks the chat, a foreground lands at the newest message, and the chat's menu is a page swiped in from the right edge.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.191/Hermey-0.1.191-b191.ipa",
+          "size": 2139527,
+          "minOSVersion": "17.0",
+          "sha256": "5e86cc37373a4580374fcb2c16a7e40beb8d728b2a9baeec5e9258920a2a4e93"
+        },
+        {
           "version": "0.1.187",
           "buildVersion": "187",
           "date": "2026-11-12T14:59:25Z",
@@ -62,16 +72,6 @@
           "size": 2103192,
           "minOSVersion": "17.0",
           "sha256": "1da62237c75b074c012177d95961165644249646f234d06928b23fff720bbfca"
-        },
-        {
-          "version": "0.1.164",
-          "buildVersion": "164",
-          "date": "2026-11-11T21:59:54Z",
-          "localizedDescription": "Per-bot Skills and MCP servers in the \u22ef menu, alongside the workspace.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.164/Hermey-0.1.164-b164.ipa",
-          "size": 2094923,
-          "minOSVersion": "17.0",
-          "sha256": "348e884e1ec91daa21365e6fc8b2e69040be26f96ab9aa83f6ec1fef877eb2f7"
         }
       ],
       "appPermissions": {
