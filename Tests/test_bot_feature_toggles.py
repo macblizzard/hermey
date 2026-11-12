@@ -17,6 +17,7 @@ ACTOR = ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift"
 MODEL = ROOT / "Sources" / "HermesAppKit" / "AppModel.swift"
 SHEET = ROOT / "Apps" / "HermesMobile" / "Views" / "BotToolsSheet.swift"
 SCREEN = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift"
+DRAWER = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationDrawer.swift"
 
 
 def read(path: Path) -> str:
@@ -25,9 +26,13 @@ def read(path: Path) -> str:
 
 class TheMenuHasBothPanels(unittest.TestCase):
     def test_skills_and_mcp_rows_exist(self) -> None:
-        screen = read(SCREEN)
-        self.assertIn('Label("Skills", systemImage: "book.closed")', screen)
-        self.assertIn('Label("MCP servers", systemImage: "puzzlepiece.extension")', screen)
+        # Both rows live in the drawer now — the phone's ⋯ menu became a page swiped in from the
+        # trailing edge — and they still open the same two sheets.
+        drawer, screen = read(DRAWER), read(SCREEN)
+        self.assertIn('row("Skills", systemImage: "book.closed"', drawer)
+        self.assertIn('row("MCP servers", systemImage: "puzzlepiece.extension"', drawer)
+        self.assertIn("onSkills: { closeDrawer(); showSkills = true }", screen)
+        self.assertIn("onMCP: { closeDrawer(); showMCP = true }", screen)
         self.assertIn("BotToolsSheet(bot: bot, kind: .skills, model: model)", screen)
         self.assertIn("BotToolsSheet(bot: bot, kind: .mcp, model: model)", screen)
 

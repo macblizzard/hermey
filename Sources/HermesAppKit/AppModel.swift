@@ -154,6 +154,13 @@ public final class AppModel: ObservableObject {
     /// does not go in `lastSendError`.
     @Published public private(set) var compactionNotice: String?
 
+    /// Bumped every time a reconnect re-reads the open transcript in place.
+    ///
+    /// The rows are *replaced*, not cleared and refilled, so the scroll view keeps its offset — which
+    /// is why a foreground left the reader somewhere in the middle of a chat instead of at its end.
+    /// The shell watches this and lands at the newest message, the same rule as opening the thread.
+    @Published public private(set) var transcriptReloads = 0
+
     /// The last transcript this process saw for each session, painted the instant a chat is opened.
     ///
     /// Opening a conversation resumes it on the host, and on this box a long one is ~4 s of agent
@@ -723,7 +730,37 @@ public final class AppModel: ObservableObject {
             runningSessions.remove(sid)
             return
         }
-        await select(sid)
+        await refreshTranscript(sid)
+    }
+
+    /// Re-read the open transcript **in place**: no empty pane, no cleared turn state, no flicker.
+    ///
+    /// A foreground sends `gateway.ready`, and the old path answered it with `select(sid)` — which
+    /// sets `transcript = []` before the resume starts (a miss in the in-memory cache meant a blank
+    /// chat for the whole 4 s host read) and resets `turnRowStart`, the live bubble and the context
+    /// gauge for a conversation that was only asleep. iOS suspends the socket constantly, so this ran
+    /// on every return to the app. A refresh keeps what is on screen until the host's copy replaces
+    /// it, and says so with `transcriptReloads` so the shell can land at the end.
+    private func refreshTranscript(_ sid: SessionID) async {
+        guard !draftSessionIDs.contains(sid) else { return }
+        do {
+            let resumed = try await client.resumeSession(sid, profile: selectedBotID)
+            guard selectedSessionID == sid else { return }
+            transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: sid)
+            earlierCursor = resumed.earlierCursor
+            historyTotal = resumed.historyTotal
+            pendingRequests = resumed.openRequests
+            adopt(resumed, session: sid)
+            remember(sid, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
+            transcriptReloads += 1
+        } catch is CancellationError {
+            return
+        } catch {
+            // A failed refresh leaves the transcript that is on screen alone: it is still the last
+            // thing the host said, and blanking it would invent a loss.
+            ClientLog.note("transcript refresh failed: \(error.localizedDescription)",
+                           level: .warning, category: "connection")
+        }
     }
 
     public func send() async {
