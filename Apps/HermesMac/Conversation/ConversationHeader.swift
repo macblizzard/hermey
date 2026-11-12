@@ -160,7 +160,14 @@ struct ConversationHeader: View {
 
             // A compaction is a real model turn on the host, so its outcome is a quiet note here
             // rather than a banner: nothing failed, the transcript was rewritten.
-            if let notice = model.compactionNotice, width >= ChipBreakpoint.notice {
+            //
+            // Both halves of that note are drawn at **every** width, and that is the fix for "the
+            // compact button doesn't work": the host measures 74 s and 163 s on real runs, so with
+            // nothing on screen while it worked, and the result gated behind a 460 pt breakpoint,
+            // a compaction that succeeded looked exactly like a button that did nothing.
+            if model.isCompressing {
+                StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
+            } else if let notice = model.compactionNotice {
                 StatusChip(notice, tone: .neutral, size: .small)
             }
 
@@ -185,13 +192,14 @@ struct ConversationHeader: View {
             // The two verbs a long conversation needs, at the place the conversation is read: they
             // used to live only in the ⋯ menu, where they were invisible until looked for.
             if width >= ChipBreakpoint.actions {
-                OpenBotIconButton("rectangle.compress.vertical",
-                                  label: "Compact the conversation now",
+                OpenBotIconButton(model.isCompressing ? "hourglass" : "rectangle.compress.vertical",
+                                  label: model.isCompressing ? "Compacting…" : "Compact the conversation now",
                                   size: .small,
-                                  isDisabled: !model.canActOnConversation) {
+                                  isDisabled: !model.canActOnConversation || model.isCompressing) {
                     Task { await model.compressNow() }
                 }
-                .help("Compact the conversation now")
+                .help(model.isCompressing ? "Compacting — the host is rewriting the transcript"
+                                          : "Compact the conversation now")
 
                 OpenBotIconButton("arrow.counterclockwise",
                                   label: "Reset this conversation",
@@ -253,10 +261,12 @@ struct ConversationHeader: View {
             }
             // Two things a long conversation needs and only the phone had: compact it now
             // rather than waiting for the threshold, and start over from an empty conversation.
-            Button("Compact Conversation") {
+            // The verb keeps its place while it runs: a menu item that vanishes mid-compaction
+            // reads as "it never started".
+            Button(model.isCompressing ? "Compacting…" : "Compact Conversation") {
                 Task { await model.compressNow() }
             }
-            .disabled(!model.canActOnConversation)
+            .disabled(!model.canActOnConversation || model.isCompressing)
 
             Button("Reset Conversation…") {
                 store.isResetConfirmationPresented = true

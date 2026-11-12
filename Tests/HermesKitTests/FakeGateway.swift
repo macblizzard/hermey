@@ -21,6 +21,7 @@ actor FakeGateway {
     private var scopedResults: [String: [String: JSONValue]] = [:]
     private var errors: [String: RPCError] = [:]
     private var silent: Set<String> = []
+    private var delays: [String: TimeInterval] = [:]
 
     init() {
         var captured: AsyncStream<GatewayTransport.Event>.Continuation!
@@ -67,8 +68,17 @@ actor FakeGateway {
 
     func setError(_ error: RPCError, for method: String) { errors[method] = error }
 
+    /// Withdraw a scripted failure: a test that proves the client asks again after a refusal has to
+    /// be able to make the second call succeed.
+    func clearError(for method: String) { errors.removeValue(forKey: method) }
+
     /// Never answer this method — how a timeout is provoked deterministically.
     func silence(_ method: String) { silent.insert(method) }
+
+    /// Answer `method` only after `seconds` — how a *second* caller is put in the same window as the
+    /// first, deterministically. `Task.yield()` proves nothing about how far a task got, so a
+    /// coalescing test that does not hold the answer is testing nothing.
+    func delay(_ seconds: TimeInterval, for method: String) { delays[method] = seconds }
 
     // MARK: Transport
 
@@ -94,6 +104,11 @@ actor FakeGateway {
         sent.append(frame)
         guard let method = frame["method"]?.stringValue, let id = frame["id"] else { return }
         if silent.contains(method) { return }
+        if let hold = delays[method] {
+            // The frame is already recorded above, so the caller's `frames(method:)` count is the
+            // number of round trips actually asked for, whether or not this one has answered yet.
+            try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
+        }
         if let error = errors[method] {
             respond(to: id, error: error)
             return

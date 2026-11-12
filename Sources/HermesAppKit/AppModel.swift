@@ -154,6 +154,24 @@ public final class AppModel: ObservableObject {
     /// does not go in `lastSendError`.
     @Published public private(set) var compactionNotice: String?
 
+    /// The last transcript this process saw for each session, painted the instant a chat is opened.
+    ///
+    /// Opening a conversation resumes it on the host, and on this box a long one is ~4 s of agent
+    /// spin-up before a single row arrives — during which the screen used to be empty. These rows are
+    /// what the user was just looking at, so drawing them first (and replacing them with the host's
+    /// answer when it lands) turns that wait into a refresh rather than a blank pane. Memory only:
+    /// the host is the authority, and a stale cache must never survive a launch.
+    private var recentTranscripts: [SessionID: RecentTranscript] = [:]
+
+    /// Rows kept per session: enough to fill a screen and its scroll-back, nothing more.
+    private struct RecentTranscript {
+        let entries: [TranscriptEntry]
+        /// The host's own paging cursor (`session.history` takes a row id), kept so a cached page can
+        /// still load its older half before the resume lands.
+        let earlierCursor: Int?
+        let total: Int
+    }
+
     // MARK: Preferences
 
     /// Every one of these is persisted under its own key so the two apps and every window agree.
@@ -568,11 +586,38 @@ public final class AppModel: ObservableObject {
         lastSendError = nil
     }
 
+    /// Record the transcript for a session so leaving and coming back is instant.
+    private func remember(_ id: SessionID, entries: [TranscriptEntry], cursor: Int?, total: Int) {
+        guard !entries.isEmpty else { return }
+        recentTranscripts[id] = RecentTranscript(entries: entries, earlierCursor: cursor, total: total)
+    }
+
+    /// The two codes the host uses for "I have never seen that session id in this process".
+    private static func isUnknownSession(_ error: GatewayError) -> Bool {
+        guard case .rpc(let rpc) = error else { return false }
+        return rpc.code == 4001 || rpc.code == 4007
+    }
+
+    /// The host already writes a good sentence ("session busy — Hermes is still replying…"); an
+    /// opaque NSError text does not help anyone decide what to do next.
+    private static func compactionReason(_ error: Error) -> String {
+        if case let GatewayError.rpc(rpc) = error, !rpc.message.isEmpty { return rpc.message }
+        return error.localizedDescription
+    }
+
     public func select(_ id: SessionID) async {
         selectedSessionID = id
-        transcript = []
-        earlierCursor = nil
-        historyTotal = 0
+        // Paint what this process already knows before touching the network: a long chat costs the
+        // host ~4 s to resume, and an empty pane for those seconds reads as "the app is broken".
+        if let cached = recentTranscripts[id] {
+            transcript = SentAttachmentVault.decorate(cached.entries, sessionID: id)
+            earlierCursor = cached.earlierCursor
+            historyTotal = cached.total
+        } else {
+            transcript = []
+            earlierCursor = nil
+            historyTotal = 0
+        }
         turnRowStart = 0
         streamingText = ""
         reasoningText = ""
@@ -596,6 +641,7 @@ public final class AppModel: ObservableObject {
             historyTotal = resumed.historyTotal
             pendingRequests = resumed.openRequests
             adopt(resumed, session: id)
+            remember(id, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
         } catch is CancellationError {
             // SwiftUI cancels the `.task` when the screen goes away — backgrounding, the app
             // switcher, a pushed sheet. That is not a failed session, and surfacing it painted a
@@ -1144,7 +1190,23 @@ public final class AppModel: ObservableObject {
         isCompressing = true
         defer { isCompressing = false }
         do {
-            try await client.compress(session: sid)
+            do {
+                try await client.compress(session: sid)
+            } catch let error as GatewayError where Self.isUnknownSession(error) {
+                // The button was dead for a reason worth writing down: `session.compress` addresses a
+                // session by the **runtime** id, and this process only learns that id from a resume.
+                // A session restored from the last launch has no mapping, so the host answered 4001
+                // "session not found" for a conversation sitting right there on screen. Opening it
+                // first records the mapping; the retry is the same call the user asked for.
+                ClientLog.note("session.compress: opening the session first (\(error.localizedDescription))",
+                               level: .info, category: "compaction")
+                await select(sid)
+                guard selectedSessionID == sid else {
+                    isCompressing = false
+                    return
+                }
+                try await client.compress(session: sid)
+            }
             // Refresh first, then report: the notice is set last so nothing inside the refresh can
             // overwrite it, and the context gauge is cleared because it showed the *pre*-compaction
             // size. The next turn's `usage` is the first honest number after a compaction.
@@ -1152,9 +1214,12 @@ public final class AppModel: ObservableObject {
             contextUsed = nil
             compactionNotice = "conversation compacted"
         } catch {
-            lastSendError = "could not compact: \(error.localizedDescription)"
-            ClientLog.note("session.compress failed: \(error.localizedDescription)",
-                           level: .error, category: "compaction")
+            // Say it in the place the header already draws. A silent failure is why this looked like
+            // a dead button: the error only ever reached `lastSendError`, which nothing renders.
+            let reason = error.localizedDescription
+            lastSendError = "could not compact: \(reason)"
+            compactionNotice = "could not compact — \(Self.compactionReason(error))"
+            ClientLog.note("session.compress failed: \(reason)", level: .error, category: "compaction")
         }
     }
 
@@ -1934,6 +1999,8 @@ public final class AppModel: ObservableObject {
             sealedInterimKeys.removeAll()
             sealedCommentary.removeAll()
             runningSessions.remove(session)
+            // The turn is now part of what a re-open should show instantly.
+            remember(session, entries: transcript, cursor: earlierCursor, total: historyTotal)
             // Not awaited: compaction is a model turn that can take minutes, and parking this loop
             // would hold back every later delta, approval and tool event behind it.
             Task { await self.autoCompactIfNeeded() }

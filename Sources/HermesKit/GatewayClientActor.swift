@@ -173,6 +173,31 @@ public actor GatewayClient: GatewayClientProtocol {
     private var openServerRequests: [ServerRequestID: ServerRequest] = [:]
     private var watermarks: [SessionID: Watermark] = [:]
 
+    /// The in-flight / recently answered read calls, keyed by what was asked.
+    ///
+    /// Launching either app asks the host for the same things several times: measured on the live
+    /// bridge, one launch posted `profiles.list` twice, `session.list` five times and
+    /// `model.options` three times within three seconds (the last of them costing 3.7 s), and a
+    /// reconnect after a compaction repeated the burst. The gateway answers those one at a time, so
+    /// the transcript the user is actually waiting for queues behind work nobody asked for — which
+    /// is most of "the chats take some time to load". Collapsing identical read calls into the call
+    /// already in flight costs one round trip instead of five and cannot change an answer.
+    private struct ReadKey: Hashable {
+        let method: String
+        let params: JSONValue?
+    }
+
+    private struct ReadFlight {
+        /// The call in flight, if one is. Every later caller awaits this same task.
+        var task: Task<JSONValue?, Error>?
+        /// The answer it produced, kept so a burst that lands one tick later is free too.
+        var value: JSONValue?
+        /// When that answer arrived — `freshFor` reads age out.
+        var at: Date
+    }
+
+    private var reads: [ReadKey: ReadFlight] = [:]
+
     /// The runtime id every session-scoped call needs, and the durable id only `session.resume`
     /// accepts. They are different values on the wire and both have to be remembered.
     /// The bot this connection is bound to. A stored session id is only resolvable inside its
@@ -248,7 +273,7 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     public func listBots() async throws -> [Bot] {
-        let result = try await perform("profiles.list", params: .object([:]), timeout: timeouts.call)
+        let result = try await performRead("profiles.list", params: .object([:]), timeout: timeouts.call)
         return try GatewayPayloadDecoder.bots(result)
     }
 
@@ -267,7 +292,7 @@ public actor GatewayClient: GatewayClientProtocol {
         if let profile, !profile.isEmpty {
             params["profile"] = .string(profile)
         }
-        let result = try await perform("session.list", params: .object(params), timeout: timeouts.sessionList)
+        let result = try await performRead("session.list", params: .object(params), timeout: timeouts.sessionList)
         return try GatewayPayloadDecoder.sessionSummaries(result)
     }
 
@@ -317,9 +342,9 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     public func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] {
-        let result = try await perform("session.history",
-                                       params: .object(["session_id": .string(id)]),
-                                       timeout: timeouts.call)
+        let result = try await performRead("session.history",
+                                           params: .object(["session_id": .string(id)]),
+                                           timeout: timeouts.call)
         return try GatewayPayloadDecoder.history(result, limit: limit)
     }
 
@@ -335,9 +360,9 @@ public actor GatewayClient: GatewayClientProtocol {
             "limit": .int(Int64(limit)),
         ]
         if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
-        let result = try await perform("session.history",
-                                       params: .object(params),
-                                       timeout: timeouts.call)
+        let result = try await performRead("session.history",
+                                           params: .object(params),
+                                           timeout: timeouts.call)
         return try GatewayPayloadDecoder.historyPage(result)
     }
 
@@ -512,19 +537,19 @@ public actor GatewayClient: GatewayClientProtocol {
     // MARK: Discovery
 
     public func modelOptions() async throws -> [ModelOption] {
-        let result = try await perform("model.options", params: .object([:]), timeout: timeouts.call)
+        let result = try await performRead("model.options", params: .object([:]), timeout: timeouts.call, freshFor: 120)
         return try GatewayPayloadDecoder.modelOptions(result)
     }
 
     public func modelCatalog() async throws -> ModelCatalog {
-        let result = try await perform("model.options", params: .object([:]), timeout: timeouts.call)
+        let result = try await performRead("model.options", params: .object([:]), timeout: timeouts.call, freshFor: 120)
         return try GatewayPayloadDecoder.modelCatalog(result)
     }
 
     public func modelCatalog(profile: String?) async throws -> ModelCatalog {
         var params: [String: JSONValue] = [:]
         if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
-        let result = try await perform("model.options", params: .object(params), timeout: timeouts.call)
+        let result = try await performRead("model.options", params: .object(params), timeout: timeouts.call, freshFor: 120)
         return try GatewayPayloadDecoder.modelCatalog(result)
     }
 
@@ -594,7 +619,7 @@ public actor GatewayClient: GatewayClientProtocol {
 
     /// `profiles.describe` — the editor snapshot for one bot.
     public func describeProfile(_ profile: String) async throws -> ProfileDescription {
-        let result = try await perform("profiles.describe", params: .object(["name": .string(profile)]),
+        let result = try await performRead("profiles.describe", params: .object(["name": .string(profile)]),
                                        timeout: timeouts.sessionResume)
         guard let result else { throw GatewayError.malformedResponse(method: "profiles.describe") }
         let skills = (result["skills"]?.arrayValue ?? []).compactMap { entry -> ProfileSkill? in
@@ -1027,7 +1052,52 @@ public actor GatewayClient: GatewayClientProtocol {
             _ = try? await answer
             throw error
         }
-        return try await answer
+        let value = try await answer
+        if Self.readsExpire(after: method) { reads.removeAll() }
+        return value
+    }
+
+    /// The methods whose answer changes what a read would say, so remembering a read across one of
+    /// them would be a lie. Kept as a list because the alternative — a `forgetReads()` at every
+    /// write's call site — is four places to forget.
+    private static func readsExpire(after method: String) -> Bool {
+        method == "profiles.configure" || method == "profiles.create" || method == "profiles.delete"
+            || method == "model.save_key" || method == "session.compress"
+    }
+
+    /// One read call, shared with anyone else asking the same thing at the same moment.
+    ///
+    /// `freshFor` is the exception to "only dedupe": a catalogue that costs the host seconds and
+    /// changes when the user changes a model is worth keeping for a couple of minutes. Everything
+    /// else is forwarded once per distinct question and never served from an old answer.
+    private func performRead(_ method: String, params: JSONValue?, timeout: TimeInterval,
+                             freshFor: TimeInterval = 0) async throws -> JSONValue? {
+        let key = ReadKey(method: method, params: params)
+        if let entry = reads[key] {
+            if let inFlight = entry.task { return try await inFlight.value }
+            if freshFor > 0, Date().timeIntervalSince(entry.at) < freshFor { return entry.value }
+        }
+        let task = Task<JSONValue?, Error> { [weak self] in
+            guard let self else { throw GatewayError.notConnected }
+            return try await self.perform(method, params: params, timeout: timeout)
+        }
+        reads[key] = ReadFlight(task: task, value: nil, at: Date())
+        do {
+            let value = try await task.value
+            reads[key] = ReadFlight(task: nil, value: value, at: Date())
+            return value
+        } catch {
+            // A refusal is not an answer: the next caller has to ask again rather than inherit it.
+            reads.removeValue(forKey: key)
+            throw error
+        }
+    }
+
+    /// Drop every remembered read. Called by the writes that change what those reads answer —
+    /// a bot's model, its description, its skill list, and anything that rewrites a transcript —
+    /// so a cached catalogue can never outlive the change that invalidated it.
+    public func forgetReads() {
+        reads.removeAll()
     }
 
     private func send(id: RPCID, method: String, params: JSONValue?) async throws {

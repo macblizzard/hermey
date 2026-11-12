@@ -5,6 +5,27 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Compacting now says it is running, on both apps.** The verb always worked: the bridge log shows
+  `session.compress` answering `ok` after **74 s** and **163 s** on two real runs. Neither app drew
+  anything for those minutes — the menu closed on tap, `isCompressing` was set but rendered nowhere,
+  and the Mac's outcome note sat behind a 460 pt width breakpoint — so a compaction that succeeded
+  looked exactly like a dead button. Now a `compacting…` chip with a spinner appears in the Mac header
+  (and the phone's strip, which is always on screen), the compact button becomes an hourglass and
+  refuses a second tap, both menus keep the verb visible as *Compacting…*, and the outcome chip is
+  drawn at every window width. The phone's item was also disabled by a session id the view had not
+  learned yet, though `compressNow` opens the conversation itself.
+
+### Changed
+- **Loading a chat no longer queues behind duplicate requests.** One app launch was measured posting
+  `profiles.list` twice, `session.list` five times and `model.options` three times inside three
+  seconds — the last of those answering only after 3.7 s — and a reconnect repeated the burst. The
+  gateway answers them one at a time, so the transcript waited on work nobody asked for. `GatewayClient`
+  now collapses identical in-flight reads into a single round trip (`performRead`, keyed by method and
+  params), remembers the model catalogue for two minutes because it costs the host seconds and changes
+  only when the model does, and forgets everything it remembered when a write invalidates it
+  (`profiles.configure`, `model.save_key`, `session.compress`). A refusal is never remembered.
+
 ### Added
 - **The Mac has the three per-bot panels the phone got.** ⋯ → **Workspace…** opens a sheet with the
   documents on the left and the document on the right — same viewer rules, same read-only rule: text in
@@ -85,6 +106,18 @@ All notable changes to Hermey are recorded here. The format follows
   record of what the app did — connects, socket drops and reconnects, failed session opens, refused
   sends, compaction failures, room reads — with Copy, Share and Clear. The log survives a relaunch,
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
+
+### Fixed
+- **Compact does something now, on both platforms.** The button asked the host to compact a session by
+  its *stored* id; the host addresses sessions by the *runtime* id, which this process only learns from a
+  resume. A conversation restored from the last launch therefore answered `4001 session not found` — and
+  that error went to a field no view renders, so the button looked dead. It now opens the session first
+  and retries once, and a refusal (including "session busy — stop the reply first") is written into the
+  header notice instead of vanishing.
+- **A long chat no longer opens on a blank pane.** Measured on a real 2,503-row conversation: a resume
+  costs the host ~4 s. The rows this process already has are now painted immediately and replaced by the
+  host's answer when it lands, so returning to a chat is a refresh rather than a wait. Memory only — the
+  host stays the authority.
 
 ### Fixed
 - **CI stopped filling the account's Actions storage.** The plan includes 500 MB shared by caches and
