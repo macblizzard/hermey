@@ -71,6 +71,8 @@ class AChatPaintsBeforeTheHostAnswers(unittest.TestCase):
 
 MAC_HEADER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift").read_text(encoding="utf-8")
 IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
+# The chat's verbs are a page swiped in from the trailing edge now, not a bar menu.
+IOS_VERBS = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationDrawer.swift").read_text(encoding="utf-8")
 CLIENT = (ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift").read_text(encoding="utf-8")
 
 
@@ -98,18 +100,24 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
         self.assertIn('StatusChip("compacting…"', IOS_SCREEN)
         self.assertIn("compactingChip", IOS_SCREEN)
 
-    def test_both_menus_keep_the_verb_and_disable_it_while_it_runs(self) -> None:
-        for source, name in ((MAC_HEADER, "mac"), (IOS_SCREEN, "ios")):
-            self.assertIn('model.isCompressing ? "Compacting…"', source,
-                          f"{name}: the item must not vanish mid-compaction")
-            self.assertIn("model.isCompressing)", source, f"{name}: it must not be tappable twice")
+    def test_both_surfaces_keep_the_verb_and_disable_it_while_it_runs(self) -> None:
+        self.assertIn('model.isCompressing ? "Compacting…"', MAC_HEADER,
+                      "mac: the menu item must not vanish mid-compaction")
+        self.assertIn("model.isCompressing)", MAC_HEADER, "mac: it must not be tappable twice")
+        # The phone's verbs are a page now: the row relabels itself and the row is disabled, which
+        # `isBusy` carries from the screen's `model.isCompressing`.
+        self.assertIn('isCompressing ? "Compacting…" : "Compact"', IOS_VERBS)
+        self.assertIn("isCompressing: model.isCompressing", IOS_SCREEN,
+                      "the drawer draws its running state from the model's flag")
+        self.assertIn(".disabled(isDisabled || isBusy)", IOS_VERBS)
 
     def test_the_phone_verb_is_not_gated_on_a_session_id_it_learns_late(self) -> None:
-        block = IOS_SCREEN.split("Label(model.isCompressing ? \"Compacting…\"", 1)[1]
-        disabled = block.split(".disabled(", 1)[1].split(")", 1)[0]
-        self.assertNotIn("sessionID == nil", disabled,
-                         "compressNow opens the conversation itself; a nil local id greyed it out")
-        self.assertIn("model.selectedBotID", disabled)
+        # The drawer's row takes `isBusy`/`isDisabled` from the screen, so the gating question is
+        # asked where the row is built: nothing about a session id, only the bot and the compaction.
+        self.assertIn("isBusy: isCompressing", IOS_VERBS)
+        self.assertNotIn("sessionID", IOS_VERBS,
+                         "the drawer must not be gated on an id the chat learns late")
+        self.assertIn("onCompact: { closeDrawer(); Task { await model.compressNow() } }", IOS_SCREEN)
 
 
 class IdenticalReadsShareOneFlight(unittest.TestCase):

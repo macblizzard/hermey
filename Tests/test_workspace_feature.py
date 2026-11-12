@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KIT = ROOT / "Sources" / "HermesKit" / "WorkspaceBrowser.swift"
 SHEET = ROOT / "Apps" / "HermesMobile" / "Views" / "WorkspaceSheet.swift"
 SCREEN = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift"
+DRAWER = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationDrawer.swift"
 ENV = ROOT / "Apps" / "HermesMobile" / "App" / "AppEnvironment.swift"
 BRIDGE = ROOT / "Bridge" / "hermes_bridge" / "workspace.py"
 
@@ -24,10 +25,11 @@ def read(path: Path) -> str:
 
 
 class TheMenuOffersIt(unittest.TestCase):
-    def test_the_three_dot_menu_has_a_workspace_row(self) -> None:
-        screen = read(SCREEN)
-        self.assertIn('Label("Workspace", systemImage: "folder")', screen)
-        self.assertIn("showWorkspace = true", screen)
+    def test_the_drawer_has_a_workspace_row(self) -> None:
+        # The phone's ⋯ became a page opened from the trailing edge (Mohammad, 2026-11-12); the row
+        # moved with it, and it still opens the same sheet.
+        self.assertIn('row("Workspace", systemImage: "folder"', read(DRAWER))
+        self.assertIn("onWorkspace: { closeDrawer(); showWorkspace = true }", read(SCREEN))
 
     def test_the_sheet_is_given_the_bot_and_the_client(self) -> None:
         self.assertIn("WorkspaceSheet(bot: bot, client: app.workspace)", read(SCREEN))

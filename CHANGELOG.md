@@ -6,6 +6,26 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Fixed
+- **Minimising the app no longer blanks the chat, and coming back lands at the newest message.** A
+  foreground sends `gateway.ready` again, and the answer used to be a fresh `select()` — which empties
+  the transcript before it asks the host anything and then replaces every row after a new layout pass.
+  On a long thread that was a blank pane for the whole host read (measured ~4 s at 2,500 rows) and a
+  scroll view that kept its old offset, so the reader came back somewhere in the middle. A reconnect
+  now re-reads **in place** (`refreshTranscript`: no clearing, no reset turn state, rows replaced when
+  the host answers, a failed read leaves the screen alone) and bumps `transcriptReloads`, which the
+  chat turns into "land at the end".
+
+### Changed
+- **The phone's conversation menu is a page you swipe in from the right edge.** The bar's ⋯ is gone
+  from a chat by instruction: a swipe in from the trailing edge opens the same verbs — Computer,
+  Workspace, Skills, MCP servers, Search, Settings, Compact (with its running state), Mark all as
+  read, Speak replies, Reset chat — as a full-height panel with a dimmed conversation beside it.
+  Swipe right or tap outside to close. The gesture is measured (28 pt in from the edge, leftwards,
+  more horizontal than vertical) so a diagonal scroll never opens it, and the transcript's own drag
+  handler skips it, so an edge swipe is not read as the reader parking the scroll. The **bot list
+  keeps its ⋯**, which is what he asked for.
+
+### Fixed
 - **Compacting now says it is running, on both apps.** The verb always worked: the bridge log shows
   `session.compress` answering `ok` after **74 s** and **163 s** on two real runs. Neither app drew
   anything for those minutes — the menu closed on tap, `isCompressing` was set but rendered nowhere,

@@ -37,6 +37,12 @@ struct ConversationScreen: View {
     @State private var keyboardScreenSize: CGSize = .zero
     @State private var keyboardScrollTask: Task<Void, Never>?
     @State private var isDraggingTranscript = false
+    /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).
+    @State private var showDrawer = false
+    /// The transcript's own width, so "the trailing edge" is a measurement and not a guess.
+    @State private var transcriptWidth: CGFloat = 0
+    /// How far in from the right edge a drag counts as the drawer's rather than the transcript's.
+    private static let drawerEdge: CGFloat = 28
 
     /// Whether the transcript's own end is on screen, and whether the reader still wants it there.
     ///
@@ -140,6 +146,37 @@ struct ConversationScreen: View {
                     .accessibilityHidden(true)
             }
         }
+        // The verbs, over the whole screen (composer included): a page, not a card.
+        .overlay {
+            if showDrawer {
+                ConversationDrawer(
+                    title: title,
+                    subtitle: bot.description,
+                    isCompressing: model.isCompressing,
+                    hasAnyUnread: model.hasAnyUnread,
+                    canSpeak: lastAssistantReply != nil,
+                    speakReplies: speakReplies,
+                    onComputer: { closeDrawer(); showComputer = true },
+                    onWorkspace: { closeDrawer(); showWorkspace = true },
+                    onSkills: { closeDrawer(); showSkills = true },
+                    onMCP: { closeDrawer(); showMCP = true },
+                    onSearch: { closeDrawer(); isSearching = true; searchFocused = true },
+                    onSettings: { closeDrawer(); showBotSettings = true },
+                    onCompact: { closeDrawer(); Task { await model.compressNow() } },
+                    onMarkAllRead: { closeDrawer(); model.markAllRead() },
+                    onSpeakChange: { enabled in
+                        speakReplies = enabled
+                        if !enabled { voice.stopSpeaking() }
+                        // History is not replayed: mark what exists now.
+                        if enabled { lastSpokenEntryID = lastAssistantReply?.id }
+                    },
+                    onReset: { closeDrawer(); showResetConfirm = true },
+                    onClose: { closeDrawer() })
+                    .transition(.move(edge: .trailing))
+                    .zIndex(1)
+            }
+        }
+        .animation(Motion.messageIn, value: showDrawer)
         .background(Tokens.canvas)
         .safeAreaInset(edge: .bottom, spacing: 0) { composerArea }
         .mobileConnectionBanner(connection: app.visibleConnection,
@@ -165,7 +202,6 @@ struct ConversationScreen: View {
                 }
                 .accessibilityElement(children: .combine)
             }
-            toolbarContent
         }
         .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
         .onAppear { model.setVisibleBot(bot.id) }
@@ -474,8 +510,14 @@ struct ConversationScreen: View {
             .coordinateSpace(name: Self.scrollSpace)
             .background(GeometryReader { geo in
                 Color.clear
-                    .onAppear { transcriptHeight = geo.size.height }
+                    // Width as well as height: the drawer's gesture is defined as "a drag that
+                    // starts within 28 pt of the trailing edge", which needs the edge measured.
+                    .onAppear {
+                        transcriptHeight = geo.size.height
+                        transcriptWidth = geo.size.width
+                    }
                     .onChange(of: geo.size.height) { _, height in transcriptHeight = height }
+                    .onChange(of: geo.size.width) { _, width in transcriptWidth = width }
             })
             .scrollDismissesKeyboard(.interactively)
             // The way back to the newest message, on the same rule as the desktop's: it appears
@@ -487,8 +529,19 @@ struct ConversationScreen: View {
                     .animation(.easeOut(duration: 0.18), value: isAtBottom)
             }
 
+            // A swipe in from the trailing edge belongs to the drawer. It is a *second* gesture on
+            // the same view, so vertical scrolling is untouched: only a mostly-horizontal drag that
+            // started inside the edge band is taken.
+            .simultaneousGesture(DragGesture(minimumDistance: 14)
+                .onEnded { value in
+                    guard isDrawerSwipe(value) else { return }
+                    Haptics.impact()
+                    showDrawer = true
+                })
             .simultaneousGesture(DragGesture(minimumDistance: 5)
-                .onChanged { _ in
+                .onChanged { value in
+                    // The edge swipe must not be read as the reader parking the transcript.
+                    guard !isDrawerSwipe(value) else { return }
                     isDraggingTranscript = true
                     keyboardScrollTask?.cancel()
                     // Dragging is the reader saying where they want to look. A finger on the
@@ -507,6 +560,13 @@ struct ConversationScreen: View {
             }
             .onChange(of: openScrollSignal) {
                 // Open lands at the newest message, however tall the transcript turns out to be.
+                settleAtBottom(proxy)
+            }
+            .onChange(of: model.transcriptReloads) {
+                // A foreground re-reads the transcript. The rows are replaced in place, so the scroll
+                // view keeps the offset it had — which is what put the reader in the middle of the
+                // chat after minimizing the app. Newest message, same rule as opening it.
+                followsStream = true
                 settleAtBottom(proxy)
             }
             .onChange(of: model.transcript.count) {
@@ -697,108 +757,6 @@ struct ConversationScreen: View {
 
     // MARK: Header controls
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: 14) {
-                // No stop control here: the composer's send button already turns into stop while a
-                // turn runs, and a second one in the header was two buttons for one action.
-                Menu {
-                    // The shared desktop, where a bot's own verbs live: one screen for every bot,
-                    // opened from the chat it is doing the errand for.
-                    Button {
-                        showComputer = true
-                    } label: {
-                        Label("Computer", systemImage: "display")
-                    }
-
-                    // The documents behind the conversation: what the bot made, and what it was given.
-                    Button {
-                        showWorkspace = true
-                    } label: {
-                        Label("Workspace", systemImage: "folder")
-                    }
-
-                    Divider()
-
-                    // What this bot may reach for. Two panels because they are two different kinds of
-                    // reach: instructions it follows, and tools from outside Hermes it can call.
-                    Button {
-                        showSkills = true
-                    } label: {
-                        Label("Skills", systemImage: "book.closed")
-                    }
-
-                    Button {
-                        showMCP = true
-                    } label: {
-                        Label("MCP servers", systemImage: "puzzlepiece.extension")
-                    }
-
-                    Divider()
-
-                    Button {
-                        isSearching = true
-                        searchFocused = true
-                    } label: {
-                        Label("Search", systemImage: "magnifyingglass")
-                    }
-
-                    Button {
-                        showBotSettings = true
-                    } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-
-                    // `compressNow` opens the conversation itself when nothing is open, so the
-                    // verb is disabled by which bot is on screen — not by a session id this view
-                    // had not yet learned, which greyed out a button that would have worked.
-                    Button {
-                        Task { await model.compressNow() }
-                    } label: {
-                        Label(model.isCompressing ? "Compacting…" : "Compact",
-                              systemImage: "arrow.down.right.and.arrow.up.left")
-                    }
-                    .disabled(model.selectedBotID == nil || model.isCompressing)
-
-                    Divider()
-
-                    Button { model.markAllRead() } label: {
-                        Label("Mark all as read", systemImage: "checkmark.circle")
-                    }
-                    .disabled(!model.hasAnyUnread)
-
-                    Divider()
-
-                    // Reading aloud, where a switch with a name belongs — not as a bare glyph
-                    // above the composer.
-                    Toggle(isOn: Binding(get: { speakReplies },
-                                         set: { enabled in
-                                             speakReplies = enabled
-                                             if !enabled { voice.stopSpeaking() }
-                                             // History is not replayed: mark what exists now.
-                                             if enabled { lastSpokenEntryID = lastAssistantReply?.id }
-                                         })) {
-                        Label("Speak replies", systemImage: "speaker.wave.2")
-                    }
-                    .disabled(lastAssistantReply == nil)
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        showResetConfirm = true
-                    } label: {
-                        Label("Reset chat", systemImage: "arrow.counterclockwise")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(Tokens.textSecondary)
-                }
-                .accessibilityLabel("Conversation actions")
-            }
-        }
-    }
-
     // MARK: Pending requests
 
     private var pendingSection: some View {
@@ -983,6 +941,19 @@ struct ConversationScreen: View {
         hasLoaded = true
         isOpening = false
         openScrollSignal += 1
+    }
+
+    private func closeDrawer() {
+        showDrawer = false
+    }
+
+    /// The drawer's gesture: in from the trailing edge, leftwards, and more horizontal than vertical
+    /// (a diagonal scroll toward the bot list must not open a panel).
+    private func isDrawerSwipe(_ value: DragGesture.Value) -> Bool {
+        guard transcriptWidth > 0 else { return false }
+        return value.translation.width < -24
+            && abs(value.translation.width) > abs(value.translation.height)
+            && value.startLocation.x > transcriptWidth - Self.drawerEdge
     }
 
     /// Scroll to the newest message over the next few frames.
