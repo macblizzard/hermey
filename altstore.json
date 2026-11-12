@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.184",
+          "buildVersion": "184",
+          "date": "2026-11-12T14:18:40Z",
+          "localizedDescription": "Compact says it is running on both apps (a spinner chip, a disabled verb, an outcome that is always drawn); the phone's item is no longer greyed out by a session id it learns late. Identical reads cost one round trip, and the model catalogue is cached for two minutes, so a chat stops queuing behind duplicate work at launch and on every reconnect.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.184/Hermey-0.1.184-b184.ipa",
+          "size": 2115214,
+          "minOSVersion": "17.0",
+          "sha256": "238bc7f2e691942040d33c8637241e702b0d4f335d67d8ac8b98931d43102a9a"
+        },
+        {
           "version": "0.1.171",
           "buildVersion": "171",
           "date": "2026-11-11T23:07:47Z",
@@ -62,16 +72,6 @@
           "size": 2065475,
           "minOSVersion": "17.0",
           "sha256": "55f8c49689f90e1e28a68de474057ab0131a5ae389e48b58d8c2a2469476cd39"
-        },
-        {
-          "version": "0.1.155",
-          "buildVersion": "155",
-          "date": "2026-11-11T19:41:52Z",
-          "localizedDescription": "Streaming no longer scrolls the chat on every token, and scrolling up stays put while a bot is working.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.155/Hermey-0.1.155-b155.ipa",
-          "size": 2028542,
-          "minOSVersion": "17.0",
-          "sha256": "1e0c1b34d6a3badf023a80f57657797fc0fbbbf01c35e0caa9f3d1e7d81dbc33"
         }
       ],
       "appPermissions": {
