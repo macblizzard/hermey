@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.187",
+          "buildVersion": "187",
+          "date": "2026-11-12T14:59:25Z",
+          "localizedDescription": "Minimising the app no longer blanks the chat, and coming back lands at the newest message. The phone's conversation menu is now a page swiped in from the right edge \u2014 same verbs, swipe right or tap outside to close \u2014 and a chat no longer carries a three-dot button.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.187/Hermey-0.1.187-b187.ipa",
+          "size": 2134382,
+          "minOSVersion": "17.0",
+          "sha256": "864e3a666bdeaa4bd6a5825eac088a60e2b9f9b427a590449dd9f55ed72c8932"
+        },
+        {
           "version": "0.1.184",
           "buildVersion": "184",
           "date": "2026-11-12T14:18:40Z",
@@ -62,16 +72,6 @@
           "size": 2094923,
           "minOSVersion": "17.0",
           "sha256": "348e884e1ec91daa21365e6fc8b2e69040be26f96ab9aa83f6ec1fef877eb2f7"
-        },
-        {
-          "version": "0.1.160",
-          "buildVersion": "160",
-          "date": "2026-11-11T21:18:24Z",
-          "localizedDescription": "The bot's workspace, with a viewer: what it prepared and what you sent it, one tap from the chat.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.160/Hermey-0.1.160-b160.ipa",
-          "size": 2065475,
-          "minOSVersion": "17.0",
-          "sha256": "55f8c49689f90e1e28a68de474057ab0131a5ae389e48b58d8c2a2469476cd39"
         }
       ],
       "appPermissions": {
