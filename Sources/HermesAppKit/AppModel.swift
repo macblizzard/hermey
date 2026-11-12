@@ -166,7 +166,9 @@ public final class AppModel: ObservableObject {
     /// Rows kept per session: enough to fill a screen and its scroll-back, nothing more.
     private struct RecentTranscript {
         let entries: [TranscriptEntry]
-        let earlierCursor: String?
+        /// The host's own paging cursor (`session.history` takes a row id), kept so a cached page can
+        /// still load its older half before the resume lands.
+        let earlierCursor: Int?
         let total: Int
     }
 
@@ -585,7 +587,7 @@ public final class AppModel: ObservableObject {
     }
 
     /// Record the transcript for a session so leaving and coming back is instant.
-    private func remember(_ id: SessionID, entries: [TranscriptEntry], cursor: String?, total: Int) {
+    private func remember(_ id: SessionID, entries: [TranscriptEntry], cursor: Int?, total: Int) {
         guard !entries.isEmpty else { return }
         recentTranscripts[id] = RecentTranscript(entries: entries, earlierCursor: cursor, total: total)
     }

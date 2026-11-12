@@ -72,22 +72,33 @@ public struct StatusChip: View {
     private let tone: Tone
     private let systemImage: String?
     private let showsDot: Bool
+    private let showsProgress: Bool
     private let size: Size
 
     public init(_ text: String,
                 tone: Tone = .neutral,
                 systemImage: String? = nil,
                 showsDot: Bool = false,
+                showsProgress: Bool = false,
                 size: Size = .regular) {
         self.text = text
         self.tone = tone
         self.systemImage = systemImage
         self.showsDot = showsDot
+        self.showsProgress = showsProgress
         self.size = size
     }
 
     public var body: some View {
         HStack(spacing: 5) {
+            // Work in progress, said by a spinner: "compacting…" next to a still dot reads as a
+            // status word that never updates, which is exactly how a 74-second compaction was
+            // reported as a dead button.
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: size.points, height: size.points)
+            }
             if showsDot {
                 Circle()
                     .fill(tone.ink)
