@@ -27,7 +27,7 @@
           "version": "0.1.187",
           "buildVersion": "187",
           "date": "2026-11-12T14:59:25Z",
-          "localizedDescription": "Minimising the app no longer blanks the chat, and coming back lands at the newest message. The phone's conversation menu is now a page swiped in from the right edge \u2014 same verbs, swipe right or tap outside to close \u2014 and a chat no longer carries a three-dot button.",
+          "localizedDescription": "Minimising the app no longer blanks the chat, and coming back lands at the newest message. The phone's conversation menu is now a page swiped in from the right edge \u2014 the same verbs, swipe right or tap outside to close \u2014 and a chat no longer carries a three-dot button.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.187/Hermey-0.1.187-b187.ipa",
           "size": 2134382,
           "minOSVersion": "17.0",
