@@ -5,6 +5,27 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Compacting now says it is running, on both apps.** The verb always worked: the bridge log shows
+  `session.compress` answering `ok` after **74 s** and **163 s** on two real runs. Neither app drew
+  anything for those minutes — the menu closed on tap, `isCompressing` was set but rendered nowhere,
+  and the Mac's outcome note sat behind a 460 pt width breakpoint — so a compaction that succeeded
+  looked exactly like a dead button. Now a `compacting…` chip with a spinner appears in the Mac header
+  (and the phone's strip, which is always on screen), the compact button becomes an hourglass and
+  refuses a second tap, both menus keep the verb visible as *Compacting…*, and the outcome chip is
+  drawn at every window width. The phone's item was also disabled by a session id the view had not
+  learned yet, though `compressNow` opens the conversation itself.
+
+### Changed
+- **Loading a chat no longer queues behind duplicate requests.** One app launch was measured posting
+  `profiles.list` twice, `session.list` five times and `model.options` three times inside three
+  seconds — the last of those answering only after 3.7 s — and a reconnect repeated the burst. The
+  gateway answers them one at a time, so the transcript waited on work nobody asked for. `GatewayClient`
+  now collapses identical in-flight reads into a single round trip (`performRead`, keyed by method and
+  params), remembers the model catalogue for two minutes because it costs the host seconds and changes
+  only when the model does, and forgets everything it remembered when a write invalidates it
+  (`profiles.configure`, `model.save_key`, `session.compress`). A refusal is never remembered.
+
 ### Added
 - **The Mac has the three per-bot panels the phone got.** ⋯ → **Workspace…** opens a sheet with the
   documents on the left and the document on the right — same viewer rules, same read-only rule: text in

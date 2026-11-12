@@ -304,6 +304,14 @@ struct ConversationScreen: View {
                     .accessibilityLabel("\(unreadElsewhere) unread chats elsewhere — back to the bot list")
                 }
 
+                // A compaction runs on the host for a minute or more (measured: 74 s and 163 s),
+                // so it says so here, where the strip is always on screen — the menu closed the
+                // moment the item was tapped, which is why this read as a dead verb.
+                if model.isCompressing {
+                    StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
+                        .accessibilityIdentifier("compactingChip")
+                }
+
                 if let label = modelChipLabel {
                     StatusChip(label, tone: .neutral, size: .small)
                 }
@@ -742,12 +750,16 @@ struct ConversationScreen: View {
                         Label("Settings", systemImage: "gearshape")
                     }
 
+                    // `compressNow` opens the conversation itself when nothing is open, so the
+                    // verb is disabled by which bot is on screen — not by a session id this view
+                    // had not yet learned, which greyed out a button that would have worked.
                     Button {
                         Task { await model.compressNow() }
                     } label: {
-                        Label("Compact", systemImage: "arrow.down.right.and.arrow.up.left")
+                        Label(model.isCompressing ? "Compacting…" : "Compact",
+                              systemImage: "arrow.down.right.and.arrow.up.left")
                     }
-                    .disabled(sessionID == nil)
+                    .disabled(model.selectedBotID == nil || model.isCompressing)
 
                     Divider()
 

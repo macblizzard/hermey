@@ -69,5 +69,77 @@ class AChatPaintsBeforeTheHostAnswers(unittest.TestCase):
         self.assertIn("guard !entries.isEmpty", body)
 
 
+MAC_HEADER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift").read_text(encoding="utf-8")
+IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
+CLIENT = (ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift").read_text(encoding="utf-8")
+
+
+class ACompactionSaysItIsRunning(unittest.TestCase):
+    """The verb works — it is the *silence* that made it a dead button.
+
+    Measured on the live bridge: `session.compress` answered `ok` after **74 s** and **163 s** on two
+    real runs, and for every one of those seconds neither app drew anything at all. Mohammad reported
+    the button as broken twice; the requests had reached the host and succeeded both times.
+    """
+
+    def test_the_mac_header_draws_the_running_state_at_every_width(self) -> None:
+        block = MAC_HEADER.split("if model.isCompressing {", 1)[1].split("}", 1)[0]
+        self.assertIn("compacting", block)
+        self.assertIn("showsProgress: true", block)
+        # No `width >=` in the guard: a 460 pt breakpoint hid the only feedback the verb has.
+        guard = MAC_HEADER.split("if model.isCompressing {", 1)[0].rsplit("if ", 1)[-1]
+        self.assertNotIn("width >=", guard)
+
+    def test_the_outcome_is_not_hidden_behind_a_breakpoint(self) -> None:
+        self.assertNotIn("width >= ChipBreakpoint.notice", MAC_HEADER,
+                         "the compaction note is evidence the verb ran; it must not be width-gated")
+
+    def test_the_phone_says_so_in_the_strip_that_stays_on_screen(self) -> None:
+        self.assertIn('StatusChip("compacting…"', IOS_SCREEN)
+        self.assertIn("compactingChip", IOS_SCREEN)
+
+    def test_both_menus_keep_the_verb_and_disable_it_while_it_runs(self) -> None:
+        for source, name in ((MAC_HEADER, "mac"), (IOS_SCREEN, "ios")):
+            self.assertIn('model.isCompressing ? "Compacting…"', source,
+                          f"{name}: the item must not vanish mid-compaction")
+            self.assertIn("model.isCompressing)", source, f"{name}: it must not be tappable twice")
+
+    def test_the_phone_verb_is_not_gated_on_a_session_id_it_learns_late(self) -> None:
+        block = IOS_SCREEN.split("Label(model.isCompressing ? \"Compacting…\"", 1)[1]
+        disabled = block.split(".disabled(", 1)[1].split(")", 1)[0]
+        self.assertNotIn("sessionID == nil", disabled,
+                         "compressNow opens the conversation itself; a nil local id greyed it out")
+        self.assertIn("model.selectedBotID", disabled)
+
+
+class IdenticalReadsShareOneFlight(unittest.TestCase):
+    """One launch asked the host for the same things repeatedly.
+
+    Measured on the live bridge: `profiles.list` ×2, `session.list` ×5, `model.options` ×3 within
+    three seconds (the last answering after 3.7 s), repeated on every reconnect — and the host
+    answers them one at a time, so the transcript queues behind them.
+    """
+
+    def test_the_client_has_a_coalescer(self) -> None:
+        for symbol in ("performRead(", "struct ReadKey", "struct ReadFlight", "func forgetReads"):
+            self.assertIn(symbol, CLIENT)
+        self.assertIn("if let inFlight = entry.task { return try await inFlight.value }", CLIENT)
+
+    def test_the_catalogue_is_the_one_that_ages(self) -> None:
+        self.assertIn('performRead("model.options"', CLIENT)
+        self.assertIn("freshFor: 120", CLIENT,
+                      "1-4 s of host work, unchanged until the model changes")
+
+    def test_a_write_drops_what_it_invalidates(self) -> None:
+        body = CLIENT.split("private static func readsExpire", 1)[1].split("\n    }", 1)[0]
+        for method in ('"profiles.configure"', '"model.save_key"', '"session.compress"'):
+            self.assertIn(method, body,
+                          "a remembered catalogue must not outlive the change that invalidated it")
+
+    def test_a_refusal_is_never_remembered(self) -> None:
+        body = CLIENT.split("private func performRead", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("reads.removeValue(forKey: key)", body)
+
+
 if __name__ == "__main__":
     unittest.main()
