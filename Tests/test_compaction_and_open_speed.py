@@ -25,7 +25,9 @@ class CompactionOpensTheSessionFirst(unittest.TestCase):
     def test_an_unknown_session_is_opened_and_the_call_retried(self) -> None:
         body = between("public func compressNow()", "private func autoCompactIfNeeded()")
         self.assertIn("isUnknownSession", body)
-        self.assertIn("await select(sid)", body, "the mapping comes from a resume, so resume")
+        # It resumes — but through `refreshTranscript`, because a compaction is not a re-open: `select`
+        # empties the transcript first, which would blank the chat while the host is rewriting it.
+        self.assertIn("await refreshTranscript(sid)", body, "the mapping comes from a resume, so resume")
         self.assertEqual(body.count("client.compress(session: sid)"), 2,
                          "one call, one retry — not a loop")
 
