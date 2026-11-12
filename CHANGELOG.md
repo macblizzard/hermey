@@ -87,6 +87,14 @@ All notable changes to Hermey are recorded here. The format follows
   is capped at 400 lines, and mirrors to the system log for `log stream` on the Mac.
 
 ### Fixed
+- **CI stopped filling the account's Actions storage.** The plan includes 500 MB shared by caches and
+  artifacts; the repo was at 100% with 1.4 GB of DerivedData caches and 214 build artifacts kept for 90
+  days. Caching is gone from the workflow (`.build` and DerivedData are hundreds of megabytes a key),
+  uploaded artifacts now expire in two days, and the repo's artifact/log retention is set to 3 days. A
+  release still publishes from the artifact within minutes of the run finishing, so nothing about
+  shipping changes — builds are simply slower.
+
+### Fixed
 - **The bridge is a managed service again, deployed from this repo.** The unit pointed at an older
   tree (`/opt/hermes-apps/Bridge`, system `python3`) while the running process came from
   `/opt/hermey/venv`, so a restart would have silently run different code — and its sandbox
