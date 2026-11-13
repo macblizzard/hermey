@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.250",
+          "buildVersion": "250",
+          "date": "2026-11-13T23:36:17Z",
+          "localizedDescription": "The bot's face says what it is doing, the composer floats, and a bot is now any shape in any colour.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.250/Hermey-0.1.250-b250.ipa",
+          "size": 2243604,
+          "minOSVersion": "17.0",
+          "sha256": "c6d18ebe0636793f3e57fad824a5cdc9279cf40ebcc9b3e8fbd6a2731954562a"
+        },
+        {
           "version": "0.1.238",
           "buildVersion": "238",
           "date": "2026-11-13T22:07:01Z",
@@ -62,16 +72,6 @@
           "size": 2220457,
           "minOSVersion": "17.0",
           "sha256": "00fcd57a65a51dc6d84e5354e4570ba5399988964c80bd648c1a71401deaa87a"
-        },
-        {
-          "version": "0.1.226",
-          "buildVersion": "226",
-          "date": "2026-11-13T18:05:50Z",
-          "localizedDescription": "Load earlier keeps the pages it fetched, and the drawer uses the theme's sheet.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.226/Hermey-0.1.226-b226.ipa",
-          "size": 2219792,
-          "minOSVersion": "17.0",
-          "sha256": "2928ffdf99e70de2b1e706d99c94f5774d451b05dceefd46ed2f618ba02f5070"
         }
       ],
       "appPermissions": {
