@@ -7,9 +7,10 @@ import XCTest
 /// grow-the-window helper all read.
 final class WindowLayoutTests: XCTestCase {
     /// 8 + 240 + 7 + 1 + 424 + 8 — the Rakazo shell's two-pane minimum: the bot panel's 240 pt
-    /// floor, the divider, the hairline, the conversation's 424 pt floor and an 8 pt surround.
+    /// floor, the divider, the hairline and the conversation's 424 pt floor. No surround: the shell
+    /// reaches the window edge, so there is no band of frame colour to reserve.
     func testTwoPanesMatchTheShellsLongStandingMinimum() {
-        XCTAssertEqual(WindowLayout.minimumWidth(sidebarWidth: 200, panelOpen: false), 688)
+        XCTAssertEqual(WindowLayout.minimumWidth(sidebarWidth: 200, panelOpen: false), 672)
     }
 
     func testOpeningTheComputerAddsItsPaneAndAHairline() {

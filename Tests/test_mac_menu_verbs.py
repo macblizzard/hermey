@@ -1,4 +1,4 @@
-"""A verb the toolbar already offers does not belong in the menu beside it."""
+"""A verb has one door. The computer's is the bot panel's first row, and only that."""
 
 from __future__ import annotations
 
@@ -7,15 +7,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift").read_text(encoding="utf-8")
+PANEL = (ROOT / "Apps" / "HermesMac" / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
 
 
 class NoDuplicateVerbs(unittest.TestCase):
-    def test_the_computer_is_reached_from_its_button_only(self) -> None:
-        menu = HEADER.split("private var moreMenu: some View", 1)[1]
-        self.assertNotIn('Button("Bot computer…")', menu,
-                         "the header already draws a display button for this")
-        self.assertIn('OpenBotIconButton("display"', HEADER,
-                      "the button has to still be there if the menu item is gone")
+    def test_the_computer_is_reached_from_the_panels_row_only(self) -> None:
+        # One door. The header's own display button went with the header bar, so the panel's first
+        # row is the only thing that toggles the shared computer.
+        self.assertIn('row("Computer", icon: "display"', PANEL)
+        self.assertIn("store.toggleComputerPanel()", PANEL)
+        self.assertEqual(PANEL.count("toggleComputerPanel()"), 1)
+        self.assertNotIn('OpenBotIconButton("display"', HEADER)
+        self.assertNotIn("Bot computer…", PANEL)
 
 
 if __name__ == "__main__":

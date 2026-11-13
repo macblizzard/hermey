@@ -6,12 +6,12 @@ import SwiftUI
 import AppKit
 #endif
 
-/// The window: a `Tokens.frame` surround with the workspace clipped inside it.
+/// The window, edge to edge.
 ///
-/// The surround is the app's one piece of theatre and it is exact — 8 pt on the sides and the
-/// bottom only. The top is flush with the window edge: the hidden title bar's traffic lights sit
-/// on the panels' own backgrounds (the sidebar's fill runs behind them) instead of on an empty
-/// 28 pt band of frame colour above both panes.
+/// There is no frame and no surround: the sidebar's fill and the chat's canvas run out to the
+/// window's own rounded corners, and the only thing over the top edge is the traffic lights. What
+/// a frame would have said — "this is the app, that is the desktop" — the window's own shape says
+/// already.
 ///
 /// Inside is the phone's information architecture, not a desktop three-pane one: **one panel on
 /// the left listing bots, the chat on the right**. There is no session list to browse, no session
@@ -47,17 +47,10 @@ struct WorkspaceRoot: View {
                 // a fresh subtree is what guarantees none of them kept the old palette. The model
                 // lives outside this identity, so nothing about the conversation is lost.
                 .id("\(themeID)-\(store.themeVersion)")
-                .clipShape(RoundedRectangle(cornerRadius: Geometry.radiusWindow, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Geometry.radiusWindow, style: .continuous)
-                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
-                )
-                .padding(.horizontal, 8)
-                // No top inset: the shell reaches the window edge, so the sidebar's fill and the
-                // conversation's canvas are what the traffic lights are drawn on. The window's own
-                // rounded mask still shapes the top corners; the 13 pt clip below is what rounds
-                // the bottom ones inside the frame.
-                .padding(.bottom, 8)
+                // Edge to edge, on every side. Rakazo has no frame inside the window: the sidebar's
+                // fill and the chat's canvas run out to the window's own rounded corners, and the
+                // only thing drawn over the top edge is the traffic lights. The 8 pt surround and
+                // the stroked border this used to wear read as a window inside a window.
                 // The whole shell fades together: fading only the frame would leave an opaque
                 // conversation floating in a translucent surround.
                 .opacity(windowOpacity)
@@ -370,6 +363,14 @@ struct WorkspaceShell: View {
                 // A new bot is a new conversation: re-creating the pane drops the old scroll
                 // position and any approval sheet that belonged to the last bot.
                 .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
+
+            // The bot's own panel, on the trailing edge: the phone's drawer as a pane. It is not
+            // modal — the transcript keeps scrolling behind it, and a compaction keeps reporting
+            // into it while you watch.
+            if store.isBotPanelPresented {
+                MacBotPanel(model: model, store: store)
+                    .transition(.move(edge: .trailing))
+            }
 
             // The shared computer, beside the conversation rather than over it: you read what the
             // bot says about the errand while watching it do the errand. Full screen is the

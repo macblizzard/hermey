@@ -11,8 +11,10 @@ import Foundation
 /// The numbers live here, away from AppKit, so the arithmetic can be tested and so the window's
 /// minimum, the panes' floors and the "grow the window when a pane opens" helper cannot drift apart.
 public enum WindowLayout {
-    /// The window surround drawn on each side of the shell.
-    public static let surround: CGFloat = 8
+    /// The window surround drawn on each side of the shell. **Zero**: the shell reaches the window
+    /// edge on every side, so the frame the traffic lights sit on is the app's own canvas and there
+    /// is no band of frame colour to reserve.
+    public static let surround: CGFloat = 0
     /// The bot panel's narrowest width — Rakazo's 240 pt floor (`BOTS_SIDEBAR_MIN_WIDTH`), the same
     /// number its drag strip clamps to.
     public static let sidebarFloor: CGFloat = 240
@@ -31,6 +33,8 @@ public enum WindowLayout {
     public static let computerMin: CGFloat = 320
     public static let computerIdeal: CGFloat = 384
     public static let computerMax: CGFloat = 1000
+    /// The bot panel's width — Rakazo's right-hand panel, one step narrower than its roster.
+    public static let botPanelWidth: CGFloat = 316
     /// The window height below which the shell stops being usable at all.
     public static let heightMin: CGFloat = 560
 
@@ -40,7 +44,11 @@ public enum WindowLayout {
     ///   - sidebarWidth: the bot panel's width, or `nil` when it is hidden — hidden means the panel,
     ///     its divider and its hairline are all gone.
     ///   - panelOpen: whether the shared computer occupies the trailing slot.
-    public static func minimumWidth(sidebarWidth: CGFloat?, panelOpen: Bool) -> CGFloat {
+    ///   - botPanelOpen: whether the bot's own panel occupies the trailing slot. It is a pane like
+    ///     the computer, so a window that cannot hold it must grow rather than clip it.
+    public static func minimumWidth(sidebarWidth: CGFloat?,
+                                    panelOpen: Bool,
+                                    botPanelOpen: Bool = false) -> CGFloat {
         var total = surround * 2
         if let sidebarWidth {
             total += max(sidebarFloor, sidebarWidth) + divider + hairline
@@ -48,6 +56,9 @@ public enum WindowLayout {
         total += panelOpen ? conversationMinWithComputer : conversationMin
         if panelOpen {
             total += hairline + computerMin
+        }
+        if botPanelOpen {
+            total += hairline + botPanelWidth
         }
         return total
     }
