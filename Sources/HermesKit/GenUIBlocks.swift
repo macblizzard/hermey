@@ -32,11 +32,17 @@ public enum GenUITag {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let stripped = regex.stringByReplacingMatches(in: text, range: range, withTemplate: "")
-        // The tag sat on its own line; removing it leaves that line blank, and two blank lines in a
-        // row read as a paragraph break that is not in the message.
-        return stripped
-            .replacingOccurrences(of: "\n\n\n", with: "\n\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // The tag sat on its own line, so removing it leaves that line empty and a gap of two or
+        // three blank lines where a message had one paragraph break. Squeeze every run of blank
+        // lines down to one: a card between two paragraphs must not read as a hole in the reply.
+        let newline = String(Character("\u{A}"))
+        var kept: [String] = []
+        for line in stripped.components(separatedBy: .newlines) {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty, kept.last?.isEmpty ?? true { continue }
+            kept.append(line)
+        }
+        return kept.joined(separator: newline).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

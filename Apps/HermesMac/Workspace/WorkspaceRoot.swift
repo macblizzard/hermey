@@ -235,7 +235,6 @@ struct WorkspaceRoot: View {
     /// verb picker that will not go away when you click outside it reads as a stuck window. So the
     /// palette is an overlay — a tappable backdrop plus the panel above it — rendered only while
     /// `isPalettePresented`, which means it covers nothing and captures nothing once closed.
-    @ViewBuilder
     /// How a card finds its page. Built from the pairing the window already holds, so a card needs
     /// no new plumbing: the host's origin, the device, and the refresh token that mints a session.
     private var genUICards: GenUICardsResolver {
@@ -253,6 +252,7 @@ struct WorkspaceRoot: View {
                                   palette: { GenUIPalette.current })
     }
 
+    @ViewBuilder
     private var paletteOverlay: some View {
         // A palette with nothing to offer is a blank box; on a fresh launch the verb list is empty
         // until a bot arrives, and an empty panel is worse than no panel.
