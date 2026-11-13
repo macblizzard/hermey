@@ -69,15 +69,16 @@ struct BotSidebarView: View {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }
         .sheet(isPresented: $store.isAddBotPresented) {
-            AddBotSheet { name, description, soul, icon in
-                let created = try await model.addBot(name: name, description: description, soul: soul)
-                if let icon { try? await store.saveBotIcon(botID: created, icon: icon) }
+            AddBotSheet { name, description, face in
+                // No soul: who the bot is lives in its settings, where it can be edited later.
+                let created = try await model.addBot(name: name, description: description, soul: "")
+                if let face { try? await store.saveBotFace(botID: created, face: face) }
             }
         }
         .sheet(isPresented: $store.isStartGroupChatPresented) {
             StartGroupChatSheet(
                 bots: model.bots,
-                icons: store.botIcons,
+                icons: store.botFaces,
                 onCreate: { name, members in
                     try await model.startGroupChat(name: name.isEmpty ? "Group chat" : name,
                                                    members: members)
@@ -120,6 +121,11 @@ struct BotSidebarView: View {
                 OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
                     .help("Close search (esc)")
             } else {
+                // Every control in one cluster on the right, none on the left: the row is a row of
+                // verbs for the list below it, and a verb split across both edges reads as two
+                // groups when it is one.
+                Spacer(minLength: 0)
+
                 OpenBotIconButton("magnifyingglass", label: "Search bots", size: .small) {
                     isSearching = true
                 }
@@ -131,8 +137,6 @@ struct BotSidebarView: View {
                     store.toggleSidebar()
                 }
                 .help("Hide the bot panel (⌘S)")
-
-                Spacer(minLength: 0)
 
                 addMenu
 

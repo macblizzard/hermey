@@ -65,7 +65,7 @@ struct MacBotSettingsSheet: View {
                                   isDisabled: store.pairing == nil || store.pairing?.isTicketOnly == true) {
                         showingIconPicker = true
                     }
-                    if let iconError = store.botIconsError {
+                    if let iconError = store.botFacesError {
                         Text("Could not refresh bot icons: \(iconError)")
                             .font(TypeScale.font(TypeScale.caption)).foregroundStyle(Tokens.danger)
                     }
@@ -115,7 +115,7 @@ struct MacBotSettingsSheet: View {
         HStack(spacing: 10) {
             // The face this bot wears everywhere else, so the sheet is recognisable before its name
             // is read.
-            BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id), size: 26)
+            BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 26)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(bot.displayName)

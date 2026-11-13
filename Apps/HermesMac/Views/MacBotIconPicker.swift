@@ -21,15 +21,28 @@ struct MacBotIconService {
         }
     }
 
-    private struct Icons: Decodable { let icons: [String: String] }
+    /// `faces` is what this build writes and reads; `icons` is the pre-shape-pair payload, read so
+    /// a host that has not been upgraded yet still shows every bot's own face.
+    private struct Payload: Decodable {
+        struct Face: Decodable { let shape: String; let color: String }
+        let faces: [String: Face]?
+        let icons: [String: String]?
+    }
     private struct Change: Encodable {
-        let icon: String?
+        let shape: String?
+        let color: String?
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
-            if let icon { try container.encode(icon, forKey: .icon) }
-            else { try container.encodeNil(forKey: .icon) }
+            if let shape, let color {
+                try container.encode(shape, forKey: .shape)
+                try container.encode(color, forKey: .color)
+            } else {
+                // Nothing of either: the host reads that as "clear the face".
+                try container.encodeNil(forKey: .shape)
+                try container.encodeNil(forKey: .color)
+            }
         }
-        enum CodingKeys: String, CodingKey { case icon }
+        enum CodingKeys: String, CodingKey { case shape, color }
     }
 
     private func request(url: URL, method: String, body: Data? = nil) async throws -> Data {
@@ -45,16 +58,29 @@ struct MacBotIconService {
         return data
     }
 
-    func load() async throws -> [String: BotIcon] {
+    func load() async throws -> [String: BotFace] {
         let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
         let data = try await request(url: url, method: "GET")
-        return try JSONDecoder().decode(Icons.self, from: data).icons.compactMapValues(BotIcon.init(rawValue:))
+        let payload = try JSONDecoder().decode(Payload.self, from: data)
+        var faces: [String: BotFace] = [:]
+        // An icon-only row (a host before the pair) maps to the colour that icon was drawn in, so
+        // no bot's face changes across the upgrade.
+        for (botID, icon) in payload.icons ?? [:] {
+            if let shape = BotIcon(rawValue: icon) { faces[botID] = .legacy(shape) }
+        }
+        for (botID, face) in payload.faces ?? [:] {
+            if let shape = BotIcon(rawValue: face.shape), let color = BotColor(rawValue: face.color) {
+                faces[botID] = BotFace(shape: shape, color: color)
+            }
+        }
+        return faces
     }
 
-    func save(botID: String, icon: BotIcon?) async throws {
+    func save(botID: String, face: BotFace?) async throws {
         let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
             .appendingPathComponent(BotIconPath.component(for: botID))
-        _ = try await request(url: url, method: "PUT", body: JSONEncoder().encode(Change(icon: icon?.rawValue)))
+        let change = Change(shape: face?.shape.rawValue, color: face?.color.rawValue)
+        _ = try await request(url: url, method: "PUT", body: JSONEncoder().encode(change))
     }
 }
 
@@ -68,24 +94,24 @@ struct MacBotIconPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Bot icon for \(bot.displayName)")
+                Text("Portrait for \(bot.displayName)")
                     .font(TypeScale.font(Tokens.textLG, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)
                 Spacer()
                 OpenBotButton("Cancel", kind: .secondary, size: .small) { dismiss() }
                     .disabled(saving)
             }
-            Text("Your paired devices share this choice.")
+            Text("Any shape, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
                 .font(TypeScale.font(Tokens.textSM))
                 .foregroundStyle(Tokens.textMuted)
             ScrollView {
-                BotIconGallery(selected: store.botIcons[bot.id]) { icon in
+                BotFacePicker(face: store.botFaces[bot.id]) { face in
                     guard !saving else { return }
                     saving = true
                     error = nil
                     Task {
                         do {
-                            try await store.saveBotIcon(botID: bot.id, icon: icon)
+                            try await store.saveBotFace(botID: bot.id, face: face)
                             dismiss()
                         } catch {
                             self.error = error.localizedDescription
@@ -103,7 +129,7 @@ struct MacBotIconPicker: View {
             }
         }
         .padding(20)
-        .frame(width: 500, height: 420)
+        .frame(width: 520, height: 520)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
     }

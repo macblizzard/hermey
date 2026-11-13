@@ -3,6 +3,15 @@ import HermesKit
 import OpenBotUI
 import SwiftUI
 
+/// How tall the floating foot is right now. The composer grows upward as a draft gets longer, and
+/// the transcript needs the number rather than a constant.
+private struct ComposerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 96
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// The conversation column: header, optional wire banner, the transcript, the blocking
 /// requests, the composer.
 ///
@@ -20,44 +29,80 @@ struct ConversationPane: View {
     /// The bot this pane last announced as visible, so a teardown cannot clear the dot of the bot
     /// that replaced it (the shell re-creates the pane per bot).
     @State private var shownBotID: String?
+    /// Measured from the composer itself, so the transcript's foot and its fade follow a draft that
+    /// grew to eight lines rather than a guess at how tall a composer is.
+    @State private var composerHeight: CGFloat = 96
+
+    /// The bot's swatch. A window with three bots never leaves you guessing whose conversation you
+    /// are typing into: your own bubbles are drawn in the colour of the bot they go to.
+    private var botTint: Color {
+        guard let id = model.selectedBotID else { return Tokens.control }
+        return (store.botFaces[id] ?? BotFace.default(for: id)).color.swatch
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Rakazo floats the header over the transcript instead of stacking it above: the row
-            // costs 62 pt of layout, the content scrolls beneath it, and a hairline would put the
-            // bar back. The transcript reserves `Geometry.transcriptTopInset` so nothing starts
-            // hidden under the pills.
+            // costs layout, the content scrolls beneath it, and a hairline would put the bar back.
+            // The composer floats the same way, from the other edge.
             ZStack(alignment: .top) {
                 Group {
                     if model.selectedSessionID == nil {
                         ConversationEmptyState(model: model, store: store)
                     } else {
-                        TranscriptScroll(model: model, findRequest: store.findRequest)
+                        TranscriptScroll(model: model,
+                                         findRequest: store.findRequest,
+                                         bottomInset: composerHeight,
+                                         userBubbleTint: botTint)
                     }
                 }
-                // No reserve: the transcript starts at the pane's own top edge and scrolls *under*
-                // the pill, which is what makes the header float rather than sit in a bar. The
-                // rows carry a top inset instead, so the first message still clears the capsule.
+                // The foot of the transcript dissolves into the composer instead of being cut off
+                // by it: the capsule floats, so the text behind it has to pass under, not stop.
+                .mask(
+                    VStack(spacing: 0) {
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: max(28, composerHeight))
+                    }
+                )
+
                 ConversationHeader(model: model, store: store)
             }
 
-            if let banner = bannerKind {
-                ConnectionBanner(banner,
-                                 host: model.hostName,
-                                 turnRunning: model.isStreaming,
-                                 onRetry: { Task { await store.reconnect() } })
-            }
+            // Everything that belongs to the next thing you do: a broken wire, an approval, the
+            // field. It floats, so it is drawn over the transcript rather than after it.
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 8) {
+                    if let banner = bannerKind {
+                        ConnectionBanner(banner,
+                                         host: model.hostName,
+                                         turnRunning: model.isStreaming,
+                                         onRetry: { Task { await store.reconnect() } })
+                            .padding(.horizontal, Geometry.readingInset)
+                    }
 
-            // The banner's copy is per transport state; a refused token or a malformed
-            // ticket response needs the host's own sentence, and the way to fix it.
-            if case .failed(let why) = model.connection, store.isPaired {
-                MacInlineNotice(message: why, actionTitle: "Pair host…") {
-                    store.isPairSheetPresented = true
+                    // The banner's copy is per transport state; a refused token or a malformed
+                    // ticket response needs the host's own sentence, and the way to fix it.
+                    if case .failed(let why) = model.connection, store.isPaired {
+                        MacInlineNotice(message: why, actionTitle: "Pair host…") {
+                            store.isPairSheetPresented = true
+                        }
+                        .padding(.horizontal, Geometry.readingInset)
+                    }
+
+                    ApprovalInbox(model: model, store: store)
+                    MacComposerBar(model: model, store: store)
                 }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: ComposerHeightKey.self, value: proxy.size.height)
+                    }
+                )
             }
-
-            ApprovalInbox(model: model, store: store)
-            MacComposerBar(model: model, store: store)
+        }
+        .onPreferenceChange(ComposerHeightKey.self) { height in
+            // A preference arrives on every layout pass; only a real change is worth a state write.
+            if abs(height - composerHeight) > 0.5 { composerHeight = height }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.canvas)

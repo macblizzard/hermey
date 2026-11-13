@@ -45,8 +45,8 @@ final class WorkspaceStore: ObservableObject {
     /// conversation's menu and the Settings window's Bots tab all set this, so there is one
     /// sheet and one owner.
     @Published var botSettingsBot: Bot? = nil
-    @Published private(set) var botIcons: [String: BotIcon] = [:]
-    @Published private(set) var botIconsError: String?
+    @Published private(set) var botFaces: [String: BotFace] = [:]
+    @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
     /// The open bot's own profile default, for the header chip.
     ///
@@ -204,7 +204,7 @@ final class WorkspaceStore: ObservableObject {
     /// this exists for the explicit "check again" affordance, which must not reconnect.
     func loadBots() async {
         await model.loadBots()
-        await loadBotIcons()
+        await loadBotFaces()
         // Third line of every row. Cached per bot, so a second call is free and a bot that has
         // already answered is not asked again.
         await model.loadBotPreviews()
@@ -275,7 +275,7 @@ final class WorkspaceStore: ObservableObject {
         await model.start()
         if model.connection.isLive {
             startLatencyLoop()
-            await loadBotIcons()
+            await loadBotFaces()
             await openConversationIfNeeded()
         }
     }
@@ -285,13 +285,13 @@ final class WorkspaceStore: ObservableObject {
         await model.retryConnection()
         if model.connection.isLive {
             startLatencyLoop()
-            await loadBotIcons()
+            await loadBotFaces()
             await openConversationIfNeeded()
         }
     }
 
     func disconnect() async {
-        clearBotIcons()
+        clearBotFaces()
         stopLatencyLoop()
         await model.stop()
     }
@@ -302,7 +302,7 @@ final class WorkspaceStore: ObservableObject {
         let address = try PairingAddress.parse(urlText, deviceID: deviceID, token: token)
         pairingStorage = pairingStore.save(address)
 
-        clearBotIcons()
+        clearBotFaces()
         stopLatencyLoop()
         pairing = address
         model = WorkspaceStore.makeModel(for: address)
@@ -334,7 +334,7 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func unpair() async {
-        clearBotIcons()
+        clearBotFaces()
         stopLatencyLoop()
         await model.stop()
         pairingStore.clear()
@@ -345,37 +345,37 @@ final class WorkspaceStore: ObservableObject {
         connectAttempted = false
     }
 
-    private func clearBotIcons() {
+    private func clearBotFaces() {
         iconGeneration += 1
-        botIcons = [:]
-        botIconsError = nil
+        botFaces = [:]
+        botFacesError = nil
     }
 
-    func loadBotIcons() async {
+    func loadBotFaces() async {
         guard let address = pairing, !address.isTicketOnly else { return }
         iconGeneration += 1
         let generation = iconGeneration
         do {
             let icons = try await MacBotIconService(address: address).load()
             guard generation == iconGeneration, pairing == address else { return }
-            botIcons = icons
-            botIconsError = nil
+            botFaces = icons
+            botFacesError = nil
         } catch {
             guard generation == iconGeneration, pairing == address else { return }
-            botIconsError = error.localizedDescription
+            botFacesError = error.localizedDescription
         }
     }
 
-    func saveBotIcon(botID: String, icon: BotIcon?) async throws {
+    func saveBotFace(botID: String, face: BotFace?) async throws {
         guard let address = pairing, !address.isTicketOnly else {
             throw MacBotIconService.Failure.devicePairingRequired
         }
         iconGeneration += 1
         let generation = iconGeneration
-        try await MacBotIconService(address: address).save(botID: botID, icon: icon)
+        try await MacBotIconService(address: address).save(botID: botID, face: face)
         guard generation == iconGeneration, pairing == address else { return }
-        await loadBotIcons()
-        if let error = botIconsError {
+        await loadBotFaces()
+        if let error = botFacesError {
             throw MacBotIconService.Failure.refresh(error)
         }
     }

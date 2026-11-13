@@ -43,8 +43,8 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var devicesLoading = false
     @Published private(set) var devicesError: String?
     @Published private(set) var removingDevice = false
-    @Published private(set) var botIcons: [String: BotIcon] = [:]
-    @Published private(set) var botIconsError: String?
+    @Published private(set) var botFaces: [String: BotFace] = [:]
+    @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
 
     private let bridge: BridgeServiceProtocol
@@ -91,7 +91,7 @@ final class AppEnvironment: ObservableObject {
         self.model = AppModel(client: resolvedClient, hostName: store.host?.host ?? "hermes")
         // Faces before the wire: the icons are the bot list's own look, and waiting for a round
         // trip meant every launch greeted the user with initials for a second or two.
-        self.botIcons = Self.cachedBotIcons(host: store.host)
+        self.botFaces = Self.cachedBotFaces(host: store.host)
         // Same ticket shape as the icon and preview calls: one freshly minted single-use ticket per
         // request, resolved against whatever host is paired right now.
         self.computer = BotComputerClient(endpoint: {
@@ -146,7 +146,7 @@ final class AppEnvironment: ObservableObject {
     /// are the only thing this app lists now — there is no session list to keep in step.
     func loadBots() async {
         await model.loadBots()
-        await loadBotIcons()
+        await loadBotFaces()
     }
 
     private func iconService() throws -> (PairedHost, BotIconService) {
@@ -173,45 +173,59 @@ final class AppEnvironment: ObservableObject {
 
     // MARK: - Bot icon cache
 
-    /// Icons are tiny facts (`BotIcon` is a raw value), so they live in `UserDefaults` per host: a
-    /// re-pair with a different machine must not wear the old machine's faces.
-    private static func botIconCacheKey(_ host: String) -> String { "hermey.botIcons.\(host)" }
+    /// Faces are tiny facts, so they live in `UserDefaults` per host: a re-pair with a different
+    /// machine must not wear the old machine's faces.
+    ///
+    /// Stored as `shape|color`. A cache written by the icon-only build holds a bare id, which is
+    /// read as that icon's legacy pair — so the first launch after the upgrade shows the faces the
+    /// user already knew, before the host has answered.
+    private static func botFaceCacheKey(_ host: String) -> String { "hermey.botFaces.\(host)" }
 
-    private static func cachedBotIcons(host: PairedHost?) -> [String: BotIcon] {
+    private static func cachedBotFaces(host: PairedHost?) -> [String: BotFace] {
         guard let host else { return [:] }
-        guard let data = UserDefaults.standard.data(forKey: botIconCacheKey(host.host)) else { return [:] }
+        guard let data = UserDefaults.standard.data(forKey: botFaceCacheKey(host.host)) else { return [:] }
         guard let raw = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        return raw.compactMapValues(BotIcon.init(rawValue:))
+        var faces: [String: BotFace] = [:]
+        for (botID, encoded) in raw {
+            let parts = encoded.split(separator: "|", maxSplits: 1).map(String.init)
+            if parts.count == 2,
+               let shape = BotIcon(rawValue: parts[0]), let color = BotColor(rawValue: parts[1]) {
+                faces[botID] = BotFace(shape: shape, color: color)
+            } else if let shape = BotIcon(rawValue: encoded) {
+                faces[botID] = .legacy(shape)
+            }
+        }
+        return faces
     }
 
-    private func persistBotIcons(_ icons: [String: BotIcon], host: PairedHost) {
-        let raw = icons.mapValues(\.rawValue)
+    private func persistBotFaces(_ faces: [String: BotFace], host: PairedHost) {
+        let raw = faces.mapValues { "\($0.shape.rawValue)|\($0.color.rawValue)" }
         guard let data = try? JSONEncoder().encode(raw) else { return }
-        UserDefaults.standard.set(data, forKey: Self.botIconCacheKey(host.host))
+        UserDefaults.standard.set(data, forKey: Self.botFaceCacheKey(host.host))
     }
 
-    func loadBotIcons() async {
+    func loadBotFaces() async {
         iconGeneration += 1
         let generation = iconGeneration
         do {
             let (host, service) = try iconService()
-            let icons = try await service.load()
+            let loaded = try await service.load()
             guard generation == iconGeneration, store.host == host, !isDisconnectedByUser else { return }
-            botIcons = icons
-            persistBotIcons(icons, host: host)
-            botIconsError = nil
+            botFaces = loaded
+            persistBotFaces(loaded, host: host)
+            botFacesError = nil
         } catch {
             guard generation == iconGeneration, store.isPaired, !isDisconnectedByUser else { return }
-            botIconsError = message(for: error)
+            botFacesError = message(for: error)
         }
     }
 
-    func saveBotIcon(botID: String, icon: BotIcon?) async throws {
+    func saveBotFace(botID: String, face: BotFace?) async throws {
         let (host, service) = try iconService()
-        try await service.save(botID: botID, icon: icon)
+        try await service.save(botID: botID, face: face)
         guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }
-        await loadBotIcons()
-        if let error = botIconsError { throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"]) }
+        await loadBotFaces()
+        if let error = botFacesError { throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"]) }
     }
 
     // MARK: - Voice
@@ -249,7 +263,7 @@ final class AppEnvironment: ObservableObject {
         guard store.isPaired else { return }
         isDisconnectedByUser = false
         await model.start()
-        await loadBotIcons()
+        await loadBotFaces()
         await loadDevices()
         await model.refreshLatency()
     }
@@ -294,7 +308,7 @@ final class AppEnvironment: ObservableObject {
         await syncCredentials()
         // `retryConnection` keeps the open session selected across the reconnect.
         await model.retryConnection()
-        await loadBotIcons()
+        await loadBotFaces()
         await loadDevices()
         await model.refreshLatency()
     }
@@ -330,13 +344,13 @@ final class AppEnvironment: ObservableObject {
                                                deviceName: deviceName.isEmpty ? defaultDeviceName : deviceName)
             store.save(host: claim.host, refreshToken: claim.refreshToken)
             iconGeneration += 1
-            botIcons = [:]
-            botIconsError = nil
+            botFaces = [:]
+            botFacesError = nil
             await box.update(host: claim.host, token: claim.refreshToken)
             Haptics.success()
             isDisconnectedByUser = false
             await model.start()
-            await loadBotIcons()
+            await loadBotFaces()
             await loadDevices()
             await model.refreshLatency()
             return true
@@ -349,8 +363,8 @@ final class AppEnvironment: ObservableObject {
 
     func unpair() async {
         iconGeneration += 1
-        botIcons = [:]
-        botIconsError = nil
+        botFaces = [:]
+        botFacesError = nil
         await model.stop()
         store.clear()
         await box.update(host: nil, token: nil)
@@ -365,8 +379,8 @@ final class AppEnvironment: ObservableObject {
     func disconnect() async {
         isDisconnectedByUser = true
         iconGeneration += 1
-        botIcons = [:]
-        botIconsError = nil
+        botFaces = [:]
+        botFacesError = nil
         await model.stop()
     }
 

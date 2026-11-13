@@ -163,8 +163,11 @@ public enum Geometry {
 
     /// Not a bar — a 62 pt floating row over the transcript: 36 pt pills plus 13 pt top and bottom.
     public static let chatHeader: CGFloat = 62
-    public static let chatHeaderAvatar: CGFloat = 26
-    public static let chatHeaderPill: CGFloat = 36
+    public static let chatHeaderAvatar: CGFloat = 28
+    // 40 rather than 36: the pill carries the bot's state on its face now, so the face needs the
+    // pixels the status chip used to get. The transcript's top inset is derived from this, so the
+    // rows move with it rather than under it.
+    public static let chatHeaderPill: CGFloat = 40
     /// The transcript reserves this much room for the floating header, plus scroll padding.
     public static let transcriptTopInset: CGFloat = 84
     public static let transcriptBottomInset: CGFloat = 52

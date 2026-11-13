@@ -24,7 +24,7 @@ import UIKit
 /// Pick a name and 2–6 bots.
 public struct StartGroupChatSheet: View {
     private let bots: [Bot]
-    private let icons: [String: BotIcon]
+    private let icons: [String: BotFace]
     private let onCreate: (String, [String]) async throws -> RoomSummary
     private let onCreated: (RoomSummary) -> Void
 
@@ -34,7 +34,7 @@ public struct StartGroupChatSheet: View {
     @State private var busy = false
     @State private var failure: String?
 
-    public init(bots: [Bot], icons: [String: BotIcon],
+    public init(bots: [Bot], icons: [String: BotFace],
                 onCreate: @escaping (String, [String]) async throws -> RoomSummary,
                 onCreated: @escaping (RoomSummary) -> Void) {
         self.bots = bots
@@ -106,7 +106,7 @@ public struct StartGroupChatSheet: View {
             else if picked.count < 6 { picked.append(bot.id) }
         } label: {
             HStack(spacing: 10) {
-                BotIconPortrait(icons[bot.id] ?? BotIcon.default(for: bot.id), size: 30)
+                BotIconPortrait(icons[bot.id] ?? BotFace.default(for: bot.id), size: 30)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(bot.displayName)
                         .font(TypeScale.font(TypeScale.md, weight: .medium))
@@ -259,7 +259,7 @@ public struct RoomChatView: View {
 
     private let room: RoomSummary
     private let presentation: Presentation
-    private let icons: [String: BotIcon]
+    private let icons: [String: BotFace]
     private let load: (String, Int?) async throws -> RoomPage
     private let send: (String, String, [RoomAttachment]) async throws -> Void
     /// Called after the newest message arrives, so the list row behind this window keeps up.
@@ -328,7 +328,7 @@ public struct RoomChatView: View {
     @State private var reactingSeq: Int?
     private static let reactionEmoji = ["👍", "❤️", "😂", "😮", "😢", "🎉"]
 
-    public init(room: RoomSummary, icons: [String: BotIcon],
+    public init(room: RoomSummary, icons: [String: BotFace],
                 presentation: Presentation = .sheet,
                 load: @escaping (String, Int?) async throws -> RoomPage,
                 send: @escaping (String, String, [RoomAttachment]) async throws -> Void,
@@ -457,7 +457,7 @@ public struct RoomChatView: View {
             // The room's faces, not one bot's: this is the header's answer to "who is here".
             HStack(spacing: -7) {
                 ForEach(Array(room.members.prefix(3))) { member in
-                    BotIconPortrait(icons[member.profile] ?? BotIcon.default(for: member.profile), size: 24)
+                    BotIconPortrait(icons[member.profile] ?? BotFace.default(for: member.profile), size: 24)
                         .overlay(Circle().stroke(Tokens.canvas, lineWidth: 1.5))
                 }
             }
@@ -628,7 +628,7 @@ public struct RoomChatView: View {
             HStack(spacing: 10) {
                 ForEach(room.members) { member in
                     HStack(spacing: 5) {
-                        BotIconPortrait(icons[member.profile] ?? BotIcon.default(for: member.profile), size: 20)
+                        BotIconPortrait(icons[member.profile] ?? BotFace.default(for: member.profile), size: 20)
                         Text("@\(member.mention)")
                             .font(TypeScale.font(TypeScale.caption))
                             .foregroundStyle(Tokens.textMuted)
@@ -698,7 +698,7 @@ public struct RoomChatView: View {
         return HStack(alignment: .top, spacing: 6) {
             if mine { Spacer(minLength: 16) }
             if !mine {
-                BotIconPortrait(icons[message.speaker] ?? BotIcon.default(for: message.speaker), size: 20)
+                BotIconPortrait(icons[message.speaker] ?? BotFace.default(for: message.speaker), size: 20)
             }
             VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
                 if !mine {
@@ -1109,12 +1109,12 @@ public struct RoomChatView: View {
 /// place that answers "who is in this one?" without opening it.
 public struct GroupChatRow: View {
     private let room: RoomSummary
-    private let icons: [String: BotIcon]
+    private let icons: [String: BotFace]
     /// How many bot messages are waiting in this room, drawn on its faces the way a bot's count
     /// sits on its portrait. Zero draws nothing.
     private let unread: Int
 
-    public init(room: RoomSummary, icons: [String: BotIcon], unread: Int = 0) {
+    public init(room: RoomSummary, icons: [String: BotFace], unread: Int = 0) {
         self.room = room
         self.icons = icons
         self.unread = unread
@@ -1180,7 +1180,7 @@ public struct GroupChatRow: View {
     private var faces: some View {
         HStack(spacing: -8) {
             ForEach(Array(room.members.prefix(3))) { member in
-                BotIconPortrait(icons[member.profile] ?? BotIcon.default(for: member.profile), size: 30)
+                BotIconPortrait(icons[member.profile] ?? BotFace.default(for: member.profile), size: 30)
                     .overlay(Circle().stroke(Tokens.canvas, lineWidth: 1.5))
             }
             if room.members.count > 3 {

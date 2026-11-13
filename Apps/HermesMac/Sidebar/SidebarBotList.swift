@@ -29,7 +29,7 @@ struct SidebarBotList: View {
     /// Rename lives on the row's context menu, like every other file-like name on the Mac.
     var onRenameRoom: ((RoomSummary) -> Void)? = nil
 
-    private var icons: [String: BotIcon] { store.botIcons }
+    private var icons: [String: BotFace] { store.botFaces }
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -93,11 +93,9 @@ struct SidebarBotList: View {
         let rows = ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 1) {
                 if !roomRows.isEmpty {
-                    SectionCaption("GROUP CHATS")
-                        .padding(.horizontal, 8)
-                        .padding(.top, 2)
-                        .padding(.bottom, 2)
-
+                    // No caption over either list. "CHATS" over a list of chats told the reader
+                    // what they were already looking at, and it cost a line above the first row.
+                    // The divider below the group chats is the whole separation.
                     ForEach(roomRows) { room in
                         Button { onOpenRoom?(room) } label: {
                             GroupChatRow(room: room,
@@ -127,11 +125,6 @@ struct SidebarBotList: View {
 
                     Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 }
-
-                SectionCaption("CHATS")
-                    .padding(.horizontal, 8)
-                    .padding(.top, roomRows.isEmpty ? 2 : 0)
-                    .padding(.bottom, 2)
 
                 ForEach(visibleBots) { bot in
                     row(for: bot)
@@ -172,7 +165,7 @@ struct SidebarBotList: View {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
                 // the bot's id picks — never a bare initial. Rakazo draws the working state as a
                 // ring around the face, which is where this app already puts it.
-                BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: Geometry.rosterAvatar,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
 

@@ -135,6 +135,8 @@ struct MacComposerBar: View {
             }
 
             Composer(text: $model.draft,
+                     // A capsule over the transcript: no bar, no frame at rest.
+                     floats: true,
                      // Nothing in the field until there is something to say: a placeholder is a
                      // label the composer does not need, and it read as text that had been typed.
                      placeholder: "",
@@ -173,11 +175,12 @@ struct MacComposerBar: View {
                 // edge 24 pt inside every other column's.
                 .frame(maxWidth: Geometry.conversationMeasure)
                 .padding(.horizontal, Geometry.readingInset)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
                 .frame(maxWidth: .infinity)
         }
-        .background(Tokens.canvas)
+        // No canvas strip: the transcript runs under the capsule and fades into it. The pane owns
+        // the fade and the height measurement, because the transcript needs both.
         .onAppear { wireVoice() }
         // A re-pair must not leave the controller minting tickets for the old host.
         .onChange(of: store.pairing) { _, _ in wireVoice() }

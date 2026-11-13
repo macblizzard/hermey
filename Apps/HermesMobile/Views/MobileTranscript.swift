@@ -13,6 +13,9 @@ import OpenBotUI
 /// has. Markers come from the block layer so a list looks the same everywhere.
 struct MobileTranscriptRow: View {
     let entry: TranscriptEntry
+    /// The bot's swatch, for the user's own bubble. Passed in: a row inside a lazy stack must not
+    /// reach for a model, and the screen already knows whose conversation this is.
+    var botTint: Color = Tokens.accentSoft
     /// Calls that have not finished. Inside a folded run the group says it once; the card still
     /// shows its own state, so a call that is still going does not look like one that is done.
     var running: Set<String> = []
@@ -419,13 +422,15 @@ struct MobileTranscriptRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
+                // The bot's own colour: the phone shows one conversation at a time, but the
+                // bubble is the one place that says which bot it is without a name on screen.
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .fill(Tokens.accentSoft)
+                        .fill(botTint.opacity(0.16))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                        .strokeBorder(botTint.opacity(0.45), lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous))
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }

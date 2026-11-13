@@ -115,7 +115,7 @@ struct MacBotPanel: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 10) {
             if let bot {
-                BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: 38,
                                 isWorking: model.isStreaming)
             }

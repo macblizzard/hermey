@@ -93,22 +93,14 @@ struct ConversationHeader: View {
 
                 Spacer(minLength: 12)
 
-                // Only what the transcript cannot say about itself, and only while it is true:
-                // a turn in flight, a request waiting, a compaction running. Everything fixed —
-                // context, model, the verbs — lives in the panel now.
-                if model.isCompressing {
-                    StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
-                } else if let notice = model.compactionNotice {
+                // No state chips: the bot's own face says it — an exclamation that flashes for a
+                // request, an antenna that sparks for a turn, a zip that closes for a compaction.
+                // A chip is a word you have to read; this is a thing you notice.
+                //
+                // The one exception is the compaction *notice*: "compacted 12 messages" is a result,
+                // not a state, and it has no shape to take. It fades on its own.
+                if let notice = model.compactionNotice {
                     StatusChip(notice, tone: .neutral, size: .small)
-                }
-                if model.isStreaming {
-                    StatusChip("running", tone: .success, showsDot: true, size: .small)
-                }
-                if model.hasPendingRequests {
-                    StatusChip("needs you", tone: .warning, showsDot: true, size: .small)
-                }
-                if width >= ChipBreakpoint.model, let label = modelChipLabel {
-                    StatusChip(label, tone: .neutral, size: .small)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,6 +112,15 @@ struct ConversationHeader: View {
         .padding(.top, 2)
     }
 
+    /// What the face says. A request outranks a running turn, and both outrank a compaction: the
+    /// one state that needs a person wins the face.
+    private var portraitStatus: PortraitStatus? {
+        if model.hasPendingRequests { return .needsYou }
+        if model.isCompressing { return .compacting }
+        if model.isStreaming { return .working }
+        return nil
+    }
+
     /// The pill: portrait, name, and the ⋯ that opens the bot's panel. The whole capsule is the
     /// target, so a click anywhere on the name does what the dots do.
     private func pill(width: CGFloat) -> some View {
@@ -128,15 +129,15 @@ struct ConversationHeader: View {
         } label: {
             HStack(spacing: 7) {
                 if let bot = model.selectedBot {
-                    BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                    BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                     size: Geometry.chatHeaderAvatar,
-                                    isWorking: model.isStreaming)
+                                    status: portraitStatus)
                 } else {
                     Avatar(title, size: .small, presence: presence)
                 }
 
                 Text(title)
-                    .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .medium))
+                    .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -150,8 +151,12 @@ struct ConversationHeader: View {
             .padding(.trailing, 10)
             .padding(.vertical, 4)
             .frame(height: Geometry.chatHeaderPill)
+            // Solid, not 92%: the transcript runs behind this capsule, and a translucent fill let
+            // the text underneath show through the name. The shadow is what makes it read as
+            // floating over the content rather than pasted onto it.
             .background(
-                Capsule().fill(Tokens.surface.opacity(store.isBotPanelPresented ? 1 : 0.92))
+                Capsule().fill(Tokens.surface)
+                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
             )
             .overlay(
                 Capsule().strokeBorder(store.isBotPanelPresented ? Tokens.borderStrong : Tokens.border,

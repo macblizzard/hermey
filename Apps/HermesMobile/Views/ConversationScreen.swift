@@ -37,6 +37,13 @@ struct ConversationScreen: View {
     @State private var keyboardScreenSize: CGSize = .zero
     @State private var keyboardScrollTask: Task<Void, Never>?
     @State private var isDraggingTranscript = false
+
+    /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
+    /// place that says which bot you are talking to does not need a label.
+    private var botTint: Color {
+        (app.botFaces[bot.id] ?? BotFace.default(for: bot.id)).color.swatch
+    }
+
     /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).
     @State private var showDrawer = false
     /// The transcript's own width, so "the trailing edge" is a measurement and not a guess.
@@ -192,7 +199,7 @@ struct ConversationScreen: View {
             // bot is the one answering — and not while another one is.
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
-                    BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                    BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                     size: Geometry.chatHeaderAvatar,
                                     isWorking: model.isStreaming && model.selectedBotID == bot.id)
                     // Rakazo's header carries one line at 15/22 medium; the phone's nav bar is its
@@ -293,7 +300,7 @@ struct ConversationScreen: View {
         .sheet(isPresented: $showBotSettings) {
             BotModelSettingsScreen(
                 bot: bot,
-                icon: app.botIcons[bot.id],
+                icon: app.botFaces[bot.id],
                 load: { botID in try await model.modelCatalog(for: botID) },
                 conversationIsOpen: true,
                 resetConversation: { model.resetEndlessSession(for: bot.id) },
@@ -674,7 +681,7 @@ struct ConversationScreen: View {
                                             running: runningToolIDs)) { row in
                 switch row {
                 case .entry(let entry):
-                    MobileTranscriptRow(entry: entry)
+                    MobileTranscriptRow(entry: entry, botTint: botTint)
                         .overlay {
                             if selectedSearchID == entry.id {
                                 RoundedRectangle(cornerRadius: 8)
@@ -685,7 +692,7 @@ struct ConversationScreen: View {
                         .id(entry.id)
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        MobileTranscriptRow(entry: entry, running: runningToolIDs)
+                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs)
                     }
                     .id(run.id)
                 }
