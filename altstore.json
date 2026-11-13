@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.198",
+          "buildVersion": "198",
+          "date": "2026-11-13T10:21:09Z",
+          "localizedDescription": "A banner and a badge when a bot replies in a chat you are not reading \u2014 banners, a Dock tile on the Mac and an app-icon badge on the phone, with one switch and a per-bot quiet list. On iOS the banner is immediate while the app runs and arrives through a background refresh once the phone has put it away.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.198/Hermey-0.1.198-b198.ipa",
+          "size": 2173113,
+          "minOSVersion": "17.0",
+          "sha256": "7c777074610afcae1c26b44267cc05076697296c552be8e5a39903fe7bc8dcba"
+        },
+        {
           "version": "0.1.191",
           "buildVersion": "191",
           "date": "2026-11-12T15:44:30Z",
@@ -62,16 +72,6 @@
           "size": 2103193,
           "minOSVersion": "17.0",
           "sha256": "4834d41c451a443994d9865b76224d8569f17009ce00914ccaa272936a1aca66"
-        },
-        {
-          "version": "0.1.168",
-          "buildVersion": "168",
-          "date": "2026-11-11T22:27:30Z",
-          "localizedDescription": "Skills lists the bot's real index (236 here), and the two switches now reach the host.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.168/Hermey-0.1.168-b168.ipa",
-          "size": 2103192,
-          "minOSVersion": "17.0",
-          "sha256": "1da62237c75b074c012177d95961165644249646f234d06928b23fff720bbfca"
         }
       ],
       "appPermissions": {
