@@ -1,6 +1,6 @@
 import SwiftUI
 import WebKit
-import HermesAppKit
+import HermesKit
 #if os(macOS)
 import AppKit
 #else

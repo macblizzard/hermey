@@ -1,5 +1,5 @@
 import XCTest
-@testable import HermesAppKit
+@testable import HermesKit
 
 /// The `::blocks{id="…"}` directive: finding it, and taking it out of the text.
 ///
