@@ -130,7 +130,7 @@ struct BotIconPicker: View {
             }
             .background(Tokens.canvas)
             .navigationTitle("Portrait for \(botName)")
-            .inlineSheetTitle()
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
