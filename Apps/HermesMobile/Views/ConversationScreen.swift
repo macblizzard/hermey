@@ -37,6 +37,13 @@ struct ConversationScreen: View {
     @State private var keyboardScreenSize: CGSize = .zero
     @State private var keyboardScrollTask: Task<Void, Never>?
     @State private var isDraggingTranscript = false
+
+    /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
+    /// place that says which bot you are talking to does not need a label.
+    private var botTint: Color {
+        (app.botFaces[bot.id] ?? BotFace.default(for: bot.id)).color.swatch
+    }
+
     /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).
     @State private var showDrawer = false
     /// The transcript's own width, so "the trailing edge" is a measurement and not a guess.
