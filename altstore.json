@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.229",
+          "buildVersion": "229",
+          "date": "2026-11-13T18:58:08Z",
+          "localizedDescription": "The drawer's footer scrolls with the menu, and the three dots are back in the chat header.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.229/Hermey-0.1.229-b229.ipa",
+          "size": 2220457,
+          "minOSVersion": "17.0",
+          "sha256": "00fcd57a65a51dc6d84e5354e4570ba5399988964c80bd648c1a71401deaa87a"
+        },
+        {
           "version": "0.1.226",
           "buildVersion": "226",
           "date": "2026-11-13T18:05:50Z",
@@ -62,16 +72,6 @@
           "size": 2203296,
           "minOSVersion": "17.0",
           "sha256": "09aa197a36e5868599923be665b41b1ee45025e136d603d0182787f9e74e373d"
-        },
-        {
-          "version": "0.1.210",
-          "buildVersion": "210",
-          "date": "2026-11-13T14:18:29Z",
-          "localizedDescription": "The phone catches up with the Rakazo shell: two-line roster rows with an 8 pt unread dot, group chats shaped the same, 20 pt bubbles, one header line.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.210/Hermey-0.1.210-b210.ipa",
-          "size": 2175008,
-          "minOSVersion": "17.0",
-          "sha256": "e1682a7d4d352173d3cdc8c25a9f170d9bc7ed273447521b6cbcc9d0a9ad1e6f"
         }
       ],
       "appPermissions": {
