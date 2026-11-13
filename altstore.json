@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.204",
+          "buildVersion": "204",
+          "date": "2026-11-13T11:56:04Z",
+          "localizedDescription": "One clock now owns the unread sweep: an open chat no longer polls the host twice as often, so notifications cost less battery.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.204/Hermey-0.1.204-b204.ipa",
+          "size": 2173308,
+          "minOSVersion": "17.0",
+          "sha256": "319e2af9feb74f2cb57470690b31995f115466be34e252434799bbf898ccb49b"
+        },
+        {
           "version": "0.1.201",
           "buildVersion": "201",
           "date": "2026-11-13T11:15:27Z",
@@ -62,16 +72,6 @@
           "size": 2134382,
           "minOSVersion": "17.0",
           "sha256": "864e3a666bdeaa4bd6a5825eac088a60e2b9f9b427a590449dd9f55ed72c8932"
-        },
-        {
-          "version": "0.1.184",
-          "buildVersion": "184",
-          "date": "2026-11-12T14:18:40Z",
-          "localizedDescription": "Compact says it is running on both apps (a spinner chip, a disabled verb, an outcome that is always drawn); the phone's item is no longer greyed out by a session id it learns late. Identical reads cost one round trip, and the model catalogue is cached for two minutes, so a chat stops queuing behind duplicate work at launch and on every reconnect.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.184/Hermey-0.1.184-b184.ipa",
-          "size": 2115214,
-          "minOSVersion": "17.0",
-          "sha256": "238bc7f2e691942040d33c8637241e702b0d4f335d67d8ac8b98931d43102a9a"
         }
       ],
       "appPermissions": {
