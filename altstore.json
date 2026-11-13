@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.232",
+          "buildVersion": "232",
+          "date": "2026-11-13T19:28:29Z",
+          "localizedDescription": "The drawer scrolls as one piece, and the three dots toggle it.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.232/Hermey-0.1.232-b232.ipa",
+          "size": 2220440,
+          "minOSVersion": "17.0",
+          "sha256": "a7be8e2948fa52df4f34439476bdd6875ff7061b86a2cf7ef590b04842ca9789"
+        },
+        {
           "version": "0.1.229",
           "buildVersion": "229",
           "date": "2026-11-13T18:58:08Z",
@@ -62,16 +72,6 @@
           "size": 2203292,
           "minOSVersion": "17.0",
           "sha256": "eadfc51515b6a32af277792b0e29bf05d6ddbf8035b07cd6fb9d9c0f95451bed"
-        },
-        {
-          "version": "0.1.216",
-          "buildVersion": "216",
-          "date": "2026-11-13T15:09:39Z",
-          "localizedDescription": "The genui plugin's cards now draw in both apps: a reply that carries a board renders it in place, with its buttons going through the composer.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.216/Hermey-0.1.216-b216.ipa",
-          "size": 2203296,
-          "minOSVersion": "17.0",
-          "sha256": "09aa197a36e5868599923be665b41b1ee45025e136d603d0182787f9e74e373d"
         }
       ],
       "appPermissions": {
