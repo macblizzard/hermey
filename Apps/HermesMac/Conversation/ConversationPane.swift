@@ -23,8 +23,22 @@ struct ConversationPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ConversationHeader(model: model, store: store)
-            Hairline()
+            // Rakazo floats the header over the transcript instead of stacking it above: the row
+            // costs 62 pt of layout, the content scrolls beneath it, and a hairline would put the
+            // bar back. The transcript reserves `Geometry.transcriptTopInset` so nothing starts
+            // hidden under the pills.
+            ZStack(alignment: .top) {
+                Group {
+                    if model.selectedSessionID == nil {
+                        ConversationEmptyState(model: model, store: store)
+                    } else {
+                        TranscriptScroll(model: model, findRequest: store.findRequest)
+                    }
+                }
+                .padding(.top, Geometry.chatHeader)
+
+                ConversationHeader(model: model, store: store)
+            }
 
             if let banner = bannerKind {
                 ConnectionBanner(banner,
@@ -39,12 +53,6 @@ struct ConversationPane: View {
                 MacInlineNotice(message: why, actionTitle: "Pair host…") {
                     store.isPairSheetPresented = true
                 }
-            }
-
-            if model.selectedSessionID == nil {
-                ConversationEmptyState(model: model, store: store)
-            } else {
-                TranscriptScroll(model: model, findRequest: store.findRequest)
             }
 
             ApprovalInbox(model: model, store: store)

@@ -210,11 +210,11 @@ public struct Composer: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                 .fill(Tokens.control)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                 .strokeBorder(isFieldFocused ? Tokens.borderFocus : Tokens.borderStrong, lineWidth: 1)
         )
         .opacity(isDisabled ? 0.6 : 1)

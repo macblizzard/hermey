@@ -56,9 +56,14 @@ public struct ThemePalette: Identifiable, Equatable {
 /// The themes that ship.
 public enum ThemeCatalog {
     /// The app's own palette, and the one a fresh install gets.
-    public static let defaultID = "openbot"
+    ///
+    /// Rakazo's monochrome shell is the house look now: ink on near-black, one blue for unread and
+    /// working, one green for success. The earlier OpenBot palette stays in the catalogue, so a
+    /// restyle that does not land is one pick away from the old face.
+    public static let defaultID = "rakazo"
 
     public static let all: [ThemePalette] = [
+        rakazo,
         openbot,
         gruvbox,
         tokyoNight,
@@ -68,11 +73,28 @@ public enum ThemeCatalog {
     ]
 
     public static func theme(id: String) -> ThemePalette {
-        all.first { $0.id == id } ?? openbot
+        all.first { $0.id == id } ?? rakazo
     }
 
     // MARK: - Palettes
 
+    /// The shell's own palette, ported from Rakazo's `webDarkTokens`
+    /// (`packages/ui-tokens/src/index.ts`): `background #0A0A0A`, `muted #232323`, ink `#F5F5F5`,
+    /// `unread`/`statusWorking #4D9BFF`, `success #00BA69`, `warning #E28600`, `destructive #FF6463`.
+    ///
+    /// Text tones are the palette's alphas flattened onto this canvas, because a SwiftUI `Color` in
+    /// a token table has to be one value: `mutedForeground #F5F5F5A8` → `#A5A5A5`,
+    /// `faintForeground #F5F5F58A` → `#898989`, both composited over `#0A0A0A`.
+    public static let rakazo = ThemePalette.make(
+        id: "rakazo", name: "Rakazo",
+        canvas: 0x0A0A0A, frame: 0x0A0A0A, surface: 0x232323, surfaceHigh: 0x2B2B2B,
+        sheet: 0x161616,
+        text: 0xF5F5F5, textMuted: 0xA5A5A5, textDim: 0x898989,
+        accent: 0x4D9BFF, accentText: 0x4D9BFF,
+        success: 0x00BA69, warning: 0xE28600, danger: 0xFF6463,
+        borderAlpha: 0.10)
+
+    /// The palette this app shipped before the Rakazo shell, kept for the way back.
     public static let openbot = ThemePalette.make(
         id: "openbot", name: "OpenBot",
         canvas: 0x1A1A1A, frame: 0x0D0D0D, surface: 0x212121, surfaceHigh: 0x242424,
@@ -143,9 +165,23 @@ public enum ThemeRuntime {
     public static let defaultsKey = "hermey.theme"
 
     /// Read the stored choice and make it the active palette. Called by each root before it draws.
+    ///
+    /// One migration rides along: an install that never chose a theme is wearing the old default by
+    /// accident, not by preference, so it moves to the new house palette once. A stored choice of
+    /// any *other* theme is left exactly as the user left it.
     @discardableResult
     public static func restoreFromDefaults() -> String {
-        let id = UserDefaults.standard.string(forKey: defaultsKey) ?? ThemeCatalog.defaultID
+        let stored = UserDefaults.standard.string(forKey: defaultsKey)
+        let migratedKey = "hermey.theme.migrated.rakazo"
+        if UserDefaults.standard.bool(forKey: migratedKey) == false {
+            UserDefaults.standard.set(true, forKey: migratedKey)
+            if stored == nil || stored == "openbot" {
+                UserDefaults.standard.set(ThemeCatalog.defaultID, forKey: defaultsKey)
+                active = ThemeCatalog.theme(id: ThemeCatalog.defaultID)
+                return ThemeCatalog.defaultID
+            }
+        }
+        let id = stored ?? ThemeCatalog.defaultID
         active = ThemeCatalog.theme(id: id)
         return id
     }

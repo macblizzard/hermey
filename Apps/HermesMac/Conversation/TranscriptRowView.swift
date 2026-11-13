@@ -139,14 +139,14 @@ struct TranscriptRowView: View {
                 .foregroundStyle(Tokens.textPrimary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.horizontal, Geometry.bubblePaddingH)
+                .padding(.vertical, Geometry.bubblePaddingV)
                 .background(
-                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
                         .fill(Tokens.control)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
                 .accessibilityLabel("You said: \(entry.displayText)")

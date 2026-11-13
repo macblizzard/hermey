@@ -81,8 +81,9 @@ struct ConversationHeader: View {
         GeometryReader { proxy in
             header(width: proxy.size.width)
         }
-        .frame(height: 60)
-        .background(Tokens.canvas)
+        .frame(height: Geometry.chatHeader)
+        // No bar and no hairline: the pill is the header, and the pane's canvas is its background.
+        .background(Color.clear)
         // Owned by the store: the menu, the toolbar's own button and the palette's verb all raise
         // this one dialog, so "reset" cannot be two different confirmations.
         .confirmationDialog("Reset this conversation?",
@@ -108,7 +109,7 @@ struct ConversationHeader: View {
     }
 
     private func header(width: CGFloat) -> some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 8) {
             // The panel's own control. A bot list that cannot be put away is the reason a narrow
             // window feels cramped; ⌘⌥S does the same thing without the mouse.
             OpenBotIconButton(store.isSidebarHidden ? "sidebar.leading" : "sidebar.left",
@@ -118,43 +119,42 @@ struct ConversationHeader: View {
             }
             .help(store.isSidebarHidden ? "Show the bot panel (⌘S)" : "Hide the bot panel (⌘S)")
 
-            // The bot's own portrait, the same one the sidebar row shows. The chat used to fall
-            // back to a lettered circle, so the header and the row that opened it disagreed about
-            // which bot this was.
-            if let bot = model.selectedBot {
-                BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
-                                size: 26,
-                                isWorking: model.isStreaming)
-            } else {
-                Avatar(title, size: .small, presence: presence)
-            }
+            // Rakazo's header is a floating pill, not a bar: the portrait and one title line inside
+            // a rounded, translucent capsule, with the preview left to the roster row that already
+            // says it. The pane below scrolls under this row, so it has to stay a single line.
+            HStack(spacing: 8) {
+                if let bot = model.selectedBot {
+                    BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                                    size: Geometry.chatHeaderAvatar,
+                                    isWorking: model.isStreaming)
+                } else {
+                    Avatar(title, size: .small, presence: presence)
+                }
 
-            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(TypeScale.font(Tokens.textLG, weight: .semibold))
+                    .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .medium))
                     .foregroundStyle(Tokens.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-
-                if let descriptionLine {
-                    Text(descriptionLine)
-                        .font(TypeScale.font(TypeScale.label))
-                        .foregroundStyle(Tokens.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-
-                Text(statsLine)
-                    .font(TypeScale.font(TypeScale.micro))
-                    .monospacedDigit()
-                    .foregroundStyle(Tokens.textDim)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .layoutPriority(1)
             }
-            // The title shrinks (and truncates) before anything to its right is displaced, and it
-            // never takes more than its share of the strip.
-            .frame(maxWidth: max(140, width * 0.42), alignment: .leading)
-            .layoutPriority(1)
+            .padding(.leading, 4)
+            .padding(.trailing, 14)
+            .padding(.vertical, 4)
+            .frame(height: Geometry.chatHeaderPill)
+            .background(Capsule().fill(Tokens.surface.opacity(0.92)))
+            .overlay(Capsule().strokeBorder(Tokens.border, lineWidth: 1))
+            .frame(maxWidth: max(160, width * 0.5), alignment: .leading)
+
+            // What the old three-line block said that the roster cannot: how full this conversation
+            // is. One dim line beside the pill instead of two under the title.
+            Text(statsLine)
+                .font(TypeScale.font(TypeScale.micro))
+                .monospacedDigit()
+                .foregroundStyle(Tokens.textDim)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .accessibilityLabel("context used: \(statsLine)")
 
             Spacer(minLength: 8)
 
