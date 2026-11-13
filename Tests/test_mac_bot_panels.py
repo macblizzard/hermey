@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 HEADER = ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift"
+PANEL = ROOT / "Apps" / "HermesMac" / "Workspace" / "MacBotPanel.swift"
 ROOTVIEW = ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceRoot.swift"
 STORE = ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift"
 WORKSPACE = ROOT / "Apps" / "HermesMac" / "Workspace" / "MacWorkspaceSheet.swift"
@@ -23,18 +24,23 @@ def read(path: Path) -> str:
 
 
 class TheMenuOpensAllThree(unittest.TestCase):
-    def test_the_conversation_menu_carries_them(self) -> None:
-        header = read(HEADER)
-        for verb in ("Workspace…", "Skills…", "MCP servers…"):
-            self.assertIn(f'"{verb}"', header)
+    def test_the_bots_panel_carries_them(self) -> None:
+        # The verbs moved from the header's dropdown into the panel the name opens: a panel stays
+        # open beside the chat it acts on, a dropdown has to be re-opened for every verb.
+        panel = read(PANEL)
+        for verb in ("Workspace", "Skills", "MCP servers"):
+            self.assertIn(f'row("{verb}"', panel)
         for call in ("store.openWorkspace(bot)", "store.openSkills(bot)", "store.openMCP(bot)"):
-            self.assertIn(call, header)
+            self.assertIn(call, panel)
+        # And the header no longer keeps a menu of its own.
+        self.assertNotIn("moreMenu", read(HEADER))
 
-    def test_the_menu_keeps_one_grouping(self) -> None:
-        header = read(HEADER)
-        block = header.split('if let bot = model.selectedBot {', 1)[1].split('Divider()\n            }', 1)[0]
-        self.assertLess(block.index("Workspace…"), block.index("Skills…"))
-        self.assertLess(block.index("Skills…"), block.index("MCP servers…"))
+    def test_the_panel_keeps_one_grouping(self) -> None:
+        panel = read(PANEL)
+        block = panel
+        # The documents, then what the bot may reach for: the phone's order, in the panel.
+        self.assertLess(block.index('row("Workspace"'), block.index('row("Skills"'))
+        self.assertLess(block.index('row("Skills"'), block.index('row("MCP servers"'))
 
 
 class OneModalAtATime(unittest.TestCase):

@@ -20,10 +20,10 @@ struct HermesMacApp: App {
     var body: some Scene {
         WindowGroup("Hermey") {
             WorkspaceRoot(store: store)
-                // The shell lays out exactly this much chrome around the conversation: the 8 pt
-                // window surround on each side, the bot panel at its floor, the divider strip and
-                // its hairline. Leaving any of it out is what clipped the conversation's right
-                // edge at 624 pt.
+                // The shell lays out exactly this much chrome around the conversation: the bot
+                // panel at its floor, the divider strip and its hairline, and — when it is open —
+                // the bot's own panel or the shared computer. There is no surround: the shell
+                // reaches the window edge on every side.
                 // The minimum is the arrangement's, not one pane's: opening the shared computer adds
                 // a pane and a hairline, and a window held to the two-pane sum clipped both edges.
                 .frame(minWidth: store.minimumWindowWidth, minHeight: WindowLayout.heightMin)

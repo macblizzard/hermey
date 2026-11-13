@@ -100,6 +100,10 @@ final class WorkspaceStore: ObservableObject {
     /// panel is a property of the window, not of the selected bot — switching bots keeps it open
     /// and the pane re-labels itself.
     @Published var isComputerPanelPresented = false
+    /// The bot's own panel on the right edge: the phone's drawer, as a pane. Rakazo's shape —
+    /// the name in the header is the control, and every verb about this bot lives beside the chat
+    /// rather than in a dropdown that closes after one click.
+    @Published var isBotPanelPresented = false
     /// Which of the three per-bot panels is up. One at a time, like every other sheet here.
     @Published var workspaceBot: Bot?
     @Published var skillsBot: Bot?
@@ -316,7 +320,8 @@ final class WorkspaceStore: ObservableObject {
     /// to it, so a pane opening can never clip the shell's edges.
     var minimumWindowWidth: CGFloat {
         WindowLayout.minimumWidth(sidebarWidth: isSidebarHidden ? nil : sidebarWidth,
-                                  panelOpen: isComputerPanelPresented)
+                                  panelOpen: isComputerPanelPresented,
+                                  botPanelOpen: isBotPanelPresented)
     }
 
     /// One sentence about where the pairing lives, for Settings.
@@ -803,6 +808,10 @@ final class WorkspaceStore: ObservableObject {
             guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
             return (try address.apiOrigin(), try await address.mintedTicket())
         })
+    }
+
+    func toggleBotPanel() {
+        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented.toggle() }
     }
 
     func toggleComputerPanel() {

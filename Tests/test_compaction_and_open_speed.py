@@ -73,6 +73,7 @@ class AChatPaintsBeforeTheHostAnswers(unittest.TestCase):
         self.assertIn("guard !entries.isEmpty", body)
 
 
+MAC_PANEL = (ROOT / "Apps" / "HermesMac" / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
 MAC_HEADER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift").read_text(encoding="utf-8")
 IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
 # The chat's verbs are a page swiped in from the trailing edge now, not a bar menu.
@@ -105,9 +106,9 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
         self.assertIn("compactingChip", IOS_SCREEN)
 
     def test_both_surfaces_keep_the_verb_and_disable_it_while_it_runs(self) -> None:
-        self.assertIn('model.isCompressing ? "Compacting…"', MAC_HEADER,
-                      "mac: the menu item must not vanish mid-compaction")
-        self.assertIn("model.isCompressing)", MAC_HEADER, "mac: it must not be tappable twice")
+        self.assertIn('model.isCompressing ? "Compacting…"', MAC_PANEL,
+                      "mac: the row must not vanish mid-compaction")
+        self.assertIn("model.isCompressing)", MAC_PANEL, "mac: it must not be tappable twice")
         # The phone's verbs are a page now: the row relabels itself and the row is disabled, which
         # `isBusy` carries from the screen's `model.isCompressing`.
         self.assertIn('isCompressing ? "Compacting…" : "Compact"', IOS_VERBS)
