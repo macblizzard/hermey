@@ -52,6 +52,14 @@ class TheDecisionLivesInOnePlace(unittest.TestCase):
                       MODEL)
         self.assertIn("let rooms = rooms.values.reduce(0)", POLICY)
 
+    def test_only_the_model_polls_for_other_bots_replies(self) -> None:
+        # `AppModel` owns the clock. A view that keeps its own preview sweep (the conversation
+        # screen did, to keep its rooms badge fresh) doubles the poll rate for as long as a chat is
+        # open — invisible in tests, a battery line item on a phone.
+        conversation = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
+        self.assertNotIn("loadBotPreviews", conversation)
+        self.assertIn("refreshRooms()", conversation)
+
     def test_a_clock_sweeps_while_the_window_sits_in_one_chat(self) -> None:
         # Without this the model only looked at the host when the list appeared, so nine bots
         # replying under one open conversation raised nothing at all.
