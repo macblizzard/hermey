@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.219",
+          "buildVersion": "219",
+          "date": "2026-11-13T15:48:21Z",
+          "localizedDescription": "Boards now sit on the chat's own background instead of a lighter rectangle.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.219/Hermey-0.1.219-b219.ipa",
+          "size": 2203292,
+          "minOSVersion": "17.0",
+          "sha256": "eadfc51515b6a32af277792b0e29bf05d6ddbf8035b07cd6fb9d9c0f95451bed"
+        },
+        {
           "version": "0.1.216",
           "buildVersion": "216",
           "date": "2026-11-13T15:09:39Z",
@@ -62,16 +72,6 @@
           "size": 2173308,
           "minOSVersion": "17.0",
           "sha256": "319e2af9feb74f2cb57470690b31995f115466be34e252434799bbf898ccb49b"
-        },
-        {
-          "version": "0.1.201",
-          "buildVersion": "201",
-          "date": "2026-11-13T11:15:27Z",
-          "localizedDescription": "Notifications now check the host on their own every 25 seconds, so a reply from a bot you are not reading reaches you while you sit in another conversation \u2014 previously the app only looked when the bot list appeared.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.201/Hermey-0.1.201-b201.ipa",
-          "size": 2173057,
-          "minOSVersion": "17.0",
-          "sha256": "483b5b97cd3609d3b6131e8b5fdc01830b9b62e920cb17c34d8dc11f015dc61c"
         }
       ],
       "appPermissions": {
