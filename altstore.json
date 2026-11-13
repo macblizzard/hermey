@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.222",
+          "buildVersion": "222",
+          "date": "2026-11-13T17:09:01Z",
+          "localizedDescription": "A run of tool calls is one line \u2014 tap it for the calls, each still its own card.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.222/Hermey-0.1.222-b222.ipa",
+          "size": 2217417,
+          "minOSVersion": "17.0",
+          "sha256": "4ea97e9a41fa0e7e711210dc3b9a5fa2b00cfed146bbe755f367e67c42b84865"
+        },
+        {
           "version": "0.1.219",
           "buildVersion": "219",
           "date": "2026-11-13T15:48:21Z",
@@ -62,16 +72,6 @@
           "size": 2175395,
           "minOSVersion": "17.0",
           "sha256": "1ca17b29d76268dd20e349b684556fafcf4d64bb8f2da0e086fbcf1a5be3c0af"
-        },
-        {
-          "version": "0.1.204",
-          "buildVersion": "204",
-          "date": "2026-11-13T11:56:04Z",
-          "localizedDescription": "One clock now owns the unread sweep: an open chat no longer polls the host twice as often, so notifications cost less battery.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.204/Hermey-0.1.204-b204.ipa",
-          "size": 2173308,
-          "minOSVersion": "17.0",
-          "sha256": "319e2af9feb74f2cb57470690b31995f115466be34e252434799bbf898ccb49b"
         }
       ],
       "appPermissions": {
