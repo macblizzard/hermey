@@ -52,6 +52,18 @@ class TheDecisionLivesInOnePlace(unittest.TestCase):
                       MODEL)
         self.assertIn("let rooms = rooms.values.reduce(0)", POLICY)
 
+    def test_a_clock_sweeps_while_the_window_sits_in_one_chat(self) -> None:
+        # Without this the model only looked at the host when the list appeared, so nine bots
+        # replying under one open conversation raised nothing at all.
+        self.assertIn("public static let unreadSweepInterval", MODEL)
+        sweep = MODEL.split("public func startUnreadSweep()", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("loadBotPreviews()", sweep)
+        self.assertIn("connection.isLive", sweep, "a dead socket must not be polled")
+        # Started by both doors into the wire, and stopped with it.
+        self.assertIn("startUnreadSweep()\n        } catch", MODEL)
+        self.assertIn("startUnreadSweep()\n            //", MODEL)
+        self.assertIn("unreadSweepTask?.cancel()", MODEL)
+
 
 class TheMacDelivers(unittest.TestCase):
     def test_banners_are_posted_not_swallowed(self) -> None:
