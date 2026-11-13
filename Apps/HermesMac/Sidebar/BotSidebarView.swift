@@ -23,6 +23,9 @@ struct BotSidebarView: View {
 
     /// The live bot filter. Matched case-insensitively against name and id by `SidebarBotList`.
     @State private var searchQuery = ""
+    /// Search is a button, not a box: the field only exists while it is being used, so the row
+    /// holds four glyphs and the list gets the width back.
+    @State private var isSearching = false
 
 
     @State private var pendingRoomDelete: RoomSummary?
@@ -36,6 +39,10 @@ struct BotSidebarView: View {
                 .padding(.horizontal, Geometry.sidebarInset)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // Rows dissolve at both ends instead of being cut off by the header and the floor:
+                // 26 pt of gradient each way, fixed rather than a fraction, so a short list does
+                // not fade away to nothing and a long one does not lose a row to the blur.
+                .mask(listFade)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Tokens.sidebar)
@@ -98,67 +105,116 @@ struct BotSidebarView: View {
 
     // MARK: Header
 
-    /// The panel's only chrome row: search, list filters, Settings.
+    /// The panel's chrome row: search, the panel's own toggle, then the verbs and Settings.
     ///
-    /// The former magnifier was the command palette; the palette is still ⌘K and still in the
-    /// Conversation menu, while the magnifier's understandable meaning — search — is now the
-    /// field itself. The field leads the row and takes the remaining width, so at the 200 pt
-    /// floor the two 24 pt buttons are the only fixed size in it.
+    /// Rakazo's arrangement, and the reason the search box is gone: a permanently open field costs
+    /// the row its whole width for the one moment in ten it is used. The magnifier opens it, the ✕
+    /// or Escape closes it, and the roster gets its width back in between.
     private var header: some View {
-        HStack(spacing: 6) {
-            MacSidebarSearchField(text: $searchQuery, prompt: "Search bots")
-                .accessibilityIdentifier("sidebar.botSearch")
-                .layoutPriority(1)
+        HStack(spacing: 2) {
+            if isSearching {
+                MacSidebarSearchField(text: $searchQuery, prompt: "")
+                    .layoutPriority(1)
+                    .accessibilityIdentifier("sidebar.botSearch")
 
-            Menu {
-                // Same control as the phone's list filter: a switch, not a second list.
-                Toggle("Show hidden bots", isOn: $showsHiddenBots)
-                Divider()
-                Button { store.isAddBotPresented = true } label: { Label("Add bot…", systemImage: "plus.circle") }
-                Button { store.isManageBotsPresented = true } label: {
-                    Label("Manage bots…", systemImage: "slider.horizontal.3")
+                OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
+                    .help("Close search (esc)")
+            } else {
+                OpenBotIconButton("magnifyingglass", label: "Search bots", size: .small) {
+                    isSearching = true
                 }
-                Divider()
-                Button { store.isStartGroupChatPresented = true } label: {
-                    Label("Start group chat…", systemImage: "person.3")
-                }
-                Divider()
-                // One act for the whole list: opening nine chats to clear nine dots is not reading.
-                Button { store.model.markAllRead() } label: {
-                    Label("Mark all as read", systemImage: "checkmark.circle")
-                }
-                .disabled(!store.model.hasAnyUnread)
-            } label: {
-                // Three dots on the Mac too: the same menu, wearing the same glyph as on the phone,
-                // instead of a funnel that promised filtering and then offered "Add bot".
-                Image(systemName: "ellipsis")
-                    .font(TypeScale.font(TypeScale.label))
-                    .foregroundStyle(showsHiddenBots ? Tokens.accentText : Tokens.textDim)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Bot list menu")
-            .accessibilityLabel("Bot list menu")
+                .help("Search bots")
 
-            SettingsLink {
-                Image(systemName: "gearshape")
-                    .font(TypeScale.font(TypeScale.label))
-                    .foregroundStyle(Tokens.textMuted)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
+                // The panel's own toggle, where Rakazo keeps it. The chat header shows one only
+                // while this panel is hidden, so the door is never gone.
+                OpenBotIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
+                    store.toggleSidebar()
+                }
+                .help("Hide the bot panel (⌘S)")
+
+                Spacer(minLength: 0)
+
+                addMenu
+
+                SettingsLink {
+                    Image(systemName: "gearshape")
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textMuted)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
+                .accessibilityLabel("Settings")
             }
-            .buttonStyle(.plain)
-            .help("Settings (⌘,)")
-            .accessibilityLabel("Settings")
         }
         .padding(.horizontal, Geometry.sidebarInset)
-        // The traffic-light strip: the panel's fill runs to the window's top edge, the field
-        // starts under the buttons.
+        // The traffic-light strip: the panel's fill runs to the window's top edge, the row starts
+        // under the buttons.
         .padding(.top, WorkspaceShell.titlebarStrip)
         .padding(.bottom, 6)
+        .onExitCommand { if isSearching { closeSearch() } }
+    }
+
+    private func closeSearch() {
+        withAnimation(.easeOut(duration: 0.12)) {
+            isSearching = false
+            searchQuery = ""
+        }
+    }
+
+    /// The plus, in the filled square Rakazo gives it: the one button in the row that is a verb
+    /// rather than a view control. The verbs are ours — add, group chat, manage, hidden, read.
+    private var addMenu: some View {
+        Menu {
+            Button { store.isAddBotPresented = true } label: { Label("Add bot…", systemImage: "plus.circle") }
+            Button { store.isStartGroupChatPresented = true } label: {
+                Label("Start group chat…", systemImage: "person.3")
+            }
+            Button { store.isManageBotsPresented = true } label: {
+                Label("Manage bots…", systemImage: "slider.horizontal.3")
+            }
+            Divider()
+            // Same control as the phone's list filter: a switch, not a second list.
+            Toggle("Show hidden bots", isOn: $showsHiddenBots)
+            Divider()
+            // One act for the whole list: opening nine chats to clear nine dots is not reading.
+            Button { store.model.markAllRead() } label: {
+                Label("Mark all as read", systemImage: "checkmark.circle")
+            }
+            .disabled(!store.model.hasAnyUnread)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Tokens.textPrimary)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Tokens.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Tokens.border, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add a bot, start a group chat, manage the list")
+        .accessibilityLabel("Bot list menu")
+    }
+
+    /// The list's fade: transparent, solid, transparent, with the solid part taking whatever is
+    /// left. Drawn as a mask so it costs no colour of its own and follows the theme.
+    private var listFade: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: 26)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                .frame(height: 26)
+        }
     }
 
     // MARK: Content

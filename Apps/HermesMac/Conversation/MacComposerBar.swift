@@ -32,16 +32,16 @@ struct MacComposerBar: View {
         store.canTranscribeVoice && model.selectedSessionID != nil
     }
 
-    private var hint: String {
-        // The recording state is the one thing the composer itself cannot know: it changes what
-        // the microphone glyph means, so it is said in the hint line above the field.
+    /// The line under the field: **state only**, and `nil` the rest of the time.
+    ///
+    /// The resting keyboard reference is gone — a permanent cost for a one-time lesson. What stays
+    /// is what the composer cannot show by itself: that it is recording, waiting on the
+    /// microphone, or transcribing, which changes what the mic glyph means.
+    private var hint: String? {
         if voice.isRecording { return "recording · tap the square to transcribe" }
         if voice.state == .requestingPermission { return "waiting for microphone permission…" }
         if voice.state == .transcribing { return "transcribing…" }
-        if model.isStreaming {
-            return "streaming · ⏎ steers into this turn · ⌘. interrupt"
-        }
-        return "⏎ or ⌘↩ send · ⇧⏎ newline · ⌘K commands"
+        return nil
     }
 
     /// The microphone's glyph and tint, from the controller's own state.
@@ -135,9 +135,9 @@ struct MacComposerBar: View {
             }
 
             Composer(text: $model.draft,
-                     placeholder: store.isPaired
-                        ? "Ask \(model.selectedBot?.displayName ?? model.hostName) anything"
-                        : "Pair a host to start a conversation",
+                     // Nothing in the field until there is something to say: a placeholder is a
+                     // label the composer does not need, and it read as text that had been typed.
+                     placeholder: "",
                      isSending: model.isStreaming,
                      isDisabled: model.selectedSessionID == nil,
                      // Inside the card, immediately left of the send arrow.

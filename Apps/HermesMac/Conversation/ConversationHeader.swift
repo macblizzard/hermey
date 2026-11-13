@@ -81,14 +81,15 @@ struct ConversationHeader: View {
             pill(width: width)
 
             HStack(spacing: 8) {
-                // The bot list's own control. It stays in the header because a hidden panel with
-                // its only door inside it is a panel that cannot be brought back.
-                OpenBotIconButton(store.isSidebarHidden ? "sidebar.leading" : "sidebar.left",
-                                  label: store.isSidebarHidden ? "Show the bot panel" : "Hide the bot panel",
-                                  size: .small) {
-                    store.toggleSidebar()
+                // The toggle lives in the bot panel's own header now — Rakazo's arrangement. It
+                // reappears here only while the panel is hidden, because a hidden panel with its
+                // only door inside it is a panel that cannot be brought back.
+                if store.isSidebarHidden {
+                    OpenBotIconButton("sidebar.leading", label: "Show the bot panel", size: .small) {
+                        store.toggleSidebar()
+                    }
+                    .help("Show the bot panel (⌘S)")
                 }
-                .help(store.isSidebarHidden ? "Show the bot panel (⌘S)" : "Hide the bot panel (⌘S)")
 
                 Spacer(minLength: 12)
 
@@ -113,7 +114,10 @@ struct ConversationHeader: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, Geometry.readingInset)
-        .frame(width: width, height: Geometry.chatHeader)
+        // Up against the window's top edge, level with the traffic lights: 8 pt of air, the 36 pt
+        // capsule, and the rest is the transcript's, which scrolls behind it.
+        .frame(width: width, height: Geometry.chatHeaderPill + 12)
+        .padding(.top, 2)
     }
 
     /// The pill: portrait, name, and the ⋯ that opens the bot's panel. The whole capsule is the

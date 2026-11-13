@@ -35,8 +35,9 @@ struct ConversationPane: View {
                         TranscriptScroll(model: model, findRequest: store.findRequest)
                     }
                 }
-                .padding(.top, Geometry.chatHeader)
-
+                // No reserve: the transcript starts at the pane's own top edge and scrolls *under*
+                // the pill, which is what makes the header float rather than sit in a bar. The
+                // rows carry a top inset instead, so the first message still clears the capsule.
                 ConversationHeader(model: model, store: store)
             }
 

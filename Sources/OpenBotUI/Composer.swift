@@ -97,12 +97,13 @@ public struct Composer: View {
         self.attachPopoverContent = attachPopoverContent
     }
 
-    /// The desktop hint line, in OpenBot's own words. The phone has no hint line.
-    #if os(macOS)
-    public static let defaultHint: String? = "⏎ send · ⇧⏎ newline · ⌘K commands"
-    #else
+    /// No hint line by default, on either platform.
+    ///
+    /// The composer said `⏎ send · ⇧⏎ newline · ⌘K commands` under every conversation, forever —
+    /// a keyboard reference that costs a line of the reading column and teaches nothing after the
+    /// first day. What is left is state, not instruction: a caller passes a hint only while
+    /// something is actually happening (recording, transcribing).
     public static let defaultHint: String? = nil
-    #endif
 
     #if os(iOS)
     private var controlSide: CGFloat { 32 }
@@ -284,11 +285,13 @@ public struct Composer: View {
 
     // MARK: Controls
 
-    /// The paperclip. When a caller supplies a popover, it is anchored *here* — on the 26 pt
+    /// The attach button. A **plus**, not a paperclip: it opens a menu of things to add, and a
+    /// plus says "add" without promising that everything behind it is a file. When a caller
+    /// supplies a popover, it is anchored *here* — on the 26 pt
     /// button — so the menu drops from the clip instead of from the middle of the composer card.
     @ViewBuilder
     private var attachControl: some View {
-        let button = OpenBotIconButton("paperclip",
+        let button = OpenBotIconButton("plus",
                                        label: "Attach a file",
                                        size: .small,
                                        isDisabled: isDisabled) { onAttach?() }
