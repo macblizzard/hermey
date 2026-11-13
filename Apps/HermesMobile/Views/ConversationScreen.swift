@@ -193,10 +193,12 @@ struct ConversationScreen: View {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
                     BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
-                                    size: 26,
+                                    size: Geometry.chatHeaderAvatar,
                                     isWorking: model.isStreaming && model.selectedBotID == bot.id)
+                    // Rakazo's header carries one line at 15/22 medium; the phone's nav bar is its
+                    // floating bar, so the weight matches rather than shouting over the transcript.
                     Text(title)
-                        .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
+                        .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .medium))
                         .foregroundStyle(Tokens.textPrimary)
                         .lineLimit(1)
                 }
@@ -318,17 +320,9 @@ struct ConversationScreen: View {
     /// reported — a missing fact is omitted, never guessed.
     private var headerStrip: some View {
         VStack(spacing: 0) {
-            // The same line the bot list shows under the name.
-            if let described = bot.description, !described.isEmpty {
-                Text(described)
-                    .font(TypeScale.font(TypeScale.micro))
-                    .foregroundStyle(Tokens.textDim)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 5)
-            }
-
+            // No description line: Rakazo's header is one line, and the roster row already carries
+            // the bot's own sentence. What stays is the status row, which is the only place the
+            // host's live facts (unread elsewhere, compacting, model, context, latency) can sit.
             HStack(spacing: 6) {
                 // Other chats, while this one is on screen. Zero draws nothing.
                 if unreadElsewhere > 0 {

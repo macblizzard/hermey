@@ -111,5 +111,44 @@ class RakazoGeometryTests(unittest.TestCase):
         self.assertIn("TypeScale.font(Tokens.rosterMeta", ROSTER)
 
 
+IOS_ROSTER = (ROOT / "Apps/HermesMobile/Views/BotListScreen.swift").read_text()
+IOS_TRANSCRIPT = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text()
+IOS_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
+ROOM_ROW = (ROOT / "Sources/OpenBotUI/GroupChatViews.swift").read_text()
+
+
+class RakazoIOSShellTests(unittest.TestCase):
+    """The phone's own anatomy, not just the shared tokens."""
+
+    def test_the_roster_row_is_the_same_row_as_the_macs(self) -> None:
+        self.assertIn("size: Geometry.rosterAvatar", IOS_ROSTER)
+        self.assertIn("spacing: Geometry.rosterRowGap", IOS_ROSTER)
+        self.assertIn(".frame(minHeight: Geometry.rosterRow)", IOS_ROSTER)
+        self.assertIn(".padding(.vertical, Geometry.rosterRowPadding)", IOS_ROSTER)
+        self.assertIn("TypeScale.font(Tokens.rosterMeta", IOS_ROSTER)
+        # Two lines: the count badge and the chevron were what made it three.
+        self.assertNotIn("UnreadBadge(count: model.unreadCount(bot.id)", IOS_ROSTER)
+        self.assertNotIn('Image(systemName: "chevron.right")', IOS_ROSTER)
+        self.assertIn("Circle()\n                                .fill(Tokens.accent)\n                                .frame(width: 8, height: 8)", IOS_ROSTER)
+
+    def test_a_group_chat_is_a_row_of_the_same_shape(self) -> None:
+        self.assertIn("spacing: Geometry.rosterRowGap", ROOM_ROW)
+        self.assertIn("TypeScale.font(Tokens.rosterName", ROOM_ROW)
+        self.assertIn("frame(width: 8, height: 8)", ROOM_ROW)
+        self.assertNotIn("UnreadBadge(count: unread", ROOM_ROW)
+
+    def test_the_phone_bubble_matches_the_macs(self) -> None:
+        self.assertIn(".padding(.horizontal, Geometry.bubblePaddingH)", IOS_TRANSCRIPT)
+        self.assertIn(".padding(.vertical, Geometry.bubblePaddingV)", IOS_TRANSCRIPT)
+        self.assertIn("cornerRadius: Tokens.radiusBubble", IOS_TRANSCRIPT)
+
+    def test_the_phone_header_is_one_line_at_the_same_weight(self) -> None:
+        self.assertIn("size: Geometry.chatHeaderAvatar", IOS_CHAT)
+        self.assertIn("TypeScale.font(Tokens.chatHeaderTitle, weight: .medium)", IOS_CHAT)
+        # The description line moved to the roster; the status chips stay.
+        self.assertNotIn("if let described = bot.description", IOS_CHAT)
+        self.assertIn("if unreadElsewhere > 0 {", IOS_CHAT)
+
+
 if __name__ == "__main__":
     unittest.main()
