@@ -13,6 +13,9 @@ import OpenBotUI
 /// has. Markers come from the block layer so a list looks the same everywhere.
 struct MobileTranscriptRow: View {
     let entry: TranscriptEntry
+    /// Calls that have not finished. Inside a folded run the group says it once; the card still
+    /// shows its own state, so a call that is still going does not look like one that is done.
+    var running: Set<String> = []
     @EnvironmentObject private var app: AppEnvironment
     @State private var showingSelection = false
     /// Pictures fetched back from the host, by attachment name.
@@ -490,7 +493,7 @@ struct MobileTranscriptRow: View {
         return MobileToolRow(name: name,
                              summary: summary,
                              output: entry.tool?.detail,
-                             isRunning: false,
+                             isRunning: running.contains(entry.id),
                              durationMS: nil,
                              standaloneMenu: false)
     }

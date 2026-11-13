@@ -132,28 +132,33 @@ struct TranscriptScroll: View {
                 }
             }
 
-            ForEach(model.visibleTranscript) { entry in
-                TranscriptRowView(entry: entry,
-                                  host: model.hostName,
-                                  bot: model.selectedBotID ?? "",
-                                  session: model.selectedSessionID,
-                                  onSelectText: { selectionText = $0 },
-                                  onReply: { model.reply(to: $0) })
-                    .id(entry.id)
-                    .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
-            }
-
-            // The cards of the running turn. The phone draws them from `liveTools`; the transcript
-            // here only read finished rows, so on the Mac a call appeared *after* the turn ended —
-            // and switching bots first was the only way to make the list rebuild.
-            ForEach(model.visibleLiveToolEntries) { entry in
-                TranscriptRowView(entry: entry,
-                                  host: model.hostName,
-                                  bot: model.selectedBotID ?? "",
-                                  session: model.selectedSessionID,
-                                  onSelectText: { selectionText = $0 },
-                                  onReply: { model.reply(to: $0) })
-                    .id(entry.id)
+            // Consecutive tool calls fold into one line: a turn that makes thirty calls should not
+            // push its answer off the screen. The run's cards are one click away, each still its own
+            // card with its own disclosure.
+            ForEach(TranscriptGrouping.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+                                            running: Set(model.visibleLiveToolEntries.map(\.id)))) { row in
+                switch row {
+                case .entry(let entry):
+                    TranscriptRowView(entry: entry,
+                                      host: model.hostName,
+                                      bot: model.selectedBotID ?? "",
+                                      session: model.selectedSessionID,
+                                      onSelectText: { selectionText = $0 },
+                                      onReply: { model.reply(to: $0) })
+                        .id(entry.id)
+                        .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
+                case .toolRun(let run):
+                    ToolRunGroup(run: run) { entry in
+                        TranscriptRowView(entry: entry,
+                                          host: model.hostName,
+                                          bot: model.selectedBotID ?? "",
+                                          session: model.selectedSessionID,
+                                          onSelectText: { selectionText = $0 },
+                                          onReply: { model.reply(to: $0) })
+                            .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
+                    }
+                    .id(run.id)
+                }
             }
 
             // The model's thinking, while it is thinking. The phone has drawn this since reasoning

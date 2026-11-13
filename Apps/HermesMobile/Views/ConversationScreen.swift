@@ -648,16 +648,27 @@ struct ConversationScreen: View {
                 }
             }
 
-            ForEach(model.visibleTranscript) { entry in
-                MobileTranscriptRow(entry: entry)
-                    .overlay {
-                        if selectedSearchID == entry.id {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(Tokens.accentText, lineWidth: 2)
-                                .allowsHitTesting(false)
+            // Consecutive tool calls fold into one line, the same way they do on the Mac: a turn
+            // that makes thirty calls should not fill the screen with thirty cards.
+            ForEach(TranscriptGrouping.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+                                            running: runningToolIDs)) { row in
+                switch row {
+                case .entry(let entry):
+                    MobileTranscriptRow(entry: entry)
+                        .overlay {
+                            if selectedSearchID == entry.id {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(Tokens.accentText, lineWidth: 2)
+                                    .allowsHitTesting(false)
+                            }
                         }
+                        .id(entry.id)
+                case .toolRun(let run):
+                    ToolRunGroup(run: run) { entry in
+                        MobileTranscriptRow(entry: entry, running: runningToolIDs)
                     }
-                    .id(entry.id)
+                    .id(run.id)
+                }
             }
 
             if !model.pendingRequests.isEmpty {
@@ -678,9 +689,8 @@ struct ConversationScreen: View {
                                      startsExpanded: model.reasoningExpandedByDefault)
             }
 
-            if model.showToolCalls, !model.liveTools.isEmpty {
-                liveToolsSection
-            }
+            // The running calls are already in the grouped rows above (`visibleLiveToolEntries`), so
+            // a second list of them here would draw every card twice.
 
             if model.isStreaming || !model.visibleStreamingText.isEmpty {
                 MobileStreamingBubble(text: model.visibleStreamingText)
@@ -731,35 +741,9 @@ struct ConversationScreen: View {
     ///
     /// `input`/`output` are copied out as `String?` first: the card takes optional text, and
     /// the model is free to hand back either shape. The output is only passed when the user
-    /// asked to see tool output in Settings *and* the tool actually produced some — an empty
-    /// result is not a result.
-    private var liveToolsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(model.liveTools) { tool in
-                let input: String? = tool.input
-                let output: String? = tool.output
-                MobileToolRow(name: tool.name,
-                              summary: toolSummary(input),
-                              output: output,
-                              isRunning: tool.isRunning,
-                              durationMS: tool.durationMS)
-            }
-        }
-    }
-
-    /// The first line of a tool's arguments, short enough for a card header.
-    ///
-    /// `tool.start` sends the arguments as JSON, so the first line is `{"command":"…` — unwrapping
-    /// first means the header names the command rather than the envelope it came in.
-    private func toolSummary(_ input: String?) -> String? {
-        guard let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        if let headline = ToolPayload.headline(raw: input) { return headline }
-        let firstLine = input.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
-            .first.map(String.init) ?? input
-        let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? nil : String(trimmed.prefix(90))
+    /// The calls of the turn that has not finished, so a card inside a run can say it is still going.
+    private var runningToolIDs: Set<String> {
+        Set(model.visibleLiveToolEntries.map(\.id))
     }
 
     // MARK: Header controls
