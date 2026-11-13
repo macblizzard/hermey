@@ -204,6 +204,24 @@ struct ConversationScreen: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+
+            // The verbs, where a phone puts them. Swiping from the edge opens the same drawer; this
+            // is the discoverable half, and it is what most people reach for first.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Haptics.impact()
+                    showDrawer = true
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Chat actions")
+                .accessibilityIdentifier("chatDrawerButton")
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
         // A card in this conversation: the phone already holds the pairing, so the resolver is one

@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAGING = (ROOT / "Sources/HermesKit/TranscriptPaging.swift").read_text()
 MODEL = (ROOT / "Sources/HermesAppKit/AppModel.swift").read_text()
 DRAWER = (ROOT / "Apps/HermesMobile/Views/ConversationDrawer.swift").read_text()
+CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
 
 
 class PagingTests(unittest.TestCase):
@@ -35,6 +36,27 @@ class PagingTests(unittest.TestCase):
 
     def test_the_page_numbers_are_logged(self) -> None:
         self.assertIn('category: "paging"', MODEL)
+
+
+class DrawerFooterTests(unittest.TestCase):
+    def test_the_footer_scrolls_with_the_menu(self) -> None:
+        # The hint sat under the scroll view, so its line stayed put while the rows scrolled past —
+        # which read as a rule drawn over the "Compact" row.
+        self.assertIn('Text("Swipe right, or tap outside, to close")', DRAWER)
+        self.assertGreater(DRAWER.index("Swipe right, or tap outside, to close"),
+                           DRAWER.index("ScrollView {"))
+        # Two hairlines remain, and neither is under the list: the panel's leading edge and the
+        # header's divider.
+        self.assertEqual(DRAWER.count("Hairline(color: Tokens.border)"), 2)
+        self.assertLess(DRAWER.rindex("Hairline(color: Tokens.border)"),
+                        DRAWER.index("ScrollView {"))
+
+    def test_the_three_dots_open_the_same_drawer_as_the_swipe(self) -> None:
+        self.assertIn("chatDrawerButton", CHAT)
+        self.assertIn("ToolbarItem(placement: .topBarTrailing)", CHAT)
+        self.assertIn("showDrawer = true", CHAT)
+        # The swipe is untouched: both doors lead to the same state.
+        self.assertIn("isDrawerSwipe", CHAT)
 
 
 class DrawerTests(unittest.TestCase):
