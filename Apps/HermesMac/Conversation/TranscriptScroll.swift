@@ -181,7 +181,9 @@ struct TranscriptScroll: View {
         // 592 pt wide and every column a different distance from the edge.
         .frame(maxWidth: Geometry.conversationMeasure, alignment: .leading)
         .padding(.horizontal, Geometry.readingInset)
-        .padding(.top, 22)
+        // Clears the floating pill: the transcript scrolls behind it, but its first row must not
+        // start underneath it.
+        .padding(.top, Geometry.chatHeaderPill + 20)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity)
     }
@@ -292,7 +294,8 @@ struct TranscriptScroll: View {
             TextButton("Done", tone: Tokens.textMuted) { closeSearch() }
         }
         .padding(.horizontal, Geometry.readingInset)
-        .padding(.top, 8)
+        // The pill floats over this row too, so the field starts below it.
+        .padding(.top, Geometry.chatHeaderPill + 10)
         .frame(maxWidth: Geometry.conversationMeasure + Geometry.readingInset * 2)
         .frame(maxWidth: .infinity)
     }
