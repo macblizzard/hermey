@@ -14,6 +14,7 @@ PAGING = (ROOT / "Sources/HermesKit/TranscriptPaging.swift").read_text()
 MODEL = (ROOT / "Sources/HermesAppKit/AppModel.swift").read_text()
 DRAWER = (ROOT / "Apps/HermesMobile/Views/ConversationDrawer.swift").read_text()
 CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
+PANEL = DRAWER[DRAWER.index("private var panel"):]
 
 
 class PagingTests(unittest.TestCase):
@@ -45,18 +46,28 @@ class DrawerFooterTests(unittest.TestCase):
         self.assertIn('Text("Swipe right, or tap outside, to close")', DRAWER)
         self.assertGreater(DRAWER.index("Swipe right, or tap outside, to close"),
                            DRAWER.index("ScrollView {"))
-        # Two hairlines remain, and neither is under the list: the panel's leading edge and the
-        # header's divider.
-        self.assertEqual(DRAWER.count("Hairline(color: Tokens.border)"), 2)
-        self.assertLess(DRAWER.rindex("Hairline(color: Tokens.border)"),
-                        DRAWER.index("ScrollView {"))
+        # The panel holds exactly one horizontal rule — the title's — and it is inside the list.
+        self.assertEqual(PANEL.count("Hairline(color: Tokens.border)"), 1)
 
-    def test_the_three_dots_open_the_same_drawer_as_the_swipe(self) -> None:
+    def test_the_three_dots_toggle_the_same_drawer_the_swipe_opens(self) -> None:
         self.assertIn("chatDrawerButton", CHAT)
         self.assertIn("ToolbarItem(placement: .topBarTrailing)", CHAT)
-        self.assertIn("showDrawer = true", CHAT)
+        # The same button closes it: a menu opened by a tap must answer a second tap.
+        self.assertIn("showDrawer.toggle()", CHAT)
         # The swipe is untouched: both doors lead to the same state.
         self.assertIn("isDrawerSwipe", CHAT)
+
+    def test_the_whole_panel_is_one_scroll_view(self) -> None:
+        # Nothing may sit outside the scroll view: a line left out there stays put while the rows
+        # move under it, which is exactly the rule-over-Compact report.
+        self.assertEqual(PANEL.count("ScrollView {"), 1)
+        self.assertLess(PANEL.index("Text(title)"), PANEL.index("Hairline(color: Tokens.border)"))
+        self.assertLess(PANEL.index("Hairline(color: Tokens.border)"),
+                        PANEL.index('row("Computer"'))
+        # Everything, title to hint, inside the one scroll view.
+        self.assertGreater(PANEL.index('row("Reset chat"'), PANEL.index("ScrollView {"))
+        self.assertGreater(PANEL.index("Swipe right, or tap outside, to close"),
+                           PANEL.index('row("Reset chat"'))
 
 
 class DrawerTests(unittest.TestCase):

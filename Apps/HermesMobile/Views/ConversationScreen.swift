@@ -210,7 +210,9 @@ struct ConversationScreen: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Haptics.impact()
-                    showDrawer = true
+                    // The same button closes it: a menu opened by a tap should answer a second tap,
+                    // and reaching for the dimmed edge to dismiss it is a second gesture for nothing.
+                    withAnimation(.easeOut(duration: 0.2)) { showDrawer.toggle() }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15, weight: .semibold))

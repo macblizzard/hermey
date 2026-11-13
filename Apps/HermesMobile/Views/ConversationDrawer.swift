@@ -72,62 +72,62 @@ struct ConversationDrawer: View {
         .accessibilityAddTraits(.isModal)
     }
 
+    /// The whole drawer is one scroll view — title, rule, verbs and the hint at the end.
+    ///
+    /// Anything left *outside* a scroll view in a panel like this is a line that stays put while the
+    /// rows move under it, which reads as a rule drawn across whatever row happens to be passing.
+    /// One scroll container, and every line in the panel scrolls with the thing it separates.
     private var panel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
-                    .foregroundStyle(Tokens.textPrimary)
-                    .lineLimit(1)
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(TypeScale.font(TypeScale.micro))
-                        .foregroundStyle(Tokens.textDim)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
                         .lineLimit(1)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(TypeScale.font(TypeScale.micro))
+                            .foregroundStyle(Tokens.textDim)
+                            .lineLimit(1)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Geometry.chatGutter)
-            .padding(.top, 18)
-            .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Geometry.chatGutter)
+                .padding(.top, 18)
+                .padding(.bottom, 12)
 
-            Hairline(color: Tokens.border)
+                Hairline(color: Tokens.border)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // What the bot works with, then what it made, then the two panels about reach.
-                    row("Computer", systemImage: "display", run: onComputer)
-                    row("Workspace", systemImage: "folder", run: onWorkspace)
-                    section
-                    row("Skills", systemImage: "book.closed", run: onSkills)
-                    row("MCP servers", systemImage: "puzzlepiece.extension", run: onMCP)
-                    section
-                    row("Search", systemImage: "magnifyingglass", run: onSearch)
-                    row("Settings", systemImage: "gearshape", run: onSettings)
-                    row(isCompressing ? "Compacting…" : "Compact",
-                        systemImage: isCompressing ? "hourglass" : "arrow.down.right.and.arrow.up.left",
-                        isBusy: isCompressing,
-                        run: onCompact)
-                    section
-                    row("Mark all as read", systemImage: "checkmark.circle",
-                        isDisabled: !hasAnyUnread, run: onMarkAllRead)
-                    speakRow
-                    section
-                    row("Reset chat", systemImage: "arrow.counterclockwise",
-                        tone: Tokens.danger, run: onReset)
+                // What the bot works with, then what it made, then the two panels about reach.
+                row("Computer", systemImage: "display", run: onComputer)
+                row("Workspace", systemImage: "folder", run: onWorkspace)
+                section
+                row("Skills", systemImage: "book.closed", run: onSkills)
+                row("MCP servers", systemImage: "puzzlepiece.extension", run: onMCP)
+                section
+                row("Search", systemImage: "magnifyingglass", run: onSearch)
+                row("Settings", systemImage: "gearshape", run: onSettings)
+                row(isCompressing ? "Compacting…" : "Compact",
+                    systemImage: isCompressing ? "hourglass" : "arrow.down.right.and.arrow.up.left",
+                    isBusy: isCompressing,
+                    run: onCompact)
+                section
+                row("Mark all as read", systemImage: "checkmark.circle",
+                    isDisabled: !hasAnyUnread, run: onMarkAllRead)
+                speakRow
+                section
+                row("Reset chat", systemImage: "arrow.counterclockwise",
+                    tone: Tokens.danger, run: onReset)
 
-                    // Inside the list, not under it: a line pinned to the panel's bottom edge stayed
-                    // put while the menu scrolled past it, which read as a rule drawn over the
-                    // "Compact" row.
-                    section
-                    Text("Swipe right, or tap outside, to close")
-                        .font(TypeScale.font(TypeScale.micro))
-                        .foregroundStyle(Tokens.textDim)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Geometry.chatGutter)
-                        .padding(.top, 10)
-                }
-                .padding(.bottom, 24)
+                section
+                Text("Swipe right, or tap outside, to close")
+                    .font(TypeScale.font(TypeScale.micro))
+                    .foregroundStyle(Tokens.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Geometry.chatGutter)
+                    .padding(.top, 10)
+                    .padding(.bottom, 24)
             }
         }
     }
