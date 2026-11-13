@@ -268,9 +268,9 @@ private struct GenUIWebView: UIViewRepresentable {
 /// The three messages the card page sends, decoded once for both platforms.
 enum GenUIMessage {
     static func handle(_ body: Any,
-                       onHeight: (CGFloat) -> Void,
-                       onSend: (String) -> Void,
-                       onFill: (String) -> Void) {
+                       onHeight: @escaping (CGFloat) -> Void,
+                       onSend: @escaping (String) -> Void,
+                       onFill: @escaping (String) -> Void) {
         guard let payload = body as? [String: Any], let type = payload["type"] as? String else { return }
         switch type {
         case "height":
