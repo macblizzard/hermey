@@ -651,6 +651,25 @@ public final class AppModel: ObservableObject {
         }
     }
 
+
+    /// Adopt a resume's page without throwing away the pages the reader already loaded.
+    ///
+    /// See `TranscriptPaging.merge`: a resume carries only the newest page, so a plain assignment
+    /// wiped every earlier page — and "load earlier" looked broken because the page it fetched was
+    /// discarded by the next reconnect a few seconds later.
+    private func adoptResume(_ entries: [TranscriptEntry], cursor: Int?, total: Int,
+                             sessionID: String) {
+        let merged = TranscriptPaging.merge(keeping: transcript, incoming: entries,
+                                            incomingCursor: cursor, oldCursor: earlierCursor)
+        if merged.entries.count > entries.count {
+            ClientLog.note("resume kept \(merged.entries.count - entries.count) earlier rows",
+                           level: .info, category: "paging")
+        }
+        transcript = SentAttachmentVault.decorate(merged.entries, sessionID: sessionID)
+        earlierCursor = merged.cursor
+        historyTotal = total
+    }
+
     /// Put a remembered conversation back on screen, before any network call is made.
     @discardableResult
     func restoreConversation(for botID: String) -> Bool {
@@ -746,9 +765,8 @@ public final class AppModel: ObservableObject {
         do {
             let resumed = try await client.resumeSession(id, profile: selectedBotID)
             guard epoch == botEpoch, selectedSessionID == id else { return }
-            transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: id)
-            earlierCursor = resumed.earlierCursor
-            historyTotal = resumed.historyTotal
+            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                        total: resumed.historyTotal, sessionID: id)
             pendingRequests = resumed.openRequests
             adopt(resumed, session: id)
             remember(id, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
@@ -822,9 +840,8 @@ public final class AppModel: ObservableObject {
                !entries.contains(where: { $0.role == .assistant && $0.text == localText }) {
                 entries.append(TranscriptEntry(id: "recovered-\(sid)-\(entries.count)", role: .assistant, text: localText))
             }
-            transcript = SentAttachmentVault.decorate(entries, sessionID: sid)
-            earlierCursor = resumed.earlierCursor
-            historyTotal = resumed.historyTotal
+            adoptResume(entries, cursor: resumed.earlierCursor,
+                        total: resumed.historyTotal, sessionID: sid)
             pendingRequests = resumed.openRequests
             streamingText = ""
             reasoningText = ""
@@ -849,9 +866,8 @@ public final class AppModel: ObservableObject {
         do {
             let resumed = try await client.resumeSession(sid, profile: selectedBotID)
             guard selectedSessionID == sid else { return }
-            transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: sid)
-            earlierCursor = resumed.earlierCursor
-            historyTotal = resumed.historyTotal
+            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                        total: resumed.historyTotal, sessionID: sid)
             pendingRequests = resumed.openRequests
             adopt(resumed, session: sid)
             remember(sid, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
@@ -1145,9 +1161,8 @@ public final class AppModel: ObservableObject {
             do {
                 let resumed = try await client.resumeSession(stored, profile: botID)
                 selectedSessionID = stored
-                transcript = SentAttachmentVault.decorate(resumed.entries, sessionID: stored)
-                earlierCursor = resumed.earlierCursor
-                historyTotal = resumed.historyTotal
+                adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                            total: resumed.historyTotal, sessionID: stored)
                 pendingRequests = resumed.openRequests
                 adopt(resumed, session: stored)
                 captureConversation(for: botID)
@@ -2441,31 +2456,52 @@ public final class AppModel: ObservableObject {
     /// repeat or skip a row. Prepending shifts every row down, so the fold is remembered as
     /// `earlierAnchor` and the views re-anchor to it instead of jumping to the newest message.
     public func loadEarlierHistory(limit: Int = 150) async {
-        guard !loadingEarlier, let cursor = earlierCursor, cursor > 0,
-              let sid = selectedSessionID else { return }
+        guard !loadingEarlier, let sid = selectedSessionID, (earlierCursor ?? 0) > 0 else { return }
         loadingEarlier = true
         defer { loadingEarlier = false }
         let fold = transcript.first?.id
-        do {
-            let page = try await client.historyPage(sid, profile: selectedBotID, cursor: cursor, limit: limit)
-            guard selectedSessionID == sid else { return }
-            earlierCursor = page.cursor
-            if page.total > 0 { historyTotal = page.total }
-            guard !page.entries.isEmpty else { return }
-            // A row already on screen is never inserted twice: a page that overlaps the current
-            // transcript (a host that answered with a wider slice) must not double a message.
-            let known = Set(transcript.map(\.id))
-            let fresh = page.entries.filter { !known.contains($0.id) }
-            guard !fresh.isEmpty else { return }
-            transcript.insert(contentsOf: SentAttachmentVault.decorate(fresh, sessionID: sid), at: 0)
-            turnRowStart += fresh.count
-            earlierAnchor = fold
-            earlierLoads += 1
-        } catch {
-            guard selectedSessionID == sid else { return }
-            lastSendError = "could not load earlier messages: \(error.localizedDescription)"
-            ClientLog.note("session.history failed: \(error.localizedDescription)",
-                           level: .warning, category: "paging")
+
+        // Two attempts at most: a page that brings nothing new but *does* move the cursor is a
+        // cursor that was one page stale (the transcript was replaced under it), and asking again
+        // from where the host says to continue is the whole fix. A page that brings nothing new and
+        // does not move the cursor means there is nothing older, so the row stops offering it.
+        for attempt in 1...2 {
+            guard let cursor = earlierCursor, cursor > 0 else { return }
+            do {
+                let page = try await client.historyPage(sid, profile: selectedBotID,
+                                                        cursor: cursor, limit: limit)
+                guard selectedSessionID == sid else { return }
+                let known = Set(transcript.map(\.id))
+                let fresh = page.entries.filter { !known.contains($0.id) }
+                ClientLog.note("earlier page: asked at \(cursor), got \(page.entries.count) rows, "
+                               + "\(fresh.count) new, cursor now \(page.cursor.map(String.init) ?? "nil")",
+                               level: .info, category: "paging")
+                earlierCursor = page.cursor
+                if page.total > 0 { historyTotal = page.total }
+                guard !fresh.isEmpty else {
+                    if page.cursor == nil {
+                        // Nothing older exists; say so by taking the row away rather than leaving a
+                        // button that answers with nothing.
+                        earlierCursor = nil
+                    } else if attempt == 2 {
+                        ClientLog.note("earlier page kept returning rows already on screen",
+                                       level: .warning, category: "paging")
+                    }
+                    continue
+                }
+                transcript.insert(contentsOf: SentAttachmentVault.decorate(fresh, sessionID: sid),
+                                  at: 0)
+                turnRowStart += fresh.count
+                earlierAnchor = fold
+                earlierLoads += 1
+                return
+            } catch {
+                guard selectedSessionID == sid else { return }
+                lastSendError = "could not load earlier messages: \(error.localizedDescription)"
+                ClientLog.note("session.history failed: \(error.localizedDescription)",
+                               level: .warning, category: "paging")
+                return
+            }
         }
     }
 

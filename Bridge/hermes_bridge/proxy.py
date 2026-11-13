@@ -34,6 +34,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 import websockets
+
+# The paging arithmetic in one line per request: a "load earlier" that returns nothing is either a
+# stale cursor or an exhausted transcript, and the numbers say which without a rebuild.
+_log = logging.getLogger("hermes_bridge.proxy")
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .attachment_validation import ATTACHMENT_METHODS, AttachmentError, validate_attachment_request
@@ -561,6 +565,8 @@ class GatewayProxy:
         limit = (raw_limit if isinstance(raw_limit, int) and not isinstance(raw_limit, bool)
                  and raw_limit > 0 else self._page_messages)
         page, next_cursor = plan_before(known, cursor, limit, self._page_bytes)
+        _log.info("history page: cursor=%s rows=%s next=%s total=%s",
+                  cursor, len(page), next_cursor, len(known))
         await self._send_to_client(
             self._encode(
                 {
