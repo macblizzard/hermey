@@ -54,7 +54,9 @@ class AChatPaintsBeforeTheHostAnswers(unittest.TestCase):
 
     def test_the_host_still_wins(self) -> None:
         body = APP[SELECT_AT:APP.index("private func adopt(", SELECT_AT)]
-        self.assertIn("transcript = SentAttachmentVault.decorate(resumed.entries", body)
+        # The resume is adopted through the one helper that also keeps the pages already loaded —
+        # the host's copy replaces the cached paint from the join onwards, it is not skipped.
+        self.assertIn("adoptResume(resumed.entries", body)
 
     def test_a_finished_turn_updates_the_cache(self) -> None:
         body = between("case .messageComplete", "case .contextUsage")
