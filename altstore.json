@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.235",
+          "buildVersion": "235",
+          "date": "2026-11-13T20:55:09Z",
+          "localizedDescription": "The Mac is edge to edge now: the bot's name opens its own panel \u2014 computer, workspace, skills, settings, compact.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.235/Hermey-0.1.235-b235.ipa",
+          "size": 2220914,
+          "minOSVersion": "17.0",
+          "sha256": "5d15766264f4e5032a4d45f7bd1caa235b02c8d77d1a3c8cc4c66a7132f7ef12"
+        },
+        {
           "version": "0.1.232",
           "buildVersion": "232",
           "date": "2026-11-13T19:28:29Z",
@@ -62,16 +72,6 @@
           "size": 2217417,
           "minOSVersion": "17.0",
           "sha256": "4ea97e9a41fa0e7e711210dc3b9a5fa2b00cfed146bbe755f367e67c42b84865"
-        },
-        {
-          "version": "0.1.219",
-          "buildVersion": "219",
-          "date": "2026-11-13T15:48:21Z",
-          "localizedDescription": "Boards now sit on the chat's own background instead of a lighter rectangle.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.219/Hermey-0.1.219-b219.ipa",
-          "size": 2203292,
-          "minOSVersion": "17.0",
-          "sha256": "eadfc51515b6a32af277792b0e29bf05d6ddbf8035b07cd6fb9d9c0f95451bed"
         }
       ],
       "appPermissions": {
