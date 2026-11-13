@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<style>
+  /* The card brings its own stylesheet (the plugin injects it on register). This page only has to
+     get out of its way: no margins, no scrollbar, no background of its own. */
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+  #root { padding: 0; }
+  .genui-note { color: var(--ui-text-tertiary, #8a8a8a); font-size: 13px; line-height: 18px; padding: 4px 0; }
+</style>
+<script>
+  // A card session rides in the query, because a webview cannot put a header on the module requests
+  // its own page makes. It is minted by the app for this card (POST /v1/genui/session), reads genui
+  // boards only, and expires — so the URL a page holds is never a device credential.
+  var q = new URLSearchParams(location.search);
+  var t = q.get("session") || "";
+  var suffix = t ? "?session=" + encodeURIComponent(t) : "";
+  var map = { imports: {
+    "react": "/v1/genui/assets/app.mjs" + suffix,
+    "react/jsx-runtime": "/v1/genui/assets/jsx.mjs" + suffix,
+    "@hermes/plugin-sdk": "/v1/genui/assets/sdk.mjs" + suffix
+  } };
+  document.write('<script type="importmap">' + JSON.stringify(map) + "<\/script>");
+
+  // The card paints itself from the host's variables, so the app hands over its palette rather than
+  // the card guessing light or dark. A missing value leaves the plugin's own default in place.
+  var palette = {
+    "--foreground": q.get("ink"),
+    "--background": q.get("bg"),
+    "--theme-primary": q.get("accent"),
+    "--ui-text-tertiary": q.get("muted"),
+    "--ui-success": q.get("good")
+  };
+  Object.keys(palette).forEach(function (name) {
+    if (palette[name]) document.documentElement.style.setProperty(name, palette[name]);
+  });
+  document.documentElement.style.colorScheme = q.get("scheme") || "dark";
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+const params = new URLSearchParams(location.search);
+const blockId = params.get("block") || "";
+const bot = params.get("bot") || "";
+const session = params.get("session") || "";
+const auth = session ? `?session=${encodeURIComponent(session)}` : "";
+const root = document.getElementById("root");
+
+// Height is the app's business: the card is as tall as it draws, and the app is told every change.
+let lastHeight = -1;
+const report = () => {
+  const height = Math.ceil(document.body.getBoundingClientRect().height);
+  if (height === lastHeight) return;
+  lastHeight = height;
+  try { window.webkit?.messageHandlers?.hermes?.postMessage({ type: "height", value: height }); } catch {}
+};
+
+const note = (text) => {
+  const div = document.createElement("div");
+  div.className = "genui-note";
+  div.textContent = text;
+  root.replaceChildren(div);
+  report();
+};
+
+try {
+  const plugin = (await import("/v1/genui/plugin.js" + auth)).default;
+  const { createRoot } = await import("/v1/genui/assets/app.mjs" + auth);
+  const { createElement } = await import("react");
+
+  // What register() hands back: one directive renderer for the transcript area.
+  let directive = null;
+  const ctx = {
+    // The plugin's REST door, with this page's bot and token: a checklist's ticks go through it.
+    rest: async (path, init) => {
+      const url = `/v1/genui${path}${path.includes("?") ? "&" : "?"}bot=${encodeURIComponent(bot)}&session=${encodeURIComponent(session)}`;
+      const response = await fetch(url, {
+        method: init?.method || "GET",
+        headers: init?.body ? { "content-type": "application/json" } : undefined,
+        body: init?.body ? JSON.stringify(init.body) : undefined,
+      });
+      if (!response.ok) throw new Error(`rest ${path}: ${response.status}`);
+      return response.json();
+    },
+    register: (registration) => { directive = registration; },
+  };
+
+  plugin.register(ctx);
+  if (!directive) throw new Error("the plugin registered nothing");
+
+  createRoot(root).render(createElement(directive.data.render, { attrs: { id: blockId }, streaming: false }));
+  new ResizeObserver(report).observe(document.body);
+  window.addEventListener("load", report);
+  setTimeout(report, 60);
+  // A late webfont or a chart that animates in can change the height after the first report.
+  setTimeout(report, 400);
+} catch (error) {
+  note(`Couldn't draw this board: ${error && error.message ? error.message : error}`);
+}
+</script>
+</body>
+</html>

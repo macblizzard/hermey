@@ -459,4 +459,24 @@ final class AppEnvironment: ObservableObject {
                        store: HostStore.preview(paired: paired),
                        bridge: PreviewBridgeService())
     }
+
+    /// How a card finds its page: the paired host, this device, and the refresh token that mints a
+    /// card session. Nil-safe on purpose — an unpaired phone draws a note, not a broken webview.
+    @MainActor
+    func genUICards(for bot: String) -> GenUICardsResolver {
+        guard let host = store.host, let token = store.refreshToken, !token.isEmpty,
+              let origin = URLComponents(url: host.baseURL, resolvingAgainstBaseURL: false)?.url else {
+            return .unavailable
+        }
+        let cards = GenUICards(origin: origin, deviceID: host.deviceID, refreshToken: token)
+        return GenUICardsResolver(bot: bot,
+                                  url: { block in
+                                      let palette = await MainActor.run { GenUIPalette.current }
+                                      guard let session = await cards.session(for: bot) else { return nil }
+                                      return cards.cardURL(bot: bot, block: block,
+                                                           session: session, palette: palette)
+                                  },
+                                  palette: { GenUIPalette.current })
+    }
+
 }

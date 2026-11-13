@@ -40,6 +40,9 @@ struct WorkspaceRoot: View {
                 .ignoresSafeArea()
 
             WorkspaceShell(model: store.model, store: store)
+                // The plugin's boards: the shell resolves a card's URL from the pairing it already
+                // holds, and a card's button comes back here as a notification.
+                .environment(\.genUICards, genUICards)
                 // Re-created, not merely re-drawn: `Tokens` is read at draw time by every view, and
                 // a fresh subtree is what guarantees none of them kept the old palette. The model
                 // lives outside this identity, so nothing about the conversation is lost.
@@ -71,6 +74,19 @@ struct WorkspaceRoot: View {
             paletteOverlay
         }
         .background(WindowBackdrop(opacity: windowOpacity))
+        .onReceive(NotificationCenter.default.publisher(for: .genUICardSend)) { note in
+            // A card's button sends its text as the user's next message, the same contract the
+            // plugin's own composer actions have.
+            guard let text = note.userInfo?["text"] as? String else { return }
+            // Through the composer's own draft, so a card button takes the same path a typed
+            // message does: the same guards, the same optimistic row, the same delivery.
+            store.model.draft = text
+            Task { await store.model.send() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .genUICardFill)) { note in
+            guard let text = note.userInfo?["text"] as? String else { return }
+            store.model.draft = text
+        }
         .onChange(of: scenePhase) { _, phase in
             // The other device's turn shows up here the moment the window comes back.
             if phase == .active {
@@ -220,6 +236,23 @@ struct WorkspaceRoot: View {
     /// palette is an overlay — a tappable backdrop plus the panel above it — rendered only while
     /// `isPalettePresented`, which means it covers nothing and captures nothing once closed.
     @ViewBuilder
+    /// How a card finds its page. Built from the pairing the window already holds, so a card needs
+    /// no new plumbing: the host's origin, the device, and the refresh token that mints a session.
+    private var genUICards: GenUICardsResolver {
+        let bot = store.model.selectedBotID ?? ""
+        guard let pairing = store.pairing, !pairing.isTicketOnly,
+              let origin = try? pairing.apiOrigin() else { return .unavailable }
+        let cards = GenUICards(origin: origin, deviceID: pairing.deviceID, refreshToken: pairing.token)
+        return GenUICardsResolver(bot: bot,
+                                  url: { block in
+                                      let palette = await MainActor.run { GenUIPalette.current }
+                                      guard let session = await cards.session(for: bot) else { return nil }
+                                      return cards.cardURL(bot: bot, block: block,
+                                                           session: session, palette: palette)
+                                  },
+                                  palette: { GenUIPalette.current })
+    }
+
     private var paletteOverlay: some View {
         // A palette with nothing to offer is a blank box; on a fresh launch the verb list is empty
         // until a bot arrives, and an empty panel is worse than no panel.
