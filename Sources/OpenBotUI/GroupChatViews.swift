@@ -1121,43 +1121,49 @@ public struct GroupChatRow: View {
     }
 
     public var body: some View {
-        HStack(alignment: .center, spacing: 9) {
-            // The count lives on the room's faces — the same corner a bot's badge uses on its
-            // portrait — because the number belongs to the chat, not to the row's chrome.
+        HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
+            // The room's faces read at the same weight as a bot's single portrait, so a group chat
+            // and a bot sit in the list as equals. Unread is the same 8 pt dot a bot row uses —
+            // the count lives in the app badge, not in the row.
             faces
-                .overlay(alignment: .bottomTrailing) {
-                    UnreadBadge(count: unread, size: 17)
-                        .offset(x: 4, y: 3)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(room.name)
+                        .font(TypeScale.font(Tokens.rosterName, weight: unread > 0 ? .semibold : .medium))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 6)
+                    if let at = room.lastAt ?? room.updatedAt {
+                        Text(RelativeTime.stamp(at))
+                            .font(TypeScale.font(Tokens.rosterMeta))
+                            .foregroundStyle(Tokens.textDim)
+                            .monospacedDigit()
+                            .fixedSize()
+                    }
+                    if unread > 0 {
+                        Circle()
+                            .fill(Tokens.accent)
+                            .frame(width: 8, height: 8)
+                            .accessibilityLabel("unread")
+                    }
                 }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(room.name)
-                    .font(TypeScale.font(TypeScale.md, weight: .medium))
-                    .foregroundStyle(Tokens.textPrimary)
-                    .lineLimit(1)
                 HStack(spacing: 4) {
                     if let speaker = room.lastSpeaker {
                         Text(room.lastFromOwner ? "You" : "@\(speaker)")
-                            .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                            .font(TypeScale.font(Tokens.rosterMeta, weight: .semibold))
                             .foregroundStyle(Tokens.textMuted)
                         Text(speakerLine)
-                            .font(TypeScale.font(TypeScale.caption))
+                            .font(TypeScale.font(Tokens.rosterMeta))
                             .foregroundStyle(Tokens.textDim)
                             .lineLimit(1)
                     } else {
                         Text(room.members.map { "@\($0.mention)" }.joined(separator: " "))
-                            .font(TypeScale.font(TypeScale.caption))
+                            .font(TypeScale.font(Tokens.rosterMeta))
                             .foregroundStyle(Tokens.textDim)
                             .lineLimit(1)
                     }
                 }
                 .truncationMode(.tail)
-            }
-            Spacer(minLength: 6)
-            if let at = room.lastAt ?? room.updatedAt {
-                Text(RelativeTime.stamp(at))
-                    .font(TypeScale.font(TypeScale.micro))
-                    .foregroundStyle(Tokens.textDim)
-                    .fixedSize()
             }
         }
         .contentShape(Rectangle())
@@ -1169,11 +1175,12 @@ public struct GroupChatRow: View {
         return text.isEmpty ? "no messages yet" : text
     }
 
-    /// Up to three faces, each tucked under the one before it.
+    /// Up to three faces, each tucked under the one before it, sized so the stack reads as one
+    /// portrait beside a 38 pt bot face.
     private var faces: some View {
-        HStack(spacing: -7) {
+        HStack(spacing: -8) {
             ForEach(Array(room.members.prefix(3))) { member in
-                BotIconPortrait(icons[member.profile] ?? BotIcon.default(for: member.profile), size: 24)
+                BotIconPortrait(icons[member.profile] ?? BotIcon.default(for: member.profile), size: 30)
                     .overlay(Circle().stroke(Tokens.canvas, lineWidth: 1.5))
             }
             if room.members.count > 3 {

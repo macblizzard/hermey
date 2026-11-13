@@ -414,17 +414,17 @@ struct MobileTranscriptRow: View {
                                                                color: Tokens.textPrimary,
                                                                size: TypeScale.chatBody))
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, Geometry.bubblePaddingH)
+                .padding(.vertical, Geometry.bubblePaddingV)
                 .background(
-                    RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
+                    RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
                         .fill(Tokens.accentSoft)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
+                    RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
                         .strokeBorder(Tokens.borderStrong, lineWidth: 1)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous))
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)

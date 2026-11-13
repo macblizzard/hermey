@@ -252,24 +252,21 @@ struct BotListScreen: View {
             recordOpened(bot)
             onOpenBot(bot)
         } label: {
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
                 // A bot always has a face: its own if the host has one, otherwise the portrait its
                 // id picks. Initials are what made the first second of every launch look empty.
                 BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
-                                size: 48,
+                                size: Geometry.rosterAvatar,
                                 isWorking: model.isStreaming && model.selectedBotID == bot.id)
-                    // The count sits on the face, bottom-right, nudged out so it reads as a badge on
-                    // the avatar rather than a chip inside it. The breathing beacon keeps its place
-                    // at the end of the row: one says something is waiting, this says how much.
-                    .overlay(alignment: .bottomTrailing) {
-                        UnreadBadge(count: model.unreadCount(bot.id), size: 19)
-                            .offset(x: 5, y: 4)
-                    }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 5) {
+                // Rakazo's row is two lines, not three: the name and when it last spoke on the
+                // first, what it said on the second. The count moved to the app badge — the row
+                // only has to say "there is something here", which the dot does.
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
                         Text(bot.displayName)
-                            .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
+                            .font(TypeScale.font(TypeScale.sessionTitle,
+                                                 weight: model.hasUnread(bot.id) ? .semibold : .medium))
                             .foregroundStyle(Tokens.textPrimary)
                             .lineLimit(1)
 
@@ -279,47 +276,39 @@ struct BotListScreen: View {
                                 .foregroundStyle(Tokens.textMuted)
                                 .accessibilityHidden(true)
                         }
-                    }
 
-                    Text(subtitle(for: bot))
-                        .font(TypeScale.font(TypeScale.sessionPreview))
-                        .foregroundStyle(Tokens.textMuted)
-                        .lineLimit(1)
+                        Spacer(minLength: 6)
 
-                    // Third line: the newest thing this bot said, straight from the host. Omitted
-                    // rather than faked when the host has no line for this bot yet.
-                    if let preview = model.botPreviews[bot.id] {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(preview)
-                                .font(TypeScale.font(TypeScale.sessionPreview))
+                        if let at = model.botPreviewTimes[bot.id] {
+                            Text(RelativeTime.stamp(at))
+                                .font(TypeScale.font(Tokens.rosterMeta))
                                 .foregroundStyle(Tokens.textDim)
+                                .monospacedDigit()
                                 .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            if let at = model.botPreviewTimes[bot.id] {
-                                Text(RelativeTime.stamp(at))
-                                    .font(TypeScale.font(TypeScale.caption))
-                                    .foregroundStyle(Tokens.textMuted)
-                                    .lineLimit(1)
-                                    .layoutPriority(1)
-                                    .accessibilityLabel("last message \(RelativeTime.detailed(at))")
-                            }
+                                .layoutPriority(1)
+                                .accessibilityLabel("last message \(RelativeTime.detailed(at))")
+                        }
+
+                        if model.hasUnread(bot.id) {
+                            Circle()
+                                .fill(Tokens.accent)
+                                .frame(width: 8, height: 8)
+                                .accessibilityLabel("unread")
                         }
                     }
+
+                    Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
+                        .font(TypeScale.font(TypeScale.sessionPreview,
+                                             weight: model.hasUnread(bot.id) ? .medium : .regular))
+                        .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
-                Spacer(minLength: 8)
-
-                if model.hasUnread(bot.id) {
-                    UnreadBeacon(diameter: 8)
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Tokens.textDim)
-                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
             }
-            .padding(.vertical, 9)
+            .padding(.vertical, Geometry.rosterRowPadding)
+            .frame(minHeight: Geometry.rosterRow)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -341,7 +330,7 @@ struct BotListScreen: View {
         }
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
         .accessibilityLabel(accessibilityLabel(for: bot))
         .accessibilityHint("Opens the conversation with this bot")
     }
@@ -417,7 +406,8 @@ struct BotListScreen: View {
             GroupChatRow(room: room,
                          icons: app.botIcons,
                          unread: model.roomUnreadCount(room.id))
-                .padding(.vertical, 3)
+                .padding(.vertical, Geometry.rosterRowPadding)
+                .frame(minHeight: Geometry.rosterRow)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -444,7 +434,7 @@ struct BotListScreen: View {
         // Without this the group chats read as a black band inside the themed list.
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
     }
 
     private var chatsSection: some View {

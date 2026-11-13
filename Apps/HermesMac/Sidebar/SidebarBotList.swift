@@ -103,10 +103,11 @@ struct SidebarBotList: View {
                             GroupChatRow(room: room,
                                          icons: icons,
                                          unread: model.roomUnreadCount(room.id))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
+                                .padding(.horizontal, Geometry.rosterRowPadding)
+                                .padding(.vertical, Geometry.rosterRowPadding)
+                                .frame(height: Geometry.rosterRow)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
