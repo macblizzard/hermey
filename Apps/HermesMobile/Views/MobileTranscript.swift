@@ -13,6 +13,9 @@ import OpenBotUI
 /// has. Markers come from the block layer so a list looks the same everywhere.
 struct MobileTranscriptRow: View {
     let entry: TranscriptEntry
+    /// The bot's swatch, for the user's own bubble. Passed in: a row inside a lazy stack must not
+    /// reach for a model, and the screen already knows whose conversation this is.
+    var botTint: Color = Tokens.accentSoft
     /// Calls that have not finished. Inside a folded run the group says it once; the card still
     /// shows its own state, so a call that is still going does not look like one that is done.
     var running: Set<String> = []
@@ -409,12 +412,6 @@ struct MobileTranscriptRow: View {
         if let data = await app.attachmentImage(named: name, profile: profile) {
             fetchedImages[name] = data
         }
-    }
-
-    /// The selected bot's swatch, from the shared face cache.
-    private var botTint: Color {
-        guard let id = app.selectedBotID else { return Tokens.accentSoft }
-        return (app.botFaces[id] ?? BotFace.default(for: id)).color.swatch
     }
 
     private var bubbleText: some View {
