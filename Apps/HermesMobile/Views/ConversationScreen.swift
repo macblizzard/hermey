@@ -692,7 +692,7 @@ struct ConversationScreen: View {
                         .id(entry.id)
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        MobileTranscriptRow(entry: entry, running: runningToolIDs, botTint: botTint)
+                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs)
                     }
                     .id(run.id)
                 }
