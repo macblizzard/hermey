@@ -47,8 +47,13 @@ struct ConversationDrawer: View {
 
                 panel
                     .frame(width: max(220, geo.size.width * Self.widthFraction))
-                    .background(Tokens.surface)
+                    // The theme's sheet, not its raised surface: `surface` is the colour of a card
+                    // inside the conversation, and a whole panel of it read as a grey slab pasted
+                    // over a near-black chat. A sheet is one step off the canvas, and the shadow
+                    // does the work of separating it.
+                    .background(Tokens.sheet)
                     .overlay(alignment: .leading) { Hairline(color: Tokens.border) }
+                    .shadow(color: .black.opacity(0.45), radius: 24, x: -10, y: 0)
                     .gesture(
                         // Swipe back out the way it came in. Vertical-drift guard so a scroll inside
                         // the panel is not read as a dismissal.
