@@ -167,22 +167,22 @@ struct SidebarBotList: View {
             Haptics.selection()
             store.selectBot(bot.id)
         } label: {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
-                // the bot's id picks — never a bare initial.
+                // the bot's id picks — never a bare initial. Rakazo draws the working state as a
+                // ring around the face, which is where this app already puts it.
                 BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
-                                size: 26,
+                                size: Geometry.rosterAvatar,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
-                    // Same badge as the phone, scaled to a 26 pt face in a 28 pt row: it overhangs
-                    // the portrait by nothing, because the sidebar clips its rows.
-                    .overlay(alignment: .bottomTrailing) {
-                        UnreadBadge(count: model.unreadCount(bot.id), size: 14)
-                    }
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
+                // Two lines, in Rakazo's order: the name and when it last spoke on the first, what
+                // it said on the second. A bot with no preview yet falls back to its description so
+                // the second line is never empty.
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
                         Text(bot.displayName)
-                            .font(TypeScale.font(Tokens.textSM, weight: isSelected ? .semibold : .medium))
+                            .font(TypeScale.font(Tokens.rosterName,
+                                                 weight: model.hasUnread(bot.id) ? .semibold : .medium))
                             .foregroundStyle(Tokens.textPrimary)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -193,57 +193,48 @@ struct SidebarBotList: View {
                                 .foregroundStyle(Tokens.textMuted)
                                 .accessibilityHidden(true)
                         }
-                    }
 
-                    Text(subtitle(for: bot))
-                        .font(TypeScale.font(TypeScale.caption))
-                        .foregroundStyle(Tokens.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                        Spacer(minLength: 6)
 
-                    // The third line every chat app has: what was said last. Absent until the host
-                    // answers for that bot, and then it is the host's own newest message, never a
-                    // line borrowed from another bot.
-                    if let preview = model.botPreviews[bot.id] {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(preview)
-                                .font(TypeScale.font(TypeScale.caption))
+                        if let at = model.botPreviewTimes[bot.id] {
+                            Text(RelativeTime.stamp(at))
+                                .font(TypeScale.font(Tokens.rosterMeta))
                                 .foregroundStyle(Tokens.textDim)
+                                .monospacedDigit()
                                 .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer(minLength: 0)
-                            // When it arrived, by the host's clock: the row already says what was
-                            // said, and "what was said without when" is what made a stale row look
-                            // like a fresh one.
-                            if let at = model.botPreviewTimes[bot.id] {
-                                Text(RelativeTime.stamp(at))
-                                    .font(TypeScale.font(TypeScale.micro))
-                                    .foregroundStyle(Tokens.textMuted)
-                                    .lineLimit(1)
-                                    .layoutPriority(1)
-                                    .accessibilityLabel("last message \(RelativeTime.detailed(at))")
-                            }
+                                .layoutPriority(1)
+                                .accessibilityLabel("last message \(RelativeTime.detailed(at))")
+                        }
+
+                        if model.hasUnread(bot.id) {
+                            // Rakazo's unread is an 8 pt dot in the row, not a badge: the count is
+                            // in the app badge, the row only says "there is something here".
+                            Circle()
+                                .fill(Tokens.accent)
+                                .frame(width: 8, height: 8)
+                                .accessibilityLabel("unread")
                         }
                     }
+
+                    Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
+                        .font(TypeScale.font(Tokens.rosterMeta,
+                                             weight: model.hasUnread(bot.id) ? .medium : .regular))
+                        .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
-                Spacer(minLength: 4)
-
-                if model.hasUnread(bot.id) {
-                    // A message that arrived while this bot was not the one on screen. It breathes
-                    // rather than sitting still: unread is an invitation, presence is a fact.
-                    UnreadBeacon()
-                }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .frame(height: SidebarBotList.rowHeight)
+            .padding(.horizontal, Geometry.rosterRowPadding)
+            .padding(.vertical, Geometry.rosterRowPadding)
+            .frame(height: Geometry.rosterRow)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .hoverFill(rest: isSelected ? Tokens.controlActive : .clear,
                    hover: isSelected ? Tokens.controlActive : Tokens.controlHover)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
         .contextMenu {
             Button { store.openBotSettings(bot) } label: {
                 Label("Bot Settings", systemImage: "gearshape")
