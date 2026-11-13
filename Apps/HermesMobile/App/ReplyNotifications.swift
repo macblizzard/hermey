@@ -176,11 +176,11 @@ enum ReplyBackgroundRefresh {
 
     private static func run() async -> Bool {
         let defaults = AppModel.defaults
-        // The switch is the app's own, so a user who turned banners off is not woken by them.
-        guard defaults.object(forKey: "hermey.notifications.enabled") as? Bool ?? true else { return true }
-
         let store = HostStore()
         guard let host = store.host, let token = store.refreshToken else { return false }
+        // The switch is the app's own, so a user who turned banners off is not woken by them.
+        let enabled = (defaults.object(forKey: "hermey.notifications.enabled") as? Bool) ?? true
+        guard enabled else { return true }
 
         do {
             let ticket = try await BotIconService.mintTicket(baseURL: host.baseURL,
@@ -191,7 +191,8 @@ enum ReplyBackgroundRefresh {
             // banner moves the second, and only the second is written from here.
             let readMarks = marks(host: host.host, prefix: "hermey.lastRead.")
             let announced = marks(host: host.host, prefix: notifiedPrefix)
-            let muted = Set(defaults.stringArray(forKey: "hermey.notifications.muted.\(host.host)") ?? [])
+            let mutedKey = "hermey.notifications.muted.\(host.host)"
+            let muted = Set(defaults.stringArray(forKey: mutedKey) ?? [String]())
 
             var request = URLRequest(url: host.baseURL.appendingPathComponent("v1/bots/previews"))
             request.httpMethod = "POST"

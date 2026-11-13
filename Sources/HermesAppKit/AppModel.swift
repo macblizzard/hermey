@@ -249,7 +249,11 @@ public final class AppModel: ObservableObject {
         static let mutedNotificationPrefix = "hermey.notifications.muted."
     }
 
-    static let defaults = UserDefaults.standard
+    /// The one defaults store both apps and the phone's background refresh read.
+    ///
+    /// Public because `ReplyBackgroundRefresh` runs with no window and no `AppModel`: the marks it
+    /// compares against are the very ones the model wrote, so it must not keep a second copy.
+    public static let defaults = UserDefaults.standard
 
     // MARK: Questions the agent is blocked on
 
