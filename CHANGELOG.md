@@ -5,6 +5,20 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A banner and a badge when a bot replies in a chat you are not reading.** The bot list already
+  had its own counts; nothing reached the operating system. Now a reply on a bot that is not on
+  screen raises a notification and puts a number on the Dock tile (macOS) or the app icon (iOS).
+  One switch turns it off, and any bot can be quieted individually — a quieted bot still counts on
+  its row, it just never buzzes. A chat that is on screen never notifies: its transcript has
+  already said it.
+  - **macOS is the complete version.** The app keeps running while you are in another app, so the
+    banner arrives as soon as the bot list's sweep sees the reply, and tapping it opens that bot.
+  - **iOS is honest about its ceiling.** While the app is running, banners are immediate. Once iOS
+    suspends it the socket is gone, so the phone learns about a reply through a background refresh,
+    which iOS schedules — typically tens of minutes, not seconds. Instant delivery there needs an
+    APNs entitlement a sideloaded personal-team build cannot carry.
+
 ### Fixed
 - **Compacting no longer fails when the phone goes to sleep.** A compaction is 2–3 minutes of *host*
   work (measured 74 s, 123 s, 163 s here) and iOS tears the socket down the moment the app leaves the

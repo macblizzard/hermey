@@ -35,12 +35,19 @@ struct MacSettingsView: View {
             AppearanceSettingsTab()
                 .tabItem { Label("Appearance", systemImage: "circle.lefthalf.filled") }
 
+            // Next to Appearance because both answer "how does this app behave on this Mac",
+            // and separate from Chat because the *permission* is the system's, not the chat's.
+            NotificationsSettingsTab(store: store)
+                .tabItem { Label("Notifications", systemImage: "bell") }
+
             // Last: a version number is something a user goes looking for, and it reports the
             // build CI stamped rather than anything this file could guess.
             AboutSettingsTab(store: store)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 560, height: 468)
+        // Six tabs now (Chat, Bots, Connection, Appearance, Notifications, About): at 560 the bar
+        // ran out of room and macOS pushed the last tab behind a chevron.
+        .frame(width: 620, height: 500)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
         .sheet(item: $botForSettings) { bot in

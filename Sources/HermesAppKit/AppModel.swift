@@ -241,6 +241,12 @@ public final class AppModel: ObservableObject {
         /// "clear" (`bot_sessions.py`: a null is a 422, "never a delete"), so without this a reset
         /// device would adopt the very conversation it just forgot on its next open.
         static let endlessResetPrefix = "hermes.endlessSessionReset."
+        /// Banners for a reply in a chat that is not on screen. Stored as an object, not a bool:
+        /// an unset key must mean "on" for a fresh install, and `defaults.bool` answers `false`.
+        static let replyNotifications = "hermey.notifications.enabled"
+        /// One bot list per host: a bot quieted on the Mac is not necessarily quiet on the phone,
+        /// but the same bot has to stay quiet on the device that muted it.
+        static let mutedNotificationPrefix = "hermey.notifications.muted."
     }
 
     static let defaults = UserDefaults.standard
@@ -305,6 +311,27 @@ public final class AppModel: ObservableObject {
     /// what this device happened to witness would be empty every morning.
     @Published public private(set) var unreadCounts: [String: Int] = [:]
 
+    /// Whether a reply on a bot that is not on screen earns a banner and a Dock/app-icon badge.
+    ///
+    /// Default on: the whole point of the badge is to be told. A user who turns it off keeps the
+    /// in-app counts and loses only the platform layer — the two are deliberately separate, so
+    /// silencing banners does not also blind the bot list.
+    @Published public private(set) var replyNotificationsEnabled: Bool = true
+
+    /// Bots the user quieted. Per host, because a bot's name means nothing on another host.
+    @Published public private(set) var mutedNotificationBots: Set<String> = []
+
+    /// Where a platform posts the banner: set by each shell (a `UNUserNotificationCenter`
+    /// wrapper on macOS and iOS), nil in tests and previews.
+    ///
+    /// Delivery, not decision: whether a reply is worth a banner is `ReplyNotificationPolicy`'s
+    /// call, made here, so the Mac and the phone cannot disagree about it.
+    public var replyNotificationSink: ((ReplyNotification) -> Void)?
+
+    /// Identities already handed to the sink, newest last and bounded. A reply reported twice —
+    /// by the previews sweep and again by a later refresh — must not buzz twice.
+    private var notifiedIdentities: [String] = []
+
     /// When each bot's newest message landed, by the host's clock. The list shows it beside the
     /// third line: without a time, "the brief from 06:30" and "the one from last Tuesday" look
     /// identical in a row that has room for one sentence.
@@ -342,6 +369,9 @@ public final class AppModel: ObservableObject {
         showToolCalls = defaults.object(forKey: Keys.showToolCalls) as? Bool ?? true
         autoCompactTokens = defaults.object(forKey: Keys.autoCompactTokens) as? Int
             ?? Self.defaultAutoCompactTokens
+        // Read here, not on connect: Settings can be opened before a host answers, and a toggle
+        // that shows "on" until the socket comes up would be a lie about a stored choice.
+        loadNotificationSettings()
     }
 
     // MARK: Lifecycle
@@ -1493,7 +1523,10 @@ public final class AppModel: ObservableObject {
         guard botID != visibleBotID else { markRead(botID, at: date); return }
         let seen = lastRead[botID]
         if let seen {
-            if date > seen { unreadBots.insert(botID) }
+            if date > seen {
+                unreadBots.insert(botID)
+                raiseReplyNotification(for: botID, at: date)
+            }
         } else {
             // First sight of a bot on this device: its history is not "unread", so seed the mark
             // with the newest message instead of lighting every row on first launch.
@@ -1503,6 +1536,68 @@ public final class AppModel: ObservableObject {
     }
 
     public func hasUnread(_ botID: String) -> Bool { unreadBots.contains(botID) }
+
+    /// Everything waiting on this device, for the Dock tile and the app icon.
+    ///
+    /// One number covering bots and rooms: the user is looking at one badge, and a badge that
+    /// counted only bots would read `3` while four things were waiting.
+    public var badgeCount: Int {
+        ReplyNotificationPolicy.badge(unread: unreadCounts, rooms: roomUnreadCounts)
+    }
+
+    /// Turn banners and platform badges on or off. The in-app counts are untouched: this is one
+    /// layer, and the settings copy says so.
+    public func setReplyNotifications(enabled: Bool) {
+        guard replyNotificationsEnabled != enabled else { return }
+        replyNotificationsEnabled = enabled
+        Self.defaults.set(enabled, forKey: Keys.replyNotifications)
+    }
+
+    public func isNotificationMuted(_ botID: String) -> Bool { mutedNotificationBots.contains(botID) }
+
+    /// Quiet one bot. Kept in the model rather than `@AppStorage` per row: the decision is made
+    /// once, in `raiseReplyNotification`, and a per-view store would let a row and the policy
+    /// disagree about the same bot.
+    public func toggleNotificationMute(_ botID: String) {
+        guard !botID.isEmpty else { return }
+        if mutedNotificationBots.contains(botID) {
+            mutedNotificationBots.remove(botID)
+        } else {
+            mutedNotificationBots.insert(botID)
+        }
+        Self.defaults.set(mutedNotificationBots.sorted(), forKey: mutedNotificationsKey)
+    }
+
+    private var mutedNotificationsKey: String { Keys.mutedNotificationPrefix + hostName }
+
+    private func loadNotificationSettings() {
+        // An absent key means "never chosen", and the answer for a fresh install is on.
+        replyNotificationsEnabled = Self.defaults.object(forKey: Keys.replyNotifications) as? Bool ?? true
+        mutedNotificationBots = Set(Self.defaults.stringArray(forKey: mutedNotificationsKey) ?? [])
+    }
+
+    /// Hand a newly arrived reply to whatever posts banners on this platform.
+    ///
+    /// Called from `noteRemoteActivity`, which is the one place the model learns "the host wrote
+    /// something newer than this device has seen" for a bot that is not on screen — so the
+    /// banner question is answered from the same evidence the unread badge uses.
+    private func raiseReplyNotification(for botID: String, at date: Date) {
+        guard ReplyNotificationPolicy.shouldDeliver(botID: botID,
+                                                    visibleBotID: visibleBotID,
+                                                    enabled: replyNotificationsEnabled,
+                                                    muted: mutedNotificationBots) else { return }
+        let displayName = bots.first { $0.id == botID }?.displayName
+        let note = ReplyNotification(
+            botID: botID,
+            botName: ReplyNotificationPolicy.title(botName: displayName, botID: botID),
+            body: ReplyNotificationPolicy.body(botPreviews[botID]),
+            badge: badgeCount,
+            at: date)
+        guard !notifiedIdentities.contains(note.identity) else { return }
+        notifiedIdentities.append(note.identity)
+        if notifiedIdentities.count > 200 { notifiedIdentities.removeFirst(notifiedIdentities.count - 200) }
+        replyNotificationSink?(note)
+    }
 
     /// What the badge on a bot's face shows: how many of its turns landed after this device last
     /// looked. Zero means no badge at all.

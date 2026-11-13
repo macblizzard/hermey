@@ -85,3 +85,24 @@ locked out by a viewer you forgot.
 
 While you hold control every bot is refused (`human_has_control`), because they share the same
 screen — that is what makes "sign in once, then let the bot continue" work.
+
+## Notifications and badges
+
+A bot's reply earns a notification when **that bot is not the one on screen** — a chat you are
+reading has already told you. Both apps put the total waiting (bots and rooms together) on the
+Dock tile or the app icon; zero clears it.
+
+- Settings → **Notifications** (macOS) or **Settings → Replies** (iOS) has one switch and a
+  per-bot **quiet** list. A quieted bot still counts on its row and in the badge; it just never
+  buzzes. The switch is shared by the two apps, the system permission is not.
+- **macOS** delivers a banner as soon as the host reports the reply, even while the app is in the
+  background, and clicking it opens that conversation.
+- **iOS** delivers a banner while the app is running. Once the phone has put the app away there is
+  no socket to hear with, so replies are picked up by a background refresh that iOS schedules —
+  expect delays in the tens of minutes, and only while the phone is awake. Immediate delivery on a
+  locked phone would need an APNs entitlement, which an AltStore/personal-team install cannot have.
+- If a banner never appears, the first thing to check is the system permission: the app reports
+  "Turned off in System Settings" (macOS) or offers a link straight to its iOS Settings page.
+
+Reactions, drafts, pins and this switch are per-device; the unread counts themselves come from the
+host, so they survive a reinstall.
