@@ -13,11 +13,16 @@ permissions:
 # published. About 12 minutes of CI per change, most of it recompiling what Xcode had already
 # compiled, and half of it on an identical tree.
 #
-# Three rules now:
+# Four rules now:
 #   * jobs that need no other job's result start together (only qa waits on bridge);
-#   * DerivedData and SwiftPM are cached, keyed on the project definition rather than the commit;
-#   * the tree is built once per change — publish from the PR run's artifacts (see
-#     CONTRIBUTING.md).
+#   * **one** macOS job builds every artifact. The .ipa used to be its own job, which generated the
+#     project and compiled HermesMobile a second time on a second macOS runner — and macOS runners
+#     are the scarce resource: a starved pool cancels them, and a cancellation costs a re-run worth
+#     more wall clock than the build ever did;
+#   * a pull request whose diff touches no Swift skips the macOS jobs entirely. `main` always builds
+#     everything, because publishing reads that run's artifacts;
+#   * the SwiftPM *cache* is cached — tens of megabytes. DerivedData and `.build` are not: they are
+#     hundreds of megabytes, and the free plan's 500 MB of storage is shared with artifacts.
 on:
   push:
     branches: [main]
@@ -29,28 +34,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # What changed, for the two macOS jobs. Deliberately dependency-free: a `git diff` against the
+  # pull request's base, no marketplace action, and it defaults to *true* on anything it cannot
+  # read — a guard that silently skips the compiler is worse than a wasted runner.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      mac: ${{ steps.filter.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base" ]; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"   # push to main, or a dispatch
+            exit 0
+          fi
+          if git diff --name-only "$base" HEAD | grep -Eq '^(Sources/|Apps/|Tools/|Package\.swift|Package\.resolved|project\.yml|Tests/.*\.swift|\.github/workflows/ci\.yml)'; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mac=false" >> "$GITHUB_OUTPUT"
+          fi
+
   packages:
     name: Swift packages (build + test)
     runs-on: macos-26
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
         run: |
           swift --version
           xcodebuild -version
-      # No `actions/cache` anywhere in this workflow, on purpose: `.build` and DerivedData are
-      # hundreds of megabytes, and a free plan's 500 MB of Actions storage is shared by caches *and*
-      # artifacts. The builds are slower; the account is not suspended.
+      # The SwiftPM cache, and nothing else: it is the one directory here measured in tens of
+      # megabytes. `.build` and DerivedData are hundreds, and the free plan's 500 MB of storage is
+      # shared with artifacts — so those are rebuilt, and the account stays alive.
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
       - name: Build
         run: swift build --build-tests
       - name: Test
         run: swift test --parallel
 
   apps:
-    name: Apps (macOS + iOS simulator)
+    name: Apps (macOS + iOS, unsigned artifacts)
     runs-on: macos-26
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
       - name: XcodeGen
         run: command -v xcodegen >/dev/null || brew install xcodegen
       - name: Generate project
@@ -103,29 +149,8 @@ jobs:
           xcodebuild -project HermesApps.xcodeproj -scheme HermesMobile -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd-ios \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-      - uses: actions/upload-artifact@v4
-        # Only a push (i.e. `main`) produces a publishable build. A pull request from a fork would
-        # otherwise hand a maintainer an artifact shaped by the PR's own project.yml. A dispatch
-        # counts too: it runs the same committed tree, and without this a re-run for a starved
-        # macOS pool built the app and then threw it away.
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        with:
-          name: Hermey-macOS-unsigned
-          path: dist/Hermey-macOS-unsigned.dmg
-          if-no-files-found: error
-          # Published within minutes of the run ending; 90 days of every build is what filled the
-          # account's 500 MB of Actions storage.
-          retention-days: 2
-
-  ipa:
-    name: Unsigned .ipa (for FlareStore)
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v4
-      - name: XcodeGen
-        run: command -v xcodegen >/dev/null || brew install xcodegen
-      - name: Generate project
-        run: xcodegen generate
+      # The archive rides along: same tree, same generated project, and one macOS runner instead of
+      # two. A second job generated the project again and compiled HermesMobile again for this.
       - name: Archive (no signing)
         run: |
           set -o pipefail
@@ -147,6 +172,19 @@ jobs:
           zip -qry "dist/Hermey-unsigned.ipa" Payload
           unzip -l dist/Hermey-unsigned.ipa | head -20
           du -h dist/Hermey-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        # Only a push (i.e. `main`) produces a publishable build. A pull request from a fork would
+        # otherwise hand a maintainer an artifact shaped by the PR's own project.yml. A dispatch
+        # counts too: it runs the same committed tree, and without this a re-run for a starved
+        # macOS pool built the app and then threw it away.
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        with:
+          name: Hermey-macOS-unsigned
+          path: dist/Hermey-macOS-unsigned.dmg
+          if-no-files-found: error
+          # Published within minutes of the run ending; 90 days of every build is what filled the
+          # account's 500 MB of Actions storage.
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         with:
