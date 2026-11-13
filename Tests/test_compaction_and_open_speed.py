@@ -82,8 +82,8 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
     """The verb works — it is the *silence* that made it a dead button.
 
     Measured on the live bridge: `session.compress` answered `ok` after **74 s** and **163 s** on two
-    real runs, and for every one of those seconds neither app drew anything at all. Mohammad reported
-    the button as broken twice; the requests had reached the host and succeeded both times.
+    real runs, and for every one of those seconds neither app drew anything at all. The button was
+    reported broken twice; the requests had reached the host and succeeded both times.
     """
 
     def test_the_mac_header_draws_the_running_state_at_every_width(self) -> None:

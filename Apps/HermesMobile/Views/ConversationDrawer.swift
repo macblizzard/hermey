@@ -4,7 +4,7 @@ import OpenBotUI
 
 /// A conversation's verbs as a page, opened by dragging in from the right edge.
 ///
-/// The bar's ⋯ is gone on purpose (Mohammad, 2026-11-12): a chat already owns the whole screen, so
+/// The bar's ⋯ is gone on purpose (reported 2026-11-12): a chat already owns the whole screen, so
 /// its verbs get a door that is bigger than a 22 pt glyph — a swipe from the trailing edge, which is
 /// the one gesture a phone chat was not using. Same list, same order, same verbs as the menu it
 /// replaces; the bot *list* keeps its own ⋯, because that screen has nothing to swipe over.
