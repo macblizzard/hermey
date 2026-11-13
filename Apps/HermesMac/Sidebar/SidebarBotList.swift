@@ -93,11 +93,9 @@ struct SidebarBotList: View {
         let rows = ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 1) {
                 if !roomRows.isEmpty {
-                    SectionCaption("GROUP CHATS")
-                        .padding(.horizontal, 8)
-                        .padding(.top, 2)
-                        .padding(.bottom, 2)
-
+                    // No caption over either list. "CHATS" over a list of chats told the reader
+                    // what they were already looking at, and it cost a line above the first row.
+                    // The divider below the group chats is the whole separation.
                     ForEach(roomRows) { room in
                         Button { onOpenRoom?(room) } label: {
                             GroupChatRow(room: room,
@@ -127,11 +125,6 @@ struct SidebarBotList: View {
 
                     Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 }
-
-                SectionCaption("CHATS")
-                    .padding(.horizontal, 8)
-                    .padding(.top, roomRows.isEmpty ? 2 : 0)
-                    .padding(.bottom, 2)
 
                 ForEach(visibleBots) { bot in
                     row(for: bot)

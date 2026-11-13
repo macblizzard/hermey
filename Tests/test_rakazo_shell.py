@@ -84,16 +84,16 @@ class RakazoGeometryTests(unittest.TestCase):
 
     def test_the_chat_header_floats_and_the_transcript_reserves_room(self) -> None:
         self.assertEqual(value(TOKENS, "chatHeader"), "62")
-        self.assertEqual(value(TOKENS, "chatHeaderAvatar"), "26")
-        self.assertEqual(value(TOKENS, "chatHeaderPill"), "36")
+        self.assertEqual(value(TOKENS, "chatHeaderAvatar"), "28")
+        self.assertEqual(value(TOKENS, "chatHeaderPill"), "40")
         self.assertEqual(value(TOKENS, "chatHeaderTitle"), "15")
         self.assertEqual(value(TOKENS, "transcriptTopInset"), "84")
         # No bar: a header with a fill or a hairline is the thing the spec replaced.
         self.assertNotIn(".background(Tokens.canvas)\n        // Owned by the store", HEADER)
-        # The pill is the control: closed it is the header's translucent capsule, open it is solid
-        # because the panel it belongs to is on screen.
-        self.assertIn("Capsule().fill(Tokens.surface.opacity(store.isBotPanelPresented ? 1 : 0.92))",
-                      HEADER)
+        # The pill is the control, and it is opaque: the transcript scrolls behind it, so a
+        # translucent fill let the text underneath show through the name.
+        self.assertIn("Capsule().fill(Tokens.surface)", HEADER)
+        self.assertNotIn("Tokens.surface.opacity(store.isBotPanelPresented", HEADER)
         self.assertIn("botPanelButton", HEADER, "the pill is the way into the bot's panel")
 
     def test_the_transcript_and_the_composer(self) -> None:

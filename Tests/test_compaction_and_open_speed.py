@@ -89,13 +89,14 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
     reported broken twice; the requests had reached the host and succeeded both times.
     """
 
-    def test_the_mac_header_draws_the_running_state_at_every_width(self) -> None:
-        block = MAC_HEADER.split("if model.isCompressing {", 1)[1].split("}", 1)[0]
-        self.assertIn("compacting", block)
-        self.assertIn("showsProgress: true", block)
-        # No `width >=` in the guard: a 460 pt breakpoint hid the only feedback the verb has.
-        guard = MAC_HEADER.split("if model.isCompressing {", 1)[0].rsplit("if ", 1)[-1]
-        self.assertNotIn("width >=", guard)
+    def test_the_mac_says_it_on_the_bots_face_at_every_width(self) -> None:
+        # The chip became a zip on the portrait: the state is still visible at any width, because
+        # the face is inside the pill and the pill is never dropped.
+        block = MAC_HEADER.split("private var portraitStatus", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("model.isCompressing", block)
+        self.assertIn("return .compacting", block)
+        self.assertNotIn("width >=", block, "a breakpoint would hide the only feedback the verb has")
+        self.assertNotIn('StatusChip("compacting', MAC_HEADER)
 
     def test_the_outcome_is_not_hidden_behind_a_breakpoint(self) -> None:
         self.assertNotIn("width >= ChipBreakpoint.notice", MAC_HEADER,

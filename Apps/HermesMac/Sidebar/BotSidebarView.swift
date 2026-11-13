@@ -120,6 +120,11 @@ struct BotSidebarView: View {
                 OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
                     .help("Close search (esc)")
             } else {
+                // Every control in one cluster on the right, none on the left: the row is a row of
+                // verbs for the list below it, and a verb split across both edges reads as two
+                // groups when it is one.
+                Spacer(minLength: 0)
+
                 OpenBotIconButton("magnifyingglass", label: "Search bots", size: .small) {
                     isSearching = true
                 }
@@ -131,8 +136,6 @@ struct BotSidebarView: View {
                     store.toggleSidebar()
                 }
                 .help("Hide the bot panel (⌘S)")
-
-                Spacer(minLength: 0)
 
                 addMenu
 

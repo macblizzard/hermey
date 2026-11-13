@@ -55,7 +55,13 @@ public struct Composer: View {
     @State private var editorHeight: CGFloat = 34
     #endif
 
+    /// True when the field is a capsule floating over content rather than a bar sitting under it:
+    /// no stroke, a translucent fill and a shadow, so the text behind it reads as passing
+    /// underneath instead of the field reading as a box drawn on top.
+    public var floats: Bool
+
     public init(text: Binding<String>,
+                floats: Bool = false,
                 placeholder: String = "Ask Hermes anything",
                 isSending: Bool = false,
                 isDisabled: Bool = false,
@@ -76,6 +82,7 @@ public struct Composer: View {
                 attachPopoverPresented: Binding<Bool>? = nil,
                 attachPopoverContent: AnyView? = nil) {
         _text = text
+        self.floats = floats
         self.placeholder = placeholder
         self.isSending = isSending
         self.isDisabled = isDisabled
@@ -212,11 +219,16 @@ public struct Composer: View {
         }
         .background(
             RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                .fill(Tokens.control)
+                .fill(floats ? Tokens.surface.opacity(0.97) : Tokens.control)
+                .shadow(color: floats ? .black.opacity(0.30) : .clear,
+                        radius: floats ? 14 : 0, y: floats ? 4 : 0)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                .strokeBorder(isFieldFocused ? Tokens.borderFocus : Tokens.borderStrong, lineWidth: 1)
+                // Floating: no frame at rest, and the focus ring alone when it is being typed in.
+                .strokeBorder(isFieldFocused ? Tokens.borderFocus
+                                             : (floats ? .clear : Tokens.borderStrong),
+                              lineWidth: 1)
         )
         .opacity(isDisabled ? 0.6 : 1)
     }

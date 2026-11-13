@@ -38,14 +38,31 @@ extension BotIcon {
 }
 
 /// Scalable vector artwork, shared by the macOS and iOS shells.
+/// What a bot is doing, said on its face instead of in a chip beside its name.
+///
+/// A chip is a label you have to read; a bot that sparks, flashes or zips is a thing you notice
+/// while looking at something else. The three states are the three the header used to spell out.
+public enum PortraitStatus: String, Sendable, Hashable {
+    /// It is asking for you — the exclamation flashes.
+    case needsYou
+    /// A turn is in flight — the antenna sparks and the spark travels.
+    case working
+    /// The transcript is being compacted — a zip runs down the face and closes.
+    case compacting
+}
+
 public struct BotIconPortrait: View {
     public let icon: BotIcon
     public var size: CGFloat
     public var isWorking: Bool
+    /// `isWorking` is kept because a dozen call sites pass it; `status` is the whole story, and a
+    /// caller that knows which state it is should pass that instead.
+    public var status: PortraitStatus?
 
-
-    public init(_ icon: BotIcon, size: CGFloat = 56, isWorking: Bool = false) {
+    public init(_ icon: BotIcon, size: CGFloat = 56, isWorking: Bool = false,
+                status: PortraitStatus? = nil) {
         self.icon = icon; self.size = size; self.isWorking = isWorking
+        self.status = status ?? (isWorking ? .working : nil)
     }
     public var body: some View {
         ZStack {
@@ -74,7 +91,12 @@ public struct BotIconPortrait: View {
             } else {
                 newPortrait
             }
-            BotWorkingSparks(size: size, color: icon.tint, isWorking: isWorking)
+            switch status {
+            case .needsYou: NeedsYouFlash(size: size, tint: icon.tint)
+            case .working: BotWorkingSparks(size: size, color: icon.tint, isWorking: true)
+            case .compacting: CompactingZip(size: size, tint: icon.tint)
+            case nil: EmptyView()
+            }
         }
         .frame(width: size, height: size)
         .accessibilityLabel("\(icon.title) robot icon")
@@ -201,6 +223,115 @@ public struct BotWorkingSparks: View {
         .offset(y: -size * 0.23)
         .accessibilityHidden(true)
         .allowsHitTesting(false)
+    }
+}
+
+/// A flashing exclamation in the corner of the face: the one state that is a request.
+///
+/// It pulses rather than spins, and it is drawn, not a font glyph, so it keeps its weight at 14 pt
+/// in a roster row and at 34 pt in the header pill.
+public struct NeedsYouFlash: View {
+    public var size: CGFloat
+    public var tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(size: CGFloat, tint: Color) {
+        self.size = size; self.tint = tint
+    }
+
+    public var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let phase = reduceMotion ? 1.0 : 0.55 + 0.45 * (0.5 + 0.5 * sin(context.date.timeIntervalSinceReferenceDate * 4.2))
+            badge(opacity: phase, scale: reduceMotion ? 1 : 0.94 + 0.1 * phase)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func badge(opacity: Double, scale: Double) -> some View {
+        ZStack {
+            Circle().fill(Color.black.opacity(0.85))
+            Circle().strokeBorder(tint.opacity(0.9), lineWidth: max(1, size * 0.02))
+            VStack(spacing: size * 0.035) {
+                Capsule().fill(tint)
+                    .frame(width: size * 0.055, height: size * 0.135)
+                Circle().fill(tint)
+                    .frame(width: size * 0.055, height: size * 0.055)
+            }
+        }
+        .frame(width: size * 0.40, height: size * 0.40)
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .offset(x: size * 0.30, y: size * 0.28)
+    }
+}
+
+/// A zip closing down the face: two combs of teeth meeting, and the pull travelling with them.
+///
+/// At 14 pt the teeth are texture rather than detail — what reads is the seam closing and
+/// reopening, which is exactly what compaction is.
+public struct CompactingZip: View {
+    public var size: CGFloat
+    public var tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var closed = false
+
+    public init(size: CGFloat, tint: Color) {
+        self.size = size; self.tint = tint
+    }
+
+    public var body: some View {
+        ZStack {
+            // A dark scrim, so the zip is legible over any silhouette underneath it.
+            RoundedRectangle(cornerRadius: size * 0.18, style: .continuous)
+                .fill(Color.black.opacity(0.62))
+                .frame(width: size * 0.46, height: size * 0.44)
+
+            teeth(goingDown: true).offset(y: closed ? size * 0.055 : -size * 0.055)
+            teeth(goingDown: false).offset(y: closed ? -size * 0.055 : size * 0.055)
+
+            Capsule()
+                .fill(tint)
+                .frame(width: size * 0.075, height: size * 0.10)
+                .offset(y: closed ? size * 0.20 : -size * 0.20)
+        }
+        .onAppear {
+            guard !reduceMotion else { closed = true; return }
+            withAnimation(.easeInOut(duration: 1.05).repeatForever(autoreverses: true)) {
+                closed = true
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func teeth(goingDown: Bool) -> some View {
+        HStack(spacing: size * 0.035) {
+            ForEach(0..<3, id: \.self) { _ in
+                Triangle(pointingDown: goingDown)
+                    .fill(tint.opacity(0.85))
+                    .frame(width: size * 0.085, height: size * 0.07)
+            }
+        }
+    }
+}
+
+/// One tooth. A `Path` rather than a glyph so three of them at 3 pt wide stay crisp.
+struct Triangle: Shape {
+    var pointingDown: Bool
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        if pointingDown {
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        } else {
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+        }
+        path.closeSubpath()
+        return path
     }
 }
 

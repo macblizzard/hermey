@@ -51,13 +51,17 @@ class TheNameIsTheControl(unittest.TestCase):
         self.assertNotIn("moreMenu", HEADER)
         self.assertNotIn("Menu {", HEADER)
 
-    def test_the_pill_is_centred_and_the_chips_are_only_live_facts(self) -> None:
+    def test_the_state_is_on_the_face_not_in_a_chip(self) -> None:
         self.assertIn("ZStack {", HEADER)
-        # Context and the two verbs left the header for the panel: what stays is what is only
-        # true some of the time.
         self.assertNotIn("contextChipLabel", HEADER)
-        self.assertIn('StatusChip("running"', HEADER)
-        self.assertIn('StatusChip("needs you"', HEADER)
+        # A chip is a word you read; the face is a thing you notice. All three states live there.
+        self.assertIn("portraitStatus", HEADER)
+        for state in (".needsYou", ".working", ".compacting"):
+            self.assertIn(f"return {state}", HEADER)
+        for chip in ('StatusChip("running"', 'StatusChip("needs you"', 'StatusChip("compacting'):
+            self.assertNotIn(chip, HEADER)
+        # The result of a compaction is still a sentence: it has no shape to take.
+        self.assertIn("model.compactionNotice", HEADER)
 
 
 class ThePanelIsAPane(unittest.TestCase):

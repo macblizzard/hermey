@@ -15,6 +15,9 @@ struct TranscriptScroll: View {
     /// so this is a request to open the field and take the caret — not shared state: the field,
     /// its query and its match index are local to the reading surface.
     var findRequest: Int = 0
+    /// The composer's measured height. The capsule floats over the transcript and grows upward, so
+    /// the last rows have to clear it by exactly this much.
+    var bottomInset: CGFloat = 0
 
     @State private var searching = false
     @State private var query = ""
@@ -101,7 +104,7 @@ struct TranscriptScroll: View {
             }
             // Floating over the transcript's foot — the strip just above the composer, which is
             // where the eye goes looking for it.
-            .overlay(alignment: .bottom) { foot }
+            .overlay(alignment: .bottom) { foot.padding(.bottom, bottomInset) }
             .onAppear { scrollRequest += 1 }
 
             .onChange(of: model.transcript.count) { _, _ in follow(proxy) }
@@ -184,7 +187,9 @@ struct TranscriptScroll: View {
         // Clears the floating pill: the transcript scrolls behind it, but its first row must not
         // start underneath it.
         .padding(.top, Geometry.chatHeaderPill + 20)
-        .padding(.bottom, 10)
+        // The composer's live height: the capsule grows upward, so the rows it would cover have to
+        // move with it. Passed in by the pane, which measures it.
+        .padding(.bottom, 10 + bottomInset)
         .frame(maxWidth: .infinity)
     }
 
