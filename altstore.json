@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.238",
+          "buildVersion": "238",
+          "date": "2026-11-13T22:07:01Z",
+          "localizedDescription": "The pill floats over the chat, the bot list fades at both ends, and the composer stopped explaining itself.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.238/Hermey-0.1.238-b238.ipa",
+          "size": 2220883,
+          "minOSVersion": "17.0",
+          "sha256": "ed0cc9f4b088197a9f76e8c5a048161917e6cf0de480a4589f2e6d23d5be4e2a"
+        },
+        {
           "version": "0.1.235",
           "buildVersion": "235",
           "date": "2026-11-13T20:55:09Z",
@@ -62,16 +72,6 @@
           "size": 2219792,
           "minOSVersion": "17.0",
           "sha256": "2928ffdf99e70de2b1e706d99c94f5774d451b05dceefd46ed2f618ba02f5070"
-        },
-        {
-          "version": "0.1.222",
-          "buildVersion": "222",
-          "date": "2026-11-13T17:09:01Z",
-          "localizedDescription": "A run of tool calls is one line \u2014 tap it for the calls, each still its own card.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.222/Hermey-0.1.222-b222.ipa",
-          "size": 2217417,
-          "minOSVersion": "17.0",
-          "sha256": "4ea97e9a41fa0e7e711210dc3b9a5fa2b00cfed146bbe755f367e67c42b84865"
         }
       ],
       "appPermissions": {
