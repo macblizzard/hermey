@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.226",
+          "buildVersion": "226",
+          "date": "2026-11-13T18:05:50Z",
+          "localizedDescription": "Load earlier keeps the pages it fetched, and the drawer uses the theme's sheet.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.226/Hermey-0.1.226-b226.ipa",
+          "size": 2219792,
+          "minOSVersion": "17.0",
+          "sha256": "2928ffdf99e70de2b1e706d99c94f5774d451b05dceefd46ed2f618ba02f5070"
+        },
+        {
           "version": "0.1.222",
           "buildVersion": "222",
           "date": "2026-11-13T17:09:01Z",
@@ -62,16 +72,6 @@
           "size": 2175008,
           "minOSVersion": "17.0",
           "sha256": "e1682a7d4d352173d3cdc8c25a9f170d9bc7ed273447521b6cbcc9d0a9ad1e6f"
-        },
-        {
-          "version": "0.1.207",
-          "buildVersion": "207",
-          "date": "2026-11-13T13:53:23Z",
-          "localizedDescription": "The Rakazo shell: one palette, one set of pane widths, a 58 pt roster row, a floating chat header and 20 pt bubbles. Settings \u2192 Appearance keeps OpenBot (and every other theme) one pick away.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.207/Hermey-0.1.207-b207.ipa",
-          "size": 2175395,
-          "minOSVersion": "17.0",
-          "sha256": "1ca17b29d76268dd20e349b684556fafcf4d64bb8f2da0e086fbcf1a5be3c0af"
         }
       ],
       "appPermissions": {
