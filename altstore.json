@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.210",
+          "buildVersion": "210",
+          "date": "2026-11-13T14:18:29Z",
+          "localizedDescription": "The phone catches up with the Rakazo shell: two-line roster rows with an 8 pt unread dot, group chats shaped the same, 20 pt bubbles, one header line.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.210/Hermey-0.1.210-b210.ipa",
+          "size": 2175008,
+          "minOSVersion": "17.0",
+          "sha256": "e1682a7d4d352173d3cdc8c25a9f170d9bc7ed273447521b6cbcc9d0a9ad1e6f"
+        },
+        {
           "version": "0.1.207",
           "buildVersion": "207",
           "date": "2026-11-13T13:53:23Z",
@@ -62,16 +72,6 @@
           "size": 2173113,
           "minOSVersion": "17.0",
           "sha256": "7c777074610afcae1c26b44267cc05076697296c552be8e5a39903fe7bc8dcba"
-        },
-        {
-          "version": "0.1.191",
-          "buildVersion": "191",
-          "date": "2026-11-12T15:44:30Z",
-          "localizedDescription": "Compacting no longer fails when the phone sleeps: the host keeps working and the app reports the outcome when it reconnects. Also: minimising the app no longer blanks the chat, a foreground lands at the newest message, and the chat's menu is a page swiped in from the right edge.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.191/Hermey-0.1.191-b191.ipa",
-          "size": 2139527,
-          "minOSVersion": "17.0",
-          "sha256": "5e86cc37373a4580374fcb2c16a7e40beb8d728b2a9baeec5e9258920a2a4e93"
         }
       ],
       "appPermissions": {
