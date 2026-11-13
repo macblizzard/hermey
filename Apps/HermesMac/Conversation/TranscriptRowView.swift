@@ -226,8 +226,20 @@ struct TranscriptRowView: View {
 
     private var assistantRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            MarkdownTextView(text: entry.text)
-                .accessibilityLabel("Hermes said: \(entry.text)")
+            // A `::blocks{id="…"}` line is not prose: the plugin's board is drawn in its place, and
+            // the directive itself must never be read as text.
+            if let boardID = GenUITag.boardID(in: entry.text) {
+                let prose = GenUITag.textWithoutTags(entry.text)
+                if !prose.isEmpty {
+                    MarkdownTextView(text: prose)
+                        .accessibilityLabel("Hermes said: \(prose)")
+                }
+                GenUICard(blockID: boardID)
+                    .padding(.vertical, 2)
+            } else {
+                MarkdownTextView(text: entry.text)
+                    .accessibilityLabel("Hermes said: \(entry.text)")
+            }
 
             messageTime
 

@@ -434,11 +434,24 @@ struct MobileTranscriptRow: View {
 
     private var assistant: some View {
         VStack(alignment: .leading, spacing: 2) {
-            MobileMarkdownText(blocks: IncrementalMarkdown.parse(entry.text))
-                .accessibilityLabel(entry.text)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
+            // A `::blocks{id="…"}` line is a directive, not prose: the plugin's board is drawn in
+            // its place, and the tag itself never appears in the transcript.
+            if let boardID = GenUITag.boardID(in: entry.text) {
+                let prose = GenUITag.textWithoutTags(entry.text)
+                if !prose.isEmpty {
+                    MobileMarkdownText(blocks: IncrementalMarkdown.parse(prose))
+                        .accessibilityLabel(prose)
+                        .padding(.vertical, 4)
+                }
+                GenUICard(blockID: boardID)
+                    .padding(.vertical, 2)
+            } else {
+                MobileMarkdownText(blocks: IncrementalMarkdown.parse(entry.text))
+                    .accessibilityLabel(entry.text)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
+            }
             messageTime
         }
         .frame(maxWidth: .infinity, alignment: .leading)

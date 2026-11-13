@@ -39,6 +39,7 @@ from .bot_icons import create_bot_icons_router
 from .attachment_files import create_attachment_files_router
 from .workspace import create_workspace_router
 from .bot_previews import create_bot_previews_router
+from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .rooms import create_rooms_router
 from .bot_message import create_bot_message_router
@@ -197,6 +198,7 @@ def create_app(
     app.state.bridge = runtime
     app.include_router(create_bot_icons_router(runtime))
     app.include_router(create_bot_previews_router(runtime))
+    app.include_router(create_genui_router(runtime))
     # An uploaded picture lives on this host; a device that lost its copy asks for it here.
     app.include_router(create_attachment_files_router(runtime))
     app.include_router(create_workspace_router(runtime))

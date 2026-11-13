@@ -206,6 +206,18 @@ struct ConversationScreen: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
+        // A card in this conversation: the phone already holds the pairing, so the resolver is one
+        // call, and a card's button comes back as a notification.
+        .environment(\.genUICards, app.genUICards(for: bot.id))
+        .onReceive(NotificationCenter.default.publisher(for: .genUICardSend)) { note in
+            guard let text = note.userInfo?["text"] as? String else { return }
+            model.draft = text
+            Task { await model.send() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .genUICardFill)) { note in
+            guard let text = note.userInfo?["text"] as? String else { return }
+            model.draft = text
+        }
         .onAppear { model.setVisibleBot(bot.id) }
         .onDisappear { model.setVisibleBot(nil) }
         .task(id: bot.id) {
