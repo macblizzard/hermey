@@ -6,8 +6,13 @@
 <meta name="color-scheme" content="dark light">
 <style>
   /* The card brings its own stylesheet (the plugin injects it on register). This page only has to
-     get out of its way: no margins, no scrollbar, no background of its own. */
-  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+     get out of its way: no margins, no scrollbar, no chrome of its own.
+     The page does paint the app's canvas, though: a webview has an under-page colour of its own
+     (a system grey), and a transparent page shows it as a rectangle around the board. Painting the
+     canvas here means the card sits on the transcript's own colour either way. */
+  html { background-color: var(--background, transparent); }
+  html, body { margin: 0; padding: 0; overflow: hidden; }
+  body { background: transparent; }
   body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
   #root { padding: 0; }
   .genui-note { color: var(--ui-text-tertiary, #8a8a8a); font-size: 13px; line-height: 18px; padding: 4px 0; }
