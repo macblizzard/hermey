@@ -174,7 +174,10 @@ private struct GenUIWebView: NSViewRepresentable {
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.userContentController.add(context.coordinator, name: "hermes")
         let view = WKWebView(frame: .zero, configuration: configuration)
-        // Transparent: the card is part of the transcript, not a panel laid over it.
+        // The card is part of the transcript, not a panel laid over it. The page paints the app's
+        // canvas itself, so there is nothing to see even if this colour is ever ignored: a webview
+        // has an under-page colour of its own (a system grey), and a transparent page shows it as a
+        // rectangle around the board — which is exactly the seam this is here to avoid.
         view.underPageBackgroundColor = .clear
         view.allowsBackForwardNavigationGestures = false
         view.allowsMagnification = false

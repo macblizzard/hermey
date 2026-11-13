@@ -66,6 +66,14 @@ class PageTests(unittest.TestCase):
         self.assertIn('"react/jsx-runtime": "/v1/genui/assets/jsx.mjs" + suffix', HOST)
         self.assertIn('"@hermes/plugin-sdk": "/v1/genui/assets/sdk.mjs" + suffix', HOST)
 
+    def test_the_page_paints_the_apps_canvas_so_the_card_has_no_seam(self) -> None:
+        # A webview has an under-page colour of its own (a system grey). A transparent page shows it
+        # as a rectangle around the board, which is the one thing that makes a card look pasted on.
+        self.assertIn("html { background-color: var(--background, transparent); }", HOST)
+        self.assertIn("body { background: transparent; }", HOST)
+        # ...and the canvas the page paints is the app's own, handed over in the query.
+        self.assertIn('"--background": q.get("bg")', HOST)
+
     def test_the_page_reports_its_height_and_the_palette(self) -> None:
         self.assertIn('type: "height"', HOST)
         self.assertIn("new ResizeObserver(report)", HOST)
