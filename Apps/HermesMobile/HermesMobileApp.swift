@@ -87,7 +87,7 @@ struct RootTabView: View {
             guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
             MobileReplyNotifier.shared.refreshAuthorization()
             Task {
-                if app.model.connection.isLive { await app.loadBotIcons() }
+                if app.model.connection.isLive { await app.loadBotFaces() }
                 else { await app.reconnect() }
             }
         }
@@ -126,7 +126,7 @@ struct BotsTab: View {
                 .navigationDestination(for: RoomSummary.self) { room in
                     RoomChatView(
                         room: room,
-                        icons: app.botIcons,
+                        icons: app.botFaces,
                         presentation: .pushed,
                         load: { roomID, since in try await model.roomPage(roomID, since: since) },
                         send: { roomID, text, files in

@@ -10,7 +10,13 @@ struct BotIconService {
     let freshTicket: () async throws -> String
     var session: URLSession = .shared
 
-    private struct Icons: Decodable { let icons: [String: String] }
+    /// `faces` is what this build writes; `icons` is the pre-pair payload, read so an older host
+    /// still shows every bot its own face.
+    private struct Payload: Decodable {
+        struct Face: Decodable { let shape: String; let color: String }
+        let faces: [String: Face]?
+        let icons: [String: String]?
+    }
     private struct TokenRequest: Encodable {
         let device_id: String
         let refresh_token: String
@@ -33,10 +39,19 @@ struct BotIconService {
         guard (200..<300).contains(http.statusCode) else { throw HTTPFailure(operation: "Ticket request", status: http.statusCode) }
         return try JSONDecoder().decode(TokenResponse.self, from: data).ws_ticket
     }
-    private struct Change: Encodable { let icon: String?; enum CodingKeys: String, CodingKey { case icon }
+    private struct Change: Encodable {
+        let shape: String?
+        let color: String?
+        enum CodingKeys: String, CodingKey { case shape, color }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
-            if let icon { try c.encode(icon, forKey: .icon) } else { try c.encodeNil(forKey: .icon) }
+            if let shape, let color {
+                try c.encode(shape, forKey: .shape)
+                try c.encode(color, forKey: .color)
+            } else {
+                try c.encodeNil(forKey: .shape)
+                try c.encodeNil(forKey: .color)
+            }
         }
     }
     private func request(_ url: URL, method: String, body: Data? = nil) async throws -> Data {
@@ -50,44 +65,77 @@ struct BotIconService {
         guard (200..<300).contains(http.statusCode) else { throw HTTPFailure(operation: "Bot icon request", status: http.statusCode) }
         return data
     }
-    func load() async throws -> [String: BotIcon] {
+    func load() async throws -> [String: BotFace] {
         let data = try await request(baseURL.appendingPathComponent("v1/bot-icons"), method: "GET")
-        return try JSONDecoder().decode(Icons.self, from: data).icons.compactMapValues(BotIcon.init(rawValue:))
+        let payload = try JSONDecoder().decode(Payload.self, from: data)
+        var faces: [String: BotFace] = [:]
+        for (botID, icon) in payload.icons ?? [:] {
+            if let shape = BotIcon(rawValue: icon) { faces[botID] = .legacy(shape) }
+        }
+        for (botID, face) in payload.faces ?? [:] {
+            if let shape = BotIcon(rawValue: face.shape), let color = BotColor(rawValue: face.color) {
+                faces[botID] = BotFace(shape: shape, color: color)
+            }
+        }
+        return faces
     }
-    func save(botID: String, icon: BotIcon?) async throws {
+    func save(botID: String, face: BotFace?) async throws {
         let url = baseURL.appendingPathComponent("v1/bot-icons").appendingPathComponent(try BotIconPath.component(for: botID))
-        _ = try await request(url, method: "PUT", body: JSONEncoder().encode(Change(icon: icon?.rawValue)))
+        let change = Change(shape: face?.shape.rawValue, color: face?.color.rawValue)
+        _ = try await request(url, method: "PUT", body: JSONEncoder().encode(change))
     }
 }
 
 /// Caller refreshes its shared dictionary after saving; errors stay visible.
 struct BotIconPicker: View {
     let botName: String
-    let selected: BotIcon?
-    let save: (BotIcon?) async throws -> Void
+    let selected: BotFace?
+    let save: (BotFace?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
     @State private var error: String?
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Choose an original robot portrait for \(botName). Your paired devices share this choice.")
+                    Text("Any shape, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
+                        .font(TypeScale.font(TypeScale.sm))
                         .foregroundStyle(Tokens.textSecondary)
-                    BotIconGallery(selected: selected) { icon in
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    BotFacePicker(face: selected) { face in
                         guard !saving else { return }
                         saving = true
+                        error = nil
                         Task {
-                            do { try await save(icon); dismiss() }
-                            catch { self.error = error.localizedDescription; saving = false }
+                            do {
+                                try await save(face)
+                                dismiss()
+                            } catch {
+                                self.error = error.localizedDescription
+                            }
+                            saving = false
                         }
-                    }.disabled(saving)
-                    if saving { ProgressView("Saving…") }
-                    if let error { Text(error).foregroundStyle(Tokens.danger) }
-                }.padding()
+                    }
+
+                    if let error {
+                        Text(error)
+                            .font(TypeScale.font(TypeScale.sm))
+                            .foregroundStyle(Tokens.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(18)
             }
-            .navigationTitle("Bot icon")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) } }
+            .background(Tokens.canvas)
+            .navigationTitle("Portrait for \(botName)")
+            .inlineSheetTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }

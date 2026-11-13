@@ -15,7 +15,7 @@ import HermesKit
 /// `WorkspaceStore(model:pairing:)` deliberately skips `PairingStore.savedAddress()`, the only
 /// keychain read in the app, so the pair record is never read or written. The address it does
 /// hold is ticket-only (empty `deviceID`), which is the shape `WorkspaceStore` already refuses
-/// to use for bot icons (`loadBotIcons` returns early, `saveBotIcon` throws
+/// to use for bot icons (`loadBotFaces` returns early, `saveBotFace` throws
 /// `devicePairingRequired`) — so even the one path that would build a URL has nothing to dial.
 /// Every `GatewayClientProtocol` method answers from constants; the ones with a side effect
 /// (submit, attach, compress, configure, answer) throw `notConnected` rather than pretending a

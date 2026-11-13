@@ -333,7 +333,7 @@ struct WorkspaceShell: View {
             Group {
                 if let room = model.activeRoom {
                     RoomChatView(room: room,
-                                 icons: store.botIcons,
+                                 icons: store.botFaces,
                                  presentation: .pane,
                                  load: { roomID, since in try await model.roomPage(roomID, since: since) },
                                  send: { roomID, text, files in

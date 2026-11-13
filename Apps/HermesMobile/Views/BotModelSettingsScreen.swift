@@ -13,7 +13,7 @@ struct BotModelSettingsScreen: View {
     let bot: Bot
     /// The portrait the host has for this bot, when it has one — the sheet shows the face the list
     /// shows, so it is recognisable before its title is read.
-    var icon: BotIcon? = nil
+    var icon: BotFace? = nil
     let load: (String) async throws -> ModelCatalog
     /// True when this bot's conversation is the one currently open. A live conversation keeps the
     /// model it was created with — the gateway pins it per session and offers no way to change it —
@@ -43,7 +43,7 @@ struct BotModelSettingsScreen: View {
     @State private var descriptionSaved = false
 
     init(bot: Bot,
-         icon: BotIcon? = nil,
+         icon: BotFace? = nil,
          load: @escaping (String) async throws -> ModelCatalog,
          conversationIsOpen: Bool = false,
          resetConversation: (() async -> Void)? = nil,
@@ -119,7 +119,7 @@ struct BotModelSettingsScreen: View {
                 // is read.
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 8) {
-                        BotIconPortrait(icon ?? BotIcon.default(for: bot.id), size: 24)
+                        BotIconPortrait(icon ?? BotFace.default(for: bot.id), size: 24)
                         Text(bot.displayName)
                             .font(TypeScale.font(TypeScale.md, weight: .semibold))
                             .foregroundStyle(Tokens.textPrimary)

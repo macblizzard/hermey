@@ -91,7 +91,7 @@ struct BotListScreen: View {
 
             BotModelSettingsScreen(
                 bot: bot,
-                icon: app.botIcons[bot.id],
+                icon: app.botFaces[bot.id],
                 load: { botID in try await model.modelCatalog(for: botID) },
                 conversationIsOpen: model.selectedBotID == bot.id,
                 resetConversation: { model.resetEndlessSession(for: bot.id) },
@@ -115,7 +115,7 @@ struct BotListScreen: View {
     var body: some View {
         List {
             roomsSection
-            if let error = app.botIconsError {
+            if let error = app.botFacesError {
                 Text("Could not refresh bot icons: \(error)").font(.caption).foregroundStyle(Tokens.danger)
             }
             if model.botsLoading && model.bots.isEmpty {
@@ -180,15 +180,16 @@ struct BotListScreen: View {
             settingsSheet(for: bot)
         }
         .sheet(isPresented: $showAddBot) {
-            AddBotSheet { name, description, soul, icon in
-                let created = try await model.addBot(name: name, description: description, soul: soul)
-                if let icon { try? await app.saveBotIcon(botID: created, icon: icon) }
+            AddBotSheet { name, description, face in
+                // No soul: who the bot is lives in its settings, where it can be edited later.
+                let created = try await model.addBot(name: name, description: description, soul: "")
+                if let face { try? await app.saveBotFace(botID: created, face: face) }
             }
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
                 bots: model.bots,
-                icons: app.botIcons,
+                icons: app.botFaces,
                 onCreate: { name, members in
                     try await model.startGroupChat(name: name.isEmpty ? "Group chat" : name,
                                                    members: members)
@@ -204,7 +205,7 @@ struct BotListScreen: View {
         .fullScreenCover(item: $openRoom) { room in
             RoomChatView(
                 room: room,
-                icons: app.botIcons,
+                icons: app.botFaces,
                 load: { roomID, since in try await model.roomPage(roomID, since: since) },
                 send: { roomID, text, files in
                     try await model.sendRoomMessage(roomID, text: text, attachments: files)
@@ -234,8 +235,8 @@ struct BotListScreen: View {
                 save: { try await model.saveSoul($0, for: bot.id) })
         }
         .sheet(item: $iconBot) { bot in
-            BotIconPicker(botName: bot.displayName, selected: app.botIcons[bot.id]) { icon in
-                try await app.saveBotIcon(botID: bot.id, icon: icon)
+            BotIconPicker(botName: bot.displayName, selected: app.botFaces[bot.id]) { face in
+                try await app.saveBotFace(botID: bot.id, face: face)
             }
         }
         .mobileConnectionBanner(connection: app.visibleConnection,
@@ -255,7 +256,7 @@ struct BotListScreen: View {
             HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
                 // A bot always has a face: its own if the host has one, otherwise the portrait its
                 // id picks. Initials are what made the first second of every launch look empty.
-                BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: Geometry.rosterAvatar,
                                 isWorking: model.isStreaming && model.selectedBotID == bot.id)
 
@@ -404,7 +405,7 @@ struct BotListScreen: View {
             open(room)
         } label: {
             GroupChatRow(room: room,
-                         icons: app.botIcons,
+                         icons: app.botFaces,
                          unread: model.roomUnreadCount(room.id))
                 .padding(.vertical, Geometry.rosterRowPadding)
                 .frame(minHeight: Geometry.rosterRow)

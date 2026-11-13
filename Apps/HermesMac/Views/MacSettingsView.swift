@@ -257,7 +257,7 @@ private struct BotsSettingsTab: View {
 
     private func row(_ bot: Bot) -> some View {
         HStack(spacing: 10) {
-            if let icon = store.botIcons[bot.id] {
+            if let icon = store.botFaces[bot.id] {
                 BotIconPortrait(icon, size: 24, isWorking: false)
             } else {
                 Avatar(bot.displayName, size: .small, initials: bot.avatarInitials)

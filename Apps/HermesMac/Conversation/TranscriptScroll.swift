@@ -18,6 +18,9 @@ struct TranscriptScroll: View {
     /// The composer's measured height. The capsule floats over the transcript and grows upward, so
     /// the last rows have to clear it by exactly this much.
     var bottomInset: CGFloat = 0
+    /// The bot's swatch: the user's own bubbles are drawn in it, so a window with three bots open
+    /// never leaves you guessing whose conversation you are typing into.
+    var userBubbleTint: Color = Tokens.control
 
     @State private var searching = false
     @State private var query = ""
@@ -146,6 +149,7 @@ struct TranscriptScroll: View {
                                       host: model.hostName,
                                       bot: model.selectedBotID ?? "",
                                       session: model.selectedSessionID,
+                                      userBubbleTint: userBubbleTint,
                                       onSelectText: { selectionText = $0 },
                                       onReply: { model.reply(to: $0) })
                         .id(entry.id)
@@ -156,6 +160,7 @@ struct TranscriptScroll: View {
                                           host: model.hostName,
                                           bot: model.selectedBotID ?? "",
                                           session: model.selectedSessionID,
+                                          userBubbleTint: userBubbleTint,
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) })
                             .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)

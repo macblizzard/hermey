@@ -411,6 +411,12 @@ struct MobileTranscriptRow: View {
         }
     }
 
+    /// The selected bot's swatch, from the shared face cache.
+    private var botTint: Color {
+        guard let id = app.selectedBotID else { return Tokens.accentSoft }
+        return (app.botFaces[id] ?? BotFace.default(for: id)).color.swatch
+    }
+
     private var bubbleText: some View {
         HStack(alignment: .bottom, spacing: 8) {
             MobileSelectableText(attributed: MobileProse.plain(entry.displayText,
@@ -419,13 +425,15 @@ struct MobileTranscriptRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
+                // The bot's own colour: the phone shows one conversation at a time, but the
+                // bubble is the one place that says which bot it is without a name on screen.
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .fill(Tokens.accentSoft)
+                        .fill(botTint.opacity(0.16))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                        .strokeBorder(botTint.opacity(0.45), lineWidth: 1)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous))
                 .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }

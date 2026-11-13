@@ -14,5 +14,9 @@ def test_access_token_is_not_a_ticket_and_null_removes_only_selected_bot(tmp_pat
         assert client.put('/v1/bot-icons/a', json={'icon':'ember'}, headers={'Authorization': 'Bearer ' + token()['access_token']}).status_code == 401
         assert client.put('/v1/bot-icons/a', json={'icon':'ember'}, headers=auth()).status_code == 200
         assert client.put('/v1/bot-icons/b', json={'icon':'nova'}, headers=auth()).status_code == 200
-        assert client.put('/v1/bot-icons/a', json={'icon':None}, headers=auth()).json()['icon'] is None
-        assert client.get('/v1/bot-icons', headers=auth()).json() == {'icons': {'b': 'nova'}}
+        # `icon: null` is the legacy way to say "no face"; it still clears only that bot.
+        assert client.put('/v1/bot-icons/a', json={'icon':None}, headers=auth()).json()['face'] is None
+        assert client.get('/v1/bot-icons', headers=auth()).json() == {
+            'faces': {'b': {'shape': 'nova', 'color': 'pink'}},
+            'icons': {'b': 'nova'},
+        }

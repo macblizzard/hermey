@@ -10,22 +10,21 @@ import HermesKit
 
 // MARK: - Add a bot
 
-/// Name, description, face, and (optionally) a first SOUL.md.
+/// Name, description, and a face.
 ///
 /// The name is the profile name, which is also a directory name and a shell alias on the host, so
 /// it is normalised here rather than rejected later by the host: lowercase, dashes, no spaces.
 public struct AddBotSheet: View {
-    private let onCreate: (String, String, String, BotIcon?) async throws -> Void
+    private let onCreate: (String, String, BotFace?) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var description = ""
-    @State private var soul = ""
-    @State private var icon: BotIcon?
+    @State private var face: BotFace?
     @State private var busy = false
     @State private var failure: String?
 
-    public init(onCreate: @escaping (String, String, String, BotIcon?) async throws -> Void) {
+    public init(onCreate: @escaping (String, String, BotFace?) async throws -> Void) {
         self.onCreate = onCreate
     }
 
@@ -60,22 +59,11 @@ public struct AddBotSheet: View {
                             .lineLimit(2)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Icon")
-                            .font(TypeScale.font(TypeScale.sm, weight: .medium))
-                            .foregroundStyle(Tokens.textSecondary)
-                        iconRow
-                    }
-
-                    field("SOUL.md", hint: "who it is, in its own words — you can edit this later") {
-                        TextEditor(text: $soul)
-                            .font(.system(size: TypeScale.sm, design: .monospaced))
-                            .frame(minHeight: 130)
-                            .scrollContentBackground(.hidden)
-                            .padding(8)
-                            .background(Tokens.surface)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
+                    // Shape × colour, at the top, because the face is the first thing a person
+                    // recognises in the list afterwards. No SOUL.md here: who the bot *is* is a
+                    // long-form thing that belongs in the bot's own settings, next to its name and
+                    // description, not in the way of creating it.
+                    BotFacePicker(face: face) { face = $0 }
 
                     if let failure {
                         Text(failure)
@@ -106,26 +94,6 @@ public struct AddBotSheet: View {
         }
     }
 
-    private var iconRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(BotIcon.allCases) { candidate in
-                    Button { icon = candidate } label: {
-                        BotIconPortrait(candidate, size: 44)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(icon == candidate ? Tokens.accent : .clear, lineWidth: 2)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(candidate.rawValue)
-                    .accessibilityAddTraits(icon == candidate ? .isSelected : [])
-                }
-            }
-            .padding(.vertical, 2)
-        }
-    }
-
     private func field<Content: View>(_ title: String, hint: String? = nil,
                                       @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -151,7 +119,9 @@ public struct AddBotSheet: View {
         busy = true
         failure = nil
         do {
-            try await onCreate(normalised, description, soul, icon)
+            try await onCreate(normalised,
+                               description.trimmingCharacters(in: .whitespacesAndNewlines),
+                               face)
             dismiss()
         } catch {
             failure = error.localizedDescription

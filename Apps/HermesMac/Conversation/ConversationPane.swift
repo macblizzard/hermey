@@ -33,6 +33,13 @@ struct ConversationPane: View {
     /// grew to eight lines rather than a guess at how tall a composer is.
     @State private var composerHeight: CGFloat = 96
 
+    /// The bot's swatch. A window with three bots never leaves you guessing whose conversation you
+    /// are typing into: your own bubbles are drawn in the colour of the bot they go to.
+    private var botTint: Color {
+        guard let id = model.selectedBotID else { return Tokens.control }
+        return (store.botFaces[id] ?? BotFace.default(for: id)).color.swatch
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Rakazo floats the header over the transcript instead of stacking it above: the row
@@ -45,7 +52,8 @@ struct ConversationPane: View {
                     } else {
                         TranscriptScroll(model: model,
                                          findRequest: store.findRequest,
-                                         bottomInset: composerHeight)
+                                         bottomInset: composerHeight,
+                                         userBubbleTint: botTint)
                     }
                 }
                 // The foot of the transcript dissolves into the composer instead of being cut off

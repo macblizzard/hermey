@@ -15,6 +15,9 @@ struct TranscriptRowView: View {
     var host: String = ""
     var bot: String = ""
     var session: String? = nil
+    /// The selected bot's colour, for the user's own bubble. Passed in rather than looked up: a row
+    /// inside a lazy stack must not reach for a store, and the pane already has the face.
+    var userBubbleTint: Color = Tokens.control
     /// "Select Text" is presented by `TranscriptScroll`: a row inside a `LazyVStack` is torn down
     /// when it scrolls out, and a sheet it owns goes with it. The row asks; the transcript shows.
     var onSelectText: (String) -> Void = { _ in }
@@ -141,13 +144,16 @@ struct TranscriptRowView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
+                // The bot's own colour, at the opacity a bubble can carry behind body text, with
+                // a border in the same colour: the one place in the transcript that says *which*
+                // bot you are talking to without a label.
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .fill(Tokens.control)
+                        .fill(userBubbleTint.opacity(0.16))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Tokens.radiusBubble, style: .continuous)
-                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
+                        .strokeBorder(userBubbleTint.opacity(0.45), lineWidth: 1)
                 )
                 .accessibilityLabel("You said: \(entry.displayText)")
                 }

@@ -36,7 +36,7 @@ class TheFaceSaysWhatItIsDoing(unittest.TestCase):
         # caller cannot get a static badge by forgetting a flag.
         self.assertIn("NeedsYouFlash", GALLERY)
         self.assertIn("CompactingZip", GALLERY)
-        self.assertIn("BotWorkingSparks(size: size, color: icon.tint, isWorking: true)", GALLERY)
+        self.assertIn("BotWorkingSparks(size: size, color: tint, isWorking: true)", GALLERY)
         # Reduce Motion gets the mark without the movement, never nothing.
         self.assertIn("accessibilityReduceMotion", GALLERY)
         flash = GALLERY.split("public struct NeedsYouFlash", 1)[1].split("\n}\n", 1)[0]

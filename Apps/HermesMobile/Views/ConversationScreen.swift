@@ -192,7 +192,7 @@ struct ConversationScreen: View {
             // bot is the one answering — and not while another one is.
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 8) {
-                    BotIconPortrait(app.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                    BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                     size: Geometry.chatHeaderAvatar,
                                     isWorking: model.isStreaming && model.selectedBotID == bot.id)
                     // Rakazo's header carries one line at 15/22 medium; the phone's nav bar is its
@@ -293,7 +293,7 @@ struct ConversationScreen: View {
         .sheet(isPresented: $showBotSettings) {
             BotModelSettingsScreen(
                 bot: bot,
-                icon: app.botIcons[bot.id],
+                icon: app.botFaces[bot.id],
                 load: { botID in try await model.modelCatalog(for: botID) },
                 conversationIsOpen: true,
                 resetConversation: { model.resetEndlessSession(for: bot.id) },

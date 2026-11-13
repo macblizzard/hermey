@@ -29,7 +29,7 @@ struct SidebarBotList: View {
     /// Rename lives on the row's context menu, like every other file-like name on the Mac.
     var onRenameRoom: ((RoomSummary) -> Void)? = nil
 
-    private var icons: [String: BotIcon] { store.botIcons }
+    private var icons: [String: BotFace] { store.botFaces }
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -165,7 +165,7 @@ struct SidebarBotList: View {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
                 // the bot's id picks — never a bare initial. Rakazo draws the working state as a
                 // ring around the face, which is where this app already puts it.
-                BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: Geometry.rosterAvatar,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
 

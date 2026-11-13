@@ -129,7 +129,7 @@ struct ConversationHeader: View {
         } label: {
             HStack(spacing: 7) {
                 if let bot = model.selectedBot {
-                    BotIconPortrait(store.botIcons[bot.id] ?? BotIcon.default(for: bot.id),
+                    BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                     size: Geometry.chatHeaderAvatar,
                                     status: portraitStatus)
                 } else {
