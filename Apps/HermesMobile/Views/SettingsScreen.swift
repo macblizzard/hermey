@@ -6,13 +6,16 @@ import OpenBotUI
 
 /// Settings holds settings.
 ///
-/// Four sections, in the order the contract fixes (`docs/ENDLESS-CHAT.md` §4): the
+/// The sections, in the order the contract fixes (`docs/ENDLESS-CHAT.md` §4): the
 /// connection, how the chat behaves, the devices the host will still talk to, and what this
 /// build is. Device management is one row that opens its own screen — it used to be twenty
 /// rows of toggles on this page, which buried the three settings anyone actually changes.
 struct SettingsScreen: View {
     @ObservedObject var model: AppModel
     @EnvironmentObject private var app: AppEnvironment
+    /// One object owns the permission and the badge, so the row reports what the system said
+    /// rather than what the app wishes it had said.
+    @ObservedObject private var notifier = MobileReplyNotifier.shared
 
     /// The threshold is edited as text and committed on Enter or focus loss: writing every
     /// keystroke to `autoCompactTokens` would compact the thread mid-typing and would make
@@ -33,10 +36,81 @@ struct SettingsScreen: View {
         }
     }
 
+    /// Banners and the icon badge, plus the one thing the app cannot decide: the system's answer.
+    ///
+    /// The toggle is stored in `AppModel` (so it matches the Mac's); the permission is per app and
+    /// per device, which is why a denied permission is drawn here with the one door out of it.
+    private var notificationsSection: some View {
+        Section {
+            Toggle(isOn: Binding(get: { model.replyNotificationsEnabled },
+                                 set: { model.setReplyNotifications(enabled: $0) })) {
+                Text("Notify me about replies")
+                    .font(TypeScale.font(TypeScale.md))
+                    .foregroundStyle(Tokens.textPrimary)
+            }
+            .tint(Tokens.accent)
+
+            switch notifier.authorization {
+            case .denied:
+                Button {
+                    openNotificationSettings()
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Notifications are off in iOS Settings")
+                            .font(TypeScale.font(TypeScale.md))
+                            .foregroundStyle(Tokens.textPrimary)
+                        Spacer(minLength: 8)
+                        Text("Open")
+                            .font(TypeScale.font(TypeScale.md))
+                            .foregroundStyle(Tokens.accentText)
+                    }
+                }
+            case .notDetermined:
+                Button {
+                    notifier.requestAuthorizationIfNeeded()
+                } label: {
+                    Text("Allow notifications")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.accentText)
+                }
+            default:
+                EmptyView()
+            }
+
+            if model.replyNotificationsEnabled && !model.bots.isEmpty {
+                NavigationLink {
+                    QuietBotsScreen(model: model)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text("Quiet bots")
+                            .font(TypeScale.font(TypeScale.md))
+                            .foregroundStyle(Tokens.textPrimary)
+                        Spacer(minLength: 8)
+                        if !model.mutedNotificationBots.isEmpty {
+                            Text("\(model.mutedNotificationBots.count)")
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Replies")
+        } footer: {
+            Text("A banner and a badge when a bot replies in a chat you are not reading. iOS delivers these promptly while the app is running; once the phone has put the app away it checks in the background, on a schedule iOS decides — so a banner can arrive a few minutes late. A chat on screen never notifies.")
+        }
+    }
+
+    private func openNotificationSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
     var body: some View {
         List {
             connectionSection
             appearanceSection
+            notificationsSection
             chatSection
             devicesSection
             diagnosticsSection
@@ -683,3 +757,37 @@ struct DevicesScreen: View {
     .task { await environment.start() }
 }
 #endif
+
+/// The bots that never raise a banner. A quieted bot still counts on its row and in the badge —
+/// the switch is about being interrupted, not about hiding that something is waiting.
+struct QuietBotsScreen: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(model.bots) { bot in
+                    Toggle(isOn: Binding(get: { !model.isNotificationMuted(bot.id) },
+                                         set: { wantsBanners in
+                                             if wantsBanners == model.isNotificationMuted(bot.id) {
+                                                 Haptics.selection()
+                                                 model.toggleNotificationMute(bot.id)
+                                             }
+                                         })) {
+                        Text(bot.displayName)
+                            .font(TypeScale.font(TypeScale.md))
+                            .foregroundStyle(Tokens.textPrimary)
+                    }
+                    .tint(Tokens.accent)
+                    .listRowBackground(Tokens.surface)
+                }
+            } footer: {
+                Text("Off means this bot never buzzes. Its replies still count on its row and in the badge.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Tokens.canvas)
+        .navigationTitle("Quiet bots")
+    }
+}

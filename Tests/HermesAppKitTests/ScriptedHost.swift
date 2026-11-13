@@ -48,10 +48,19 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     private(set) var descriptions: [(String, String)] = []
 
     func listBots() async throws -> [Bot] { bots }
-
     func configureDescription(profile: String, description: String) async throws {
         descriptions.append((profile, description))
     }
+
+    // MARK: Previews
+
+    /// What the bridge's `POST /v1/bots/previews` answers. A test that wants a reply to arrive
+    /// on a bot nobody is looking at rewrites this and calls `loadBotPreviews()`.
+    var previewFeed = BotPreviewFeed()
+
+    func botPreviews() async throws -> [String: BotConversationPreview] { previewFeed.previews }
+
+    func botPreviews(since marks: [String: Double]) async throws -> BotPreviewFeed { previewFeed }
 
     // MARK: Sessions
 

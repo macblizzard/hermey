@@ -73,7 +73,25 @@ struct WorkspaceRoot: View {
         .background(WindowBackdrop(opacity: windowOpacity))
         .onChange(of: scenePhase) { _, phase in
             // The other device's turn shows up here the moment the window comes back.
-            if phase == .active { Task { await store.model.loadBotPreviews() } }
+            if phase == .active {
+                Task { await store.model.loadBotPreviews() }
+                ReplyNotifier.shared.refreshAuthorization()
+            }
+        }
+        // Banners: the decision is the model's, the delivery is the system's. Re-run when the
+        // model is replaced (a re-pair builds a fresh one), because the sink lives on the model.
+        .task(id: ObjectIdentifier(store.model)) {
+            ReplyNotifier.shared.onOpenBot = { botID in store.selectBot(botID) }
+            ReplyNotifier.shared.requestAuthorizationIfNeeded()
+            ReplyNotifier.shared.updateBadge(store.model.badgeCount)
+            store.model.replyNotificationSink = { note in
+                ReplyNotifier.shared.post(note)
+            }
+        }
+        // The Dock tile follows every change, not just new banners: opening a chat clears its
+        // count without a reply arriving.
+        .onChange(of: store.model.badgeCount) { _, count in
+            ReplyNotifier.shared.updateBadge(count)
         }
         .onAppear {
             // A stored choice must be in place before the first frame is read.

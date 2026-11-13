@@ -130,6 +130,14 @@ targets:
         NSCameraUsageDescription: "Scan the pairing code shown by your Hermes host to connect this device, and take photos to attach to a message."
         NSPhotoLibraryUsageDescription: "Choose a photo to attach to a message."
         NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+        # A phone tears the socket down the moment the app leaves the foreground, so the only way a
+        # suspended app can learn that a bot replied is one of iOS's own background refreshes —
+        # which needs the fetch mode plus the exact identifier the app registers. iOS refuses a
+        # request for an unlisted identifier, and it does so silently, so the two must not drift.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - dev.hermey.app.mobile.refresh
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile

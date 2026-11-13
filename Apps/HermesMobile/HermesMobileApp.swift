@@ -17,6 +17,12 @@ import OpenBotUI
 struct HermesMobileApp: App {
     @StateObject private var app = AppEnvironment()
 
+    /// Background-refresh registration has to happen before the app finishes launching, or iOS
+    /// drops the request and a suspended app never learns that a bot replied.
+    init() {
+        ReplyBackgroundRefresh.register()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootTabView()
@@ -26,6 +32,8 @@ struct HermesMobileApp: App {
                     ThemeRuntime.restoreFromDefaults()
         TypeScale.restoreScale()
                     await app.start()
+                    // After `start()`, so the badge is set from a count the host has answered.
+                    app.startReplyNotifications()
                 }
         }
     }
@@ -35,16 +43,22 @@ struct RootTabView: View {
     @EnvironmentObject private var app: AppEnvironment
     @Environment(\.scenePhase) private var scenePhase
 
+    /// Which tab is showing. Bound (not left to the system) so a tapped banner can bring the bot
+    /// list forward even if Settings was the last screen the user was on.
+    @State private var tab: RootTab = .bots
+
     /// Re-created when the theme changes, so the whole tab tree reads the new palette. The
     /// connection lives in `AppEnvironment`, which this does not touch.
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             BotsTab(model: app.model)
+                .tag(RootTab.bots)
                 .tabItem { Label("Bots", systemImage: "person.2") }
 
             SettingsTab(model: app.model)
+                .tag(RootTab.settings)
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         // The whole tab tree is re-created on a theme change: every colour is read at draw time,
@@ -54,16 +68,33 @@ struct RootTabView: View {
         .sheet(isPresented: $app.isPairingPresented) {
             PairingSheet()
         }
+        .onChange(of: app.openBotRequest) { _, request in
+            // Tapping a banner is a request to read that bot: the list has to be the screen, even
+            // if the phone was left on Settings.
+            guard request != nil else { return }
+            tab = .bots
+        }
+        .onChange(of: app.model.badgeCount) { _, count in
+            // The icon badge follows every change, not just new banners: reading a chat clears its
+            // count without a reply arriving while the app is away.
+            MobileReplyNotifier.shared.updateBadge(count)
+        }
         .onChange(of: scenePhase) { phase in
             // A phone comes back from the background with a dead socket; reconnect once
             // rather than waiting for the user to shake it. A host the user disconnected on
             // purpose stays disconnected — that is a choice, not a dropped socket.
+            if phase == .background { app.appDidEnterBackground() }
             guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
+            MobileReplyNotifier.shared.refreshAuthorization()
             Task {
                 if app.model.connection.isLive { await app.loadBotIcons() }
                 else { await app.reconnect() }
             }
         }
+    }
+
+    private enum RootTab: Hashable {
+        case bots, settings
     }
 }
 
@@ -111,6 +142,16 @@ struct BotsTab: View {
         }
         .task { roomVoice.transport = app.makeVoiceTransport() }
         .onChange(of: app.store.host?.baseURL) { _, _ in roomVoice.transport = app.makeVoiceTransport() }
+        // A tapped banner names the bot it was about. The list pushes it like a row press, then
+        // clears the request — a tap is an event and must not re-open the bot on every redraw.
+        .onChange(of: app.openBotRequest) { _, request in
+            guard let request, let bot = model.bots.first(where: { $0.id == request }) else {
+                app.openBotRequest = nil
+                return
+            }
+            path.append(bot)
+            app.openBotRequest = nil
+        }
         .badge(model.pendingRequests.count)
     }
 }

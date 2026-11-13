@@ -254,6 +254,37 @@ final class AppEnvironment: ObservableObject {
         await model.refreshLatency()
     }
 
+    // MARK: - Notifications
+
+    /// A bot the user asked to read by tapping a banner. The bots tab watches this, pushes the
+    /// conversation and clears it: a tap is an event, not a setting.
+    @Published var openBotRequest: String?
+
+    /// Banners and the app-icon badge. Wired once, at launch, because the model's sink is what
+    /// fires when a *reply* arrives while the app is running — and iOS needs it in place before
+    /// the first refresh lands.
+    func startReplyNotifications() {
+        MobileReplyNotifier.shared.onOpenBot = { [weak self] botID in
+            guard let self else { return }
+            self.openBotRequest = botID
+        }
+        MobileReplyNotifier.shared.requestAuthorizationIfNeeded()
+        MobileReplyNotifier.shared.refreshAuthorization()
+        model.replyNotificationSink = { note in
+            MobileReplyNotifier.shared.post(note)
+        }
+        MobileReplyNotifier.shared.updateBadge(model.badgeCount)
+        // Ask iOS to wake us later; the run itself is the only way a suspended app can learn of
+        // a reply, and iOS decides when (and whether) it happens.
+        ReplyBackgroundRefresh.schedule()
+    }
+
+    /// Leaving the foreground is the moment to book the next background refresh.
+    func appDidEnterBackground() {
+        MobileReplyNotifier.shared.updateBadge(model.badgeCount)
+        ReplyBackgroundRefresh.schedule()
+    }
+
     func reconnect() async {
         guard store.isPaired else {
             isPairingPresented = true
