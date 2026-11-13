@@ -1,9 +1,10 @@
 """Actions storage is 500 MB on this plan, and caches plus artifacts share it.
 
 The account hit 100% of that quota with 1.4 GB of DerivedData caches and 214 build artifacts going back
-weeks. Nothing here is about build speed; it is about the workflow never quietly refilling the quota:
+weeks. So the rule is not "no cache" but **no cache of a build tree**:
 
-* no `actions/cache` — `.build` and DerivedData are hundreds of megabytes each, per key;
+* the SwiftPM *cache* is allowed — tens of megabytes, and it saves the resolver a minute per run;
+* DerivedData and `.build` are not: hundreds of megabytes each, per key;
 * every uploaded artifact declares a short retention, because publishing happens minutes after the run.
 """
 from __future__ import annotations
@@ -16,15 +17,25 @@ ROOT = Path(__file__).resolve().parents[1]
 CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
 
-class NoCaches(unittest.TestCase):
-    def test_there_is_no_cache_step(self) -> None:
-        self.assertNotIn("uses: actions/cache", CI,
-                         "a DerivedData cache is hundreds of MB; the whole quota is 500 MB")
+class OnlyTheSmallCache(unittest.TestCase):
+    def test_every_cache_is_the_swiftpm_cache(self) -> None:
+        # A build-tree cache is what filled the account once: 1.4 GB of DerivedData. The resolver's
+        # own cache is the one directory here measured in tens of megabytes, so it is the only one
+        # any cache step may name.
+        blocks = CI.split("uses: actions/cache")[1:]
+        self.assertTrue(blocks, "the workflow has no cache steps to check")
+        for block in blocks:
+            window = block[:400]
+            self.assertIn("~/Library/Caches/org.swift.swiftpm", window,
+                          "a cache step that is not the SwiftPM cache")
+            self.assertNotIn("DerivedData", window)
+            self.assertNotIn("build/dd", window)
 
     def test_the_reason_is_written_down(self) -> None:
-        # So the next person does not 'helpfully' restore the cache and refill the account.
-        self.assertIn("No `actions/cache` anywhere in this workflow", CI)
+        # So the next person does not 'helpfully' widen the cache and refill the account.
+        self.assertIn("DerivedData", CI)
         self.assertIn("500 MB", CI)
+        self.assertIn("tens of megabytes", CI)
 
 
 class ArtifactsExpire(unittest.TestCase):
