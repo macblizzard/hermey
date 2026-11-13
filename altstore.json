@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.207",
+          "buildVersion": "207",
+          "date": "2026-11-13T13:53:23Z",
+          "localizedDescription": "The Rakazo shell: one palette, one set of pane widths, a 58 pt roster row, a floating chat header and 20 pt bubbles. Settings \u2192 Appearance keeps OpenBot (and every other theme) one pick away.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.207/Hermey-0.1.207-b207.ipa",
+          "size": 2175395,
+          "minOSVersion": "17.0",
+          "sha256": "1ca17b29d76268dd20e349b684556fafcf4d64bb8f2da0e086fbcf1a5be3c0af"
+        },
+        {
           "version": "0.1.204",
           "buildVersion": "204",
           "date": "2026-11-13T11:56:04Z",
@@ -62,16 +72,6 @@
           "size": 2139527,
           "minOSVersion": "17.0",
           "sha256": "5e86cc37373a4580374fcb2c16a7e40beb8d728b2a9baeec5e9258920a2a4e93"
-        },
-        {
-          "version": "0.1.187",
-          "buildVersion": "187",
-          "date": "2026-11-12T14:59:25Z",
-          "localizedDescription": "Minimising the app no longer blanks the chat, and coming back lands at the newest message. The phone's conversation menu is now a page swiped in from the right edge \u2014 the same verbs, swipe right or tap outside to close \u2014 and a chat no longer carries a three-dot button.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.187/Hermey-0.1.187-b187.ipa",
-          "size": 2134382,
-          "minOSVersion": "17.0",
-          "sha256": "864e3a666bdeaa4bd6a5825eac088a60e2b9f9b427a590449dd9f55ed72c8932"
         }
       ],
       "appPermissions": {
