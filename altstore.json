@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.201",
+          "buildVersion": "201",
+          "date": "2026-11-13T11:15:27Z",
+          "localizedDescription": "Notifications now check the host on their own every 25 seconds, so a reply from a bot you are not reading reaches you while you sit in another conversation \u2014 previously the app only looked when the bot list appeared.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.201/Hermey-0.1.201-b201.ipa",
+          "size": 2173057,
+          "minOSVersion": "17.0",
+          "sha256": "483b5b97cd3609d3b6131e8b5fdc01830b9b62e920cb17c34d8dc11f015dc61c"
+        },
+        {
           "version": "0.1.198",
           "buildVersion": "198",
           "date": "2026-11-13T10:21:09Z",
@@ -62,16 +72,6 @@
           "size": 2115214,
           "minOSVersion": "17.0",
           "sha256": "238bc7f2e691942040d33c8637241e702b0d4f335d67d8ac8b98931d43102a9a"
-        },
-        {
-          "version": "0.1.171",
-          "buildVersion": "171",
-          "date": "2026-11-11T23:07:47Z",
-          "localizedDescription": "The Mac has the three panels: Workspace, Skills and MCP servers.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.171/Hermey-0.1.171-b171.ipa",
-          "size": 2103193,
-          "minOSVersion": "17.0",
-          "sha256": "4834d41c451a443994d9865b76224d8569f17009ce00914ccaa272936a1aca66"
         }
       ],
       "appPermissions": {
