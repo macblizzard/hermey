@@ -106,10 +106,10 @@ struct ConversationHeader: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, Geometry.readingInset)
-        // Up against the window's top edge, level with the traffic lights: 8 pt of air, the 36 pt
-        // capsule, and the rest is the transcript's, which scrolls behind it.
+        // Up against the window's top edge, level with the traffic lights and with the sidebar's
+        // first row: 6 pt of air, the 40 pt capsule, and the rest is the transcript's, which
+        // scrolls behind it.
         .frame(width: width, height: Geometry.chatHeaderPill + 12)
-        .padding(.top, 2)
     }
 
     /// What the face says. A request outranks a running turn, and both outrank a compaction: the

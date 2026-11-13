@@ -33,8 +33,10 @@ class ThePillFloats(unittest.TestCase):
         self.assertIn(".padding(.top, Geometry.chatHeaderPill + 10)", TRANSCRIPT)
 
     def test_the_pill_sits_against_the_window_edge(self) -> None:
+        # Six of air and the capsule; no extra top padding, so the pill's centre is 26 pt down and
+        # level with the sidebar's first row.
         self.assertIn(".frame(width: width, height: Geometry.chatHeaderPill + 12)", HEADER)
-        self.assertIn(".padding(.top, 2)", HEADER)
+        self.assertNotIn(".padding(.top, 2)", HEADER)
 
 
 class TheSidebarRowIsIcons(unittest.TestCase):
@@ -86,9 +88,23 @@ class TheComposerIsQuiet(unittest.TestCase):
         self.assertNotIn("newline", hint)
         self.assertIn("voice.isRecording", hint)
 
+    def test_attach_is_a_ring_not_a_bare_glyph(self) -> None:
+        # Rakazo's plus is a circle with a border and a fill that brightens on hover; an unstroked
+        # glyph in a floating capsule read as punctuation rather than a button.
+        self.assertIn("ComposerRingButton(glyph: \"plus\"", COMPOSER)
+        self.assertIn("Circle().strokeBorder(isHovering ? Tokens.borderFocus : Tokens.borderStrong",
+                      COMPOSER)
+        self.assertIn(".onHover { isHovering = $0 }", COMPOSER)
+
+    def test_controls_are_centred_in_the_row_not_nudged(self) -> None:
+        # A guessed `.padding(.top, controlInset)` measured the glyph's typographic centre; the eye
+        # reads the box's. The row centres every control by frame instead.
+        self.assertNotIn("controlInset", COMPOSER)
+        self.assertIn("private func rowCentred<V: View>(_ view: V) -> some View", COMPOSER)
+
     def test_attach_is_a_plus(self) -> None:
-        self.assertIn('OpenBotIconButton("plus"', COMPOSER)
-        self.assertNotIn('OpenBotIconButton("paperclip"', COMPOSER)
+        self.assertIn('glyph: "plus"', COMPOSER)
+        self.assertNotIn('"paperclip"', COMPOSER)
 
     def test_no_hint_line_by_default(self) -> None:
         self.assertIn("public static let defaultHint: String? = nil", COMPOSER)

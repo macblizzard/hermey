@@ -154,8 +154,10 @@ struct BotSidebarView: View {
         }
         .padding(.horizontal, Geometry.sidebarInset)
         // The traffic-light strip: the panel's fill runs to the window's top edge, the row starts
-        // under the buttons.
+        // under the buttons. 24 pt tall so its centre — strip plus half — is the chat header's pill
+        // centre: the two columns read as one line of chrome across the window.
         .padding(.top, WorkspaceShell.titlebarStrip)
+        .frame(height: WorkspaceShell.titlebarStrip + 24)
         .padding(.bottom, 6)
         .onExitCommand { if isSearching { closeSearch() } }
     }
