@@ -115,17 +115,20 @@ struct ConversationDrawer: View {
                     section
                     row("Reset chat", systemImage: "arrow.counterclockwise",
                         tone: Tokens.danger, run: onReset)
+
+                    // Inside the list, not under it: a line pinned to the panel's bottom edge stayed
+                    // put while the menu scrolled past it, which read as a rule drawn over the
+                    // "Compact" row.
+                    section
+                    Text("Swipe right, or tap outside, to close")
+                        .font(TypeScale.font(TypeScale.micro))
+                        .foregroundStyle(Tokens.textDim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Geometry.chatGutter)
+                        .padding(.top, 10)
                 }
                 .padding(.bottom, 24)
             }
-
-            Hairline(color: Tokens.border)
-            Text("Swipe right, or tap outside, to close")
-                .font(TypeScale.font(TypeScale.micro))
-                .foregroundStyle(Tokens.textDim)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Geometry.chatGutter)
-                .padding(.vertical, 10)
         }
     }
 
