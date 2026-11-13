@@ -1,6 +1,6 @@
 """A compaction is host work; losing the socket must not be reported as a refusal.
 
-From Mohammad's phone, 2026-11-12 16:20: he tapped Compact and the app said
+Reported from a phone, 2026-11-12 16:20: Compact was tapped and the app said
 
     could not compact — The operation couldn't be completed. Software caused connection abort
 

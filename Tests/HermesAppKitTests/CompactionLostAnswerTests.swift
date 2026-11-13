@@ -6,7 +6,7 @@ import HermesKit
 
 /// A compaction is minutes of **host** work. Losing the phone's socket during one is not a failure.
 ///
-/// From Mohammad's phone, 2026-11-12: he tapped Compact, the app answered "could not compact — The
+/// Reported from a phone, 2026-11-12: Compact was tapped and the app answered "could not compact — The
 /// operation couldn't be completed. Software caused connection abort". The bridge's audit log shows
 /// what actually happened: `session.compress` was accepted at 16:19:51.491 and the client closed its
 /// socket 186 ms later (`ws_close`, reason `client_closed`, code 1001 — iOS going away as the app left

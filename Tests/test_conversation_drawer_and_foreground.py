@@ -1,6 +1,6 @@
 """The conversation's verbs are a page you swipe in; a foreground must not blank the chat.
 
-Two reports from Mohammad, 2026-11-12:
+Two reports from the phone, 2026-11-12:
 
 1. "every time i minimize the app and open it again, it shows chat as blank for a second then loads
    the chat, and it starts from somewhere within the chat instead of the end of it" — a foreground

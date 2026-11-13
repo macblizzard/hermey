@@ -26,7 +26,7 @@ def read(path: Path) -> str:
 
 class TheMenuOffersIt(unittest.TestCase):
     def test_the_drawer_has_a_workspace_row(self) -> None:
-        # The phone's ⋯ became a page opened from the trailing edge (Mohammad, 2026-11-12); the row
+        # The phone's ⋯ became a page opened from the trailing edge (reported 2026-11-12); the row
         # moved with it, and it still opens the same sheet.
         self.assertIn('row("Workspace", systemImage: "folder"', read(DRAWER))
         self.assertIn("onWorkspace: { closeDrawer(); showWorkspace = true }", read(SCREEN))
