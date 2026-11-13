@@ -192,7 +192,9 @@ public struct Composer: View {
                     rowCentred(micControl)
                 }
 
-                rowCentred {
+                // The closure is spelled as a `Group` argument, not a trailing one: a bare
+                // `rowCentred { … }` infers the closure itself as the view.
+                rowCentred(Group {
                     // Both controls while a turn runs: stop, and send-into-this-turn. One button
                     // that swaps meaning is exactly why there was no way to say anything else.
                     if isSending, let onInterrupt {
@@ -201,7 +203,7 @@ public struct Composer: View {
                     } else {
                         sendButton
                     }
-                }
+                })
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
