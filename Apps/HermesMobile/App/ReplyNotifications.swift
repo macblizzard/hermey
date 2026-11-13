@@ -176,8 +176,15 @@ enum ReplyBackgroundRefresh {
 
     private static func run() async -> Bool {
         let defaults = AppModel.defaults
-        let store = HostStore()
-        guard let host = store.host, let token = store.refreshToken else { return false }
+        // `HostStore` is main-actor isolated (it publishes the pairing), so the credentials are
+        // read on the main actor and carried out as plain values. Two strings and a URL are all
+        // this needs; nothing about the store outlives the hop.
+        let credentials = await MainActor.run { () -> (host: PairedHost, token: String)? in
+            let store = HostStore()
+            guard let host = store.host, let token = store.refreshToken else { return nil }
+            return (host, token)
+        }
+        guard let (host, token) = credentials else { return false }
         // The switch is the app's own, so a user who turned banners off is not woken by them.
         let enabled = (defaults.object(forKey: "hermey.notifications.enabled") as? Bool) ?? true
         guard enabled else { return true }
