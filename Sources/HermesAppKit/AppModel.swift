@@ -358,6 +358,8 @@ public final class AppModel: ObservableObject {
 
     private let client: GatewayClientProtocol
     private var eventTask: Task<Void, Never>?
+    /// The slow clock that asks the host what the bots nobody is looking at have said.
+    private var unreadSweepTask: Task<Void, Never>?
     /// Bumped whenever the selected bot changes. An in-flight `session.list` compares it before
     /// publishing, so a slow answer for the bot we left cannot overwrite the bot we are on.
     private var botEpoch = 0
@@ -398,6 +400,7 @@ public final class AppModel: ObservableObject {
             await loadBots()
             await loadModelLabel()
             await loadSessions()
+            startUnreadSweep()
         } catch {
             connection = .failed(error.localizedDescription)
             ClientLog.note("connect to \(hostName) failed: \(error.localizedDescription)",
@@ -408,8 +411,39 @@ public final class AppModel: ObservableObject {
     public func stop() async {
         eventTask?.cancel()
         eventTask = nil
+        unreadSweepTask?.cancel()
+        unreadSweepTask = nil
         await client.disconnect()
         connection = .offline
+    }
+
+    // MARK: The slow clock
+
+    /// How often the bot list asks the host what the other bots have said.
+    ///
+    /// Twenty-five seconds is a compromise, not a guess at elegance: everything that raises a
+    /// banner or a badge goes through `loadBotPreviews`, and without a clock of its own the model
+    /// only sweeps when the list appears or the app returns to the foreground — so a window sitting
+    /// in one conversation never noticed the nine others replying, which is exactly the case
+    /// notifications exist for. One bridge request covers every bot (the host caches each profile's
+    /// conversation for 15 s), and a host that answers slowly is not asked again until it has.
+    public static let unreadSweepInterval: TimeInterval = 25
+
+    /// Start the sweep. Idempotent: two windows on one `AppModel` must not double the poll rate.
+    public func startUnreadSweep() {
+        guard unreadSweepTask == nil else { return }
+        unreadSweepTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if self.connection.isLive { await self.loadBotPreviews() }
+                try? await Task.sleep(for: .seconds(Self.unreadSweepInterval))
+            }
+        }
+    }
+
+    public func stopUnreadSweep() {
+        unreadSweepTask?.cancel()
+        unreadSweepTask = nil
     }
 
     // MARK: Sessions
@@ -2149,6 +2183,9 @@ public final class AppModel: ObservableObject {
         switch event {
         case .ready:
             connection = .connected
+            // The clock has to exist whatever brought the socket up: a VPN flapping or a phone
+            // returning from the background also lands here, and neither goes through `start()`.
+            startUnreadSweep()
             // A reconnect can mean events were lost, and the host is the authority — but re-deriving
             // blindly wiped the visible turn. iOS suspends the socket constantly, so every
             // foreground sent `ready` and `select()` cleared the transcript and streaming text
