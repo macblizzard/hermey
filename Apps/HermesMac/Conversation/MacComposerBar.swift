@@ -135,6 +135,8 @@ struct MacComposerBar: View {
             }
 
             Composer(text: $model.draft,
+                     // A capsule over the transcript: no bar, no frame at rest.
+                     floats: true,
                      // Nothing in the field until there is something to say: a placeholder is a
                      // label the composer does not need, and it read as text that had been typed.
                      placeholder: "",
@@ -163,7 +165,6 @@ struct MacComposerBar: View {
                      // Anchored on the paperclip, not on the card: the menu used to drop from
                      // the middle of the composer, under the field, nowhere near the clip.
                      attachPopoverPresented: $showsAttachmentMenu,
-                     floats: true,
                      attachPopoverContent: AnyView(
                         MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
                      ))

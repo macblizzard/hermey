@@ -140,12 +140,16 @@ public struct BotIconPortrait: View {
     public var status: PortraitStatus?
 
     /// The way every caller should construct a portrait: shape and colour together.
-    public init(_ face: BotFace, size: CGFloat = 56, status: PortraitStatus? = nil) {
+    ///
+    /// `isWorking` is here as well as on the legacy init, and with the same label order, because a
+    /// call site written against the old signature must still resolve to the *face* overload.
+    public init(_ face: BotFace, size: CGFloat = 56, isWorking: Bool = false,
+                status: PortraitStatus? = nil) {
         self.icon = face.shape
         self.color = face.color.swatch
         self.size = size
-        self.isWorking = status == .working
-        self.status = status
+        self.isWorking = isWorking || status == .working
+        self.status = status ?? (isWorking ? .working : nil)
     }
 
     /// The legacy door: a bare shape, in the colour that shape used to be drawn in.
