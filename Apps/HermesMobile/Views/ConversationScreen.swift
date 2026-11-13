@@ -210,12 +210,13 @@ struct ConversationScreen: View {
             voice.transport = app.makeVoiceTransport()
             await openConversation()
         }
-        // Another chat's unread is this screen's badge, so the counts are swept while the
-        // conversation is open instead of waiting for the list to reappear. Both calls are one
-        // request each and only answer rooms that moved, so an idle chat costs two pings.
+        // Another chat's unread is this screen's badge, so the rooms are swept while the
+        // conversation is open instead of waiting for the list to reappear. The *bots* are not
+        // swept here: `AppModel` runs one clock for those (`unreadSweepInterval`) and a second
+        // loop in this view meant every open chat polled the host twice as often as the model
+        // asked for — which is how an innocent-looking `.task` becomes battery.
         .task {
             while !Task.isCancelled {
-                await model.loadBotPreviews()
                 await model.refreshRooms()
                 try? await Task.sleep(nanoseconds: 25_000_000_000)
             }
