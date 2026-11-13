@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.216",
+          "buildVersion": "216",
+          "date": "2026-11-13T15:09:39Z",
+          "localizedDescription": "The genui plugin's cards now draw in both apps: a reply that carries a board renders it in place, with its buttons going through the composer.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.216/Hermey-0.1.216-b216.ipa",
+          "size": 2203296,
+          "minOSVersion": "17.0",
+          "sha256": "09aa197a36e5868599923be665b41b1ee45025e136d603d0182787f9e74e373d"
+        },
+        {
           "version": "0.1.210",
           "buildVersion": "210",
           "date": "2026-11-13T14:18:29Z",
@@ -62,16 +72,6 @@
           "size": 2173057,
           "minOSVersion": "17.0",
           "sha256": "483b5b97cd3609d3b6131e8b5fdc01830b9b62e920cb17c34d8dc11f015dc61c"
-        },
-        {
-          "version": "0.1.198",
-          "buildVersion": "198",
-          "date": "2026-11-13T10:21:09Z",
-          "localizedDescription": "A banner and a badge when a bot replies in a chat you are not reading \u2014 banners, a Dock tile on the Mac and an app-icon badge on the phone, with one switch and a per-bot quiet list. On iOS the banner is immediate while the app runs and arrives through a background refresh once the phone has put it away.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.198/Hermey-0.1.198-b198.ipa",
-          "size": 2173113,
-          "minOSVersion": "17.0",
-          "sha256": "7c777074610afcae1c26b44267cc05076697296c552be8e5a39903fe7bc8dcba"
         }
       ],
       "appPermissions": {
