@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAC = ROOT / "Apps" / "HermesMac"
+WORKSPACE = (MAC / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
 STORE = (MAC / "Workspace" / "WorkspaceStore.swift").read_text(encoding="utf-8")
 ROOT_VIEW = (MAC / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
 CATCHER = (MAC / "Support" / "EscapeKeyCatcher.swift").read_text(encoding="utf-8")
@@ -157,14 +158,20 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         # the breath, and the clock for the blink. A `@State` loop was tried twice and never moved
         # on the Mac — once off the main actor, once for reasons never settled.
         self.assertIn(".phaseAnimator(", body)
+        # Without `trigger:`: the trigger overload plays the phases once per trigger change, which is
+        # a still face with extra steps.
+        self.assertIn(".phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0])", body)
         self.assertIn("TimelineView(.animation(minimumInterval: 0.1, paused:", body)
         self.assertIn("blink: blink(at: context.date)", body)
         self.assertNotIn("@State private var breathing", portrait)
         # The app's own answer comes first; the system's Reduce Motion is the fallback.
         self.assertIn("BotFaceMotion.allows(reduceMotion: reduceMotion, size: size)", portrait)
         motion = (ROOT / "Sources/OpenBotUI/BotFaceShading.swift").read_text(encoding="utf-8")
-        self.assertIn("if let choice { return choice }", motion)
-        self.assertIn("return !reduceMotion", motion)
+        # An explicit answer in the app wins; without one, the system decides — and the answer is
+        # seeded on first launch so the switch and the faces can never disagree again.
+        self.assertIn("return choice ?? !reduceMotion", motion)
+        self.assertIn("public static func seedIfNeeded(reduceMotion: Bool)", motion)
+        self.assertIn("BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)", WORKSPACE)
         self.assertIn("guard size >= 18 else { return false }", motion)
 
     def test_the_mac_has_the_switch(self) -> None:
@@ -203,6 +210,27 @@ class TheAppIconIsOneOfTheFaces(unittest.TestCase):
         generator = (ROOT / "Tools/release/make_app_icon.py").read_text(encoding="utf-8")
         self.assertIn("case .blob", generator)
         self.assertIn("bar_w, bar_h = size * 0.105, size * 0.185", generator)
+
+
+class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
+    SPINNER = (ROOT / "Sources/OpenBotUI/BotFaceSpinner.swift").read_text(encoding="utf-8")
+    PHONE_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
+    MAC_SCROLL = (ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift").read_text(encoding="utf-8")
+
+    def test_it_turns_the_face_rather_than_a_wheel(self) -> None:
+        self.assertIn("rotation3DEffect(.degrees(degrees)", self.SPINNER)
+        self.assertIn("axis: (x: 0, y: 1, z: 0)", self.SPINNER)
+        self.assertIn("perspective: 0.42", self.SPINNER)
+
+    def test_it_costs_one_row_and_stops_when_the_turn_does(self) -> None:
+        self.assertIn("TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !spins))",
+                      self.SPINNER)
+        self.assertIn("isWorking && BotFaceMotion.allows", self.SPINNER)
+
+    def test_both_shells_draw_it_before_the_first_token(self) -> None:
+        self.assertIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
+        self.assertIn("BotFaceSpinner(face: faces[bot.id]", self.MAC_SCROLL)
+        self.assertIn("model.isStreaming, model.visibleStreamingText.isEmpty", self.MAC_SCROLL)
 
 
 class TheFaceGalleryDropsTheInitialsRow(unittest.TestCase):

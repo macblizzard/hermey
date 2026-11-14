@@ -53,7 +53,8 @@ struct ConversationPane: View {
                         TranscriptScroll(model: model,
                                          findRequest: store.findRequest,
                                          bottomInset: composerHeight,
-                                         userBubbleTint: botTint)
+                                         userBubbleTint: botTint,
+                                         faces: store.botFaces)
                     }
                 }
                 // Both ends dissolve instead of being cut: the capsule floats over the foot, and

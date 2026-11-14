@@ -177,7 +177,6 @@ public struct BotIconPortrait: View {
     private var tint: Color { color }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.scenePhase) private var scenePhase
 
     /// Motion is a courtesy, not the point: below 18 pt the face is a legend for a row, and a small
     /// thing that moves is a small thing that catches the eye for no reason. The app's own switch
@@ -199,7 +198,7 @@ public struct BotIconPortrait: View {
             // The blink is read from the clock, not from a `@State` flag: a timeline over just the
             // eyes cannot be cancelled by a re-render, cannot be dropped for being written from the
             // wrong actor, and costs ten rebuilds a second of two rounded rectangles.
-            TimelineView(.animation(minimumInterval: 0.1, paused: !motionIsOn || scenePhase != .active)) { context in
+            TimelineView(.animation(minimumInterval: 0.1, paused: !motionIsOn)) { context in
                 BotEyes(size: size,
                         tilt: icon.eyeTilt,
                         blink: blink(at: context.date),
@@ -219,7 +218,9 @@ public struct BotIconPortrait: View {
         // tree every frame, and this face is drawn once per roster row (see #99).
         // The breath, system-driven: `phaseAnimator` runs the cycle on the render server, with no
         // state of ours to write and nothing to cancel. A single phase means "still".
-        .phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0], trigger: motionIsOn) { content, phase in
+        // No `trigger:` — that overload plays the phases once *per change of the trigger*, which is
+        // a still face with extra steps. Without it the cycle repeats on its own.
+        .phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0]) { content, phase in
             content.scaleEffect(1.0 + 0.025 * phase)
         } animation: { _ in .easeInOut(duration: 1.8) }
         // Squinting is a state change, not a loop, so it animates once on its own.

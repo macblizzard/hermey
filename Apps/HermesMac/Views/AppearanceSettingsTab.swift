@@ -43,8 +43,8 @@ struct AppearanceSettingsTab: View {
                 .accessibilityIdentifier("appearanceAnimateFaces")
 
             Text(reduceMotion
-                 ? "Breathe, blink and squint. macOS's Reduce Motion is on and is being overridden here — turn this off to follow it."
-                 : "Breathe, blink and squint. Faces smaller than 18 pt stay still either way.")
+                 ? "Breathe, blink, squint and turn. macOS's Reduce Motion is **on** — this app's own switch overrides it while it is on."
+                 : "Breathe, blink, squint and turn. Faces smaller than 18 pt stay still either way.")
                 .font(TypeScale.font(TypeScale.caption))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)

@@ -104,9 +104,18 @@ public enum BotFaceMotion {
         UserDefaults.standard.object(forKey: defaultsKey) as? Bool
     }
 
+    /// Writes the once-and-for-all answer on first launch, taken from the system.
+    ///
+    /// Without this the switch in Settings showed "on" (its default) while the faces followed the
+    /// system's Reduce Motion, so an owner with Reduce Motion on saw a switch that said one thing
+    /// and an app that did another (2026-11-14).
+    public static func seedIfNeeded(reduceMotion: Bool) {
+        guard choice == nil else { return }
+        UserDefaults.standard.set(!reduceMotion, forKey: defaultsKey)
+    }
+
     public static func allows(reduceMotion: Bool, size: CGFloat) -> Bool {
         guard size >= 18 else { return false }
-        if let choice { return choice }
-        return !reduceMotion
+        return choice ?? !reduceMotion
     }
 }
