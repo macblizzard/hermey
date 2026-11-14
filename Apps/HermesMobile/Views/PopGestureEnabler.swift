@@ -84,7 +84,7 @@ struct PopGestureEnabler: UIViewControllerRepresentable {
 
         @objc private func handle(_ recognizer: UIScreenEdgePanGestureRecognizer) {
             guard recognizer.state == .ended, let view = host,
-                  let navigation,
+                  let navigation = navigationController,
                   navigation.viewControllers.count > 1
             else { return }
             let translation = recognizer.translation(in: view)
