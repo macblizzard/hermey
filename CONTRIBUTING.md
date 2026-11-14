@@ -42,8 +42,9 @@ Thanks for taking a look. This is a small project with a strict bar: changes shi
 
 ## Releasing
 
-Maintainers only: tag `vX.Y.Z`, let CI build the artifacts, attach the `.ipa`, the macOS `.zip` and
-`install.sh` to the release, and update the AltStore manifest — `python3 Tools/release/sync_store.py`
-does that part from the built IPA, and CI runs it nightly at 03:30, so a stale source cannot survive.
-[`docs/APPS.md`](docs/APPS.md) explains
-what users do with them.
+Maintainers only: tag `vX.Y.Z`, let CI build the artifacts, then publish with
+`python3 Tools/release/publish_altstore.py --ipa … --mac-dmg …` — it attaches the `.ipa`, the macOS
+`.dmg` and `install.sh` to the release, writes and uploads the AltStore manifest, and stamps the
+README and the landing page in the same run. `sync_store.py --check` proves the source, the Pages copy
+and the pages agree (CI runs it nightly at 03:30, so a stale source cannot survive).
+[`docs/APPS.md`](docs/APPS.md) explains what users do with them.

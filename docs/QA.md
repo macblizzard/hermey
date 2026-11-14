@@ -1,10 +1,13 @@
 # QA: what is verified, how, and what is not
 
 The Swift apps and the bridge make claims that cannot be checked by reading code: *an approval
-blocks the agent until the user answers*, *a ticket is single use*, *a 1 MiB frame never reaches the
-gateway*, *no prompt text is logged*. Those are timing and envelope behaviours, so they are tested
+blocks the agent until the user answers*, *a ticket is single use*, *a frame over the cap never reaches
+the gateway*, *no prompt text is logged*. Those are timing and envelope behaviours, so they are tested
 against a **scripted fake gateway** — a replay server that serves recorded fixtures and synthetic
 scenarios over a real WebSocket — with the real bridge in front of it.
+
+The harness pins `HERMES_BRIDGE_FRAME_CAP` at **1 MiB** so the refusal path stays cheap to exercise;
+the shipped default is 16 MiB, which is what an 8 MiB attachment needs once base64 is applied.
 
 ```
 Tools/qa/

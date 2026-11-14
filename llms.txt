@@ -11,10 +11,13 @@ then install the app on a phone or Mac and pair it with a short code.
 
 - Host (root, on a machine already running Hermes):
   `curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash`
-- Then: `hermey pair` — prints a code, a `hermes://pair?...` deep link and a QR.
+- Then: `hermey pair` — prints a code, and once a tailnet name is configured also the
+  `hermes://pair?...` deep link and its QR (with none, the code alone and no address).
 - iOS: add `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json` to
   AltStore or SideStore.
-- macOS: `Hermey-macOS-unsigned.zip` from the latest release; right-click → Open on first launch.
+- macOS: `Hermey-macOS-unsigned.dmg` from the latest release, or
+  `https://macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg`; right-click → Open on
+  first launch (or `xattr -dr com.apple.quarantine /Applications/Hermey.app`).
 
 ## Agent runbook
 
@@ -34,7 +37,8 @@ then install the app on a phone or Mac and pair it with a short code.
 ## Facts a tool needs
 
 - Bridge: `127.0.0.1:8787`, loopback only, `GET /v1/health` returns `{"status":"ok"}`.
-- Tailnet front door: `tailscale serve --https=8443` (real certificate; the apps refuse self-signed).
+- Tailnet front door: `tailscale serve --bg --https=8443 http://127.0.0.1:8787` (real certificate;
+  the apps refuse self-signed).
 - Units: `hermey-bridge.service`; `hermey-gateway.service` only on hosts with no dashboard.
 - CLI: `hermey status | pair | logs [n] | doctor | update | uninstall`.
 - Requirements: Linux with systemd, Python 3.11+, Hermes installed, Tailscale (or your own TLS proxy).
