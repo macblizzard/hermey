@@ -225,29 +225,36 @@ public struct Composer: View {
             // A floating field draws its own surface; a bar keeps its control fill, which is part of
             // the bar rather than something hovering over the text.
             if floats {
-                Self.floatingShape
-                    // A material, not a tint: it samples what is behind it and blurs it, which is
-                    // what makes the words underneath legible as *underneath*. A flat translucent
-                    // fill can only ever look like a dark box, however low its opacity.
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.28), radius: 14, y: 4)
+                // Glass where the OS has it — it is the material that was asked for, and it carries
+                // its own specular edge. The material is the fallback rather than a tint: a flat
+                // translucent fill can only ever look like a dark box, however low its opacity.
+                //
+                // Neither one can invent light. Over the near-black canvas this screen is drawn on,
+                // glass has nothing bright to bend, so it is lifted a hair — a 4% white wash — and
+                // given a hairline and a shadow to sit on. That is the difference between a surface
+                // and a hole.
+                if #available(iOS 26.0, macOS 26.0, *) {
+                    Self.floatingShape
+                        .fill(Color.white.opacity(0.04))
+                        .glassEffect(.regular.interactive(), in: Self.floatingShape)
+                } else {
+                    Self.floatingShape
+                        .fill(.ultraThinMaterial)
+                        .overlay(Self.floatingShape.fill(Color.white.opacity(0.04)))
+                }
             } else {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                     .fill(Tokens.control)
             }
         }
         .overlay {
-            // The stroke is the *same shape as the fill*. Two shapes that differ only in curvature
-            // are two shapes that leave the canvas showing through the gap in every corner — which
-            // is exactly what a thin outline floating around an oversized pill looks like.
-            let colour: Color = isFieldFocused
-                ? Tokens.borderFocus
-                : (floats ? Tokens.border.opacity(0.55) : Tokens.borderStrong)
-            if floats {
-                Self.floatingShape.strokeBorder(colour, lineWidth: 1)
-            } else {
+            // Floating: no outline and no shadow. Both are things laid *on* glass, and glass is
+            // supposed to carry its own edge — a hairline is what turned it back into a drawn box.
+            // A bar still gets its rule, because a bar is a piece of chrome, not a lens.
+            if !floats {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                    .strokeBorder(colour, lineWidth: 1)
+                    .strokeBorder(isFieldFocused ? Tokens.borderFocus : Tokens.borderStrong,
+                                  lineWidth: 1)
             }
         }
         .opacity(isDisabled ? 0.6 : 1)
