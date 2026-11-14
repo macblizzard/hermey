@@ -133,6 +133,12 @@ struct BotListScreen: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Tokens.canvas)
+        // The rows start under the bar's own buttons, not a section header below them.
+        .contentMargins(.top, 2, for: .scrollContent)
+        // A fade, not a band: what scrolls up dissolves into the canvas instead of running into
+        // the two bar buttons. Drawn over the content and under nothing else, so a row's tap still
+        // lands — the gradient never takes a touch.
+        .overlay(alignment: .top) { topFade }
         // No app name in the bar: the icon you tapped already said which app this is, and every
         // point it takes is a bot the list does not show. The bar keeps only its two verbs.
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -444,13 +450,13 @@ struct BotListScreen: View {
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
     }
 
+    /// No heading: "CHATS" said out loud what the rows already are, and it pushed the first bot
+    /// down by a whole line for nothing (reported 2026-11-14).
     private var chatsSection: some View {
         Section {
             ForEach(filtered) { bot in
                 row(for: bot)
             }
-        } header: {
-            listHeading("CHATS")
         }
     }
 
@@ -468,6 +474,26 @@ struct BotListScreen: View {
                 }
             }
         }
+    }
+
+    /// The bar's fade: the canvas, going soft at the top of the list.
+    ///
+    /// iOS draws a *band* under the bar once content scrolls behind it, and on this near-black
+    /// canvas a band reads as a seam across the rows. This does the same job softly — whatever
+    /// scrolls up dissolves before it reaches the two buttons — and it costs nothing at rest, since
+    /// a gradient from the canvas to itself is invisible over an empty list.
+    private var topFade: some View {
+        LinearGradient(stops: [
+            .init(color: Tokens.canvas, location: 0),
+            // 0.45 rather than halfway: the opaque run has to end above the first row, and the
+            // rest of the height is the soft fall-off a scrolling row dissolves into.
+            .init(color: Tokens.canvas, location: 0.45),
+            .init(color: Tokens.canvas.opacity(0), location: 1),
+        ], startPoint: .top, endPoint: .bottom)
+        .frame(height: 84)
+        // A fade that takes a touch is a dead strip over the first bot.
+        .allowsHitTesting(false)
+        .ignoresSafeArea(edges: .top)
     }
 
     private func listHeading(_ title: String) -> some View {

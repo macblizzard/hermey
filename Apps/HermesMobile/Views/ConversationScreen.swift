@@ -553,8 +553,14 @@ struct ConversationScreen: View {
                 searchIndex = 0
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        // The same glass the pill above it wears: the field used to be bare text on the
+        // transcript, so it read as part of the conversation rather than as a control over it
+        // (reported 2026-11-14). `interactive` because a finger lands in it.
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .hermeyGlass(Capsule(), interactive: true)
+        .contentShape(Capsule())
+        .padding(.horizontal, 4)
         .onAppear { searchFocused = true }
     }
 

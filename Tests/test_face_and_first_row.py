@@ -246,8 +246,9 @@ class TheChromeIsGlass(unittest.TestCase):
     def test_every_floating_pill_uses_it(self) -> None:
         self.assertIn(".hermeyGlass(Circle(), interactive: true)", self.CHAT)   # back pill
         self.assertIn(".hermeyGlass(Capsule(), interactive: true)", self.CHAT)  # bot pill
-        # Three: the two above and the way to the newest message.
-        self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
+        # Four: the two above, the way to the newest message, and the search field — which used to
+        # be drawn bare onto the transcript and read as part of the conversation.
+        self.assertEqual(self.CHAT.count("hermeyGlass"), 4)
 
     def test_the_floating_shape_has_one_radius(self) -> None:
         # The mismatched shapes left the canvas showing in every corner: a pill inside a rounded

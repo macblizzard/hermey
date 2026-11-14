@@ -27,6 +27,24 @@ class BotListRegressionTests(unittest.TestCase):
         self.assertIn('.accessibilityLabel("Bot list menu")', source)
         self.assertNotIn('.navigationBarTitleDisplayMode', source)
 
+    def test_the_chats_label_is_gone_and_the_list_sits_closer(self):
+        # "CHATS" over a list of chats said what the rows already were, and cost a line between the
+        # bar's buttons and the first bot (reported 2026-11-14). The Mac roster dropped the same
+        # caption for the same reason.
+        source = SOURCE.read_text()
+        self.assertNotIn('listHeading("CHATS")', source)
+        self.assertIn('.contentMargins(.top, 2, for: .scrollContent)', source)
+
+    def test_the_top_edge_fades_instead_of_banding(self):
+        # Content scrolling under the bar dissolves into the canvas. The fade must not swallow a
+        # tap: it sits over the rows.
+        source = SOURCE.read_text()
+        self.assertIn('.overlay(alignment: .top) { topFade }', source)
+        fade = source.split("private var topFade: some View", 1)[1].split("private func listHeading", 1)[0]
+        self.assertIn("LinearGradient(", fade)
+        self.assertIn("Tokens.canvas.opacity(0)", fade, "it has to reach clear, or it is a band")
+        self.assertIn(".allowsHitTesting(false)", fade)
+
 
 if __name__ == "__main__":
     unittest.main()
