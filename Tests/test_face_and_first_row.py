@@ -169,7 +169,7 @@ class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
         self.assertNotIn(".safeAreaInset(edge: .bottom", self.CHAT)
         # Room for half the composer at the foot of the transcript, so the last message's tail runs
         # under the capsule and the glass has something to refract.
-        self.assertIn("frame(height: composerHeight * 0.5 + 8)", self.CHAT)
+        self.assertIn("frame(height: max(0, composerHeight - 36))", self.CHAT)
 
     def test_the_composer_no_longer_draws_a_rule(self) -> None:
         composer = self.CHAT.split("private var composerArea: some View", 1)[1]
@@ -192,16 +192,19 @@ class ThePhoneKeepsItsWayBack(unittest.TestCase):
 
     def test_the_swipe_back_is_restored(self) -> None:
         # UIKit refuses the interactive pop while the bar is hidden; the enabler uncorks it.
-        self.assertIn(".restoresSwipeBack()", self.CHAT)
-        self.assertIn("interactivePopGestureRecognizer", self.ENabler)
-        # A real delegate, not nil: nil removes the veto on the root screen too, where a swipe pops
-        # nothing and leaves the recogniser wedged.
-        self.assertIn("gesture.delegate = self", self.ENabler)
-        self.assertNotIn("gesture.delegate = nil", self.ENabler)
-        self.assertIn("navigationController?.viewControllers.count ?? 0) > 1", self.ENabler)
-        # Re-armed after the bar hides, not just once on appear.
-        self.assertIn("viewDidLayoutSubviews", self.ENabler)
-        self.assertIn("asyncAfter(deadline: .now() + 0.35)", self.ENabler)
+        self.assertIn(".restoresSwipeBack(enabled: !showDrawer)", self.CHAT)
+        # Owning the gesture, not reviving the system one: hiding the bar disables that recogniser
+        # and a delegate does not bring it back — the repo's own notes say so.
+        self.assertIn("UIScreenEdgePanGestureRecognizer", self.ENabler)
+        self.assertIn("pan.edges = .left", self.ENabler)
+        self.assertIn("let target = navigation.view", self.ENabler)
+        self.assertIn("popViewController(animated: true)", self.ENabler)
+        # One pop recogniser, or a single swipe pops twice.
+        self.assertIn("interactivePopGestureRecognizer?.isEnabled = false", self.ENabler)
+        # The transcript keeps its pan: touches are not cancelled, and a vertical drag from the
+        # margin scrolls rather than going back.
+        self.assertIn("cancelsTouchesInView = false", self.ENabler)
+        self.assertIn("abs(translation.x) > abs(translation.y)", self.ENabler)
 
     def test_the_composer_floats_so_it_has_no_border(self) -> None:
         self.assertIn("floats: true", self.CHAT)
@@ -300,7 +303,9 @@ class NoTabBarAndTwoFades(unittest.TestCase):
                       self.CHAT)
         # The lower fade sits *above* the composer; behind the capsule the transcript stays opaque.
         self.assertIn("frame(height: 44)", self.CHAT)
-        self.assertIn("frame(height: composerHeight + 12)", self.CHAT)
+        self.assertIn("frame(height: maskFoot)", self.CHAT)
+        # And clamped: unclamped it outgrows a short viewport and masks the transcript solid.
+        self.assertIn("min(composerHeight + 12, max(0, transcriptHeight - Self.maskFades))", self.CHAT)
 
     def test_nothing_opaque_sits_under_the_glass_composer(self) -> None:
         # The slab was the black box: an opaque gradient under a glass capsule.
