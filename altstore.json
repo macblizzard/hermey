@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.278",
+          "buildVersion": "278",
+          "date": "2026-11-14T03:29:53Z",
+          "localizedDescription": "Swipe back from a chat to the bot list works again.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.278/Hermey-0.1.278-b278.ipa",
+          "size": 2251786,
+          "minOSVersion": "17.0",
+          "sha256": "2bed80c87bc2352d99a0eb259a3fd49b5bb8929ccf984f67824ab568e14135cd"
+        },
+        {
           "version": "0.1.273",
           "buildVersion": "273",
           "date": "2026-11-14T02:59:14Z",
@@ -62,16 +72,6 @@
           "size": 2242006,
           "minOSVersion": "17.0",
           "sha256": "a1640c8b8cab6963cb65ae1d064de2090c68967d204361ffc68da672abdb1df6"
-        },
-        {
-          "version": "0.1.257",
-          "buildVersion": "257",
-          "date": "2026-11-14T00:44:40Z",
-          "localizedDescription": "Bots are Rakazo's blobs now \u2014 sixteen shapes, two eyes \u2014 and the first row sits on the traffic lights' line.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.257/Hermey-0.1.257-b257.ipa",
-          "size": 2240553,
-          "minOSVersion": "17.0",
-          "sha256": "373b49f94777e9855f79164f621ed7864f6b5986dd4823b81f60bc57daf5e73f"
         }
       ],
       "appPermissions": {
