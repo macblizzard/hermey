@@ -236,17 +236,20 @@ public struct Composer: View {
                     .fill(Tokens.control)
             }
         }
-        .overlay(
+        .overlay {
             // The stroke is the *same shape as the fill*. Two shapes that differ only in curvature
-            // is two shapes that leave the canvas showing between them in every corner.
-            (floats ? AnyShape(Self.floatingShape)
-                    : AnyShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer,
-                                                style: .continuous)))
-                .strokeBorder(isFieldFocused ? Tokens.borderFocus
-                                             : (floats ? Tokens.border.opacity(0.55)
-                                                       : Tokens.borderStrong),
-                              lineWidth: 1)
-        )
+            // are two shapes that leave the canvas showing through the gap in every corner — which
+            // is exactly what a thin outline floating around an oversized pill looks like.
+            let colour: Color = isFieldFocused
+                ? Tokens.borderFocus
+                : (floats ? Tokens.border.opacity(0.55) : Tokens.borderStrong)
+            if floats {
+                Self.floatingShape.strokeBorder(colour, lineWidth: 1)
+            } else {
+                RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+                    .strokeBorder(colour, lineWidth: 1)
+            }
+        }
         .opacity(isDisabled ? 0.6 : 1)
     }
 

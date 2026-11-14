@@ -244,7 +244,7 @@ class TheChromeIsGlass(unittest.TestCase):
         # lozenge with semicircular ends.
         self.assertIn("static var floatingShape: RoundedRectangle", self.COMPOSER)
         self.assertIn("static let floatingRadius: CGFloat = 26", self.COMPOSER)
-        self.assertIn("AnyShape(Self.floatingShape)", self.COMPOSER)
+        self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
         # A material, not a tint: it samples and blurs what is behind it, which is the only way the
