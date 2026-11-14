@@ -429,6 +429,17 @@ public final class AppModel: ObservableObject {
     /// conversation for 15 s), and a host that answers slowly is not asked again until it has.
     public static let unreadSweepInterval: TimeInterval = 25
 
+    /// Which previews read is newest, and which one has spoken. Two counters rather than a flag:
+    /// requests are allowed to overlap (a pull to refresh must not wait for a sweep), and the one
+    /// that started last is the one whose counts are authoritative.
+    private var previewsRequestID = 0
+    private var previewsAppliedID = 0
+
+    /// A sweep already open. Not a lock — overlapping reads are allowed under `previewsRequestID`
+    /// — but a non-forced call that arrives while one is open joins it instead of asking again,
+    /// which is where the four-in-three-seconds bursts came from.
+    private var previewsInFlight = false
+
     /// Start the sweep. Idempotent: two windows on one `AppModel` must not double the poll rate.
     public func startUnreadSweep() {
         guard unreadSweepTask == nil else { return }
@@ -515,6 +526,9 @@ public final class AppModel: ObservableObject {
     public func loadBotPreviews(force: Bool = false) async {
         let ids = bots.map(\.id)
         guard !ids.isEmpty else { return }
+        if previewsInFlight && !force { return }
+        previewsInFlight = true
+        defer { previewsInFlight = false }
 
         // First source: the bridge, which reads the host's own message table and answers every
         // bot in one request. It is the *newest* message whatever role wrote it — the gateway's
@@ -528,9 +542,40 @@ public final class AppModel: ObservableObject {
         let marks: [String: Double] = lastRead.reduce(into: [:]) { into, pair in
             if ids.contains(pair.key) { into[pair.key] = pair.value.timeIntervalSince1970 }
         }
-        let feed = (try? await client.botPreviews(since: marks)) ?? BotPreviewFeed()
-        unreadCounts = feed.unread.filter { ids.contains($0.key) }
-        let fromBridge = feed.previews
+        // Now, which of the requests already open is this one. The list has several doors in here —
+        // it appears, it is pulled to refresh, the app returns to the foreground, a turn finishes,
+        // and the 25 s sweep — so the device log shows bursts of four or five reads inside three
+        // seconds. Each answers with a *snapshot*, and a snapshot taken before a reply and landing
+        // after one used to overwrite the count with the smaller one: the banner stood (it is
+        // guarded by `lastRead`, which only moves forward) while the count went missing until the
+        // next sweep. Reported 2026-11-14 as "the unread badge showed up a little late".
+        previewsRequestID += 1
+        let requestID = previewsRequestID
+
+        // A read that failed is not a count of zero. The whole map used to be replaced with the
+        // feed's, so one dropped request emptied every badge on the list and the next sweep filled
+        // them back in — "late" again, and a lie about what is waiting either way. `nil` here means
+        // "could not ask", and the last answer stands.
+        var feed: BotPreviewFeed?
+        do {
+            feed = try await client.botPreviews(since: marks)
+        } catch {
+            ClientLog.note("bots.previews failed: \(error.localizedDescription)",
+                           level: .warning, category: "sessions")
+        }
+
+        // Older than an answer this list already has: it was computed before that one and knows
+        // less, so it is dropped whole rather than merged field by field.
+        var fromBridge: [String: BotConversationPreview] = [:]
+        if let feed, requestID >= previewsAppliedID {
+            previewsAppliedID = requestID
+            unreadCounts = feed.unread.filter { ids.contains($0.key) }
+            fromBridge = feed.previews
+        } else if feed != nil {
+            fromBridge = feed?.previews ?? [:]
+        }
+        // The third line and the order still apply from a stale answer — they are text and time,
+        // not a claim about how much is waiting.
         if !fromBridge.isEmpty {
             for (bot, preview) in fromBridge where ids.contains(bot) {
                 covered.insert(bot)
@@ -1636,6 +1681,13 @@ public final class AppModel: ObservableObject {
         if let seen {
             if date > seen {
                 unreadBots.insert(botID)
+                // A floor under the number, at the same instant the banner goes up. The count
+                // normally travels in the same answer as the timestamp, but it is a *snapshot*
+                // that a slower answer can regress and a failed one can empty, so the badge used
+                // to lag the banner by a sweep ("showed up a little late", 2026-11-14). One is not
+                // a guess: the host has just been seen to write after our mark. The next read
+                // replaces it with the exact number.
+                if (unreadCounts[botID] ?? 0) == 0 { unreadCounts[botID] = 1 }
                 raiseReplyNotification(for: botID, at: date)
             }
         } else {
