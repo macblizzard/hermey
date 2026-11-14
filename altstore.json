@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.352",
+          "buildVersion": "352",
+          "date": "2026-11-14T17:19:57Z",
+          "localizedDescription": "Build from CI run 43619707075.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.352/Hermey-0.1.352-b352.ipa",
+          "size": 2723677,
+          "minOSVersion": "17.0",
+          "sha256": "15537dea8796828e4b00701058774442feedc078a816b19f85fe3267c1d160b1"
+        },
+        {
           "version": "0.1.346",
           "buildVersion": "346",
           "date": "2026-11-14T16:43:35Z",
@@ -62,16 +72,6 @@
           "size": 2321733,
           "minOSVersion": "17.0",
           "sha256": "1cd849e35727cdd059a7e8e8c1b29782cba5a3551b81ad5b03eca17ed6ebe889"
-        },
-        {
-          "version": "0.1.332",
-          "buildVersion": "332",
-          "date": "2026-11-14T14:42:40Z",
-          "localizedDescription": "The unread badge no longer lags the banner: counts are only set by the newest read, a failed read no longer empties every badge, overlapping sweeps are joined, and a reply puts a floor of one under the count the instant the banner appears.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.332/Hermey-0.1.332-b332.ipa",
-          "size": 2321735,
-          "minOSVersion": "17.0",
-          "sha256": "ce1da51cc8e3dad81c5bd2b6cac349959a512e0aaf014566c327f68c0906c575"
         }
       ],
       "appPermissions": {
