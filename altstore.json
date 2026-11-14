@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.270",
+          "buildVersion": "270",
+          "date": "2026-11-14T02:21:23Z",
+          "localizedDescription": "Glass chrome on the phone, ghost-free composer, swipe-back restored, and the way to the newest message sits above the composer.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.270/Hermey-0.1.270-b270.ipa",
+          "size": 2243972,
+          "minOSVersion": "17.0",
+          "sha256": "156fce5f6c9665ebbd3019c1aed2bf8e760bea461b5be8fc7e3854de63d50778"
+        },
+        {
           "version": "0.1.263",
           "buildVersion": "263",
           "date": "2026-11-14T01:50:15Z",
@@ -62,16 +72,6 @@
           "size": 2245924,
           "minOSVersion": "17.0",
           "sha256": "91f12ac08992bc4493e326be0c3e0e2ec123a1df511c65cfe6ccd81585636343"
-        },
-        {
-          "version": "0.1.250",
-          "buildVersion": "250",
-          "date": "2026-11-13T23:36:17Z",
-          "localizedDescription": "The bot's face says what it is doing, the composer floats, and a bot is now any shape in any colour.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.250/Hermey-0.1.250-b250.ipa",
-          "size": 2243604,
-          "minOSVersion": "17.0",
-          "sha256": "c6d18ebe0636793f3e57fad824a5cdc9279cf40ebcc9b3e8fbd6a2731954562a"
         }
       ],
       "appPermissions": {
