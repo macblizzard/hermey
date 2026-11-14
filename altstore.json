@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.286",
+          "buildVersion": "286",
+          "date": "2026-11-14T04:14:15Z",
+          "localizedDescription": "The composer is glass, with nothing drawn on top of it.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.286/Hermey-0.1.286-b286.ipa",
+          "size": 2251736,
+          "minOSVersion": "17.0",
+          "sha256": "e54946f9b53503d69b827c8328c987ccafe767051418002087e2f8a4cf2b2524"
+        },
+        {
           "version": "0.1.282",
           "buildVersion": "282",
           "date": "2026-11-14T03:49:32Z",
@@ -62,16 +72,6 @@
           "size": 2243972,
           "minOSVersion": "17.0",
           "sha256": "156fce5f6c9665ebbd3019c1aed2bf8e760bea461b5be8fc7e3854de63d50778"
-        },
-        {
-          "version": "0.1.263",
-          "buildVersion": "263",
-          "date": "2026-11-14T01:50:15Z",
-          "localizedDescription": "The Mac stops following the stream, and the phone floats its pill and composer over the chat.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.263/Hermey-0.1.263-b263.ipa",
-          "size": 2243443,
-          "minOSVersion": "17.0",
-          "sha256": "d86df0ef70c5256e1cf22d0c0970798c510951f25e3fb9ec75dad3741350908a"
         }
       ],
       "appPermissions": {
