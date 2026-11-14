@@ -198,11 +198,12 @@ public struct BotIconPortrait: View {
             // The blink is read from the clock, not from a `@State` flag: a timeline over just the
             // eyes cannot be cancelled by a re-render, cannot be dropped for being written from the
             // wrong actor, and costs ten rebuilds a second of two rounded rectangles.
-            TimelineView(.animation(minimumInterval: 0.1, paused: !motionIsOn)) { context in
+            TimelineView(.animation(minimumInterval: 0.05, paused: !motionIsOn)) { context in
                 BotEyes(size: size,
                         tilt: icon.eyeTilt,
                         blink: blink(at: context.date),
-                        squint: isWorking ? 1 : 0)
+                        squint: eyesSquint,
+                        gaze: gaze(at: context.date))
             }
 
             switch status {
@@ -219,16 +220,44 @@ public struct BotIconPortrait: View {
         // The breath, system-driven: `phaseAnimator` runs the cycle on the render server, with no
         // state of ours to write and nothing to cancel. A single phase means "still".
         // No `trigger:` — that overload plays the phases once *per change of the trigger*, which is
-        // a still face with extra steps. Without it the cycle repeats on its own.
+        // a still face with extra steps. Without it the cycle repeats on its own. The two axes move
+        // differently per state so a glance across a roster says which bot is doing what:
+        // idle breathes evenly, working leans, a request pulses, a compaction squeezes.
         .phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0]) { content, phase in
-            content.scaleEffect(1.0 + 0.025 * phase)
-        } animation: { _ in .easeInOut(duration: 1.8) }
+            content.scaleEffect(x: 1.0 + stateMotion.x * phase,
+                                y: 1.0 + stateMotion.y * phase)
+        } animation: { _ in .easeInOut(duration: stateMotion.duration) }
         // Squinting is a state change, not a loop, so it animates once on its own.
         .animation(.easeOut(duration: 0.22), value: isWorking)
         .accessibilityLabel("\(icon.title) bot face")
     }
 }
 
+
+/// How this face moves, given what it is doing.
+///
+/// Every state keeps the blink and the glance; what differs is the breathing — the one movement
+/// that can be *felt* from a row's distance without being read (asked for 2026-11-14, "noticeable
+/// movements so it is easier to differentiate").
+private extension BotIconPortrait {
+    var stateMotion: (x: Double, y: Double, duration: Double) {
+        switch status {
+        case .needsYou:   return (0.055, 0.055, 1.0)   // a pulse: something is waiting
+        case .working:    return (0.030, 0.012, 1.1)   // a lean: busy, forward
+        case .compacting: return (0.000, 0.055, 0.9)   // a squeeze: the context is being folded
+        case nil:         return (0.025, 0.025, 1.8)   // a breath: awake and idle
+        }
+    }
+
+    /// Working narrows the eyes; a request opens them wide (the opposite of a squint).
+    var eyesSquint: Double {
+        switch status {
+        case .working: return 1
+        case .needsYou: return -0.25
+        default: return 0
+        }
+    }
+}
 
 /// The blink, as a function of the clock.
 ///
@@ -239,10 +268,30 @@ private extension BotIconPortrait {
     func blink(at date: Date) -> Double {
         guard motionIsOn else { return 0 }
         let seed = Double(abs(icon.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % 7)) * 0.31
-        let period = 3.4 + seed
+        // Every 2.4–4.2 s, and shut for 0.22 s: at 0.14 s the blink was two frames at thirty per
+        // second and passed for a dropped frame (asked to be more noticeable, 2026-11-14).
+        let period = 2.4 + seed
         let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period)
-        // The last 0.14 s of every period is the blink.
-        return phase > period - 0.14 ? 1 : 0
+        return phase > period - 0.22 ? 1 : 0
+    }
+
+    /// A glance left, then right, on its own slow cycle — the "I am here" movement.
+    ///
+    /// Held still at each end and eased through the middle, so it reads as looking rather than as
+    /// swaying. Working glances twice as often: a busy bot checks its surroundings.
+    func gaze(at date: Date) -> Double {
+        guard motionIsOn else { return 0 }
+        let seed = Double(icon.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % 5) * 0.4
+        let period = (status == .working ? 3.6 : 6.4) + seed
+        let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+        // One full look-around per period: hold left, sweep right, hold right, sweep back.
+        switch t {
+        case ..<0.25: return -1
+        case ..<0.35: return -1 + (t - 0.25) / 0.10 * 2
+        case ..<0.60: return 1
+        case ..<0.70: return 1 - (t - 0.60) / 0.10 * 2
+        default: return 0
+        }
     }
 }
 

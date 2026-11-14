@@ -145,11 +145,28 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         self.assertIn("size >= 40 ? 0.30", self.SHADING)
         self.assertIn("size >= 28 ? 0.26 : 0.20", self.SHADING)
 
-    def test_the_eyes_blink_and_squint(self) -> None:
+    def test_the_eyes_blink_squint_and_glance(self) -> None:
         self.assertIn("public var blink: Double", self.SILHOUETTE)
         self.assertIn("public var squint: Double", self.SILHOUETTE)
+        self.assertIn("public var gaze: Double", self.SILHOUETTE)
         # Closed is a line, never a zero: two eyes have to survive the blink.
         self.assertIn("max(size * 0.028, closed)", self.SILHOUETTE)
+        # The glance is a shift *and* a tilt: shifting alone slides the eyes off the face.
+        self.assertIn(".rotationEffect(.degrees(tilt + gaze * 4))", self.SILHOUETTE)
+        self.assertIn(".offset(x: gaze * size * 0.075, y: -size * 0.015)", self.SILHOUETTE)
+
+    def test_the_blink_is_long_enough_to_see(self) -> None:
+        # 0.14 s was two frames at thirty a second and passed for a dropped frame.
+        self.assertIn("return phase > period - 0.22 ? 1 : 0", GALLERY)
+        self.assertIn("let period = 2.4 + seed", GALLERY)
+        self.assertIn("TimelineView(.animation(minimumInterval: 0.05, paused: !motionIsOn))", GALLERY)
+
+    def test_each_state_moves_differently(self) -> None:
+        # A glance across the roster should say which bot is doing what without reading anything.
+        self.assertIn("var stateMotion: (x: Double, y: Double, duration: Double)", GALLERY)
+        for state in ("case .needsYou:", "case .working:", "case .compacting:", "case nil:"):
+            self.assertIn(state, GALLERY)
+        self.assertIn("func gaze(at date: Date) -> Double", GALLERY)
 
     def test_motion_is_cheap_and_has_a_switch(self) -> None:
         portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
@@ -161,7 +178,7 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         # Without `trigger:`: the trigger overload plays the phases once per trigger change, which is
         # a still face with extra steps.
         self.assertIn(".phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0])", body)
-        self.assertIn("TimelineView(.animation(minimumInterval: 0.1, paused:", body)
+        self.assertIn("TimelineView(.animation(minimumInterval: 0.05, paused:", body)
         self.assertIn("blink: blink(at: context.date)", body)
         self.assertNotIn("@State private var breathing", portrait)
         # The app's own answer comes first; the system's Reduce Motion is the fallback.
@@ -181,7 +198,7 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
 
     def test_a_list_does_not_blink_in_unison(self) -> None:
         self.assertIn("let seed = Double(abs(icon.title.unicodeScalars.reduce(0)", GALLERY)
-        self.assertIn("let period = 3.4 + seed", GALLERY)
+        self.assertIn("let period = 2.4 + seed", GALLERY)
 
 
 class TheAppIconIsOneOfTheFaces(unittest.TestCase):

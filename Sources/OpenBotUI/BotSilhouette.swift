@@ -267,12 +267,17 @@ public struct BotEyes: View {
     public var blink: Double
     /// How far the eyes narrow because the bot is working. 0 = as wide as they go.
     public var squint: Double
+    /// Which way the bot is looking, −1 (its left) to 1 (its right). A face that glances is a face
+    /// that is *there*; a face that only blinks reads as a screensaver (asked for 2026-11-14).
+    public var gaze: Double
 
-    public init(size: CGFloat, tilt: Double = 0, blink: Double = 0, squint: Double = 0) {
+    public init(size: CGFloat, tilt: Double = 0, blink: Double = 0, squint: Double = 0,
+                gaze: Double = 0) {
         self.size = size
         self.tilt = tilt
         self.blink = blink
         self.squint = squint
+        self.gaze = gaze
     }
 
     public var body: some View {
@@ -280,8 +285,10 @@ public struct BotEyes: View {
             eye
             eye
         }
-        .rotationEffect(.degrees(tilt))
-        .offset(y: -size * 0.015)
+        // The glance is a shift plus a degree or two of tilt: shifting alone slides the eyes off the
+        // face, and tilting alone reads as the whole face nodding.
+        .rotationEffect(.degrees(tilt + gaze * 4))
+        .offset(x: gaze * size * 0.075, y: -size * 0.015)
     }
 
     private var eye: some View {
