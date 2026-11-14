@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.324",
+          "buildVersion": "324",
+          "date": "2026-11-14T13:39:16Z",
+          "localizedDescription": "Memory and Soul on the bot's own page, and Bot Settings now owns the identity verbs together (Bot icon, Soul, Memory) instead of hiding two of them behind a long press. Memory shows the two documents the bot carries into every turn, read-only, with their sizes. A Library document can now leave the app: share it on the phone (long press, swipe, or the open document's toolbar) or Save a copy on the Mac.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.324/Hermey-0.1.324-b324.ipa",
+          "size": 2321462,
+          "minOSVersion": "17.0",
+          "sha256": "a207c2e72185d51986ba8aa2cd2123ab39be14b5e51c543249588311f52a7a5d"
+        },
+        {
           "version": "0.1.319",
           "buildVersion": "319",
           "date": "2026-11-14T12:31:55Z",
@@ -62,16 +72,6 @@
           "size": 2246635,
           "minOSVersion": "17.0",
           "sha256": "0f70d1e42ad105bb51d1c816f95760b843be3f994e6b0918d4bd0d2c60996e0f"
-        },
-        {
-          "version": "0.1.306",
-          "buildVersion": "306",
-          "date": "2026-11-14T09:07:31Z",
-          "localizedDescription": "The jump control stops latching: visible whenever the chat is not at the bottom, and one tap lands.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.306/Hermey-0.1.306-b306.ipa",
-          "size": 2247434,
-          "minOSVersion": "17.0",
-          "sha256": "f8664768f9256daa5aed238efbd8d84686eac1921c4a5938c5696c8df80c009b"
         }
       ],
       "appPermissions": {
