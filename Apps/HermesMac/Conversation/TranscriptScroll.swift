@@ -21,6 +21,8 @@ struct TranscriptScroll: View {
     /// The bot's swatch: the user's own bubbles are drawn in it, so a window with three bots open
     /// never leaves you guessing whose conversation you are typing into.
     var userBubbleTint: Color = Tokens.control
+    /// The roster's faces, so the thinking row can turn the same face the sidebar shows.
+    var faces: [String: BotFace] = [:]
 
     @State private var searching = false
     @State private var query = ""
@@ -175,6 +177,21 @@ struct TranscriptScroll: View {
                 MacReasoningBlock(text: model.reasoningText,
                                   startsExpanded: model.reasoningExpandedByDefault)
                     .frame(maxWidth: Geometry.conversationMeasure, alignment: .leading)
+            }
+
+            // The phone's thinking row, which the Mac never had: before the first token there is
+            // nothing to read, so the bot's face turns in place of an empty bubble.
+            if model.isStreaming, model.visibleStreamingText.isEmpty {
+                HStack(spacing: 8) {
+                    if let bot = model.selectedBot {
+                        BotFaceSpinner(face: faces[bot.id] ?? BotFace.default(for: bot.id), size: 18)
+                    }
+                    Text("Thinking…")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity)
             }
 
             if model.isStreaming {

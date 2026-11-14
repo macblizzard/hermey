@@ -29,6 +29,7 @@ struct WorkspaceRoot: View {
 
     /// Foreground is when another device's turn should appear in this list.
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
 
     var body: some View {
         ZStack {
@@ -109,6 +110,8 @@ struct WorkspaceRoot: View {
             // A stored choice must be in place before the first frame is read.
             ThemeRuntime.restoreFromDefaults()
             TypeScale.restoreScale()
+            // The faces' answer too: taken from the system once, then the app's own switch owns it.
+            BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
             auditLaunchSurfaces()
         }
         // One animation owner for the palette's whole lifecycle: the backdrop fades, the panel

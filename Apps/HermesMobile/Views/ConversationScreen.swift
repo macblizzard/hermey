@@ -815,6 +815,15 @@ struct ConversationScreen: View {
             // The running calls are already in the grouped rows above (`visibleLiveToolEntries`), so
             // a second list of them here would draw every card twice.
 
+            // Nothing to read yet: the bot's face, turning. Before the first token the streaming
+            // bubble is an empty box, and an empty box is indistinguishable from a stall.
+            if model.isStreaming, model.visibleStreamingText.isEmpty {
+                MobileTypingIndicator(face: model.selectedBot.map {
+                    app.botFaces[$0.id] ?? BotFace.default(for: $0.id)
+                })
+                .padding(.vertical, 4)
+            }
+
             if model.isStreaming || !model.visibleStreamingText.isEmpty {
                 MobileStreamingBubble(text: model.visibleStreamingText)
                     .overlay {

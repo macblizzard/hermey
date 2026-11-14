@@ -367,11 +367,18 @@ struct MobileStreamingBubble: View {
     }
 }
 
-/// "Thinking" before the first token: a ring, not a fake bubble of dots.
+/// "Thinking" before the first token: this bot's face, turning, not a fake bubble of dots and not
+/// a wheel — a wheel says something is happening, the face says *which bot* is happening.
 struct MobileTypingIndicator: View {
+    var face: BotFace?
+
     var body: some View {
-        HStack(spacing: 7) {
-            SpinningRing(color: Tokens.textMuted, size: 10, lineWidth: 1.5)
+        HStack(spacing: 8) {
+            if let face {
+                BotFaceSpinner(face: face, size: 18)
+            } else {
+                SpinningRing(color: Tokens.textMuted, size: 10, lineWidth: 1.5)
+            }
             Text("Thinking…")
                 .font(TypeScale.font(TypeScale.lg))
                 .foregroundStyle(Tokens.textMuted)
