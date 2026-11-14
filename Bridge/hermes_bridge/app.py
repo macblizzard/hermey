@@ -53,9 +53,9 @@ from .registry import DeviceRegistry
 from .tickets import AttemptThrottle, PairingCodes, TicketStore
 from .voice import VoiceBackend, create_voice_router
 
-#: How long a minted pairing code stays usable. Two minutes is shorter than the walk from the
-#: host to a phone with the app open, and a code is single-use, loopback-minted and rate-limited,
-#: so ten minutes buys usability without buying risk. Override with HERMES_BRIDGE_PAIRING_TTL.
+#: How long a minted pairing code stays usable. Ten minutes covers the walk from the host to a
+#: phone with the app open, and a code is single-use, loopback-minted and rate-limited, so a
+#: longer window buys usability without buying risk. Override with HERMES_BRIDGE_PAIRING_TTL.
 PAIRING_CODE_TTL_SECONDS = int(os.environ.get("HERMES_BRIDGE_PAIRING_TTL", "600"))
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
 WS_TICKET_TTL_SECONDS = 30

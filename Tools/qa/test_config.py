@@ -36,7 +36,8 @@ def test_the_frame_cap_has_a_hard_ceiling():
         BridgeConfig(frame_cap=0).validate()
     with pytest.raises(ConfigError):
         BridgeConfig(frame_cap=64 * 1024 * 1024).validate()
-    # The default is 1 MiB and a moderate increase is allowed.
+    # The shipped default is 16 MiB (an 8 MiB attachment is ~10.7 MiB base64-encoded); a smaller
+    # cap is allowed, which is how the QA harness pins 1 MiB to exercise the refusal path.
     assert BridgeConfig().validate() is None
     BridgeConfig(frame_cap=2 * 1024 * 1024).validate()
 
