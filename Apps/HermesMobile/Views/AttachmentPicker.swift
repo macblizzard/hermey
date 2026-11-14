@@ -11,6 +11,10 @@ enum AttachmentSource: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// File first: the reference orders it that way, and the one people reach for most on a chat
+    /// that is about code is a file, not a photo.
+    static let menuOrder: [AttachmentSource] = [.files, .camera, .photos]
+
     var title: String {
         switch self {
         case .camera: return "Camera"

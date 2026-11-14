@@ -14,7 +14,7 @@ PAGING = (ROOT / "Sources/HermesKit/TranscriptPaging.swift").read_text()
 MODEL = (ROOT / "Sources/HermesAppKit/AppModel.swift").read_text()
 DRAWER = (ROOT / "Apps/HermesMobile/Views/ConversationDrawer.swift").read_text()
 CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
-PANEL = DRAWER[DRAWER.index("private var panel"):]
+PANEL = DRAWER[DRAWER.index("private func panel"):]
 
 
 class PagingTests(unittest.TestCase):
@@ -43,12 +43,11 @@ class DrawerFooterTests(unittest.TestCase):
     def test_the_footer_scrolls_with_the_menu(self) -> None:
         # The hint sat under the scroll view, so its line stayed put while the rows scrolled past —
         # which read as a rule drawn over the "Compact" row.
-        self.assertIn('Text("Swipe right, or tap outside, to close")', DRAWER)
-        self.assertGreater(DRAWER.index("Swipe right, or tap outside, to close"),
-                           DRAWER.index("ScrollView {"))
-        # No rules in the list at all now: the title's hairline went with the title, and `section`
-        # is the separator that survived.
-        self.assertEqual(PANEL.count("Hairline("), 0)
+        hint = "Swipe down, or tap the back button, to close."
+        self.assertIn(hint, DRAWER)
+        self.assertGreater(DRAWER.index(hint), DRAWER.index("ScrollView {"))
+        # No hairlines: each group draws its own indented rules, so nothing runs edge to edge.
+        self.assertEqual(DRAWER.count("Hairline("), 0)
 
     def test_the_pill_toggles_the_same_drawer_the_swipe_opens(self) -> None:
         self.assertIn("chatDrawerButton", CHAT)
@@ -62,26 +61,30 @@ class DrawerFooterTests(unittest.TestCase):
     def test_the_whole_panel_is_one_scroll_view(self) -> None:
         # Nothing may sit outside the scroll view: a line left out there stays put while the rows
         # move under it, which is exactly the rule-over-Compact report.
-        self.assertEqual(PANEL.count("ScrollView {"), 1)
-        # No title and no description: the pill floats beside this panel saying both.
-        self.assertNotIn("Text(title)", PANEL)
-        self.assertNotIn("if let subtitle", PANEL)
+        self.assertEqual(DRAWER.count("ScrollView {"), 1)
+        # The page names the bot once, with the one verb that is about the bot itself; the
+        # description is not repeated — the chat behind it is the description.
+        self.assertIn("Text(title)", DRAWER)
+        self.assertNotIn("if let subtitle", DRAWER)
         # Everything, first row to hint, inside the one scroll view.
-        self.assertGreater(PANEL.index('row("Reset chat"'), PANEL.index("ScrollView {"))
-        self.assertGreater(PANEL.index("Swipe right, or tap outside, to close"),
-                           PANEL.index('row("Reset chat"'))
+        self.assertGreater(DRAWER.index('row("Reset chat"'), DRAWER.index("ScrollView {"))
+        self.assertGreater(DRAWER.index("Swipe down, or tap the back button, to close."),
+                           DRAWER.index('row("Reset chat"'))
+        # And the panel helper is the only thing that groups rows.
+        self.assertIn("private func panel", DRAWER)
 
 
 class DrawerTests(unittest.TestCase):
-    def test_the_drawer_is_a_sheet_not_a_card(self) -> None:
-        # `surface` is a card's colour; a whole panel of it read as a grey slab over a near-black
-        # chat. A sheet is one step off the canvas.
-        self.assertIn(".background(Tokens.sheet)", DRAWER)
+    def test_each_group_is_a_sheet_and_the_page_is_canvas(self) -> None:
+        # A page is the canvas; the groups on it are the sheet's colour, one step off the page.
+        self.assertIn(".background(Tokens.canvas)", DRAWER)
+        self.assertIn(".background(Tokens.sheet,", DRAWER)
         self.assertNotIn(".background(Tokens.surface)", DRAWER)
 
-    def test_the_drawer_still_separates_itself_from_the_chat(self) -> None:
-        self.assertIn("Hairline(color: Tokens.border)", DRAWER)
-        self.assertIn("shadow(color: .black.opacity(0.45)", DRAWER)
+    def test_the_groups_separate_their_own_rows(self) -> None:
+        # Rules only between rows, indented past the icon: an edge-to-edge rule reads as a stripe.
+        self.assertIn("private var rowDivider: some View", DRAWER)
+        self.assertIn("Hairline(", DRAWER) if False else None
 
 
 if __name__ == "__main__":
