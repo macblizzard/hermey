@@ -608,7 +608,7 @@ struct ConversationScreen: View {
             // only while the transcript's end is off screen.
             // The fade belongs to the button alone. Animating the scroll view is what made a
             // streaming reply shimmer: every token's layout pass went through the animation.
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: .bottom) {
                 scrollToBottomControl(proxy)
                     .animation(.easeOut(duration: 0.18), value: isAtBottom)
             }
@@ -1165,7 +1165,10 @@ struct ConversationScreen: View {
 
     /// The transcript is "at the bottom" when its end is this close to the bottom of the viewport.
     /// A slack of one line, so a reader sitting on the last message is not asked to chase it.
-    private static let bottomSlack: CGFloat = 24
+    /// How close to the end counts as "at the end". Tight on purpose: the jump control is meant to
+    /// appear as soon as there is anything below the fold, and 24 pt of slack read as the chat being
+    /// at the bottom while a line and a half were still hidden.
+    private static let bottomSlack: CGFloat = 6
 
     private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
         guard !isSearching, (!model.transcript.isEmpty || model.isStreaming) else { return }
@@ -1214,17 +1217,16 @@ struct ConversationScreen: View {
                     .foregroundStyle(Tokens.textSecondary)
                     .frame(width: 38, height: 38)
                     .hermeyGlass(Circle(), interactive: true)
-                    .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .padding(.trailing, 16)
-            // Above the composer, not behind it: the composer floats now, and a jump control
-            // pinned 12 pt off the floor sits under the capsule that is hiding the very rows it
-            // would take you to.
+            // Centred, and centred *by the layout* rather than by a padding that happens to look
+            // right on one screen width.
+            .frame(maxWidth: .infinity)
+            // Above the composer, not behind it: the composer floats, and a control pinned to the
+            // floor sits under the capsule that is hiding the very rows it would take you to.
             .padding(.bottom, composerHeight + 12)
-            .transition(.opacity)
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .transition(.opacity.combined(with: .scale(scale: 0.92)))
             .accessibilityIdentifier("conversationScrollToBottom")
             .accessibilityLabel("Scroll to latest message")
         }

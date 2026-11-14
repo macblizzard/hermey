@@ -87,9 +87,10 @@ class TheReaderWins(unittest.TestCase):
         text = source()
         self.assertNotIn(".animation(.easeOut(duration: 0.18), value: isAtBottom)\n            .simultaneousGesture",
                          text)
-        overlay = text.split(".overlay(alignment: .bottomTrailing) {", 1)[1].split("}", 1)[0]
-        self.assertIn("scrollToBottomControl(proxy)", overlay)
-        self.assertIn(".animation(", overlay, "the button's fade has to live on the button")
+        # The fade belongs to the button. Checked in place rather than by slicing an overlay block:
+        # the composer's overlay is also `.bottom` now, so the first one found is not this one.
+        call = text.split("scrollToBottomControl(proxy)", 1)[1][:220]
+        self.assertIn(".animation(", call, "the button's fade has to live on the button")
 
 
 if __name__ == "__main__":

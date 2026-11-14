@@ -226,11 +226,15 @@ class TheChromeIsGlass(unittest.TestCase):
     GLASS = source("Sources", "OpenBotUI", "LiquidGlass.swift")
     COMPOSER = source("Sources", "OpenBotUI", "Composer.swift")
 
-    def test_the_helper_is_gated_and_has_a_fallback(self) -> None:
-        self.assertIn("#available(iOS 26.0, macOS 26.0, *)", self.GLASS)
-        self.assertIn("self.glassEffect(", self.GLASS)
-        # A fallback, not a second design: the same shape in the theme's surface.
-        self.assertIn("self.background(shape.fill(Tokens.surface))", self.GLASS)
+    def test_the_helper_builds_the_surface_rather_than_borrowing_it(self) -> None:
+        # The OS material over a near-black canvas is a lens over black, so the surface is built out
+        # of three parts that survive any backdrop: a real blur, a wash, and a top-lit rim.
+        self.assertIn("shape.fill(.ultraThinMaterial)", self.GLASS)
+        self.assertIn("GlassSurface.wash", self.GLASS)
+        self.assertIn("GlassSurface.rim", self.GLASS)
+        # Never a flat theme fill, and never a uniform border: that is the hard frame it read as.
+        self.assertNotIn("Tokens.surface", self.GLASS)
+        self.assertIn("startPoint: .top", self.GLASS)
 
     def test_every_floating_pill_uses_it(self) -> None:
         self.assertIn(".hermeyGlass(Circle(), interactive: true)", self.CHAT)   # back pill
@@ -244,17 +248,18 @@ class TheChromeIsGlass(unittest.TestCase):
         # semicircular ends.
         self.assertIn("static var floatingShape: RoundedRectangle", self.COMPOSER)
         self.assertIn("static let floatingRadius: CGFloat = 26", self.COMPOSER)
-        self.assertIn("glassEffect(.regular.interactive(), in: Self.floatingShape)", self.COMPOSER)
+        # Fill and rim are the same shape, so no canvas can show through a curvature gap.
+        self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
+        self.assertIn("Self.floatingShape.stroke(GlassSurface.rim", self.COMPOSER)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
-        # Real glass first, material as the fallback, and never a flat tint. Over a near-black
-        # canvas glass has nothing bright to bend, so it is lifted a hair and given an edge.
-        self.assertIn("glassEffect(.regular.interactive(), in: Self.floatingShape)", self.COMPOSER)
+        # The composer wears the same recipe as every other glass shape, in its own radius: a blur,
+        # the wash, and the rim. Never a flat tint, which can only ever be a box.
         self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
-        self.assertIn("Color.white.opacity(0.04)", self.COMPOSER)
+        self.assertIn("GlassSurface.wash", self.COMPOSER)
+        self.assertIn("GlassSurface.rim", self.COMPOSER)
         self.assertNotIn(".fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
-        # And no hairline and no shadow on it: both are drawn *on* glass, and glass carries its own
-        # edge. A bar keeps its rule.
+        # No drop shadow and no uniform border on it: the rim is the edge. A bar keeps its rule.
         self.assertNotIn("radius: 16, y: 6", self.COMPOSER)
         self.assertIn("if !floats {", self.COMPOSER)
         # A bar keeps the rounded rect and its control fill.

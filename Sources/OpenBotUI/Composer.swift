@@ -225,23 +225,13 @@ public struct Composer: View {
             // A floating field draws its own surface; a bar keeps its control fill, which is part of
             // the bar rather than something hovering over the text.
             if floats {
-                // Glass where the OS has it — it is the material that was asked for, and it carries
-                // its own specular edge. The material is the fallback rather than a tint: a flat
-                // translucent fill can only ever look like a dark box, however low its opacity.
-                //
-                // Neither one can invent light. Over the near-black canvas this screen is drawn on,
-                // glass has nothing bright to bend, so it is lifted a hair — a 4% white wash — and
-                // given a hairline and a shadow to sit on. That is the difference between a surface
-                // and a hole.
-                if #available(iOS 26.0, macOS 26.0, *) {
-                    Self.floatingShape
-                        .fill(Color.white.opacity(0.04))
-                        .glassEffect(.regular.interactive(), in: Self.floatingShape)
-                } else {
-                    Self.floatingShape
-                        .fill(.ultraThinMaterial)
-                        .overlay(Self.floatingShape.fill(Color.white.opacity(0.04)))
-                }
+                // The shared recipe, in the composer's own shape: a backdrop blur, light gathered at
+                // the top, and a rim that catches the top edge only. No uniform border, no drop
+                // shadow — both draw a hard frame around a surface that is meant to have thickness.
+                Self.floatingShape
+                    .fill(.ultraThinMaterial)
+                    .overlay(Self.floatingShape.fill(GlassSurface.wash))
+                    .overlay(Self.floatingShape.stroke(GlassSurface.rim, lineWidth: 1))
             } else {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                     .fill(Tokens.control)
