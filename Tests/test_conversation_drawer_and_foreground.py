@@ -52,12 +52,12 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertIn(".zIndex(2)", SCREEN)
 
     def test_it_carries_the_verbs_and_only_those(self) -> None:
-        for label in ("Computer", "Workspace", "Skills", "MCP servers", "Search", "Settings",
-                      "Reset chat"):
+        for label in ("Computer", "Workspace", "Skills", "MCP servers", "Search", "Reset chat"):
             self.assertIn(f'"{label}"', DRAWER, f"{label} must still be reachable")
         # Compaction, the unread sweep and spoken replies left this page: the first two happen on
         # their own, and the third belongs beside the microphone.
-        for gone in ("Mark all as read", "Speak replies", "Compacting…"):
+        # Settings is gone too: Edit in the header opens the same sheet.
+        for gone in ("Mark all as read", "Speak replies", "Compacting…", '"Settings"'):
             self.assertNotIn(gone, DRAWER, f"{gone} should no longer be a row here")
 
     def test_the_page_does_not_explain_how_to_leave_it(self) -> None:

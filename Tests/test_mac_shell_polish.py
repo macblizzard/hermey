@@ -98,11 +98,13 @@ class TheComposerIsQuiet(unittest.TestCase):
                       COMPOSER)
         self.assertIn(".onHover { isHovering = $0 }", COMPOSER)
 
-    def test_controls_are_centred_in_the_row_not_nudged(self) -> None:
-        # A guessed `.padding(.top, controlInset)` measured the glyph's typographic centre; the eye
-        # reads the box's. The row centres every control by frame instead.
-        self.assertNotIn("controlInset", COMPOSER)
+    def test_the_controls_ride_the_last_line(self) -> None:
+        # Controls sit at the foot of the card, on the line the caret is on, so a long message grows
+        # above them instead of leaving them behind on line one.
         self.assertIn("private func rowCentred<V: View>(_ view: V) -> some View", COMPOSER)
+        self.assertIn(".frame(maxHeight: .infinity, alignment: .bottom)", COMPOSER)
+        self.assertIn("HStack(alignment: .bottom, spacing: 8)", COMPOSER)
+        self.assertNotIn("alignment: .top)", COMPOSER)
 
     def test_attach_is_a_plus(self) -> None:
         self.assertIn('glyph: "plus"', COMPOSER)
