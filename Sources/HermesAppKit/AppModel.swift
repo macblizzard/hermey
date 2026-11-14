@@ -566,7 +566,7 @@ public final class AppModel: ObservableObject {
 
         // Older than an answer this list already has: it was computed before that one and knows
         // less, so it is dropped whole rather than merged field by field.
-        var fromBridge: [String: BotPreview] = [:]
+        var fromBridge: [String: BotConversationPreview] = [:]
         if let feed, requestID >= previewsAppliedID {
             previewsAppliedID = requestID
             unreadCounts = feed.unread.filter { ids.contains($0.key) }
