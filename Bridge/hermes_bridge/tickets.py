@@ -29,7 +29,10 @@ class PairingCodes:
 
     def __init__(
         self,
-        ttl: float = 120.0,
+        # The shipped TTL lives in ``app.PAIRING_CODE_TTL_SECONDS`` (600 s, overridable with
+        # HERMES_BRIDGE_PAIRING_TTL); this default matches it so a doc or a probe that reads the
+        # class cannot quote a lifetime the product does not use.
+        ttl: float = 600.0,
         max_outstanding: int = 64,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
