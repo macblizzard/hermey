@@ -136,7 +136,7 @@ struct BotSidebarView: View {
                 OpenBotIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
                     store.toggleSidebar()
                 }
-                .help("Hide the bot panel (⌘S)")
+                .help("Hide the bot panel")
 
                 addMenu
 
@@ -148,16 +148,16 @@ struct BotSidebarView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Settings (⌘,)")
+                .help("Settings")
                 .accessibilityLabel("Settings")
             }
         }
         .padding(.horizontal, Geometry.sidebarInset)
-        // The traffic-light strip: the panel's fill runs to the window's top edge, the row starts
-        // under the buttons. 24 pt tall so its centre — strip plus half — is the chat header's pill
-        // centre: the two columns read as one line of chrome across the window.
+        // The traffic-light strip: the panel's fill runs to the window's top edge and the row sits
+        // on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the same line
+        // as the chat header's pill.
         .padding(.top, WorkspaceShell.titlebarStrip)
-        .frame(height: WorkspaceShell.titlebarStrip + 24)
+        .frame(height: WorkspaceShell.titlebarStrip + 34)
         .padding(.bottom, 6)
         .onExitCommand { if isSearching { closeSearch() } }
     }

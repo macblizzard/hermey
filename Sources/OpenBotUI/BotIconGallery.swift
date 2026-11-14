@@ -2,7 +2,12 @@ import SwiftUI
 
 /// Original geometric robot portraits. These are not representations of existing characters.
 public enum BotIcon: String, CaseIterable, Identifiable, Codable {
+    /// The ten original ids, kept by name so every stored face still reads.
     case ember, nova, cobalt, orbit, moss, dusk, beacon, pixel, rover, prism
+    /// The rest of the set: silhouettes that never had an id because the old drawings could not
+    /// have been them — a mushroom is not a robot, and that is the point.
+    case lump, mushroom, blob, capsule, droplet, scallop
+
     public var id: String { rawValue }
     public var title: String { rawValue.capitalized }
     fileprivate var variant: Int { Self.allCases.firstIndex(of: self) ?? 0 }
@@ -76,6 +81,12 @@ public struct BotFace: Hashable, Codable, Sendable {
         case .pixel:  color = .mint
         case .rover:  color = .blue
         case .prism:  color = .ruby
+        case .lump:     color = .slate
+        case .mushroom: color = .teal
+        case .blob:     color = .indigo
+        case .capsule:  color = .blue
+        case .droplet:  color = .cyan
+        case .scallop:  color = .pink
         }
         return BotFace(shape: shape, color: color)
     }
@@ -164,33 +175,17 @@ public struct BotIconPortrait: View {
 
     /// The swatch. `tint` is gone: a shape no longer carries a colour of its own.
     private var tint: Color { color }
+
     public var body: some View {
         ZStack {
-            Circle().fill(tint.opacity(0.18))
-            Circle().strokeBorder(tint.opacity(0.6), lineWidth: 1)
-            if icon.variant < 6 {
-            VStack(spacing: size * 0.035) {
-                if icon.variant % 2 == 0 {
-                    Capsule().fill(tint).frame(width: size * 0.09, height: size * 0.12)
-                } else {
-                    Circle().fill(tint).frame(width: size * 0.10, height: size * 0.10)
-                }
-                ZStack {
-                    RoundedRectangle(cornerRadius: size * 0.15)
-                        .fill(tint.opacity(0.85))
-                    VStack(spacing: size * 0.08) {
-                        HStack(spacing: size * 0.10) {
-                            Circle().fill(Color.black.opacity(0.8))
-                            Circle().fill(Color.black.opacity(0.8))
-                        }.frame(width: size * 0.28, height: size * 0.09)
-                        Capsule().fill(Color.black.opacity(0.7))
-                            .frame(width: size * (icon.variant % 3 == 0 ? 0.22 : 0.14), height: size * 0.035)
-                    }
-                }.frame(width: size * 0.54, height: size * 0.43)
-            }
-            } else {
-                newPortrait
-            }
+            // One solid silhouette and two eyes. No ring, no body, no antenna: the shape is the
+            // bot, and the state badge below has a clean mass to sit on instead of a drawing it
+            // has to compete with.
+            BotSilhouette(icon)
+                .fill(tint)
+
+            BotEyes(size: size, tilt: icon.eyeTilt)
+
             switch status {
             case .needsYou: NeedsYouFlash(size: size, tint: tint)
             case .working: BotWorkingSparks(size: size, color: tint, isWorking: true)
@@ -199,83 +194,10 @@ public struct BotIconPortrait: View {
             }
         }
         .frame(width: size, height: size)
-        .accessibilityLabel("\(icon.title) robot icon")
+        .accessibilityLabel("\(icon.title) bot face")
     }
-
-
-    // Each new silhouette is drawn in normalized coordinates so it scales with
-    // the same portrait sizes as the original six, without bundled artwork.
-    @ViewBuilder private var newPortrait: some View {
-        switch icon {
-        case .beacon:
-            VStack(spacing: size * 0.02) {
-                Circle().fill(tint).frame(width: size * 0.12, height: size * 0.12)
-                Capsule().fill(tint.opacity(0.85))
-                    .frame(width: size * 0.48, height: size * 0.48)
-                    .overlay(Circle().fill(.black.opacity(0.8))
-                        .frame(width: size * 0.19, height: size * 0.19)
-                        .overlay(Circle().fill(.white.opacity(0.8))
-                            .frame(width: size * 0.05, height: size * 0.05)))
-            }
-        case .pixel:
-            VStack(spacing: size * 0.03) {
-                HStack(spacing: size * 0.22) {
-                    Rectangle().frame(width: size * 0.06, height: size * 0.1)
-                    Rectangle().frame(width: size * 0.06, height: size * 0.1)
-                }.foregroundStyle(tint)
-                Rectangle().fill(tint.opacity(0.85))
-                    .frame(width: size * 0.56, height: size * 0.39)
-                    .overlay(VStack(spacing: size * 0.07) {
-                        HStack(spacing: size * 0.12) {
-                            Rectangle().frame(width: size * 0.08, height: size * 0.08)
-                            Rectangle().frame(width: size * 0.08, height: size * 0.08)
-                        }
-                        Rectangle().frame(width: size * 0.22, height: size * 0.035)
-                    }.foregroundStyle(.black.opacity(0.8)))
-            }
-        case .rover:
-            VStack(spacing: size * 0.025) {
-                Capsule().fill(tint).frame(width: size * 0.25, height: size * 0.06)
-                HStack(spacing: 0) {
-                    Circle().fill(tint).frame(width: size * 0.12, height: size * 0.12)
-                    RoundedRectangle(cornerRadius: size * 0.11)
-                        .fill(tint.opacity(0.85))
-                        .frame(width: size * 0.46, height: size * 0.38)
-                        .overlay(Capsule().fill(.black.opacity(0.8))
-                            .frame(width: size * 0.34, height: size * 0.13)
-                            .overlay(HStack(spacing: size * 0.10) {
-                                Circle().fill(.white.opacity(0.8))
-                                Circle().fill(.white.opacity(0.8))
-                            }.frame(width: size * 0.19, height: size * 0.045)))
-                    Circle().fill(tint).frame(width: size * 0.12, height: size * 0.12)
-                }
-            }
-        case .prism:
-            VStack(spacing: size * 0.03) {
-                Capsule().fill(tint).frame(width: size * 0.06, height: size * 0.10)
-                Path { path in
-                    path.move(to: CGPoint(x: size * 0.28, y: 0))
-                    path.addLine(to: CGPoint(x: size * 0.56, y: size * 0.13))
-                    path.addLine(to: CGPoint(x: size * 0.48, y: size * 0.39))
-                    path.addLine(to: CGPoint(x: size * 0.08, y: size * 0.39))
-                    path.addLine(to: CGPoint(x: 0, y: size * 0.13))
-                    path.closeSubpath()
-                }.fill(tint.opacity(0.85))
-                    .frame(width: size * 0.56, height: size * 0.39)
-                    .overlay(VStack(spacing: size * 0.07) {
-                        HStack(spacing: size * 0.12) {
-                            Capsule().frame(width: size * 0.09, height: size * 0.045)
-                            Capsule().frame(width: size * 0.09, height: size * 0.045)
-                        }
-                        Circle().frame(width: size * 0.06, height: size * 0.06)
-                    }.foregroundStyle(.black.opacity(0.8)))
-            }
-        default:
-            EmptyView()
-        }
-    }
-
 }
+
 
 /// Shared working indicator that leaves the underlying portrait unchanged.
 public struct BotWorkingSparks: View {
@@ -460,19 +382,28 @@ public struct BotFacePicker: View {
             preview
 
             grid(title: "Shape") {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5),
-                          spacing: 10) {
+                // Eight across: sixteen silhouettes make two clean rows, and the grid is read as
+                // one set rather than a list that wrapped.
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8),
+                          spacing: 8) {
                     ForEach(BotIcon.allCases) { shape in
                         Button {
                             draft.shape = shape
                             commit()
                         } label: {
-                            BotIconPortrait(BotFace(shape: shape, color: draft.color), size: 44)
+                            // The shape draws itself, so the selection ring is a rounded square
+                            // around the tile instead of a circle around the shape — a ring tight
+                            // to a mushroom and a ring tight to a capsule cannot both read right.
+                            BotIconPortrait(BotFace(shape: shape, color: draft.color), size: 34)
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(draft.shape == shape ? Tokens.controlActive : .clear)
+                                )
                                 .overlay(
-                                    Circle()
-                                        .strokeBorder(face != nil && draft.shape == shape
-                                                      ? Tokens.accent : .clear,
-                                                      lineWidth: 2)
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .strokeBorder(draft.shape == shape ? Tokens.accent : .clear,
+                                                      lineWidth: 1.5)
                                 )
                         }
                         .buttonStyle(.plain)

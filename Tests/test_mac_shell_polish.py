@@ -35,7 +35,9 @@ class ThePillFloats(unittest.TestCase):
     def test_the_pill_sits_against_the_window_edge(self) -> None:
         # Six of air and the capsule; no extra top padding, so the pill's centre is 26 pt down and
         # level with the sidebar's first row.
-        self.assertIn(".frame(width: width, height: Geometry.chatHeaderPill + 12)", HEADER)
+        # On the traffic lights' line: the capsule plus two points, top-aligned in the pane.
+        self.assertIn(".frame(width: width, height: Geometry.chatHeaderPill + 2)", HEADER)
+        self.assertIn("alignment: .top", HEADER)
         self.assertNotIn(".padding(.top, 2)", HEADER)
 
 

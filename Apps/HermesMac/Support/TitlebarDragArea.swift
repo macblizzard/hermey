@@ -56,3 +56,22 @@ struct TitlebarDragArea: NSViewRepresentable {
         }
     }
 }
+
+/// Lets the window be dragged by any part of its background.
+///
+/// `.hiddenTitleBar` leaves the window with no title bar at all, and the app now puts its first row
+/// on that line — so the 6 pt strip is a convenience, not the only gesture. `isMovableByWindowBackground`
+/// keeps the familiar "grab the empty space and move" behaviour, and AppKit still routes clicks to
+/// the controls drawn on top of it.
+struct WindowMovableByBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { View() }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class View: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.isMovableByWindowBackground = true
+        }
+    }
+}

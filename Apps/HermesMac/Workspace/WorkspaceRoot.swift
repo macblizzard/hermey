@@ -59,8 +59,11 @@ struct WorkspaceRoot: View {
             // top of the window. This transparent view does — across the **whole** width, because
             // the traffic lights are hit-tested by the window's own frame before this content, and
             // insetting past them by hand left the band above the sidebar's search field dead.
+            WindowMovableByBackground()
+                .frame(width: 0, height: 0)
+
             TitlebarDragArea()
-                .frame(height: WorkspaceShell.titlebarStrip)
+                .frame(height: WorkspaceShell.dragStrip)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(true)
 
@@ -288,11 +291,15 @@ struct WorkspaceShell: View {
     /// edge. The panels paint their backgrounds through it; only the sidebar's *content* starts
     /// below it, so the buttons never land on the search field.
     ///
-    /// 14 pt, not 26: Rakazo keeps the window's first row (its search, its toggles, its plus) close
-    /// enough to the top edge that the traffic lights read as part of it, and the old strip left a
-    /// band of dead fill above the buttons. The row's centre lands at 26 — the same line as the
-    /// chat header's pill — so the two columns share one baseline.
-    static let titlebarStrip: CGFloat = 14
+    /// 4 pt: Rakazo's first row (its search, its toggles, its plus) sits **on the traffic lights'
+    /// line**, not under it. With a 34 pt row the centre lands at 21 — within a point of the lights'
+    /// 20 pt centre — and the chat header's pill is on the same line.
+    static let titlebarStrip: CGFloat = 4
+
+    /// The band that behaves like a title bar. Six points, because the content now starts at 4 and
+    /// the window is movable by its background as well — the strip is a shortcut for the gesture,
+    /// not the only place it works.
+    static let dragStrip: CGFloat = 6
 
     /// One definition of the pane: the panel and the full-screen overlay differ only in their
     /// frame and in which way the full-screen button points.

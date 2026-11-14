@@ -47,7 +47,8 @@ struct ConversationHeader: View {
         GeometryReader { proxy in
             header(width: proxy.size.width)
         }
-        .frame(height: Geometry.chatHeader)
+        // Top-aligned: the pill's centre is set by the strip above it, not by the pane's height.
+        .frame(height: Geometry.chatHeader, alignment: .top)
         // No bar and no hairline: the pill is the header, and the pane's canvas is its background.
         .background(Color.clear)
         // Owned by the store: the menu, the toolbar's own button and the palette's verb all raise
@@ -88,7 +89,7 @@ struct ConversationHeader: View {
                     OpenBotIconButton("sidebar.leading", label: "Show the bot panel", size: .small) {
                         store.toggleSidebar()
                     }
-                    .help("Show the bot panel (⌘S)")
+                    .help("Show the bot panel")
                 }
 
                 Spacer(minLength: 12)
@@ -106,10 +107,9 @@ struct ConversationHeader: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, Geometry.readingInset)
-        // Up against the window's top edge, level with the traffic lights and with the sidebar's
-        // first row: 6 pt of air, the 40 pt capsule, and the rest is the transcript's, which
-        // scrolls behind it.
-        .frame(width: width, height: Geometry.chatHeaderPill + 12)
+        // On the traffic lights' line: the capsule's centre is 21 pt down, the same line as the
+        // sidebar's first row, and the rest of the header's height is the transcript's.
+        .frame(width: width, height: Geometry.chatHeaderPill + 2)
     }
 
     /// What the face says. A request outranks a running turn, and both outrank a compaction: the
@@ -142,13 +142,11 @@ struct ConversationHeader: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(store.isBotPanelPresented ? Tokens.textPrimary : Tokens.textMuted)
-                    .frame(width: 16)
+                // No ⋯ inside the pill: the whole capsule opens the panel, so the dots were a
+                // second, smaller door drawn on the first one.
             }
             .padding(.leading, 4)
-            .padding(.trailing, 10)
+            .padding(.trailing, 12)
             .padding(.vertical, 4)
             .frame(height: Geometry.chatHeaderPill)
             // Solid, not 92%: the transcript runs behind this capsule, and a translucent fill let

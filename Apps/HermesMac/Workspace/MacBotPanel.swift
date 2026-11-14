@@ -46,7 +46,7 @@ struct MacBotPanel: View {
                     row("MCP servers", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
 
                     section
-                    row("Search conversation", icon: "magnifyingglass", detail: "⌘F") {
+                    row("Search conversation", icon: "magnifyingglass") {
                         store.openFindInChat()
                     }
                     row("Bot settings", icon: "gearshape") {
@@ -75,10 +75,9 @@ struct MacBotPanel: View {
                         store.isResetConfirmationPresented = true
                     }
 
-                    section
-                    row("Command palette", icon: "command", detail: "⌘K") { store.openPalette() }
-                    row("Settings", icon: "slider.horizontal.3", detail: "⌘,") { openSettings() }
-
+                    // No command palette and no Settings here: the palette is ⌘K on every screen
+                    // and Settings is the app's own scene, so both were doors duplicated inside a
+                    // panel about one bot. The panel is about this bot, and nothing else.
                     section
                     connectionRow
                 }
