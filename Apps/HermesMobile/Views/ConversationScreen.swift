@@ -446,10 +446,9 @@ struct ConversationScreen: View {
                         .onChange(of: geo.size.height) { _, height in composerHeight = height }
                 }
             )
-            // No slab behind it: an opaque gradient under a glass capsule is the one thing that
-            // stops the glass from being glass. The transcript's own mask does the fading — from
-            // the composer's height up — so the words dissolve and the capsule refracts what is
-            // left of them.
+            // Nothing behind it and nothing around it: no slab, no fade, no scrim. The transcript
+            // runs under the capsule at full strength, and the capsule is the only thing between the
+            // reader and it.
             .padding(.bottom, 2)
     }
 
@@ -589,20 +588,11 @@ struct ConversationScreen: View {
                     .onChange(of: geo.size.width) { _, width in transcriptWidth = width }
             })
             .scrollDismissesKeyboard(.interactively)
-            // Text leaves the screen instead of being cut by it: a mask on the transcript itself,
-            // not a gradient laid over it, so nothing is painted on top of the words — they fade
-            // out. The chrome is drawn above this and stays crisp.
-            .mask(
-                VStack(spacing: 0) {
-                    // The top only. There is no fade at the foot any more: a band that darkened or
-                    // dissolved the last few lines is the shade that kept appearing above the
-                    // composer, and it is the one thing glass cannot work through. Below the fade
-                    // the transcript stays at full strength, all the way under the capsule.
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 96)
-                    Rectangle().fill(Color.black)
-                }
-            )
+            // No mask at all. Every version of this had a fade somewhere — a long one at the foot, a
+            // short one, one that tracked the composer — and every version arrived as a shade above
+            // the compose box, because that is what a gradient over near-black looks like. The
+            // transcript now runs edge to edge, full strength, straight under the glass. Words are
+            // cut by the screen instead of dissolved by it.
             // The way back to the newest message, on the same rule as the desktop's: it appears
             // only while the transcript's end is off screen.
             // The fade belongs to the button alone. Animating the scroll view is what made a

@@ -294,19 +294,12 @@ class NoTabBarAndTwoFades(unittest.TestCase):
         self.assertIn('Label("Settings", systemImage: "gearshape")', self.LIST)
         self.assertIn("SettingsScreen(model: model)", self.LIST)
 
-    def test_only_the_top_edge_fades(self) -> None:
-        # A mask on the transcript, not a gradient laid over it: the words fade, nothing is painted
-        # on top of them. The top only — the foot is where the glass is, and a band there is the
-        # shade that kept appearing above the composer.
-        self.assertIn(".mask(", self.CHAT)
-        self.assertIn("LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)",
-                      self.CHAT)
-        self.assertNotIn("LinearGradient(colors: [.black, .clear]", self.CHAT)
-        # Only the top edge fades. The foot has no band at all: it was the shade that kept showing
-        # above the composer, and it is the one thing glass cannot work through.
-        self.assertNotIn("frame(height: 44)", self.CHAT)
-        self.assertIn("LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)",
-                      self.CHAT)
+    def test_nothing_is_masked_or_faded_over_the_transcript(self) -> None:
+        # Not a fade at the foot, not a fade at the top, not a gradient laid over the words. Every
+        # one of those is a shade above the compose box on a near-black canvas, and the glass has to
+        # have the transcript under it — at full strength — to look like anything.
+        self.assertNotIn(".mask(", self.CHAT)
+        self.assertNotIn("LinearGradient", self.CHAT)
 
     def test_nothing_opaque_sits_under_the_glass_composer(self) -> None:
         # The slab was the black box: an opaque gradient under a glass capsule.
