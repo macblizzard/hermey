@@ -44,16 +44,18 @@ class MarkAllRead(unittest.TestCase):
                       MODEL.split("public var hasAnyUnread", 1)[1].split("\n", 1)[0])
 
     def test_the_verb_is_in_both_apps_menus(self) -> None:
+        # Not the phone's chat page: it was a row there and it is gone, because the unread sweep
+        # runs on the host and a chat is not the place to manage other chats.
         for name, text in (("Mac sidebar", MAC_SIDEBAR), ("Mac bot panel", MAC_PANEL),
-                           ("phone list", IOS_LIST), ("phone chat", IOS_CHAT_VERBS)):
+                           ("phone list", IOS_LIST)):
             self.assertIn("Mark all as read", text, f"{name} menu is missing the verb")
+        self.assertNotIn("Mark all as read", IOS_CHAT_VERBS)
         for name, text in (("Mac sidebar", MAC_SIDEBAR), ("Mac bot panel", MAC_PANEL),
                            ("phone list", IOS_LIST)):
             self.assertIn("markAllRead()", text, f"{name} menu does not call the model")
-        # The phone's chat verb is a row in the drawer, wired to the model by the screen, and the
-        # row carries the disabled state so it never promises a no-op.
-        self.assertIn("onMarkAllRead", IOS_CHAT_VERBS)
-        self.assertIn("isDisabled: !hasAnyUnread", IOS_CHAT_VERBS)
+        # The phone's chat page no longer carries the row, but the screen still passes the closure
+        # the page takes — the parameter stayed so the page's signature did not churn for a row that
+        # is not drawn.
         self.assertIn("onMarkAllRead: { closeDrawer(); model.markAllRead() }", IOS_CHAT)
         # A disabled state, so the item never promises a no-op.
         for text in (MAC_SIDEBAR, IOS_LIST):

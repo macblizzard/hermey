@@ -246,22 +246,19 @@ public struct Composer: View {
             // A floating field draws its own surface; a bar keeps its control fill, which is part of
             // the bar rather than something hovering over the text.
             if floats {
-                // The shared recipe, in the composer's own shape: a backdrop blur, light gathered at
-                // the top, and a rim that catches the top edge only. No uniform border, no drop
-                // shadow — both draw a hard frame around a surface that is meant to have thickness.
-                Self.floatingShape
-                    .fill(.ultraThinMaterial)
-                    .overlay(Self.floatingShape.fill(GlassSurface.wash))
-                    .overlay(Self.floatingShape.stroke(GlassSurface.rim, lineWidth: 1))
+                // The platform's glass, in the composer's own shape. Nothing painted over it: no
+                // wash, no rim, no shadow — each of those is a drawing of glass rather than glass,
+                // and next to the system's own surfaces they read as frosting.
+                Color.clear.hermeyGlass(Self.floatingShape, interactive: true)
             } else {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                     .fill(Tokens.control)
             }
         }
         .overlay {
-            // Floating: no outline and no shadow. Both are things laid *on* glass, and glass is
-            // supposed to carry its own edge — a hairline is what turned it back into a drawn box.
-            // A bar still gets its rule, because a bar is a piece of chrome, not a lens.
+            // Floating: nothing at all. The glass carries its own edge, and every line drawn on top
+            // of it is a line Apple's glass does not have. A bar still gets its rule, because a bar
+            // is a piece of chrome rather than a lens.
             if !floats {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                     .strokeBorder(isFieldFocused ? Tokens.borderFocus : Tokens.borderStrong,

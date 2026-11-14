@@ -435,19 +435,6 @@ struct ConversationScreen: View {
         return nil
     }
 
-    /// The two fades the mask always carries, top and bottom, in points.
-    private static let maskFades: CGFloat = 96 + 44
-
-    /// The strip at the foot of the transcript that the composer may claim.
-    ///
-    /// Unclamped it is `composerHeight + 12`, which eight lines plus a reply strip plus an
-    /// attachment strip makes taller than a phone in landscape: the mask's stack then overflows the
-    /// scroll view, SwiftUI centres the overflow past the top edge, and the transcript is masked
-    /// solid — which arrives as "the box grew and clipped the conversation".
-    private var maskFoot: CGFloat {
-        min(composerHeight + 12, max(0, transcriptHeight - Self.maskFades))
-    }
-
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
     /// the field has grown to, and the transcript's fade sits under it.
     private var floatingComposer: some View {
@@ -607,16 +594,13 @@ struct ConversationScreen: View {
             // out. The chrome is drawn above this and stays crisp.
             .mask(
                 VStack(spacing: 0) {
+                    // The top only. There is no fade at the foot any more: a band that darkened or
+                    // dissolved the last few lines is the shade that kept appearing above the
+                    // composer, and it is the one thing glass cannot work through. Below the fade
+                    // the transcript stays at full strength, all the way under the capsule.
                     LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
                         .frame(height: 96)
                     Rectangle().fill(Color.black)
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 44)
-                    // Behind the capsule the transcript stays at full strength on purpose: glass
-                    // refracts what is under it, and a fade that reached this far left it with
-                    // nothing but canvas to refract — which reads as a black box, not as glass.
-                    Rectangle().fill(Color.black)
-                        .frame(height: maskFoot)
                 }
             )
             // The way back to the newest message, on the same rule as the desktop's: it appears

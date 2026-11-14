@@ -43,9 +43,8 @@ class DrawerFooterTests(unittest.TestCase):
     def test_the_footer_scrolls_with_the_menu(self) -> None:
         # The hint sat under the scroll view, so its line stayed put while the rows scrolled past —
         # which read as a rule drawn over the "Compact" row.
-        hint = "Swipe down, or tap the back button, to close."
-        self.assertIn(hint, DRAWER)
-        self.assertGreater(DRAWER.index(hint), DRAWER.index("ScrollView {"))
+        # There is no hint at all now — the back button is the instruction.
+        self.assertNotIn("Swipe down, or tap the back button, to close.", DRAWER)
         # No hairlines: each group draws its own indented rules, so nothing runs edge to edge.
         self.assertEqual(DRAWER.count("Hairline("), 0)
 
@@ -68,8 +67,7 @@ class DrawerFooterTests(unittest.TestCase):
         self.assertNotIn("if let subtitle", DRAWER)
         # Everything, first row to hint, inside the one scroll view.
         self.assertGreater(DRAWER.index('row("Reset chat"'), DRAWER.index("ScrollView {"))
-        self.assertGreater(DRAWER.index("Swipe down, or tap the back button, to close."),
-                           DRAWER.index('row("Reset chat"'))
+        self.assertGreater(DRAWER.index('row("Reset chat"'), DRAWER.index("ScrollView {"))
         # And the panel helper is the only thing that groups rows.
         self.assertIn("private func panel", DRAWER)
 
