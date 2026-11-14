@@ -112,24 +112,22 @@ struct BotSidebarView: View {
     /// the row its whole width for the one moment in ten it is used. The magnifier opens it, the ✕
     /// or Escape closes it, and the roster gets its width back in between.
     private var header: some View {
-        HStack(spacing: 2) {
-            if isSearching {
-                MacSidebarSearchField(text: $searchQuery, prompt: "")
-                    .layoutPriority(1)
-                    .accessibilityIdentifier("sidebar.botSearch")
-
-                OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
-                    .help("Close search (esc)")
-            } else {
+        VStack(spacing: 0) {
+            // The row of verbs does not change when search opens: the field drops in **under** the
+            // button that asked for it. Opened in place, the field took the row's own line — the
+            // traffic lights' line — and blended into the window's chrome (reported 2026-11-14).
+            HStack(spacing: 2) {
                 // Every control in one cluster on the right, none on the left: the row is a row of
                 // verbs for the list below it, and a verb split across both edges reads as two
                 // groups when it is one.
                 Spacer(minLength: 0)
 
-                OpenBotIconButton("magnifyingglass", label: "Search bots", size: .small) {
-                    isSearching = true
+                OpenBotIconButton("magnifyingglass",
+                                  label: isSearching ? "Close search" : "Search bots",
+                                  size: .small) {
+                    if isSearching { closeSearch() } else { isSearching = true }
                 }
-                .help("Search bots")
+                .help(isSearching ? "Close search (esc)" : "Search bots")
 
                 // The panel's own toggle, where Rakazo keeps it. The chat header shows one only
                 // while this panel is hidden, so the door is never gone.
@@ -151,15 +149,30 @@ struct BotSidebarView: View {
                 .help("Settings")
                 .accessibilityLabel("Settings")
             }
+            .padding(.horizontal, Geometry.sidebarInset)
+            // The traffic-light strip: the panel's fill runs to the window's top edge and the row
+            // sits on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the
+            // same line as the chat header's pill.
+            .padding(.top, WorkspaceShell.titlebarStrip)
+            .frame(height: WorkspaceShell.titlebarStrip + 34)
+
+            if isSearching {
+                HStack(spacing: 6) {
+                    MacSidebarSearchField(text: $searchQuery, prompt: "")
+                        .layoutPriority(1)
+                        .accessibilityIdentifier("sidebar.botSearch")
+
+                    OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
+                        .help("Close search (esc)")
+                }
+                .padding(.horizontal, Geometry.sidebarInset)
+                .padding(.top, 2)
+                .accessibilityIdentifier("sidebar.searchRow")
+            }
         }
-        .padding(.horizontal, Geometry.sidebarInset)
-        // The traffic-light strip: the panel's fill runs to the window's top edge and the row sits
-        // on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the same line
-        // as the chat header's pill.
-        .padding(.top, WorkspaceShell.titlebarStrip)
-        .frame(height: WorkspaceShell.titlebarStrip + 34)
         .padding(.bottom, 6)
         .onExitCommand { if isSearching { closeSearch() } }
+        .animation(.easeOut(duration: 0.12), value: isSearching)
     }
 
     private func closeSearch() {

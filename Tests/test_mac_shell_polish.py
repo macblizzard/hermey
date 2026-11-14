@@ -44,12 +44,16 @@ class ThePillFloats(unittest.TestCase):
 class TheSidebarRowIsIcons(unittest.TestCase):
     def test_search_is_a_button_not_a_box(self) -> None:
         self.assertIn("private var isSearching", SIDEBAR)
-        # The field only exists inside the searching branch.
-        searching = SIDEBAR.split("if isSearching {", 1)[1].split("} else {", 1)[0]
-        self.assertIn("MacSidebarSearchField", searching)
-        outside = SIDEBAR.split("if isSearching {", 1)[0]
-        self.assertNotIn("MacSidebarSearchField", outside)
         self.assertIn('OpenBotIconButton("magnifyingglass"', SIDEBAR)
+        # The field is the *second* row, not the first: opened in place it took the traffic lights'
+        # line and blended into the window's chrome (reported 2026-11-14). So the icon row comes
+        # first and always keeps its buttons, and the field appears only while searching, after it.
+        row, rest = SIDEBAR.split("if isSearching {", 1)
+        self.assertNotIn("MacSidebarSearchField", row)
+        self.assertIn("MacSidebarSearchField", rest)
+        self.assertIn('OpenBotIconButton("magnifyingglass"', row,
+                      "the button that opens search stays in the row while search is open")
+        self.assertIn("sidebar.searchRow", SIDEBAR)
 
     def test_the_panels_toggle_lives_in_the_panel(self) -> None:
         self.assertIn('OpenBotIconButton("sidebar.left"', SIDEBAR)

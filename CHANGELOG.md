@@ -53,7 +53,26 @@ All notable changes to Hermey are recorded here. The format follows
     which iOS schedules — typically tens of minutes, not seconds. Instant delivery there needs an
     APNs entitlement a sideloaded personal-team build cannot carry.
 
+### Added
+- **Delete a bot from its own settings, on both shells.** It used to live only under Manage bots —
+  a list of switches, which is where you go to hide a row, not to remove one. It is the last section,
+  alone, and asks once.
+- **Escape closes the topmost pane on the Mac**: full-screen computer → computer pane → bot panel →
+  sidebar, in that order. A text field keeps Escape for itself, and a sheet keeps its own.
+
 ### Fixed
+- **The computer takes the sidebar's place, on the leading edge.** It used to add a third pane and
+  grow the window to fit it, which squeezed the transcript it was opened to sit beside.
+- **The sidebar's search field drops in *under* the row** instead of replacing it. In place, the
+  field took the traffic lights' line and blended into the window's chrome.
+- **The chat pill sits a few points off the window's top edge**, and the roster starts a little
+  lower, so a selected first row is not half-faded before the list has scrolled.
+- **"Use its initials instead" is gone from the add-bot sheet** — the screen exists to give a bot a
+  face, and the row asked people to opt out of it.
+- **"Show reasoning" off now hides reasoning, including what is already in the history.** The switch
+  only gated the *live* reasoning block, and the client synthesises a reasoning row when a turn ends
+  — so the text disappeared while it streamed and came back with the answer. Row visibility is one
+  rule now (`TranscriptVisibility`), applied to both shells.
 - **The Mac window is edge to edge at the top, the way Rakazo is.** `.hiddenTitleBar` removed the
   title bar but not the inset that stood where it was, so both panes began ~32 pt down and the
   transcript was clipped against that line — the strip read as a title bar and the first visible

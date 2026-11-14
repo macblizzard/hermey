@@ -141,6 +141,9 @@ struct SidebarBotList: View {
                     }
                 }
             }
+            // The first row's own rounded corner was landing on the window's top edge, so the
+            // selected row looked half-faded before the list had scrolled at all (2026-11-14).
+            .padding(.top, 6)
         }
 
         if fillsAvailableHeight {

@@ -154,3 +154,41 @@ final class TranscriptVisibilityTests: XCTestCase {
         XCTAssertTrue(TranscriptVisibility.rows(onlyCards, showToolCalls: false).isEmpty)
     }
 }
+
+/// Reasoning is a row like any other, and `showReasoning` is the switch for it.
+///
+/// The bug it fixes: the flag gated only the *live* reasoning block, so reasoning vanished while it
+/// streamed and came back with the answer — the client synthesises a reasoning row when a turn ends,
+/// and that row was never filtered.
+final class ReasoningVisibilityTests: XCTestCase {
+
+    private func entry(_ id: String, _ role: TranscriptEntry.Role, _ text: String = "") -> TranscriptEntry {
+        TranscriptEntry(id: id, role: role, text: text, tool: nil)
+    }
+
+    private var conversation: [TranscriptEntry] {
+        [entry("u1", .user, "what changed"),
+         entry("r1", .reasoning, "the bot thought"),
+         entry("a1", .assistant, "everything")]
+    }
+
+    func testReasoningRowsAreHiddenWhenReasoningIsOff() {
+        let visible = TranscriptVisibility.rows(conversation, showToolCalls: true, showReasoning: false)
+        XCTAssertEqual(visible.map(\.id), ["u1", "a1"])
+        XCTAssertFalse(visible.contains { $0.role == .reasoning })
+    }
+
+    func testReasoningRowsSurviveWhenReasoningIsOn() {
+        let visible = TranscriptVisibility.rows(conversation, showToolCalls: true, showReasoning: true)
+        XCTAssertEqual(visible.map(\.id), ["u1", "r1", "a1"])
+    }
+
+    func testTheTwoSwitchesAreIndependent() {
+        let cardsOff = TranscriptVisibility.rows(conversation + [entry("t1", .tool)],
+                                                 showToolCalls: false, showReasoning: true)
+        XCTAssertEqual(cardsOff.map(\.id), ["u1", "r1", "a1"])
+        let bothOff = TranscriptVisibility.rows(conversation + [entry("t1", .tool)],
+                                                showToolCalls: false, showReasoning: false)
+        XCTAssertEqual(bothOff.map(\.id), ["u1", "a1"])
+    }
+}

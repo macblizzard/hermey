@@ -2640,7 +2640,9 @@ public final class AppModel: ObservableObject {
     /// The rows the transcript draws. Every other reader (counts, search over history, the last
     /// reply) keeps `transcript`: hiding a card is a display choice, not a loss of history.
     public var visibleTranscript: [TranscriptEntry] {
-        TranscriptVisibility.rows(transcript, showToolCalls: showToolCalls)
+        TranscriptVisibility.rows(transcript,
+                                  showToolCalls: showToolCalls,
+                                  showReasoning: showReasoning)
     }
 
     /// The running turn's cards, or nothing when the user turned tool calls off.

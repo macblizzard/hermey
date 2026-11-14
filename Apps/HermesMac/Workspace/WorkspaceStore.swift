@@ -363,9 +363,15 @@ final class WorkspaceStore: ObservableObject {
     /// shared computer is open. `WorkspaceRoot` draws to this and `WindowWidthFitter` grows the window
     /// to it, so a pane opening can never clip the shell's edges.
     var minimumWindowWidth: CGFloat {
-        WindowLayout.minimumWidth(sidebarWidth: isSidebarHidden ? nil : sidebarWidth,
-                                  panelOpen: isComputerPanelPresented,
-                                  botPanelOpen: isBotPanelPresented)
+        // The computer takes the sidebar's slot now, so it is not a third pane: the sum it needs is
+        // the leading pane's, not the sidebar's plus one.
+        let leadingPane: CGFloat? = {
+            if isComputerPanelPresented { return max(sidebarWidth, WindowLayout.computerMin) }
+            return isSidebarHidden ? nil : sidebarWidth
+        }()
+        return WindowLayout.minimumWidth(sidebarWidth: leadingPane,
+                                         panelOpen: false,
+                                         botPanelOpen: isBotPanelPresented)
     }
 
     /// One sentence about where the pairing lives, for Settings.
@@ -861,6 +867,26 @@ final class WorkspaceStore: ObservableObject {
     func toggleComputerPanel() {
         isComputerPanelPresented.toggle()
         if !isComputerPanelPresented { isComputerFullScreen = false }
+    }
+
+    /// What Escape closes, biggest thing first.
+    ///
+    /// The panes are not modal, so nothing owned the key: the palette answered Escape and everything
+    /// else ignored it. The order is the reverse of opening — the full-screen computer covers the
+    /// window, the computer pane covers a side of it, the bot panel covers the other, and the sidebar
+    /// is the last thing "close this" means.
+    ///
+    /// A field that is being typed in keeps Escape for itself: `EscapeKeyCatcher` checks the first
+    /// responder before it calls this.
+    @discardableResult
+    func closeTopmostOnEscape() -> Bool {
+        if isPalettePresented { closePalette() }
+        else if isComputerFullScreen { isComputerFullScreen = false }
+        else if isComputerPanelPresented { isComputerPanelPresented = false }
+        else if isBotPanelPresented { isBotPanelPresented = false }
+        else if !isSidebarHidden { toggleSidebar() }
+        else { return false }
+        return true
     }
 
     /// The one place a real socket is built.
