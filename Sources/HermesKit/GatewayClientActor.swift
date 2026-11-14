@@ -428,6 +428,13 @@ public actor GatewayClient: GatewayClientProtocol {
         try await sessionPointer.setRoutinePaused(profile, jobID: jobID, paused: paused)
     }
 
+    /// Memory is the bridge's as well: it is a file in the bot's own home, which the gateway's
+    /// `profiles.describe` does not report and its `profiles.configure` does not write.
+    public func memory(_ profile: String) async throws -> BotMemory {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.memory(profile)
+    }
+
     /// Rooms are the bridge's, like the pointer and bot management.
     public func rooms() async throws -> [RoomSummary] {
         guard let sessionPointer else { return [] }

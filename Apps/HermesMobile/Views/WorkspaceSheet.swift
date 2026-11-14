@@ -16,6 +16,10 @@ struct WorkspaceSheet: View {
     @State private var listing: WorkspaceListing?
     @State private var failure: String?
     @State private var isLoading = true
+    /// A file on its way to another app, and the one being fetched right now.
+    @State private var shared: SharedFile?
+    @State private var sharing: WorkspaceFile.ID?
+    @State private var shareFailure: String?
 
     private var written: [WorkspaceFile] {
         (listing?.files ?? []).filter(\.isFromBot)
@@ -90,6 +94,38 @@ struct WorkspaceSheet: View {
         }
         .listStyle(.insetGrouped)
         .refreshable { await load() }
+        .sheet(item: $shared) { item in
+            ActivityShareSheet(url: item.url)
+                // The staged copy is this app's litter; the other app has its own by now.
+                .onDisappear { WorkspaceSharing.discard(item.url) }
+        }
+        .alert("Could not share this file", isPresented: shareFailureBinding) {
+            Button("OK") { shareFailure = nil }
+        } message: {
+            Text(shareFailure ?? "")
+        }
+    }
+
+    private var shareFailureBinding: Binding<Bool> {
+        Binding(get: { shareFailure != nil }, set: { if !$0 { shareFailure = nil } })
+    }
+
+    /// Fetch the document, stage it under its own name, hand it to the system sheet.
+    ///
+    /// A link cannot be shared here: every bridge URL is behind a single-use device ticket, so a URL
+    /// handed to Messages would be dead before the other side opened it. What travels is the file.
+    private func share(_ file: WorkspaceFile) async {
+        sharing = file.id
+        shareFailure = nil
+        defer { sharing = nil }
+        do {
+            let bytes = try await client.data(profile: bot.id, file: file).bytes
+            shared = SharedFile(url: try WorkspaceSharing.stage(bytes, named: file.name))
+        } catch let error as WorkspaceError {
+            shareFailure = error.errorDescription
+        } catch {
+            shareFailure = error.localizedDescription
+        }
     }
 
     private func row(_ file: WorkspaceFile) -> some View {
@@ -120,6 +156,26 @@ struct WorkspaceSheet: View {
             }
             .padding(.vertical, 2)
         }
+        .contextMenu {
+            Button {
+                Task { await share(file) }
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                Task { await share(file) }
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .tint(Tokens.accent)
+        }
+        .overlay(alignment: .trailing) {
+            if sharing == file.id {
+                ProgressView().controlSize(.mini).padding(.trailing, 4)
+            }
+        }
     }
 
     private func load() async {
@@ -147,6 +203,7 @@ struct WorkspaceDocumentView: View {
     @State private var contentType: String?
     @State private var failure: String?
     @State private var isLoading = true
+    @State private var shared: SharedFile?
 
     var body: some View {
         Group {
@@ -167,6 +224,25 @@ struct WorkspaceDocumentView: View {
         }
         .navigationTitle(file.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            // The bytes are already here, so the share is immediate — and it is the same file, under
+            // the same name, that the row's long press produces.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    guard let bytes else { return }
+                    do { shared = SharedFile(url: try WorkspaceSharing.stage(bytes, named: file.name)) }
+                    catch { failure = error.localizedDescription }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(bytes == nil)
+                .accessibilityLabel("Share \(file.name)")
+            }
+        }
+        .sheet(item: $shared) { item in
+            ActivityShareSheet(url: item.url)
+                .onDisappear { WorkspaceSharing.discard(item.url) }
+        }
         .task { await load() }
     }
 

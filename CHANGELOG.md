@@ -6,6 +6,25 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **What a bot *is*, in one place: its portrait, its soul, and its memory.** The bot's own page has
+  two new rows — **Soul** (its `SOUL.md`, editable) and **Memory** — and Bot Settings owns the three
+  identity verbs together: **Bot icon**, **Soul** and **Memory**, beside the description. The icon
+  and the soul used to be reachable only by long-pressing the bot's row, which is a gesture nobody
+  discovers; the long press is down to what acts on the *row* (settings, pin, hide).
+  - **Memory is what it carries into every turn**, and no screen in either app showed it before: two
+    documents, `MEMORY.md` (its own notes) and `USER.md` (who you are and what you prefer), each
+    with its character count, since that text is replayed into every turn. Read-only — the agent
+    maintains those files with its own memory tool, and a text view in a viewer is the wrong place
+    to break its rules. A bot that has remembered nothing says so; one whose file could not be read
+    says that instead, because the two are different facts.
+  - The Mac reads the same two documents from bot settings, from the same shared sheet.
+- **A Library file can leave the app.** Long-press a document (or swipe it) on the phone and the
+  system share sheet takes the file itself — AirDrop, Messages, Files — with the open document
+  offering the same verb in its toolbar. On the Mac the document view writes a copy wherever you
+  pick, which also works for a kind of file the viewer will not preview.
+  - It shares the *bytes*, not a link: every bridge URL sits behind a single-use device ticket, so a
+    URL handed to another app would be dead before it was opened. The staged copy is deleted as soon
+    as the share sheet closes, and the file name is reduced to one path component first.
 - **Routines: what a bot runs on its own, with a switch beside each one.** The bot page grew a
   Routines row (the Mac's bot panel has the same row) that lists this bot's scheduled jobs — the
   name, the schedule in the host's own words, when it next runs, and how the last run went, including

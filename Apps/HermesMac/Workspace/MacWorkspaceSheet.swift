@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
@@ -189,6 +190,15 @@ struct MacWorkspaceDocumentView: View {
                 Text("\(file.sizeDescription) · \(file.kind.uppercased())")
                     .font(TypeScale.font(TypeScale.micro))
                     .foregroundStyle(Tokens.textSecondary)
+                // The phone hands the file to the share sheet; a Mac saves a copy, which is the same
+                // gesture and the one a desktop actually offers. It fetches for itself, so it works
+                // for a kind of file the viewer will not preview.
+                Button("Save…") { saveToDisk() }
+                    .font(TypeScale.font(TypeScale.sm))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Tokens.accentText)
+                    .fixedSize()
+                    .help("Save a copy…")
             }
             .padding(.horizontal, 14)
             .frame(height: 34)
@@ -253,6 +263,25 @@ struct MacWorkspaceDocumentView: View {
                     .foregroundStyle(Tokens.textSecondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// Write the document wherever the user picks, fetching it first when the viewer never needed
+    /// the bytes (a `.zip`, a `.mov` — anything without a preview).
+    private func saveToDisk() {
+        Task {
+            var data = bytes
+            if data == nil {
+                do { data = try await client.data(profile: profile, file: file).bytes }
+                catch { failure = error.localizedDescription; return }
+            }
+            guard let data else { return }
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = file.name
+            panel.canCreateDirectories = true
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            do { try data.write(to: url, options: .atomic) }
+            catch { failure = "could not write \(url.lastPathComponent): \(error.localizedDescription)" }
         }
     }
 

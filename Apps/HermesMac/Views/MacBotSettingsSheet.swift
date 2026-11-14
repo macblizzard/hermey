@@ -23,6 +23,7 @@ struct MacBotSettingsSheet: View {
 
     @State private var showingIconPicker = false
     @State private var showingSoul = false
+    @State private var showingMemory = false
     @State private var catalog: ModelCatalog?
     @State private var error: String?
     @State private var busy = false
@@ -91,6 +92,10 @@ struct MacBotSettingsSheet: View {
         .sheet(isPresented: $showingIconPicker) {
             MacBotIconPicker(bot: bot, store: store)
         }
+        .sheet(isPresented: $showingMemory) {
+            BotMemorySheet(botName: bot.displayName,
+                           load: { try await model.memory(for: bot.id) })
+        }
         .sheet(isPresented: $showingSoul) {
             SoulEditorSheet(
                 botName: bot.displayName,
@@ -155,6 +160,10 @@ struct MacBotSettingsSheet: View {
             SectionCaption("IDENTITY")
             OpenBotButton("Edit SOUL.md…", kind: .secondary, size: .small) {
                 showingSoul = true
+            }
+            // Read-only, and read fresh: the agent rewrites these two whenever it learns something.
+            OpenBotButton("Memory…", kind: .secondary, size: .small) {
+                showingMemory = true
             }
             Text("The prompt this bot is built on. Saved to the host; a conversation already open keeps the soul it started with until it is reset.")
                 .font(TypeScale.font(TypeScale.caption))

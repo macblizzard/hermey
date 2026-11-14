@@ -41,6 +41,7 @@ from .workspace import create_workspace_router
 from .bot_previews import create_bot_previews_router
 from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
+from .bot_memory import create_bot_memory_router
 from .rooms import create_rooms_router
 from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
@@ -206,6 +207,7 @@ def create_app(
     # Operator-side: the agent on this host messages another bot in that bot's own chat.
     app.include_router(create_bot_message_router(runtime))
     app.include_router(create_bot_admin_router(runtime))
+    app.include_router(create_bot_memory_router(runtime))
     app.include_router(create_rooms_router(runtime))
     # The shared Bot Computer: status/lease/thumbnail over HTTP, raw RFB over its own WebSocket.
     # The two hooks exist for tests: production dials the configured gateway.

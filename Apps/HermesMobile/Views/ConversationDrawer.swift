@@ -26,6 +26,8 @@ struct ConversationDrawer: View {
     let onSkills: () -> Void
     let onMCP: () -> Void
     let onRoutines: () -> Void
+    let onSoul: () -> Void
+    let onMemory: () -> Void
     let onSearch: () -> Void
     let onSettings: () -> Void
     let onCompact: () -> Void
@@ -147,6 +149,15 @@ struct ConversationDrawer: View {
                 row("Routines", systemImage: "clock.arrow.circlepath", run: onRoutines)
             }
 
+            // What this bot *is*, as against what it can reach for: the prompt file it is built on,
+            // and what it carries into every turn. Both used to need a long press on the list, which
+            // is a gesture nobody discovers (reported 2026-11-14).
+            panel {
+                row("Soul", systemImage: "doc.text", run: onSoul)
+                rowDivider
+                row("Memory", systemImage: "brain", run: onMemory)
+            }
+
             // Settings is gone from this page: Edit, in the header, opens the same sheet, and two
             // doors to one room is one door too many.
             panel {
@@ -230,8 +241,8 @@ extension ConversationDrawer {
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,
                            onComputer: {}, onWorkspace: {}, onSkills: {}, onMCP: {},
-                           onRoutines: {}, onSearch: {}, onSettings: {}, onCompact: {},
-                           onMarkAllRead: {},
+                           onRoutines: {}, onSoul: {}, onMemory: {},
+                           onSearch: {}, onSettings: {}, onCompact: {}, onMarkAllRead: {},
                            onSpeakChange: { _ in }, onReset: {}, onClose: {})
     }
 }
