@@ -241,6 +241,29 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
         self.assertNotIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
 
 
+class TheEmptyChatIsAnInvitation(unittest.TestCase):
+    CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
+
+    def test_it_fills_the_view_and_sits_in_the_middle(self) -> None:
+        # It used to be the first row of a lazy stack: a short block under the pill with a screenful
+        # of nothing beneath it, which read as a screen that had failed to load (2026-11-14).
+        self.assertIn("private var blankState: some View", self.CHAT)
+        self.assertIn(".containerRelativeFrame(.vertical) { height, _ in", self.CHAT)
+        self.assertIn("max(0, height - 74 - composerHeight)", self.CHAT)
+        self.assertIn("if isBlank, !isOpening {\n                        blankState", self.CHAT)
+
+    def test_it_shows_the_bots_own_face_and_words(self) -> None:
+        self.assertIn("BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 72)",
+                      self.CHAT)
+        self.assertIn("private var subtitle: String", self.CHAT)
+        self.assertIn("return description", self.CHAT)
+
+    def test_the_copy_names_the_bot_not_the_host(self) -> None:
+        # "the moment Hermes needs one" on a bot called nestor asked the reader who Hermes was.
+        transcript = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text(encoding="utf-8")
+        self.assertNotIn("Hermes needs one", transcript)
+
+
 class TheFaceGalleryDropsTheInitialsRow(unittest.TestCase):
     def test_there_is_no_initials_option(self) -> None:
         # "Use its initials instead" sat under the shape grid and asked the user to opt out of the

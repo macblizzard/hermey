@@ -799,6 +799,8 @@ private struct MobileStandaloneShareMenu: ViewModifier {
 // MARK: - Empty state
 
 /// An empty conversation is a prompt, not an apology.
+/// Preview fixture only: the empty chat itself is `ConversationScreen.blankState`, which fills the
+/// viewport. This stays small so the transcript previews below have something to stand in for it.
 struct MobileTranscriptEmpty: View {
     let title: String
 
@@ -809,7 +811,7 @@ struct MobileTranscriptEmpty: View {
                 .font(TypeScale.font(TypeScale.xl, weight: .semibold))
                 .foregroundStyle(Tokens.textPrimary)
                 .multilineTextAlignment(.center)
-            Text("Ask anything. Approvals show up here the moment Hermes needs one.")
+            Text("Ask anything.")
                 .font(TypeScale.font(TypeScale.lg))
                 .foregroundStyle(Tokens.textMuted)
                 .multilineTextAlignment(.center)
