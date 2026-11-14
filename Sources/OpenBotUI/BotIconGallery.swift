@@ -177,13 +177,12 @@ public struct BotIconPortrait: View {
     private var tint: Color { color }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
-    @State private var blinking = false
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Motion is a courtesy, not the point: below 18 pt the face is a legend for a row, and a small
-    /// thing that moves is a small thing that catches the eye for no reason. Reduce Motion wins over
-    /// everything (#100).
-    private var motionIsOn: Bool { !reduceMotion && size >= 18 }
+    /// thing that moves is a small thing that catches the eye for no reason. The app's own switch
+    /// (Settings → Appearance) answers first; without one, the system's Reduce Motion does.
+    private var motionIsOn: Bool { BotFaceMotion.allows(reduceMotion: reduceMotion, size: size) }
 
     public var body: some View {
         ZStack {
@@ -197,10 +196,15 @@ public struct BotIconPortrait: View {
             // outline that makes a shape recognisable never changes (#100).
             BotFaceLight(icon: icon, size: size)
 
-            BotEyes(size: size,
-                    tilt: icon.eyeTilt,
-                    blink: blinking ? 1 : 0,
-                    squint: isWorking ? 1 : 0)
+            // The blink is read from the clock, not from a `@State` flag: a timeline over just the
+            // eyes cannot be cancelled by a re-render, cannot be dropped for being written from the
+            // wrong actor, and costs ten rebuilds a second of two rounded rectangles.
+            TimelineView(.animation(minimumInterval: 0.1, paused: !motionIsOn || scenePhase != .active)) { context in
+                BotEyes(size: size,
+                        tilt: icon.eyeTilt,
+                        blink: blink(at: context.date),
+                        squint: isWorking ? 1 : 0)
+            }
 
             switch status {
             case .needsYou: NeedsYouFlash(size: size, tint: tint)
@@ -213,52 +217,31 @@ public struct BotIconPortrait: View {
         // Tier two: a slow breath, and a blink every few seconds. Both are implicit animations over
         // two `@State` flags rather than a `TimelineView`, deliberately: a timeline rebuilds the view
         // tree every frame, and this face is drawn once per roster row (see #99).
-        .scaleEffect(breathing ? 1.025 : 1.0)
+        // The breath, system-driven: `phaseAnimator` runs the cycle on the render server, with no
+        // state of ours to write and nothing to cancel. A single phase means "still".
+        .phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0], trigger: motionIsOn) { content, phase in
+            content.scaleEffect(1.0 + 0.025 * phase)
+        } animation: { _ in .easeInOut(duration: 1.8) }
         // Squinting is a state change, not a loop, so it animates once on its own.
         .animation(.easeOut(duration: 0.22), value: isWorking)
-        .task(id: icon) { await runFaceMotion() }
         .accessibilityLabel("\(icon.title) bot face")
     }
 }
 
 
-/// The breath and the blink.
+/// The blink, as a function of the clock.
 ///
-/// Breathing is one flag flipped once; SwiftUI's own repeat-forever animation does the rest on the
-/// render server, so a roster of twenty faces costs nothing per frame. The blink is a short loop
-/// with a per-face offset, so a list does not blink in unison — which reads as a rendering glitch
-/// rather than as faces.
+/// Each face keeps its own period — derived from the icon's own name, so equal faces match and a
+/// roster of eight does not blink in unison, which reads as a rendering glitch rather than as faces.
+/// The shut is about a tenth of a second: enough to see, short enough not to look like a wink.
 private extension BotIconPortrait {
-    /// `@MainActor` is the whole point: without it this loop resumes from `Task.sleep` on a
-    /// background thread, and a `@State` write from there is silently ignored by SwiftUI — the face
-    /// drew its light and never moved, which is exactly what the Mac reported (2026-11-14).
-    @MainActor
-    func runFaceMotion() async {
-        guard motionIsOn else {
-            breathing = false
-            blinking = false
-            return
-        }
-        // One flag, one repeat-forever animation: the render server does the breathing, so a roster
-        // of twenty faces costs nothing per frame.
-        withAnimation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true)) {
-            breathing = true
-        }
-
-        // A deterministic offset from the face's own name: same bot, same rhythm, no `Random` (the
-        // tests would have nothing to hold on to, and two faces drawn from one icon should match).
+    func blink(at date: Date) -> Double {
+        guard motionIsOn else { return 0 }
         let seed = Double(abs(icon.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % 7)) * 0.31
-        var gap = 2.9 + seed
-
-        while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: UInt64(gap * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.09)) { blinking = true }
-            try? await Task.sleep(nanoseconds: 130_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.13)) { blinking = false }
-            gap = 2.4 + seed
-        }
+        let period = 3.4 + seed
+        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period)
+        // The last 0.14 s of every period is the blink.
+        return phase > period - 0.14 ? 1 : 0
     }
 }
 

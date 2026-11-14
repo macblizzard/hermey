@@ -10,6 +10,10 @@ import SwiftUI
 /// setting that can make the app unusable is not a setting worth shipping.
 struct AppearanceSettingsTab: View {
     @AppStorage(WindowAppearance.opacityKey) private var opacity: Double = 1
+    /// The faces' own switch. Unset follows the system's Reduce Motion; either way an explicit
+    /// answer here wins, because a person who opens this page and flips it means it.
+    @AppStorage(BotFaceMotion.defaultsKey) private var animateFaces = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
 
     private var percent: Int { Int((opacity * 100).rounded()) }
@@ -26,6 +30,24 @@ struct AppearanceSettingsTab: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             ThemePicker()
+
+            Divider().padding(.vertical, 2)
+
+            Text("Bots")
+                .font(TypeScale.font(Tokens.textLG, weight: .semibold))
+                .foregroundStyle(Tokens.textPrimary)
+
+            Toggle("Animate bot faces", isOn: $animateFaces)
+                .toggleStyle(.switch)
+                .font(TypeScale.font(TypeScale.md))
+                .accessibilityIdentifier("appearanceAnimateFaces")
+
+            Text(reduceMotion
+                 ? "Breathe, blink and squint. macOS's Reduce Motion is on and is being overridden here — turn this off to follow it."
+                 : "Breathe, blink and squint. Faces smaller than 18 pt stay still either way.")
+                .font(TypeScale.font(TypeScale.caption))
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider().padding(.vertical, 2)
 
