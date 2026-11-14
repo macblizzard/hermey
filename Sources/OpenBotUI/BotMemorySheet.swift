@@ -52,7 +52,9 @@ public struct BotMemorySheet: View {
                 }
             }
             .navigationTitle("Memory")
-            .navigationBarTitleDisplayMode(.inline)
+            // Cross-platform on purpose: `navigationBarTitleDisplayMode` does not exist on macOS,
+            // and this sheet is drawn by both shells.
+            .inlineSheetTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
