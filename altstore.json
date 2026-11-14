@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.263",
+          "buildVersion": "263",
+          "date": "2026-11-14T01:50:15Z",
+          "localizedDescription": "The Mac stops following the stream, and the phone floats its pill and composer over the chat.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.263/Hermey-0.1.263-b263.ipa",
+          "size": 2243443,
+          "minOSVersion": "17.0",
+          "sha256": "d86df0ef70c5256e1cf22d0c0970798c510951f25e3fb9ec75dad3741350908a"
+        },
+        {
           "version": "0.1.260",
           "buildVersion": "260",
           "date": "2026-11-14T01:10:56Z",
@@ -62,16 +72,6 @@
           "size": 2243604,
           "minOSVersion": "17.0",
           "sha256": "c6d18ebe0636793f3e57fad824a5cdc9279cf40ebcc9b3e8fbd6a2731954562a"
-        },
-        {
-          "version": "0.1.238",
-          "buildVersion": "238",
-          "date": "2026-11-13T22:07:01Z",
-          "localizedDescription": "The pill floats over the chat, the bot list fades at both ends, and the composer stopped explaining itself.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.238/Hermey-0.1.238-b238.ipa",
-          "size": 2220883,
-          "minOSVersion": "17.0",
-          "sha256": "ed0cc9f4b088197a9f76e8c5a048161917e6cf0de480a4589f2e6d23d5be4e2a"
         }
       ],
       "appPermissions": {
