@@ -54,6 +54,13 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Fixed
+- **The unread count no longer lags the banner.** The number travels in the same answer as the
+  preview, but it is a *snapshot*: the bot list opens four or five reads inside three seconds, and a
+  whole-map replace let a slower or failed answer put the count back to zero until the next 25 s
+  sweep. A reply now puts a floor of one under that bot's count the instant the banner goes up (the
+  next read replaces it with the host's exact number), only the newest read may set counts, a failed
+  read leaves the last answer standing instead of emptying every badge, and a sweep already open is
+  joined rather than repeated.
 - **The unread count is back on every bot's face, and the row's beacon with it.** The roster restyle
   of 2026-11-13 replaced both indicators with one static dot on the theory that the app-icon badge
   was enough — it is not: that number needs the app closed to be read. Both shells now show what was

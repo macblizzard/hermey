@@ -121,6 +121,34 @@ class ThePhoneDelivers(unittest.TestCase):
         self.assertIn("UnreadBadge(count: model.unreadCount(bot.id)", mac)
         self.assertIn("UnreadBeacon(diameter: 7)", mac)
 
+    def test_a_stale_answer_cannot_zero_the_count(self) -> None:
+        # The counts arrive as a snapshot and used to be applied wholesale by whichever response
+        # landed last. The list opens four or five reads inside three seconds (list appear, refresh,
+        # foreground, turn finished, the sweep), so a snapshot taken before a reply could land after
+        # one taken after it — banner standing, count gone until the next sweep. Reported
+        # 2026-11-14: "the unread badge showed up a little late".
+        self.assertIn("previewsRequestID += 1", MODEL)
+        self.assertIn("if let feed, requestID >= previewsAppliedID {", MODEL)
+        self.assertIn("previewsAppliedID = requestID", MODEL)
+
+    def test_a_failed_read_is_not_a_count_of_zero(self) -> None:
+        # Replacing the map with the feed's meant one dropped request emptied every badge on the
+        # list. `nil` has to mean "could not ask" and leave the last answer standing.
+        self.assertIn("var feed: BotPreviewFeed?", MODEL)
+        self.assertIn("bots.previews failed:", MODEL)
+        self.assertNotIn("?? BotPreviewFeed()", MODEL)
+
+    def test_the_badge_never_waits_for_a_sweep_after_the_banner(self) -> None:
+        # The banner is guarded by `lastRead`, which only moves forward, so it was reliable; the
+        # count is a snapshot and was not. The model now puts a floor under the number the moment it
+        # knows the host wrote after the mark — 1 is a lower bound, not a guess, and the next read
+        # replaces it with the host's exact count.
+        self.assertIn("if (unreadCounts[botID] ?? 0) == 0 { unreadCounts[botID] = 1 }", MODEL)
+
+    def test_one_sweep_at_a_time(self) -> None:
+        self.assertIn("if previewsInFlight && !force { return }", MODEL)
+        self.assertIn("defer { previewsInFlight = false }", MODEL)
+
     def test_a_mark_is_written_from_the_hosts_clock(self) -> None:
         # Every comparison is against host timestamps, so a mark written from a phone whose clock
         # runs fast sits in the host's future — and that bot never lights again. Both doors that
