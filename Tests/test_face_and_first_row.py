@@ -180,3 +180,62 @@ class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
         self.assertIn("static let followsNewMessages = false", self.MAC_SCROLL)
         follow = self.MAC_SCROLL.split("private func follow(", 1)[1]
         self.assertIn("guard Self.followsNewMessages else { return }", follow)
+
+
+class ThePhoneKeepsItsWayBack(unittest.TestCase):
+    """Hiding the bar must not take the swipe with it, and the chrome is a thumb's target."""
+
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    DRAWER = source("Apps", "HermesMobile", "Views", "ConversationDrawer.swift")
+    ENabler = source("Apps", "HermesMobile", "Views", "PopGestureEnabler.swift")
+
+    def test_the_swipe_back_is_restored(self) -> None:
+        # UIKit refuses the interactive pop while the bar is hidden; the enabler uncorks it.
+        self.assertIn(".restoresSwipeBack()", self.CHAT)
+        self.assertIn("interactivePopGestureRecognizer", self.ENabler)
+        self.assertIn("gesture.delegate = nil", self.ENabler)
+        # Not on the root screen: a swipe there would pop nothing and freeze the recogniser.
+        self.assertIn("navigation.viewControllers.count > 1", self.ENabler)
+
+    def test_the_composer_floats_so_it_has_no_border(self) -> None:
+        self.assertIn("floats: true", self.CHAT)
+
+    def test_the_chrome_is_a_thumbs_target(self) -> None:
+        self.assertIn(".frame(height: 42)", self.CHAT)          # the pill
+        self.assertIn("size: 28,", self.CHAT)                   # its portrait
+        self.assertIn(".frame(width: 40, height: 40)", self.CHAT)  # the back pill
+
+    def test_the_drawer_does_not_repeat_the_pill(self) -> None:
+        self.assertNotIn("Text(title)", self.DRAWER)
+        self.assertNotIn("if let subtitle", self.DRAWER)
+
+
+class TheChromeIsGlass(unittest.TestCase):
+    """Liquid Glass where the OS has it, the theme's surface where it does not — one shape either way."""
+
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    GLASS = source("Sources", "OpenBotUI", "LiquidGlass.swift")
+    COMPOSER = source("Sources", "OpenBotUI", "Composer.swift")
+
+    def test_the_helper_is_gated_and_has_a_fallback(self) -> None:
+        self.assertIn("#available(iOS 26.0, macOS 26.0, *)", self.GLASS)
+        self.assertIn("self.glassEffect(", self.GLASS)
+        # A fallback, not a second design: the same shape in the theme's surface.
+        self.assertIn("self.background(shape.fill(Tokens.surface))", self.GLASS)
+
+    def test_every_floating_pill_uses_it(self) -> None:
+        self.assertIn(".hermeyGlass(Circle(), interactive: true)", self.CHAT)   # back pill
+        self.assertIn(".hermeyGlass(Capsule(), interactive: true)", self.CHAT)  # bot pill
+        # Three: the two above and the way to the newest message.
+        self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
+
+    def test_the_composer_is_glass_only_when_it_floats(self) -> None:
+        self.assertIn("glassEffect(.regular.interactive()", self.COMPOSER)
+        floats = self.COMPOSER.split("if floats {", 1)[1].split("} else {", 1)[0]
+        self.assertIn("glassEffect", floats)
+        # A bar keeps its control fill: it is part of the bar, not hovering over the text.
+        self.assertIn("shape.fill(Tokens.control)", self.COMPOSER)
+
+    def test_the_way_back_to_the_newest_message_clears_the_composer(self) -> None:
+        control = self.CHAT.split("private func scrollToBottomControl(", 1)[1]
+        self.assertIn(".padding(.bottom, composerHeight + 12)", control)

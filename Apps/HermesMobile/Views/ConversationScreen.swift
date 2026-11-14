@@ -195,6 +195,8 @@ struct ConversationScreen: View {
         // that says which bot this is had to live inside it. Both are the desktop's arrangement
         // now — the transcript runs the full height of the screen and the chrome floats over it.
         .toolbar(.hidden, for: .navigationBar)
+        // The bar went; the swipe back is not allowed to go with it.
+        .restoresSwipeBack()
         .background(Tokens.canvas)
         // The wire's own notice, when it has one: a socket that dropped mid-turn still has to say
         // so, and it went out with the chrome that used to carry it.
@@ -342,11 +344,10 @@ struct ConversationScreen: View {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(Tokens.surface))
-                        .overlay(Circle().strokeBorder(Tokens.border, lineWidth: 1))
+                        .frame(width: 40, height: 40)
+                        .hermeyGlass(Circle(), interactive: true)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -360,7 +361,7 @@ struct ConversationScreen: View {
 
                 // A mirror of the chevron's width, so the pill is centred on the screen rather
                 // than on the space the chevron left over.
-                Color.clear.frame(width: 34, height: 34)
+                Color.clear.frame(width: 40, height: 40)
             }
 
             if isSearching {
@@ -400,7 +401,7 @@ struct ConversationScreen: View {
         } label: {
             HStack(spacing: 7) {
                 BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: 24,
+                                size: 28,
                                 status: portraitStatus)
                 Text(title)
                     .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
@@ -408,18 +409,11 @@ struct ConversationScreen: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            .padding(.leading, 4)
-            .padding(.trailing, 12)
-            .padding(.vertical, 4)
-            .frame(height: 36)
-            .background(
-                Capsule().fill(Tokens.surface)
-                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
-            )
-            .overlay(
-                Capsule().strokeBorder(showDrawer ? Tokens.borderStrong : Tokens.border,
-                                       lineWidth: 1)
-            )
+            .padding(.leading, 5)
+            .padding(.trailing, 14)
+            .frame(height: 42)
+            .hermeyGlass(Capsule(), interactive: true)
+            .shadow(color: .black.opacity(0.30), radius: 12, y: 4)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -573,7 +567,7 @@ struct ConversationScreen: View {
                     .padding(.horizontal, Geometry.chatGutter)
                     // The pill sits over this: a fresh transcript starts below it, and a long one
                     // scrolls behind it.
-                    .padding(.top, 56)
+                    .padding(.top, 62)
                     .padding(.bottom, 20)
             }
             // The sentinel reports its position in this space; without a name there is nothing to
@@ -885,6 +879,9 @@ struct ConversationScreen: View {
             }
 
             Composer(text: $model.draft,
+                     // Floating, like the desktop's: the field is a capsule over the transcript,
+                     // not a bordered box standing on the floor of a bar.
+                     floats: true,
                      placeholder: "Message \(title)",
                      isSending: model.isBusy,
                      isDisabled: sessionID == nil,
@@ -1196,15 +1193,17 @@ struct ConversationScreen: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Tokens.textSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Tokens.control))
-                    .overlay(Circle().strokeBorder(Tokens.border, lineWidth: 1))
+                    .frame(width: 38, height: 38)
+                    .hermeyGlass(Circle(), interactive: true)
                     .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .padding(.trailing, 16)
-            .padding(.bottom, 12)
+            // Above the composer, not behind it: the composer floats now, and a jump control
+            // pinned 12 pt off the floor sits under the capsule that is hiding the very rows it
+            // would take you to.
+            .padding(.bottom, composerHeight + 12)
             .transition(.opacity)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
             .accessibilityIdentifier("conversationScrollToBottom")

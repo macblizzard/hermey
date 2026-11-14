@@ -46,8 +46,9 @@ class DrawerFooterTests(unittest.TestCase):
         self.assertIn('Text("Swipe right, or tap outside, to close")', DRAWER)
         self.assertGreater(DRAWER.index("Swipe right, or tap outside, to close"),
                            DRAWER.index("ScrollView {"))
-        # The panel holds exactly one horizontal rule — the title's — and it is inside the list.
-        self.assertEqual(PANEL.count("Hairline(color: Tokens.border)"), 1)
+        # No rules in the list at all now: the title's hairline went with the title, and `section`
+        # is the separator that survived.
+        self.assertEqual(PANEL.count("Hairline("), 0)
 
     def test_the_pill_toggles_the_same_drawer_the_swipe_opens(self) -> None:
         self.assertIn("chatDrawerButton", CHAT)
@@ -62,10 +63,10 @@ class DrawerFooterTests(unittest.TestCase):
         # Nothing may sit outside the scroll view: a line left out there stays put while the rows
         # move under it, which is exactly the rule-over-Compact report.
         self.assertEqual(PANEL.count("ScrollView {"), 1)
-        self.assertLess(PANEL.index("Text(title)"), PANEL.index("Hairline(color: Tokens.border)"))
-        self.assertLess(PANEL.index("Hairline(color: Tokens.border)"),
-                        PANEL.index('row("Computer"'))
-        # Everything, title to hint, inside the one scroll view.
+        # No title and no description: the pill floats beside this panel saying both.
+        self.assertNotIn("Text(title)", PANEL)
+        self.assertNotIn("if let subtitle", PANEL)
+        # Everything, first row to hint, inside the one scroll view.
         self.assertGreater(PANEL.index('row("Reset chat"'), PANEL.index("ScrollView {"))
         self.assertGreater(PANEL.index("Swipe right, or tap outside, to close"),
                            PANEL.index('row("Reset chat"'))
