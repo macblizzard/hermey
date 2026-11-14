@@ -185,6 +185,11 @@ public struct OpenBotIconButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        // No focus ring: at launch the first focusable control in the window is this glyph row,
+        // and macOS drew its blue ring around the search icon before the pointer had moved. The
+        // ring is not information here — the hover fill is — and every one of these verbs has a
+        // menu shortcut besides.
+        .focusable(false)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)
         .accessibilityLabel(label)

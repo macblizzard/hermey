@@ -28,9 +28,13 @@ struct HermesMacApp: App {
                 // a pane and a hairline, and a window held to the two-pane sum clipped both edges.
                 .frame(minWidth: store.minimumWindowWidth, minHeight: WindowLayout.heightMin)
                 .preferredColorScheme(.dark)
-                // No-op unless the fixture launch argument was given: the real window connects
-                // nothing at launch, on purpose.
-                .task { await store.attachFixtureHostIfNeeded() }
+                // A paired host is dialled at launch: the app opens the last conversation instead
+                // of asking to be connected to one it already knows. `attachFixtureHostIfNeeded`
+                // is a no-op unless the fixture launch argument was given.
+                .task {
+                    await store.attachFixtureHostIfNeeded()
+                    await store.connectOnLaunchIfPaired()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1240, height: 840)

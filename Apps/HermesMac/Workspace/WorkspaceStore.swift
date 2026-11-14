@@ -57,6 +57,10 @@ final class WorkspaceStore: ObservableObject {
 
     /// Whether the bot panel is collapsed. Remembered between launches: a window too narrow for
     /// two panes stays narrow, and its owner should not have to hide the panel again every time.
+    /// Set by an explicit Disconnect: the one thing that keeps a launch from dialling a host the
+    /// user has just walked away from. Cleared by any connect.
+    private var didDisconnectThisRun = false
+
     @Published private(set) var isSidebarHidden = UserDefaults.standard.bool(forKey: WorkspaceStore.sidebarHiddenKey)
 
     /// What the ⌘K panel is currently listing. One entry point — "Theme switcher" — opens the
@@ -248,6 +252,7 @@ final class WorkspaceStore: ObservableObject {
     private func openConversation(for botID: String) async {
         _ = await model.endlessSession(for: botID)
         await refreshOpenBotModelLabel()
+        rememberOpenBot()
     }
 
     /// After the socket opens: nothing is on screen yet, so open the selected bot's conversation.
@@ -258,24 +263,58 @@ final class WorkspaceStore: ObservableObject {
         model.draft = drafts[bot] ?? ""
     }
 
+    /// What was open last, per host: a second machine on the same key would otherwise reopen
+    /// whichever bot the other one was last looking at.
+    private static func lastBotKey(_ host: String) -> String { "hermey.lastBot.\(host)" }
+
+    private func rememberOpenBot() {
+        guard let id = model.selectedBotID else { return }
+        UserDefaults.standard.set(id, forKey: Self.lastBotKey(hostKey))
+    }
+
+    private func restoreLastBot() {
+        guard let id = UserDefaults.standard.string(forKey: Self.lastBotKey(hostKey)),
+              model.bots.contains(where: { $0.id == id }),
+              id != model.selectedBotID else { return }
+        selectBot(id)
+    }
+
+    private var hostKey: String {
+        pairing?.displayHost ?? model.hostName
+    }
+
+    /// Called once when the window appears: a paired host is dialled without being asked.
+    func connectOnLaunchIfPaired() async {
+        guard isPaired, !connectAttempted, !didDisconnectThisRun else { return }
+        await connect()
+    }
+
     private func parkDraft() {
         if let id = model.selectedBotID { drafts[id] = model.draft }
     }
 
     // MARK: Lifecycle
 
-    /// Attach to the host. Only ever called from an explicit user action — the app makes
-    /// no network call at launch.
+    /// Attach to the host.
+    ///
+    /// The app used to make no network call at launch and wait for a **Connect** button, which put
+    /// two "Not connected" panels in front of a person every morning for a socket that was going to
+    /// come up in a second anyway. A paired host is dialled at launch and the last conversation is
+    /// reopened; `didDisconnectThisRun` is the one thing that stops it, so an explicit Disconnect is
+    /// not undone by the next launch.
     func connect() async {
         guard pairing != nil else {
             isPairSheetPresented = true
             return
         }
+        didDisconnectThisRun = false
         connectAttempted = true
         await model.start()
         if model.connection.isLive {
             startLatencyLoop()
             await loadBotFaces()
+            // The conversation that was on screen when the app closed, not "pick a bot".
+            restoreLastBot()
             await openConversationIfNeeded()
         }
     }
@@ -291,6 +330,7 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func disconnect() async {
+        didDisconnectThisRun = true
         clearBotFaces()
         stopLatencyLoop()
         await model.stop()
