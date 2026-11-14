@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.297",
+          "buildVersion": "297",
+          "date": "2026-11-14T08:05:37Z",
+          "localizedDescription": "Real Liquid Glass, no fade or mask anywhere, and a shorter bot page.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.297/Hermey-0.1.297-b297.ipa",
+          "size": 2245230,
+          "minOSVersion": "17.0",
+          "sha256": "038f274e7c4078b4503e2745f77878c86522159f6f6fa09938efc1d0d8b285ef"
+        },
+        {
           "version": "0.1.293",
           "buildVersion": "293",
           "date": "2026-11-14T07:30:37Z",
@@ -62,16 +72,6 @@
           "size": 2251177,
           "minOSVersion": "17.0",
           "sha256": "233c7384b125c4737f552e740a4ae7c8ee70c7b8beb91643990ace5712ddc9ec"
-        },
-        {
-          "version": "0.1.278",
-          "buildVersion": "278",
-          "date": "2026-11-14T03:29:53Z",
-          "localizedDescription": "Swipe back from a chat to the bot list works again.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.278/Hermey-0.1.278-b278.ipa",
-          "size": 2251786,
-          "minOSVersion": "17.0",
-          "sha256": "2bed80c87bc2352d99a0eb259a3fd49b5bb8929ccf984f67824ab568e14135cd"
         }
       ],
       "appPermissions": {
