@@ -222,35 +222,47 @@ public struct Composer: View {
             }
         }
         .background {
-            // A floating field draws its own surface: glass where the OS has it, the theme's
-            // translucent surface where it does not. A bar keeps its control fill — that one is
-            // part of the bar, not something hovering over the text.
+            // A floating field draws its own surface; a bar keeps its control fill, which is part of
+            // the bar rather than something hovering over the text.
             if floats {
-                // A capsule, not a rounded rectangle: the field floats, and a floating field whose
-                // radius is a constant reads as a box with generous corners. Half the height is
-                // the shape the references use, and the height is the height.
-                if #available(iOS 26.0, macOS 26.0, *) {
-                    Rectangle()
-                        .fill(.clear)
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                        .shadow(color: .black.opacity(0.28), radius: 14, y: 4)
-                } else {
-                    Capsule().fill(Tokens.surface.opacity(0.97))
-                        .shadow(color: .black.opacity(0.30), radius: 14, y: 4)
-                }
+                Self.floatingShape
+                    // A material, not a tint: it samples what is behind it and blurs it, which is
+                    // what makes the words underneath legible as *underneath*. A flat translucent
+                    // fill can only ever look like a dark box, however low its opacity.
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.28), radius: 14, y: 4)
             } else {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                     .fill(Tokens.control)
             }
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                // Floating: no frame at rest, and the focus ring alone when it is being typed in.
-                .strokeBorder(isFieldFocused ? Tokens.borderFocus
-                                             : (floats ? .clear : Tokens.borderStrong),
-                              lineWidth: 1)
-        )
+        .overlay {
+            // The stroke is the *same shape as the fill*. Two shapes that differ only in curvature
+            // are two shapes that leave the canvas showing through the gap in every corner — which
+            // is exactly what a thin outline floating around an oversized pill looks like.
+            let colour: Color = isFieldFocused
+                ? Tokens.borderFocus
+                : (floats ? Tokens.border.opacity(0.55) : Tokens.borderStrong)
+            if floats {
+                Self.floatingShape.strokeBorder(colour, lineWidth: 1)
+            } else {
+                RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+                    .strokeBorder(colour, lineWidth: 1)
+            }
+        }
         .opacity(isDisabled ? 0.6 : 1)
+    }
+
+    /// One line is a capsule; a paragraph is not.
+    ///
+    /// `Capsule()` makes the radius half the height, so a field that has grown to eight lines turns
+    /// into a lozenge with semicircular ends — a shape that says "button", not "text field". The
+    /// radius is capped at the single-line half-height instead, which is the same circle on one line
+    /// and a sane rounded rectangle on eight.
+    static let floatingRadius: CGFloat = 26
+
+    static var floatingShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: floatingRadius, style: .continuous)
     }
 
     /// The border's focus state. The Mac's editor is an `NSTextView` and reports its own first

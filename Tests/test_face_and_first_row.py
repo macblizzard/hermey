@@ -167,8 +167,9 @@ class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
         # No safe-area insets: those are what clipped the transcript short of the chrome.
         self.assertNotIn(".safeAreaInset(edge: .top", self.CHAT)
         self.assertNotIn(".safeAreaInset(edge: .bottom", self.CHAT)
-        # And room for the composer's real height at the foot of the transcript.
-        self.assertIn("frame(height: composerHeight + 16)", self.CHAT)
+        # Room for half the composer at the foot of the transcript, so the last message's tail runs
+        # under the capsule and the glass has something to refract.
+        self.assertIn("frame(height: composerHeight * 0.5 + 8)", self.CHAT)
 
     def test_the_composer_no_longer_draws_a_rule(self) -> None:
         composer = self.CHAT.split("private var composerArea: some View", 1)[1]
@@ -237,13 +238,21 @@ class TheChromeIsGlass(unittest.TestCase):
         # Three: the two above and the way to the newest message.
         self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
 
+    def test_the_fill_and_the_stroke_are_the_same_shape(self) -> None:
+        # The mismatched shapes left the canvas showing in every corner: a pill inside a rounded
+        # rectangle. One shape, used by both, and its radius is capped so eight lines is not a
+        # lozenge with semicircular ends.
+        self.assertIn("static var floatingShape: RoundedRectangle", self.COMPOSER)
+        self.assertIn("static let floatingRadius: CGFloat = 26", self.COMPOSER)
+        self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
+
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
-        self.assertIn("glassEffect(.regular.interactive(), in: Capsule())", self.COMPOSER)
-        # The floating field is a capsule, with the glass and its fallback side by side; a bar keeps
-        # the rounded rect and its control fill.
-        self.assertIn("Capsule().fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
-        self.assertIn("RoundedRectangle(cornerRadius: Tokens.radiusComposer", self.COMPOSER)
-        self.assertIn("shape.fill(Tokens.control)" if False else ".fill(Tokens.control)", self.COMPOSER)
+        # A material, not a tint: it samples and blurs what is behind it, which is the only way the
+        # words underneath read as underneath. A flat translucent fill is a dark box.
+        self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
+        self.assertNotIn(".fill(.clear)", self.COMPOSER)
+        # A bar keeps the rounded rect and its control fill.
+        self.assertIn(".fill(Tokens.control)", self.COMPOSER)
 
     def test_the_way_back_to_the_newest_message_clears_the_composer(self) -> None:
         control = self.CHAT.split("private func scrollToBottomControl(", 1)[1]
@@ -278,7 +287,9 @@ class NoTabBarAndTwoFades(unittest.TestCase):
                       self.CHAT)
         self.assertIn("LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)",
                       self.CHAT)
-        self.assertIn("frame(height: composerHeight + 84)", self.CHAT)
+        # The lower fade sits *above* the composer; behind the capsule the transcript stays opaque.
+        self.assertIn("frame(height: 44)", self.CHAT)
+        self.assertIn("frame(height: composerHeight + 12)", self.CHAT)
 
     def test_nothing_opaque_sits_under_the_glass_composer(self) -> None:
         # The slab was the black box: an opaque gradient under a glass capsule.

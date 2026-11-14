@@ -596,7 +596,12 @@ struct ConversationScreen: View {
                         .frame(height: 96)
                     Rectangle().fill(Color.black)
                     LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: composerHeight + 84)
+                        .frame(height: 44)
+                    // Behind the capsule the transcript stays at full strength on purpose: glass
+                    // refracts what is under it, and a fade that reached this far left it with
+                    // nothing but canvas to refract — which reads as a black box, not as glass.
+                    Rectangle().fill(Color.black)
+                        .frame(height: composerHeight + 12)
                 }
             )
             // The way back to the newest message, on the same rule as the desktop's: it appears
@@ -780,10 +785,11 @@ struct ConversationScreen: View {
                 .frame(height: 1)
                 .id(ConversationScreen.bottomID)
 
-                // The room the composer needs. Measured, not guessed: the field grows, and the
-                // last message has to be able to sit above the controls rather than under them.
+                // Half the composer's height, not all of it: the last message's tail runs under
+                // the capsule, which is what gives the glass something to refract at rest instead
+                // of a strip of empty canvas. It is measured, not guessed — the field grows.
                 Color.clear
-                    .frame(height: composerHeight + 16)
+                    .frame(height: composerHeight * 0.5 + 8)
                 // Reports where the end of the transcript is, in the scroll view's own space, on
                 // every layout pass — including the ones a growing reply causes. Reading a position
                 // is honest; watching a lazy row appear and disappear is not.
