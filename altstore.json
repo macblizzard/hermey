@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.260",
+          "buildVersion": "260",
+          "date": "2026-11-14T01:10:56Z",
+          "localizedDescription": "The app opens the conversation it was in, and the bot panel is only verbs.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.260/Hermey-0.1.260-b260.ipa",
+          "size": 2242006,
+          "minOSVersion": "17.0",
+          "sha256": "a1640c8b8cab6963cb65ae1d064de2090c68967d204361ffc68da672abdb1df6"
+        },
+        {
           "version": "0.1.257",
           "buildVersion": "257",
           "date": "2026-11-14T00:44:40Z",
@@ -62,16 +72,6 @@
           "size": 2220883,
           "minOSVersion": "17.0",
           "sha256": "ed0cc9f4b088197a9f76e8c5a048161917e6cf0de480a4589f2e6d23d5be4e2a"
-        },
-        {
-          "version": "0.1.235",
-          "buildVersion": "235",
-          "date": "2026-11-13T20:55:09Z",
-          "localizedDescription": "The Mac is edge to edge now: the bot's name opens its own panel \u2014 computer, workspace, skills, settings, compact.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.235/Hermey-0.1.235-b235.ipa",
-          "size": 2220914,
-          "minOSVersion": "17.0",
-          "sha256": "5d15766264f4e5032a4d45f7bd1caa235b02c8d77d1a3c8cc4c66a7132f7ef12"
         }
       ],
       "appPermissions": {
