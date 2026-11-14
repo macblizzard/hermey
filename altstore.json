@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.328",
+          "buildVersion": "328",
+          "date": "2026-11-14T14:10:14Z",
+          "localizedDescription": "The unread count is back on every bot's face (and the breathing beacon at the row's edge) on both phone and Mac \u2014 the roster restyle had replaced both with one static dot. A reply in another chat raises a banner again while the app is open, and read marks are written from the host's clock so a fast phone clock can no longer silence a bot.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.328/Hermey-0.1.328-b328.ipa",
+          "size": 2321594,
+          "minOSVersion": "17.0",
+          "sha256": "cd43a142b52548ec39372c07c79c750202d54d399b30af80568ca8380e45c65f"
+        },
+        {
           "version": "0.1.324",
           "buildVersion": "324",
           "date": "2026-11-14T13:39:16Z",
@@ -62,16 +72,6 @@
           "size": 2246380,
           "minOSVersion": "17.0",
           "sha256": "06acf9c3fd750db3429cbffbc26e73673199fc0ce71aaefa91dff90b1f01d147"
-        },
-        {
-          "version": "0.1.309",
-          "buildVersion": "309",
-          "date": "2026-11-14T10:01:22Z",
-          "localizedDescription": "The composer card is a row again \u2014 my regression, fixed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.309/Hermey-0.1.309-b309.ipa",
-          "size": 2246635,
-          "minOSVersion": "17.0",
-          "sha256": "0f70d1e42ad105bb51d1c816f95760b843be3f994e6b0918d4bd0d2c60996e0f"
         }
       ],
       "appPermissions": {
