@@ -150,7 +150,7 @@ struct MacBotPanel: View {
                     }
 
                     Text(bot?.displayName ?? "No bot")
-                        .font(TypeScale.font(Tokens.sessionTitle, weight: .semibold))
+                        .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
                         .foregroundStyle(Tokens.textPrimary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
