@@ -238,13 +238,13 @@ class TheChromeIsGlass(unittest.TestCase):
         # Three: the two above and the way to the newest message.
         self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
 
-    def test_the_fill_and_the_stroke_are_the_same_shape(self) -> None:
+    def test_the_floating_shape_has_one_radius(self) -> None:
         # The mismatched shapes left the canvas showing in every corner: a pill inside a rounded
-        # rectangle. One shape, used by both, and its radius is capped so eight lines is not a
-        # lozenge with semicircular ends.
+        # rectangle. One shape now, and its radius is capped so eight lines is not a lozenge with
+        # semicircular ends.
         self.assertIn("static var floatingShape: RoundedRectangle", self.COMPOSER)
         self.assertIn("static let floatingRadius: CGFloat = 26", self.COMPOSER)
-        self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
+        self.assertIn("glassEffect(.regular.interactive(), in: Self.floatingShape)", self.COMPOSER)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
         # Real glass first, material as the fallback, and never a flat tint. Over a near-black
@@ -253,9 +253,10 @@ class TheChromeIsGlass(unittest.TestCase):
         self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
         self.assertIn("Color.white.opacity(0.04)", self.COMPOSER)
         self.assertNotIn(".fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
-        # The border and the shadow stay: they are what makes it a surface rather than a hole.
-        self.assertIn("shadow(color: .black.opacity(0.30), radius: 16, y: 6)", self.COMPOSER)
-        self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
+        # And no hairline and no shadow on it: both are drawn *on* glass, and glass carries its own
+        # edge. A bar keeps its rule.
+        self.assertNotIn("radius: 16, y: 6", self.COMPOSER)
+        self.assertIn("if !floats {", self.COMPOSER)
         # A bar keeps the rounded rect and its control fill.
         self.assertIn(".fill(Tokens.control)", self.COMPOSER)
 

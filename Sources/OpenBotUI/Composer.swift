@@ -237,12 +237,10 @@ public struct Composer: View {
                     Self.floatingShape
                         .fill(Color.white.opacity(0.04))
                         .glassEffect(.regular.interactive(), in: Self.floatingShape)
-                        .shadow(color: .black.opacity(0.30), radius: 16, y: 6)
                 } else {
                     Self.floatingShape
                         .fill(.ultraThinMaterial)
                         .overlay(Self.floatingShape.fill(Color.white.opacity(0.04)))
-                        .shadow(color: .black.opacity(0.30), radius: 16, y: 6)
                 }
             } else {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
@@ -250,17 +248,13 @@ public struct Composer: View {
             }
         }
         .overlay {
-            // The stroke is the *same shape as the fill*. Two shapes that differ only in curvature
-            // are two shapes that leave the canvas showing through the gap in every corner — which
-            // is exactly what a thin outline floating around an oversized pill looks like.
-            let colour: Color = isFieldFocused
-                ? Tokens.borderFocus
-                : (floats ? Tokens.border.opacity(0.55) : Tokens.borderStrong)
-            if floats {
-                Self.floatingShape.strokeBorder(colour, lineWidth: 1)
-            } else {
+            // Floating: no outline and no shadow. Both are things laid *on* glass, and glass is
+            // supposed to carry its own edge — a hairline is what turned it back into a drawn box.
+            // A bar still gets its rule, because a bar is a piece of chrome, not a lens.
+            if !floats {
                 RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                    .strokeBorder(colour, lineWidth: 1)
+                    .strokeBorder(isFieldFocused ? Tokens.borderFocus : Tokens.borderStrong,
+                                  lineWidth: 1)
             }
         }
         .opacity(isDisabled ? 0.6 : 1)
