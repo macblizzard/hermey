@@ -48,7 +48,11 @@ class WordingTests(unittest.TestCase):
 class AppTests(unittest.TestCase):
     def test_both_transcripts_group(self) -> None:
         for source, name in ((MAC_SCROLL, "mac"), (IOS_CHAT, "ios")):
-            self.assertIn("TranscriptGrouping.rows(", source, name)
+            # Grouped through the memo: the rows themselves still come from `TranscriptGrouping`,
+            # but whether to walk the transcript again is decided by a signature, because a body
+            # pass happens on every published token (2026-11-14).
+            self.assertIn("rowCache.rows(", source, name)
+            self.assertIn("TranscriptRowCache", source, name)
             self.assertIn("case .toolRun(let run):", source, name)
             self.assertIn("ToolRunGroup(run: run)", source, name)
 

@@ -422,3 +422,23 @@ struct MobileTypingIndicator: View {
     .preferredColorScheme(.dark)
 }
 #endif
+
+
+/// One row's markdown, parsed once per distinct text.
+///
+/// The row is evaluated on every publish of the model — every 40 ms while a turn streams — and the
+/// parse was inside the body, so a long conversation re-parsed every visible row to draw one caret.
+/// Keyed on the text itself, so a row that has not changed cannot be re-parsed, and a streaming
+/// bubble (which parses incrementally elsewhere) is unaffected.
+final class RowMarkdownCache {
+    private var text: String?
+    private var blocks: [IncrementalMarkdown.Block] = []
+
+    func parse(_ source: String) -> [IncrementalMarkdown.Block] {
+        if text == source { return blocks }
+        let fresh = IncrementalMarkdown.parse(source)
+        text = source
+        blocks = fresh
+        return fresh
+    }
+}

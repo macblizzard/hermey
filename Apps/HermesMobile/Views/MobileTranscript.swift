@@ -25,6 +25,12 @@ struct MobileTranscriptRow: View {
     @State private var fetchedImages: [String: Data] = [:]
     /// The picture the viewer is showing, if any.
     @State private var viewingImage: ViewedAttachment?
+    /// This row's markdown, parsed once per text rather than once per body pass.
+    ///
+    /// A body pass happens every time the model publishes — every 40 ms while a turn streams — and
+    /// parsing every visible row's markdown on each of those was the single most expensive thing the
+    /// phone did while reading a conversation (the jitter reported 2026-11-14).
+    @State private var markdownCache = RowMarkdownCache()
 
     /// One decoded attachment, ready for `ImageViewer`.
     struct ViewedAttachment: Identifiable {
@@ -447,14 +453,14 @@ struct MobileTranscriptRow: View {
             if let boardID = GenUITag.boardID(in: entry.text) {
                 let prose = GenUITag.textWithoutTags(entry.text)
                 if !prose.isEmpty {
-                    MobileMarkdownText(blocks: IncrementalMarkdown.parse(prose))
+                    MobileMarkdownText(blocks: markdownCache.parse(prose))
                         .accessibilityLabel(prose)
                         .padding(.vertical, 4)
                 }
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MobileMarkdownText(blocks: IncrementalMarkdown.parse(entry.text))
+                MobileMarkdownText(blocks: markdownCache.parse(entry.text))
                     .accessibilityLabel(entry.text)
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())

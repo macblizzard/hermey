@@ -88,6 +88,17 @@ public final class AppModel: ObservableObject {
 
     /// Text still streaming into the last assistant bubble.
     @Published public private(set) var streamingText: String = ""
+
+    /// What the turn has actually streamed, token for token.
+    ///
+    /// `streamingText` is what the screen draws, and it is written on a 40 ms beat rather than once
+    /// per token: the host streams faster than any display can draw, and every write to a
+    /// `@Published` re-evaluates every view that observes this model — the sidebar, the header, the
+    /// panel and the transcript — so a 300-token answer used to mean 300 full body passes to move a
+    /// caret (the jitter reported 2026-11-14). This is the copy the turn is *built* from, so nothing
+    /// is lost between beats.
+    var streamedText: String = ""
+    private var streamFlush: Task<Void, Never>?
     /// Turn/segment keys of the interim commentaries already written into the transcript, so a
     /// re-sent seal does not become a second bubble.
     private var sealedInterimKeys = Set<String>()
@@ -744,7 +755,7 @@ public final class AppModel: ObservableObject {
         historyTotal = 0
         loadingEarlier = false
         earlierAnchor = nil
-        streamingText = ""
+        setStreamed("")
         reasoningText = ""
         liveTools = []
         isStreaming = false
@@ -797,7 +808,7 @@ public final class AppModel: ObservableObject {
             historyTotal = 0
         }
         turnRowStart = 0
-        streamingText = ""
+        setStreamed("")
         reasoningText = ""
         liveTools = []
         isStreaming = false
@@ -886,7 +897,7 @@ public final class AppModel: ObservableObject {
     /// `inflight == nil` and `streaming: false` both mean nothing more is coming; a non-streaming
     /// inflight still carries its partial text, so the bubble keeps what the model already wrote.
     private func adopt(_ resumed: SessionResume, session: SessionID) {
-        streamingText = resumed.liveText
+        setStreamed(resumed.liveText)
         isStreaming = resumed.isStreaming
         reasoningText = ""
         liveTools = []
@@ -910,7 +921,7 @@ public final class AppModel: ObservableObject {
     /// then adopt the host's view *without* discarding locally received text.
     private func reconcile(afterReconnect sid: SessionID) async {
         guard !isStreaming else {
-            let localText = streamingText
+            let localText = streamedText
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard selectedSessionID == sid else { return }
             guard let resumed = try? await client.resumeSession(sid, profile: selectedBotID) else { return }
@@ -919,7 +930,7 @@ public final class AppModel: ObservableObject {
             if resumed.inflight?.streaming == true {
                 // Still running on the host: keep what we have, adopt its partial text only when
                 // ours is empty (we may have missed the deltas that arrived while suspended).
-                if streamingText.isEmpty { streamingText = resumed.inflight?.assistantText ?? "" }
+                if streamedText.isEmpty { setStreamed(resumed.inflight?.assistantText ?? "") }
                 isStreaming = true
                 return
             }
@@ -935,7 +946,7 @@ public final class AppModel: ObservableObject {
             adoptResume(entries, cursor: resumed.earlierCursor,
                         total: resumed.historyTotal, sessionID: sid)
             pendingRequests = resumed.openRequests
-            streamingText = ""
+            setStreamed("")
             reasoningText = ""
             liveTools = []
             isStreaming = false
@@ -1052,7 +1063,7 @@ public final class AppModel: ObservableObject {
         // Remembered for the next launch: a transcript reloaded from the host has no pictures.
         SentAttachmentVault.record(sessionID: sid, text: bubbleText, attachments: sentAttachments)
         if !isMidTurn {
-            streamingText = ""
+            setStreamed("")
             reasoningText = ""
             compactionNotice = nil
             isStreaming = true
@@ -1193,7 +1204,7 @@ public final class AppModel: ObservableObject {
             draftSessionIDs.insert(created)
             selectedSessionID = created
             transcript = []
-            streamingText = ""
+            setStreamed("")
             isStreaming = false
             pendingRequests = []
             lastSendError = nil
@@ -1332,7 +1343,7 @@ public final class AppModel: ObservableObject {
         selectedSessionID = nil
         transcript = []
         pendingRequests = []
-        streamingText = ""
+        setStreamed("")
         reasoningText = ""
         liveTools = []
         isStreaming = false
@@ -1583,6 +1594,28 @@ public final class AppModel: ObservableObject {
 
     // MARK: Unread
 
+    /// Consecutive tokens become one frame: at most one publish per 40 ms, which is a little over two
+    /// frames at 60 Hz and well under the rate a model writes.
+    private func appendStreamed(_ text: String) {
+        streamedText += text
+        guard streamFlush == nil else { return }
+        streamFlush = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 40_000_000)
+            guard let self else { return }
+            self.streamFlush = nil
+            if self.streamingText != self.streamedText { self.streamingText = self.streamedText }
+        }
+    }
+
+    /// Set both copies at once — every place that starts, resumes or ends a live turn — so the drawn
+    /// value can never trail the true one through a state change.
+    private func setStreamed(_ value: String) {
+        streamFlush?.cancel()
+        streamFlush = nil
+        streamedText = value
+        if streamingText != value { streamingText = value }
+    }
+
     /// When each bot's conversation was last looked at, by this device.
     ///
     /// What the live bubble prints: only the words no row has printed yet.
@@ -1591,7 +1624,8 @@ public final class AppModel: ObservableObject {
     /// its own with a time stamp. Both then showed the same paragraph — one of them with a caret
     /// under it — and it collapsed into a single one the moment the turn settled.
     public var visibleStreamingText: String {
-        TranscriptVisibility.streamingRemainder(streamingText, afterRows: turnAssistantRows)
+        TranscriptVisibility.streamingRemainder(streamedText.isEmpty ? streamingText : streamedText,
+                                                afterRows: turnAssistantRows)
     }
 
     /// The assistant words this turn has already written as rows.
@@ -2365,7 +2399,7 @@ public final class AppModel: ObservableObject {
             // The same words may already have a row: the deltas said them before the first tool
             // call and `sealCommentary` kept them. This is that sentence arriving by another door.
             if sealedCommentary.contains(text.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                streamingText = ""
+                setStreamed("")
                 return
             }
             // Its own row, appended *now*: the cards that follow this commentary belong under it,
@@ -2375,14 +2409,14 @@ public final class AppModel: ObservableObject {
             appendAssistantRow(id: "interim-\(key)", text: text, at: Date())
             // When the host says the words already went out as deltas, they are sitting in the
             // live bubble; the row above replaces it, so the bubble must let go of them.
-            if alreadyStreamed { streamingText = "" }
+            if alreadyStreamed { setStreamed("") }
 
         case .messageDelta(let session, let text):
             guard session == selectedSessionID else { return }
             beginLiveTurn()
             isStreaming = true
             runningSessions.insert(session)
-            streamingText += text
+            appendStreamed(text)
         case .thinkingDelta(let session, let text):
             // Same stream discipline as the reply, a different destination: reasoning belongs
             // beside the answer, never inside it. An empty `text` never reaches here (the decoder
@@ -2401,7 +2435,7 @@ public final class AppModel: ObservableObject {
             }
             // A completion with no text would otherwise leave a blank bubble beside the streamed
             // one; the deltas already hold the reply.
-            let finalText = text.isEmpty ? streamingText : text
+            let finalText = text.isEmpty ? streamedText : text
             // Reasoning is a separate stream and used to be wiped here, so a turn's thinking was
             // visible while it ran and gone the moment the answer landed.
             if !reasoningText.isEmpty {
@@ -2420,7 +2454,7 @@ public final class AppModel: ObservableObject {
                 botPreviews[bot] = line
                 botPreviewTimes[bot] = Date()
             }
-            streamingText = ""
+            setStreamed("")
             isStreaming = false
             reasoningText = ""
             sealedInterimKeys.removeAll()
@@ -2521,11 +2555,11 @@ public final class AppModel: ObservableObject {
     /// and the bubble it sits in is the answer's, which the next delta starts filling in. Without
     /// this the commentary is silently replaced instead of staying where it was read.
     private func sealCommentary() {
-        let text = streamingText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = streamedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         sealedCommentary.append(text)
         appendAssistantRow(id: "commentary-\(UUID().uuidString)", text: text, at: Date())
-        streamingText = ""
+        setStreamed("")
     }
 
     private func beginLiveTurn() {
