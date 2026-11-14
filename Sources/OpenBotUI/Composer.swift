@@ -271,12 +271,31 @@ public struct Composer: View {
             }
         }
         .opacity(isDisabled ? 0.6 : 1)
-        // The whole card is the field. A tap on the paperclip's margin, on the padding above the
-        // first line or on the gap beside the send arrow is a tap on a text box, and a text box that
-        // ignores it — leaving the caret wherever it was, or nowhere — is the thing that makes a
-        // composer feel broken. Simultaneous so the buttons inside still get their own taps.
-        .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous))
-        .simultaneousGesture(TapGesture().onEnded { focusField() })
+        // The empty parts of the card are the field too — the padding above the first line, the
+        // margins beside the paperclip. A *background* tap-catcher rather than a gesture on the whole
+        // card: a simultaneous tap here fired in the same event as the field's own focus handling and
+        // mutated `@FocusState` underneath it, which is what crashed the app on some taps. A shape
+        // behind the field cannot compete with the field's own hit test, and it cannot take a tap
+        // from a button drawn on top of it.
+        .background {
+            if !isDisabled {
+                RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+                    .fill(Color.clear)
+                    .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer,
+                                                style: .continuous))
+                    .onTapGesture { requestFocus() }
+            }
+        }
+    }
+
+    /// Ask for the caret from a tap on the card's padding.
+    ///
+    /// Off the gesture's own stack on purpose: setting `@FocusState` while SwiftUI is still handling
+    /// that touch is what made the app fall over. One runloop turn later is the same thing to the
+    /// reader and a different thing to the framework.
+    private func requestFocus() {
+        guard !isDisabled, !isFieldFocused else { return }
+        Task { @MainActor in focusField() }
     }
 
     /// Put the caret in the field, wherever the tap landed.
