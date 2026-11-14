@@ -180,3 +180,31 @@ class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
         self.assertIn("static let followsNewMessages = false", self.MAC_SCROLL)
         follow = self.MAC_SCROLL.split("private func follow(", 1)[1]
         self.assertIn("guard Self.followsNewMessages else { return }", follow)
+
+
+class ThePhoneKeepsItsWayBack(unittest.TestCase):
+    """Hiding the bar must not take the swipe with it, and the chrome is a thumb's target."""
+
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    DRAWER = source("Apps", "HermesMobile", "Views", "ConversationDrawer.swift")
+    ENabler = source("Apps", "HermesMobile", "Views", "PopGestureEnabler.swift")
+
+    def test_the_swipe_back_is_restored(self) -> None:
+        # UIKit refuses the interactive pop while the bar is hidden; the enabler uncorks it.
+        self.assertIn(".restoresSwipeBack()", self.CHAT)
+        self.assertIn("interactivePopGestureRecognizer", self.ENabler)
+        self.assertIn("gesture.delegate = nil", self.ENabler)
+        # Not on the root screen: a swipe there would pop nothing and freeze the recogniser.
+        self.assertIn("navigation.viewControllers.count > 1", self.ENabler)
+
+    def test_the_composer_floats_so_it_has_no_border(self) -> None:
+        self.assertIn("floats: true", self.CHAT)
+
+    def test_the_chrome_is_a_thumbs_target(self) -> None:
+        self.assertIn(".frame(height: 42)", self.CHAT)          # the pill
+        self.assertIn("size: 28,", self.CHAT)                   # its portrait
+        self.assertIn(".frame(width: 40, height: 40)", self.CHAT)  # the back pill
+
+    def test_the_drawer_does_not_repeat_the_pill(self) -> None:
+        self.assertNotIn("Text(title)", self.DRAWER)
+        self.assertNotIn("if let subtitle", self.DRAWER)

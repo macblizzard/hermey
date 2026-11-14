@@ -80,24 +80,10 @@ struct ConversationDrawer: View {
     private var panel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
-                        .foregroundStyle(Tokens.textPrimary)
-                        .lineLimit(1)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(TypeScale.font(TypeScale.micro))
-                            .foregroundStyle(Tokens.textDim)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Geometry.chatGutter)
-                .padding(.top, 18)
-                .padding(.bottom, 12)
-
-                Hairline(color: Tokens.border)
+                // No title and no description: the pill floats six inches to the left saying both,
+                // and the drawer is the verbs that hang off that pill. The rows start at the top,
+                // where they can be reached without scrolling.
+                Color.clear.frame(height: 8)
 
                 // What the bot works with, then what it made, then the two panels about reach.
                 row("Computer", systemImage: "display", run: onComputer)
