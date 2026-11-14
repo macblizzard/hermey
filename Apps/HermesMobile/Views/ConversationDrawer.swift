@@ -141,19 +141,11 @@ struct ConversationDrawer: View {
                 row("Search", systemImage: "magnifyingglass", run: onSearch)
                 rowDivider
                 row("Settings", systemImage: "gearshape", run: onSettings)
-                rowDivider
-                row(isCompressing ? "Compacting…" : "Compact",
-                    systemImage: isCompressing ? "hourglass" : "arrow.down.right.and.arrow.up.left",
-                    isBusy: isCompressing,
-                    run: onCompact)
             }
 
-            panel {
-                row("Mark all as read", systemImage: "checkmark.circle",
-                    isDisabled: !hasAnyUnread, run: onMarkAllRead)
-                rowDivider
-                speakRow
-            }
+            // Compaction, the unread sweep and spoken replies are gone from this page: the first
+            // two happen on their own (auto-compaction and the host's own sweep), and the third
+            // belongs beside the microphone that records, not in a list of things a page can do.
 
             panel {
                 row("Reset chat", systemImage: "arrow.counterclockwise",
@@ -162,13 +154,10 @@ struct ConversationDrawer: View {
         }
     }
 
-    private var footer: some View {
-        Text("Swipe down, or tap the back button, to close.")
-            .font(TypeScale.font(TypeScale.micro))
-            .foregroundStyle(Tokens.textDim)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 4)
-    }
+    // The swipe hint is gone: the back button is in the corner, and a page that has to tell you
+    // how to leave it is a page that has not finished being a page.
+    @ViewBuilder
+    private var footer: some View { EmptyView() }
 
     /// One group of verbs: the sheet's colour, generous corners, nothing outside it.
     private func panel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -182,28 +171,6 @@ struct ConversationDrawer: View {
             .fill(Tokens.border)
             .frame(height: 1)
             .padding(.leading, 48)
-    }
-
-    /// One verb. A switch with a name is its own row, because the two things it does — remember the
-    /// choice, and stop the voice that is already talking — are not a tap on a button.
-    private var speakRow: some View {
-        Toggle(isOn: Binding(get: { speakReplies }, set: { onSpeakChange($0) })) {
-            Label {
-                Text("Speak replies")
-                    .font(TypeScale.font(TypeScale.md))
-                    .foregroundStyle(Tokens.textPrimary)
-            } icon: {
-                Image(systemName: "speaker.wave.2")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Tokens.textSecondary)
-                    .frame(width: 22)
-            }
-        }
-        .tint(Tokens.accentText)
-        .disabled(!canSpeak)
-        .opacity(canSpeak ? 1 : 0.45)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
     }
 
     private func row(_ label: String, systemImage: String, isDisabled: Bool = false,

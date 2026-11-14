@@ -229,15 +229,17 @@ class TheChromeIsGlass(unittest.TestCase):
     GLASS = source("Sources", "OpenBotUI", "LiquidGlass.swift")
     COMPOSER = source("Sources", "OpenBotUI", "Composer.swift")
 
-    def test_the_helper_builds_the_surface_rather_than_borrowing_it(self) -> None:
-        # The OS material over a near-black canvas is a lens over black, so the surface is built out
-        # of three parts that survive any backdrop: a real blur, a wash, and a top-lit rim.
+    def test_the_helper_is_the_platform_s_glass(self) -> None:
+        # The hand-built wash-and-rim recipe is gone. It existed because an opaque canvas band sat
+        # behind the composer and the real material had nothing to refract; that band is removed, so
+        # the platform's glass is both the right answer and the one that reads as native.
+        self.assertIn("glassEffect(interactive ? .regular.interactive() : .regular, in: shape)",
+                      self.GLASS)
+        self.assertIn("#available(iOS 26.0, macOS 26.0, *)", self.GLASS)
+        self.assertNotIn("GlassSurface", self.GLASS, "no hand-painted glass")
+        # The fallback is a material, not a flat theme fill.
         self.assertIn("shape.fill(.ultraThinMaterial)", self.GLASS)
-        self.assertIn("GlassSurface.wash", self.GLASS)
-        self.assertIn("GlassSurface.rim", self.GLASS)
-        # Never a flat theme fill, and never a uniform border: that is the hard frame it read as.
         self.assertNotIn("Tokens.surface", self.GLASS)
-        self.assertIn("startPoint: .top", self.GLASS)
 
     def test_every_floating_pill_uses_it(self) -> None:
         self.assertIn(".hermeyGlass(Circle(), interactive: true)", self.CHAT)   # back pill
@@ -251,17 +253,16 @@ class TheChromeIsGlass(unittest.TestCase):
         # semicircular ends.
         self.assertIn("static var floatingShape: RoundedRectangle", self.COMPOSER)
         self.assertIn("static let floatingRadius: CGFloat = 26", self.COMPOSER)
-        # Fill and rim are the same shape, so no canvas can show through a curvature gap.
-        self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
-        self.assertIn("Self.floatingShape.stroke(GlassSurface.rim", self.COMPOSER)
+        # One shape for the fill, one for nothing else: no stroke at all on the floating field.
+        self.assertIn("Self.floatingShape", self.COMPOSER)
+        self.assertNotIn("GlassSurface.rim", self.COMPOSER)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
-        # The composer wears the same recipe as every other glass shape, in its own radius: a blur,
-        # the wash, and the rim. Never a flat tint, which can only ever be a box.
-        self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
-        self.assertIn("GlassSurface.wash", self.COMPOSER)
-        self.assertIn("GlassSurface.rim", self.COMPOSER)
+        # The composer wears the same glass as every other floating shape — the platform's, in its
+        # own radius — with nothing painted over it.
+        self.assertIn("Color.clear.hermeyGlass(Self.floatingShape, interactive: true)", self.COMPOSER)
         self.assertNotIn(".fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
+        self.assertNotIn("GlassSurface", self.COMPOSER, "no wash or rim drawn on the glass")
         # No drop shadow and no uniform border on it: the rim is the edge. A bar keeps its rule.
         self.assertNotIn("radius: 16, y: 6", self.COMPOSER)
         self.assertIn("if !floats {", self.COMPOSER)
@@ -293,19 +294,12 @@ class NoTabBarAndTwoFades(unittest.TestCase):
         self.assertIn('Label("Settings", systemImage: "gearshape")', self.LIST)
         self.assertIn("SettingsScreen(model: model)", self.LIST)
 
-    def test_both_edges_fade(self) -> None:
-        # A mask on the transcript, not a gradient laid over it: the words fade, nothing is painted
-        # on top of them. Two gradients, one per edge, and the lower one tracks the composer.
-        self.assertIn(".mask(", self.CHAT)
-        self.assertIn("LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)",
-                      self.CHAT)
-        self.assertIn("LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)",
-                      self.CHAT)
-        # The lower fade sits *above* the composer; behind the capsule the transcript stays opaque.
-        self.assertIn("frame(height: 44)", self.CHAT)
-        self.assertIn("frame(height: maskFoot)", self.CHAT)
-        # And clamped: unclamped it outgrows a short viewport and masks the transcript solid.
-        self.assertIn("min(composerHeight + 12, max(0, transcriptHeight - Self.maskFades))", self.CHAT)
+    def test_nothing_is_masked_or_faded_over_the_transcript(self) -> None:
+        # Not a fade at the foot, not a fade at the top, not a gradient laid over the words. Every
+        # one of those is a shade above the compose box on a near-black canvas, and the glass has to
+        # have the transcript under it — at full strength — to look like anything.
+        self.assertNotIn(".mask(", self.CHAT)
+        self.assertNotIn("LinearGradient", self.CHAT)
 
     def test_nothing_opaque_sits_under_the_glass_composer(self) -> None:
         # The slab was the black box: an opaque gradient under a glass capsule.

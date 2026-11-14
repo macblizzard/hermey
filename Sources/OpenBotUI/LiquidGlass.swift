@@ -20,34 +20,28 @@ import SwiftUI
 ///
 /// The same three parts on every shape mean a pill, a circle and the composer read as one material
 /// instead of three guesses.
-public enum GlassSurface {
-    /// Light gathered at the top of the panel, falling away below.
-    public static let wash = LinearGradient(
-        colors: [Color.white.opacity(0.12), Color.white.opacity(0.03)],
-        startPoint: .top, endPoint: .bottom
-    )
-
-    /// Light catching the top edge, fading out before it reaches the bottom one.
-    public static let rim = LinearGradient(
-        colors: [Color.white.opacity(0.38), Color.white.opacity(0.04)],
-        startPoint: .top, endPoint: .bottom
-    )
-}
-
 public extension View {
-    /// Wraps the view in the glass recipe, clipped to `shape`.
+    /// Real Liquid Glass where the OS has it.
     ///
-    /// `interactive` stays in the signature because call sites say what a shape *is* — a control a
-    /// finger lands on, or a shape that only reports something — and that distinction should not
-    /// vanish from the source just because the surface is built by hand here.
+    /// This replaces an earlier recipe that painted the surface by hand — a material blur, a wash
+    /// and a rim — because at the time an opaque canvas band sat directly behind the composer, so
+    /// the real material had nothing to refract and arrived as a flat box. That band is gone, which
+    /// makes this the right implementation: the platform's own glass, with its own refraction and
+    /// its own specular edge. A hand-built surface can be made to *look* like glass; only the real
+    /// one behaves like it, and next to the rest of the system it is what reads as native.
+    ///
+    /// The fallback is a material, not a tint: an OS without Liquid Glass still gets a surface that
+    /// samples what is behind it rather than a flat fill.
+    ///
+    /// `interactive` marks a shape a finger lands on, so the glass answers the touch.
     @ViewBuilder
     func hermeyGlass<S: Shape>(_ shape: S, interactive: Bool = false) -> some View {
-        self
-            .background {
-                shape.fill(.ultraThinMaterial)
-                    .overlay(shape.fill(GlassSurface.wash))
-            }
-            .overlay(shape.stroke(GlassSurface.rim, lineWidth: 1))
-            .clipShape(shape)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            self.glassEffect(interactive ? .regular.interactive() : .regular, in: shape)
+        } else {
+            self
+                .background(shape.fill(.ultraThinMaterial))
+                .clipShape(shape)
+        }
     }
 }

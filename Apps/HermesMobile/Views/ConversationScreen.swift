@@ -435,19 +435,6 @@ struct ConversationScreen: View {
         return nil
     }
 
-    /// The two fades the mask always carries, top and bottom, in points.
-    private static let maskFades: CGFloat = 96 + 44
-
-    /// The strip at the foot of the transcript that the composer may claim.
-    ///
-    /// Unclamped it is `composerHeight + 12`, which eight lines plus a reply strip plus an
-    /// attachment strip makes taller than a phone in landscape: the mask's stack then overflows the
-    /// scroll view, SwiftUI centres the overflow past the top edge, and the transcript is masked
-    /// solid — which arrives as "the box grew and clipped the conversation".
-    private var maskFoot: CGFloat {
-        min(composerHeight + 12, max(0, transcriptHeight - Self.maskFades))
-    }
-
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
     /// the field has grown to, and the transcript's fade sits under it.
     private var floatingComposer: some View {
@@ -459,10 +446,9 @@ struct ConversationScreen: View {
                         .onChange(of: geo.size.height) { _, height in composerHeight = height }
                 }
             )
-            // No slab behind it: an opaque gradient under a glass capsule is the one thing that
-            // stops the glass from being glass. The transcript's own mask does the fading — from
-            // the composer's height up — so the words dissolve and the capsule refracts what is
-            // left of them.
+            // Nothing behind it and nothing around it: no slab, no fade, no scrim. The transcript
+            // runs under the capsule at full strength, and the capsule is the only thing between the
+            // reader and it.
             .padding(.bottom, 2)
     }
 
@@ -602,23 +588,11 @@ struct ConversationScreen: View {
                     .onChange(of: geo.size.width) { _, width in transcriptWidth = width }
             })
             .scrollDismissesKeyboard(.interactively)
-            // Text leaves the screen instead of being cut by it: a mask on the transcript itself,
-            // not a gradient laid over it, so nothing is painted on top of the words — they fade
-            // out. The chrome is drawn above this and stays crisp.
-            .mask(
-                VStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 96)
-                    Rectangle().fill(Color.black)
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 44)
-                    // Behind the capsule the transcript stays at full strength on purpose: glass
-                    // refracts what is under it, and a fade that reached this far left it with
-                    // nothing but canvas to refract — which reads as a black box, not as glass.
-                    Rectangle().fill(Color.black)
-                        .frame(height: maskFoot)
-                }
-            )
+            // No mask at all. Every version of this had a fade somewhere — a long one at the foot, a
+            // short one, one that tracked the composer — and every version arrived as a shade above
+            // the compose box, because that is what a gradient over near-black looks like. The
+            // transcript now runs edge to edge, full strength, straight under the glass. Words are
+            // cut by the screen instead of dissolved by it.
             // The way back to the newest message, on the same rule as the desktop's: it appears
             // only while the transcript's end is off screen.
             // The fade belongs to the button alone. Animating the scroll view is what made a

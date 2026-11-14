@@ -51,16 +51,18 @@ class TheChatHasOneDoor(unittest.TestCase):
         # And drawn above the chrome it covers, or the pill floats over the page.
         self.assertIn(".zIndex(2)", SCREEN)
 
-    def test_it_carries_every_verb_the_menu_had(self) -> None:
+    def test_it_carries_the_verbs_and_only_those(self) -> None:
         for label in ("Computer", "Workspace", "Skills", "MCP servers", "Search", "Settings",
-                      "Compact", "Mark all as read", "Speak replies", "Reset chat"):
-            self.assertIn(f'"{label}"' if label != "Compact" else 'isCompressing ? "Compacting…"',
-                          DRAWER, f"{label} must survive the move")
+                      "Reset chat"):
+            self.assertIn(f'"{label}"', DRAWER, f"{label} must still be reachable")
+        # Compaction, the unread sweep and spoken replies left this page: the first two happen on
+        # their own, and the third belongs beside the microphone.
+        for gone in ("Mark all as read", "Speak replies", "Compacting…"):
+            self.assertNotIn(gone, DRAWER, f"{gone} should no longer be a row here")
 
-    def test_the_compacting_state_survives_the_move(self) -> None:
-        self.assertIn('isCompressing ? "Compacting…"', DRAWER)
-        self.assertIn("ProgressView().controlSize(.mini)", DRAWER,
-                      "a compaction runs for minutes; the page has to say so too")
+    def test_the_page_does_not_explain_how_to_leave_it(self) -> None:
+        self.assertNotIn("Swipe down, or tap the back button", DRAWER)
+        self.assertIn('accessibilityLabel("Close the bot page")', DRAWER)
 
     def test_it_closes_the_way_it_opened(self) -> None:
         # The back button is always in the corner; a downward swipe does the same thing.

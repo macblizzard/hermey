@@ -110,20 +110,16 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
         self.assertIn('model.isCompressing ? "Compacting…"', MAC_PANEL,
                       "mac: the row must not vanish mid-compaction")
         self.assertIn("model.isCompressing)", MAC_PANEL, "mac: it must not be tappable twice")
-        # The phone's verbs are a page now: the row relabels itself and the row is disabled, which
-        # `isBusy` carries from the screen's `model.isCompressing`.
-        self.assertIn('isCompressing ? "Compacting…" : "Compact"', IOS_VERBS)
+        # The phone's page no longer carries the verb at all: compaction is automatic there, and a
+        # row for it on a page of things you do to a chat read as one more thing to press.
+        self.assertNotIn('"Compact"', IOS_VERBS)
         self.assertIn("isCompressing: model.isCompressing", IOS_SCREEN,
-                      "the drawer draws its running state from the model's flag")
-        self.assertIn(".disabled(isDisabled || isBusy)", IOS_VERBS)
+                      "the page still receives the running state, for its own quiet reporting")
 
     def test_the_phone_verb_is_not_gated_on_a_session_id_it_learns_late(self) -> None:
-        # The drawer's row takes `isBusy`/`isDisabled` from the screen, so the gating question is
-        # asked where the row is built: nothing about a session id, only the bot and the compaction.
-        self.assertIn("isBusy: isCompressing", IOS_VERBS)
+        # Nothing on the page is gated on the session id the chat learns late.
         self.assertNotIn("sessionID", IOS_VERBS,
                          "the drawer must not be gated on an id the chat learns late")
-        self.assertIn("onCompact: { closeDrawer(); Task { await model.compressNow() } }", IOS_SCREEN)
 
 
 class IdenticalReadsShareOneFlight(unittest.TestCase):
