@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// The light that turns a flat shape into something a little dimensional.
@@ -84,5 +85,28 @@ public struct BotFaceLight: View {
 
     private var shade: Double {
         size >= 40 ? 0.34 : (size >= 28 ? 0.28 : 0.22)
+    }
+}
+
+
+/// Whether a face may move, and who decides.
+///
+/// The first two attempts leaned on the system's Reduce Motion environment value alone, and the Mac
+/// never animated while the phone did. Whether that was the setting or the mechanism was never
+/// settled — so now the *app* has a switch, and an explicit choice in the app outranks the system's
+/// default. No stored value means "follow the system", which is what a person who has never opened
+/// the setting expects.
+public enum BotFaceMotion {
+    public static let defaultsKey = "animateBotFaces"
+
+    /// The app's own answer, or `nil` if it has never been given.
+    public static var choice: Bool? {
+        UserDefaults.standard.object(forKey: defaultsKey) as? Bool
+    }
+
+    public static func allows(reduceMotion: Bool, size: CGFloat) -> Bool {
+        guard size >= 18 else { return false }
+        if let choice { return choice }
+        return !reduceMotion
     }
 }

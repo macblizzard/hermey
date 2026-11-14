@@ -150,23 +150,31 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         # Closed is a line, never a zero: two eyes have to survive the blink.
         self.assertIn("max(size * 0.028, closed)", self.SILHOUETTE)
 
-    def test_motion_is_cheap_and_respects_reduce_motion(self) -> None:
+    def test_motion_is_cheap_and_has_a_switch(self) -> None:
         portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
         body = portrait.split("public var body: some View", 1)[1].split("/// Shared working", 1)[0]
-        # Two flags and implicit animations, not a TimelineView: a timeline rebuilds every frame and
-        # this face is drawn once per roster row.
-        self.assertIn("accessibilityReduceMotion", portrait)
-        self.assertIn("size >= 18", portrait)
-        self.assertNotIn("TimelineView(.animation", body)
-        self.assertIn("withAnimation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true))", GALLERY)
-        # And the loop runs on the main actor: a state write from a thread the sleep resumed on is
-        # silently dropped, which is how the Mac got light and no motion (2026-11-14).
-        self.assertIn("@MainActor\n    func runFaceMotion() async", GALLERY)
-        self.assertIn("blink: blinking ? 1 : 0", body)
-        self.assertIn("squint: isWorking ? 1 : 0", body)
+        # Two mechanisms, neither of them ours to break: a system-driven `phaseAnimator` cycle for
+        # the breath, and the clock for the blink. A `@State` loop was tried twice and never moved
+        # on the Mac — once off the main actor, once for reasons never settled.
+        self.assertIn(".phaseAnimator(", body)
+        self.assertIn("TimelineView(.animation(minimumInterval: 0.1, paused:", body)
+        self.assertIn("blink: blink(at: context.date)", body)
+        self.assertNotIn("@State private var breathing", portrait)
+        # The app's own answer comes first; the system's Reduce Motion is the fallback.
+        self.assertIn("BotFaceMotion.allows(reduceMotion: reduceMotion, size: size)", portrait)
+        motion = (ROOT / "Sources/OpenBotUI/BotFaceShading.swift").read_text(encoding="utf-8")
+        self.assertIn("if let choice { return choice }", motion)
+        self.assertIn("return !reduceMotion", motion)
+        self.assertIn("guard size >= 18 else { return false }", motion)
+
+    def test_the_mac_has_the_switch(self) -> None:
+        appearance = (MAC / "Views" / "AppearanceSettingsTab.swift").read_text(encoding="utf-8")
+        self.assertIn("@AppStorage(BotFaceMotion.defaultsKey) private var animateFaces", appearance)
+        self.assertIn('Toggle("Animate bot faces", isOn: $animateFaces)', appearance)
 
     def test_a_list_does_not_blink_in_unison(self) -> None:
         self.assertIn("let seed = Double(abs(icon.title.unicodeScalars.reduce(0)", GALLERY)
+        self.assertIn("let period = 3.4 + seed", GALLERY)
 
 
 class TheAppIconIsOneOfTheFaces(unittest.TestCase):
