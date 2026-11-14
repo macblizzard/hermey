@@ -102,8 +102,9 @@ class TheComposerIsQuiet(unittest.TestCase):
         # Controls sit at the foot of the card, on the line the caret is on, so a long message grows
         # above them instead of leaving them behind on line one.
         self.assertIn("private func rowCentred<V: View>(_ view: V) -> some View", COMPOSER)
-        self.assertIn(".frame(maxHeight: .infinity, alignment: .bottom)", COMPOSER)
         self.assertIn("HStack(alignment: .bottom, spacing: 8)", COMPOSER)
+        # And nothing that can grow: an unbounded frame in the row made the card fill the screen.
+        self.assertNotIn("maxHeight: .infinity", COMPOSER)
         self.assertNotIn("alignment: .top)", COMPOSER)
 
     def test_attach_is_a_plus(self) -> None:
