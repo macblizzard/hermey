@@ -19,6 +19,10 @@ struct ConversationHeader: View {
     @ObservedObject var model: AppModel
     @ObservedObject var store: WorkspaceStore
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Whether the pointer is on the pill.
+    @State private var hovered = false
+
     private var title: String {
         model.selectedBot?.displayName ?? model.hostName
     }
@@ -166,6 +170,16 @@ struct ConversationHeader: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // A pointer resting on the name is a pointer about to click it: the capsule grows a few
+        // percent on a spring, so the header says "this is a control" before the click is made
+        // (asked for 2026-11-14). Reduce Motion keeps it still.
+        .scaleEffect(hovered ? 1.045 : 1.0, anchor: .center)
+        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.62),
+                   value: hovered)
+        .onHover { inside in
+            guard inside != hovered else { return }
+            hovered = inside
+        }
         .frame(maxWidth: max(180, width * 0.46))
         .accessibilityLabel("\(title), bot actions")
         .accessibilityIdentifier("botPanelButton")

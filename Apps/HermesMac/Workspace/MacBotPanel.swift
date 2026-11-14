@@ -29,65 +29,71 @@ struct MacBotPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Hairline(color: Tokens.border)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    // What the bot works with, in the order the phone lists it.
-                    row("Computer", icon: "display",
-                        detail: store.isComputerPanelPresented ? "open" : nil,
-                        detailTone: store.isComputerPanelPresented ? Tokens.accent : Tokens.textDim) {
-                        store.toggleComputerPanel()
+                VStack(spacing: 10) {
+                    // The phone's grouping, in the phone's order: what the bot reaches for, what it
+                    // can do without being asked, what it is, and the two verbs that end something.
+                    panel {
+                        row("Computer", icon: "display",
+                            detail: store.isComputerPanelPresented ? "open" : nil,
+                            detailTone: store.isComputerPanelPresented ? Tokens.accent : Tokens.textDim) {
+                            store.toggleComputerPanel()
+                        }
+                        rowDivider
+                        // "Library", not "Workspace": the row opens this bot's files, and the word
+                        // the desktop uses for the agent's own folder is a developer's word for it.
+                        row("Library", icon: "folder") { if let bot { store.openWorkspace(bot) } }
                     }
 
-                    section
-                    // Same words as the phone's page: "Library" for this bot's files, and "MCP"
-                    // for the acronym that already says what it is. Two shells, one vocabulary.
-                    // Which model answers, beside the other facts about how this bot behaves. It
-                    // used to sit at the bottom of Bot settings, under a catalogue of dozens of
-                    // providers, a scroll away from the delete verb (reported 2026-11-14).
-                    row("Model", icon: "cpu") { if let bot { store.openModel(bot) } }
-                    row("Library", icon: "folder") { if let bot { store.openWorkspace(bot) } }
-                    row("Skills", icon: "book.closed") { if let bot { store.openSkills(bot) } }
-                    row("MCP", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
-                    row("Routines", icon: "clock.arrow.circlepath") {
-                        if let bot { store.openRoutines(bot) }
+                    panel {
+                        // Which model answers, beside the other facts about how this bot behaves.
+                        row("Model", icon: "cpu") { if let bot { store.openModel(bot) } }
+                        rowDivider
+                        row("Skills", icon: "book.closed") { if let bot { store.openSkills(bot) } }
+                        rowDivider
+                        row("MCP", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
+                        rowDivider
+                        row("Routines", icon: "clock.arrow.circlepath") {
+                            if let bot { store.openRoutines(bot) }
+                        }
                     }
 
-                    section
-                    row("Search conversations", icon: "magnifyingglass") {
-                        store.openFindInChat()
-                    }
-                    row("Bot settings", icon: "gearshape") {
-                        if let bot { store.openBotSettings(bot) }
-                    }
-
-                    section
-                    // The verb keeps its row while it runs: a row that vanishes mid-compaction
-                    // reads as "it never started", and the host takes 74–163 s on a real run.
-                    row(model.isCompressing ? "Compacting…" : "Compact conversation",
-                        icon: model.isCompressing ? "hourglass" : "rectangle.compress.vertical",
-                        detail: model.isCompressing ? "working" : nil,
-                        detailTone: Tokens.textDim,
-                        isBusy: model.isCompressing,
-                        isDisabled: !model.canActOnConversation || model.isCompressing) {
-                        Task { await model.compressNow() }
-                    }
-                    row("Mark all as read", icon: "checkmark.circle",
-                        isDisabled: !model.hasAnyUnread) {
-                        model.markAllRead()
+                    panel {
+                        // "Search conversations" — the scope, said out loud: it searches this bot's
+                        // talk, not the host's files (that is Library) and not the app's settings.
+                        row("Search conversations", icon: "magnifyingglass") {
+                            store.openFindInChat()
+                        }
                     }
 
-                    section
-                    row("Reset conversation", icon: "arrow.counterclockwise", tone: Tokens.danger,
-                        isDisabled: !model.canActOnConversation) {
-                        store.isResetConfirmationPresented = true
+                    panel {
+                        // The verb keeps its row while it runs: a row that vanishes mid-compaction
+                        // reads as "it never started", and the host takes 74–163 s on a real run.
+                        row(model.isCompressing ? "Compacting…" : "Compact conversation",
+                            icon: model.isCompressing ? "hourglass" : "rectangle.compress.vertical",
+                            detail: model.isCompressing ? "working" : nil,
+                            detailTone: Tokens.textDim,
+                            isBusy: model.isCompressing,
+                            isDisabled: !model.canActOnConversation || model.isCompressing) {
+                            Task { await model.compressNow() }
+                        }
+                        rowDivider
+                        row("Mark all as read", icon: "checkmark.circle",
+                            isDisabled: !model.hasAnyUnread) {
+                            model.markAllRead()
+                        }
                     }
 
-                    // No command palette, no Settings and no connection row: all three are the
-                    // app's own doors, and the palette (⌘K) and Settings (⌘,) are on every screen.
-                    // The panel is about this bot, and nothing else.
+                    panel {
+                        row("Reset chat", icon: "arrow.counterclockwise", tone: Tokens.danger,
+                            isDisabled: !model.canActOnConversation) {
+                            store.isResetConfirmationPresented = true
+                        }
+                    }
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 4)
                 .padding(.bottom, 14)
             }
         }
@@ -122,15 +128,88 @@ struct MacBotPanel: View {
     /// three things the pill at the centre of the conversation already says, one column to the
     /// left. A panel that repeats the header it hangs off is a panel that costs 70 pt to say
     /// nothing new, and it pushed the verbs down out of reach.
+    /// The phone's header: the bot's face, at a size that says which bot this panel is about, its
+    /// name, and the one verb that is about the bot rather than its contents.
+    ///
+    /// The panel used to open with a lone ✕, on the argument that the pill already says the name.
+    /// True, and still: a menu with no face in it looked like a settings column rather than like the
+    /// page the phone opens from the same pill. The face is the animated one — it breathes and
+    /// blinks wherever it is drawn (asked for 2026-11-14).
     private var header: some View {
-        HStack {
-            Spacer(minLength: 0)
-            OpenBotIconButton("xmark", label: "Close the bot panel", size: .small) { close() }
-                .help("Close (esc)")
+        VStack(spacing: 10) {
+            ZStack(alignment: .topTrailing) {
+                VStack(spacing: 8) {
+                    if let bot {
+                        BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
+                                        size: 56,
+                                        isWorking: model.isStreaming,
+                                        status: model.hasPendingRequests ? .needsYou
+                                              : (model.isCompressing ? .compacting : nil))
+                    } else {
+                        Avatar("No bot", size: .small, presence: .idle)
+                    }
+
+                    Text(bot?.displayName ?? "No bot")
+                        .font(TypeScale.font(Tokens.sessionTitle, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+
+                    if let description = bot?.description?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                       !description.isEmpty {
+                        Text(description)
+                            .font(TypeScale.font(TypeScale.caption))
+                            .foregroundStyle(Tokens.textMuted)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Button {
+                        if let bot { store.openBotSettings(bot) }
+                    } label: {
+                        Text("Edit")
+                            .font(TypeScale.font(TypeScale.sm, weight: .medium))
+                            .foregroundStyle(Tokens.textPrimary)
+                            .padding(.horizontal, 18)
+                            .frame(height: 30)
+                            .background(Capsule().fill(Tokens.surface))
+                            .overlay(Capsule().strokeBorder(Tokens.border, lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(bot == nil)
+                    .help("Bot settings")
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 6)
+
+                OpenBotIconButton("xmark", label: "Close the bot panel", size: .small) { close() }
+                    .help("Close (esc)")
+            }
+            .padding(.horizontal, 10)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 6)
-        .padding(.bottom, 2)
+        .padding(.bottom, 10)
+    }
+
+    /// One group of verbs: the phone's card — its corner radius, its fill, a divider between rows
+    /// that starts where the words do.
+    private func panel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0) { content() }
+            .background(Tokens.surface.opacity(0.55),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Tokens.border, lineWidth: 1)
+            )
+    }
+
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(Tokens.border)
+            .frame(height: 1)
+            .padding(.leading, 46)
     }
 
     // MARK: - Rows
@@ -176,10 +255,15 @@ struct MacBotPanel: View {
                         .monospacedDigit()
                         .foregroundStyle(detailTone)
                         .lineLimit(1)
+                } else {
+                    // The phone's chevron: every row here opens something, so every row says so.
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Tokens.textDim)
                 }
             }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(hovered == title && !isDisabled ? Tokens.surface.opacity(0.9) : .clear)
@@ -188,7 +272,6 @@ struct MacBotPanel: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .padding(.horizontal, 8)
         .onHover { inside in
             if inside { hovered = title }
             else if hovered == title { hovered = nil }

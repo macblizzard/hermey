@@ -132,9 +132,15 @@ class TheLaunchIsAConversation(unittest.TestCase):
 class ThePanelIsOnlyVerbs(unittest.TestCase):
     PANEL = source("Apps", "HermesMac", "Workspace", "MacBotPanel.swift")
 
-    def test_no_header_the_pill_already_says(self) -> None:
-        self.assertNotIn("BotIconPortrait", self.PANEL)
-        self.assertNotIn("bot?.displayName ?? model.hostName", self.PANEL)
+    def test_the_header_is_the_phones_header(self) -> None:
+        # It used to be a lone ✕ on the argument that the pill already says the name. True — and the
+        # panel still looked like a settings column rather than the page the phone opens from the
+        # same pill, so the face and the name are back, with Edit beside them (2026-11-14).
+        self.assertIn("BotIconPortrait(store.botFaces[bot.id]", self.PANEL)
+        self.assertIn("size: 56", self.PANEL)
+        self.assertIn('Text(bot?.displayName ?? "No bot")', self.PANEL)
+        self.assertIn('Text("Edit")', self.PANEL)
+        self.assertIn("store.openBotSettings(bot)", self.PANEL)
 
     def test_no_connection_row(self) -> None:
         self.assertNotIn("connectionRow", self.PANEL)
