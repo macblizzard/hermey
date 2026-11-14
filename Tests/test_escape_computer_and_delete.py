@@ -42,24 +42,47 @@ class EscapeClosesTheTopmostThing(unittest.TestCase):
     def test_a_field_keeps_escape_for_itself(self) -> None:
         # The field editor is an NSTextView and is the first responder for every text field in the
         # app: without this guard, Escape would close a panel instead of clearing a search.
-        self.assertIn("NSApp.keyWindow?.firstResponder is NSTextView", CATCHER)
+        self.assertIn("key.firstResponder is NSTextView", CATCHER)
         self.assertIn("event.keyCode == 53", CATCHER)
+
+    def test_only_its_own_window_answers(self) -> None:
+        # With Settings or a sheet in front, the shell behind must not take the key: that is
+        # exactly the report — Escape in Settings closed the sidebar (2026-11-14).
+        self.assertIn("key === host", CATCHER)
+        self.assertIn("host = view.window", CATCHER)
+
+    def test_the_settings_window_closes_on_escape_and_outside_click(self) -> None:
+        settings = (MAC / "Views" / "MacSettingsView.swift").read_text(encoding="utf-8")
+        self.assertIn("NSApp.keyWindow?.performClose(nil)", settings)
+        self.assertIn("ClosesOnResignKey()", settings)
+        resign = (MAC / "Support" / "ClosesOnResignKey.swift").read_text(encoding="utf-8")
+        # Its own sheet keeps it: the Bots tab opens bot settings as a sheet on this window.
+        self.assertIn("next.sheetParent === window", resign)
 
     def test_a_sheet_keeps_its_own_escape(self) -> None:
         self.assertIn("attachedSheet != nil", CATCHER)
 
 
-class TheComputerTakesTheSidebarsPlace(unittest.TestCase):
-    def test_it_sits_on_the_leading_edge(self) -> None:
-        leading = ROOT_VIEW.split("if store.isComputerPanelPresented", 1)[1]
-        self.assertIn("computerPane(fullScreen: false)", leading)
+class TheComputerTakesTheBotPanelsSlot(unittest.TestCase):
+    def test_it_takes_the_trailing_slot_the_panel_had(self) -> None:
+        # The computer is a row on the bot panel, so it opens where the row is: the trailing edge,
+        # in the panel's own slot. Not the sidebar's, and not a fourth pane.
+        trailing = ROOT_VIEW.split("if store.isComputerPanelPresented, !store.isComputerFullScreen {", 1)[1]
+        self.assertIn("computerPane(fullScreen: false)", trailing.split("} else if store.isBotPanelPresented {", 1)[0])
+        self.assertIn("else if store.isBotPanelPresented {", trailing)
+        self.assertIn("max(WindowLayout.botPanelWidth, WindowLayout.computerMin)", trailing)
 
-    def test_the_sidebar_comes_back_exactly_as_it_was(self) -> None:
-        # The slot is chosen by the computer's flag; `isSidebarHidden` is left alone, so the width
-        # and the collapsed state survive the visit.
-        block = ROOT_VIEW.split("if store.isComputerPanelPresented", 1)[1].split("Group {", 1)[0]
-        self.assertNotIn("isSidebarHidden =", block)
-        self.assertIn("} else if !store.isSidebarHidden {", block)
+    def test_the_panel_comes_back_exactly_as_it_was(self) -> None:
+        # The slot is chosen by the computer's flag; `isBotPanelPresented` is left alone, so the
+        # panel is still open underneath and a close hands it straight back.
+        block = ROOT_VIEW.split("if store.isComputerPanelPresented, !store.isComputerFullScreen {", 1)[1]
+        block = block.split("Group {", 1)[0]
+        self.assertNotIn("isBotPanelPresented =", block)
+
+    def test_the_sidebar_is_untouched_by_it(self) -> None:
+        leading = ROOT_VIEW.split("HStack(spacing: 0) {", 1)[1].split("Group {", 1)[0]
+        self.assertIn("if !store.isSidebarHidden {", leading)
+        self.assertNotIn("computerPane", leading)
 
     def test_full_screen_is_still_an_overlay(self) -> None:
         self.assertIn("if store.isComputerPanelPresented, store.isComputerFullScreen {", ROOT_VIEW)
@@ -83,6 +106,25 @@ class ABotCanBeDeletedFromItsSettings(unittest.TestCase):
     def test_it_is_a_confirmed_one_way_verb(self) -> None:
         for source in (IOS_SETTINGS, MAC_SETTINGS):
             self.assertIn("This cannot be undone from the app.", source)
+
+
+class AModelIsItsOwnDoor(unittest.TestCase):
+    PANEL = (MAC / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
+    MODEL = (MAC / "Views" / "MacModelSheet.swift").read_text(encoding="utf-8")
+
+    def test_the_panel_has_a_model_row(self) -> None:
+        self.assertIn('row("Model", icon: "cpu")', self.PANEL)
+        self.assertIn("store.openModel(bot)", self.PANEL)
+
+    def test_the_catalogue_is_no_longer_in_bot_settings(self) -> None:
+        # It buried the delete verb under dozens of providers in a sheet opened to change a
+        # description (reported 2026-11-14).
+        self.assertNotIn("MODELS", MAC_SETTINGS)
+        self.assertNotIn("modelCatalog", MAC_SETTINGS)
+
+    def test_the_sheet_keeps_the_hosts_confirmation_gate(self) -> None:
+        self.assertIn("case .confirmationRequired(let message):", self.MODEL)
+        self.assertIn("confirm: confirmed", self.MODEL)
 
 
 class TheFaceGalleryDropsTheInitialsRow(unittest.TestCase):

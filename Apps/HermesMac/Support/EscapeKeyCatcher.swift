@@ -20,8 +20,9 @@ struct EscapeKeyCatcher: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onEscape: onEscape) }
 
     func makeNSView(context: Context) -> NSView {
-        context.coordinator.install()
-        return NSView(frame: .zero)
+        let view = NSView(frame: .zero)
+        context.coordinator.install(hostedIn: view)
+        return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -35,12 +36,17 @@ struct EscapeKeyCatcher: NSViewRepresentable {
     final class Coordinator {
         var onEscape: () -> Bool
         private var monitor: Any?
+        /// The window this catcher lives in. Escape is *this* window's key: with the settings window
+        /// or a sheet in front, the shell behind must not answer it (reported 2026-11-14: pressing
+        /// Escape in Settings closed the sidebar instead).
+        private weak var host: NSWindow?
 
         init(onEscape: @escaping () -> Bool) {
             self.onEscape = onEscape
         }
 
-        func install() {
+        func install(hostedIn view: NSView) {
+            host = view.window
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self, event.keyCode == 53, event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else {
@@ -48,9 +54,11 @@ struct EscapeKeyCatcher: NSViewRepresentable {
                 }
                 // A key that types wins over a key that closes: the field editor is an `NSTextView`,
                 // and it is the first responder for every text field in the app.
-                if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+                // Only the window this catcher was installed in may answer.
+                guard let host = self.host, let key = NSApp.keyWindow, key === host else { return event }
+                if key.firstResponder is NSTextView { return event }
                 // A sheet owns its own Escape: `dismiss` is what a person means there.
-                if NSApp.keyWindow?.attachedSheet != nil { return event }
+                if key.attachedSheet != nil { return event }
                 return self.onEscape() ? nil : event
             }
         }

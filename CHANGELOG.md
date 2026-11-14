@@ -54,6 +54,8 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Added
+- **Model has its own row in the bot's panel on the Mac**, with the catalogue out of Bot settings:
+  dozens of providers sat between the description and the delete verb.
 - **Delete a bot from its own settings, on both shells.** It used to live only under Manage bots —
   a list of switches, which is where you go to hide a row, not to remove one. It is the last section,
   alone, and asks once.
@@ -61,8 +63,13 @@ All notable changes to Hermey are recorded here. The format follows
   sidebar, in that order. A text field keeps Escape for itself, and a sheet keeps its own.
 
 ### Fixed
-- **The computer takes the sidebar's place, on the leading edge.** It used to add a third pane and
-  grow the window to fit it, which squeezed the transcript it was opened to sit beside.
+- **The computer takes the bot panel's place on the trailing edge** — the pane whose row opens it.
+  It used to add a third pane with the window grown to fit it, then briefly took the sidebar's slot.
+- **Escape only answers in its own window.** With Settings or a sheet in front, Escape closed the
+  sidebar behind it; the bot panel's own Escape still closes the panel, and a text field keeps the key.
+- **The Settings window closes with Escape and with a click outside**, like every other surface.
+- **The bot list sits 16 pt clear of the top edge** (6 was not enough: the selected first row still
+  dissolved into the fade).
 - **The sidebar's search field drops in *under* the row** instead of replacing it. In place, the
   field took the traffic lights' line and blended into the window's chrome.
 - **The chat pill sits a few points off the window's top edge**, and the roster starts a little

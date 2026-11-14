@@ -114,18 +114,22 @@ final class WorkspaceStore: ObservableObject {
     @Published var mcpBot: Bot?
     /// What this bot runs on a schedule — the phone's Routines row, as a sheet.
     @Published var routinesBot: Bot?
+    /// The model catalogue for one bot, off the panel's Model row.
+    @Published var modelBot: Bot?
 
     /// Open one of them, closing any other: the window's one modal is shared.
     func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
     func openSkills(_ bot: Bot) { closePanels(); skillsBot = bot }
     func openMCP(_ bot: Bot) { closePanels(); mcpBot = bot }
     func openRoutines(_ bot: Bot) { closePanels(); routinesBot = bot }
+    func openModel(_ bot: Bot) { closePanels(); modelBot = bot }
 
     private func closePanels() {
         workspaceBot = nil
         skillsBot = nil
         mcpBot = nil
         routinesBot = nil
+        modelBot = nil
     }
     /// Full screen is the panel's own verb; closing the panel drops it so the next open is a panel.
     @Published var isComputerFullScreen = false
@@ -363,15 +367,16 @@ final class WorkspaceStore: ObservableObject {
     /// shared computer is open. `WorkspaceRoot` draws to this and `WindowWidthFitter` grows the window
     /// to it, so a pane opening can never clip the shell's edges.
     var minimumWindowWidth: CGFloat {
-        // The computer takes the sidebar's slot now, so it is not a third pane: the sum it needs is
-        // the leading pane's, not the sidebar's plus one.
-        let leadingPane: CGFloat? = {
-            if isComputerPanelPresented { return max(sidebarWidth, WindowLayout.computerMin) }
-            return isSidebarHidden ? nil : sidebarWidth
-        }()
-        return WindowLayout.minimumWidth(sidebarWidth: leadingPane,
+        // One trailing slot. The computer takes the bot panel's place, so the two are never both
+        // on screen — only whichever is taller needs counting, and only the computer's floor can
+        // be wider than the panel.
+        let trailingExtra = (isComputerPanelPresented && !isBotPanelPresented)
+            ? max(0, WindowLayout.computerMin - WindowLayout.botPanelWidth)
+            : 0
+        return WindowLayout.minimumWidth(sidebarWidth: isSidebarHidden ? nil : sidebarWidth,
                                          panelOpen: false,
-                                         botPanelOpen: isBotPanelPresented)
+                                         botPanelOpen: isBotPanelPresented || isComputerPanelPresented)
+            + trailingExtra
     }
 
     /// One sentence about where the pairing lives, for Settings.

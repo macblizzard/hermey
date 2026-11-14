@@ -50,6 +50,13 @@ struct MacSettingsView: View {
         .frame(width: 620, height: 500)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
+        // Escape and a click outside both close this window, the way every other surface in the
+        // app closes. Before this, Escape here did nothing to the window and closed the sidebar
+        // behind it instead (reported 2026-11-14).
+        .onExitCommand {
+            NSApp.keyWindow?.performClose(nil)
+        }
+        .background(ClosesOnResignKey().frame(width: 0, height: 0))
         .sheet(item: $botForSettings) { bot in
             MacBotSettingsSheet(model: store.model,
                                 store: store,
