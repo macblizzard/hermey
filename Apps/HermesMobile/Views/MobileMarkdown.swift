@@ -432,9 +432,9 @@ struct MobileTypingIndicator: View {
 /// bubble (which parses incrementally elsewhere) is unaffected.
 final class RowMarkdownCache {
     private var text: String?
-    private var blocks: [IncrementalMarkdown.Block] = []
+    private var blocks: [Block] = []
 
-    func parse(_ source: String) -> [IncrementalMarkdown.Block] {
+    func parse(_ source: String) -> [Block] {
         if text == source { return blocks }
         let fresh = IncrementalMarkdown.parse(source)
         text = source
