@@ -1179,10 +1179,15 @@ struct ConversationScreen: View {
     }
 
     /// Put the keyboard away from anywhere on the page.
+    ///
+    /// Out of the gesture's own stack, and only when something is actually first responder:
+    /// resigning a responder chain mid-touch-up is not something a tap handler should be doing.
     private func dismissKeyboard() {
         #if os(iOS)
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
+        Task { @MainActor in
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                           to: nil, from: nil, for: nil)
+        }
         #endif
     }
 
