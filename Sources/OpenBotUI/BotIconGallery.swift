@@ -213,11 +213,7 @@ public struct BotIconPortrait: View {
         // Tier two: a slow breath, and a blink every few seconds. Both are implicit animations over
         // two `@State` flags rather than a `TimelineView`, deliberately: a timeline rebuilds the view
         // tree every frame, and this face is drawn once per roster row (see #99).
-        .scaleEffect(breathing ? 1.018 : 1.0)
-        .animation(motionIsOn
-                   ? .easeInOut(duration: 3.6).repeatForever(autoreverses: true)
-                   : nil,
-                   value: breathing)
+        .scaleEffect(breathing ? 1.025 : 1.0)
         // Squinting is a state change, not a loop, so it animates once on its own.
         .animation(.easeOut(duration: 0.22), value: isWorking)
         .task(id: icon) { await runFaceMotion() }
@@ -233,13 +229,21 @@ public struct BotIconPortrait: View {
 /// with a per-face offset, so a list does not blink in unison — which reads as a rendering glitch
 /// rather than as faces.
 private extension BotIconPortrait {
+    /// `@MainActor` is the whole point: without it this loop resumes from `Task.sleep` on a
+    /// background thread, and a `@State` write from there is silently ignored by SwiftUI — the face
+    /// drew its light and never moved, which is exactly what the Mac reported (2026-11-14).
+    @MainActor
     func runFaceMotion() async {
         guard motionIsOn else {
             breathing = false
             blinking = false
             return
         }
-        breathing = true
+        // One flag, one repeat-forever animation: the render server does the breathing, so a roster
+        // of twenty faces costs nothing per frame.
+        withAnimation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true)) {
+            breathing = true
+        }
 
         // A deterministic offset from the face's own name: same bot, same rhythm, no `Random` (the
         // tests would have nothing to hold on to, and two faces drawn from one icon should match).
