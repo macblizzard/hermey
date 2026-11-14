@@ -54,6 +54,11 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Added
+- **The bot faces have light and motion** (#100, tiers one and two): a highlight from above, a
+  shade below and an inner rim inside the silhouette, then a slow breath, a blink every few seconds
+  and a squint while working. Reduce Motion turns the motion off, and faces under 18 pt keep still.
+- **A new app icon in the same family**: the melted-corner face, lit, on the app's dark plate, drawn
+  by `Tools/release/make_app_icon.py` from the same geometry as the roster.
 - **Model has its own row in the bot's panel on the Mac**, with the catalogue out of Bot settings:
   dozens of providers sat between the description and the delete verb.
 - **Delete a bot from its own settings, on both shells.** It used to live only under Manage bots —

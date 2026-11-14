@@ -263,10 +263,16 @@ public struct BotSilhouette: Shape {
 public struct BotEyes: View {
     public var size: CGFloat
     public var tilt: Double
+    /// 0 = open, 1 = shut. Driven by the portrait's blink; a still drawing leaves it at 0.
+    public var blink: Double
+    /// How far the eyes narrow because the bot is working. 0 = as wide as they go.
+    public var squint: Double
 
-    public init(size: CGFloat, tilt: Double = 0) {
+    public init(size: CGFloat, tilt: Double = 0, blink: Double = 0, squint: Double = 0) {
         self.size = size
         self.tilt = tilt
+        self.blink = blink
+        self.squint = squint
     }
 
     public var body: some View {
@@ -281,7 +287,16 @@ public struct BotEyes: View {
     private var eye: some View {
         RoundedRectangle(cornerRadius: size * 0.05, style: .continuous)
             .fill(Color.black.opacity(0.72))
-            .frame(width: size * 0.105, height: size * 0.185)
+            .frame(width: size * 0.105, height: eyeHeight)
+    }
+
+    /// Closed, an eye is a line and not a zero: the floor keeps a 1.5 pt bar so the face still has
+    /// two eyes in a glance. Squinting takes a third of the height, blinking takes the rest.
+    private var eyeHeight: CGFloat {
+        let open = size * 0.185
+        let squinted = open * (1 - 0.34 * min(max(squint, 0), 1))
+        let closed = squinted * (1 - min(max(blink, 0), 1))
+        return max(size * 0.028, closed)
     }
 }
 

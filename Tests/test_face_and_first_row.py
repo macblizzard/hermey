@@ -32,7 +32,8 @@ class TheFaceIsASilhouette(unittest.TestCase):
         body = portrait.split("public var body: some View", 1)[1]
         self.assertIn("BotSilhouette(icon)", body)
         self.assertIn(".fill(tint)", body)
-        self.assertIn("BotEyes(size: size, tilt: icon.eyeTilt)", body)
+        self.assertIn("BotEyes(size: size,", body)
+        self.assertIn("tilt: icon.eyeTilt", body)
 
     def test_the_ring_and_the_line_art_are_gone(self) -> None:
         # A ring around a ring around a body was the old drawing; the mass is the whole mark now.

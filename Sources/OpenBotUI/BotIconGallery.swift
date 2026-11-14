@@ -176,6 +176,15 @@ public struct BotIconPortrait: View {
     /// The swatch. `tint` is gone: a shape no longer carries a colour of its own.
     private var tint: Color { color }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+    @State private var blinking = false
+
+    /// Motion is a courtesy, not the point: below 18 pt the face is a legend for a row, and a small
+    /// thing that moves is a small thing that catches the eye for no reason. Reduce Motion wins over
+    /// everything (#100).
+    private var motionIsOn: Bool { !reduceMotion && size >= 18 }
+
     public var body: some View {
         ZStack {
             // One solid silhouette and two eyes. No ring, no body, no antenna: the shape is the
@@ -184,7 +193,14 @@ public struct BotIconPortrait: View {
             BotSilhouette(icon)
                 .fill(tint)
 
-            BotEyes(size: size, tilt: icon.eyeTilt)
+            // Tier one: light from above, shadow below, an inner rim. Inside the silhouette, so the
+            // outline that makes a shape recognisable never changes (#100).
+            BotFaceLight(icon: icon, size: size)
+
+            BotEyes(size: size,
+                    tilt: icon.eyeTilt,
+                    blink: blinking ? 1 : 0,
+                    squint: isWorking ? 1 : 0)
 
             switch status {
             case .needsYou: NeedsYouFlash(size: size, tint: tint)
@@ -194,10 +210,53 @@ public struct BotIconPortrait: View {
             }
         }
         .frame(width: size, height: size)
+        // Tier two: a slow breath, and a blink every few seconds. Both are implicit animations over
+        // two `@State` flags rather than a `TimelineView`, deliberately: a timeline rebuilds the view
+        // tree every frame, and this face is drawn once per roster row (see #99).
+        .scaleEffect(breathing ? 1.018 : 1.0)
+        .animation(motionIsOn
+                   ? .easeInOut(duration: 3.6).repeatForever(autoreverses: true)
+                   : nil,
+                   value: breathing)
+        // Squinting is a state change, not a loop, so it animates once on its own.
+        .animation(.easeOut(duration: 0.22), value: isWorking)
+        .task(id: icon) { await runFaceMotion() }
         .accessibilityLabel("\(icon.title) bot face")
     }
 }
 
+
+/// The breath and the blink.
+///
+/// Breathing is one flag flipped once; SwiftUI's own repeat-forever animation does the rest on the
+/// render server, so a roster of twenty faces costs nothing per frame. The blink is a short loop
+/// with a per-face offset, so a list does not blink in unison — which reads as a rendering glitch
+/// rather than as faces.
+private extension BotIconPortrait {
+    func runFaceMotion() async {
+        guard motionIsOn else {
+            breathing = false
+            blinking = false
+            return
+        }
+        breathing = true
+
+        // A deterministic offset from the face's own name: same bot, same rhythm, no `Random` (the
+        // tests would have nothing to hold on to, and two faces drawn from one icon should match).
+        let seed = Double(abs(icon.title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % 7)) * 0.31
+        var gap = 2.9 + seed
+
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: UInt64(gap * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.09)) { blinking = true }
+            try? await Task.sleep(nanoseconds: 130_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.13)) { blinking = false }
+            gap = 2.4 + seed
+        }
+    }
+}
 
 /// Shared working indicator that leaves the underlying portrait unchanged.
 public struct BotWorkingSparks: View {
