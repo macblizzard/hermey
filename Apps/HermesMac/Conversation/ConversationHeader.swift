@@ -100,7 +100,7 @@ struct ConversationHeader: View {
                     // With the sidebar gone this button is the window's leftmost thing, on the
                     // traffic lights' own line, and it was landing under the yellow one (reported
                     // 2026-11-14 with a screenshot). The lights own 84 pt; this starts after them.
-                    .padding(.leading, Tokens.trafficLightClearance)
+                    .padding(.leading, Geometry.trafficLightClearance)
                 }
 
                 Spacer(minLength: 12)
