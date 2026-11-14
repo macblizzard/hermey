@@ -24,6 +24,11 @@ struct TranscriptScroll: View {
     /// The roster's faces, so the thinking row can turn the same face the sidebar shows.
     var faces: [String: BotFace] = [:]
 
+    /// Grouping is memoised: see `TranscriptRowCache` — a body pass per published token would
+    /// otherwise walk the whole conversation.
+    /// Grouping is memoised: `TranscriptRowCache` walks the transcript only when it changes, and a
+    /// body pass happens on every published token.
+    @State private var rowCache = TranscriptRowCache()
     @State private var searching = false
     @State private var query = ""
     @State private var matchIndex = 0
@@ -143,8 +148,8 @@ struct TranscriptScroll: View {
             // Consecutive tool calls fold into one line: a turn that makes thirty calls should not
             // push its answer off the screen. The run's cards are one click away, each still its own
             // card with its own disclosure.
-            ForEach(TranscriptGrouping.rows(model.visibleTranscript + model.visibleLiveToolEntries,
-                                            running: Set(model.visibleLiveToolEntries.map(\.id)))) { row in
+            ForEach(rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+                                  running: Set(model.visibleLiveToolEntries.map(\.id)))) { row in
                 switch row {
                 case .entry(let entry):
                     TranscriptRowView(entry: entry,

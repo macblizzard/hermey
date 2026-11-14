@@ -66,3 +66,35 @@ public enum TranscriptGrouping {
         return rows
     }
 }
+
+
+/// One grouping pass per *change*, not per body evaluation.
+///
+/// `TranscriptGrouping.rows` walked the whole transcript every time a view's body was evaluated,
+/// and a body is evaluated on every publish of `AppModel` — which during a streaming turn is every
+/// 40 ms. On a long conversation that is a full walk to draw a caret (the jitter reported
+/// 2026-11-14). The rows are append-only within a conversation, so a cheap signature is enough to
+/// know whether the last pass still applies.
+public final class TranscriptRowCache {
+    private var signature: Signature?
+    private var cached: [TranscriptRow] = []
+
+    private struct Signature: Equatable {
+        let count: Int
+        let lastID: String?
+        let running: [String]
+    }
+
+    public init() {}
+
+    public func rows(_ entries: [TranscriptEntry], running: Set<String> = []) -> [TranscriptRow] {
+        let next = Signature(count: entries.count,
+                             lastID: entries.last?.id,
+                             running: running.sorted())
+        if next == signature { return cached }
+        let fresh = TranscriptGrouping.rows(entries, running: running)
+        signature = next
+        cached = fresh
+        return fresh
+    }
+}

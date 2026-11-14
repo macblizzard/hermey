@@ -20,6 +20,8 @@ struct ConversationScreen: View {
 
     let bot: Bot
 
+    /// Grouping is memoised: see `TranscriptRowCache`.
+    @State private var rowCache = TranscriptRowCache()
     @State private var sessionID: SessionID?
     @State private var isOpening = true
     @State private var showApprovalSheet = false
@@ -773,8 +775,8 @@ struct ConversationScreen: View {
 
             // Consecutive tool calls fold into one line, the same way they do on the Mac: a turn
             // that makes thirty calls should not fill the screen with thirty cards.
-            ForEach(TranscriptGrouping.rows(model.visibleTranscript + model.visibleLiveToolEntries,
-                                            running: runningToolIDs)) { row in
+            ForEach(rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+                                  running: runningToolIDs)) { row in
                 switch row {
                 case .entry(let entry):
                     MobileTranscriptRow(entry: entry, botTint: botTint)
