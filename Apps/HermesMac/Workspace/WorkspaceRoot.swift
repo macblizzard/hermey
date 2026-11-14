@@ -132,6 +132,11 @@ struct WorkspaceRoot: View {
                 MacBotToolsSheet(bot: bot, kind: .skills, model: store.model)
             case .mcp(let bot):
                 MacBotToolsSheet(bot: bot, kind: .mcp, model: store.model)
+            case .model(let bot):
+                MacModelSheet(model: store.model,
+                              store: store,
+                              bot: bot,
+                              conversationIsOpen: store.model.selectedBotID == bot.id)
             case .routines(let bot):
                 BotRoutinesSheet(
                     botName: bot.displayName,
@@ -158,6 +163,7 @@ struct WorkspaceRoot: View {
         case skills(Bot)
         case mcp(Bot)
         case routines(Bot)
+        case model(Bot)
         case botSettings(Bot)
 
         var id: String {
@@ -167,6 +173,7 @@ struct WorkspaceRoot: View {
             case .skills(let bot): return "skills:\(bot.id)"
             case .mcp(let bot): return "mcp:\(bot.id)"
             case .routines(let bot): return "routines:\(bot.id)"
+            case .model(let bot): return "model:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             }
         }
@@ -183,6 +190,7 @@ struct WorkspaceRoot: View {
                 if let bot = store.skillsBot { return .skills(bot) }
                 if let bot = store.mcpBot { return .mcp(bot) }
                 if let bot = store.routinesBot { return .routines(bot) }
+                if let bot = store.modelBot { return .model(bot) }
                 if let bot = store.botSettingsBot { return .botSettings(bot) }
                 return nil
             },
@@ -193,6 +201,7 @@ struct WorkspaceRoot: View {
                 store.skillsBot = nil
                 store.mcpBot = nil
                 store.routinesBot = nil
+                store.modelBot = nil
                 store.botSettingsBot = nil
             }
         )
@@ -334,20 +343,9 @@ struct WorkspaceShell: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // The computer takes the sidebar's slot, on the leading edge, with the sidebar's fill
-            // running to the window edge behind it. It used to be a third pane on the trailing edge
-            // with the window grown to fit it, which on a laptop-width window squeezed the very
-            // transcript you opened the computer to read beside (reported 2026-11-14: "it should
-            // replace the sidebar with the bot computer bar"). The sidebar is not hidden while this
-            // is open — it comes back exactly as it was, at the width it had.
-            if store.isComputerPanelPresented, !store.isComputerFullScreen {
-                computerPane(fullScreen: false)
-                    // Never narrower than a computer can be read at, whatever the sidebar was.
-                    .frame(width: max(store.sidebarWidth, WindowLayout.computerMin))
-                Hairline(.vertical)
-            } else if !store.isSidebarHidden {
             // Collapsed, the panel, its drag strip and the hairline all go: a hidden panel that
             // still reserves 201 pt of chrome is not hidden.
+            if !store.isSidebarHidden {
                 BotSidebarView(model: model, store: store)
                     .frame(width: store.sidebarWidth)
 
@@ -400,7 +398,18 @@ struct WorkspaceShell: View {
             // The bot's own panel, on the trailing edge: the phone's drawer as a pane. It is not
             // modal — the transcript keeps scrolling behind it, and a compaction keeps reporting
             // into it while you watch.
-            if store.isBotPanelPresented {
+            //
+            // The shared computer takes **this** slot, not the sidebar's and not a fourth pane: the
+            // computer is a row on this panel, so it opens where the row is. `isBotPanelPresented`
+            // is left alone, so closing the computer hands the panel back exactly as it was
+            // (reported 2026-11-14, twice: first it was a third pane, then the wrong edge).
+            if store.isComputerPanelPresented, !store.isComputerFullScreen {
+                computerPane(fullScreen: false)
+                    // The panel's own width, with a computer's floor: narrower than this and the
+                    // screen inside stops being readable.
+                    .frame(width: max(WindowLayout.botPanelWidth, WindowLayout.computerMin))
+                    .transition(.move(edge: .trailing))
+            } else if store.isBotPanelPresented {
                 MacBotPanel(model: model, store: store)
                     .transition(.move(edge: .trailing))
             }

@@ -29,24 +29,21 @@ class WindowLayoutGuards(unittest.TestCase):
         self.assertIn("minWidth: store.minimumWindowWidth", self.app,
                       "a hardcoded two-pane sum is what clipped the third pane")
         self.assertIn("var minimumWindowWidth", self.store)
-        # The computer takes the sidebar's slot, so the minimum is the *leading pane's* width plus
-        # the conversation — never the sidebar's plus a pane (2026-11-14).
+        # One trailing slot: the computer takes the bot panel's place, so the two are never both
+        # counted — only the computer's wider floor is added (2026-11-14).
         self.assertIn("panelOpen: false", self.store)
-        self.assertIn('if isComputerPanelPresented { return max(sidebarWidth, WindowLayout.computerMin) }',
-                      self.store)
+        self.assertIn("botPanelOpen: isBotPanelPresented || isComputerPanelPresented", self.store)
+        self.assertIn("WindowLayout.computerMin - WindowLayout.botPanelWidth", self.store)
 
-    def test_the_computer_pane_holds_the_leading_slot(self) -> None:
-        # It used to be a third pane on the trailing edge with its own floors and ceiling. It now
-        # replaces the sidebar, so its slot is the sidebar's — never narrower than a computer can be
-        # read at.
+    def test_the_computer_pane_holds_the_panel_slot(self) -> None:
+        # It used to be a third pane with its own floors and ceiling, then briefly the sidebar's.
+        # It now takes the bot panel's slot, so its width is the panel's with a computer's floor.
         self.assertNotIn(".frame(width: 520)", self.root,
                          "a fixed pane width cannot give way in a narrow window")
-        self.assertIn(".frame(width: max(store.sidebarWidth, WindowLayout.computerMin))", self.root)
-        leading = self.root.split("if store.isComputerPanelPresented", 1)[1].split("} else if !store.isSidebarHidden", 1)[0]
-        self.assertIn("computerPane(fullScreen: false)", leading,
-                      "the computer is the leading pane, not a trailing one")
+        self.assertIn(".frame(width: max(WindowLayout.botPanelWidth, WindowLayout.computerMin))",
+                      self.root)
         self.assertEqual(self.root.count("computerPane(fullScreen: false)"), 1,
-                         "one leading slot: it was also being drawn on the trailing edge")
+                         "one slot: drawing it twice is what put it on the wrong edge")
 
     def test_the_conversation_hands_width_back_while_the_panel_is_open(self) -> None:
         self.assertIn("WindowLayout.conversationMinWithComputer", self.root)

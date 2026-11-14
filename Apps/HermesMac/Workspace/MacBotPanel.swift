@@ -43,6 +43,10 @@ struct MacBotPanel: View {
                     section
                     // Same words as the phone's page: "Library" for this bot's files, and "MCP"
                     // for the acronym that already says what it is. Two shells, one vocabulary.
+                    // Which model answers, beside the other facts about how this bot behaves. It
+                    // used to sit at the bottom of Bot settings, under a catalogue of dozens of
+                    // providers, a scroll away from the delete verb (reported 2026-11-14).
+                    row("Model", icon: "cpu") { if let bot { store.openModel(bot) } }
                     row("Library", icon: "folder") { if let bot { store.openWorkspace(bot) } }
                     row("Skills", icon: "book.closed") { if let bot { store.openSkills(bot) } }
                     row("MCP", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
