@@ -158,7 +158,10 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         self.assertIn("accessibilityReduceMotion", portrait)
         self.assertIn("size >= 18", portrait)
         self.assertNotIn("TimelineView(.animation", body)
-        self.assertIn("repeatForever(autoreverses: true)", body)
+        self.assertIn("withAnimation(.easeInOut(duration: 3.6).repeatForever(autoreverses: true))", GALLERY)
+        # And the loop runs on the main actor: a state write from a thread the sleep resumed on is
+        # silently dropped, which is how the Mac got light and no motion (2026-11-14).
+        self.assertIn("@MainActor\n    func runFaceMotion() async", GALLERY)
         self.assertIn("blink: blinking ? 1 : 0", body)
         self.assertIn("squint: isWorking ? 1 : 0", body)
 
