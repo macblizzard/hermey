@@ -61,9 +61,16 @@ struct ConversationScreen: View {
     /// below the viewport — so it cannot be fooled by a lazy row being re-laid out. `followsStream`
     /// is intent: a reader who drags upward stops being followed until they come back to the end,
     /// which is why the transcript no longer yanks itself down while a bot is still writing.
-    @State private var isAtBottom = true
     @State private var followsStream = true
     @State private var bottomDistance: CGFloat = .greatestFiniteMagnitude
+
+    /// Whether the end of the transcript is on screen, taken from the measurement rather than from a
+    /// state flag that only moved when the flag disagreed with itself.
+    ///
+    /// The old version kept a bool and only wrote it on a *change*, so a drag that ended on a value
+    /// the flag had already recorded left it wrong — the control stayed hidden with the last line
+    /// off screen, or stayed up over a chat sitting at the bottom. A measurement cannot go stale.
+    private var isAtBottom: Bool { bottomDistance.isFinite && bottomDistance <= Self.bottomSlack }
     /// The scroll view's own height, needed to turn the sentinel's position into a distance.
     @State private var transcriptHeight: CGFloat = 0
     /// At most one coalesced scroll in flight: a token arriving while one is queued must not queue
@@ -604,6 +611,10 @@ struct ConversationScreen: View {
                     .animation(.easeOut(duration: 0.18), value: isAtBottom)
             }
 
+            // A tap on the transcript is a tap outside the box: put the keyboard away. UIKit owns the
+            // first responder here, so this asks for resignation rather than chasing a focus flag
+            // that lives inside the composer.
+            .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
             // A swipe in from the trailing edge belongs to the drawer. It is a *second* gesture on
             // the same view, so vertical scrolling is untouched: only a mostly-horizontal drag that
             // started inside the edge band is taken.
@@ -678,12 +689,11 @@ struct ConversationScreen: View {
                 // measured is not evidence that the reader is somewhere else.
                 guard distance.isFinite else { return }
                 bottomDistance = distance
+                // Only the *intent* is held back while a finger is down: a reader who has grabbed the
+                // transcript is not to be dragged back by the next token. The measurement itself is
+                // always kept, so the control's visibility is never a step behind the scroll.
                 guard !isDraggingTranscript else { return }
-                let atEnd = distance <= Self.bottomSlack
-                if atEnd != isAtBottom {
-                    isAtBottom = atEnd
-                    followsStream = atEnd
-                }
+                followsStream = isAtBottom
             }
             .onChange(of: searchText) {
                 searchIndex = 0
@@ -701,6 +711,7 @@ struct ConversationScreen: View {
     }
 
     private var transcriptList: some View {
+        VStack(spacing: 0) {
         LazyVStack(alignment: .leading, spacing: 16) {
             if isBlank {
                 if isOpening {
@@ -772,6 +783,21 @@ struct ConversationScreen: View {
                     .id(Self.streamingSearchID)
             }
 
+        }
+        transcriptFoot
+            // The stack's own spacing, which this block no longer gets for free.
+            .padding(.top, 16)
+        }
+    }
+
+    /// The end of the transcript, outside the lazy stack on purpose.
+    ///
+    /// It used to be the last child of the `LazyVStack`, which only instantiates what is near the
+    /// viewport: `scrollTo` on a view that has not been created does nothing at all, so the first
+    /// tap of the jump control landed, the second one moved and the third one arrived — the
+    /// "sometimes it takes 2-3 taps" report. As a sibling of the stack it always exists.
+    private var transcriptFoot: some View {
+        Group {
             // The end, the room the floating composer needs and the transcript's old bottom
             // padding as one block, whose *bottom edge* is the content's bottom edge.
             //
@@ -1127,6 +1153,14 @@ struct ConversationScreen: View {
         voice.speak(reply.text)
     }
 
+    /// Put the keyboard away from anywhere on the page.
+    private func dismissKeyboard() {
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
+        #endif
+    }
+
     /// Scroll after the keyboard's safe-area animation has settled, not when focus first
     /// changes (at that point the scroll view still has its old height). Frame changes also
     /// cover keyboard size changes and rotation; dismissal never pulls history to the bottom.
@@ -1146,16 +1180,11 @@ struct ConversationScreen: View {
         guard !isSearching, height > 0, !isDraggingTranscript,
               height > previousHeight || sizeChanged else { return }
 
-        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
-        keyboardScrollTask = Task { @MainActor in
-            // Allow the keyboard animation and the following SwiftUI layout pass to finish.
-            let delay = max(0, min(duration, 2)) + 0.05
-            do {
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            } catch { return }
-            guard !Task.isCancelled, !isDraggingTranscript else { return }
-            scroll(proxy, animated: false)
-        }
+        // Deliberately no scroll here. The keyboard coming up used to pull the transcript to the
+        // newest message — so tapping the box to re-read what you were typing yanked the page you
+        // were reading out from under you. Focus is not a request to move. Sending, a new message
+        // and a streaming reply still follow, and the composer's own safe-area inset keeps the field
+        // above the keyboard.
     }
 
     /// The transcript is "at the bottom" when its end is this close to the bottom of the viewport.
@@ -1205,7 +1234,18 @@ struct ConversationScreen: View {
         if !isAtBottom {
             Button {
                 Haptics.impact()
+                // Tapping the way back to the newest message *is* asking to follow again.
+                followsStream = true
                 scroll(proxy, animated: true)
+                // A scroll requested while the lazy stack is mid-layout can be dropped, which is how
+                // one tap used to do nothing and the next one work. Asking once more after the
+                // animation has been committed costs nothing: if the first one landed this is a
+                // no-op, and if it did not, the reader does not have to tap twice.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 320_000_000)
+                    guard bottomDistance > Self.bottomSlack else { return }
+                    scroll(proxy, animated: false)
+                }
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 14, weight: .semibold))

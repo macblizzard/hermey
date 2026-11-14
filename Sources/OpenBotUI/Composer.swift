@@ -137,13 +137,17 @@ public struct Composer: View {
     /// longer" report.
     private var rowHeight: CGFloat { max(lineBox, controlSide) }
 
-    /// Where a control starts so that its centre is the *line's* centre. `rowHeight / 2` is the
-    /// row's centre, and the row is not the line.
-    private var controlTopInset: CGFloat { lineInset + TypeScale.chatLine / 2 - controlSide / 2 }
+    /// How far a control sits above the card's foot so that its centre is the centre of the *last*
+    /// line — the line the caret is on.
+    ///
+    /// Controls anchored to the top put the paperclip beside line one and left it there while the
+    /// text grew away from it, which reads as the box filling up underneath a row of buttons that
+    /// belong to a different control. They ride the bottom now, the way a keyboard's own controls do.
+    private var controlInset: CGFloat { max(0, (lineBox - controlSide) / 2) }
 
     private func rowCentred<V: View>(_ view: V) -> some View {
-        view.padding(.top, max(0, controlTopInset))
-            .frame(height: rowHeight, alignment: .top)
+        view.padding(.bottom, controlInset)
+            .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
     private var trimmed: String {
@@ -165,9 +169,9 @@ public struct Composer: View {
                     .padding(.leading, 2)
             }
 
-            // Top-aligned: a second line must grow the card downwards, not push the paperclip and
-            // the send arrow around. Every control then shares the first line's centre.
-            HStack(alignment: .top, spacing: 8) {
+            // A second line grows the card downwards and the controls stay at the foot of it, so a
+            // long message keeps its paperclip and its arrow where the thumb left them.
+            HStack(alignment: .bottom, spacing: 8) {
                 if showsAttach {
                     rowCentred(attachControl)
                 }
@@ -199,8 +203,8 @@ public struct Composer: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, max(0, controlTopInset))
-                    .frame(height: rowHeight, alignment: .top)
+                    .padding(.bottom, controlInset)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
                     .opacity(trimmed.isEmpty ? 0 : 1)
                     .allowsHitTesting(!trimmed.isEmpty)
                     .accessibilityHidden(trimmed.isEmpty)
@@ -266,6 +270,22 @@ public struct Composer: View {
             }
         }
         .opacity(isDisabled ? 0.6 : 1)
+        // The whole card is the field. A tap on the paperclip's margin, on the padding above the
+        // first line or on the gap beside the send arrow is a tap on a text box, and a text box that
+        // ignores it — leaving the caret wherever it was, or nowhere — is the thing that makes a
+        // composer feel broken. Simultaneous so the buttons inside still get their own taps.
+        .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous))
+        .simultaneousGesture(TapGesture().onEnded { focusField() })
+    }
+
+    /// Put the caret in the field, wherever the tap landed.
+    private func focusField() {
+        guard !isDisabled else { return }
+        #if os(macOS)
+        editorFocused = true
+        #else
+        focused = true
+        #endif
     }
 
     /// One line is a capsule; a paragraph is not.

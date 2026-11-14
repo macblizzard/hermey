@@ -137,10 +137,10 @@ struct ConversationDrawer: View {
                 row("MCP servers", systemImage: "puzzlepiece.extension", run: onMCP)
             }
 
+            // Settings is gone from this page: Edit, in the header, opens the same sheet, and two
+            // doors to one room is one door too many.
             panel {
                 row("Search", systemImage: "magnifyingglass", run: onSearch)
-                rowDivider
-                row("Settings", systemImage: "gearshape", run: onSettings)
             }
 
             // Compaction, the unread sweep and spoken replies are gone from this page: the first
