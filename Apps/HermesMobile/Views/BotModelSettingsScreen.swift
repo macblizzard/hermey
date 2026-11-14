@@ -29,7 +29,7 @@ struct BotModelSettingsScreen: View {
     var editSoul: (() -> Void)? = nil
     /// Writes this bot's portrait. `nil` hides the row, the same rule as the soul: the picker moved
     /// here from a long press on the list, where nobody found it (reported 2026-11-14).
-    var saveIcon: ((BotFace) async throws -> Void)? = nil
+    var saveIcon: ((BotFace?) async throws -> Void)? = nil
     /// Reads the two documents this bot carries into every turn. `nil` hides the row.
     var loadMemory: (() async throws -> BotMemory)? = nil
 
@@ -58,7 +58,7 @@ struct BotModelSettingsScreen: View {
          save: @escaping (String, ModelOption, Bool) async throws -> SaveResult,
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
-         saveIcon: ((BotFace) async throws -> Void)? = nil,
+         saveIcon: ((BotFace?) async throws -> Void)? = nil,
          loadMemory: (() async throws -> BotMemory)? = nil) {
         self.bot = bot
         self.icon = icon

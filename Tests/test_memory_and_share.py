@@ -62,7 +62,7 @@ class TheBotKnowsItself(unittest.TestCase):
         self.assertIn("BotIconPicker(botName: bot.displayName, selected: icon)", settings)
         self.assertIn("BotMemorySheet(botName: bot.displayName, load: loadMemory)", settings)
         # Each is optional: a client that cannot write the icon must not be shown the row.
-        self.assertIn("var saveIcon: ((BotFace) async throws -> Void)? = nil", settings)
+        self.assertIn("var saveIcon: ((BotFace?) async throws -> Void)? = nil", settings)
         self.assertIn("var loadMemory: (() async throws -> BotMemory)? = nil", settings)
 
     def test_the_list_hands_both_writers_to_the_settings_sheet(self) -> None:
