@@ -600,7 +600,13 @@ struct ConversationScreen: View {
     private var transcriptScroll: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                transcriptList
+                Group {
+                    if isBlank, !isOpening {
+                        blankState
+                    } else {
+                        transcriptList
+                    }
+                }
                     // The one gutter a conversation uses, shared with the composer and with a
                     // group chat: `Geometry.chatGutter`, never a number typed here.
                     .padding(.horizontal, Geometry.chatGutter)
@@ -759,12 +765,8 @@ struct ConversationScreen: View {
     private var transcriptList: some View {
         VStack(spacing: 0) {
         LazyVStack(alignment: .leading, spacing: 16) {
-            if isBlank {
-                if isOpening {
-                    openingState
-                } else {
-                    MobileTranscriptEmpty(title: title)
-                }
+            if isBlank, isOpening {
+                openingState
             }
 
             if model.hasEarlierHistory {
@@ -868,6 +870,51 @@ struct ConversationScreen: View {
                         value: geo.frame(in: .named(ConversationScreen.scrollSpace)).maxY - transcriptHeight)
                 })
         }
+    }
+
+    /// The empty chat.
+    ///
+    /// It used to be the first row of a lazy stack: a short block pinned under the pill with a
+    /// screenful of nothing beneath it, which read as a screen that had failed to load rather than
+    /// as an invitation (reported 2026-11-14 with a screenshot). It fills the viewport now and sits
+    /// in the middle of it, clear of the floating composer.
+    private var blankState: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 72)
+
+            Text(title)
+                .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
+                .foregroundStyle(Tokens.textPrimary)
+                .multilineTextAlignment(.center)
+
+            Text(subtitle)
+                .font(TypeScale.font(TypeScale.lg))
+                .foregroundStyle(Tokens.textMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity)
+        // The free height, not the scroll view's: the pill's strip and the floating composer are
+        // both inside this scroll view, so centring against the whole viewport lands the block low.
+        .containerRelativeFrame(.vertical) { height, _ in
+            max(0, height - 74 - composerHeight)
+        }
+        .padding(.horizontal, 32)
+    }
+
+    /// What the empty chat says. The bot's own description when the host has one — it is the only
+    /// sentence on this screen that can tell you what this bot is *for* — and otherwise the one
+    /// thing a chat with nobody in it needs to say.
+    private var subtitle: String {
+        if let description = bot.description?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !description.isEmpty {
+            return description
+        }
+        return "Ask anything."
     }
 
     private var isBlank: Bool {
