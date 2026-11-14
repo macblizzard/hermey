@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.319",
+          "buildVersion": "319",
+          "date": "2026-11-14T12:31:55Z",
+          "localizedDescription": "The bot list's top edge: the CHATS label is gone, the list sits closer to the bar's buttons, and content fades under the bar instead of meeting it with a hard seam. Search conversations now opens as a glass pill instead of bare text on the transcript.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.319/Hermey-0.1.319-b319.ipa",
+          "size": 2280104,
+          "minOSVersion": "17.0",
+          "sha256": "b0e8734986939ad8d148559b7b138a8d6f220c04bd630881c6c6911d4122d247"
+        },
+        {
           "version": "0.1.316",
           "buildVersion": "316",
           "date": "2026-11-14T11:45:46Z",
@@ -62,16 +72,6 @@
           "size": 2247434,
           "minOSVersion": "17.0",
           "sha256": "f8664768f9256daa5aed238efbd8d84686eac1921c4a5938c5696c8df80c009b"
-        },
-        {
-          "version": "0.1.303",
-          "buildVersion": "303",
-          "date": "2026-11-14T08:54:52Z",
-          "localizedDescription": "Jump answers the first tap, the composer takes a tap anywhere, controls ride the last line.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.303/Hermey-0.1.303-b303.ipa",
-          "size": 2247159,
-          "minOSVersion": "17.0",
-          "sha256": "df009b880d7b7ed61542b0f1b194f448d26ee3bcbc8732b1823c15efcce30e39"
         }
       ],
       "appPermissions": {
