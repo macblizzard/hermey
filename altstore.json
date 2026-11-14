@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.309",
+          "buildVersion": "309",
+          "date": "2026-11-14T10:01:22Z",
+          "localizedDescription": "The composer card is a row again \u2014 my regression, fixed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.309/Hermey-0.1.309-b309.ipa",
+          "size": 2246635,
+          "minOSVersion": "17.0",
+          "sha256": "0f70d1e42ad105bb51d1c816f95760b843be3f994e6b0918d4bd0d2c60996e0f"
+        },
+        {
           "version": "0.1.306",
           "buildVersion": "306",
           "date": "2026-11-14T09:07:31Z",
@@ -62,16 +72,6 @@
           "size": 2245230,
           "minOSVersion": "17.0",
           "sha256": "038f274e7c4078b4503e2745f77878c86522159f6f6fa09938efc1d0d8b285ef"
-        },
-        {
-          "version": "0.1.293",
-          "buildVersion": "293",
-          "date": "2026-11-14T07:30:37Z",
-          "localizedDescription": "Composer geometry from one line up, transcript no longer clipped, glass with nothing opaque behind it, and a swipe the app owns.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.293/Hermey-0.1.293-b293.ipa",
-          "size": 2255253,
-          "minOSVersion": "17.0",
-          "sha256": "6d42ce0d227e27910d2900e3581ad30cc69ffb3a203969d9857dedb5ee252a9e"
         }
       ],
       "appPermissions": {
