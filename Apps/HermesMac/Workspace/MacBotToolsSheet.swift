@@ -13,7 +13,7 @@ struct MacBotToolsSheet: View {
         case skills
         case mcp
 
-        var title: String { self == .skills ? "Skills" : "MCP servers" }
+        var title: String { self == .skills ? "Skills" : "MCP" }
         var symbol: String { self == .skills ? "book.closed" : "puzzlepiece.extension" }
 
         var explanation: String {

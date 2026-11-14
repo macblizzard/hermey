@@ -41,12 +41,17 @@ struct MacBotPanel: View {
                     }
 
                     section
-                    row("Workspace", icon: "folder") { if let bot { store.openWorkspace(bot) } }
+                    // Same words as the phone's page: "Library" for this bot's files, and "MCP"
+                    // for the acronym that already says what it is. Two shells, one vocabulary.
+                    row("Library", icon: "folder") { if let bot { store.openWorkspace(bot) } }
                     row("Skills", icon: "book.closed") { if let bot { store.openSkills(bot) } }
-                    row("MCP servers", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
+                    row("MCP", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }
+                    row("Routines", icon: "clock.arrow.circlepath") {
+                        if let bot { store.openRoutines(bot) }
+                    }
 
                     section
-                    row("Search conversation", icon: "magnifyingglass") {
+                    row("Search conversations", icon: "magnifyingglass") {
                         store.openFindInChat()
                     }
                     row("Bot settings", icon: "gearshape") {

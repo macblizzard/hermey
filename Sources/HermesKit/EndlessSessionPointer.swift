@@ -118,6 +118,15 @@ public protocol BotSessionPointerStore: Sendable {
     /// once per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// `GET /v1/bots/{profile}/routines` — this bot's schedules, soonest first.
+    ///
+    /// Defaulted to a refusal: a store that predates the route must say so, not draw "no routines"
+    /// over a bot that runs four of them every night.
+    func routines(_ profile: String) async throws -> [BotRoutine]
+
+    /// `POST /v1/bots/{profile}/routines/{jobID}/state` — pause one routine, or resume it.
+    func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
+
     /// `GET /v1/rooms` — the group chats this host hosts.
     ///
     /// These four are protocol requirements, not free functions on an extension: a requirement that
@@ -149,6 +158,10 @@ public extension BotSessionPointerStore {
     func deleteBot(_ profile: String) async throws { throw BotAdminUnavailable() }
     func setBotEnabled(_ profile: String, enabled: Bool) async throws { throw BotAdminUnavailable() }
     func disabledBots() async throws -> Set<String> { [] }
+    func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
+    func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
+        throw BotAdminUnavailable()
+    }
 }
 
 /// Thrown by a pointer store that has no admin routes (older bridge, test double).
@@ -390,6 +403,33 @@ enum Failure: Error, Equatable, LocalizedError {
               let names = object["disabled"] as? [String]
         else { return [] }
         return Set(names)
+    }
+
+    /// `GET /v1/bots/{profile}/routines`.
+    public func routines(_ profile: String) async throws -> [BotRoutine] {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgeGET("v1/bots/\(name)/routines", timeout: 20)
+        return BotRoutine.decodeList(data)
+    }
+
+    /// `POST /v1/bots/{profile}/routines/{jobID}/state`.
+    ///
+    /// The job id is host data used as a path segment, so it is escaped exactly like a profile name:
+    /// an id that carried a slash would otherwise reshape the request.
+    public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
+        let name = try Self.pathComponent(profile)
+        let job = try Self.pathComponent(jobID)
+        _ = try await bridgePOST("v1/bots/\(name)/routines/\(job)/state",
+                                 body: ["paused": paused], timeout: 60)
+    }
+
+    /// One path segment from host data: non-empty, and never able to escape onto another path.
+    private static func pathComponent(_ value: String) throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let escaped = trimmed.addingPercentEncoding(withAllowedCharacters: URLPath.componentAllowed)
+        else { throw Failure.noProfile }
+        return escaped
     }
 
     /// Percent-encode the profile segment: the path is built from a name the user typed.

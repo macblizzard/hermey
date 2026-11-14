@@ -28,6 +28,7 @@ struct ConversationScreen: View {
     @State private var showWorkspace = false
     @State private var showSkills = false
     @State private var showMCP = false
+    @State private var showRoutines = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
     /// The prepend counter this screen has already reacted to (see the transcript's onChange).
@@ -174,6 +175,7 @@ struct ConversationScreen: View {
                     onWorkspace: { closeDrawer(); showWorkspace = true },
                     onSkills: { closeDrawer(); showSkills = true },
                     onMCP: { closeDrawer(); showMCP = true },
+                    onRoutines: { closeDrawer(); showRoutines = true },
                     onSearch: { closeDrawer(); isSearching = true; searchFocused = true },
                     onSettings: { closeDrawer(); showBotSettings = true },
                     onCompact: { closeDrawer(); Task { await model.compressNow() } },
@@ -266,6 +268,16 @@ struct ConversationScreen: View {
         }
         .sheet(isPresented: $showMCP) {
             BotToolsSheet(bot: bot, kind: .mcp, model: model)
+        }
+        // The routines list reads the host each time it opens: a schedule paused on the desktop
+        // must not be drawn as running here just because the drawer was opened a minute ago.
+        .sheet(isPresented: $showRoutines) {
+            BotRoutinesSheet(
+                botName: bot.displayName,
+                load: { try await model.routines(for: bot.id) },
+                setPaused: { jobID, paused in
+                    try await model.setRoutinePaused(jobID, paused: paused, for: bot.id)
+                })
         }
         .fullScreenCover(isPresented: $showComputer) {
             BotComputerPane(profile: bot.id,

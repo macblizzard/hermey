@@ -416,6 +416,18 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.disabledBots()
     }
 
+    /// Schedules are the bridge's too: no store means an older host, which must say so rather than
+    /// answer "this bot has no routines".
+    public func routines(_ profile: String) async throws -> [BotRoutine] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.routines(profile)
+    }
+
+    public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.setRoutinePaused(profile, jobID: jobID, paused: paused)
+    }
+
     /// Rooms are the bridge's, like the pointer and bot management.
     public func rooms() async throws -> [RoomSummary] {
         guard let sessionPointer else { return [] }

@@ -28,9 +28,11 @@ class TheMenuOpensAllThree(unittest.TestCase):
         # The verbs moved from the header's dropdown into the panel the name opens: a panel stays
         # open beside the chat it acts on, a dropdown has to be re-opened for every verb.
         panel = read(PANEL)
-        for verb in ("Workspace", "Skills", "MCP servers"):
+        # The same words as the phone's page: Library, MCP, and the new Routines door.
+        for verb in ("Library", "Skills", "MCP", "Routines"):
             self.assertIn(f'row("{verb}"', panel)
-        for call in ("store.openWorkspace(bot)", "store.openSkills(bot)", "store.openMCP(bot)"):
+        for call in ("store.openWorkspace(bot)", "store.openSkills(bot)", "store.openMCP(bot)",
+                     "store.openRoutines(bot)"):
             self.assertIn(call, panel)
         # And the header no longer keeps a menu of its own.
         self.assertNotIn("moreMenu", read(HEADER))
@@ -39,14 +41,16 @@ class TheMenuOpensAllThree(unittest.TestCase):
         panel = read(PANEL)
         block = panel
         # The documents, then what the bot may reach for: the phone's order, in the panel.
-        self.assertLess(block.index('row("Workspace"'), block.index('row("Skills"'))
-        self.assertLess(block.index('row("Skills"'), block.index('row("MCP servers"'))
+        self.assertLess(block.index('row("Library"'), block.index('row("Skills"'))
+        self.assertLess(block.index('row("Skills"'), block.index('row("MCP"'))
+        self.assertLess(block.index('row("MCP"'), block.index('row("Routines"'))
 
 
 class OneModalAtATime(unittest.TestCase):
     def test_the_window_has_a_route_for_each(self) -> None:
         root = read(ROOTVIEW)
-        for case in ("case workspace(Bot)", "case skills(Bot)", "case mcp(Bot)"):
+        for case in ("case workspace(Bot)", "case skills(Bot)", "case mcp(Bot)",
+                     "case routines(Bot)"):
             self.assertIn(case, root)
         self.assertIn("MacWorkspaceSheet(bot: bot, client: store.workspace)", root)
         self.assertIn("MacBotToolsSheet(bot: bot, kind: .skills, model: store.model)", root)
@@ -55,14 +59,16 @@ class OneModalAtATime(unittest.TestCase):
     def test_opening_one_closes_the_others(self) -> None:
         store = read(STORE)
         self.assertIn("private func closePanels()", store)
-        for opener in ("func openWorkspace", "func openSkills", "func openMCP"):
+        for opener in ("func openWorkspace", "func openSkills", "func openMCP",
+                       "func openRoutines"):
             body = store.split(opener, 1)[1].split("}", 1)[0]
             self.assertIn("closePanels()", body, f"{opener} must not stack a second sheet")
 
     def test_dismissing_clears_every_flag(self) -> None:
         root = read(ROOTVIEW)
         setter = root.split("set: { route in", 1)[1].split(")\n", 1)[0]
-        for flag in ("store.workspaceBot = nil", "store.skillsBot = nil", "store.mcpBot = nil"):
+        for flag in ("store.workspaceBot = nil", "store.skillsBot = nil", "store.mcpBot = nil",
+                     "store.routinesBot = nil"):
             self.assertIn(flag, setter)
 
     def test_the_workspace_client_mints_a_ticket_per_request(self) -> None:

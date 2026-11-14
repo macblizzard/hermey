@@ -67,7 +67,7 @@ struct MacWorkspaceSheet: View {
             Image(systemName: "folder")
                 .foregroundStyle(Tokens.textSecondary)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Workspace · \(bot.displayName)")
+                Text("Library · \(bot.displayName)")
                     .font(TypeScale.font(TypeScale.md, weight: .semibold))
                 Text("What it prepared, and what you sent it")
                     .font(TypeScale.font(TypeScale.sm))

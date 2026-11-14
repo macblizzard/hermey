@@ -64,6 +64,17 @@ class EnabledChange(BaseModel):
     enabled: bool
 
 
+class RoutineStateChange(BaseModel):
+    """Pause or resume one of a bot's routines.
+
+    `paused: true` is the only way to say "stop this one"; there is deliberately no `run now` and no
+    schedule edit here. A routine's text is the bot's own instructions, and this route is a switch
+    beside a row, not an editor.
+    """
+
+    paused: bool
+
+
 def _profiles_root() -> Path:
     return paths.profiles_root()
 
@@ -121,6 +132,38 @@ def _dashboard(method: str, path: str) -> tuple[int, Any]:
 def _cron_jobs(profile: str) -> list[dict]:
     _status, body = _dashboard("GET", f"/api/cron/jobs?profile={profile}")
     return [job for job in (body or []) if isinstance(job, dict) and job.get("id")]
+
+
+#: A cron job id is an opaque token the dashboard accepts as a path segment.
+JOB_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _routine_row(job: dict) -> dict:
+    """One of a bot's schedules, reduced to what a row on a phone can show.
+
+    The prompt is deliberately absent, and so is every other textual field: a routine's prompt is the
+    bot's own instructions (thousands of characters, often naming the owner's private setup), and a
+    list of *when this bot runs* never needs to read it back. What a row needs is the name, when it
+    next fires, how the last run went, and whether it is switched on.
+    """
+    state = job.get("state")
+    # "Off" has two spellings on the host: `enabled: false`, and `state: paused` (which is what the
+    # pause route sets). Reading only one of them would draw a paused routine as running.
+    paused = job.get("enabled", True) is False or state == "paused"
+    raw_schedule = job.get("schedule")
+    schedule = raw_schedule if isinstance(raw_schedule, dict) else {}
+    return {
+        "id": str(job.get("id")),
+        "name": str(job.get("name") or job.get("id")),
+        "schedule": str(job.get("schedule_display") or schedule.get("display") or schedule.get("expr") or ""),
+        "next_run_at": job.get("next_run_at"),
+        "last_run_at": job.get("last_run_at"),
+        "last_status": job.get("last_status"),
+        "last_error": job.get("last_error"),
+        "paused": paused,
+        # A one-shot that already ran is not paused, and it is not going to run again either.
+        "completed": state == "completed",
+    }
 
 
 def _read_state() -> dict:
@@ -219,5 +262,39 @@ def create_bot_admin_router(runtime) -> APIRouter:
                            nbytes=0,
                            outcome="enabled" if body.enabled else "disabled")
         return outcome
+
+    @router.get("/{profile}/routines")
+    def list_routines(profile: str,
+                      authorization: str | None = Header(default=None)) -> dict:
+        """This bot's schedules: name, when it next runs, how the last run went, on or off.
+
+        The rows come from the dashboard, which owns the scheduler, so what the app shows is what
+        will actually fire — not a copy of it kept here.
+        """
+        authenticate(authorization)
+        _profile_dir(profile)
+        rows = [_routine_row(job) for job in _cron_jobs(profile)]
+        # Soonest first, so the row at the top is the one that happens next. A paused routine has no
+        # next run; it sorts to the bottom by name rather than jumping around.
+        rows.sort(key=lambda row: (row["next_run_at"] or "~", row["name"]))
+        return {"routines": rows}
+
+    @router.post("/{profile}/routines/{job_id}/state")
+    def set_routine_state(profile: str, job_id: str, body: RoutineStateChange,
+                          authorization: str | None = Header(default=None)) -> dict:
+        """Pause one routine, or put it back on its schedule."""
+        caller = authenticate(authorization)
+        _profile_dir(profile)
+        # The id becomes a path segment of a dashboard call, so it is checked here rather than
+        # trusted: an id with a slash in it would reshape that request.
+        if not JOB_ID_RE.match(job_id):
+            raise HTTPException(status_code=422, detail="invalid routine id")
+        verb = "pause" if body.paused else "resume"
+        _dashboard("POST", f"/api/cron/jobs/{job_id}/{verb}?profile={profile}")
+
+        runtime.audit.emit("bots.routine_state", device_id=caller, method="bots.routine_state",
+                           path=f"/v1/bots/{profile}/routines/{job_id}/state", nbytes=0,
+                           outcome="paused" if body.paused else "resumed")
+        return {"profile": profile, "id": job_id, "paused": body.paused}
 
     return router

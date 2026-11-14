@@ -105,6 +105,12 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Which bots are off, so the list marks them without one request per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// This bot's schedules (`GET /v1/bots/{profile}/routines` on the bridge), soonest first.
+    func routines(_ profile: String) async throws -> [BotRoutine]
+
+    /// Pause or resume one of this bot's routines.
+    func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -236,6 +242,13 @@ extension GatewayClientProtocol {
     public func deleteBot(_ profile: String) async throws { throw BotAdminUnavailable() }
     public func setBotEnabled(_ profile: String, enabled: Bool) async throws { throw BotAdminUnavailable() }
     public func disabledBots() async throws -> Set<String> { [] }
+
+    /// A client with no bridge has no schedule to read: failing loudly beats an empty list over a
+    /// bot that runs every night.
+    public func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
+    public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
+        throw BotAdminUnavailable()
+    }
 
     /// A client with no gateway (fixtures, previews) cannot make bots. Failing loudly beats a
     /// sheet that closes as if something had been created.

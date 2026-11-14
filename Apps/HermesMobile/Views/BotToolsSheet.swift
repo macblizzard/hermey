@@ -17,7 +17,7 @@ struct BotToolsSheet: View {
         var title: String {
             switch self {
             case .skills: return "Skills"
-            case .mcp: return "MCP servers"
+            case .mcp: return "MCP"
             }
         }
 

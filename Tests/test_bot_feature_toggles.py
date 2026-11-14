@@ -30,7 +30,7 @@ class TheMenuHasBothPanels(unittest.TestCase):
         # trailing edge — and they still open the same two sheets.
         drawer, screen = read(DRAWER), read(SCREEN)
         self.assertIn('row("Skills", systemImage: "book.closed"', drawer)
-        self.assertIn('row("MCP servers", systemImage: "puzzlepiece.extension"', drawer)
+        self.assertIn('row("MCP", systemImage: "puzzlepiece.extension"', drawer)
         self.assertIn("onSkills: { closeDrawer(); showSkills = true }", screen)
         self.assertIn("onMCP: { closeDrawer(); showMCP = true }", screen)
         self.assertIn("BotToolsSheet(bot: bot, kind: .skills, model: model)", screen)

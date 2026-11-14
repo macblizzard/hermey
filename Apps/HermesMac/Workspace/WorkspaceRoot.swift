@@ -132,6 +132,13 @@ struct WorkspaceRoot: View {
                 MacBotToolsSheet(bot: bot, kind: .skills, model: store.model)
             case .mcp(let bot):
                 MacBotToolsSheet(bot: bot, kind: .mcp, model: store.model)
+            case .routines(let bot):
+                BotRoutinesSheet(
+                    botName: bot.displayName,
+                    load: { try await store.model.routines(for: bot.id) },
+                    setPaused: { jobID, paused in
+                        try await store.model.setRoutinePaused(jobID, paused: paused, for: bot.id)
+                    })
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,
@@ -150,6 +157,7 @@ struct WorkspaceRoot: View {
         case workspace(Bot)
         case skills(Bot)
         case mcp(Bot)
+        case routines(Bot)
         case botSettings(Bot)
 
         var id: String {
@@ -158,6 +166,7 @@ struct WorkspaceRoot: View {
             case .workspace(let bot): return "workspace:\(bot.id)"
             case .skills(let bot): return "skills:\(bot.id)"
             case .mcp(let bot): return "mcp:\(bot.id)"
+            case .routines(let bot): return "routines:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             }
         }
@@ -173,6 +182,7 @@ struct WorkspaceRoot: View {
                 if let bot = store.workspaceBot { return .workspace(bot) }
                 if let bot = store.skillsBot { return .skills(bot) }
                 if let bot = store.mcpBot { return .mcp(bot) }
+                if let bot = store.routinesBot { return .routines(bot) }
                 if let bot = store.botSettingsBot { return .botSettings(bot) }
                 return nil
             },
@@ -182,6 +192,7 @@ struct WorkspaceRoot: View {
                 store.workspaceBot = nil
                 store.skillsBot = nil
                 store.mcpBot = nil
+                store.routinesBot = nil
                 store.botSettingsBot = nil
             }
         )

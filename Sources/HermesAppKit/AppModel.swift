@@ -1893,6 +1893,17 @@ public final class AppModel: ObservableObject {
         await refreshDisabledBots()
     }
 
+    /// This bot's routines, read from the host's scheduler rather than from a copy kept here: a
+    /// list the app cached could say "every day at 3am" about a job that was paused last Tuesday.
+    public func routines(for profile: String) async throws -> [BotRoutine] {
+        try await client.routines(profile)
+    }
+
+    /// Pause one routine, or put it back on its schedule.
+    public func setRoutinePaused(_ jobID: String, paused: Bool, for profile: String) async throws {
+        try await client.setRoutinePaused(profile, jobID: jobID, paused: paused)
+    }
+
     // MARK: Group chats
 
     /// Group chats, kept here rather than in a sheet's `@State`: a room is host state that outlives

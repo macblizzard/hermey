@@ -6,6 +6,21 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Routines: what a bot runs on its own, with a switch beside each one.** The bot page grew a
+  Routines row (the Mac's bot panel has the same row) that lists this bot's scheduled jobs — the
+  name, the schedule in the host's own words, when it next runs, and how the last run went, including
+  the error text when one failed. Each row carries a switch that really pauses or resumes that job on
+  the host, so it survives a relaunch and applies to every device. A one-shot that has already run
+  says **FINISHED** instead of offering a switch, and a failed run says why rather than only that it
+  failed. The list is read from the scheduler every time it opens: a cached copy could draw a routine
+  as running that was paused on the desktop last week.
+  - No prompt text crosses the wire: a routine's prompt is the bot's own instructions, often long and
+    private, and a list of *when this bot runs* does not need it back.
+- **Three rows on the bot page say what they open.** *Workspace* is now **Library** (it opens this
+  bot's files; "workspace" is the developer's word for the folder the agent works in), *MCP servers*
+  is **MCP**, and *Search* is **Search conversations**, which says the scope out loud. The Mac panel
+  uses the same three words, and both screens behind those rows carry the new titles too.
+
 - **A banner and a badge when a bot replies in a chat you are not reading.** The bot list already
   had its own counts; nothing reached the operating system. Now a reply on a bot that is not on
   screen raises a notification and puts a number on the Dock tile (macOS) or the app icon (iOS).
