@@ -24,6 +24,9 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from .history_paging import DEFAULT_CACHE_BYTES, DEFAULT_PAGE_BYTES, DEFAULT_PAGE_MESSAGES
 from .policy import is_valid_method_name
 
+# The cap the test harnesses pin (Bridge/tests/conftest.py) so the refusal path is cheap to
+# exercise. It is *not* the shipped default: `BridgeConfig.frame_cap` defaults to MAX_FRAME_CAP,
+# because a 1 MiB cap closed the socket on every large photo before attachment validation ran.
 DEFAULT_FRAME_CAP = 1024 * 1024
 # An 8 MiB attachment arrives base64-encoded inside one JSON frame (~10.7 MiB), so the
 # ceiling has to clear that or uvicorn closes the socket before attachment validation runs.
