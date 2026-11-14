@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.312",
+          "buildVersion": "312",
+          "date": "2026-11-14T10:28:27Z",
+          "localizedDescription": "Composer taps no longer touch focus inside the touch \u2014 crash fixed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.312/Hermey-0.1.312-b312.ipa",
+          "size": 2246380,
+          "minOSVersion": "17.0",
+          "sha256": "06acf9c3fd750db3429cbffbc26e73673199fc0ce71aaefa91dff90b1f01d147"
+        },
+        {
           "version": "0.1.309",
           "buildVersion": "309",
           "date": "2026-11-14T10:01:22Z",
@@ -62,16 +72,6 @@
           "size": 2245976,
           "minOSVersion": "17.0",
           "sha256": "569b31b933184904c795acda5cc7c7bf0a5a6ab5360cc76b1676b6e95cdc7ff1"
-        },
-        {
-          "version": "0.1.297",
-          "buildVersion": "297",
-          "date": "2026-11-14T08:05:37Z",
-          "localizedDescription": "Real Liquid Glass, no fade or mask anywhere, and a shorter bot page.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.297/Hermey-0.1.297-b297.ipa",
-          "size": 2245230,
-          "minOSVersion": "17.0",
-          "sha256": "038f274e7c4078b4503e2745f77878c86522159f6f6fa09938efc1d0d8b285ef"
         }
       ],
       "appPermissions": {
