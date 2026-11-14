@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.300",
+          "buildVersion": "300",
+          "date": "2026-11-14T08:28:19Z",
+          "localizedDescription": "The jump lands on the last line, and a dropped socket no longer paints a red banner.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.300/Hermey-0.1.300-b300.ipa",
+          "size": 2245976,
+          "minOSVersion": "17.0",
+          "sha256": "569b31b933184904c795acda5cc7c7bf0a5a6ab5360cc76b1676b6e95cdc7ff1"
+        },
+        {
           "version": "0.1.297",
           "buildVersion": "297",
           "date": "2026-11-14T08:05:37Z",
@@ -62,16 +72,6 @@
           "size": 2251736,
           "minOSVersion": "17.0",
           "sha256": "e54946f9b53503d69b827c8328c987ccafe767051418002087e2f8a4cf2b2524"
-        },
-        {
-          "version": "0.1.282",
-          "buildVersion": "282",
-          "date": "2026-11-14T03:49:32Z",
-          "localizedDescription": "The composer is a real material with one shape, and the transcript is not faded where it sits.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.282/Hermey-0.1.282-b282.ipa",
-          "size": 2251177,
-          "minOSVersion": "17.0",
-          "sha256": "233c7384b125c4737f552e740a4ae7c8ee70c7b8beb91643990ace5712ddc9ec"
         }
       ],
       "appPermissions": {
