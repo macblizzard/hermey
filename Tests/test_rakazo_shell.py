@@ -18,6 +18,8 @@ THEME = (ROOT / "Sources/OpenBotUI/Theme.swift").read_text()
 WINDOW = (ROOT / "Sources/HermesAppKit/WindowLayout.swift").read_text()
 ROSTER = (ROOT / "Apps/HermesMac/Sidebar/SidebarBotList.swift").read_text()
 HEADER = (ROOT / "Apps/HermesMac/Conversation/ConversationHeader.swift").read_text()
+SHELL = (ROOT / "Apps/HermesMac/Workspace/WorkspaceRoot.swift").read_text()
+PANE = (ROOT / "Apps/HermesMac/Conversation/ConversationPane.swift").read_text()
 
 
 def value(source: str, name: str) -> str:
@@ -160,3 +162,21 @@ class RakazoIOSShellTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RakazoMacTopEdgeTests(unittest.TestCase):
+    """The panes start at the window's own top edge.
+
+    `.hiddenTitleBar` took the bar away but left the inset that stood where it was, so both panes
+    began ~32 pt down and the transcript was clipped against that line — the first visible line
+    sliced through its glyphs, and the strip read as a visible title bar. Reported 2026-11-14
+    against Rakazo's edge-to-edge window.
+    """
+
+    def test_the_shell_ignores_the_titlebar_inset(self) -> None:
+        self.assertIn(".ignoresSafeArea(.container, edges: .top)", SHELL)
+
+    def test_the_transcript_dissolves_at_the_top_too(self) -> None:
+        self.assertIn("LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)",
+                      PANE)
+        self.assertIn("frame(height: Geometry.chatHeaderPill + 18)", PANE)

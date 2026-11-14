@@ -410,6 +410,14 @@ struct WorkspaceShell: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The panes start at the **window's** top edge, not at the bottom of the strip a title bar
+        // would occupy. `.hiddenTitleBar` removed the bar but not the inset that stood where it
+        // was, so both panes began 32 pt down and the transcript was clipped against that line,
+        // cutting the first visible line through its glyphs. Rakazo has no such strip: its text
+        // runs to the edge and dissolves under its own floating pill. The traffic lights need no
+        // reservation — they live in the window's frame view and are hit-tested before this content
+        // — and the 6 pt drag strip still owns the gesture at the top.
+        .ignoresSafeArea(.container, edges: .top)
         // A third pane in a narrow window is grown, not clipped.
         .background(WindowWidthFitter(minimum: store.minimumWindowWidth).frame(width: 0, height: 0))
         .overlay {
