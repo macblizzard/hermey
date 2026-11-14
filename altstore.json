@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.355",
+          "buildVersion": "355",
+          "date": "2026-11-14T17:53:16Z",
+          "localizedDescription": "Build from CI run 43622845416.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.355/Hermey-0.1.355-b355.ipa",
+          "size": 2721303,
+          "minOSVersion": "17.0",
+          "sha256": "bcf689faf1001768e0d3b6caded0627de3fd3d18bf05896ea8d5e67403c38422"
+        },
+        {
           "version": "0.1.352",
           "buildVersion": "352",
           "date": "2026-11-14T17:19:57Z",
@@ -62,16 +72,6 @@
           "size": 2325219,
           "minOSVersion": "17.0",
           "sha256": "11728e94b059b19e9acb9ed6ea74b02b5f7630824cc3881e283220dfbfe75796"
-        },
-        {
-          "version": "0.1.335",
-          "buildVersion": "335",
-          "date": "2026-11-14T15:04:29Z",
-          "localizedDescription": "Mac window is edge to edge at the top now: the panes start at the window's own edge, the chat pill sits on the traffic lights' line, and the transcript dissolves under it instead of being sliced by the strip a title bar would occupy.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.335/Hermey-0.1.335-b335.ipa",
-          "size": 2321733,
-          "minOSVersion": "17.0",
-          "sha256": "1cd849e35727cdd059a7e8e8c1b29782cba5a3551b81ad5b03eca17ed6ebe889"
         }
       ],
       "appPermissions": {
