@@ -20,7 +20,10 @@ from pydantic import BaseModel
 
 from .device_auth import require_device
 
-Icon = Literal['ember', 'nova', 'cobalt', 'orbit', 'moss', 'dusk', 'beacon', 'pixel', 'rover', 'prism']
+#: Sixteen silhouettes: the ten original ids (kept so every stored face still reads) and six that
+#: only exist as shapes — the apps draw each one as a filled blob with two eyes.
+Icon = Literal['ember', 'nova', 'cobalt', 'orbit', 'moss', 'dusk', 'beacon', 'pixel', 'rover',
+              'prism', 'lump', 'mushroom', 'blob', 'capsule', 'droplet', 'scallop']
 Color = Literal['orange', 'amber', 'lime', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple',
                 'pink', 'ruby', 'slate']
 
@@ -29,6 +32,9 @@ LEGACY = {
     'ember': 'orange', 'nova': 'pink', 'cobalt': 'cyan', 'orbit': 'purple',
     'moss': 'lime', 'dusk': 'indigo', 'beacon': 'amber', 'pixel': 'mint',
     'rover': 'blue', 'prism': 'ruby',
+    # Nothing can have stored these yet; they are here so the map stays total.
+    'lump': 'slate', 'mushroom': 'teal', 'blob': 'indigo',
+    'capsule': 'blue', 'droplet': 'cyan', 'scallop': 'pink',
 }
 
 

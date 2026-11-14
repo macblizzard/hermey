@@ -37,12 +37,20 @@ class TheWindowIsEdgeToEdge(unittest.TestCase):
 
 
 class TheNameIsTheControl(unittest.TestCase):
+    def test_the_panel_is_about_one_bot_and_not_the_app(self) -> None:
+        # The palette is ⌘K everywhere and Settings is the app's own scene: neither belongs inside
+        # a panel about this bot, and the two rows read as doors to somewhere else.
+        self.assertNotIn('row("Command palette"', PANEL)
+        self.assertNotIn('row("Settings"', PANEL)
+        self.assertNotIn('detail: "⌘', PANEL)
+
     def test_the_pill_opens_the_panel(self) -> None:
         self.assertIn("botPanelButton", HEADER)
         self.assertIn("store.toggleBotPanel()", HEADER)
         # The dots are inside the capsule, beside the name — not a toolbar button at the far right.
         pill = HEADER.split("private func pill(width: CGFloat)", 1)[1]
-        self.assertIn('Image(systemName: "ellipsis")', pill)
+        # The capsule is the door; the ⋯ was a second, smaller door drawn on the first one.
+        self.assertNotIn('systemName: "ellipsis"', pill)
         self.assertIn("contentShape(Capsule())", pill)
 
     def test_the_header_keeps_no_dropdown_of_its_own(self) -> None:
@@ -73,7 +81,7 @@ class ThePanelIsAPane(unittest.TestCase):
     def test_it_carries_the_same_verbs_as_the_phone(self) -> None:
         for verb in ("Computer", "Workspace", "Skills", "MCP servers",
                      "Search conversation", "Bot settings",
-                     "Mark all as read", "Reset conversation", "Settings"):
+                     "Mark all as read", "Reset conversation"):
             self.assertIn(f'row("{verb}"', PANEL, f"the panel is missing {verb}")
         # The compaction row relabels itself while it runs, so it is matched by its words.
         self.assertIn('"Compact conversation"', PANEL)

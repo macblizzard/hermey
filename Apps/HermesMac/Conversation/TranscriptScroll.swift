@@ -325,7 +325,7 @@ struct TranscriptScroll: View {
         .opacity(0)
         .accessibilityIdentifier("conversationSearchToggle")
         .accessibilityLabel("Search conversation")
-        .help("Search conversation (⌘F)")
+        .help("Search conversation")
     }
 
     private var countLabel: String {

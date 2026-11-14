@@ -46,10 +46,15 @@ def test_all_gallery_icons_round_trip_and_unknown_is_rejected(tmp_path):
     import re
 
     source = (Path(__file__).resolve().parents[2] / 'Sources/OpenBotUI/BotIconGallery.swift').read_text()
-    cases = re.search(r'public enum BotIcon:.*?\{\s*case ([^\n]+)', source, re.S).group(1)
-    icons = [part.strip() for part in cases.split(',')]
-    assert icons == ['ember', 'nova', 'cobalt', 'orbit', 'moss', 'dusk',
-                     'beacon', 'pixel', 'rover', 'prism']
+    # The enum's `case` lines, comments stripped: the doc comment above the first line moved the
+    # old single-regex parse into the colour enum next door.
+    block = re.search(r'public enum BotIcon:.*?\n\}', source, re.S).group(0)
+    cases = [line for line in block.splitlines() if line.strip().startswith('case ')]
+    icons = [name.strip() for line in cases for name in line.strip()[len('case '):].split(',')]
+    icons = [name for icon_part in icons for name in [icon_part.strip()] if name]
+    assert icons == ['ember', 'nova', 'cobalt', 'orbit', 'moss', 'dusk', 'beacon', 'pixel',
+                     'rover', 'prism', 'lump', 'mushroom', 'blob', 'capsule', 'droplet',
+                     'scallop'], icons
     app = create_app(BridgeConfig(db_path=tmp_path / 'bridge.db'))
     app.state.bridge.registry.add_device(device_id='paired', name='phone', platform='ios',
                                          public_key='x', refresh_token='secret')
