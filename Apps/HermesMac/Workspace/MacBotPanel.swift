@@ -75,11 +75,9 @@ struct MacBotPanel: View {
                         store.isResetConfirmationPresented = true
                     }
 
-                    // No command palette and no Settings here: the palette is ⌘K on every screen
-                    // and Settings is the app's own scene, so both were doors duplicated inside a
-                    // panel about one bot. The panel is about this bot, and nothing else.
-                    section
-                    connectionRow
+                    // No command palette, no Settings and no connection row: all three are the
+                    // app's own doors, and the palette (⌘K) and Settings (⌘,) are on every screen.
+                    // The panel is about this bot, and nothing else.
                 }
                 .padding(.bottom, 14)
             }
@@ -109,57 +107,21 @@ struct MacBotPanel: View {
 
     // MARK: - Header
 
-    /// Who this panel is about, at the size a panel can afford: the portrait the roster shows, the
-    /// name, and the line the header has no room for.
+    /// One row, one control: the ✕.
+    ///
+    /// The panel used to open with the bot's portrait, its name and its description — the same
+    /// three things the pill at the centre of the conversation already says, one column to the
+    /// left. A panel that repeats the header it hangs off is a panel that costs 70 pt to say
+    /// nothing new, and it pushed the verbs down out of reach.
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if let bot {
-                BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: 38,
-                                isWorking: model.isStreaming)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(bot?.displayName ?? model.hostName)
-                    .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
-                    .foregroundStyle(Tokens.textPrimary)
-                    .lineLimit(1)
-
-                Text(subtitle)
-                    .font(TypeScale.font(TypeScale.micro))
-                    .foregroundStyle(Tokens.textDim)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 4)
-
+        HStack {
+            Spacer(minLength: 0)
             OpenBotIconButton("xmark", label: "Close the bot panel", size: .small) { close() }
                 .help("Close (esc)")
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
-    }
-
-    /// The description the host gives the bot, or — when it has none — the one fact the header
-    /// used to carry: how much conversation there is and how much room it has left.
-    private var subtitle: String {
-        if let described = bot?.description, !described.isEmpty { return described }
-        if !store.isPaired { return "no host paired" }
-        if !model.connection.isLive { return "not connected" }
-        var parts: [String] = []
-        if !model.transcript.isEmpty {
-            parts.append(model.transcript.count == 1 ? "1 entry" : "\(model.transcript.count) entries")
-        }
-        if let used = model.contextUsed {
-            if let max = model.contextMax, max > 0 {
-                parts.append("\(TokenCount.short(used)) / \(TokenCount.short(max)) context")
-            } else {
-                parts.append("\(TokenCount.short(used)) context")
-            }
-        }
-        return parts.isEmpty ? "no conversation open" : parts.joined(separator: " · ")
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
     }
 
     // MARK: - Rows
@@ -224,44 +186,9 @@ struct MacBotPanel: View {
         }
     }
 
-    /// The wire, at the bottom where a status belongs: what it is, and the one verb that changes
-    /// it. Pairing lives here because a panel about this bot is where you notice it is not talking.
-    private var connectionRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(model.connection.isLive ? Tokens.success : Tokens.textDim)
-                    .frame(width: 6, height: 6)
-                Text(model.connection.isLive ? "connected to \(model.hostName)"
-                                             : (store.isPaired ? "not connected" : "no host paired"))
-                    .font(TypeScale.font(TypeScale.micro))
-                    .foregroundStyle(Tokens.textDim)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-            }
-            .padding(.horizontal, 10)
-
-            HStack(spacing: 8) {
-                if store.isPaired {
-                    if model.connection.isLive {
-                        panelButton("Disconnect", tone: Tokens.textMuted) {
-                            Task { await store.disconnect() }
-                        }
-                    } else {
-                        panelButton("Connect", tone: Tokens.accentText) {
-                            Task { await store.connect() }
-                        }
-                    }
-                }
-                panelButton("Pair host…", tone: Tokens.textMuted) {
-                    store.isPairSheetPresented = true
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-        }
-        .padding(.top, 4)
-    }
+    // The connection row is gone: the wire belongs to the window, not to a panel about one bot.
+    // A bot that stops answering says so in its face and in the header's own notice, and the
+    // verbs that change the wire live in the app's Settings scene, where pairing already is.
 
     private func panelButton(_ title: String, tone: Color, run: @escaping () -> Void) -> some View {
         Button(action: run) {

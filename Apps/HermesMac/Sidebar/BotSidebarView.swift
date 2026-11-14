@@ -279,9 +279,13 @@ struct BotSidebarView: View {
     /// would blame the host for a socket that was never opened.
     private var notConnectedState: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionCaption("NOT CONNECTED")
+            // A launch that is dialling is not a host that is down: the caption is the difference
+            // between "wait a second" and "go and find your token".
+            SectionCaption(model.connection == .connecting ? "CONNECTING" : "NOT CONNECTED")
                 .padding(.horizontal, 8)
-            Text("Connect to \(store.pairing?.displayHost ?? model.hostName) to list its bots.")
+            Text(model.connection == .connecting
+                 ? "Reaching \(store.pairing?.displayHost ?? model.hostName)…"
+                 : "Connect to \(store.pairing?.displayHost ?? model.hostName) to list its bots.")
                 .font(TypeScale.font(Tokens.textSM))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)

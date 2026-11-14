@@ -95,3 +95,50 @@ class ThePanelStaysAboutTheBot(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheLaunchIsAConversation(unittest.TestCase):
+    """A paired host is dialled at launch, and the last conversation is what comes back."""
+
+    STORE = source("Apps", "HermesMac", "Workspace", "WorkspaceStore.swift")
+    APP = source("Apps", "HermesMac", "HermesMacApp.swift")
+
+    def test_the_window_dials_a_paired_host_without_being_asked(self) -> None:
+        self.assertIn("await store.connectOnLaunchIfPaired()", self.APP)
+        self.assertIn("func connectOnLaunchIfPaired() async", self.STORE)
+        self.assertIn("guard isPaired, !connectAttempted, !didDisconnectThisRun else { return }",
+                      self.STORE)
+
+    def test_an_explicit_disconnect_survives_the_next_launch(self) -> None:
+        # The one thing that stops the dial is the user's own Disconnect.
+        self.assertIn("didDisconnectThisRun = true", self.STORE)
+        self.assertIn("didDisconnectThisRun = false", self.STORE)
+
+    def test_the_last_bot_comes_back(self) -> None:
+        self.assertIn('"hermey.lastBot.', self.STORE)
+        self.assertIn("func restoreLastBot()", self.STORE)
+        self.assertIn("rememberOpenBot()", self.STORE)
+        # Restored before the "nothing on screen yet" open, so the two do not both open a bot.
+        restore = self.STORE.index("restoreLastBot()")
+        needed = self.STORE.index("await openConversationIfNeeded()")
+        self.assertLess(restore, needed)
+
+    def test_connecting_is_not_not_connected(self) -> None:
+        sidebar = source("Apps", "HermesMac", "Sidebar", "BotSidebarView.swift")
+        self.assertIn('model.connection == .connecting ? "CONNECTING" : "NOT CONNECTED"', sidebar)
+
+
+class ThePanelIsOnlyVerbs(unittest.TestCase):
+    PANEL = source("Apps", "HermesMac", "Workspace", "MacBotPanel.swift")
+
+    def test_no_header_the_pill_already_says(self) -> None:
+        self.assertNotIn("BotIconPortrait", self.PANEL)
+        self.assertNotIn("bot?.displayName ?? model.hostName", self.PANEL)
+
+    def test_no_connection_row(self) -> None:
+        self.assertNotIn("connectionRow", self.PANEL)
+        self.assertNotIn('"Disconnect"', self.PANEL)
+        self.assertNotIn('"Pair host…"', self.PANEL)
+
+    def test_the_close_button_stays(self) -> None:
+        self.assertIn('OpenBotIconButton("xmark", label: "Close the bot panel"', self.PANEL)
