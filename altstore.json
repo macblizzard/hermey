@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.339",
+          "buildVersion": "339",
+          "date": "2026-11-14T15:34:34Z",
+          "localizedDescription": "Build from CI run 43610420358.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.339/Hermey-0.1.339-b339.ipa",
+          "size": 2325219,
+          "minOSVersion": "17.0",
+          "sha256": "11728e94b059b19e9acb9ed6ea74b02b5f7630824cc3881e283220dfbfe75796"
+        },
+        {
           "version": "0.1.335",
           "buildVersion": "335",
           "date": "2026-11-14T15:04:29Z",
@@ -62,16 +72,6 @@
           "size": 2321462,
           "minOSVersion": "17.0",
           "sha256": "a207c2e72185d51986ba8aa2cd2123ab39be14b5e51c543249588311f52a7a5d"
-        },
-        {
-          "version": "0.1.319",
-          "buildVersion": "319",
-          "date": "2026-11-14T12:31:55Z",
-          "localizedDescription": "The bot list's top edge: the CHATS label is gone, the list sits closer to the bar's buttons, and content fades under the bar instead of meeting it with a hard seam. Search conversations now opens as a glass pill instead of bare text on the transcript.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.319/Hermey-0.1.319-b319.ipa",
-          "size": 2280104,
-          "minOSVersion": "17.0",
-          "sha256": "b0e8734986939ad8d148559b7b138a8d6f220c04bd630881c6c6911d4122d247"
         }
       ],
       "appPermissions": {
