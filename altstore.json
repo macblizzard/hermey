@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.273",
+          "buildVersion": "273",
+          "date": "2026-11-14T02:59:14Z",
+          "localizedDescription": "The composer is real glass, both edges fade, bigger chrome, the bot's own page, and no bottom tab pill.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.273/Hermey-0.1.273-b273.ipa",
+          "size": 2249921,
+          "minOSVersion": "17.0",
+          "sha256": "477f82671720937d8b79c903118d2d72d64c6635adba153c79542448959630fe"
+        },
+        {
           "version": "0.1.270",
           "buildVersion": "270",
           "date": "2026-11-14T02:21:23Z",
@@ -62,16 +72,6 @@
           "size": 2240553,
           "minOSVersion": "17.0",
           "sha256": "373b49f94777e9855f79164f621ed7864f6b5986dd4823b81f60bc57daf5e73f"
-        },
-        {
-          "version": "0.1.254",
-          "buildVersion": "254",
-          "date": "2026-11-14T00:10:13Z",
-          "localizedDescription": "The first row sits at the window's top edge, level with the pill, and the composer's plus wears a ring.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.254/Hermey-0.1.254-b254.ipa",
-          "size": 2245924,
-          "minOSVersion": "17.0",
-          "sha256": "91f12ac08992bc4493e326be0c3e0e2ec123a1df511c65cfe6ccd81585636343"
         }
       ],
       "appPermissions": {
