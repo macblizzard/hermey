@@ -146,8 +146,10 @@ public struct Composer: View {
     private var controlInset: CGFloat { max(0, (lineBox - controlSide) / 2) }
 
     private func rowCentred<V: View>(_ view: V) -> some View {
+        // Nothing that can grow: an unbounded frame inside the row made each control column
+        // claim all the vertical space the card could offer, and the card — which is an overlay with
+        // no ceiling — offered the whole screen. The row's bottom alignment is what anchors them.
         view.padding(.bottom, controlInset)
-            .frame(maxHeight: .infinity, alignment: .bottom)
     }
 
     private var trimmed: String {
@@ -204,7 +206,6 @@ public struct Composer: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.bottom, controlInset)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
                     .opacity(trimmed.isEmpty ? 0 : 1)
                     .allowsHitTesting(!trimmed.isEmpty)
                     .accessibilityHidden(trimmed.isEmpty)
