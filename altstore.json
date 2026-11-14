@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.343",
+          "buildVersion": "343",
+          "date": "2026-11-14T16:06:43Z",
+          "localizedDescription": "Build from CI run 43613227067.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.343/Hermey-0.1.343-b343.ipa",
+          "size": 2325214,
+          "minOSVersion": "17.0",
+          "sha256": "ad20e82dd44e225b8775dedefa66475e77652a6456d65920287521221be3519a"
+        },
+        {
           "version": "0.1.339",
           "buildVersion": "339",
           "date": "2026-11-14T15:34:34Z",
@@ -62,16 +72,6 @@
           "size": 2321594,
           "minOSVersion": "17.0",
           "sha256": "cd43a142b52548ec39372c07c79c750202d54d399b30af80568ca8380e45c65f"
-        },
-        {
-          "version": "0.1.324",
-          "buildVersion": "324",
-          "date": "2026-11-14T13:39:16Z",
-          "localizedDescription": "Memory and Soul on the bot's own page, and Bot Settings now owns the identity verbs together (Bot icon, Soul, Memory) instead of hiding two of them behind a long press. Memory shows the two documents the bot carries into every turn, read-only, with their sizes. A Library document can now leave the app: share it on the phone (long press, swipe, or the open document's toolbar) or Save a copy on the Mac.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.324/Hermey-0.1.324-b324.ipa",
-          "size": 2321462,
-          "minOSVersion": "17.0",
-          "sha256": "a207c2e72185d51986ba8aa2cd2123ab39be14b5e51c543249588311f52a7a5d"
         }
       ],
       "appPermissions": {
