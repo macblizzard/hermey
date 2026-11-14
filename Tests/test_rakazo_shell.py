@@ -147,11 +147,12 @@ class RakazoIOSShellTests(unittest.TestCase):
         self.assertIn("cornerRadius: Tokens.radiusBubble", IOS_TRANSCRIPT)
 
     def test_the_phone_header_is_one_line_at_the_same_weight(self) -> None:
-        self.assertIn("size: Geometry.chatHeaderAvatar", IOS_CHAT)
-        self.assertIn("TypeScale.font(Tokens.chatHeaderTitle, weight: .medium)", IOS_CHAT)
-        # The description line moved to the roster; the status chips stay.
+        pill = IOS_CHAT.split("private var pill: some View", 1)[1]
+        self.assertIn("TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold)", pill)
+        # The description line moved to the roster; only the two actionable chips survive.
         self.assertNotIn("if let described = bot.description", IOS_CHAT)
         self.assertIn("if unreadElsewhere > 0 {", IOS_CHAT)
+        self.assertNotIn("SectionCaption", IOS_CHAT)
 
 
 if __name__ == "__main__":
