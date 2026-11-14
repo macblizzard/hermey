@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.254",
+          "buildVersion": "254",
+          "date": "2026-11-14T00:10:13Z",
+          "localizedDescription": "The first row sits at the window's top edge, level with the pill, and the composer's plus wears a ring.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.254/Hermey-0.1.254-b254.ipa",
+          "size": 2245924,
+          "minOSVersion": "17.0",
+          "sha256": "91f12ac08992bc4493e326be0c3e0e2ec123a1df511c65cfe6ccd81585636343"
+        },
+        {
           "version": "0.1.250",
           "buildVersion": "250",
           "date": "2026-11-13T23:36:17Z",
@@ -62,16 +72,6 @@
           "size": 2220440,
           "minOSVersion": "17.0",
           "sha256": "a7be8e2948fa52df4f34439476bdd6875ff7061b86a2cf7ef590b04842ca9789"
-        },
-        {
-          "version": "0.1.229",
-          "buildVersion": "229",
-          "date": "2026-11-13T18:58:08Z",
-          "localizedDescription": "The drawer's footer scrolls with the menu, and the three dots are back in the chat header.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.229/Hermey-0.1.229-b229.ipa",
-          "size": 2220457,
-          "minOSVersion": "17.0",
-          "sha256": "00fcd57a65a51dc6d84e5354e4570ba5399988964c80bd648c1a71401deaa87a"
         }
       ],
       "appPermissions": {
