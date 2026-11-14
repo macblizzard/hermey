@@ -247,10 +247,15 @@ class TheChromeIsGlass(unittest.TestCase):
         self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
-        # A material, not a tint: it samples and blurs what is behind it, which is the only way the
-        # words underneath read as underneath. A flat translucent fill is a dark box.
+        # Real glass first, material as the fallback, and never a flat tint. Over a near-black
+        # canvas glass has nothing bright to bend, so it is lifted a hair and given an edge.
+        self.assertIn("glassEffect(.regular.interactive(), in: Self.floatingShape)", self.COMPOSER)
         self.assertIn(".fill(.ultraThinMaterial)", self.COMPOSER)
-        self.assertNotIn(".fill(.clear)", self.COMPOSER)
+        self.assertIn("Color.white.opacity(0.04)", self.COMPOSER)
+        self.assertNotIn(".fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
+        # The border and the shadow stay: they are what makes it a surface rather than a hole.
+        self.assertIn("shadow(color: .black.opacity(0.30), radius: 16, y: 6)", self.COMPOSER)
+        self.assertIn("Self.floatingShape.strokeBorder(", self.COMPOSER)
         # A bar keeps the rounded rect and its control fill.
         self.assertIn(".fill(Tokens.control)", self.COMPOSER)
 
