@@ -584,6 +584,10 @@ public final class AppModel: ObservableObject {
     public func retryConnection() async {
         let previous = selectedSessionID
         await start()
+        // `start()` swallows its own connect error into `connection`, so without this the resume
+        // ran against a socket that had never come up — and painted the socket's failure as a
+        // session that could not be opened.
+        guard connection.isLive else { return }
         if let previous, sessions.contains(where: { $0.id == previous }) {
             await select(previous)
         }
@@ -777,13 +781,56 @@ public final class AppModel: ObservableObject {
             return
         } catch {
             guard epoch == botEpoch, selectedSessionID == id else { return }
+            let failure = error
+            // A resume that died with the socket is not a session that cannot be opened. iOS aborts
+            // an idle WebSocket and the bridge closes one that stops answering its 20 s pings, so
+            // the first call after a chat has been asleep lands on a transport that is already
+            // gone — and the old code painted that as a red banner that stayed until the next send.
+            // Reconnect and ask once more; only a second failure is worth a sentence.
+            if Self.isLostAnswer(failure) {
+                await start()
+                do {
+                    let retried = try await client.resumeSession(id, profile: selectedBotID)
+                    guard epoch == botEpoch, selectedSessionID == id else { return }
+                    adoptResume(retried.entries, cursor: retried.earlierCursor,
+                                total: retried.historyTotal, sessionID: id)
+                    pendingRequests = retried.openRequests
+                    adopt(retried, session: id)
+                    remember(id, entries: transcript, cursor: retried.earlierCursor,
+                             total: retried.historyTotal)
+                    ClientLog.note("session.resume recovered on a fresh socket",
+                                   level: .info, category: "session")
+                    return
+                } catch {
+                    // Fall through: the second failure is the one the reader hears about.
+                }
+            }
             // A session that cannot be opened is not a dead host: the socket is fine, and blaming
             // the connection here painted "cannot connect to the server" over a session-level
             // error (and then suppressed the reconnect that would have fixed a real drop).
-            lastSendError = "could not open this session: \(error.localizedDescription)"
-            ClientLog.note("session.resume failed for \(id): \(error.localizedDescription)",
+            lastSendError = "could not open this session: \(Self.openReason(failure))"
+            ClientLog.note("session.resume failed for \(id): \(failure.localizedDescription)",
                            level: .error, category: "session")
         }
+    }
+
+    /// One sentence for a failed open. The host's own refusal is worth repeating; a POSIX errno
+    /// rendered as "Software caused connection abort" is not — it names the operating system's
+    /// plumbing, not anything the reader can act on.
+    private static func openReason(_ error: Error) -> String {
+        if let gateway = error as? GatewayError {
+            switch gateway {
+            case .rpc(let rpc) where !rpc.message.isEmpty:
+                return rpc.message
+            case .timeout:
+                return "the host did not answer in time"
+            case .notConnected, .transportClosed:
+                return "the connection dropped before the host answered"
+            default:
+                return gateway.message
+            }
+        }
+        return "the connection dropped before the host answered"
     }
 
     /// Adopt the host's answer about the turn that was in flight.
@@ -2198,6 +2245,11 @@ public final class AppModel: ObservableObject {
         switch event {
         case .ready:
             connection = .connected
+            // A session that could not be opened while the socket was down has been opened again
+            // by the resume on `ready`; the sentence about it is stale the moment the wire is up.
+            if lastSendError?.hasPrefix("could not open this session") == true {
+                lastSendError = nil
+            }
             // The clock has to exist whatever brought the socket up: a VPN flapping or a phone
             // returning from the background also lands here, and neither goes through `start()`.
             startUnreadSweep()

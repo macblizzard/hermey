@@ -169,7 +169,9 @@ class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
         self.assertNotIn(".safeAreaInset(edge: .bottom", self.CHAT)
         # Room for half the composer at the foot of the transcript, so the last message's tail runs
         # under the capsule and the glass has something to refract.
-        self.assertIn("frame(height: max(0, composerHeight - 36))", self.CHAT)
+        self.assertIn("frame(height: max(1, composerHeight + 1))", self.CHAT)
+        # Nothing may follow the bottom id, or scrollTo stops short of the end.
+        self.assertIn(".id(ConversationScreen.bottomID)\n                // `maxY`", self.CHAT)
 
     def test_the_composer_no_longer_draws_a_rule(self) -> None:
         composer = self.CHAT.split("private var composerArea: some View", 1)[1]

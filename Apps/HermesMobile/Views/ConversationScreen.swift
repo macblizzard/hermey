@@ -570,7 +570,9 @@ struct ConversationScreen: View {
                     // The pill sits over this: a fresh transcript starts below it, and a long one
                     // scrolls behind it.
                     .padding(.top, 74)
-                    .padding(.bottom, 20)
+                    // No bottom padding here: 20 pt of padding below the last row puts the scroll
+                    // view's end 20 pt past everything that can be anchored, and `scrollTo` then
+                    // stops short of it. The 20 pt live inside the footer below.
             }
             // The sentinel reports its position in this space; without a name there is nothing to
             // measure against and the bottom has to be inferred from `onAppear`, which lies during
@@ -770,23 +772,25 @@ struct ConversationScreen: View {
                     .id(Self.streamingSearchID)
             }
 
+            // The end, the room the floating composer needs and the transcript's old bottom
+            // padding as one block, whose *bottom edge* is the content's bottom edge.
+            //
+            // It used to be a 1 pt sentinel with a spacer after it, and `scrollTo(sentinel,
+            // anchor: .bottom)` therefore stopped one composer-height short of the end — the jump
+            // landed with the last line under the glass, which reads as "it does not go all the
+            // way down". Nothing may follow this block.
+            //
+            // 16 (stack spacing) + composerHeight + 1 leaves the last row exactly where it was.
             Color.clear
-                .frame(height: 1)
+                .frame(height: max(1, composerHeight + 1))
                 .id(ConversationScreen.bottomID)
-
-                // Everything the composer covers, less the strip that is meant to pass under the
-                // glass and the transcript's own bottom padding. Half the height only compensated
-                // a one-line card: every extra line covered another 11 pt of conversation that
-                // nothing gave back.
-                Color.clear
-                    .frame(height: max(0, composerHeight - 36))
-                // Reports where the end of the transcript is, in the scroll view's own space, on
-                // every layout pass — including the ones a growing reply causes. Reading a position
-                // is honest; watching a lazy row appear and disappear is not.
+                // `maxY`, not `minY`: zero is the end, anything positive is how much is still to
+                // scroll. The old metric measured the spacer's top, so its zero sat 16 pt above the
+                // floor and it called the chat "at the bottom" with ~38 pt of it under the capsule.
                 .background(GeometryReader { geo in
                     Color.clear.preference(
                         key: BottomDistanceKey.self,
-                        value: geo.frame(in: .named(ConversationScreen.scrollSpace)).minY - transcriptHeight)
+                        value: geo.frame(in: .named(ConversationScreen.scrollSpace)).maxY - transcriptHeight)
                 })
         }
     }
