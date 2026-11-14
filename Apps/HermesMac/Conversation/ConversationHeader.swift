@@ -49,6 +49,9 @@ struct ConversationHeader: View {
         }
         // Top-aligned: the pill's centre is set by the strip above it, not by the pane's height.
         .frame(height: Geometry.chatHeader, alignment: .top)
+        // A few points clear of the window's top edge. Flush against it the capsule read as
+        // clipped by the frame rather than floating in the pane (reported 2026-11-14).
+        .padding(.top, 6)
         // No bar and no hairline: the pill is the header, and the pane's canvas is its background.
         .background(Color.clear)
         // Owned by the store: the menu, the toolbar's own button and the palette's verb all raise

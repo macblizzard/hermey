@@ -24,6 +24,9 @@ struct MacBotSettingsSheet: View {
     @State private var showingIconPicker = false
     @State private var showingSoul = false
     @State private var showingMemory = false
+    @State private var showingDelete = false
+    @State private var deleteError: String?
+    @State private var deleting = false
     @State private var catalog: ModelCatalog?
     @State private var error: String?
     @State private var busy = false
@@ -79,6 +82,7 @@ struct MacBotSettingsSheet: View {
                     } else if error == nil {
                         loadingRow
                     }
+                    dangerSection
                 }
                 .padding(16)
             }
@@ -155,6 +159,51 @@ struct MacBotSettingsSheet: View {
 
     /// The bot's own text — the file that makes it this bot. A button, because the editor is a
     /// real text surface and not a field that fits in a settings column.
+    /// Alone, last, and behind a confirmation: the one verb in this sheet that cannot be undone.
+    ///
+    /// Deleting a bot used to live only under Manage bots — a list of switches, which is where you
+    /// go to hide a row, not to remove one (requested 2026-11-14 for both shells).
+    private var dangerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionCaption("DELETE")
+            OpenBotButton(deleting ? "Deleting…" : "Delete this bot…",
+                          kind: .secondary,
+                          size: .small,
+                          isDisabled: deleting || store.pairing == nil || store.pairing?.isTicketOnly == true) {
+                showingDelete = true
+            }
+            Text("Removes \(bot.displayName) from the host and from every device. The host keeps an "
+                 + "archive of its files; adding it back does not restore this conversation.")
+                .font(TypeScale.font(TypeScale.caption))
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let deleteError {
+                Text(deleteError)
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .alert("Delete \(bot.displayName)?", isPresented: $showingDelete) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete bot", role: .destructive) {
+                deleting = true
+                deleteError = nil
+                Task {
+                    do {
+                        try await model.deleteBot(bot.id)
+                        dismiss()
+                    } catch {
+                        deleteError = error.localizedDescription
+                    }
+                    deleting = false
+                }
+            }
+        } message: {
+            Text("This cannot be undone from the app.")
+        }
+    }
+
     private var soulSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionCaption("IDENTITY")

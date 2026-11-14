@@ -32,6 +32,9 @@ struct BotModelSettingsScreen: View {
     var saveIcon: ((BotFace?) async throws -> Void)? = nil
     /// Reads the two documents this bot carries into every turn. `nil` hides the row.
     var loadMemory: (() async throws -> BotMemory)? = nil
+    /// Deletes this bot on the host. `nil` hides the row — the rule every verb here follows: a
+    /// client that cannot do it must not offer it.
+    var deleteBot: (() async throws -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var catalog: ModelCatalog?
@@ -48,6 +51,9 @@ struct BotModelSettingsScreen: View {
     @State private var descriptionSaved = false
     @State private var showingIcon = false
     @State private var showingMemory = false
+    @State private var showingDelete = false
+    @State private var deleteError: String?
+    @State private var deleting = false
     @State private var iconError: String?
 
     init(bot: Bot,
@@ -59,7 +65,8 @@ struct BotModelSettingsScreen: View {
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
          saveIcon: ((BotFace?) async throws -> Void)? = nil,
-         loadMemory: (() async throws -> BotMemory)? = nil) {
+         loadMemory: (() async throws -> BotMemory)? = nil,
+         deleteBot: (() async throws -> Void)? = nil) {
         self.bot = bot
         self.icon = icon
         self.load = load
@@ -70,6 +77,7 @@ struct BotModelSettingsScreen: View {
         self.editSoul = editSoul
         self.saveIcon = saveIcon
         self.loadMemory = loadMemory
+        self.deleteBot = deleteBot
         _descriptionText = State(initialValue: bot.description ?? "")
         _savedDescription = State(initialValue: bot.description ?? "")
     }
@@ -82,6 +90,7 @@ struct BotModelSettingsScreen: View {
                 }
                 identitySection
                 descriptionSection
+                dangerSection
                 if let catalog {
                     if let current = catalog.current {
                         Section("Profile default") {
@@ -163,6 +172,60 @@ struct BotModelSettingsScreen: View {
     ///
     /// A row that cannot be written is not offered at all: `nil` for each closure hides its row, the
     /// same rule the description and the soul have always followed.
+    /// The one verb here that cannot be undone, so it is alone, last, and asks once.
+    ///
+    /// Deleting a bot was only possible from Manage bots, which is a list of switches — a place you
+    /// go to hide a row, not to remove one. It belongs with the bot's other facts (2026-11-14).
+    @ViewBuilder
+    private var dangerSection: some View {
+        if let deleteBot {
+            Section {
+                Button(role: .destructive) {
+                    showingDelete = true
+                } label: {
+                    HStack {
+                        Label("Delete this bot", systemImage: "trash")
+                        if deleting {
+                            Spacer()
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                }
+                .disabled(deleting)
+                if let deleteError {
+                    Text(deleteError)
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.danger)
+                }
+            } header: {
+                Text("Delete")
+            } footer: {
+                Text("Removes \(bot.displayName) from the host and from every device. The host keeps "
+                     + "an archive of its files; its conversation is not restored by adding it back.")
+            }
+            .confirmationDialog("Delete \(bot.displayName)?",
+                                isPresented: $showingDelete,
+                                titleVisibility: .visible) {
+                Button("Delete bot", role: .destructive) {
+                    deleting = true
+                    deleteError = nil
+                    Task {
+                        do {
+                            try await deleteBot()
+                            dismiss()
+                        } catch {
+                            deleteError = error.localizedDescription
+                        }
+                        deleting = false
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This cannot be undone from the app.")
+            }
+        }
+    }
+
     @ViewBuilder
     private var identitySection: some View {
         if editSoul != nil || saveIcon != nil || loadMemory != nil {

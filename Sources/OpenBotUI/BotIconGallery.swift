@@ -440,17 +440,6 @@ public struct BotFacePicker: View {
                 }
             }
 
-            Button {
-                choose(nil)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.crop.circle")
-                    Text("Use its initials instead")
-                }
-                .font(TypeScale.font(TypeScale.sm))
-                .foregroundStyle(face == nil ? Tokens.textPrimary : Tokens.textMuted)
-            }
-            .buttonStyle(.plain)
         }
     }
 

@@ -320,7 +320,8 @@ struct ConversationScreen: View {
                 // Memberwise order matters: `save` precedes `saveDescription` in the declaration.
                 saveDescription: { botID, text in
                     try await model.configureDescription(botID: botID, description: text)
-                })
+                },
+                deleteBot: { try await model.deleteBot(bot.id) })
         }
         // The choices live in the composer, anchored to the paperclip (`AttachmentMenu`); this
         // is only the system picker for the one the user chose.

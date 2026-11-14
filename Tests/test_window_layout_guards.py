@@ -29,13 +29,24 @@ class WindowLayoutGuards(unittest.TestCase):
         self.assertIn("minWidth: store.minimumWindowWidth", self.app,
                       "a hardcoded two-pane sum is what clipped the third pane")
         self.assertIn("var minimumWindowWidth", self.store)
-        self.assertIn("panelOpen: isComputerPanelPresented", self.store)
+        # The computer takes the sidebar's slot, so the minimum is the *leading pane's* width plus
+        # the conversation — never the sidebar's plus a pane (2026-11-14).
+        self.assertIn("panelOpen: false", self.store)
+        self.assertIn('if isComputerPanelPresented { return max(sidebarWidth, WindowLayout.computerMin) }',
+                      self.store)
 
-    def test_the_computer_pane_is_not_a_fixed_width(self) -> None:
+    def test_the_computer_pane_holds_the_leading_slot(self) -> None:
+        # It used to be a third pane on the trailing edge with its own floors and ceiling. It now
+        # replaces the sidebar, so its slot is the sidebar's — never narrower than a computer can be
+        # read at.
         self.assertNotIn(".frame(width: 520)", self.root,
                          "a fixed pane width cannot give way in a narrow window")
-        self.assertIn("idealWidth: WindowLayout.computerIdeal", self.root)
-        self.assertIn("minWidth: WindowLayout.computerMin", self.root)
+        self.assertIn(".frame(width: max(store.sidebarWidth, WindowLayout.computerMin))", self.root)
+        leading = self.root.split("if store.isComputerPanelPresented", 1)[1].split("} else if !store.isSidebarHidden", 1)[0]
+        self.assertIn("computerPane(fullScreen: false)", leading,
+                      "the computer is the leading pane, not a trailing one")
+        self.assertEqual(self.root.count("computerPane(fullScreen: false)"), 1,
+                         "one leading slot: it was also being drawn on the trailing edge")
 
     def test_the_conversation_hands_width_back_while_the_panel_is_open(self) -> None:
         self.assertIn("WindowLayout.conversationMinWithComputer", self.root)

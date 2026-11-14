@@ -334,9 +334,20 @@ struct WorkspaceShell: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            // The computer takes the sidebar's slot, on the leading edge, with the sidebar's fill
+            // running to the window edge behind it. It used to be a third pane on the trailing edge
+            // with the window grown to fit it, which on a laptop-width window squeezed the very
+            // transcript you opened the computer to read beside (reported 2026-11-14: "it should
+            // replace the sidebar with the bot computer bar"). The sidebar is not hidden while this
+            // is open — it comes back exactly as it was, at the width it had.
+            if store.isComputerPanelPresented, !store.isComputerFullScreen {
+                computerPane(fullScreen: false)
+                    // Never narrower than a computer can be read at, whatever the sidebar was.
+                    .frame(width: max(store.sidebarWidth, WindowLayout.computerMin))
+                Hairline(.vertical)
+            } else if !store.isSidebarHidden {
             // Collapsed, the panel, its drag strip and the hairline all go: a hidden panel that
             // still reserves 201 pt of chrome is not hidden.
-            if !store.isSidebarHidden {
                 BotSidebarView(model: model, store: store)
                     .frame(width: store.sidebarWidth)
 
@@ -398,16 +409,6 @@ struct WorkspaceShell: View {
             // bot says about the errand while watching it do the errand. Full screen is the
             // panel's own verb, so in that state this slot stays empty and the overlay below owns
             // the window — one pane instance alive either way.
-            if store.isComputerPanelPresented, !store.isComputerFullScreen {
-                Hairline(.vertical)
-                // Floors and a ceiling rather than one width: a window that cannot give 520 gives
-                // what it has, down to 320, and the window is widened to fit the rest.
-                computerPane(fullScreen: false)
-                    .frame(minWidth: WindowLayout.computerMin,
-                           idealWidth: WindowLayout.computerIdeal,
-                           maxWidth: WindowLayout.computerMax)
-                    .transition(.move(edge: .trailing))
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The panes start at the **window's** top edge, not at the bottom of the strip a title bar
@@ -428,6 +429,10 @@ struct WorkspaceShell: View {
             }
         }
         .background(Tokens.canvas)
+        // Escape closes the topmost pane. The catcher sits under the shell, so it sees the key
+        // before any view that might want it — except a text field, which keeps it.
+        .background(EscapeKeyCatcher { store.closeTopmostOnEscape() }
+                        .frame(width: 0, height: 0))
         .confirmationDialog(
             pendingRoomDelete.map { "Delete \($0.name)?" } ?? "Delete this group chat?",
             isPresented: Binding(get: { pendingRoomDelete != nil },
