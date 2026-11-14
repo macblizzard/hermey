@@ -208,3 +208,34 @@ class ThePhoneKeepsItsWayBack(unittest.TestCase):
     def test_the_drawer_does_not_repeat_the_pill(self) -> None:
         self.assertNotIn("Text(title)", self.DRAWER)
         self.assertNotIn("if let subtitle", self.DRAWER)
+
+
+class TheChromeIsGlass(unittest.TestCase):
+    """Liquid Glass where the OS has it, the theme's surface where it does not — one shape either way."""
+
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    GLASS = source("Sources", "OpenBotUI", "LiquidGlass.swift")
+    COMPOSER = source("Sources", "OpenBotUI", "Composer.swift")
+
+    def test_the_helper_is_gated_and_has_a_fallback(self) -> None:
+        self.assertIn("#available(iOS 26.0, macOS 26.0, *)", self.GLASS)
+        self.assertIn("self.glassEffect(", self.GLASS)
+        # A fallback, not a second design: the same shape in the theme's surface.
+        self.assertIn("self.background(shape.fill(Tokens.surface))", self.GLASS)
+
+    def test_every_floating_pill_uses_it(self) -> None:
+        self.assertIn(".hermeyGlass(Circle(), interactive: true)", self.CHAT)   # back pill
+        self.assertIn(".hermeyGlass(Capsule(), interactive: true)", self.CHAT)  # bot pill
+        # Three: the two above and the way to the newest message.
+        self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
+
+    def test_the_composer_is_glass_only_when_it_floats(self) -> None:
+        self.assertIn("glassEffect(.regular.interactive()", self.COMPOSER)
+        floats = self.COMPOSER.split("if floats {", 1)[1].split("} else {", 1)[0]
+        self.assertIn("glassEffect", floats)
+        # A bar keeps its control fill: it is part of the bar, not hovering over the text.
+        self.assertIn("shape.fill(Tokens.control)", self.COMPOSER)
+
+    def test_the_way_back_to_the_newest_message_clears_the_composer(self) -> None:
+        control = self.CHAT.split("private func scrollToBottomControl(", 1)[1]
+        self.assertIn(".padding(.bottom, composerHeight + 12)", control)

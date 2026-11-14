@@ -347,8 +347,7 @@ struct ConversationScreen: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Tokens.textPrimary)
                         .frame(width: 40, height: 40)
-                        .background(Circle().fill(Tokens.surface))
-                        .overlay(Circle().strokeBorder(Tokens.border, lineWidth: 1))
+                        .hermeyGlass(Circle(), interactive: true)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
@@ -413,14 +412,8 @@ struct ConversationScreen: View {
             .padding(.leading, 5)
             .padding(.trailing, 14)
             .frame(height: 42)
-            .background(
-                Capsule().fill(Tokens.surface)
-                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
-            )
-            .overlay(
-                Capsule().strokeBorder(showDrawer ? Tokens.borderStrong : Tokens.border,
-                                       lineWidth: 1)
-            )
+            .hermeyGlass(Capsule(), interactive: true)
+            .shadow(color: .black.opacity(0.30), radius: 12, y: 4)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -1200,15 +1193,17 @@ struct ConversationScreen: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Tokens.textSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(Tokens.control))
-                    .overlay(Circle().strokeBorder(Tokens.border, lineWidth: 1))
+                    .frame(width: 38, height: 38)
+                    .hermeyGlass(Circle(), interactive: true)
                     .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .padding(.trailing, 16)
-            .padding(.bottom, 12)
+            // Above the composer, not behind it: the composer floats now, and a jump control
+            // pinned 12 pt off the floor sits under the capsule that is hiding the very rows it
+            // would take you to.
+            .padding(.bottom, composerHeight + 12)
             .transition(.opacity)
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
             .accessibilityIdentifier("conversationScrollToBottom")

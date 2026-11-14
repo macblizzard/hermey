@@ -221,12 +221,25 @@ public struct Composer: View {
                     .accessibilityHidden(true)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                .fill(floats ? Tokens.surface.opacity(0.97) : Tokens.control)
-                .shadow(color: floats ? .black.opacity(0.30) : .clear,
-                        radius: floats ? 14 : 0, y: floats ? 4 : 0)
-        )
+        .background {
+            // A floating field draws its own surface: glass where the OS has it, the theme's
+            // translucent surface where it does not. A bar keeps its control fill — that one is
+            // part of the bar, not something hovering over the text.
+            let shape = RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+            if floats {
+                if #available(iOS 26.0, macOS 26.0, *) {
+                    Rectangle()
+                        .fill(.clear)
+                        .glassEffect(.regular.interactive(), in: shape)
+                        .shadow(color: .black.opacity(0.28), radius: 14, y: 4)
+                } else {
+                    shape.fill(Tokens.surface.opacity(0.97))
+                        .shadow(color: .black.opacity(0.30), radius: 14, y: 4)
+                }
+            } else {
+                shape.fill(Tokens.control)
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
                 // Floating: no frame at rest, and the focus ring alone when it is being typed in.
