@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.289",
+          "buildVersion": "289",
+          "date": "2026-11-14T07:08:42Z",
+          "localizedDescription": "Glass that carries its own light, and the jump control in the middle.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.289/Hermey-0.1.289-b289.ipa",
+          "size": 2254397,
+          "minOSVersion": "17.0",
+          "sha256": "cf4707cbbfb534c131eef5892bcc5cd99500a58c581402ab98f7bd19535ed07e"
+        },
+        {
           "version": "0.1.286",
           "buildVersion": "286",
           "date": "2026-11-14T04:14:15Z",
@@ -62,16 +72,6 @@
           "size": 2249921,
           "minOSVersion": "17.0",
           "sha256": "477f82671720937d8b79c903118d2d72d64c6635adba153c79542448959630fe"
-        },
-        {
-          "version": "0.1.270",
-          "buildVersion": "270",
-          "date": "2026-11-14T02:21:23Z",
-          "localizedDescription": "Glass chrome on the phone, ghost-free composer, swipe-back restored, and the way to the newest message sits above the composer.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.270/Hermey-0.1.270-b270.ipa",
-          "size": 2243972,
-          "minOSVersion": "17.0",
-          "sha256": "156fce5f6c9665ebbd3019c1aed2bf8e760bea461b5be8fc7e3854de63d50778"
         }
       ],
       "appPermissions": {
