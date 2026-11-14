@@ -81,7 +81,6 @@ struct MacBotSettingsSheet: View {
         .frame(width: 520)
         .frame(minHeight: 420, idealHeight: 560, maxHeight: 560)
         .background(Tokens.canvas)
-        .task { await refresh() }
         .sheet(isPresented: $showingIconPicker) {
             MacBotIconPicker(bot: bot, store: store)
         }
