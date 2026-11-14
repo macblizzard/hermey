@@ -35,6 +35,12 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Fixed
+- **The bot list's top edge, and the conversation's search field.** The "CHATS" label is gone — it
+  said what the rows already were and cost a line between the bar's two buttons and the first bot,
+  which now sits closer. The list fades out under the bar instead of meeting it with a hard seam:
+  a row scrolling up dissolves into the canvas before it reaches the buttons. And "Search
+  conversations" no longer opens a field drawn bare onto the transcript — the search bar is a glass
+  pill, the same material as the bot pill above it.
 - **Compacting no longer fails when the phone goes to sleep.** A compaction is 2–3 minutes of *host*
   work (measured 74 s, 123 s, 163 s here) and iOS tears the socket down the moment the app leaves the
   foreground — the bridge logs `client_closed` 1001 about 200 ms after the request, and the app then

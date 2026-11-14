@@ -65,6 +65,14 @@ class TheChatHasOneDoor(unittest.TestCase):
         for gone in ("Mark all as read", "Speak replies", "Compacting…", '"Settings"'):
             self.assertNotIn(gone, DRAWER, f"{gone} should no longer be a row here")
 
+    def test_the_search_field_is_glass_not_bare_text(self) -> None:
+        # Tapping "Search conversations" used to open a field drawn straight onto the transcript,
+        # so it read as part of the conversation instead of a control over it (reported
+        # 2026-11-14). It wears the same glass as the bot pill above it.
+        bar = SCREEN.split("private var searchBar: some View", 1)[1].split("private func moveSearch", 1)[0]
+        self.assertIn(".hermeyGlass(Capsule(), interactive: true)", bar)
+        self.assertNotIn("Tokens.surface", bar, "a flat fill is not the glass the rest of the chrome uses")
+
     def test_the_page_does_not_explain_how_to_leave_it(self) -> None:
         self.assertNotIn("Swipe down, or tap the back button", DRAWER)
         self.assertIn('accessibilityLabel("Close the bot page")', DRAWER)
