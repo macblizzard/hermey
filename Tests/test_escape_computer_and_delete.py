@@ -258,6 +258,40 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
         self.assertNotIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
 
 
+class ABotHasItsOwnNotes(unittest.TestCase):
+    """A per-bot note: one file on the host, opened from either shell's bot menu."""
+
+    NOTES = (ROOT / "Sources/OpenBotUI/BotNotesSheet.swift").read_text(encoding="utf-8")
+    ROUTES = (ROOT / "Bridge/hermes_bridge/bot_notes.py").read_text(encoding="utf-8")
+    MAC_PANEL = (MAC / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
+    DRAWER = (ROOT / "Apps/HermesMobile/Views/ConversationDrawer.swift").read_text(encoding="utf-8")
+
+    def test_it_is_a_file_in_the_bots_own_directory(self) -> None:
+        # Created with the bot, deleted with the bot: no second list to keep in step.
+        self.assertIn('NOTES_NAME = "NOTES.md"', self.ROUTES)
+        self.assertIn("directory / NOTES_NAME", self.ROUTES)
+
+    def test_the_route_reads_and_writes_whole_notes(self) -> None:
+        self.assertIn('@router.get("/{profile}/notes")', self.ROUTES)
+        self.assertIn('@router.put("/{profile}/notes")', self.ROUTES)
+        self.assertIn("MAX_NOTES_CHARS = 64_000", self.ROUTES)
+        # Written to a temporary file and moved into place: a lost wire must not leave half a note.
+        self.assertIn("temporary.replace(path)", self.ROUTES)
+        # A symlink is refused, not followed or written through.
+        self.assertIn("this is a symlink, not a notes file", self.ROUTES)
+
+    def test_both_menus_open_it(self) -> None:
+        self.assertIn('row("Notes", icon: "note.text")', self.MAC_PANEL)
+        self.assertIn('row("Notes", systemImage: "note.text", run: onNotes)', self.DRAWER)
+
+    def test_the_sheet_reads_on_open_and_saves_the_whole_text(self) -> None:
+        self.assertIn(".task { await read() }", self.NOTES)
+        self.assertIn("try await save(text)", self.NOTES)
+        # "Could not read it" must not look like "nothing written yet".
+        self.assertIn("loaded.error", self.NOTES)
+        self.assertIn("Stored on the host", self.NOTES)
+
+
 class TheEmptyChatIsAnInvitation(unittest.TestCase):
     CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
 

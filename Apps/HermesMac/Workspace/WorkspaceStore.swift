@@ -116,6 +116,8 @@ final class WorkspaceStore: ObservableObject {
     @Published var routinesBot: Bot?
     /// The model catalogue for one bot, off the panel's Model row.
     @Published var modelBot: Bot?
+    /// The owner's note for one bot, off the panel's Notes row.
+    @Published var notesBot: Bot?
 
     /// Open one of them, closing any other: the window's one modal is shared.
     func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
@@ -123,6 +125,7 @@ final class WorkspaceStore: ObservableObject {
     func openMCP(_ bot: Bot) { closePanels(); mcpBot = bot }
     func openRoutines(_ bot: Bot) { closePanels(); routinesBot = bot }
     func openModel(_ bot: Bot) { closePanels(); modelBot = bot }
+    func openNotes(_ bot: Bot) { closePanels(); notesBot = bot }
 
     private func closePanels() {
         workspaceBot = nil
@@ -130,6 +133,7 @@ final class WorkspaceStore: ObservableObject {
         mcpBot = nil
         routinesBot = nil
         modelBot = nil
+        notesBot = nil
     }
     /// Full screen is the panel's own verb; closing the panel drops it so the next open is a panel.
     @Published var isComputerFullScreen = false

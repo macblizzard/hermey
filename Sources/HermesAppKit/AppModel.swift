@@ -2007,6 +2007,18 @@ public final class AppModel: ObservableObject {
         try await client.memory(profile)
     }
 
+    /// This bot's own note, read from the host — the same file on every device.
+    public func notes(for profile: String) async throws -> BotNotes {
+        try await client.notes(profile)
+    }
+
+    /// Write the note back. The host holds one file per bot, so this is what the phone and the Mac
+    /// both read afterwards: there is no local copy to drift.
+    @discardableResult
+    public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
+        try await client.saveNotes(text, for: profile)
+    }
+
     // MARK: Group chats
 
     /// Group chats, kept here rather than in a sheet's `@State`: a room is host state that outlives

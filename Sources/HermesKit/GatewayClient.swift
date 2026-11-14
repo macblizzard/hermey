@@ -114,6 +114,12 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// What this bot remembers: its own notes and the owner's profile, read-only.
     func memory(_ profile: String) async throws -> BotMemory
 
+    /// The owner's own note for this bot (`GET /v1/bots/{profile}/notes`).
+    func notes(_ profile: String) async throws -> BotNotes
+
+    /// Write the note back (`PUT`), whole: the host keeps one file and the last write wins.
+    func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -253,6 +259,10 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
+    public func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
+        throw BotAdminUnavailable()
+    }
 
     /// A client with no gateway (fixtures, previews) cannot make bots. Failing loudly beats a
     /// sheet that closes as if something had been created.
