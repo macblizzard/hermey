@@ -54,6 +54,10 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Fixed
+- **"Show reasoning" off now hides reasoning, including what is already in the history.** The switch
+  only gated the *live* reasoning block, and the client synthesises a reasoning row when a turn ends
+  — so the text disappeared while it streamed and came back with the answer. Row visibility is one
+  rule now (`TranscriptVisibility`), applied to both shells.
 - **The Mac window is edge to edge at the top, the way Rakazo is.** `.hiddenTitleBar` removed the
   title bar but not the inset that stood where it was, so both panes began ~32 pt down and the
   transcript was clipped against that line — the strip read as a title bar and the first visible
