@@ -197,7 +197,7 @@ class ThePhoneKeepsItsWayBack(unittest.TestCase):
         # nothing and leaves the recogniser wedged.
         self.assertIn("gesture.delegate = self", self.ENabler)
         self.assertNotIn("gesture.delegate = nil", self.ENabler)
-        self.assertIn("navigation.viewControllers.count > 1", self.ENabler)
+        self.assertIn("navigationController?.viewControllers.count ?? 0) > 1", self.ENabler)
         # Re-armed after the bar hides, not just once on appear.
         self.assertIn("viewDidLayoutSubviews", self.ENabler)
         self.assertIn("asyncAfter(deadline: .now() + 0.35)", self.ENabler)
