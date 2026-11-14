@@ -72,8 +72,9 @@ class TheComposerFloats(unittest.TestCase):
         # The preview keeps its own canvas; the view must not paint one.
         body = COMPOSER_BAR.split("private struct MacComposerBarPreview", 1)[0]
         self.assertNotIn(".background(Tokens.canvas)", body)
-        # The field itself has no frame at rest — that frame is what read as a black border.
-        self.assertIn("floats ? .clear : Tokens.borderStrong", COMPOSER)
+        # Floating, the field carries a hairline of its own rather than nothing: a material with no
+        # edge at all dissolves into a dark canvas and reads as a smudge.
+        self.assertIn("floats ? Tokens.border.opacity(0.55)", COMPOSER)
         self.assertIn("floats: true", COMPOSER_BAR)
 
     def test_it_is_drawn_over_the_transcript(self) -> None:
