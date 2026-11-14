@@ -64,8 +64,7 @@ struct PopGestureEnabler: UIViewControllerRepresentable {
 
         /// The gesture begins only when there is a screen to go back to.
         func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            guard let navigation else { return false }
-            return navigation.viewControllers.count > 1
+            (navigationController?.viewControllers.count ?? 0) > 1
         }
 
         /// The recogniser lives on the navigation controller's own view; it must not be blocked by
