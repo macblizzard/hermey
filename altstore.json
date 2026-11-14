@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.303",
+          "buildVersion": "303",
+          "date": "2026-11-14T08:54:52Z",
+          "localizedDescription": "Jump answers the first tap, the composer takes a tap anywhere, controls ride the last line.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.303/Hermey-0.1.303-b303.ipa",
+          "size": 2247159,
+          "minOSVersion": "17.0",
+          "sha256": "df009b880d7b7ed61542b0f1b194f448d26ee3bcbc8732b1823c15efcce30e39"
+        },
+        {
           "version": "0.1.300",
           "buildVersion": "300",
           "date": "2026-11-14T08:28:19Z",
@@ -62,16 +72,6 @@
           "size": 2254397,
           "minOSVersion": "17.0",
           "sha256": "cf4707cbbfb534c131eef5892bcc5cd99500a58c581402ab98f7bd19535ed07e"
-        },
-        {
-          "version": "0.1.286",
-          "buildVersion": "286",
-          "date": "2026-11-14T04:14:15Z",
-          "localizedDescription": "The composer is glass, with nothing drawn on top of it.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.286/Hermey-0.1.286-b286.ipa",
-          "size": 2251736,
-          "minOSVersion": "17.0",
-          "sha256": "e54946f9b53503d69b827c8328c987ccafe767051418002087e2f8a4cf2b2524"
         }
       ],
       "appPermissions": {
