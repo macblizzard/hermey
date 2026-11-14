@@ -26,6 +26,7 @@ struct ConversationDrawer: View {
     let onSkills: () -> Void
     let onMCP: () -> Void
     let onRoutines: () -> Void
+    let onNotes: () -> Void
     let onSoul: () -> Void
     let onMemory: () -> Void
     let onSearch: () -> Void
@@ -152,6 +153,12 @@ struct ConversationDrawer: View {
             // What this bot *is*, as against what it can reach for: the prompt file it is built on,
             // and what it carries into every turn. Both used to need a long press on the list, which
             // is a gesture nobody discovers (reported 2026-11-14).
+            // The owner's own plan for this bot: the same note the Mac opens, from the same file on
+            // the host, so a list written at the desk is on the phone (asked for 2026-11-14).
+            panel {
+                row("Notes", systemImage: "note.text", run: onNotes)
+            }
+
             panel {
                 row("Soul", systemImage: "doc.text", run: onSoul)
                 rowDivider
@@ -241,7 +248,7 @@ extension ConversationDrawer {
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,
                            onComputer: {}, onWorkspace: {}, onSkills: {}, onMCP: {},
-                           onRoutines: {}, onSoul: {}, onMemory: {},
+                           onRoutines: {}, onNotes: {}, onSoul: {}, onMemory: {},
                            onSearch: {}, onSettings: {}, onCompact: {}, onMarkAllRead: {},
                            onSpeakChange: { _ in }, onReset: {}, onClose: {})
     }

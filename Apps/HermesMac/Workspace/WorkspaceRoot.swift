@@ -135,6 +135,10 @@ struct WorkspaceRoot: View {
                 MacBotToolsSheet(bot: bot, kind: .skills, model: store.model)
             case .mcp(let bot):
                 MacBotToolsSheet(bot: bot, kind: .mcp, model: store.model)
+            case .notes(let bot):
+                BotNotesSheet(botName: bot.displayName,
+                              load: { try await store.model.notes(for: bot.id) },
+                              save: { try await store.model.saveNotes($0, for: bot.id) })
             case .model(let bot):
                 MacModelSheet(model: store.model,
                               store: store,
@@ -167,6 +171,7 @@ struct WorkspaceRoot: View {
         case mcp(Bot)
         case routines(Bot)
         case model(Bot)
+        case notes(Bot)
         case botSettings(Bot)
 
         var id: String {
@@ -177,6 +182,7 @@ struct WorkspaceRoot: View {
             case .mcp(let bot): return "mcp:\(bot.id)"
             case .routines(let bot): return "routines:\(bot.id)"
             case .model(let bot): return "model:\(bot.id)"
+            case .notes(let bot): return "notes:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             }
         }
@@ -194,6 +200,7 @@ struct WorkspaceRoot: View {
                 if let bot = store.mcpBot { return .mcp(bot) }
                 if let bot = store.routinesBot { return .routines(bot) }
                 if let bot = store.modelBot { return .model(bot) }
+                if let bot = store.notesBot { return .notes(bot) }
                 if let bot = store.botSettingsBot { return .botSettings(bot) }
                 return nil
             },
@@ -205,6 +212,7 @@ struct WorkspaceRoot: View {
                 store.mcpBot = nil
                 store.routinesBot = nil
                 store.modelBot = nil
+                store.notesBot = nil
                 store.botSettingsBot = nil
             }
         )

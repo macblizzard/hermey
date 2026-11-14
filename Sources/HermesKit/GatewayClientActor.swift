@@ -435,6 +435,17 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.memory(profile)
     }
 
+    /// Notes are the bridge's, like the memory beside them.
+    public func notes(_ profile: String) async throws -> BotNotes {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.notes(profile)
+    }
+
+    public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.saveNotes(text, for: profile)
+    }
+
     /// Rooms are the bridge's, like the pointer and bot management.
     public func rooms() async throws -> [RoomSummary] {
         guard let sessionPointer else { return [] }

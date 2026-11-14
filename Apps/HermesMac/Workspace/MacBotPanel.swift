@@ -50,6 +50,11 @@ struct MacBotPanel: View {
                         // Which model answers, beside the other facts about how this bot behaves.
                         row("Model", icon: "cpu") { if let bot { store.openModel(bot) } }
                         rowDivider
+                        // The owner's own plan for this bot. Beside Model because both are about
+                        // what this bot is for, and above Skills because a note is read more often
+                        // than a tool is opened (asked for 2026-11-14).
+                        row("Notes", icon: "note.text") { if let bot { store.openNotes(bot) } }
+                        rowDivider
                         row("Skills", icon: "book.closed") { if let bot { store.openSkills(bot) } }
                         rowDivider
                         row("MCP", icon: "puzzlepiece.extension") { if let bot { store.openMCP(bot) } }

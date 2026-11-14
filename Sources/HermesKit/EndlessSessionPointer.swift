@@ -130,6 +130,12 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/bots/{profile}/memory` — the two documents this bot carries into every turn.
     func memory(_ profile: String) async throws -> BotMemory
 
+    /// `GET /v1/bots/{profile}/notes` — the owner's own note for this bot.
+    func notes(_ profile: String) async throws -> BotNotes
+
+    /// `PUT /v1/bots/{profile}/notes` — write the whole note back. Last write wins, on the host.
+    func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
+
     /// `GET /v1/rooms` — the group chats this host hosts.
     ///
     /// These four are protocol requirements, not free functions on an extension: a requirement that
@@ -166,6 +172,8 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
     func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
+    func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    func saveNotes(_ text: String, for profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
 }
 
 /// Thrown by a pointer store that has no admin routes (older bridge, test double).
@@ -441,6 +449,32 @@ enum Failure: Error, Equatable, LocalizedError {
         return memory
     }
 
+    public func notes(_ profile: String) async throws -> BotNotes {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgeGET("v1/bots/\(name)/notes", timeout: 20)
+        guard let notes = decodeNotes(data) else {
+            throw Failure.rejected(status: 502, detail: "the host sent no note")
+        }
+        return notes
+    }
+
+    public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgePUT("v1/bots/\(name)/notes",
+                                       body: ["text": text], timeout: 20)
+        guard let notes = decodeNotes(data) else {
+            throw Failure.rejected(status: 502, detail: "the host sent no note")
+        }
+        return notes
+    }
+
+    private func decodeNotes(_ data: Data) -> BotNotes? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return BotNotes.decode(object)
+    }
+
     /// One path segment from host data: non-empty, and never able to escape onto another path.
     private static func pathComponent(_ value: String) throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -476,6 +510,25 @@ enum Failure: Error, Equatable, LocalizedError {
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
+        }
+        return data
+    }
+
+    /// One authenticated PUT against the bridge, JSON in and JSON out. A note is *replaced*, so
+    /// PUT rather than POST: the host takes the whole text and does not append.
+    func bridgePUT(_ path: String, body: [String: Any], timeout: TimeInterval = 20) async throws -> Data {
+        let endpoint = try await endpoint()
+        var request = URLRequest(url: Self.bridgeURL(endpoint.baseURL, path))
+        request.httpMethod = "PUT"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
         guard (200..<300).contains(http.statusCode) else {

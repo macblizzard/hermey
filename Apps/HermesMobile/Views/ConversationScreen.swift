@@ -31,6 +31,7 @@ struct ConversationScreen: View {
     @State private var showSkills = false
     @State private var showMCP = false
     @State private var showRoutines = false
+    @State private var showNotes = false
     @State private var showSoul = false
     @State private var showMemory = false
     @State private var notice: String?
@@ -180,6 +181,7 @@ struct ConversationScreen: View {
                     onSkills: { closeDrawer(); showSkills = true },
                     onMCP: { closeDrawer(); showMCP = true },
                     onRoutines: { closeDrawer(); showRoutines = true },
+                    onNotes: { closeDrawer(); showNotes = true },
                     onSoul: { closeDrawer(); showSoul = true },
                     onMemory: { closeDrawer(); showMemory = true },
                     onSearch: { closeDrawer(); isSearching = true; searchFocused = true },
@@ -277,6 +279,13 @@ struct ConversationScreen: View {
         }
         // The bot's own prompt file, and what it remembers: both read from the host on open, for the
         // same reason — an agent rewrites them whenever it learns something.
+        // The note is host state: read on every open, written whole on Save, so the phone and the
+        // Mac cannot drift apart.
+        .sheet(isPresented: $showNotes) {
+            BotNotesSheet(botName: bot.displayName,
+                          load: { try await model.notes(for: bot.id) },
+                          save: { try await model.saveNotes($0, for: bot.id) })
+        }
         .sheet(isPresented: $showSoul) {
             SoulEditorSheet(
                 botName: bot.displayName,
