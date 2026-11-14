@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.332",
+          "buildVersion": "332",
+          "date": "2026-11-14T14:42:40Z",
+          "localizedDescription": "The unread badge no longer lags the banner: counts are only set by the newest read, a failed read no longer empties every badge, overlapping sweeps are joined, and a reply puts a floor of one under the count the instant the banner appears.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.332/Hermey-0.1.332-b332.ipa",
+          "size": 2321735,
+          "minOSVersion": "17.0",
+          "sha256": "ce1da51cc8e3dad81c5bd2b6cac349959a512e0aaf014566c327f68c0906c575"
+        },
+        {
           "version": "0.1.328",
           "buildVersion": "328",
           "date": "2026-11-14T14:10:14Z",
@@ -62,16 +72,6 @@
           "size": 2277308,
           "minOSVersion": "17.0",
           "sha256": "d7b10824fe9fb78caeacd5936dcc023a74b929cefdb8f6fe0df7b628cdc9c446"
-        },
-        {
-          "version": "0.1.312",
-          "buildVersion": "312",
-          "date": "2026-11-14T10:28:27Z",
-          "localizedDescription": "Composer taps no longer touch focus inside the touch \u2014 crash fixed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.312/Hermey-0.1.312-b312.ipa",
-          "size": 2246380,
-          "minOSVersion": "17.0",
-          "sha256": "06acf9c3fd750db3429cbffbc26e73673199fc0ce71aaefa91dff90b1f01d147"
         }
       ],
       "appPermissions": {
