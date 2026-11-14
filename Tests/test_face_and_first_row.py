@@ -142,3 +142,41 @@ class ThePanelIsOnlyVerbs(unittest.TestCase):
 
     def test_the_close_button_stays(self) -> None:
         self.assertIn('OpenBotIconButton("xmark", label: "Close the bot panel"', self.PANEL)
+
+
+class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
+    """The phone's chat is the desktop's arrangement: chrome over the transcript, not around it."""
+
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    MAC_SCROLL = source("Apps", "HermesMac", "Conversation", "TranscriptScroll.swift")
+
+    def test_no_navigation_bar_and_no_three_dots(self) -> None:
+        self.assertIn(".toolbar(.hidden, for: .navigationBar)", self.CHAT)
+        self.assertNotIn("ToolbarItem(placement: .topBarTrailing)", self.CHAT)
+        # The ellipse belongs to the bot list now, not to the conversation.
+        self.assertNotIn('systemName: "ellipsis"', self.CHAT)
+
+    def test_the_pill_is_the_door(self) -> None:
+        pill = self.CHAT.split("private var pill: some View", 1)[1]
+        self.assertIn("showDrawer.toggle()", pill)
+        self.assertIn('accessibilityIdentifier("chatDrawerButton")', pill)
+
+    def test_the_transcript_runs_behind_both_ends(self) -> None:
+        self.assertIn(".overlay(alignment: .top) { floatingTop }", self.CHAT)
+        self.assertIn(".overlay(alignment: .bottom) { floatingComposer }", self.CHAT)
+        # No safe-area insets: those are what clipped the transcript short of the chrome.
+        self.assertNotIn(".safeAreaInset(edge: .top", self.CHAT)
+        self.assertNotIn(".safeAreaInset(edge: .bottom", self.CHAT)
+        # And room for the composer's real height at the foot of the transcript.
+        self.assertIn("frame(height: composerHeight + 16)", self.CHAT)
+
+    def test_the_composer_no_longer_draws_a_rule(self) -> None:
+        composer = self.CHAT.split("private var composerArea: some View", 1)[1]
+        head = composer.split("if let reply = model.replyTarget", 1)[0]
+        self.assertNotIn("Hairline(", head)
+
+    def test_the_mac_stops_following_new_messages(self) -> None:
+        # Off while the blank-out is chased: a scroll request per token is the shape of the bug.
+        self.assertIn("static let followsNewMessages = false", self.MAC_SCROLL)
+        follow = self.MAC_SCROLL.split("private func follow(", 1)[1]
+        self.assertIn("guard Self.followsNewMessages else { return }", follow)

@@ -29,8 +29,14 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertNotIn("ellipsis.circle", SCREEN,
                          "the ⋯ moved into the drawer; a second door is what he asked to remove")
 
-    def test_the_bar_keeps_its_portrait_and_title(self) -> None:
-        self.assertIn("ToolbarItem(placement: .principal)", SCREEN)
+    def test_the_pill_keeps_its_portrait_and_title(self) -> None:
+        # The nav bar is gone: the portrait and the name live in the floating pill, over the
+        # transcript, the way the desktop draws them.
+        self.assertNotIn("ToolbarItem(placement: .principal)", SCREEN)
+        self.assertIn('.toolbar(.hidden, for: .navigationBar)', SCREEN)
+        pill = SCREEN.split("private var pill: some View", 1)[1]
+        self.assertIn("BotIconPortrait(", pill)
+        self.assertIn("Text(title)", pill)
 
     def test_the_bot_list_keeps_its_own_menu(self) -> None:
         self.assertIn('Image(systemName: "ellipsis")', LIST,

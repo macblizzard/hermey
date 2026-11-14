@@ -49,10 +49,11 @@ class DrawerFooterTests(unittest.TestCase):
         # The panel holds exactly one horizontal rule — the title's — and it is inside the list.
         self.assertEqual(PANEL.count("Hairline(color: Tokens.border)"), 1)
 
-    def test_the_three_dots_toggle_the_same_drawer_the_swipe_opens(self) -> None:
+    def test_the_pill_toggles_the_same_drawer_the_swipe_opens(self) -> None:
         self.assertIn("chatDrawerButton", CHAT)
-        self.assertIn("ToolbarItem(placement: .topBarTrailing)", CHAT)
-        # The same button closes it: a menu opened by a tap must answer a second tap.
+        # No ⋯ in the toolbar any more: the capsule is the door.
+        self.assertNotIn("ToolbarItem(placement: .topBarTrailing)", CHAT)
+        # The same target closes it: a drawer opened by a tap must answer a second tap.
         self.assertIn("showDrawer.toggle()", CHAT)
         # The swipe is untouched: both doors lead to the same state.
         self.assertIn("isDrawerSwipe", CHAT)

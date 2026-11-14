@@ -37,6 +37,10 @@ struct ConversationScreen: View {
     @State private var keyboardScreenSize: CGSize = .zero
     @State private var keyboardScrollTask: Task<Void, Never>?
     @State private var isDraggingTranscript = false
+    /// The composer's measured height, so the transcript's last row can be scrolled clear of it.
+    /// The capsule changes height with the field, and a guessed constant left the last message
+    /// under the controls as soon as a second line was typed.
+    @State private var composerHeight: CGFloat = 0
 
     /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
     /// place that says which bot you are talking to does not need a label.
@@ -183,56 +187,21 @@ struct ConversationScreen: View {
                     .zIndex(1)
             }
         }
+        // The pill and the composer, floating over the transcript rather than framing it.
+        .overlay(alignment: .top) { floatingTop }
+        .overlay(alignment: .bottom) { floatingComposer }
         .animation(Motion.messageIn, value: showDrawer)
+        // No navigation bar: it drew an opaque band over the top of the transcript, and the pill
+        // that says which bot this is had to live inside it. Both are the desktop's arrangement
+        // now — the transcript runs the full height of the screen and the chrome floats over it.
+        .toolbar(.hidden, for: .navigationBar)
         .background(Tokens.canvas)
-        .safeAreaInset(edge: .bottom, spacing: 0) { composerArea }
+        // The wire's own notice, when it has one: a socket that dropped mid-turn still has to say
+        // so, and it went out with the chrome that used to carry it.
         .mobileConnectionBanner(connection: app.visibleConnection,
                                 turnRunning: model.isStreaming,
                                 host: app.hostLabel,
                                 retry: { Task { await app.reconnect() } })
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            // The bot's own face in the title bar, sparks and all: the list taught the eye which
-            // portrait means which bot, and a header that showed only a name made the two places
-            // disagree. `isWorking` is the same flag the list uses, so the antenna arcs while this
-            // bot is the one answering — and not while another one is.
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 8) {
-                    BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                    size: Geometry.chatHeaderAvatar,
-                                    isWorking: model.isStreaming && model.selectedBotID == bot.id)
-                    // Rakazo's header carries one line at 15/22 medium; the phone's nav bar is its
-                    // floating bar, so the weight matches rather than shouting over the transcript.
-                    Text(title)
-                        .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .medium))
-                        .foregroundStyle(Tokens.textPrimary)
-                        .lineLimit(1)
-                }
-                .accessibilityElement(children: .combine)
-            }
-
-            // The verbs, where a phone puts them. Swiping from the edge opens the same drawer; this
-            // is the discoverable half, and it is what most people reach for first.
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Haptics.impact()
-                    // The same button closes it: a menu opened by a tap should answer a second tap,
-                    // and reaching for the dimmed edge to dismiss it is a second gesture for nothing.
-                    withAnimation(.easeOut(duration: 0.2)) { showDrawer.toggle() }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Chat actions")
-                .accessibilityIdentifier("chatDrawerButton")
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { headerStrip }
         // A card in this conversation: the phone already holds the pairing, so the resolver is one
         // call, and a card's button comes back as a notification.
         .environment(\.genUICards, app.genUICards(for: bot.id))
@@ -357,71 +326,138 @@ struct ConversationScreen: View {
     /// The header's second line, directly under the bot name: what is answering, over what
     /// wire, and how much of the window the thread has used. All three are facts the host
     /// reported — a missing fact is omitted, never guessed.
-    private var headerStrip: some View {
-        VStack(spacing: 0) {
-            // No description line: Rakazo's header is one line, and the roster row already carries
-            // the bot's own sentence. What stays is the status row, which is the only place the
-            // host's live facts (unread elsewhere, compacting, model, context, latency) can sit.
-            HStack(spacing: 6) {
-                // Other chats, while this one is on screen. Zero draws nothing.
-                if unreadElsewhere > 0 {
-                    Button {
-                        dismiss()
-                    } label: {
-                        StatusChip("\(unreadElsewhere) unread", tone: .success, showsDot: true, size: .small)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(unreadElsewhere) unread chats elsewhere — back to the bot list")
+
+    // MARK: - Floating chrome
+
+    /// The pill, over the transcript: the bot's face, its name, and the drawer's door.
+    ///
+    /// The desktop's arrangement, ported: the pill is the control, so there is no ⋯ beside it and
+    /// no title bar above it. A chevron sits to its left because a phone needs a way back and the
+    /// bar that carried one is gone.
+    private var floatingTop: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button {
+                    Haptics.selection()
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Tokens.surface))
+                        .overlay(Circle().strokeBorder(Tokens.border, lineWidth: 1))
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to the bots")
 
-                // A compaction runs on the host for a minute or more (measured: 74 s and 163 s),
-                // so it says so here, where the strip is always on screen — the menu closed the
-                // moment the item was tapped, which is why this read as a dead verb.
-                if model.isCompressing {
-                    StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
-                        .accessibilityIdentifier("compactingChip")
-                }
+                Spacer(minLength: 0)
 
-                if let label = modelChipLabel {
-                    StatusChip(label, tone: .neutral, size: .small)
-                }
+                pill
 
-                // One count in this row, never two: a phone-width strip fits the model chip, a
-                // count, the context gauge and the latency pill — and "3 unread" is the only one of
-                // those that is asking to be acted on, so it takes the entries label's place while
-                // it is showing.
-                if unreadElsewhere == 0, let entries = entryCountLabel {
-                    Text(entries)
-                        .font(TypeScale.font(TypeScale.micro))
-                        .foregroundStyle(Tokens.textDim)
-                        .lineLimit(1)
-                }
+                Spacer(minLength: 0)
 
-                if let usage = contextUsage {
-                    Text(usage)
-                        .font(.system(size: 10, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(contextTint)
-                        .lineLimit(1)
-                        .accessibilityLabel("Context used, \(usage) tokens")
-                }
-
-                Spacer(minLength: 6)
-
-                MobileConnectionPill(connection: model.connection, rttMS: app.effectiveRTT)
+                // A mirror of the chevron's width, so the pill is centred on the screen rather
+                // than on the space the chevron left over.
+                Color.clear.frame(width: 34, height: 34)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .frame(minHeight: 30)
 
-            Hairline(color: Tokens.border)
             if isSearching {
                 searchBar
-                Hairline(color: Tokens.border)
+            }
+
+            // Only the two facts that are asking to be acted on. The model, the context count and
+            // the latency live in the drawer now: a strip of chips under a floating pill is a bar
+            // with a pill on top of it, which is the thing this replaces.
+            if unreadElsewhere > 0 || model.isCompressing {
+                HStack(spacing: 6) {
+                    if unreadElsewhere > 0 {
+                        Button {
+                            dismiss()
+                        } label: {
+                            StatusChip("\(unreadElsewhere) unread", tone: .success,
+                                       showsDot: true, size: .small)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if model.isCompressing {
+                        StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
+                            .accessibilityIdentifier("compactingChip")
+                    }
+                }
             }
         }
-        .background(Tokens.canvas)
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
     }
+
+    /// The pill itself: the whole capsule opens the verbs, which is what the ⋯ used to do.
+    private var pill: some View {
+        Button {
+            Haptics.impact()
+            withAnimation(.easeOut(duration: 0.2)) { showDrawer.toggle() }
+        } label: {
+            HStack(spacing: 7) {
+                BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
+                                size: 24,
+                                status: portraitStatus)
+                Text(title)
+                    .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
+                    .foregroundStyle(Tokens.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.leading, 4)
+            .padding(.trailing, 12)
+            .padding(.vertical, 4)
+            .frame(height: 36)
+            .background(
+                Capsule().fill(Tokens.surface)
+                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+            )
+            .overlay(
+                Capsule().strokeBorder(showDrawer ? Tokens.borderStrong : Tokens.border,
+                                       lineWidth: 1)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(title), chat actions")
+        .accessibilityIdentifier("chatDrawerButton")
+    }
+
+    /// What the face says, the same precedence the desktop uses.
+    private var portraitStatus: PortraitStatus? {
+        if model.hasPendingRequests { return .needsYou }
+        if model.isCompressing { return .compacting }
+        if model.isStreaming { return .working }
+        return nil
+    }
+
+    /// The composer over the transcript, measured: the last row scrolls clear of whatever height
+    /// the field has grown to, and the transcript's fade sits under it.
+    private var floatingComposer: some View {
+        composerArea
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { composerHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, height in composerHeight = height }
+                }
+            )
+            .background(
+                // The floor the composer sits on: the transcript fades into the canvas instead of
+                // running under the buttons at full strength.
+                LinearGradient(colors: [Tokens.canvas.opacity(0), Tokens.canvas, Tokens.canvas],
+                               startPoint: .top, endPoint: .center)
+                    .allowsHitTesting(false)
+            )
+            .padding(.bottom, 2)
+    }
+
+    // The status strip is gone: the pill carries the bot and its state, and the drawer carries
+    // the host's own facts. What is left of it is the two chips in `floatingTop`.
 
     /// `deepseek-v4.1-flash` fits; a provider-qualified id does not, and the chip is
     /// `fixedSize`, so it is shortened here rather than pushing the latency chip off.
@@ -535,7 +571,9 @@ struct ConversationScreen: View {
                     // The one gutter a conversation uses, shared with the composer and with a
                     // group chat: `Geometry.chatGutter`, never a number typed here.
                     .padding(.horizontal, Geometry.chatGutter)
-                    .padding(.top, 12)
+                    // The pill sits over this: a fresh transcript starts below it, and a long one
+                    // scrolls behind it.
+                    .padding(.top, 56)
                     .padding(.bottom, 20)
             }
             // The sentinel reports its position in this space; without a name there is nothing to
@@ -734,6 +772,11 @@ struct ConversationScreen: View {
             Color.clear
                 .frame(height: 1)
                 .id(ConversationScreen.bottomID)
+
+                // The room the composer needs. Measured, not guessed: the field grows, and the
+                // last message has to be able to sit above the controls rather than under them.
+                Color.clear
+                    .frame(height: composerHeight + 16)
                 // Reports where the end of the transcript is, in the scroll view's own space, on
                 // every layout pass — including the ones a growing reply causes. Reading a position
                 // is honest; watching a lazy row appear and disappear is not.
@@ -806,10 +849,8 @@ struct ConversationScreen: View {
                 pendingAttachmentsBar
             }
 
-            // Nothing sits above the field: the record button is in the composer beside send, and
-            // "speak replies" moved into the ⋯ menu. What was left of the old row was a lone
-            // muted-speaker glyph floating above the field with nothing to explain it.
-            Hairline(color: Tokens.border)
+            // Nothing sits above the field, and no hairline either: the composer floats, and a
+            // full-width rule under a floating capsule re-draws the bar it was meant to replace.
 
             if let reply = model.replyTarget {
                 HStack(spacing: 6) {

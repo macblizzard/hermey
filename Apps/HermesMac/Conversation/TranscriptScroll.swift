@@ -225,10 +225,19 @@ struct TranscriptScroll: View {
 
     /// Pull the transcript down only while it is already at the bottom.
     ///
+    /// Off on purpose while the blank-out is chased: following a streaming reply means a scroll
+    /// request per token, and a request that lands while the transcript is re-laying itself out is
+    /// the most likely way for rows to vanish and the view to jump. With it off the transcript only
+    /// moves when a person moves it, or when a *different* conversation opens.
+    ///
+    /// One line to put back — the call sites are all still wired.
+    static let followsNewMessages = false
+
     /// A user who scrolled up keeps their place: a streaming reply must not yank the reading
     /// position back on every token, which is what the old unconditional scroll did. The
     /// floating control is the way back, and taking it re-arms the follow.
     private func follow(_ proxy: ScrollViewProxy) {
+        guard Self.followsNewMessages else { return }
         guard !searching, followsBottom else { return }
         // `proxy` is kept for the search jumps; the jump to the newest message is the probe's.
         _ = proxy
