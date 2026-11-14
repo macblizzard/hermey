@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.316",
+          "buildVersion": "316",
+          "date": "2026-11-14T11:45:46Z",
+          "localizedDescription": "Routines: what a bot runs on its own, with a real pause/resume switch beside each one (read from the host's scheduler, with the error text when a run failed). Three rows on the bot page say what they open: Workspace is now Library, MCP servers is MCP, and Search is Search conversations. Both platforms.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.316/Hermey-0.1.316-b316.ipa",
+          "size": 2277308,
+          "minOSVersion": "17.0",
+          "sha256": "d7b10824fe9fb78caeacd5936dcc023a74b929cefdb8f6fe0df7b628cdc9c446"
+        },
+        {
           "version": "0.1.312",
           "buildVersion": "312",
           "date": "2026-11-14T10:28:27Z",
@@ -62,16 +72,6 @@
           "size": 2247159,
           "minOSVersion": "17.0",
           "sha256": "df009b880d7b7ed61542b0f1b194f448d26ee3bcbc8732b1823c15efcce30e39"
-        },
-        {
-          "version": "0.1.300",
-          "buildVersion": "300",
-          "date": "2026-11-14T08:28:19Z",
-          "localizedDescription": "The jump lands on the last line, and a dropped socket no longer paints a red banner.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.300/Hermey-0.1.300-b300.ipa",
-          "size": 2245976,
-          "minOSVersion": "17.0",
-          "sha256": "569b31b933184904c795acda5cc7c7bf0a5a6ab5360cc76b1676b6e95cdc7ff1"
         }
       ],
       "appPermissions": {
