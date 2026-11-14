@@ -28,7 +28,9 @@ class TheMenuOffersIt(unittest.TestCase):
     def test_the_drawer_has_a_workspace_row(self) -> None:
         # The phone's ⋯ became a page opened from the trailing edge (reported 2026-11-12); the row
         # moved with it, and it still opens the same sheet.
-        self.assertIn('row("Workspace", systemImage: "folder"', read(DRAWER))
+        # Renamed "Library" on 2026-11-14: it opens this bot's files, and only the code still
+        # calls the folder a workspace.
+        self.assertIn('row("Library", systemImage: "folder"', read(DRAWER))
         self.assertIn("onWorkspace: { closeDrawer(); showWorkspace = true }", read(SCREEN))
 
     def test_the_sheet_is_given_the_bot_and_the_client(self) -> None:

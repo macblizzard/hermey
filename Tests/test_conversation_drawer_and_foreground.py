@@ -52,8 +52,13 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertIn(".zIndex(2)", SCREEN)
 
     def test_it_carries_the_verbs_and_only_those(self) -> None:
-        for label in ("Computer", "Workspace", "Skills", "MCP servers", "Search", "Reset chat"):
+        # The row names he settled on (reported 2026-11-14): "Library" for this bot's files,
+        # "MCP" for the servers, "Search conversations" for the find, and a new Routines door.
+        for label in ("Computer", "Library", "Skills", "MCP", "Routines",
+                      "Search conversations", "Reset chat"):
             self.assertIn(f'"{label}"', DRAWER, f"{label} must still be reachable")
+        for gone in ('row("Workspace"', 'row("MCP servers"', 'row("Search"'):
+            self.assertNotIn(gone, DRAWER, f"{gone} was renamed")
         # Compaction, the unread sweep and spoken replies left this page: the first two happen on
         # their own, and the third belongs beside the microphone.
         # Settings is gone too: Edit in the header opens the same sheet.

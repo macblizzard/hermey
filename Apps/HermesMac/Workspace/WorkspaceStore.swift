@@ -112,16 +112,20 @@ final class WorkspaceStore: ObservableObject {
     @Published var workspaceBot: Bot?
     @Published var skillsBot: Bot?
     @Published var mcpBot: Bot?
+    /// What this bot runs on a schedule — the phone's Routines row, as a sheet.
+    @Published var routinesBot: Bot?
 
     /// Open one of them, closing any other: the window's one modal is shared.
     func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
     func openSkills(_ bot: Bot) { closePanels(); skillsBot = bot }
     func openMCP(_ bot: Bot) { closePanels(); mcpBot = bot }
+    func openRoutines(_ bot: Bot) { closePanels(); routinesBot = bot }
 
     private func closePanels() {
         workspaceBot = nil
         skillsBot = nil
         mcpBot = nil
+        routinesBot = nil
     }
     /// Full screen is the panel's own verb; closing the panel drops it so the next open is a panel.
     @Published var isComputerFullScreen = false

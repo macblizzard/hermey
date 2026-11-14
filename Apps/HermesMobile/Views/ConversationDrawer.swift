@@ -25,6 +25,7 @@ struct ConversationDrawer: View {
     let onWorkspace: () -> Void
     let onSkills: () -> Void
     let onMCP: () -> Void
+    let onRoutines: () -> Void
     let onSearch: () -> Void
     let onSettings: () -> Void
     let onCompact: () -> Void
@@ -128,19 +129,30 @@ struct ConversationDrawer: View {
             panel {
                 row("Computer", systemImage: "display", run: onComputer)
                 rowDivider
-                row("Workspace", systemImage: "folder", run: onWorkspace)
+                // "Library", not "Workspace": the row opens this bot's files, and the word the
+                // desktop uses for the *agent's* own working folder is a developer's word for it.
+                // The row's own screen keeps saying where the files are.
+                row("Library", systemImage: "folder", run: onWorkspace)
             }
 
             panel {
                 row("Skills", systemImage: "book.closed", run: onSkills)
                 rowDivider
-                row("MCP servers", systemImage: "puzzlepiece.extension", run: onMCP)
+                // "MCP", not "MCP servers": the acronym already says what it is, and the row is a
+                // door, not a sentence.
+                row("MCP", systemImage: "puzzlepiece.extension", run: onMCP)
+                rowDivider
+                // What the bot does without being asked. Its own row, above the search, because a
+                // schedule is host state and the two rows it sits between are about this device.
+                row("Routines", systemImage: "clock.arrow.circlepath", run: onRoutines)
             }
 
             // Settings is gone from this page: Edit, in the header, opens the same sheet, and two
             // doors to one room is one door too many.
             panel {
-                row("Search", systemImage: "magnifyingglass", run: onSearch)
+                // "Search conversations" — the scope, said out loud: it searches this bot's talk,
+                // not the host's files (that is Library) and not the app's settings.
+                row("Search conversations", systemImage: "magnifyingglass", run: onSearch)
             }
 
             // Compaction, the unread sweep and spoken replies are gone from this page: the first
@@ -218,7 +230,8 @@ extension ConversationDrawer {
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,
                            onComputer: {}, onWorkspace: {}, onSkills: {}, onMCP: {},
-                           onSearch: {}, onSettings: {}, onCompact: {}, onMarkAllRead: {},
+                           onRoutines: {}, onSearch: {}, onSettings: {}, onCompact: {},
+                           onMarkAllRead: {},
                            onSpeakChange: { _ in }, onReset: {}, onClose: {})
     }
 }

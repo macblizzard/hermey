@@ -33,7 +33,7 @@ struct WorkspaceSheet: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let failure {
                     ContentUnavailableView {
-                        Label("Couldn't read the workspace", systemImage: "folder.badge.questionmark")
+                        Label("Couldn't read the library", systemImage: "folder.badge.questionmark")
                     } description: {
                         Text(failure)
                     } actions: {
@@ -49,7 +49,7 @@ struct WorkspaceSheet: View {
                     fileList
                 }
             }
-            .navigationTitle("Workspace")
+            .navigationTitle("Library")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

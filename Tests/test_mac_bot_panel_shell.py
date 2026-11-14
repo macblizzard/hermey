@@ -79,8 +79,8 @@ class ThePanelIsAPane(unittest.TestCase):
         self.assertIn(".transition(.move(edge: .trailing))", ROOTVIEW)
 
     def test_it_carries_the_same_verbs_as_the_phone(self) -> None:
-        for verb in ("Computer", "Workspace", "Skills", "MCP servers",
-                     "Search conversation", "Bot settings",
+        for verb in ("Computer", "Library", "Skills", "MCP", "Routines",
+                     "Search conversations", "Bot settings",
                      "Mark all as read", "Reset conversation"):
             self.assertIn(f'row("{verb}"', PANEL, f"the panel is missing {verb}")
         # The compaction row relabels itself while it runs, so it is matched by its words.
