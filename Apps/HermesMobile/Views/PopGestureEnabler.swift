@@ -1,74 +1,99 @@
 import SwiftUI
 import UIKit
 
-/// Puts the edge-swipe back.
+/// Puts the edge-swipe back, by owning it.
 ///
-/// The chat screen hides its navigation bar — it draws its own chrome — and a hidden bar takes
-/// UIKit's interactive pop gesture with it: the recogniser is disabled, and its delegate refuses to
-/// begin. Two halves, so a fix has to answer both:
+/// The chat screen hides its navigation bar — it draws its own chrome — and hiding the bar takes
+/// UIKit's interactive pop gesture with it. Two earlier attempts tried to *revive* that gesture: put
+/// `isEnabled` back, hand it a delegate, re-arm it after the bar finished hiding. Neither worked on
+/// device, and the repo's own notes already said why (`docs/UI-PITFALLS.md`, "hiding the bar also
+/// kills the edge-swipe pop, and a delegate does not bring it back"). Reviving a disabled system
+/// recogniser is a dead end, so this does not try.
 ///
-/// 1. `isEnabled` is put back *and kept* put back. The bar re-lays itself out on every appearance
-///    and after every push, and each pass is a chance to disable the recogniser again, so the
-///    re-arming happens in `viewDidLayoutSubviews` — the one hook that fires after all of them.
-/// 2. The delegate is a real object instead of `nil`. `nil` reads as "no veto", which is also no
-///    veto on the *root* screen: swipe there, nothing pops, and the recogniser is left wedged so
-///    that every later swipe does nothing. This delegate answers with the one fact that matters —
-///    is there a screen underneath this one to go back to.
+/// Instead it installs its own `UIScreenEdgePanGestureRecognizer` on the navigation controller's
+/// view — the one view every touch in the page is hit-tested through — and pops on a completed
+/// left-edge drag. The system recogniser is switched *off* while this one is installed, because two
+/// pop recognisers on one pan pop twice.
 ///
-/// `navigationController` is asked for directly rather than walking `parent` by hand: SwiftUI wraps
-/// a destination in its own hosting controller, and the property knows how to find the stack
-/// through that; a hand-rolled walk does not.
+/// Three details that matter:
+///
+/// - **The host view is full size, not 0×0.** The earlier version was a zero-sized background, so
+///   its layout callbacks fired once and never again; every later re-arm was a guess.
+/// - **`cancelsTouchesInView = false`** and simultaneous recognition, so the transcript keeps its
+///   scroll pan and its own 5 pt drag. The edge band still scrolls vertically — the pop only fires
+///   when the drag was more horizontal than vertical.
+/// - **The pop is not finger-tracked.** Owning a percent-driven transition is a lot of machinery for
+///   a gesture that ends in one animation; this snaps, which reads fine and never half-finishes.
 struct PopGestureEnabler: UIViewControllerRepresentable {
+    /// Off while something is covering the page — the bot's own sheet, which has its own way out.
+    var enabled: Bool = true
+
     func makeUIViewController(context: Context) -> UIViewController { Probe() }
 
     func updateUIViewController(_ controller: UIViewController, context: Context) {
-        (controller as? Probe)?.enable()
+        (controller as? Probe)?.setEnabled(enabled)
     }
 
     final class Probe: UIViewController, UIGestureRecognizerDelegate {
+        private weak var host: UIView?
+        private weak var edgePan: UIScreenEdgePanGestureRecognizer?
+        private var isWanted = true
+
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
-            enable()
-        }
-
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            enable()
+            install()
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            enable()
-            // The bar finishes hiding a frame or two after the push settles; re-arm once more after
-            // it has, for the case where that pass disables the recogniser one last time.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                self?.enable()
-            }
+            install()
         }
 
-        override func viewDidLayoutSubviews() {
-            super.viewDidLayoutSubviews()
-            // Deliberately on every pass: this is the hook that runs *after* the bar has finished
-            // hiding itself, which is the moment UIKit disables the recogniser.
-            enable()
+        override func willMove(toParent parent: UIViewController?) {
+            super.willMove(toParent: parent)
+            guard parent == nil else { return }
+            // Leaving the screen: take the recogniser with it, and hand the system's back.
+            if let edgePan { host?.removeGestureRecognizer(edgePan) }
+            edgePan = nil
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         }
 
-        /// Idempotent and cheap.
-        func enable() {
-            guard let navigation = navigationController,
-                  let gesture = navigation.interactivePopGestureRecognizer
+        func setEnabled(_ wanted: Bool) {
+            isWanted = wanted
+            edgePan?.isEnabled = wanted
+        }
+
+        func install() {
+            guard edgePan == nil, let navigation = navigationController,
+                  let target = navigation.view
             else { return }
-            if !gesture.isEnabled { gesture.isEnabled = true }
-            if gesture.delegate !== self { gesture.delegate = self }
+
+            let pan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handle(_:)))
+            pan.edges = .left
+            pan.cancelsTouchesInView = false
+            pan.delaysTouchesBegan = false
+            pan.delegate = self
+            pan.isEnabled = isWanted
+            target.addGestureRecognizer(pan)
+
+            host = target
+            edgePan = pan
+            // Ours is the only pop now.
+            navigation.interactivePopGestureRecognizer?.isEnabled = false
         }
 
-        /// The gesture begins only when there is a screen to go back to.
-        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            (navigationController?.viewControllers.count ?? 0) > 1
+        @objc private func handle(_ recognizer: UIScreenEdgePanGestureRecognizer) {
+            guard recognizer.state == .ended, let view = host,
+                  let navigation = navigationController,
+                  navigation.viewControllers.count > 1
+            else { return }
+            let translation = recognizer.translation(in: view)
+            // More across than up: a vertical drag that starts at the margin belongs to the
+            // transcript, not to the way back.
+            guard translation.x > 60, abs(translation.x) > abs(translation.y) else { return }
+            navigation.popViewController(animated: true)
         }
 
-        /// The recogniser lives on the navigation controller's own view; it must not be blocked by
-        /// the scroll view's own pan.
         func gestureRecognizer(_ recognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             true
@@ -78,11 +103,13 @@ struct PopGestureEnabler: UIViewControllerRepresentable {
 
 extension View {
     /// For a screen that hides its navigation bar and still wants the swipe back.
-    func restoresSwipeBack() -> some View {
-        background(
-            PopGestureEnabler()
-                .frame(width: 0, height: 0)
+    ///
+    /// The host fills the page rather than collapsing to nothing: a zero-sized representable lays
+    /// out once, and a gesture installed from a view that never lays out again cannot be re-armed.
+    func restoresSwipeBack(enabled: Bool = true) -> some View {
+        background {
+            PopGestureEnabler(enabled: enabled)
                 .allowsHitTesting(false)
-        )
+        }
     }
 }

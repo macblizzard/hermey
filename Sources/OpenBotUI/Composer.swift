@@ -120,15 +120,30 @@ public struct Composer: View {
     private var glyphSize: CGFloat { 11 }
     #endif
 
-    /// The row the field and the controls share. The field is one line taller than a control so
-    /// the text has breathing room.
-    private var rowHeight: CGFloat { controlSide + 8 }
+    /// The gap above the field's first line. The text, both control columns and the card's padding
+    /// are all laid out from this one number.
+    private var lineInset: CGFloat { 6 }
 
-    /// A control centred in the row by its own frame rather than pushed down by a guessed padding:
-    /// the glyph's typographic centre and the box's centre are not the same point, and the padding
-    /// measured one while the eye saw the other.
+    /// One line of the field, at the transcript's own rhythm — which `.lineSpacing` below makes
+    /// true, and which every `chatLine` number in this file already assumes.
+    private var lineBox: CGFloat { lineInset * 2 + TypeScale.chatLine }
+
+    /// A line, not `controlSide + 8`.
+    ///
+    /// 40 was 7.7 pt taller than the field's own single line, and `minHeight` absorbed that slack by
+    /// centring the field — then dropped it the moment a second line made the field taller, which
+    /// moved the first line 3.9 pt up while the glyphs beside it stayed put. On one line the text
+    /// looked aligned and on two it did not, which is the "geometry goes wrong when the text is
+    /// longer" report.
+    private var rowHeight: CGFloat { max(lineBox, controlSide) }
+
+    /// Where a control starts so that its centre is the *line's* centre. `rowHeight / 2` is the
+    /// row's centre, and the row is not the line.
+    private var controlTopInset: CGFloat { lineInset + TypeScale.chatLine / 2 - controlSide / 2 }
+
     private func rowCentred<V: View>(_ view: V) -> some View {
-        view.frame(height: rowHeight, alignment: .center)
+        view.padding(.top, max(0, controlTopInset))
+            .frame(height: rowHeight, alignment: .top)
     }
 
     private var trimmed: String {
@@ -163,7 +178,10 @@ public struct Composer: View {
                 // One tap clears everything typed. Inside the card, right of the text and left of
                 // the mic: it belongs to the field, not to the message's verbs. Dim on purpose —
                 // it is an escape hatch, not a control in the row of actions.
-                if !trimmed.isEmpty {
+                // Reserved, never inserted: a 40 pt control appearing in the row took 40 pt off the
+                // field the instant the first character landed, and a long line re-wrapped onto
+                // another line because of it — while the reader watched the text move.
+                Group {
                     Button {
                         text = ""
                         // Put the caret back in the field: clearing is the start of a new message,
@@ -181,8 +199,11 @@ public struct Composer: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .frame(height: rowHeight, alignment: .center)
-                    .transition(.opacity)
+                    .padding(.top, max(0, controlTopInset))
+                    .frame(height: rowHeight, alignment: .top)
+                    .opacity(trimmed.isEmpty ? 0 : 1)
+                    .allowsHitTesting(!trimmed.isEmpty)
+                    .accessibilityHidden(trimmed.isEmpty)
                     .accessibilityLabel("Clear the message")
                 }
 
@@ -285,7 +306,9 @@ public struct Composer: View {
             .tint(Tokens.accent)
             .lineLimit(1...8)
             .focused($focused)
-            .padding(.vertical, 6)
+            // The transcript's rhythm, so a message is the same shape in the field as on the page.
+            .lineSpacing(TypeScale.chatLineSpacing)
+            .padding(.vertical, lineInset)
             .submitLabel(.send)
             .accessibilityLabel(placeholder)
             .disabled(isDisabled)

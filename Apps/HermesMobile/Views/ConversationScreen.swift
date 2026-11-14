@@ -200,7 +200,9 @@ struct ConversationScreen: View {
         // now — the transcript runs the full height of the screen and the chrome floats over it.
         .toolbar(.hidden, for: .navigationBar)
         // The bar went; the swipe back is not allowed to go with it.
-        .restoresSwipeBack()
+        // Off while the bot's page is up: that page is its own screen with its own way out, and a
+        // swipe there would pop the chat out from under it.
+        .restoresSwipeBack(enabled: !showDrawer)
         .background(Tokens.canvas)
         // The wire's own notice, when it has one: a socket that dropped mid-turn still has to say
         // so, and it went out with the chrome that used to carry it.
@@ -433,6 +435,19 @@ struct ConversationScreen: View {
         return nil
     }
 
+    /// The two fades the mask always carries, top and bottom, in points.
+    private static let maskFades: CGFloat = 96 + 44
+
+    /// The strip at the foot of the transcript that the composer may claim.
+    ///
+    /// Unclamped it is `composerHeight + 12`, which eight lines plus a reply strip plus an
+    /// attachment strip makes taller than a phone in landscape: the mask's stack then overflows the
+    /// scroll view, SwiftUI centres the overflow past the top edge, and the transcript is masked
+    /// solid — which arrives as "the box grew and clipped the conversation".
+    private var maskFoot: CGFloat {
+        min(composerHeight + 12, max(0, transcriptHeight - Self.maskFades))
+    }
+
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
     /// the field has grown to, and the transcript's fade sits under it.
     private var floatingComposer: some View {
@@ -601,7 +616,7 @@ struct ConversationScreen: View {
                     // refracts what is under it, and a fade that reached this far left it with
                     // nothing but canvas to refract — which reads as a black box, not as glass.
                     Rectangle().fill(Color.black)
-                        .frame(height: composerHeight + 12)
+                        .frame(height: maskFoot)
                 }
             )
             // The way back to the newest message, on the same rule as the desktop's: it appears
@@ -785,11 +800,12 @@ struct ConversationScreen: View {
                 .frame(height: 1)
                 .id(ConversationScreen.bottomID)
 
-                // Half the composer's height, not all of it: the last message's tail runs under
-                // the capsule, which is what gives the glass something to refract at rest instead
-                // of a strip of empty canvas. It is measured, not guessed — the field grows.
+                // Everything the composer covers, less the strip that is meant to pass under the
+                // glass and the transcript's own bottom padding. Half the height only compensated
+                // a one-line card: every extra line covered another 11 pt of conversation that
+                // nothing gave back.
                 Color.clear
-                    .frame(height: composerHeight * 0.5 + 8)
+                    .frame(height: max(0, composerHeight - 36))
                 // Reports where the end of the transcript is, in the scroll view's own space, on
                 // every layout pass — including the ones a growing reply causes. Reading a position
                 // is honest; watching a lazy row appear and disappear is not.
@@ -934,7 +950,8 @@ struct ConversationScreen: View {
                     }
                 }
         }
-        .background(Tokens.canvas)
+        // No canvas band behind the composer. It was opaque, so the glass had a black wall to
+        // sample and every material — OS or built — could only ever arrive as flat charcoal.
     }
 
     /// Picked attachments wait here until the user sends, so cancelling the composer uploads nothing.
