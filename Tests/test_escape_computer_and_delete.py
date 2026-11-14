@@ -127,6 +127,73 @@ class AModelIsItsOwnDoor(unittest.TestCase):
         self.assertIn("confirm: confirmed", self.MODEL)
 
 
+class TheFacesHaveLightAndMotion(unittest.TestCase):
+    """#100, tiers one and two: shading inside the silhouette, then breathing and blinking."""
+
+    SHADING = (ROOT / "Sources/OpenBotUI/BotFaceShading.swift").read_text(encoding="utf-8")
+    SILHOUETTE = (ROOT / "Sources/OpenBotUI/BotSilhouette.swift").read_text(encoding="utf-8")
+
+    def test_the_light_stays_inside_the_shape(self) -> None:
+        # Three layers, all masked by the silhouette: the outline that makes a face recognisable
+        # must not change, and an outer shadow at 22 pt is a smudge.
+        self.assertEqual(self.SHADING.count("mask(BotSilhouette(icon).fill(Color.black))"), 2)
+        self.assertIn("BotSilhouette(icon)\n                .stroke(Color.black.opacity(0.5)", self.SHADING)
+        self.assertIn("allowsHitTesting(false)", self.SHADING)
+
+    def test_small_faces_get_less_light(self) -> None:
+        self.assertIn("size >= 40 ? 0.30", self.SHADING)
+        self.assertIn("size >= 28 ? 0.26 : 0.20", self.SHADING)
+
+    def test_the_eyes_blink_and_squint(self) -> None:
+        self.assertIn("public var blink: Double", self.SILHOUETTE)
+        self.assertIn("public var squint: Double", self.SILHOUETTE)
+        # Closed is a line, never a zero: two eyes have to survive the blink.
+        self.assertIn("max(size * 0.028, closed)", self.SILHOUETTE)
+
+    def test_motion_is_cheap_and_respects_reduce_motion(self) -> None:
+        portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
+        body = portrait.split("public var body: some View", 1)[1].split("/// Shared working", 1)[0]
+        # Two flags and implicit animations, not a TimelineView: a timeline rebuilds every frame and
+        # this face is drawn once per roster row.
+        self.assertIn("accessibilityReduceMotion", portrait)
+        self.assertIn("size >= 18", portrait)
+        self.assertNotIn("TimelineView(.animation", body)
+        self.assertIn("repeatForever(autoreverses: true)", body)
+        self.assertIn("blink: blinking ? 1 : 0", body)
+        self.assertIn("squint: isWorking ? 1 : 0", body)
+
+    def test_a_list_does_not_blink_in_unison(self) -> None:
+        self.assertIn("let seed = Double(abs(icon.title.unicodeScalars.reduce(0)", GALLERY)
+
+
+class TheAppIconIsOneOfTheFaces(unittest.TestCase):
+    IOS_ICON = ROOT / "Apps/HermesMobile/Assets.xcassets/AppIcon.appiconset/icon-1024.png"
+    MAC_DIR = ROOT / "Apps/HermesMac/Assets.xcassets/AppIcon.appiconset"
+
+    def test_the_phone_icon_is_1024_and_opaque(self) -> None:
+        # iOS rejects an icon with an alpha channel, and the system supplies the mask itself. Read
+        # from the PNG's own IHDR rather than an imaging library the test venv does not have: width,
+        # height, then a colour type of 2 (truecolour) rather than 6 (with alpha).
+        import struct
+        data = self.IOS_ICON.read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        width, height, _depth, colour_type = struct.unpack(">IIBB", data[16:26])
+        self.assertEqual((width, height), (1024, 1024))
+        self.assertEqual(colour_type, 2, "truecolour, no alpha")
+
+    def test_every_mac_size_is_present(self) -> None:
+        for side in (16, 32, 128, 256, 512):
+            for suffix in ("", "@2x"):
+                name = f"icon_{side}x{side}{suffix}.png"
+                self.assertTrue((self.MAC_DIR / name).exists(), name)
+
+    def test_it_is_drawn_not_pasted(self) -> None:
+        # A committed generator means the mark follows the faces instead of drifting from them.
+        generator = (ROOT / "Tools/release/make_app_icon.py").read_text(encoding="utf-8")
+        self.assertIn("case .blob", generator)
+        self.assertIn("bar_w, bar_h = size * 0.105, size * 0.185", generator)
+
+
 class TheFaceGalleryDropsTheInitialsRow(unittest.TestCase):
     def test_there_is_no_initials_option(self) -> None:
         # "Use its initials instead" sat under the shape grid and asked the user to opt out of the
