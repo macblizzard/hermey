@@ -116,6 +116,11 @@ public enum Geometry {
     /// error strips all start here, so their left edges cannot drift apart. Rakazo's transcript
     /// gutter; the composer sits at `composerInset`.
     public static let readingInset: CGFloat = 28
+    /// How much more of the window's top-left the traffic lights own than a pane's own gutter. The
+    /// window is edge-to-edge and borderless, so anything a pane puts at its own left edge on that
+    /// line lands *under* them — the sidebar toggle did, once the sidebar it belonged to was hidden
+    /// (reported 2026-11-14). Added to `readingInset`, it puts a control at 84 pt.
+    public static let trafficLightClearance: CGFloat = 56
     /// The composer's own minimum gutter, 4 pt tighter than the transcript's on purpose
     /// (`composer.tsx` uses `1.5rem` where the transcript uses `1.75rem`).
     public static let composerInset: CGFloat = 24

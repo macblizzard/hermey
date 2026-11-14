@@ -179,23 +179,11 @@ struct TranscriptScroll: View {
                     .frame(maxWidth: Geometry.conversationMeasure, alignment: .leading)
             }
 
-            // The phone's thinking row, which the Mac never had: before the first token there is
-            // nothing to read, so the bot's face turns in place of an empty bubble.
-            if model.isStreaming, model.visibleStreamingText.isEmpty {
-                HStack(spacing: 8) {
-                    if let bot = model.selectedBot {
-                        BotFaceSpinner(face: faces[bot.id] ?? BotFace.default(for: bot.id), size: 18)
-                    }
-                    Text("Thinking…")
-                        .font(TypeScale.font(TypeScale.md))
-                        .foregroundStyle(Tokens.textMuted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .transition(.opacity)
-            }
-
             if model.isStreaming {
-                StreamingAssistantBubble(text: model.visibleStreamingText)
+                StreamingAssistantBubble(text: model.visibleStreamingText,
+                                         face: model.selectedBot.map {
+                                             faces[$0.id] ?? BotFace.default(for: $0.id)
+                                         })
                     .id(streamingID)
                     .background(selectedMatch == streamingID ? Tokens.accentSoft : Color.clear)
                     .transition(.opacity)
@@ -449,11 +437,13 @@ struct MacReasoningBlock: View {
 /// `MarkdownTextView` a finished message uses, so nothing jumps when the turn completes.
 struct StreamingAssistantBubble: View {
     let text: String
+    /// The bot's face while it works: the row that used to be a wheel with a phrase beside it.
+    var face: BotFace?
 
     var body: some View {
         Group {
             if text.isEmpty {
-                WorkingStatus()
+                WorkingStatus(face: face)
             } else {
                 MarkdownTextView(text: text, isStreaming: true)
             }
