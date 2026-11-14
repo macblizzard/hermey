@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.306",
+          "buildVersion": "306",
+          "date": "2026-11-14T09:07:31Z",
+          "localizedDescription": "The jump control stops latching: visible whenever the chat is not at the bottom, and one tap lands.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.306/Hermey-0.1.306-b306.ipa",
+          "size": 2247434,
+          "minOSVersion": "17.0",
+          "sha256": "f8664768f9256daa5aed238efbd8d84686eac1921c4a5938c5696c8df80c009b"
+        },
+        {
           "version": "0.1.303",
           "buildVersion": "303",
           "date": "2026-11-14T08:54:52Z",
@@ -62,16 +72,6 @@
           "size": 2255253,
           "minOSVersion": "17.0",
           "sha256": "6d42ce0d227e27910d2900e3581ad30cc69ffb3a203969d9857dedb5ee252a9e"
-        },
-        {
-          "version": "0.1.289",
-          "buildVersion": "289",
-          "date": "2026-11-14T07:08:42Z",
-          "localizedDescription": "Glass that carries its own light, and the jump control in the middle.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.289/Hermey-0.1.289-b289.ipa",
-          "size": 2254397,
-          "minOSVersion": "17.0",
-          "sha256": "cf4707cbbfb534c131eef5892bcc5cd99500a58c581402ab98f7bd19535ed07e"
         }
       ],
       "appPermissions": {
