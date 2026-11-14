@@ -13,9 +13,18 @@ import Foundation
 public enum TranscriptVisibility {
     /// `entries` without the tool cards, when the user asked for no tool calls — and without the
     /// wordless assistant rows either way.
-    public static func rows(_ entries: [TranscriptEntry], showToolCalls: Bool) -> [TranscriptEntry] {
-        let withoutCards = showToolCalls ? entries : entries.filter { $0.role != .tool }
-        return withoutCards.filter { !isScaffold($0) }
+    ///
+    /// `showReasoning` drops the reasoning rows too. It used to gate only the *live* block, and
+    /// the client synthesises a reasoning row when a turn ends, so turning reasoning off hid the
+    /// text while it streamed and left the same words in the history — the switch that looked
+    /// broken (reported 2026-11-14: "reasoning disabled but it's still showing me reasoning").
+    /// One rule for a row's visibility, both shells, no second filter in a view.
+    public static func rows(_ entries: [TranscriptEntry],
+                            showToolCalls: Bool,
+                            showReasoning: Bool = true) -> [TranscriptEntry] {
+        var kept = showToolCalls ? entries : entries.filter { $0.role != .tool }
+        if !showReasoning { kept = kept.filter { $0.role != .reasoning } }
+        return kept.filter { !isScaffold($0) }
     }
 
     /// An assistant row with no words and no pictures was never a message: the host writes one as a
