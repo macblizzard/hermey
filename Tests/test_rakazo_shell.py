@@ -130,10 +130,13 @@ class RakazoIOSShellTests(unittest.TestCase):
         self.assertIn(".frame(minHeight: Geometry.rosterRow)", IOS_ROSTER)
         self.assertIn(".padding(.vertical, Geometry.rosterRowPadding)", IOS_ROSTER)
         self.assertIn("TypeScale.font(Tokens.rosterMeta", IOS_ROSTER)
-        # Two lines: the count badge and the chevron were what made it three.
-        self.assertNotIn("UnreadBadge(count: model.unreadCount(bot.id)", IOS_ROSTER)
+        # Two lines of text — the chevron was what made it three — but the two unread indicators
+        # are back on the row after the restyle dropped them: Mohammad asked for the count on the
+        # face and the beacon at the edge twice, and a single static dot lost the number
+        # (reported 2026-11-14). They are overlays, so the row is still two lines.
         self.assertNotIn('Image(systemName: "chevron.right")', IOS_ROSTER)
-        self.assertIn("Circle()\n                                .fill(Tokens.accent)\n                                .frame(width: 8, height: 8)", IOS_ROSTER)
+        self.assertIn("UnreadBadge(count: model.unreadCount(bot.id)", IOS_ROSTER)
+        self.assertIn("UnreadBeacon(diameter: 8)", IOS_ROSTER)
 
     def test_a_group_chat_is_a_row_of_the_same_shape(self) -> None:
         self.assertIn("spacing: Geometry.rosterRowGap", ROOM_ROW)

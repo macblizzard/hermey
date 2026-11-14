@@ -30,7 +30,10 @@ class MarkAllRead(unittest.TestCase):
         self.assertIn("roomUnreadCounts.removeAll()", self.body)
 
     def test_the_mark_is_written_so_the_dot_cannot_come_back(self) -> None:
-        self.assertIn("markRead(id, at: date)", self.body,
+        # The mark is the host's newest message for that bot when the sweep knows one: every
+        # comparison is against host timestamps, so a device clock running fast would otherwise
+        # place the mark in the host's future and silence that bot for good.
+        self.assertIn("markRead(id, at: hostActivityStamp(id) ?? date)", self.body,
                       "clearing the badge without moving the mark re-badges on the next refresh")
 
     def test_rooms_are_marked_to_their_own_latest_seq(self) -> None:

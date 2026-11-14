@@ -1573,8 +1573,17 @@ public final class AppModel: ObservableObject {
         if let botID {
             unreadBots.remove(botID)
             unreadCounts[botID] = nil
-            markRead(botID)
+            // Marked at the newest message the *host* has reported, not at this device's clock. The
+            // comparison that lights a row is against host timestamps, so a phone whose clock runs
+            // even a minute fast would write a mark in the host's future and then never light that
+            // bot again — the silence this is here to prevent.
+            markRead(botID, at: hostActivityStamp(botID) ?? Date())
         }
+    }
+
+    /// The host's own timestamp for a bot's newest message, when the sweep has reported one.
+    private func hostActivityStamp(_ botID: String) -> Date? {
+        botPreviewTimes[botID]
     }
 
     /// Every conversation read, in one deliberate act.
@@ -1587,7 +1596,9 @@ public final class AppModel: ObservableObject {
         var ids = Set(bots.map(\.id))
         ids.formUnion(unreadBots)
         ids.formUnion(unreadCounts.keys)
-        for id in ids { markRead(id, at: date) }
+        // The same clock rule as `setVisibleBot`: the host's newest message is the mark, so a fast
+        // device clock cannot place every future reply behind it.
+        for id in ids { markRead(id, at: hostActivityStamp(id) ?? date) }
 
         unreadBots.removeAll()
         unreadCounts.removeAll()

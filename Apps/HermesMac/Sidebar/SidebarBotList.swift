@@ -168,6 +168,13 @@ struct SidebarBotList: View {
                 BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: Geometry.rosterAvatar,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
+                    // Same two indicators as the phone, by the same instruction: the count on the
+                    // face says *how much* is waiting, the beacon at the row's edge says *something*
+                    // is. A single dot lost the number the user asked for twice.
+                    .overlay(alignment: .bottomTrailing) {
+                        UnreadBadge(count: model.unreadCount(bot.id), size: 17)
+                            .offset(x: 5, y: 4)
+                    }
 
                 // Two lines, in Rakazo's order: the name and when it last spoke on the first, what
                 // it said on the second. A bot with no preview yet falls back to its description so
@@ -200,14 +207,6 @@ struct SidebarBotList: View {
                                 .accessibilityLabel("last message \(RelativeTime.detailed(at))")
                         }
 
-                        if model.hasUnread(bot.id) {
-                            // Rakazo's unread is an 8 pt dot in the row, not a badge: the count is
-                            // in the app badge, the row only says "there is something here".
-                            Circle()
-                                .fill(Tokens.accent)
-                                .frame(width: 8, height: 8)
-                                .accessibilityLabel("unread")
-                        }
                     }
 
                     Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
@@ -219,6 +218,10 @@ struct SidebarBotList: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if model.hasUnread(bot.id) {
+                    UnreadBeacon(diameter: 7)
+                }
             }
             .padding(.horizontal, Geometry.rosterRowPadding)
             .padding(.vertical, Geometry.rosterRowPadding)
@@ -339,7 +342,9 @@ struct SidebarBotList: View {
     private func accessibilityLabel(for bot: Bot) -> String {
         var parts = [bot.displayName, "bot"]
         if model.isPinned(botID: bot.id) { parts.append("pinned") }
-        if model.hasUnread(bot.id) { parts.append("unread") }
+        let unread = model.unreadCount(bot.id)
+        if unread > 0 { parts.append(unread == 1 ? "1 unread" : "\(unread) unread") }
+        else if model.hasUnread(bot.id) { parts.append("unread") }
         return parts.joined(separator: ", ")
     }
 }
