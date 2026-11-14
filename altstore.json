@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.257",
+          "buildVersion": "257",
+          "date": "2026-11-14T00:44:40Z",
+          "localizedDescription": "Bots are Rakazo's blobs now \u2014 sixteen shapes, two eyes \u2014 and the first row sits on the traffic lights' line.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.257/Hermey-0.1.257-b257.ipa",
+          "size": 2240553,
+          "minOSVersion": "17.0",
+          "sha256": "373b49f94777e9855f79164f621ed7864f6b5986dd4823b81f60bc57daf5e73f"
+        },
+        {
           "version": "0.1.254",
           "buildVersion": "254",
           "date": "2026-11-14T00:10:13Z",
@@ -62,16 +72,6 @@
           "size": 2220914,
           "minOSVersion": "17.0",
           "sha256": "5d15766264f4e5032a4d45f7bd1caa235b02c8d77d1a3c8cc4c66a7132f7ef12"
-        },
-        {
-          "version": "0.1.232",
-          "buildVersion": "232",
-          "date": "2026-11-13T19:28:29Z",
-          "localizedDescription": "The drawer scrolls as one piece, and the three dots toggle it.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.232/Hermey-0.1.232-b232.ipa",
-          "size": 2220440,
-          "minOSVersion": "17.0",
-          "sha256": "a7be8e2948fa52df4f34439476bdd6875ff7061b86a2cf7ef590b04842ca9789"
         }
       ],
       "appPermissions": {
