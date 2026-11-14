@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.282",
+          "buildVersion": "282",
+          "date": "2026-11-14T03:49:32Z",
+          "localizedDescription": "The composer is a real material with one shape, and the transcript is not faded where it sits.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.282/Hermey-0.1.282-b282.ipa",
+          "size": 2251177,
+          "minOSVersion": "17.0",
+          "sha256": "233c7384b125c4737f552e740a4ae7c8ee70c7b8beb91643990ace5712ddc9ec"
+        },
+        {
           "version": "0.1.278",
           "buildVersion": "278",
           "date": "2026-11-14T03:29:53Z",
@@ -62,16 +72,6 @@
           "size": 2243443,
           "minOSVersion": "17.0",
           "sha256": "d86df0ef70c5256e1cf22d0c0970798c510951f25e3fb9ec75dad3741350908a"
-        },
-        {
-          "version": "0.1.260",
-          "buildVersion": "260",
-          "date": "2026-11-14T01:10:56Z",
-          "localizedDescription": "The app opens the conversation it was in, and the bot panel is only verbs.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.260/Hermey-0.1.260-b260.ipa",
-          "size": 2242006,
-          "minOSVersion": "17.0",
-          "sha256": "a1640c8b8cab6963cb65ae1d064de2090c68967d204361ffc68da672abdb1df6"
         }
       ],
       "appPermissions": {
