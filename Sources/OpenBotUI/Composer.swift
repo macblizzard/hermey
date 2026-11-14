@@ -121,10 +121,15 @@ public struct Composer: View {
     #endif
 
     /// The row the field and the controls share. The field is one line taller than a control so
-    /// the text has breathing room; the controls are nudged down by half that difference so every
-    /// glyph's centre sits on the same line as the first line of text.
+    /// the text has breathing room.
     private var rowHeight: CGFloat { controlSide + 8 }
-    private var controlInset: CGFloat { (rowHeight - controlSide) / 2 }
+
+    /// A control centred in the row by its own frame rather than pushed down by a guessed padding:
+    /// the glyph's typographic centre and the box's centre are not the same point, and the padding
+    /// measured one while the eye saw the other.
+    private func rowCentred<V: View>(_ view: V) -> some View {
+        view.frame(height: rowHeight, alignment: .center)
+    }
 
     private var trimmed: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -149,8 +154,7 @@ public struct Composer: View {
             // the send arrow around. Every control then shares the first line's centre.
             HStack(alignment: .top, spacing: 8) {
                 if showsAttach {
-                    attachControl
-                        .padding(.top, controlInset)
+                    rowCentred(attachControl)
                 }
 
                 field
@@ -177,7 +181,7 @@ public struct Composer: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, controlInset)
+                    .frame(height: rowHeight, alignment: .center)
                     .transition(.opacity)
                     .accessibilityLabel("Clear the message")
                 }
@@ -185,11 +189,12 @@ public struct Composer: View {
                 // The microphone belongs beside the send arrow: one row of controls, and the
                 // control that ends a message next to the one that starts it.
                 if showsMic {
-                    micControl
-                        .padding(.top, controlInset)
+                    rowCentred(micControl)
                 }
 
-                Group {
+                // The closure is spelled as a `Group` argument, not a trailing one: a bare
+                // `rowCentred { … }` infers the closure itself as the view.
+                rowCentred(Group {
                     // Both controls while a turn runs: stop, and send-into-this-turn. One button
                     // that swaps meaning is exactly why there was no way to say anything else.
                     if isSending, let onInterrupt {
@@ -198,8 +203,7 @@ public struct Composer: View {
                     } else {
                         sendButton
                     }
-                }
-                .padding(.top, controlInset)
+                })
             }
             .padding(.horizontal, 8)
             .padding(.top, 6)
@@ -298,15 +302,18 @@ public struct Composer: View {
     // MARK: Controls
 
     /// The attach button. A **plus**, not a paperclip: it opens a menu of things to add, and a
-    /// plus says "add" without promising that everything behind it is a file. When a caller
-    /// supplies a popover, it is anchored *here* — on the 26 pt
-    /// button — so the menu drops from the clip instead of from the middle of the composer card.
+    /// plus says "add" without promising that everything behind it is a file.
+    ///
+    /// It wears a ring, the way Rakazo's does: an unstroked glyph in a floating capsule read as
+    /// loose punctuation rather than a button, and the ring is what says "this is pressable" before
+    /// the cursor arrives. Hover fills it brighter; the ring stays.
     @ViewBuilder
     private var attachControl: some View {
-        let button = OpenBotIconButton("plus",
-                                       label: "Attach a file",
-                                       size: .small,
-                                       isDisabled: isDisabled) { onAttach?() }
+        let button = ComposerRingButton(glyph: "plus",
+                                        label: "Attach a file",
+                                        side: controlSide,
+                                        glyphSize: glyphSize,
+                                        isDisabled: isDisabled) { onAttach?() }
         if let presented = attachPopoverPresented, let content = attachPopoverContent {
             button.popover(isPresented: presented, arrowEdge: .top) { content }
         } else {
@@ -420,3 +427,41 @@ private struct ComposerPreviewHost: View {
 #endif
 #endif
 #endif
+
+/// A circular composer control with a ring, and a fill that brightens under the pointer.
+///
+/// The glyph is framed by the circle rather than by a square, so the optical centre is the box's
+/// centre at every side length the composer uses (26 on the phone, 32 on the Mac).
+private struct ComposerRingButton: View {
+    let glyph: String
+    let label: String
+    let side: CGFloat
+    let glyphSize: CGFloat
+    var isDisabled = false
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: glyph)
+                .font(.system(size: glyphSize, weight: .medium))
+                .foregroundStyle(isHovering ? Tokens.textPrimary : Tokens.textSecondary)
+                .frame(width: side, height: side)
+                .background(
+                    Circle().fill(isHovering ? Tokens.controlHover : Tokens.control.opacity(0.55))
+                )
+                .overlay(
+                    Circle().strokeBorder(isHovering ? Tokens.borderFocus : Tokens.borderStrong,
+                                          lineWidth: 1)
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.45 : 1)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+        .accessibilityIdentifier("composer.attach")
+    }
+}

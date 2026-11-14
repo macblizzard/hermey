@@ -286,9 +286,13 @@ struct WorkspaceShell: View {
 
     /// The strip the hidden title bar's traffic lights occupy, measured from the window's top
     /// edge. The panels paint their backgrounds through it; only the sidebar's *content* starts
-    /// below it, so the buttons never land on the search field. 26 pt clears the buttons' 20 pt
-    /// baseline by 6 and is 2 pt under a standard 28 pt title bar's height.
-    static let titlebarStrip: CGFloat = 26
+    /// below it, so the buttons never land on the search field.
+    ///
+    /// 14 pt, not 26: Rakazo keeps the window's first row (its search, its toggles, its plus) close
+    /// enough to the top edge that the traffic lights read as part of it, and the old strip left a
+    /// band of dead fill above the buttons. The row's centre lands at 26 — the same line as the
+    /// chat header's pill — so the two columns share one baseline.
+    static let titlebarStrip: CGFloat = 14
 
     /// One definition of the pane: the panel and the full-screen overlay differ only in their
     /// frame and in which way the full-screen button points.
