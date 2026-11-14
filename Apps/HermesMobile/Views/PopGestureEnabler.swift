@@ -3,46 +3,75 @@ import UIKit
 
 /// Puts the edge-swipe back.
 ///
-/// The chat screen draws its own chrome — a floating pill and a floating composer — which means the
-/// navigation bar is hidden, and a hidden navigation bar takes UIKit's interactive pop gesture with
-/// it: `UINavigationController` refuses the swipe whenever the back button is hidden. The gesture
-/// is the phone's own way back and it is not something a redesign gets to remove, so this turns it
-/// back on from inside the hierarchy, after the screen has been pushed.
+/// The chat screen hides its navigation bar — it draws its own chrome — and a hidden bar takes
+/// UIKit's interactive pop gesture with it: the recogniser is disabled, and its delegate refuses to
+/// begin. Two halves, so a fix has to answer both:
 ///
-/// The delegate is cleared on purpose: it is the object that vetoes the gesture on the root screen,
-/// and clearing it is the difference between "swipe works" and "swipe works everywhere except the
-/// one screen that was pushed".
+/// 1. `isEnabled` is put back *and kept* put back. The bar re-lays itself out on every appearance
+///    and after every push, and each pass is a chance to disable the recogniser again, so the
+///    re-arming happens in `viewDidLayoutSubviews` — the one hook that fires after all of them.
+/// 2. The delegate is a real object instead of `nil`. `nil` reads as "no veto", which is also no
+///    veto on the *root* screen: swipe there, nothing pops, and the recogniser is left wedged so
+///    that every later swipe does nothing. This delegate answers with the one fact that matters —
+///    is there a screen underneath this one to go back to.
+///
+/// `navigationController` is asked for directly rather than walking `parent` by hand: SwiftUI wraps
+/// a destination in its own hosting controller, and the property knows how to find the stack
+/// through that; a hand-rolled walk does not.
 struct PopGestureEnabler: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController { Probe() }
+
     func updateUIViewController(_ controller: UIViewController, context: Context) {
         (controller as? Probe)?.enable()
     }
 
-    final class Probe: UIViewController {
+    final class Probe: UIViewController, UIGestureRecognizerDelegate {
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
+            enable()
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
             enable()
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             enable()
+            // The bar finishes hiding a frame or two after the push settles; re-arm once more after
+            // it has, for the case where that pass disables the recogniser one last time.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                self?.enable()
+            }
         }
 
-        /// Walks up to the navigation controller that owns this screen and uncorks the swipe.
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            // Deliberately on every pass: this is the hook that runs *after* the bar has finished
+            // hiding itself, which is the moment UIKit disables the recogniser.
+            enable()
+        }
+
+        /// Idempotent and cheap.
         func enable() {
-            var node: UIViewController? = parent
-            while let current = node, !(current is UINavigationController) {
-                node = current.parent
-            }
-            guard let navigation = node as? UINavigationController,
-                  navigation.viewControllers.count > 1,
+            guard let navigation = navigationController,
                   let gesture = navigation.interactivePopGestureRecognizer
             else { return }
-            // Order matters: UIKit disables the recogniser itself when the bar is hidden, so it is
-            // re-enabled before the delegate that would veto it is taken away.
-            gesture.isEnabled = true
-            gesture.delegate = nil
+            if !gesture.isEnabled { gesture.isEnabled = true }
+            if gesture.delegate !== self { gesture.delegate = self }
+        }
+
+        /// The gesture begins only when there is a screen to go back to.
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            (navigationController?.viewControllers.count ?? 0) > 1
+        }
+
+        /// The recogniser lives on the navigation controller's own view; it must not be blocked by
+        /// the scroll view's own pan.
+        func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 }
@@ -50,6 +79,10 @@ struct PopGestureEnabler: UIViewControllerRepresentable {
 extension View {
     /// For a screen that hides its navigation bar and still wants the swipe back.
     func restoresSwipeBack() -> some View {
-        background(PopGestureEnabler().frame(width: 0, height: 0).allowsHitTesting(false))
+        background(
+            PopGestureEnabler()
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+        )
     }
 }

@@ -193,9 +193,14 @@ class ThePhoneKeepsItsWayBack(unittest.TestCase):
         # UIKit refuses the interactive pop while the bar is hidden; the enabler uncorks it.
         self.assertIn(".restoresSwipeBack()", self.CHAT)
         self.assertIn("interactivePopGestureRecognizer", self.ENabler)
-        self.assertIn("gesture.delegate = nil", self.ENabler)
-        # Not on the root screen: a swipe there would pop nothing and freeze the recogniser.
-        self.assertIn("navigation.viewControllers.count > 1", self.ENabler)
+        # A real delegate, not nil: nil removes the veto on the root screen too, where a swipe pops
+        # nothing and leaves the recogniser wedged.
+        self.assertIn("gesture.delegate = self", self.ENabler)
+        self.assertNotIn("gesture.delegate = nil", self.ENabler)
+        self.assertIn("navigationController?.viewControllers.count ?? 0) > 1", self.ENabler)
+        # Re-armed after the bar hides, not just once on appear.
+        self.assertIn("viewDidLayoutSubviews", self.ENabler)
+        self.assertIn("asyncAfter(deadline: .now() + 0.35)", self.ENabler)
 
     def test_the_composer_floats_so_it_has_no_border(self) -> None:
         self.assertIn("floats: true", self.CHAT)
