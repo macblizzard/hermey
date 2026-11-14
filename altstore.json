@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.346",
+          "buildVersion": "346",
+          "date": "2026-11-14T16:43:35Z",
+          "localizedDescription": "Build from CI run 43616535811.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.346/Hermey-0.1.346-b346.ipa",
+          "size": 2723702,
+          "minOSVersion": "17.0",
+          "sha256": "0ca4bce3b936604e1bd8cebeb10e2dc6ae48a43b71d64557418ae885df1bc53a"
+        },
+        {
           "version": "0.1.343",
           "buildVersion": "343",
           "date": "2026-11-14T16:06:43Z",
@@ -62,16 +72,6 @@
           "size": 2321735,
           "minOSVersion": "17.0",
           "sha256": "ce1da51cc8e3dad81c5bd2b6cac349959a512e0aaf014566c327f68c0906c575"
-        },
-        {
-          "version": "0.1.328",
-          "buildVersion": "328",
-          "date": "2026-11-14T14:10:14Z",
-          "localizedDescription": "The unread count is back on every bot's face (and the breathing beacon at the row's edge) on both phone and Mac \u2014 the roster restyle had replaced both with one static dot. A reply in another chat raises a banner again while the app is open, and read marks are written from the host's clock so a fast phone clock can no longer silence a bot.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.328/Hermey-0.1.328-b328.ipa",
-          "size": 2321594,
-          "minOSVersion": "17.0",
-          "sha256": "cd43a142b52548ec39372c07c79c750202d54d399b30af80568ca8380e45c65f"
         }
       ],
       "appPermissions": {
