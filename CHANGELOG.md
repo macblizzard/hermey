@@ -54,6 +54,12 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Fixed
+- **The Mac window is edge to edge at the top, the way Rakazo is.** `.hiddenTitleBar` removed the
+  title bar but not the inset that stood where it was, so both panes began ~32 pt down and the
+  transcript was clipped against that line — the strip read as a title bar and the first visible
+  line was sliced through its glyphs. The panes now start at the window's own top edge, the pill sits
+  on the traffic lights' line as it was always meant to, and the transcript dissolves under it
+  instead of stopping dead.
 - **The unread count no longer lags the banner.** The number travels in the same answer as the
   preview, but it is a *snapshot*: the bot list opens four or five reads inside three seconds, and a
   whole-map replace let a slower or failed answer put the count back to zero until the next 25 s

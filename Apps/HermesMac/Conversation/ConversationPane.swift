@@ -56,10 +56,15 @@ struct ConversationPane: View {
                                          userBubbleTint: botTint)
                     }
                 }
-                // The foot of the transcript dissolves into the composer instead of being cut off
-                // by it: the capsule floats, so the text behind it has to pass under, not stop.
+                // Both ends dissolve instead of being cut: the capsule floats over the foot, and
+                // the header pill floats over the top — so text passes *under* them and fades out
+                // rather than stopping dead at the window edge. The top band is the pill's own
+                // height, which is what makes a scrolled transcript read as one surface going
+                // edge to edge (Rakazo's look; the strip alone was visible before).
                 .mask(
                     VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                            .frame(height: Geometry.chatHeaderPill + 18)
                         Color.black
                         LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
                             .frame(height: max(28, composerHeight))
