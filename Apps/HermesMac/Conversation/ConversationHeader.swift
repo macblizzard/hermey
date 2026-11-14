@@ -97,6 +97,10 @@ struct ConversationHeader: View {
                         store.toggleSidebar()
                     }
                     .help("Show the bot panel")
+                    // With the sidebar gone this button is the window's leftmost thing, on the
+                    // traffic lights' own line, and it was landing under the yellow one (reported
+                    // 2026-11-14 with a screenshot). The lights own 84 pt; this starts after them.
+                    .padding(.leading, Geometry.trafficLightClearance)
                 }
 
                 Spacer(minLength: 12)

@@ -7,9 +7,9 @@ import SwiftUI
 /// vertical axis so it reads as a coin standing on an edge rather than as a circle being redrawn
 /// (asked for 2026-11-14).
 ///
-/// Rotation and not a wheel because a wheel is a machine's idea of progress and a face is the app's
-/// idea of a worker — and because the turn is the same trick iOS uses for a "please wait" mark,
-/// which is already the vocabulary of every phone this app runs on.
+/// It turns **in the plane of the screen** — the z axis — rather than swinging toward the viewer, so
+/// the whole face stays readable at every angle and the turn reads as the app's own spinner rather
+/// than as a coin being flipped (the y-axis version was asked to be changed, 2026-11-14).
 ///
 /// Cost: one `TimelineView` at 30 fps, drawing a silhouette, three light layers and two eyes —
 /// bounded to the one row that is streaming, and paused the moment it is not.
@@ -39,8 +39,8 @@ public struct BotFaceSpinner: View {
         .allowsHitTesting(false)
     }
 
-    /// A turn every 1.6 s, eased by the perspective rather than by a curve: at the half-way point the
-    /// face is edge-on and briefly thin, which is what sells the coin rather than a flipped image.
+    /// A turn every 1.6 s, continuous and linear: a spinner that eases reads as a pulse, and the
+    /// point of this one is that it keeps going.
     private func angle(at date: Date) -> Double {
         let turns = date.timeIntervalSinceReferenceDate / 1.6
         return (turns - turns.rounded(.down)) * 360
@@ -55,11 +55,8 @@ public struct BotFaceSpinner: View {
             BotEyes(size: size, tilt: face.shape.eyeTilt)
         }
         .frame(width: size, height: size)
-        .rotation3DEffect(.degrees(degrees),
-                          axis: (x: 0, y: 1, z: 0),
-                          anchor: .center,
-                          perspective: 0.42)
-        // A hair of shadow under it, so the turn reads as a solid object against the canvas.
-        .shadow(color: .black.opacity(0.28), radius: size * 0.08, y: size * 0.04)
+        // The z axis: the face turns flat on the screen, the way a spinner does, and stays legible
+        // through the whole turn. No perspective, because there is no depth to foreshorten.
+        .rotationEffect(.degrees(degrees))
     }
 }

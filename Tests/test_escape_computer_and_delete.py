@@ -217,20 +217,28 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
     PHONE_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
     MAC_SCROLL = (ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift").read_text(encoding="utf-8")
 
-    def test_it_turns_the_face_rather_than_a_wheel(self) -> None:
-        self.assertIn("rotation3DEffect(.degrees(degrees)", self.SPINNER)
-        self.assertIn("axis: (x: 0, y: 1, z: 0)", self.SPINNER)
-        self.assertIn("perspective: 0.42", self.SPINNER)
+    def test_it_turns_in_the_plane_of_the_screen(self) -> None:
+        # The z axis, as asked for after seeing the y-axis version: the face turns flat on the screen
+        # and stays legible through the whole turn, the way a spinner does.
+        self.assertIn("rotationEffect(.degrees(degrees))", self.SPINNER)
+        self.assertNotIn("rotation3DEffect", self.SPINNER)
 
     def test_it_costs_one_row_and_stops_when_the_turn_does(self) -> None:
         self.assertIn("TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !spins))",
                       self.SPINNER)
         self.assertIn("isWorking && BotFaceMotion.allows", self.SPINNER)
 
-    def test_both_shells_draw_it_before_the_first_token(self) -> None:
-        self.assertIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
-        self.assertIn("BotFaceSpinner(face: faces[bot.id]", self.MAC_SCROLL)
-        self.assertIn("model.isStreaming, model.visibleStreamingText.isEmpty", self.MAC_SCROLL)
+    def test_the_working_row_carries_the_face_not_the_wheel(self) -> None:
+        # One row, not two: the face goes *inside* the working row both shells already draw, and the
+        # separate "Thinking…" line that was added first is gone (reported 2026-11-14: it added a
+        # second line instead of replacing the original spinner).
+        working = (ROOT / "Sources/OpenBotUI/WorkingStatus.swift").read_text(encoding="utf-8")
+        self.assertIn("public var face: BotFace?", working)
+        self.assertIn("BotFaceSpinner(face: face, size: 16)", working)
+        self.assertIn("WorkingStatus(face: face)", self.MAC_SCROLL)
+        self.assertIn("WorkingStatus(face: face)", (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8"))
+        self.assertNotIn('Text("Thinking…")', self.MAC_SCROLL)
+        self.assertNotIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
 
 
 class TheFaceGalleryDropsTheInitialsRow(unittest.TestCase):

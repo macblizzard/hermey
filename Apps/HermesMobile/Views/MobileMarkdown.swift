@@ -318,6 +318,8 @@ private struct MobileMarkdownTable: View {
 /// The caret is the only motion, and it stops under Reduce Motion.
 struct MobileStreamingBubble: View {
     let text: String
+    /// The bot's face while it works, in place of the wheel.
+    var face: BotFace?
 
     @State private var markdown = IncrementalMarkdown()
     @State private var caretOn = false
@@ -326,7 +328,7 @@ struct MobileStreamingBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if markdown.blocks.isEmpty {
-                WorkingStatus()
+                WorkingStatus(face: face)
             } else {
                 MobileMarkdownText(blocks: markdown.blocks)
                     .textSelection(.enabled)
@@ -367,23 +369,14 @@ struct MobileStreamingBubble: View {
     }
 }
 
-/// "Thinking" before the first token: this bot's face, turning, not a fake bubble of dots and not
-/// a wheel — a wheel says something is happening, the face says *which bot* is happening.
+/// Kept for the previews below and for a caller that wants the bare mark: the working row itself
+/// is `WorkingStatus(face:)`, which every shell already draws.
 struct MobileTypingIndicator: View {
     var face: BotFace?
 
     var body: some View {
-        HStack(spacing: 8) {
-            if let face {
-                BotFaceSpinner(face: face, size: 18)
-            } else {
-                SpinningRing(color: Tokens.textMuted, size: 10, lineWidth: 1.5)
-            }
-            Text("Thinking…")
-                .font(TypeScale.font(TypeScale.lg))
-                .foregroundStyle(Tokens.textMuted)
-        }
-        .accessibilityLabel("Hermes is thinking")
+        WorkingStatus(face: face)
+            .accessibilityLabel("Hermes is thinking")
     }
 }
 

@@ -7,6 +7,11 @@ import SwiftUI
 /// app look frozen. The phrase is presentation, not host state: it never claims to know what the
 /// host is doing, only that something is.
 public struct WorkingStatus: View {
+    /// Whose work this is. When a face is given, it turns in place of the wheel — a wheel says
+    /// something is happening, a face says *which bot* is happening. The caller that has no face
+    /// (a room, a host with no bots yet) still gets the wheel.
+    public var face: BotFace?
+
     @State private var index: Int
 
     private let ticker = Timer.publish(every: 3.2, on: .main, in: .common).autoconnect()
@@ -24,14 +29,19 @@ public struct WorkingStatus: View {
         "(￣▽￣)ノ working…",
     ]
 
-    public init() {
+    public init(face: BotFace? = nil) {
+        self.face = face
         // A different opening phrase each turn: a fixed one reads as a stuck label.
         _index = State(initialValue: Int(Date().timeIntervalSince1970) % WorkingStatus.phrases.count)
     }
 
     public var body: some View {
         HStack(spacing: 8) {
-            SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)
+            if let face {
+                BotFaceSpinner(face: face, size: 16)
+            } else {
+                SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)
+            }
 
             Text(WorkingStatus.phrases[index % WorkingStatus.phrases.count])
                 .font(TypeScale.font(Tokens.textMD))
