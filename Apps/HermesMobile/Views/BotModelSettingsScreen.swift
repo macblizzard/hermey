@@ -27,6 +27,11 @@ struct BotModelSettingsScreen: View {
     /// Opens this bot's real SOUL.md. `nil` hides the row: a client that cannot write it must not
     /// offer it, the same rule the description follows.
     var editSoul: (() -> Void)? = nil
+    /// Writes this bot's portrait. `nil` hides the row, the same rule as the soul: the picker moved
+    /// here from a long press on the list, where nobody found it (reported 2026-11-14).
+    var saveIcon: ((BotFace?) async throws -> Void)? = nil
+    /// Reads the two documents this bot carries into every turn. `nil` hides the row.
+    var loadMemory: (() async throws -> BotMemory)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var catalog: ModelCatalog?
@@ -41,6 +46,9 @@ struct BotModelSettingsScreen: View {
     @State private var descriptionBusy = false
     @State private var descriptionError: String?
     @State private var descriptionSaved = false
+    @State private var showingIcon = false
+    @State private var showingMemory = false
+    @State private var iconError: String?
 
     init(bot: Bot,
          icon: BotFace? = nil,
@@ -49,7 +57,9 @@ struct BotModelSettingsScreen: View {
          resetConversation: (() async -> Void)? = nil,
          save: @escaping (String, ModelOption, Bool) async throws -> SaveResult,
          saveDescription: ((String, String) async throws -> Void)? = nil,
-         editSoul: (() -> Void)? = nil) {
+         editSoul: (() -> Void)? = nil,
+         saveIcon: ((BotFace?) async throws -> Void)? = nil,
+         loadMemory: (() async throws -> BotMemory)? = nil) {
         self.bot = bot
         self.icon = icon
         self.load = load
@@ -58,6 +68,8 @@ struct BotModelSettingsScreen: View {
         self.save = save
         self.saveDescription = saveDescription
         self.editSoul = editSoul
+        self.saveIcon = saveIcon
+        self.loadMemory = loadMemory
         _descriptionText = State(initialValue: bot.description ?? "")
         _savedDescription = State(initialValue: bot.description ?? "")
     }
@@ -68,7 +80,7 @@ struct BotModelSettingsScreen: View {
                 if let error {
                     Text(error).foregroundStyle(Tokens.danger)
                 }
-                soulSection
+                identitySection
                 descriptionSection
                 if let catalog {
                     if let current = catalog.current {
@@ -142,21 +154,65 @@ struct BotModelSettingsScreen: View {
         }
     }
 
-    // MARK: Soul
+    // MARK: Identity
 
-    /// The bot's own text, the thing that makes it that bot rather than another one with a
-    /// different name. It is a file on the host, edited as text, not a set of switches.
+    /// What the bot *is*: its portrait, its prompt file, and the memory it carries. All three were
+    /// reachable elsewhere before — the first two by long-pressing the bot's row, which is a gesture
+    /// nobody discovers — so they live together here, beside the description that also belongs to the
+    /// bot rather than to a conversation.
+    ///
+    /// A row that cannot be written is not offered at all: `nil` for each closure hides its row, the
+    /// same rule the description and the soul have always followed.
     @ViewBuilder
-    private var soulSection: some View {
-        if let editSoul {
+    private var identitySection: some View {
+        if editSoul != nil || saveIcon != nil || loadMemory != nil {
             Section {
-                Button(action: editSoul) {
-                    Label("Edit SOUL.md", systemImage: "doc.text")
+                if let saveIcon {
+                    Button {
+                        showingIcon = true
+                    } label: {
+                        HStack {
+                            Label("Bot icon", systemImage: "person.crop.circle")
+                            Spacer()
+                            if let icon {
+                                BotIconPortrait(icon, size: 22)
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showingIcon) {
+                        BotIconPicker(botName: bot.displayName, selected: icon) { face in
+                            iconError = nil
+                            do { try await saveIcon(face) }
+                            catch { iconError = error.localizedDescription }
+                        }
+                    }
+                }
+                if let editSoul {
+                    Button(action: editSoul) {
+                        Label("Soul", systemImage: "doc.text")
+                    }
+                }
+                if let loadMemory {
+                    Button {
+                        showingMemory = true
+                    } label: {
+                        Label("Memory", systemImage: "brain")
+                    }
+                    .sheet(isPresented: $showingMemory) {
+                        BotMemorySheet(botName: bot.displayName, load: loadMemory)
+                    }
+                }
+                if let iconError {
+                    Text(iconError)
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.danger)
                 }
             } header: {
                 Text("Identity")
             } footer: {
-                Text("The prompt this bot is built on. Saved to the host; a conversation already open keeps the soul it started with until it is reset.")
+                Text("The portrait the list shows, the prompt this bot is built on, and the notes it "
+                     + "carries into every turn. All three are stored on the host; a conversation "
+                     + "already open keeps the soul it started with until it is reset.")
             }
         }
     }

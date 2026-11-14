@@ -111,6 +111,9 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Pause or resume one of this bot's routines.
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
 
+    /// What this bot remembers: its own notes and the owner's profile, read-only.
+    func memory(_ profile: String) async throws -> BotMemory
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -249,6 +252,7 @@ extension GatewayClientProtocol {
     public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
         throw BotAdminUnavailable()
     }
+    public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
 
     /// A client with no gateway (fixtures, previews) cannot make bots. Failing loudly beats a
     /// sheet that closes as if something had been created.

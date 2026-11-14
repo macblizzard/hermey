@@ -29,6 +29,8 @@ struct ConversationScreen: View {
     @State private var showSkills = false
     @State private var showMCP = false
     @State private var showRoutines = false
+    @State private var showSoul = false
+    @State private var showMemory = false
     @State private var notice: String?
     @State private var lastSeenRequestCount = 0
     /// The prepend counter this screen has already reacted to (see the transcript's onChange).
@@ -176,6 +178,8 @@ struct ConversationScreen: View {
                     onSkills: { closeDrawer(); showSkills = true },
                     onMCP: { closeDrawer(); showMCP = true },
                     onRoutines: { closeDrawer(); showRoutines = true },
+                    onSoul: { closeDrawer(); showSoul = true },
+                    onMemory: { closeDrawer(); showMemory = true },
                     onSearch: { closeDrawer(); isSearching = true; searchFocused = true },
                     onSettings: { closeDrawer(); showBotSettings = true },
                     onCompact: { closeDrawer(); Task { await model.compressNow() } },
@@ -268,6 +272,18 @@ struct ConversationScreen: View {
         }
         .sheet(isPresented: $showMCP) {
             BotToolsSheet(bot: bot, kind: .mcp, model: model)
+        }
+        // The bot's own prompt file, and what it remembers: both read from the host on open, for the
+        // same reason — an agent rewrites them whenever it learns something.
+        .sheet(isPresented: $showSoul) {
+            SoulEditorSheet(
+                botName: bot.displayName,
+                load: { try await model.describeBot(bot.id).soul },
+                save: { try await model.saveSoul($0, for: bot.id) })
+        }
+        .sheet(isPresented: $showMemory) {
+            BotMemorySheet(botName: bot.displayName,
+                           load: { try await model.memory(for: bot.id) })
         }
         // The routines list reads the host each time it opens: a schedule paused on the desktop
         // must not be drawn as running here just because the drawer was opened a minute ago.

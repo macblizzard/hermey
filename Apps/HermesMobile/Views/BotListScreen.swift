@@ -29,7 +29,6 @@ struct BotListScreen: View {
     @FocusState private var searchFocused: Bool
     /// Hidden bots are a view preference; this reveals them so nothing becomes unreachable.
     @State private var showHidden = false
-    @State private var iconBot: Bot?
     /// Long-press → Bot Settings. Presented from this screen so the settings flow needs no
     /// plumbing from the tab, and so a long-press can never accidentally open the chat.
     @State private var settingsBot: Bot?
@@ -112,7 +111,9 @@ struct BotListScreen: View {
                 saveDescription: { botID, text in
                     try await model.configureDescription(botID: botID, description: text)
                 },
-                editSoul: { soulBot = bot })
+                editSoul: { soulBot = bot },
+                saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) },
+                loadMemory: { try await model.memory(for: bot.id) })
     }
 
     var body: some View {
@@ -246,11 +247,6 @@ struct BotListScreen: View {
                 load: { try await model.describeBot(bot.id).soul },
                 save: { try await model.saveSoul($0, for: bot.id) })
         }
-        .sheet(item: $iconBot) { bot in
-            BotIconPicker(botName: bot.displayName, selected: app.botFaces[bot.id]) { face in
-                try await app.saveBotFace(botID: bot.id, face: face)
-            }
-        }
         .mobileConnectionBanner(connection: app.visibleConnection,
                                 turnRunning: model.isStreaming,
                                 host: app.hostLabel,
@@ -326,9 +322,10 @@ struct BotListScreen: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button { iconBot = bot } label: { Label("Bot icon", systemImage: "person.crop.circle") }
+            // The icon and the soul are not here any more: a long press is a gesture nobody
+            // discovers, and both are things a person changes rarely and deliberately. They live in
+            // Bot Settings, with the description and the memory (reported 2026-11-14).
             Button { settingsBot = bot } label: { Label("Bot Settings", systemImage: "gearshape") }
-            Button { soulBot = bot } label: { Label("Edit SOUL.md", systemImage: "doc.text") }
             Button {
                 model.togglePin(botID: bot.id)
             } label: {

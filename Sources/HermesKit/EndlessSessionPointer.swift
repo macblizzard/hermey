@@ -127,6 +127,9 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/bots/{profile}/routines/{jobID}/state` — pause one routine, or resume it.
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
 
+    /// `GET /v1/bots/{profile}/memory` — the two documents this bot carries into every turn.
+    func memory(_ profile: String) async throws -> BotMemory
+
     /// `GET /v1/rooms` — the group chats this host hosts.
     ///
     /// These four are protocol requirements, not free functions on an extension: a requirement that
@@ -162,6 +165,7 @@ public extension BotSessionPointerStore {
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
         throw BotAdminUnavailable()
     }
+    func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
 }
 
 /// Thrown by a pointer store that has no admin routes (older bridge, test double).
@@ -421,6 +425,20 @@ enum Failure: Error, Equatable, LocalizedError {
         let job = try Self.pathComponent(jobID)
         _ = try await bridgePOST("v1/bots/\(name)/routines/\(job)/state",
                                  body: ["paused": paused], timeout: 60)
+    }
+
+    /// `GET /v1/bots/{profile}/memory`.
+    ///
+    /// A document the host could not read is *not* an error here: the payload carries the reason per
+    /// document, so one unreadable file does not hide the other. Only a payload that is not a memory
+    /// answer at all fails.
+    public func memory(_ profile: String) async throws -> BotMemory {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgeGET("v1/bots/\(name)/memory", timeout: 20)
+        guard let memory = BotMemory.decode(data) else {
+            throw Failure.rejected(status: 502, detail: "the host sent no memory")
+        }
+        return memory
     }
 
     /// One path segment from host data: non-empty, and never able to escape onto another path.

@@ -54,7 +54,7 @@ class TheChatHasOneDoor(unittest.TestCase):
     def test_it_carries_the_verbs_and_only_those(self) -> None:
         # The row names he settled on (reported 2026-11-14): "Library" for this bot's files,
         # "MCP" for the servers, "Search conversations" for the find, and a new Routines door.
-        for label in ("Computer", "Library", "Skills", "MCP", "Routines",
+        for label in ("Computer", "Library", "Skills", "MCP", "Routines", "Soul", "Memory",
                       "Search conversations", "Reset chat"):
             self.assertIn(f'"{label}"', DRAWER, f"{label} must still be reachable")
         for gone in ('row("Workspace"', 'row("MCP servers"', 'row("Search"'):

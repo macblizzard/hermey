@@ -1904,6 +1904,12 @@ public final class AppModel: ObservableObject {
         try await client.setRoutinePaused(profile, jobID: jobID, paused: paused)
     }
 
+    /// What this bot carries into every turn, read fresh: memory is rewritten by the agent whenever
+    /// it learns something, so a cached copy would be a copy of what it knew last week.
+    public func memory(for profile: String) async throws -> BotMemory {
+        try await client.memory(profile)
+    }
+
     // MARK: Group chats
 
     /// Group chats, kept here rather than in a sheet's `@State`: a room is host state that outlives
