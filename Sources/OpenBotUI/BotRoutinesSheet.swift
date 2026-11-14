@@ -1,4 +1,5 @@
 import SwiftUI
+import HermesKit
 
 /// What a bot does on its own: its routines, and a switch beside each one.
 ///
