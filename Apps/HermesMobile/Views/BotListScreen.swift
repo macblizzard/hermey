@@ -267,6 +267,15 @@ struct BotListScreen: View {
                 BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: Geometry.rosterAvatar,
                                 isWorking: model.isStreaming && model.selectedBotID == bot.id)
+                    // The count sits on the face, bottom-right, nudged out so it reads as a badge on
+                    // the avatar rather than a chip inside it. It was dropped in the roster restyle
+                    // (2026-11-13) on the theory that the app badge was enough — it is not: the app
+                    // badge needs the app closed to be read, and Mohammad asked for both indicators
+                    // by name. The beacon says *something* is waiting, this says *how much*.
+                    .overlay(alignment: .bottomTrailing) {
+                        UnreadBadge(count: model.unreadCount(bot.id), size: 19)
+                            .offset(x: 5, y: 4)
+                    }
 
                 // Rakazo's row is two lines, not three: the name and when it last spoke on the
                 // first, what it said on the second. The count moved to the app badge — the row
@@ -298,12 +307,6 @@ struct BotListScreen: View {
                                 .accessibilityLabel("last message \(RelativeTime.detailed(at))")
                         }
 
-                        if model.hasUnread(bot.id) {
-                            Circle()
-                                .fill(Tokens.accent)
-                                .frame(width: 8, height: 8)
-                                .accessibilityLabel("unread")
-                        }
                     }
 
                     Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
@@ -315,6 +318,12 @@ struct BotListScreen: View {
                 }
 
                 Spacer(minLength: 0)
+
+                if model.hasUnread(bot.id) {
+                    // The breathing beacon, at the row's trailing edge: a static dot read as a
+                    // presence indicator sitting in the same place as the old one.
+                    UnreadBeacon(diameter: 8)
+                }
             }
             .padding(.vertical, Geometry.rosterRowPadding)
             .frame(minHeight: Geometry.rosterRow)
@@ -355,6 +364,8 @@ struct BotListScreen: View {
 
     private func accessibilityLabel(for bot: Bot) -> String {
         var parts = [bot.displayName, "bot"]
+        let unread = model.unreadCount(bot.id)
+        if unread > 0 { parts.append(unread == 1 ? "1 unread" : "\(unread) unread") }
         if model.isPinned(botID: bot.id) { parts.append("pinned") }
         if bot.id == lastOpenedID { parts.append("last opened") }
         return parts.joined(separator: ", ")

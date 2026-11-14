@@ -97,9 +97,36 @@ class TheMacDelivers(unittest.TestCase):
 
 
 class ThePhoneDelivers(unittest.TestCase):
-    def test_the_shell_does_not_buzz_over_the_app(self) -> None:
+    def test_the_phone_shows_a_banner_over_the_app(self) -> None:
+        # It used to drop the foreground case, on the theory that the row's badge was enough. It is
+        # not: the model has already refused the bot whose transcript is on screen, so a notice for
+        # *another* bot is exactly what the feature is for — and with the drop, a phone sitting in
+        # one chat raised nothing at all (reported 2026-11-14).
         body = IOS_NOTIFIER.split("func post(_ note: ReplyNotification)", 1)[1].split("\n    }", 1)[0]
-        self.assertIn("guard UIApplication.shared.applicationState != .active else", body)
+        self.assertNotIn("applicationState != .active", body,
+                         "the policy decides; the shell only delivers")
+        self.assertIn("completionHandler([.banner, .list, .sound])", IOS_NOTIFIER,
+                      "without this iOS draws nothing over the app")
+
+    def test_the_row_keeps_both_indicators(self) -> None:
+        # Mohammad's instruction, twice: the breathing beacon at the row's trailing edge says
+        # *something* arrived, and the numeric capsule on the avatar says *how much*. A restyle
+        # replaced both with one static dot ("the count lives in the app badge"), which the user
+        # cannot read with the app open — reported 2026-11-14 as "no unread count badges".
+        row = (ROOT / "Apps/HermesMobile/Views/BotListScreen.swift").read_text(encoding="utf-8")
+        self.assertIn("UnreadBadge(count: model.unreadCount(bot.id)", row)
+        self.assertIn("UnreadBeacon(diameter: 8)", row)
+        # Same rule on the Mac's roster: one instruction, two shells, or the apps drift.
+        mac = (ROOT / "Apps/HermesMac/Sidebar/SidebarBotList.swift").read_text(encoding="utf-8")
+        self.assertIn("UnreadBadge(count: model.unreadCount(bot.id)", mac)
+        self.assertIn("UnreadBeacon(diameter: 7)", mac)
+
+    def test_a_mark_is_written_from_the_hosts_clock(self) -> None:
+        # Every comparison is against host timestamps, so a mark written from a phone whose clock
+        # runs fast sits in the host's future — and that bot never lights again. Both doors that
+        # mark a bot read use the host's newest message for it.
+        self.assertIn("markRead(botID, at: hostActivityStamp(botID) ?? Date())", MODEL)
+        self.assertIn("for id in ids { markRead(id, at: hostActivityStamp(id) ?? date) }", MODEL)
 
     def test_the_icon_badge_is_set(self) -> None:
         self.assertIn("setBadgeCount", IOS_NOTIFIER)

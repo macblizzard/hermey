@@ -54,6 +54,19 @@ All notable changes to Hermey are recorded here. The format follows
     APNs entitlement a sideloaded personal-team build cannot carry.
 
 ### Fixed
+- **The unread count is back on every bot's face, and the row's beacon with it.** The roster restyle
+  of 2026-11-13 replaced both indicators with one static dot on the theory that the app-icon badge
+  was enough — it is not: that number needs the app closed to be read. Both shells now show what was
+  asked for: a numeric capsule on the avatar (how much is waiting, `99+` at the ceiling, nothing at
+  zero) and the breathing beacon at the row's trailing edge (something is).
+- **A reply in another chat raises a banner again while the app is open.** The phone was dropping
+  every foreground notice, so a phone sitting in one bot's chat learned about a reply from another
+  bot nowhere. The decision already belongs to `ReplyNotificationPolicy`, which refuses the bot whose
+  transcript is on screen and any bot the user quieted — the shell now only delivers.
+- **A read mark is written from the host's clock, not the device's.** Every unread comparison is
+  against host timestamps, so a phone whose clock ran even a minute fast wrote a mark in the host's
+  future and then never lit that bot again. Both doors that mark a bot read now use the host's newest
+  message for it.
 - **The bot list's top edge, and the conversation's search field.** The "CHATS" label is gone — it
   said what the rows already were and cost a line between the bar's two buttons and the first bot,
   which now sits closer. The list fades out under the bar instead of meeting it with a hard seam:

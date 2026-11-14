@@ -13,8 +13,9 @@ import UserNotifications
 /// observed from inside the app. There are exactly two levers, and this file owns both:
 ///
 /// 1. **While the app is running** — the bot-list sweep reports a reply, `AppModel` decides it
-///    deserves a banner, and this posts it. If the app is *active* the banner is dropped: the row's
-///    own badge is already on screen, and a notice over the app the user is looking at is noise.
+///    deserves a banner, and this posts it, foreground included: the model already refused the bot
+///    whose transcript is on screen, so what is left is a reply from *another* bot, which is exactly
+///    what a notice exists for.
 /// 2. **While it is suspended** — `ReplyBackgroundRefresh` asks iOS for a background refresh, reads
 ///    the same previews endpoint over the bridge, and posts a local notification for each bot that
 ///    wrote something new. This is genuinely instant only when the app is alive; suspended, it runs
@@ -65,13 +66,13 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
 
     /// Post the banner for a reply the model has already judged worth one.
     ///
-    /// Foreground delivery is deliberately dropped rather than queued: by the time the user puts
-    /// the phone down that banner would be about a message they may have already read.
+    /// It is posted in the foreground too. The decision has already been made where it belongs — in
+    /// `ReplyNotificationPolicy`, which refuses the bot whose transcript is on screen and any bot the
+    /// user quieted — so a reply from *another* bot while this one is being read is exactly the case
+    /// a notice exists for. Dropping the active case made a background-only feature out of one that
+    /// works while the app is open (reported 2026-11-14: "the banner isn't showing any more"), and
+    /// `willPresent` below is what lets iOS draw it over the app.
     func post(_ note: ReplyNotification) {
-        guard UIApplication.shared.applicationState != .active else {
-            updateBadge(note.badge)
-            return
-        }
         let content = UNMutableNotificationContent()
         content.title = note.botName
         content.body = note.body
