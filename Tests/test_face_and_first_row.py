@@ -201,13 +201,16 @@ class ThePhoneKeepsItsWayBack(unittest.TestCase):
         self.assertIn("floats: true", self.CHAT)
 
     def test_the_chrome_is_a_thumbs_target(self) -> None:
-        self.assertIn(".frame(height: 42)", self.CHAT)          # the pill
-        self.assertIn("size: 28,", self.CHAT)                   # its portrait
-        self.assertIn(".frame(width: 40, height: 40)", self.CHAT)  # the back pill
+        self.assertIn(".frame(height: 52)", self.CHAT)          # the pill
+        self.assertIn("size: 32,", self.CHAT)                   # its portrait
+        self.assertIn(".frame(width: 44, height: 44)", self.CHAT)  # the back pill
 
-    def test_the_drawer_does_not_repeat_the_pill(self) -> None:
-        self.assertNotIn("Text(title)", self.DRAWER)
+    def test_the_drawer_names_the_bot_once(self) -> None:
+        # The pill is not beside it any more — the page covers the chat — so the page says whose
+        # page it is, with one Edit verb, and never the description.
+        self.assertIn("Text(title)", self.DRAWER)
         self.assertNotIn("if let subtitle", self.DRAWER)
+        self.assertIn('Text("Edit")', self.DRAWER)
 
 
 class TheChromeIsGlass(unittest.TestCase):
@@ -230,12 +233,58 @@ class TheChromeIsGlass(unittest.TestCase):
         self.assertEqual(self.CHAT.count("hermeyGlass"), 3)
 
     def test_the_composer_is_glass_only_when_it_floats(self) -> None:
-        self.assertIn("glassEffect(.regular.interactive()", self.COMPOSER)
-        floats = self.COMPOSER.split("if floats {", 1)[1].split("} else {", 1)[0]
-        self.assertIn("glassEffect", floats)
-        # A bar keeps its control fill: it is part of the bar, not hovering over the text.
-        self.assertIn("shape.fill(Tokens.control)", self.COMPOSER)
+        self.assertIn("glassEffect(.regular.interactive(), in: Capsule())", self.COMPOSER)
+        # The floating field is a capsule, with the glass and its fallback side by side; a bar keeps
+        # the rounded rect and its control fill.
+        self.assertIn("Capsule().fill(Tokens.surface.opacity(0.97))", self.COMPOSER)
+        self.assertIn("RoundedRectangle(cornerRadius: Tokens.radiusComposer", self.COMPOSER)
+        self.assertIn("shape.fill(Tokens.control)" if False else ".fill(Tokens.control)", self.COMPOSER)
 
     def test_the_way_back_to_the_newest_message_clears_the_composer(self) -> None:
         control = self.CHAT.split("private func scrollToBottomControl(", 1)[1]
         self.assertIn(".padding(.bottom, composerHeight + 12)", control)
+
+
+class NoTabBarAndTwoFades(unittest.TestCase):
+    """The bot list is the app, and the transcript leaves the screen instead of being cut by it."""
+
+    APP = source("Apps", "HermesMobile", "HermesMobileApp.swift")
+    LIST = source("Apps", "HermesMobile", "Views", "BotListScreen.swift")
+    CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
+    MENU = source("Apps", "HermesMobile", "Views", "AttachmentMenu.swift")
+    PICKER = source("Apps", "HermesMobile", "Views", "AttachmentPicker.swift")
+
+    def test_the_bottom_pill_is_gone(self) -> None:
+        self.assertNotIn("TabView(selection:", self.APP)
+        self.assertNotIn("tabItem", self.APP)
+        # The bot list is the root, and it is the whole root.
+        self.assertIn("BotsTab(model: app.model)", self.APP)
+
+    def test_settings_still_has_a_door(self) -> None:
+        self.assertIn("Button { showAppSettings = true }", self.LIST)
+        self.assertIn('Label("Settings", systemImage: "gearshape")', self.LIST)
+        self.assertIn("SettingsScreen(model: model)", self.LIST)
+
+    def test_both_edges_fade(self) -> None:
+        # A mask on the transcript, not a gradient laid over it: the words fade, nothing is painted
+        # on top of them. Two gradients, one per edge, and the lower one tracks the composer.
+        self.assertIn(".mask(", self.CHAT)
+        self.assertIn("LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)",
+                      self.CHAT)
+        self.assertIn("LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)",
+                      self.CHAT)
+        self.assertIn("frame(height: composerHeight + 84)", self.CHAT)
+
+    def test_nothing_opaque_sits_under_the_glass_composer(self) -> None:
+        # The slab was the black box: an opaque gradient under a glass capsule.
+        self.assertNotIn("Tokens.canvas, Tokens.canvas],\n                               startPoint: .top, endPoint: .center",
+                         self.CHAT)
+
+    def test_the_attach_menu_is_a_panel_of_three_rows(self) -> None:
+        self.assertIn("static let rowHeight: CGFloat = 56", self.MENU)
+        self.assertIn("static let width: CGFloat = 252", self.MENU)
+        # No rules between rows: the spacing is the separator.
+        self.assertEqual(self.MENU.count("Hairline("), 0)
+        # File first, as the reference has it.
+        self.assertIn("static let menuOrder: [AttachmentSource] = [.files, .camera, .photos]",
+                      self.PICKER)

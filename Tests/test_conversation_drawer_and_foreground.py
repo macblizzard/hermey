@@ -42,11 +42,14 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertIn('Image(systemName: "ellipsis")', LIST,
                       "he asked for the list to keep it")
 
-    def test_the_drawer_is_a_page_not_a_sheet(self) -> None:
+    def test_the_drawer_is_a_page_that_rises(self) -> None:
         self.assertIn(".overlay {", SCREEN)
         self.assertIn("ConversationDrawer(", SCREEN)
-        self.assertIn("transition(.move(edge: .trailing))", DRAWER)
-        self.assertNotIn("NavigationStack", DRAWER, "a panel belonging to the chat, not a second app")
+        # From the bottom, not the side: the bot's own page belongs to this chat.
+        self.assertIn("transition(.move(edge: .bottom))", DRAWER)
+        self.assertNotIn("NavigationStack", DRAWER, "a page belonging to the chat, not a second app")
+        # And drawn above the chrome it covers, or the pill floats over the page.
+        self.assertIn(".zIndex(2)", SCREEN)
 
     def test_it_carries_every_verb_the_menu_had(self) -> None:
         for label in ("Computer", "Workspace", "Skills", "MCP servers", "Search", "Settings",
@@ -60,8 +63,9 @@ class TheChatHasOneDoor(unittest.TestCase):
                       "a compaction runs for minutes; the page has to say so too")
 
     def test_it_closes_the_way_it_opened(self) -> None:
-        self.assertIn("onTapGesture { onClose() }", DRAWER, "the dimmed conversation closes it")
-        self.assertIn("value.translation.width > 60", DRAWER, "and a swipe back out does")
+        # The back button is always in the corner; a downward swipe does the same thing.
+        self.assertIn('accessibilityLabel("Close the bot page")', DRAWER)
+        self.assertIn("value.translation.height > 80", DRAWER, "and a swipe down does")
 
 
 class AnEdgeSwipeOpensIt(unittest.TestCase):

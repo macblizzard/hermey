@@ -37,6 +37,9 @@ struct BotListScreen: View {
     @State private var showAddBot = false
     @State private var showManageBots = false
     @State private var showStartGroupChat = false
+    /// The app's own settings: pairing, theme, notifications. It used to be the second half of the
+    /// bottom tab pill, which went the way of the tab bar itself.
+    @State private var showAppSettings = false
     @State private var showGroupChats = false
     @State private var openRoom: RoomSummary?
     @State private var pendingRoomDelete: RoomSummary?
@@ -185,6 +188,9 @@ struct BotListScreen: View {
                 let created = try await model.addBot(name: name, description: description, soul: "")
                 if let face { try? await app.saveBotFace(botID: created, face: face) }
             }
+        }
+        .sheet(isPresented: $showAppSettings) {
+            SettingsScreen(model: model)
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
@@ -660,6 +666,14 @@ struct BotListScreen: View {
                         Label("Mark all as read", systemImage: "checkmark.circle")
                     }
                     .disabled(!model.hasAnyUnread)
+
+                    Divider()
+
+                    // The app's own settings, not the bot's: the list has no tab bar under it any
+                    // more, so this is where pairing, theme and notifications live now.
+                    Button { showAppSettings = true } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
                 } label: {
                     // Three dots, because this is a menu and not a filter: the old funnel icon
                     // promised "narrow the list" and then offered to add a bot. A bare glyph: the

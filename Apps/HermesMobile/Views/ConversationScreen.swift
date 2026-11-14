@@ -157,12 +157,15 @@ struct ConversationScreen: View {
                     .accessibilityHidden(true)
             }
         }
+        .overlay(alignment: .top) { floatingTop }
+        .overlay(alignment: .bottom) { floatingComposer }
         // The verbs, over the whole screen (composer included): a page, not a card.
         .overlay {
             if showDrawer {
                 ConversationDrawer(
                     title: title,
                     subtitle: bot.description,
+                    face: app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                     isCompressing: model.isCompressing,
                     hasAnyUnread: model.hasAnyUnread,
                     canSpeak: lastAssistantReply != nil,
@@ -183,13 +186,14 @@ struct ConversationScreen: View {
                     },
                     onReset: { closeDrawer(); showResetConfirm = true },
                     onClose: { closeDrawer() })
-                    .transition(.move(edge: .trailing))
-                    .zIndex(1)
+                    // Rises from the bottom: the page belongs to this chat, and one that slid in
+                    // from the side read as a panel someone had pushed into it.
+                    .transition(.move(edge: .bottom))
+                    .zIndex(2)
             }
         }
         // The pill and the composer, floating over the transcript rather than framing it.
-        .overlay(alignment: .top) { floatingTop }
-        .overlay(alignment: .bottom) { floatingComposer }
+
         .animation(Motion.messageIn, value: showDrawer)
         // No navigation bar: it drew an opaque band over the top of the transcript, and the pill
         // that says which bot this is had to live inside it. Both are the desktop's arrangement
@@ -346,7 +350,7 @@ struct ConversationScreen: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .hermeyGlass(Circle(), interactive: true)
                         .contentShape(Circle())
                 }
@@ -361,7 +365,7 @@ struct ConversationScreen: View {
 
                 // A mirror of the chevron's width, so the pill is centred on the screen rather
                 // than on the space the chevron left over.
-                Color.clear.frame(width: 40, height: 40)
+                Color.clear.frame(width: 44, height: 44)
             }
 
             if isSearching {
@@ -401,7 +405,7 @@ struct ConversationScreen: View {
         } label: {
             HStack(spacing: 7) {
                 BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: 28,
+                                size: 32,
                                 status: portraitStatus)
                 Text(title)
                     .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
@@ -411,7 +415,7 @@ struct ConversationScreen: View {
             }
             .padding(.leading, 5)
             .padding(.trailing, 14)
-            .frame(height: 42)
+            .frame(height: 52)
             .hermeyGlass(Capsule(), interactive: true)
             .shadow(color: .black.opacity(0.30), radius: 12, y: 4)
             .contentShape(Capsule())
@@ -440,13 +444,10 @@ struct ConversationScreen: View {
                         .onChange(of: geo.size.height) { _, height in composerHeight = height }
                 }
             )
-            .background(
-                // The floor the composer sits on: the transcript fades into the canvas instead of
-                // running under the buttons at full strength.
-                LinearGradient(colors: [Tokens.canvas.opacity(0), Tokens.canvas, Tokens.canvas],
-                               startPoint: .top, endPoint: .center)
-                    .allowsHitTesting(false)
-            )
+            // No slab behind it: an opaque gradient under a glass capsule is the one thing that
+            // stops the glass from being glass. The transcript's own mask does the fading — from
+            // the composer's height up — so the words dissolve and the capsule refracts what is
+            // left of them.
             .padding(.bottom, 2)
     }
 
@@ -567,7 +568,7 @@ struct ConversationScreen: View {
                     .padding(.horizontal, Geometry.chatGutter)
                     // The pill sits over this: a fresh transcript starts below it, and a long one
                     // scrolls behind it.
-                    .padding(.top, 62)
+                    .padding(.top, 74)
                     .padding(.bottom, 20)
             }
             // The sentinel reports its position in this space; without a name there is nothing to
@@ -586,6 +587,18 @@ struct ConversationScreen: View {
                     .onChange(of: geo.size.width) { _, width in transcriptWidth = width }
             })
             .scrollDismissesKeyboard(.interactively)
+            // Text leaves the screen instead of being cut by it: a mask on the transcript itself,
+            // not a gradient laid over it, so nothing is painted on top of the words — they fade
+            // out. The chrome is drawn above this and stays crisp.
+            .mask(
+                VStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 96)
+                    Rectangle().fill(Color.black)
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                        .frame(height: composerHeight + 84)
+                }
+            )
             // The way back to the newest message, on the same rule as the desktop's: it appears
             // only while the transcript's end is off screen.
             // The fade belongs to the button alone. Animating the scroll view is what made a

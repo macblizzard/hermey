@@ -225,19 +225,22 @@ public struct Composer: View {
             // A floating field draws its own surface: glass where the OS has it, the theme's
             // translucent surface where it does not. A bar keeps its control fill — that one is
             // part of the bar, not something hovering over the text.
-            let shape = RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
             if floats {
+                // A capsule, not a rounded rectangle: the field floats, and a floating field whose
+                // radius is a constant reads as a box with generous corners. Half the height is
+                // the shape the references use, and the height is the height.
                 if #available(iOS 26.0, macOS 26.0, *) {
                     Rectangle()
                         .fill(.clear)
-                        .glassEffect(.regular.interactive(), in: shape)
+                        .glassEffect(.regular.interactive(), in: Capsule())
                         .shadow(color: .black.opacity(0.28), radius: 14, y: 4)
                 } else {
-                    shape.fill(Tokens.surface.opacity(0.97))
+                    Capsule().fill(Tokens.surface.opacity(0.97))
                         .shadow(color: .black.opacity(0.30), radius: 14, y: 4)
                 }
             } else {
-                shape.fill(Tokens.control)
+                RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+                    .fill(Tokens.control)
             }
         }
         .overlay(

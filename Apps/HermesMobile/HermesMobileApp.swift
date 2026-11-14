@@ -10,9 +10,10 @@ import OpenBotUI
 /// keyboard avoidance and the system tab bar. Nothing here draws a fake navigation bar or
 /// imitation glass.
 ///
-/// Two tabs, because there are two things the app can do: talk to a bot, and change how it
-/// talks. The first tab *is* the bot directory — no drawer, no hidden switcher, no session
-/// list (`docs/ENDLESS-CHAT.md` §1).
+/// One screen at the root, because there is one thing the app does: talk to a bot. The bot
+/// directory *is* the app — no drawer, no hidden switcher, no session list
+/// (`docs/ENDLESS-CHAT.md` §1) — and the app's own Settings hang off the list's menu rather than
+/// a floating Bots/Settings pill along the bottom edge.
 @main
 struct HermesMobileApp: App {
     @StateObject private var app = AppEnvironment()
@@ -25,7 +26,7 @@ struct HermesMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            RootView()
                 .environmentObject(app)
                 .preferredColorScheme(.dark)
                 .task {
@@ -39,62 +40,43 @@ struct HermesMobileApp: App {
     }
 }
 
-struct RootTabView: View {
+struct RootView: View {
     @EnvironmentObject private var app: AppEnvironment
     @Environment(\.scenePhase) private var scenePhase
 
-    /// Which tab is showing. Bound (not left to the system) so a tapped banner can bring the bot
-    /// list forward even if Settings was the last screen the user was on.
-    @State private var tab: RootTab = .bots
-
-    /// Re-created when the theme changes, so the whole tab tree reads the new palette. The
-    /// connection lives in `AppEnvironment`, which this does not touch.
+    /// Re-created when the theme changes, so the whole tree reads the new palette. The connection
+    /// lives in `AppEnvironment`, which this does not touch.
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
 
     var body: some View {
-        TabView(selection: $tab) {
-            BotsTab(model: app.model)
-                .tag(RootTab.bots)
-                .tabItem { Label("Bots", systemImage: "person.2") }
-
-            SettingsTab(model: app.model)
-                .tag(RootTab.settings)
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-        }
-        // The whole tab tree is re-created on a theme change: every colour is read at draw time,
-        // and a fresh subtree is the one guarantee that none of them kept the old palette.
-        .id(themeID)
-        .tint(Tokens.accent)
-        .sheet(isPresented: $app.isPairingPresented) {
-            PairingSheet()
-        }
-        .onChange(of: app.openBotRequest) { _, request in
-            // Tapping a banner is a request to read that bot: the list has to be the screen, even
-            // if the phone was left on Settings.
-            guard request != nil else { return }
-            tab = .bots
-        }
-        .onChange(of: app.model.badgeCount) { _, count in
-            // The icon badge follows every change, not just new banners: reading a chat clears its
-            // count without a reply arriving while the app is away.
-            MobileReplyNotifier.shared.updateBadge(count)
-        }
-        .onChange(of: scenePhase) { phase in
-            // A phone comes back from the background with a dead socket; reconnect once
-            // rather than waiting for the user to shake it. A host the user disconnected on
-            // purpose stays disconnected — that is a choice, not a dropped socket.
-            if phase == .background { app.appDidEnterBackground() }
-            guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
-            MobileReplyNotifier.shared.refreshAuthorization()
-            Task {
-                if app.model.connection.isLive { await app.loadBotFaces() }
-                else { await app.reconnect() }
+        // One screen at the root: the bot list. The floating Bots/Settings pill at the bottom was a
+        // tab bar wearing a pill's clothes — the bots *are* the app, and Settings has a door in the
+        // list's own menu.
+        BotsTab(model: app.model)
+            // The whole tree is re-created on a theme change: every colour is read at draw time,
+            // and a fresh subtree is the one guarantee that none of them kept the old palette.
+            .id(themeID)
+            .tint(Tokens.accent)
+            .sheet(isPresented: $app.isPairingPresented) {
+                PairingSheet()
             }
-        }
-    }
-
-    private enum RootTab: Hashable {
-        case bots, settings
+            .onChange(of: app.model.badgeCount) { _, count in
+                // The icon badge follows every change, not just new banners: reading a chat clears
+                // its count without a reply arriving while the app is away.
+                MobileReplyNotifier.shared.updateBadge(count)
+            }
+            .onChange(of: scenePhase) { phase in
+                // A phone comes back from the background with a dead socket; reconnect once
+                // rather than waiting for the user to shake it. A host the user disconnected on
+                // purpose stays disconnected — that is a choice, not a dropped socket.
+                if phase == .background { app.appDidEnterBackground() }
+                guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
+                MobileReplyNotifier.shared.refreshAuthorization()
+                Task {
+                    if app.model.connection.isLive { await app.loadBotFaces() }
+                    else { await app.reconnect() }
+                }
+            }
     }
 }
 
@@ -171,7 +153,7 @@ struct SettingsTab: View {
 #if DEBUG
 #Preview("Root · paired") {
     let environment = AppEnvironment.preview()
-    RootTabView()
+    RootView()
         .environmentObject(environment)
         .preferredColorScheme(.dark)
         .task { await environment.start() }
@@ -181,7 +163,7 @@ struct SettingsTab: View {
 #if DEBUG
 #Preview("Root · unpaired") {
     let environment = AppEnvironment.preview(paired: false)
-    RootTabView()
+    RootView()
         .environmentObject(environment)
         .preferredColorScheme(.dark)
 }

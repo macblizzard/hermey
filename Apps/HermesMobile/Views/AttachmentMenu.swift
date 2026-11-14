@@ -13,45 +13,42 @@ import OpenBotUI
 struct AttachmentMenu: View {
     let onPick: (AttachmentSource) -> Void
 
-    static let rowHeight: CGFloat = 42
-    static let width: CGFloat = 208
+    /// The shape the reference uses: a panel rather than a list, tall rows with the icon in one
+    /// left column, no rules between them — the spacing is the separator. A hairline between three
+    /// generous rows is a line drawn across a menu that already reads as three things.
+    static let rowHeight: CGFloat = 56
+    static let width: CGFloat = 252
+    static let corner: CGFloat = 24
     /// Used by the composer to place the card; kept next to the size it describes.
-    static var height: CGFloat { rowHeight * CGFloat(AttachmentSource.allCases.count) }
+    static var height: CGFloat { rowHeight * CGFloat(AttachmentSource.menuOrder.count) + 20 }
 
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(Array(AttachmentSource.allCases.enumerated()), id: \.element.id) { index, source in
-                if index > 0 {
-                    Hairline(color: Tokens.border)
-                        .padding(.leading, 40)
-                }
+            ForEach(AttachmentSource.menuOrder) { source in
                 Button {
                     onPick(source)
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 14) {
                         Image(systemName: source.systemImage)
-                            .font(.system(size: 15, weight: .regular))
-                            .frame(width: 22)
+                            .font(.system(size: 18, weight: .regular))
+                            .frame(width: 24)
                             .foregroundStyle(Tokens.textPrimary)
                         Text(source.title)
-                            .font(TypeScale.font(TypeScale.sm))
+                            .font(.system(size: 17, weight: .regular))
                             .foregroundStyle(Tokens.textPrimary)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 18)
                     .frame(height: Self.rowHeight)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
+        .padding(.vertical, 10)
         .frame(width: Self.width)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Tokens.borderStrong, lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
+        .hermeyGlass(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
+        .shadow(color: .black.opacity(0.30), radius: 22, y: 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Add attachment")
     }
