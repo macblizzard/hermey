@@ -62,7 +62,9 @@ struct ConversationScreen: View {
     /// is intent: a reader who drags upward stops being followed until they come back to the end,
     /// which is why the transcript no longer yanks itself down while a bot is still writing.
     @State private var followsStream = true
-    @State private var bottomDistance: CGFloat = .greatestFiniteMagnitude
+    @State private var bottomDistance: CGFloat = 0
+    /// The in-flight settle ladder, so a second tap replaces it instead of stacking on it.
+    @State private var settleTask: Task<Void, Never>?
 
     /// Whether the end of the transcript is on screen, taken from the measurement rather than from a
     /// state flag that only moved when the flag disagreed with itself.
@@ -155,15 +157,6 @@ struct ConversationScreen: View {
 
     var body: some View {
         transcriptScroll
-        // Tapping the thread closes the paperclip's menu, the way any transient menu behaves.
-        .overlay {
-            if showAttachmentMenu {
-                Color.black.opacity(0.001)
-                    .contentShape(Rectangle())
-                    .onTapGesture { closeAttachmentMenu() }
-                    .accessibilityHidden(true)
-            }
-        }
         .overlay(alignment: .top) { floatingTop }
         .overlay(alignment: .bottom) { floatingComposer }
         // The verbs, over the whole screen (composer included): a page, not a card.
@@ -606,6 +599,18 @@ struct ConversationScreen: View {
             // only while the transcript's end is off screen.
             // The fade belongs to the button alone. Animating the scroll view is what made a
             // streaming reply shimmer: every token's layout pass went through the animation.
+            // The paperclip's dismiss scrim lives *below* the jump control: it exists to catch a
+            // tap on the thread, not on a control the reader is aiming at. Applied to `body`, it sat
+            // on top of the control and ate the first tap — which is one of the ways the jump felt
+            // like it needed two.
+            .overlay {
+                if showAttachmentMenu {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .onTapGesture { closeAttachmentMenu() }
+                        .accessibilityHidden(true)
+                }
+            }
             .overlay(alignment: .bottom) {
                 scrollToBottomControl(proxy)
                     .animation(.easeOut(duration: 0.18), value: isAtBottom)
@@ -687,13 +692,17 @@ struct ConversationScreen: View {
             .onPreferenceChange(BottomDistanceKey.self) { distance in
                 // Before the first layout pass the key holds its default; a sentinel nobody has
                 // measured is not evidence that the reader is somewhere else.
-                guard distance.isFinite else { return }
+                guard let distance, distance.isFinite else { return }
                 bottomDistance = distance
-                // Only the *intent* is held back while a finger is down: a reader who has grabbed the
-                // transcript is not to be dragged back by the next token. The measurement itself is
-                // always kept, so the control's visibility is never a step behind the scroll.
-                guard !isDraggingTranscript else { return }
-                followsStream = isAtBottom
+                // One direction each way. The measured end re-arms following — the reader is at the
+                // bottom, so they want what comes next — while only a finger that leaves the end
+                // clears it. The old code assigned both from a single change-gated branch, so one
+                // refused measurement could disable following for the rest of the session.
+                if distance <= Self.bottomSlack {
+                    followsStream = true
+                } else if isDraggingTranscript {
+                    followsStream = false
+                }
             }
             .onChange(of: searchText) {
                 searchIndex = 0
@@ -1059,12 +1068,28 @@ struct ConversationScreen: View {
     /// to a bottom that then moves as the rest lays out — which is why opening a conversation
     /// started somewhere in the middle of its history.
     private func settleAtBottom(_ proxy: ScrollViewProxy) {
-        scroll(proxy, animated: false)
-        Task {
-            for delay in [UInt64(80_000_000), 220_000_000, 480_000_000] {
+        jumpToBottom(proxy, animated: false)
+    }
+
+    /// One tap, one arrival.
+    ///
+    /// A single `scrollTo` was the "2-3 taps" bug: a lazy transcript's end keeps moving as the rows
+    /// below it realise, so the first scroll is computed against a height nobody has reached yet and
+    /// lands short. The open path already re-ran four times for exactly that reason; this is one
+    /// ladder for both, it re-targets a block whose bottom *is* the content's bottom, and a repeat
+    /// tap cancels the ladder and lands immediately without animation — which is what "I already
+    /// tapped this" means.
+    private func jumpToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        let wasSettling = settleTask != nil
+        settleTask?.cancel()
+        followsStream = true
+        scroll(proxy, animated: animated && !wasSettling, force: true)
+        settleTask = Task { @MainActor in
+            defer { settleTask = nil }
+            for delay in [UInt64(90_000_000), 240_000_000, 520_000_000] {
                 try? await Task.sleep(nanoseconds: delay)
-                guard !isDraggingTranscript else { return }
-                scroll(proxy, animated: false)
+                guard !Task.isCancelled, !isDraggingTranscript else { return }
+                scroll(proxy, animated: false, force: true)
             }
         }
     }
@@ -1194,8 +1219,12 @@ struct ConversationScreen: View {
     /// at the bottom while a line and a half were still hidden.
     private static let bottomSlack: CGFloat = 6
 
-    private func scroll(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard !isSearching, (!model.transcript.isEmpty || model.isStreaming) else { return }
+    /// `force` is for an explicit tap. The guards below exist to keep *automatic* scrolling polite —
+    /// no yanking while a search is open, nothing to do on an empty thread — but applied to the
+    /// jump control they made a visible button that did nothing.
+    private func scroll(_ proxy: ScrollViewProxy, animated: Bool, force: Bool = false) {
+        guard force || !isSearching else { return }
+        guard force || !model.transcript.isEmpty || model.isStreaming else { return }
         if animated {
             withAnimation(Motion.messageIn) {
                 proxy.scrollTo(ConversationScreen.bottomID, anchor: .bottom)
@@ -1234,18 +1263,7 @@ struct ConversationScreen: View {
         if !isAtBottom {
             Button {
                 Haptics.impact()
-                // Tapping the way back to the newest message *is* asking to follow again.
-                followsStream = true
-                scroll(proxy, animated: true)
-                // A scroll requested while the lazy stack is mid-layout can be dropped, which is how
-                // one tap used to do nothing and the next one work. Asking once more after the
-                // animation has been committed costs nothing: if the first one landed this is a
-                // no-op, and if it did not, the reader does not have to tap twice.
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 320_000_000)
-                    guard bottomDistance > Self.bottomSlack else { return }
-                    scroll(proxy, animated: false)
-                }
+                jumpToBottom(proxy)
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 14, weight: .semibold))
@@ -1270,10 +1288,17 @@ struct ConversationScreen: View {
 
 /// How far the end of the transcript sits below the bottom of the viewport. Negative means it is on
 /// screen; the smallest reported value wins, because a `LazyVStack` can report several.
+/// How far the end of the transcript sits below the bottom of the viewport.
+///
+/// Optional on purpose. It used to default to `.greatestFiniteMagnitude`, which *is* finite — so a
+/// layout pass where the measurer reported nothing delivered that number as a real distance, which
+/// hid the jump control and switched streaming follow off. "No measurement" and "a long way down"
+/// are different facts and the type now says so.
 private struct BottomDistanceKey: PreferenceKey {
-    static var defaultValue: CGFloat = .greatestFiniteMagnitude
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = min(value, nextValue())
+    static let defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        guard let next = nextValue(), next.isFinite else { return }
+        value = min(value ?? next, next)
     }
 }
 
