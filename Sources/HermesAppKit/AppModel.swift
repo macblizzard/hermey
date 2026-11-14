@@ -1583,7 +1583,7 @@ public final class AppModel: ObservableObject {
 
     /// The host's own timestamp for a bot's newest message, when the sweep has reported one.
     private func hostActivityStamp(_ botID: String) -> Date? {
-        botPreviewTimes[botID].map { Date(timeIntervalSince1970: $0) }
+        botPreviewTimes[botID]
     }
 
     /// Every conversation read, in one deliberate act.
