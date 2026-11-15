@@ -34,7 +34,7 @@ public struct PushRelaySettings: View {
                       prompt: Text("http://your-host:8081/your-key")
                         .foregroundColor(Tokens.textPlaceholder))
                 .textFieldStyle(.plain)
-                .font(TypeScale.font(TypeScale.sm, design: .monospaced))
+                .font(.system(size: TypeScale.sm, design: .monospaced))
                 .foregroundStyle(Tokens.textPrimary)
                 .tint(Tokens.accent)
                 .padding(.horizontal, 9)
