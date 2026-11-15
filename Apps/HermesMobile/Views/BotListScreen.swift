@@ -351,6 +351,27 @@ struct BotListScreen: View {
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
+        // Swipe left (the trailing edge) pins, swipe right (the leading edge) marks unread. Icons
+        // only, no words: a label under the glyph makes the reveal wider than the row it slides out
+        // of, and the row already says what it is (asked for 2026-11-15).
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                model.togglePin(botID: bot.id)
+            } label: {
+                Image(systemName: model.isPinned(botID: bot.id) ? "pin.slash.fill" : "pin.fill")
+            }
+            .tint(model.isPinned(botID: bot.id) ? Tokens.textMuted : Tokens.accent)
+            .accessibilityLabel(model.isPinned(botID: bot.id) ? "Unpin" : "Pin")
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                model.markUnread(bot.id)
+            } label: {
+                Image(systemName: "circle.badge.exclamationmark.fill")
+            }
+            .tint(Tokens.warning)
+            .accessibilityLabel("Mark unread")
+        }
         .accessibilityLabel(accessibilityLabel(for: bot))
         .accessibilityHint("Opens the conversation with this bot")
     }

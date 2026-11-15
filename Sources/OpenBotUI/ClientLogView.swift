@@ -23,6 +23,17 @@ public struct ClientLogView: View {
     @State private var entries: [ClientLogEntry] = []
     @State private var copied = false
     @State private var confirmingClear = false
+    /// Which end of the log reads first.
+    ///
+    /// Oldest first is the order the file is written in, and what this sheet always showed; newest
+    /// first is what a person wants when the failure just happened and the list is long. The choice
+    /// is a device preference, not app state (asked for 2026-11-15).
+    @AppStorage("hermey.logNewestFirst") private var newestFirst = false
+
+    /// The entries in the chosen reading order.
+    private var ordered: [ClientLogEntry] {
+        newestFirst ? Array(entries.reversed()) : entries
+    }
 
     /// - Parameters:
     ///   - title: the sheet's title.
@@ -77,7 +88,7 @@ public struct ClientLogView: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(entries) { entry in
+                            ForEach(ordered) { entry in
                                 Text(entry.line)
                                     .font(.system(size: 10.5, weight: .regular, design: .monospaced))
                                     .foregroundStyle(tint(entry.level))
@@ -100,6 +111,27 @@ public struct ClientLogView: View {
                         .font(TypeScale.font(TypeScale.md))
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
+                    // Re-read without closing the sheet: the failure this log is open for usually
+                    // happens while it is open (asked for 2026-11-15).
+                    Button {
+                        reload()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .help("Read the log again")
+
+                    // A view control, not a verb: which end of the list you start from.
+                    Menu {
+                        Picker("Order", selection: $newestFirst) {
+                            Text("Newest first").tag(true)
+                            Text("Newest last").tag(false)
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label("Order", systemImage: "arrow.up.arrow.down")
+                    }
+                    .help(newestFirst ? "Newest first" : "Newest last")
+
                     Button {
                         copy()
                     } label: {

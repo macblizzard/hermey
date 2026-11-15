@@ -1691,6 +1691,22 @@ public final class AppModel: ObservableObject {
         roomUnreadCounts.removeAll()
     }
 
+    /// Marks one bot unread by hand — the dot is a reminder, not a measurement.
+    ///
+    /// Reading a chat moves the mark forward and never back (that is what stops a badge
+    /// reappearing), so "I want to come back to this" needs its own door: the mark is moved to
+    /// just behind the newest message this device knows about. That makes the host count exactly
+    /// that message — one unread, not the whole history — and the dot goes up now rather than at
+    /// the next sweep (asked for 2026-11-15).
+    public func markUnread(_ botID: String) {
+        guard !botID.isEmpty else { return }
+        let newest = botPreviewTimes[botID] ?? Date()
+        lastRead[botID] = newest.addingTimeInterval(-1)
+        Self.defaults.set(lastRead.mapValues(\.timeIntervalSince1970), forKey: lastReadKey)
+        unreadBots.insert(botID)
+        if (unreadCounts[botID] ?? 0) == 0 { unreadCounts[botID] = 1 }
+    }
+
     /// Whether there is anything to mark: the menu item greys out rather than promising a no-op.
     public var hasAnyUnread: Bool { !unreadCounts.isEmpty || !roomUnreadCounts.isEmpty }
 
