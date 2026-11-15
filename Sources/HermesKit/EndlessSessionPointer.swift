@@ -136,6 +136,15 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bots/{profile}/notes` — write the whole note back. Last write wins, on the host.
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
 
+    /// `POST /v1/push/register` — the relay endpoint this device's banners should go to.
+    func registerPushRelay(_ url: String) async throws
+
+    /// `POST /v1/push/presence` — which bot is on screen here.
+    func reportPresence(bot: String?) async throws
+
+    /// `POST /v1/push/test` — one banner, now.
+    func sendTestPush() async throws
+
     /// `GET /v1/rooms` — the group chats this host hosts.
     ///
     /// These four are protocol requirements, not free functions on an extension: a requirement that
@@ -174,6 +183,9 @@ public extension BotSessionPointerStore {
     func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
     func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
+    func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
+    func sendTestPush() async throws { throw BotAdminUnavailable() }
 }
 
 /// Thrown by a pointer store that has no admin routes (older bridge, test double).
@@ -466,6 +478,18 @@ enum Failure: Error, Equatable, LocalizedError {
             throw Failure.rejected(status: 502, detail: "the host sent no note")
         }
         return notes
+    }
+
+    public func registerPushRelay(_ url: String) async throws {
+        _ = try await bridgePOST("v1/push/register", body: ["url": url], timeout: 20)
+    }
+
+    public func reportPresence(bot: String?) async throws {
+        _ = try await bridgePOST("v1/push/presence", body: ["bot": bot ?? NSNull()], timeout: 15)
+    }
+
+    public func sendTestPush() async throws {
+        _ = try await bridgePOST("v1/push/test", body: [:], timeout: 20)
     }
 
     private func decodeNotes(_ data: Data) -> BotNotes? {

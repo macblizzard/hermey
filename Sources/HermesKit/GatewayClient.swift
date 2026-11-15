@@ -117,6 +117,15 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// The owner's own note for this bot (`GET /v1/bots/{profile}/notes`).
     func notes(_ profile: String) async throws -> BotNotes
 
+    /// Where this device's banners go while the app is shut (a Bark relay URL).
+    func registerPushRelay(_ url: String) async throws
+
+    /// The bot whose conversation is on screen, so its replies do not arrive as banners.
+    func reportPresence(bot: String?) async throws
+
+    /// One banner right now, to prove the relay works.
+    func sendTestPush() async throws
+
     /// Write the note back (`PUT`), whole: the host keeps one file and the last write wins.
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
 
@@ -260,6 +269,9 @@ extension GatewayClientProtocol {
     }
     public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
     public func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    public func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
+    public func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
+    public func sendTestPush() async throws { throw BotAdminUnavailable() }
     public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
         throw BotAdminUnavailable()
     }
