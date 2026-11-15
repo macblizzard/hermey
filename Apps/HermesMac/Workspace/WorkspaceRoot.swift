@@ -132,7 +132,10 @@ struct WorkspaceRoot: View {
         // small local route. The store stays the source of truth: the binding reads its two flags
         // and dismisses by clearing them.
         .sheet(item: presentation) { route in
-            switch route {
+            // Wrapped in a Group so the sheet's chrome can be applied to the *result* of the switch;
+            // a modifier cannot be chained onto a switch statement itself.
+            Group {
+                switch route {
             case .pair:
                 PairHostSheet(store: store)
             case .workspace(let bot):
@@ -162,7 +165,9 @@ struct WorkspaceRoot: View {
                                     store: store,
                                     bot: bot,
                                     conversationIsOpen: store.model.selectedBotID == bot.id)
+                }
             }
+            .hermesSheetChrome()
         }
     }
 

@@ -118,6 +118,7 @@ struct MobileTranscriptRow: View {
         .fullScreenCover(item: $viewingImage) { item in
             ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
                 .preferredColorScheme(.dark)
+            .hermesSheetChrome()
         }
         .sheet(item: Binding(get: { pairPeer.map(PeerRef.init) },
                              set: { pairPeer = $0?.id })) { peer in
@@ -128,6 +129,7 @@ struct MobileTranscriptRow: View {
                                  ?? profile.capitalized
                          },
                          load: { await app.model.transfers(between: botID, and: peer.id) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showingSelection) {
             NavigationStack {
@@ -139,6 +141,7 @@ struct MobileTranscriptRow: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingSelection = false } } }
             }
+            .hermesSheetChrome()
         }
     }
 

@@ -83,16 +83,19 @@ struct MacBotSettingsSheet: View {
         .background(Tokens.canvas)
         .sheet(isPresented: $showingIconPicker) {
             MacBotIconPicker(bot: bot, store: store)
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showingMemory) {
             BotMemorySheet(botName: bot.displayName,
                            load: { try await model.memory(for: bot.id) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showingSoul) {
             SoulEditorSheet(
                 botName: bot.displayName,
                 load: { try await model.describeBot(bot.id).soul },
                 save: { try await model.saveSoul($0, for: bot.id) })
+            .hermesSheetChrome()
         }
     }
 

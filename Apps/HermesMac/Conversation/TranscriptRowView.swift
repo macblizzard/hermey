@@ -220,6 +220,7 @@ struct TranscriptRowView: View {
             .sheet(item: $viewingImage) { item in
                 ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
                     .frame(minWidth: 640, minHeight: 460)
+                .hermesSheetChrome()
             }
         }
     }

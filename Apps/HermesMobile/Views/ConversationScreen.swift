@@ -162,6 +162,11 @@ struct ConversationScreen: View {
     private var unreadElsewhere: Int { model.unreadElsewhere(excludingBot: bot.id) }
 
     var body: some View {
+        screenWithSheets
+    }
+
+    /// The screen's own chrome, up to but not including the sheets.
+    private var baseScreen: some View {
         transcriptScroll
         .overlay(alignment: .top) { floatingTop }
         .overlay(alignment: .bottom) { floatingComposer }
@@ -275,14 +280,24 @@ struct ConversationScreen: View {
         // thumbnail with buttons, which is what the pane already offers before you open it.
         // A page, not a sheet: the desktop is dragged, tapped and pinched inside this view, and a
         // sheet's own drag gesture took those touches and dismissed the window mid-task.
+    }
+
+    /// The sheets get their own hop in the chain. Eleven `.sheet` modifiers on one expression is
+    /// past what the type-checker will chew ("unable to type-check this expression in reasonable
+    /// time"); two chains of a few each draw the same UI and compile in a second.
+    private var screenWithSheets: some View {
+        baseScreen
         .sheet(isPresented: $showWorkspace) {
             WorkspaceSheet(bot: bot, client: app.workspace)
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showSkills) {
             BotToolsSheet(bot: bot, kind: .skills, model: model)
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showMCP) {
             BotToolsSheet(bot: bot, kind: .mcp, model: model)
+            .hermesSheetChrome()
         }
         // The bot's own prompt file, and what it remembers: both read from the host on open, for the
         // same reason — an agent rewrites them whenever it learns something.
@@ -292,16 +307,19 @@ struct ConversationScreen: View {
             BotNotesSheet(botName: bot.displayName,
                           load: { try await model.notes(for: bot.id) },
                           save: { try await model.saveNotes($0, for: bot.id) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showSoul) {
             SoulEditorSheet(
                 botName: bot.displayName,
                 load: { try await model.describeBot(bot.id).soul },
                 save: { try await model.saveSoul($0, for: bot.id) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showMemory) {
             BotMemorySheet(botName: bot.displayName,
                            load: { try await model.memory(for: bot.id) })
+            .hermesSheetChrome()
         }
         // The routines list reads the host each time it opens: a schedule paused on the desktop
         // must not be drawn as running here just because the drawer was opened a minute ago.
@@ -312,6 +330,7 @@ struct ConversationScreen: View {
                 setPaused: { jobID, paused in
                     try await model.setRoutinePaused(jobID, paused: paused, for: bot.id)
                 })
+            .hermesSheetChrome()
         }
         .fullScreenCover(isPresented: $showComputer) {
             BotComputerPane(profile: bot.id,
@@ -319,6 +338,7 @@ struct ConversationScreen: View {
                             client: app.computer,
                             resources: BotComputerResources(),
                             onClose: { showComputer = false })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showBotSettings) {
             BotModelSettingsScreen(
@@ -340,24 +360,31 @@ struct ConversationScreen: View {
                     try await model.configureDescription(botID: botID, description: text)
                 },
                 deleteBot: { try await model.deleteBot(bot.id) })
+            .hermesSheetChrome()
         }
         // The choices live in the composer, anchored to the paperclip (`AttachmentMenu`); this
         // is only the system picker for the one the user chose.
         .sheet(item: $attachmentSource) { source in
-            switch source {
+            // A Group, so the chrome can be applied to the result of the switch: a modifier cannot be
+            // chained onto a `switch` statement itself.
+            Group {
+                switch source {
             case .camera:
                 AttachmentCamera(completion: { accept($0) },
                                  cancel: { attachmentSource = nil }).ignoresSafeArea()
             case .photos:
                 AttachmentPhotos(completion: { accept($0) },
                                  cancel: { attachmentSource = nil }).ignoresSafeArea()
-            case .files:
-                AttachmentFiles(completion: { accept($0) },
-                                cancel: { attachmentSource = nil })
+                case .files:
+                    AttachmentFiles(completion: { accept($0) },
+                                    cancel: { attachmentSource = nil })
+                }
             }
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showApprovalSheet) {
             MobileApprovalSheet(model: model, request: model.pendingRequests.first)
+            .hermesSheetChrome()
         }
         .confirmationDialog("Reset this conversation?",
                             isPresented: $showResetConfirm,

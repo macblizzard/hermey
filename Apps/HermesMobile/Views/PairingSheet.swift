@@ -264,6 +264,7 @@ struct PairingSheet: View {
         .sheet(isPresented: .constant(true)) {
             PairingSheet()
                 .environmentObject(environment)
+            .hermesSheetChrome()
         }
         .preferredColorScheme(.dark)
 }

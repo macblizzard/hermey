@@ -227,6 +227,7 @@ struct BotListScreen: View {
         .toolbar { toolbarContent }
         .sheet(item: $settingsBot) { bot in
             settingsSheet(for: bot)
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showAddBot) {
             AddBotSheet { name, description, face in
@@ -234,9 +235,11 @@ struct BotListScreen: View {
                 let created = try await model.addBot(name: name, description: description, soul: "")
                 if let face { try? await app.saveBotFace(botID: created, face: face) }
             }
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showAppSettings) {
             SettingsScreen(model: model)
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
@@ -247,12 +250,14 @@ struct BotListScreen: View {
                                                    members: members)
                 },
                 onCreated: { room in open(room) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showGroupChats) {
             GroupChatsSheet(
                 load: { try await model.groupChats() },
                 onOpen: { room in open(room) },
                 onNew: { showStartGroupChat = true })
+            .hermesSheetChrome()
         }
         .fullScreenCover(item: $openRoom) { room in
             RoomChatView(
@@ -268,6 +273,7 @@ struct BotListScreen: View {
                 renameSignal: $model.renameRequest,
                 speak: { try await roomVoice.speakAndWait($0) },
                 markdown: { markdownMessage($0) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $showManageBots) {
             ManageBotsSheet(
@@ -284,12 +290,14 @@ struct BotListScreen: View {
                 onSetCategory: { profile, category in
                     try await model.setBotCategory(profile, to: category)
                 })
+            .hermesSheetChrome()
         }
         .sheet(item: $soulBot) { bot in
             SoulEditorSheet(
                 botName: bot.displayName,
                 load: { try await model.describeBot(bot.id).soul },
                 save: { try await model.saveSoul($0, for: bot.id) })
+            .hermesSheetChrome()
         }
         .mobileConnectionBanner(connection: app.visibleConnection,
                                 turnRunning: model.isStreaming,

@@ -108,6 +108,7 @@ struct AboutSettingsTab: View {
         .background(Tokens.canvas)
         .sheet(isPresented: $showLog) {
             ClientLogView(title: "Log", header: logHeader)
+            .hermesSheetChrome()
         }
     }
 

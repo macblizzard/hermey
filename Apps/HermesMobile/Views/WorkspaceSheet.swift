@@ -98,6 +98,7 @@ struct WorkspaceSheet: View {
             ActivityShareSheet(url: item.url)
                 // The staged copy is this app's litter; the other app has its own by now.
                 .onDisappear { WorkspaceSharing.discard(item.url) }
+            .hermesSheetChrome()
         }
         .alert("Could not share this file", isPresented: shareFailureBinding) {
             Button("OK") { shareFailure = nil }
@@ -242,6 +243,7 @@ struct WorkspaceDocumentView: View {
         .sheet(item: $shared) { item in
             ActivityShareSheet(url: item.url)
                 .onDisappear { WorkspaceSharing.discard(item.url) }
+            .hermesSheetChrome()
         }
         .task { await load() }
     }
