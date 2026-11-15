@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.422",
+          "buildVersion": "422",
+          "date": "2026-11-15T13:39:50Z",
+          "localizedDescription": "Phase 4 \u2014 search inside the conversations, and bot-to-bot messages drawn as people.\n\n\u2022 Search now finds what was said, not just bot names: results show which bot, who wrote it, when, and the line around the match. Bot-name matches still come after them.\n\u2022 A message from another bot is drawn with that bot's face and 'Message from \u2026' above the words, instead of appearing as something you typed. Older messages written before this change read correctly too.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.422/Hermey-0.1.422-b422.ipa",
+          "size": 2598479,
+          "minOSVersion": "17.0",
+          "sha256": "98df069ede948335dbf8eaca810186ff2bc1e34ccb5e51feb6151770e1a06313"
+        },
+        {
           "version": "0.1.419",
           "buildVersion": "419",
           "date": "2026-11-15T13:14:27Z",
@@ -62,16 +72,6 @@
           "size": 2520775,
           "minOSVersion": "17.0",
           "sha256": "6a6483446951ee462c8f97ea28a94427b93ce3a8169029e978958bc810ca2c6b"
-        },
-        {
-          "version": "0.1.404",
-          "buildVersion": "404",
-          "date": "2026-11-15T09:44:27Z",
-          "localizedDescription": "App icon is now white on black, and the sideload source's icon was regenerated with it \u2014 SideStore had been showing a blue mark from before the faces existed. Same build also carries the bot's face inside Hermey's own notification banners.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.404/Hermey-0.1.404-b404.ipa",
-          "size": 2520586,
-          "minOSVersion": "17.0",
-          "sha256": "7ef65b49f769ac8d235e2cd4dd88f470c7e9a1134b5683756941490dc61ec9df"
         }
       ],
       "appPermissions": {
