@@ -85,16 +85,18 @@ def _split_bark_url(raw: str) -> tuple[str, str]:
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise HTTPException(status_code=422, detail="a Bark URL starts with http:// or https://")
     segments = [segment for segment in parts.path.split("/") if segment]
-    if len(segments) < 1:
+    if not segments:
         raise HTTPException(status_code=422,
                             detail="a Bark URL ends in the device key, e.g. http://host:8080/AbCdEf")
-    key = segments[-1]
+    # The key is the *first* segment. Bark's own "copy URL" button can hand back the prefilled
+    # example too (`/KEY/title/body`), and taking the last segment there registered `body` as the
+    # key and pushed every real banner to `/KEY/title/body` — a notification whose text was the
+    # literal words "title" and "body".
+    key = segments[0]
     if not re.match(r"^[A-Za-z0-9_-]{1,128}$", key):
         raise HTTPException(status_code=422,
                             detail="a Bark URL ends in the device key, e.g. http://host:8080/AbCdEf")
-    prefix = "/".join(segments[:-1])
-    endpoint = f"{parts.scheme}://{parts.netloc}" + (f"/{prefix}" if prefix else "")
-    return endpoint, key
+    return f"{parts.scheme}://{parts.netloc}", key
 
 
 def _profiles_root() -> Path:
