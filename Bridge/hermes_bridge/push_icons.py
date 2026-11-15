@@ -6,8 +6,8 @@ second, subtly different family of faces. So the app renders it with `ImageRende
 bytes; the host only stores and serves them.
 
 Where they live matters: the bridge runs under `ProtectSystem=strict` and can write nothing but
-`/var/lib/hermes-bridge`, while the phone has to fetch the image over the tailnet. `hermes-apps-dist`
-already serves `/srv/hermes-apps-dist` on `:8444`, so a symlink `icons -> /var/lib/hermes-bridge/push-icons`
+`/var/lib/hermey`, while the phone has to fetch the image over the tailnet. `hermes-apps-dist`
+already serves `/srv/hermes-apps-dist` on `:8444`, so a symlink `icons -> /var/lib/hermey/push-icons`
 puts the bytes where an unauthenticated GET can reach them without widening either unit.
 """
 import hashlib
@@ -21,7 +21,11 @@ from pydantic import BaseModel
 from .device_auth import require_device
 
 #: Where the apps write their renders. One file per bot, named after the profile.
-ICON_DIR = Path("/var/lib/hermes-bridge/push-icons")
+#:
+#: Under `/var/lib/hermey`, which is what the unit's `ReadWritePaths` actually allows — the icons
+#: first lived in `/var/lib/hermey` and every upload would have failed with a read-only
+#: filesystem, because the deployed unit may write only the live state dir.
+ICON_DIR = Path("/var/lib/hermey/push-icons")
 
 #: A notification image, not a wallpaper.
 MAX_BYTES = 512 * 1024

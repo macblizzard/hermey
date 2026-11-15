@@ -24,7 +24,7 @@ PNG = base64.b64decode(
 
 @pytest.fixture(autouse=True)
 def icon_dir(tmp_path, monkeypatch):
-    """Keep renders out of the real `/var/lib/hermes-bridge/push-icons`."""
+    """Keep renders out of the real `/var/lib/hermey/push-icons`."""
     monkeypatch.setattr(push_icons, "ICON_DIR", tmp_path / "icons")
     return tmp_path / "icons"
 
@@ -46,6 +46,15 @@ def device(bridge):
 def _upload(device, profile="cody", sha=None):
     return device("PUT", f"/v1/push/icon/{profile}",
                   {"png": base64.b64encode(PNG).decode(), "sha256": sha})
+
+
+class TestWhereTheBytesLive:
+    def test_the_directory_is_one_the_unit_may_write(self):
+        # `ReadWritePaths=/var/lib/hermey /root/.hermes/profiles`: anywhere else and every upload is
+        # EROFS on the deployed host while the tests happily write into tmp_path.
+        from hermes_bridge.push_icons import ICON_DIR
+
+        assert str(ICON_DIR).startswith("/var/lib/hermey/"), str(ICON_DIR)
 
 
 class TestUpload:
