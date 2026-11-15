@@ -1897,6 +1897,54 @@ public final class AppModel: ObservableObject {
         botCategoryState = try await client.setBotCategory(profile: botID, categoryID: categoryID)
     }
 
+    // MARK: Searching the transcripts
+
+    /// The findings for the query on screen, and the query they belong to.
+    @Published public private(set) var searchPage: BotSearchPage = .empty
+    @Published public private(set) var searchQuery: String = ""
+    @Published public private(set) var searchRunning = false
+    /// Which run is current: an answer that arrives after a newer query was typed must not replace
+    /// that newer answer.
+    private var searchToken = 0
+
+    /// Search every bot's conversation. The caller debounces; this keeps the last answer only.
+    public func searchTranscripts(_ query: String) async {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard needle.count >= 2 else {
+            searchToken += 1
+            searchQuery = needle
+            searchPage = .empty
+            searchRunning = false
+            return
+        }
+        searchToken += 1
+        let token = searchToken
+        searchQuery = needle
+        searchRunning = true
+        do {
+            let page = try await client.searchTranscripts(needle, limit: 50, offset: 0)
+            guard token == searchToken else { return }
+            searchPage = page
+        } catch {
+            guard token == searchToken else { return }
+            // A failed search is not an empty one: the message says so instead of pretending the
+            // host has nothing to say about the phrase.
+            ClientLog.note("search failed: \(error.localizedDescription)", level: .warning, category: "search")
+            searchPage = .empty
+        }
+        if token == searchToken { searchRunning = false }
+    }
+
+    /// The exchanges between two bots — what the pair modal reads.
+    public func transfers(between first: String, and second: String) async -> [BotTransfer] {
+        do { return try await client.botTransfers(between: first, and: second, limit: 100) }
+        catch {
+            ClientLog.note("bot transfers failed: \(error.localizedDescription)",
+                           level: .warning, category: "search")
+            return []
+        }
+    }
+
     /// The list, folded into its headings. Pinned above everything, categories by name,
     /// Uncategorized last.
     public var botGroups: [BotGroup] {

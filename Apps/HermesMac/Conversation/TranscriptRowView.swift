@@ -91,7 +91,13 @@ struct TranscriptRowView: View {
     @ViewBuilder private var content: some View {
         switch entry.role {
         case .user:
-            userRow
+            // Written by another bot (it arrives in this bot's conversation as a user row): it gets
+            // the sender's name over the words instead of the owner's bubble (asked for 2026-11-15).
+            if let label = BotMessageLabel.parse(entry.text) {
+                botMessageRow(label)
+            } else {
+                userRow
+            }
         case .assistant:
             assistantRow
         case .tool:
@@ -101,6 +107,36 @@ struct TranscriptRowView: View {
         case .system:
             systemRow
         }
+    }
+
+    // MARK: A message from another bot
+
+    /// `Message from <face> Cody` over the words. Left-aligned on purpose: it is not the owner's
+    /// message, and the right edge is what says "you wrote this" everywhere else in the app.
+    @ViewBuilder
+    private func botMessageRow(_ label: BotMessageLabel) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                if let profile = label.senderProfile {
+                    BotIconPortrait(BotFace.default(for: profile), size: Geometry.rosterAvatarCompact)
+                }
+                Text(label.incomingTitle)
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                    .foregroundStyle(Tokens.accentText)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            Text(label.body)
+                .font(TypeScale.font(TypeScale.chatBody))
+                .foregroundStyle(Tokens.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Geometry.bubblePaddingH)
+                .padding(.vertical, Geometry.bubblePaddingV)
+                .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .fill(Tokens.surface))
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: User

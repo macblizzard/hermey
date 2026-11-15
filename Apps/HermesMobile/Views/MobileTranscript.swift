@@ -136,7 +136,14 @@ struct MobileTranscriptRow: View {
     private var content: some View {
         switch entry.role {
         case .user:
-            userBubble
+            // A message another bot wrote lands here as a user row, because it is one: it arrived in
+            // this bot's conversation. It is not the owner's, though, so it is drawn with the sender's
+            // face and name instead of as a bubble the owner typed (asked for 2026-11-15).
+            if let label = BotMessageLabel.parse(entry.text) {
+                botMessageRow(label)
+            } else {
+                userBubble
+            }
         case .assistant:
             assistant
         case .tool:
@@ -146,6 +153,35 @@ struct MobileTranscriptRow: View {
         case .system:
             systemNote
         }
+    }
+
+    /// `Message from <face> Cody` above the words — the recipient's side of a bot-to-bot exchange.
+    @ViewBuilder
+    private func botMessageRow(_ label: BotMessageLabel) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                if let profile = label.senderProfile {
+                    BotIconPortrait(app.botFaces[profile] ?? BotFace.default(for: profile),
+                                    size: Geometry.rosterAvatarCompact)
+                }
+                Text(label.incomingTitle)
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                    .foregroundStyle(Tokens.accentText)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+
+            Text(label.body)
+                .font(TypeScale.font(TypeScale.chatBody))
+                .foregroundStyle(Tokens.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Geometry.bubblePaddingH)
+                .padding(.vertical, Geometry.bubblePaddingV)
+                .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .fill(Tokens.surface))
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

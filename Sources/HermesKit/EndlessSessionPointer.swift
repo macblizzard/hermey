@@ -155,6 +155,12 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bots/{profile}/category` — put a bot in a group, or take it out with `nil`.
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
 
+    /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
+    func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
+
+    /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
+    func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
+
     /// `POST /v1/push/register` — the relay endpoint this device's banners should go to.
     func registerPushRelay(_ url: String) async throws
 
@@ -212,6 +218,12 @@ public extension BotSessionPointerStore {
     }
     func deleteBotCategory(id: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {
+        throw BotAdminUnavailable()
+    }
+    func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
     }
     func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
@@ -550,6 +562,22 @@ enum Failure: Error, Equatable, LocalizedError {
         let body: [String: Any] = ["category_id": categoryID ?? NSNull()]
         return try BotCategoryState.decode(try await bridgePUT("v1/bots/\(name)/category",
                                                                body: body, timeout: 20))
+    }
+
+    /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`
+    /// in it must search for that phrase, not reshape the request.
+    public func searchTranscripts(_ query: String, limit: Int = 50, offset: Int = 0) async throws -> BotSearchPage {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        let path = "v1/search?q=\(encoded)&limit=\(limit)&offset=\(offset)"
+        return try BotSearchPage.decode(try await bridgeGET(path, timeout: 20))
+    }
+
+    /// `GET /v1/bot-transfers` — the pair's exchanges, both directions.
+    public func botTransfers(between first: String, and second: String, limit: Int = 100) async throws -> [BotTransfer] {
+        let a = try Self.pathComponent(first)
+        let b = try Self.pathComponent(second)
+        let data = try await bridgeGET("v1/bot-transfers?between=\(a),\(b)&limit=\(limit)", timeout: 20)
+        return try BotTransfer.decodeList(data)
     }
 
     public func reportPresence(bot: String?) async throws {
