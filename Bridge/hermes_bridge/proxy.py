@@ -31,7 +31,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import websockets
 
@@ -234,11 +234,13 @@ class GatewayProxy:
         device_id: str,
         config: BridgeConfig,
         audit: AuditLog,
+        on_prompt: Optional[Callable[[str], None]] = None,
     ) -> None:
         self._ws = websocket
         self._device_id = device_id
         self._config = config
         self._audit = audit
+        self._on_prompt = on_prompt
         self._allow = build_client_allow_list(config.extra_client_methods)
         self._cap = config.frame_cap
         # Transcript paging: the resume's full row list, kept per (session, bot) for this
@@ -495,6 +497,13 @@ class GatewayProxy:
             return
 
         session_id, profile = paging_key(params)
+        if method == "prompt.submit" and self._on_prompt is not None:
+            # The owner typed this: the reply belongs on their screen, not in a banner. Recorded
+            # here because this is the only place a human prompt is distinguishable from a bot's.
+            typed_for = paging_key(params)[1]
+            if typed_for:
+                self._on_prompt(typed_for)
+
         self._pending[key] = _Pending(
             method=method,
             started=time.monotonic(),

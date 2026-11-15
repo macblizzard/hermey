@@ -139,6 +139,11 @@ async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[st
     Returns ``(runtime_session_id, reply_text)``. The reply is the *assistant* text of the
     completion event, which is exactly the row the apps will render under the message.
     """
+    # Written by another bot, not by the owner: its reply *is* worth a banner.
+    try:
+        runtime.registry.set_push_prompt(profile, "program")
+    except Exception:  # a banner rule must never break the message it describes
+        pass
     config = runtime.config
     deadline = time.monotonic() + REPLY_TIMEOUT_S
     try:

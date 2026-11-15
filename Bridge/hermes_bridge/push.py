@@ -222,6 +222,12 @@ class ReplyWatcher:
         self._primed = True
 
     def _push(self, profile: str, reply: dict, targets) -> None:
+        # A reply to the owner's own message is not news: they asked for it and are watching. Only a
+        # question written by something else — another bot, a schedule — is announced. The mark is
+        # written where the prompt enters the host, so it holds across a restart and for every device.
+        prompt = self.runtime.registry.push_prompt(profile)
+        if prompt is not None and prompt["source"] == "human":
+            return
         title = profile.capitalize()
         body = reply["text"][:MAX_BODY_CHARS]
         icon = icon_url(profile)

@@ -166,6 +166,41 @@ class TestTheWatcher:
         assert delivered[0]["body"].startswith("new answer")
         assert delivered[0]["url"] == "hermey://bot/cody"
 
+    def test_a_reply_to_the_owner_s_own_message_is_not_announced(self, bridge, device, tmp_path,
+                                                                monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        self._profile(tmp_path, stamp=time.time() - 60)
+        device("/v1/push/register", {"url": "http://your-host:8081/Key123"})
+        delivered = []
+        monkeypatch.setattr(BarkRelay, "send",
+                            lambda self, *a, **k: delivered.append(k) or True)
+        registry = bridge.app.state.bridge.registry
+        registry.set_push_prompt("cody", "human")   # typed on a device
+        watcher = ReplyWatcher(bridge.app.state.bridge, BarkRelay())
+        watcher.tick()
+
+        self._profile(tmp_path, session="s2", text="answering you", stamp=time.time())
+        watcher.tick()
+
+        assert delivered == [], "a banner for a reply the owner asked for is noise"
+
+    def test_a_reply_to_something_else_is_announced(self, bridge, device, tmp_path, monkeypatch):
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        self._profile(tmp_path, stamp=time.time() - 60)
+        device("/v1/push/register", {"url": "http://your-host:8081/Key123"})
+        delivered = []
+        monkeypatch.setattr(BarkRelay, "send",
+                            lambda self, *a, **k: delivered.append(k) or True)
+        registry = bridge.app.state.bridge.registry
+        registry.set_push_prompt("cody", "program")  # another bot, or a schedule
+        watcher = ReplyWatcher(bridge.app.state.bridge, BarkRelay())
+        watcher.tick()
+
+        self._profile(tmp_path, session="s2", text="a bot message", stamp=time.time())
+        watcher.tick()
+
+        assert len(delivered) == 1
+
     def test_the_bot_on_screen_is_not_announced(self, bridge, device, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         self._profile(tmp_path, stamp=time.time() - 60)

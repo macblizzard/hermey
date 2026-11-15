@@ -397,7 +397,8 @@ def create_app(
             return
 
         await websocket.accept()
-        proxy = GatewayProxy(websocket, device_id, cfg, log)
+        proxy = GatewayProxy(websocket, device_id, cfg, log,
+                             on_prompt=lambda profile: reg.set_push_prompt(profile, "human"))
         await runtime.live.register(proxy)
         try:
             await proxy.run()
