@@ -37,6 +37,7 @@ from typing import Optional
 import websockets
 from fastapi import APIRouter, HTTPException, Request
 
+from .bot_transfers import record as record_transfer
 from .device_auth import is_local_host_request
 
 logger = logging.getLogger("hermes_bridge.bot_message")
@@ -60,8 +61,16 @@ def _is_loopback(request: Request) -> bool:
     return is_local_host_request(request)
 
 
-def _labelled(sender: str, target: str, text: str) -> str:
-    return f"{sender.title()} → {target.title()}: {text.strip()}"
+def _labelled(sender: str, target: str, text: str, sender_profile: Optional[str] = None) -> str:
+    """The label the target bot reads, and the owner reads over its shoulder.
+
+    The sender's profile id is in brackets when the caller knows it: `Assistant (cody) → Ops:`. It
+    costs the target nothing to read, and it is what lets the apps turn this row back into a face
+    and a name instead of a prefix (asked for 2026-11-15). A caller that does not name itself keeps
+    the old, label-only form.
+    """
+    who = f"{sender.title()} ({sender_profile})" if sender_profile else sender.title()
+    return f"{who} → {target.title()}: {text.strip()}"
 
 
 def create_bot_message_router(runtime) -> APIRouter:
@@ -89,6 +98,11 @@ def create_bot_message_router(runtime) -> APIRouter:
         if not isinstance(sender, str) or not _FROM.match(sender):
             raise HTTPException(status_code=422, detail='invalid from')
 
+        sender_profile = body.get('from_profile')
+        if sender_profile is not None:
+            if not isinstance(sender_profile, str) or not _PROFILE.match(sender_profile):
+                raise HTTPException(status_code=422, detail='invalid from_profile')
+
         stored = runtime.registry.get_bot_session(profile)
         if not stored:
             raise HTTPException(
@@ -96,8 +110,15 @@ def create_bot_message_router(runtime) -> APIRouter:
                 detail=f'{profile} has no conversation yet: open it in the app once, then send',
             )
 
-        message = _labelled(sender, profile, text)
+        message = _labelled(sender, profile, text, sender_profile)
         session_id, reply = await _deliver(runtime, stored, message, profile)
+        # The label the apps draw: who spoke to whom, and the words without the prefix.
+        record_transfer(runtime,
+                        from_profile=sender_profile,
+                        from_label=sender,
+                        to_profile=profile,
+                        session_id=session_id,
+                        text=text.strip())
         # The audit log records who spoke to whom and whether an answer came back; the words
         # themselves are the owner's conversation, not an audit artefact.
         runtime.audit.emit(
