@@ -150,7 +150,7 @@ def desired_manifest(current: dict | None, repo: str, ipa: dict, ipa_bytes: byte
             "subtitle": "Your Hermes bots, on your phone",
             "description": "Native client for a self-hosted Hermes Agent.",
             "iconURL": f"{base}/icon-512.png",
-            "tintColor": "#007CF7",
+            "tintColor": "#9A9AA0",
             "apps": [{
                 "name": "Hermey",
                 "bundleIdentifier": bundle,
@@ -158,7 +158,7 @@ def desired_manifest(current: dict | None, repo: str, ipa: dict, ipa_bytes: byte
                 "subtitle": "Your Hermes bots, on your phone",
                 "localizedDescription": "Chats with every Hermes bot, streaming replies and pairing.",
                 "iconURL": f"{base}/icon-512.png",
-                "tintColor": "#007CF7",
+                "tintColor": "#9A9AA0",
                 "category": "utilities",
                 "screenshots": [],
                 "versions": [],

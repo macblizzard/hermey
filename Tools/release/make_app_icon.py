@@ -29,16 +29,17 @@ MAC = ROOT / "Apps/HermesMac/Assets.xcassets/AppIcon.appiconset"
 
 S = 4096  # supersampled canvas; every edge is drawn four times the final size
 
-# The palette is the roster's: `amber` for the light, `orange` for the body, the app's own
-# near-black for the plate.
-CANVAS_TOP = (38, 33, 42)
-CANVAS_BOTTOM = (18, 16, 20)
-PLATE_TOP = (52, 46, 58)
-PLATE_BOTTOM = (26, 23, 29)
-FACE_TOP = (250, 176, 92)     # amber/orange blend, lit from above
-FACE_BOTTOM = (232, 122, 72)  # orange, turning away — warm, not muddy
-RIM = (255, 214, 160)
-EYE = (26, 22, 26)
+# White on black: one lit form on a dark plate. The roster's colours stay in the app, where a face
+# is a way to tell bots apart; the mark on a home screen is the app itself, and it has one exact
+# silhouette. Black also means the icon never argues with a wallpaper.
+CANVAS_TOP = (0, 0, 0)
+CANVAS_BOTTOM = (0, 0, 0)
+PLATE_TOP = (26, 26, 28)
+PLATE_BOTTOM = (0, 0, 0)
+FACE_TOP = (255, 255, 255)     # white, lit from above
+FACE_BOTTOM = (228, 228, 233)  # a hint of grey below, so the form reads as a form
+RIM = (255, 255, 255)
+EYE = (12, 12, 14)
 
 
 def lerp(a, b, t):
@@ -77,11 +78,11 @@ def compose(size: int) -> Image.Image:
     plate = vertical_gradient(size, PLATE_TOP, PLATE_BOTTOM).convert("RGBA")
     plate.putalpha(squircle_mask(size))
 
-    # A warm pool of light behind the face, so the plate is not a flat field.
+    # A soft pool of light behind the face, so the plate is not a flat field.
     glow = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(glow).ellipse(
         (size * 0.10, size * 0.02, size * 0.90, size * 0.78),
-        fill=(255, 168, 96, 58),
+        fill=(255, 255, 255, 26),
     )
     glow = glow.filter(ImageFilter.GaussianBlur(size * 0.10))
     plate.alpha_composite(Image.composite(glow, Image.new("RGBA", (size, size), (0, 0, 0, 0)),
@@ -112,7 +113,7 @@ def compose(size: int) -> Image.Image:
 
     shade = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(shade).ellipse(
-        (size * 0.02, size * 0.60, size * 0.98, size * 1.02), fill=(78, 26, 14, 82)
+        (size * 0.02, size * 0.60, size * 0.98, size * 1.02), fill=(0, 0, 0, 70)
     )
     shade = shade.filter(ImageFilter.GaussianBlur(size * 0.08))
     shade.putalpha(Image.composite(shade.getchannel("A"), Image.new("L", (size, size), 0), mask))
@@ -123,15 +124,8 @@ def compose(size: int) -> Image.Image:
     rim.paste(RIM + (170,), (0, 0), edge.point(lambda v: min(255, int(v * 1.9))))
     face.alpha_composite(rim)
 
-    # One specular mark, high and left, where a room's light catches a rounded form. Blurred enough
-    # to read as a sheen and not as a sticker.
-    spark = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ImageDraw.Draw(spark).ellipse(
-        (size * 0.26, size * 0.13, size * 0.52, size * 0.25), fill=(255, 245, 226, 120)
-    )
-    spark = spark.filter(ImageFilter.GaussianBlur(size * 0.018))
-    spark.putalpha(Image.composite(spark.getchannel("A"), Image.new("L", (size, size), 0), mask))
-    face.alpha_composite(spark)
+    # No specular mark on a white face: a blurred white ellipse on white is not sheen, it is a
+    # smudge, and at 60 pt it reads as a flaw in the artwork.
 
     plate.alpha_composite(face)
 
@@ -166,6 +160,14 @@ def main() -> None:
             px = side * scale
             master.resize((px, px), Image.Resampling.LANCZOS).save(MAC / f"icon_{side}x{side}{suffix}.png",
                                                         optimize=True)
+
+    # The sideload source's icon (`altstore.json` → `iconURL`) and the copy the publish tools stage
+    # into the release. Both were hand-made once and drifted from the app; now one script writes
+    # all three, so a change of palette cannot leave the source showing last month's mark.
+    for target in (ROOT / "icon-512.png", Path(__file__).resolve().parent / "app-icon-512.png"):
+        master.resize((512, 512), Image.Resampling.LANCZOS).convert("RGB").save(target,
+                                                                              optimize=True)
+        print(f"wrote {target}")
 
     print(f"wrote {IOS / 'icon-1024.png'} ({ios_icon.size[0]} px, opaque)")
     print(f"wrote {len(list(MAC.glob('icon_*.png')))} mac sizes")
