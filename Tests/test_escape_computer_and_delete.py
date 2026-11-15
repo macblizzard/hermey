@@ -338,6 +338,19 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         self.assertIn("def fetch(profile: str) -> Response:", icons)
         self.assertIn("PNG_MAGIC", icons)
 
+    def test_only_someone_else_s_reply_becomes_a_banner(self) -> None:
+        push = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
+        proxy = (ROOT / "Bridge/hermes_bridge/proxy.py").read_text(encoding="utf-8")
+        app = (ROOT / "Bridge/hermes_bridge/app.py").read_text(encoding="utf-8")
+        bot = (ROOT / "Bridge/hermes_bridge/bot_message.py").read_text(encoding="utf-8")
+        # The watcher stands down when the prompt was typed on a device...
+        self.assertIn('prompt["source"] == "human"', push)
+        # ...which is recorded where a human prompt is distinguishable from a bot's, and nowhere else.
+        self.assertIn('method == "prompt.submit" and self._on_prompt is not None', proxy)
+        self.assertIn('set_push_prompt(profile, "human")', app)
+        # A bot-to-bot message is the opposite case: its reply is what a banner is for.
+        self.assertIn('set_push_prompt(profile, "program")', bot)
+
     def test_one_field_is_the_whole_setup(self) -> None:
         self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)
         self.assertIn('OpenBotButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)

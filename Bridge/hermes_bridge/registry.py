@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS push_targets (
 );
 -- The newest reply the watcher has already announced, per bot. Kept on disk so a bridge restart
 -- does not replay yesterday's replies as banners.
+-- Who asked the bot the question it is answering: `human` for a prompt typed on a device,
+-- `program` for one written by another bot or a schedule. A banner announces a reply the owner is
+-- not waiting for; a reply to their own message is not news to them.
+CREATE TABLE IF NOT EXISTS push_prompts (
+    profile      TEXT PRIMARY KEY,
+    at           REAL NOT NULL,
+    source       TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS push_watch (
     profile      TEXT PRIMARY KEY,
     last_at      REAL NOT NULL
@@ -179,6 +187,19 @@ class DeviceRegistry:
             conn.execute("UPDATE push_targets SET preset_bot = ? WHERE device_id = ?",
                          (bot, device_id))
             conn.commit()
+
+    def set_push_prompt(self, profile: str, source: str) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT INTO push_prompts (profile, at, source) VALUES (?, ?, ?) "
+                         "ON CONFLICT(profile) DO UPDATE SET at=excluded.at, "
+                         "source=excluded.source", (profile, time.time(), source))
+            conn.commit()
+
+    def push_prompt(self, profile: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT profile, at, source FROM push_prompts WHERE profile = ?",
+                               (profile,)).fetchone()
+        return dict(row) if row else None
 
     def push_watch(self, profile: str) -> Optional[float]:
         with self._connect() as conn:
