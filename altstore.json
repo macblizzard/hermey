@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.426",
+          "buildVersion": "426",
+          "date": "2026-11-15T15:25:37Z",
+          "localizedDescription": "Phase 4 complete \u2014 tap a bot-to-bot message to see the exchange between the two bots.\n\n\u2022 Tapping 'Message from \u2026' on a bot-to-bot message opens the conversation between those two bots: both directions, oldest first, each with the sender's face and time.\n\u2022 Nothing else changes in how you'd use the apps.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.426/Hermey-0.1.426-b426.ipa",
+          "size": 2620694,
+          "minOSVersion": "17.0",
+          "sha256": "ca1a8a00bfc2ee2bdcad35fb58a66ec79c8460c9810a9b8b82b727e7bbe517c6"
+        },
+        {
           "version": "0.1.422",
           "buildVersion": "422",
           "date": "2026-11-15T13:39:50Z",
@@ -62,16 +72,6 @@
           "size": 2520741,
           "minOSVersion": "17.0",
           "sha256": "9eb2d772bcfb88c1233d71d6ac0b7733be0790cc4c6e9e8ea58d87f4eeb8e9a6"
-        },
-        {
-          "version": "0.1.409",
-          "buildVersion": "409",
-          "date": "2026-11-15T11:15:20Z",
-          "localizedDescription": "Notifications reach you with the app closed: the host no longer believes a stale 'I am reading this bot' claim, and the app now drops that claim when it leaves the foreground. Root cause of the replies that went missing.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.409/Hermey-0.1.409-b409.ipa",
-          "size": 2520775,
-          "minOSVersion": "17.0",
-          "sha256": "6a6483446951ee462c8f97ea28a94427b93ce3a8169029e978958bc810ca2c6b"
         }
       ],
       "appPermissions": {
