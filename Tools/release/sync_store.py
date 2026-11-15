@@ -285,6 +285,30 @@ def contents(github: "GitHub", repo: str, branch: str, path: str) -> tuple[str |
     return base64.b64decode(document.get("content", "")).decode(), document.get("sha")
 
 
+def contents_bytes(github: "GitHub", repo: str, branch: str, path: str) -> tuple[bytes | None, str | None]:
+    """`(bytes, sha)` for one file on a branch; `(None, None)` when it is not there.
+
+    The text variant exists because everything here used to be JSON; an icon is not, and decoding a
+    PNG as UTF-8 to compare it would fail on the first byte above 0x7F.
+    """
+    status, raw = github.request(f"{API}/repos/{repo}/contents/{path}?ref={branch}")
+    if status == 404:
+        return None, None
+    if status >= 300:
+        sys.exit(f"sync_store: reading {branch}:{path} -> {status}")
+    document = json.loads(raw or b"{}")
+    return base64.b64decode(document.get("content", "")), document.get("sha")
+
+
+def put_bytes(github: "GitHub", repo: str, branch: str, path: str, content: bytes,
+              message: str, sha: str | None) -> bool:
+    payload = {"message": message, "content": base64.b64encode(content).decode(), "branch": branch}
+    if sha:
+        payload["sha"] = sha
+    github.json(f"{API}/repos/{repo}/contents/{path}", "PUT", payload)
+    return True
+
+
 def put_contents(github: "GitHub", repo: str, branch: str, path: str, text: str,
                  message: str, sha: str | None) -> None:
     payload = {"message": message, "content": base64.b64encode(text.encode()).decode(), "branch": branch}

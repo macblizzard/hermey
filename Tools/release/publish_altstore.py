@@ -69,6 +69,18 @@ def publish_pages(repo: str, tag: str, work: Path, version: str, build: str, ipa
     if sync_store.update_pages(github, repo, "gh-pages", "altstore.json", manifest):
         print("  pages    altstore.json updated")
 
+    # The Pages copy of the icon, refreshed every publish. It existed on `gh-pages` and was never
+    # rewritten, so the source kept advertising an icon the app had stopped using — the manifest's
+    # `iconURL` pointed at `main`, which was also frozen until the generator took it over.
+    icon = work / "icon-512.png"
+    if icon.exists():
+        wanted_icon = icon.read_bytes()
+        pages_icon, icon_sha = sync_store.contents_bytes(github, repo, "gh-pages", "icon-512.png")
+        if wanted_icon != (pages_icon or b""):
+            sync_store.put_bytes(github, repo, "gh-pages", "icon-512.png", wanted_icon,
+                                 "pages: icon", icon_sha)
+            print("  pages    icon-512.png updated")
+
     text, sha = sync_store.contents(github, repo, "gh-pages", "index.html")
     if text is None:
         return
