@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.419",
+          "buildVersion": "419",
+          "date": "2026-11-15T13:14:27Z",
+          "localizedDescription": "Phase 3 \u2014 categories and list size.\n\n\u2022 Bot categories, stored on the host so the phone and the Mac see the same groups. Add category from the + menu, file a bot in Manage bots or from its long-press menu. Pinned sits above everything, Uncategorized last, and every heading collapses (remembered per device). Deleting a category moves its bots to Uncategorized \u2014 it never deletes a bot.\n\u2022 Appearance gains a Bot list size slider with a live sample row: drag left for a smaller list, right for a larger one. The default is exactly the size the list shipped with.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.419/Hermey-0.1.419-b419.ipa",
+          "size": 2569192,
+          "minOSVersion": "17.0",
+          "sha256": "99d294be182dbcfd27291a78154dc6be2cc11d3bb323798576d1c92ab5ed4d9b"
+        },
+        {
           "version": "0.1.416",
           "buildVersion": "416",
           "date": "2026-11-15T12:51:49Z",
@@ -62,16 +72,6 @@
           "size": 2520586,
           "minOSVersion": "17.0",
           "sha256": "7ef65b49f769ac8d235e2cd4dd88f470c7e9a1134b5683756941490dc61ec9df"
-        },
-        {
-          "version": "0.1.401",
-          "buildVersion": "401",
-          "date": "2026-11-15T09:14:34Z",
-          "localizedDescription": "Hermey's own banners now carry the bot's face: each portrait is rendered once at launch, cached, and attached to the notification. (The corner icon stays the app icon \u2014 iOS chooses it, not the app.) Bark banners unchanged.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.401/Hermey-0.1.401-b401.ipa",
-          "size": 2783213,
-          "minOSVersion": "17.0",
-          "sha256": "6bb19ba73aed529b097c041529de8da47090c05608a06af03249494fb9337be0"
         }
       ],
       "appPermissions": {
