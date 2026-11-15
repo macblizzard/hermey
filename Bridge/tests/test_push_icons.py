@@ -52,9 +52,11 @@ class TestWhereTheBytesLive:
     def test_the_directory_is_one_the_unit_may_write(self):
         # `ReadWritePaths=/var/lib/hermey /root/.hermes/profiles`: anywhere else and every upload is
         # EROFS on the deployed host while the tests happily write into tmp_path.
-        from hermes_bridge.push_icons import ICON_DIR
+        # Read from the module's source, not the attribute: the fixture above patches ICON_DIR.
+        from pathlib import Path
 
-        assert str(ICON_DIR).startswith("/var/lib/hermey/"), str(ICON_DIR)
+        source = Path(push_icons.__file__).read_text(encoding="utf-8")
+        assert 'ICON_DIR = Path("/var/lib/hermey/' in source
 
 
 class TestUpload:
