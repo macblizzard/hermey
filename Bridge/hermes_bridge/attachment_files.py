@@ -24,6 +24,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException, Response
 
 from .device_auth import require_device
+from .paths import profiles_root
 
 #: Only what a chat bubble can draw. A reference to anything else stays a file chip.
 MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
@@ -42,17 +43,12 @@ IMAGE_TYPES = {
 
 
 def _profiles_root() -> Path:
-    """Where the bots live, whether this process was given the install home or a profile home."""
-    home = os.environ.get('HERMES_HOME')
-    candidates = []
-    if home:
-        base = Path(home)
-        candidates.extend([base / 'profiles', base.parent])
-    candidates.append(Path.home() / '.hermes' / 'profiles')
-    for candidate in candidates:
-        if candidate.is_dir():
-            return candidate
-    return candidates[-1]
+    """Where the bots live — ``paths.profiles_root``, the bridge's single rule.
+
+    ``HERMES_PROFILES_ROOT`` is what the installer sets; the copy that used to live here only knew
+    ``HERMES_HOME``, so on a deployed host every attachment 404'd against the wrong directory.
+    """
+    return profiles_root()
 
 
 def _safe_component(value: str) -> Optional[str]:

@@ -170,7 +170,7 @@ struct BotSidebarView: View {
 
             if isSearching {
                 HStack(spacing: 6) {
-                    MacSidebarSearchField(text: $searchQuery, prompt: "")
+                    MacSidebarSearchField(text: $searchQuery, prompt: "Search bots")
                         .onChange(of: searchQuery) { _, typed in searchTranscripts(for: typed) }
                         .layoutPriority(1)
                         .accessibilityIdentifier("sidebar.botSearch")

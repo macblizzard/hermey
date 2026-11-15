@@ -114,10 +114,8 @@ def create_bot_notes_router(runtime) -> APIRouter:
             raise HTTPException(status_code=409, detail="this is a symlink, not a notes file")
         # Written whole and then moved into place: a device that lost the wire mid-write leaves the
         # previous note intact rather than half of a new one.
-        temporary = path.with_suffix(".md.writing")
         try:
-            temporary.write_text(text, encoding="utf-8")
-            temporary.replace(path)
+            paths.atomic_write_text(path, text)
         except OSError as error:
             raise HTTPException(status_code=500,
                                 detail=f"could not write the note: {error.strerror or error}") from error

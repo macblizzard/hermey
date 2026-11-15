@@ -19,6 +19,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel
 
 from .device_auth import require_device
+from . import paths
 
 #: Where the apps write their renders. One file per bot, named after the profile.
 #:
@@ -77,10 +78,9 @@ def create_push_icon_router(runtime) -> APIRouter:
             return {"profile": profile, "changed": False, "sha256": digest}
 
         ICON_DIR.mkdir(parents=True, exist_ok=True)
-        # Written to a neighbour and moved, so a reader never sees half an image.
-        temporary = _path(profile).with_suffix(".png.part")
-        temporary.write_bytes(data)
-        temporary.replace(_path(profile))
+        # Written to a neighbour and moved, so a reader never sees half an image. The neighbour's
+        # name is unique per call: two uploads for one bot used to share `*.png.part`.
+        paths.atomic_write_bytes(_path(profile), data)
         return {"profile": profile, "changed": True, "sha256": digest}
 
     @router.get("/{profile}.png")

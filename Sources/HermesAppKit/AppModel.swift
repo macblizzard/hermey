@@ -267,6 +267,28 @@ public final class AppModel: ObservableObject {
     /// compares against are the very ones the model wrote, so it must not keep a second copy.
     public static let defaults = UserDefaults.standard
 
+    // MARK: Cache
+
+    /// What this device keeps on this host, and how much of it there really is.
+    ///
+    /// Both apps read these three values from here, so the Mac's Caching tab and the phone's Caching
+    /// screen cannot disagree about a switch or a number. The store itself is `HermesKit`'s — the
+    /// model only publishes what it says, because the state that matters lives on disk.
+    @Published public private(set) var cachePreferences = CachePreferences.standard
+    @Published public private(set) var cacheUsage = CacheUsage.empty
+    /// True while a reset is being applied; the screen disables the destructive button rather than
+    /// letting a second reset race the first. The switches and the stepper are not gated: they are
+    /// absolute writes that the store serialises, and dropping one would lose the user's choice.
+    @Published public private(set) var cacheBusy = false
+
+    /// The device's copy of what the host already said. Read-through only: the host stays the
+    /// authority, so this is consulted when a read fails and refreshed whenever one succeeds.
+    private let diskCache: HermesCacheStore
+    /// The tail of the cache's write chain. Writes are chained rather than merely spawned: two
+    /// snapshots fired a moment apart (a resume, then a turn completing) must land in the order the
+    /// host produced them, or the older copy would win the race to the file.
+    private var cacheWriteTask: Task<Void, Never>?
+
     // MARK: Questions the agent is blocked on
 
     @Published public private(set) var pendingRequests: [ServerRequest] = []
@@ -376,9 +398,14 @@ public final class AppModel: ObservableObject {
     /// publishing, so a slow answer for the bot we left cannot overwrite the bot we are on.
     private var botEpoch = 0
 
-    public init(client: GatewayClientProtocol, hostName: String = "hermes") {
+    /// - Parameter cache: the device cache, injectable so a preview or a test can point it at a
+    ///   throwaway directory instead of this machine's Application Support.
+    public init(client: GatewayClientProtocol,
+                hostName: String = "hermes",
+                cache: HermesCacheStore? = nil) {
         self.client = client
         self.hostName = hostName
+        self.diskCache = cache ?? HermesCacheStore(host: hostName)
         // A default only applies to a key nobody wrote: `defaults.bool(forKey:)` answers `false`
         // for an unset key, which would ship reasoning and tool output hidden on first launch.
         let defaults = Self.defaults
@@ -393,6 +420,42 @@ public final class AppModel: ObservableObject {
         // The groups are the host's, but the last document read is cached per host: a launch with
         // no wire still draws the list the owner is used to instead of one Uncategorized bucket.
         loadCachedBotCategories()
+    }
+
+    // MARK: Cache controls
+
+    /// Read the stored switches and measure what is actually on disk.
+    ///
+    /// Cheap enough to call when the Caching screen appears, and the only place `cacheUsage` is
+    /// refreshed: counting files on every turn would be I/O for a number nobody is looking at.
+    public func loadCacheState() async {
+        cachePreferences = await diskCache.preferences()
+        cacheUsage = await diskCache.usage()
+    }
+
+    /// Turn one section of the cache on or off. Turning it off deletes what it kept, in the store,
+    /// before this returns — and never touches anything on the host.
+    public func setCacheSection(_ section: CacheSection, enabled: Bool) async {
+        cachePreferences = await diskCache.setSection(section, enabled: enabled)
+        cacheUsage = await diskCache.usage()
+    }
+
+    /// Set how many chats are kept. Lowering it evicts immediately, so the Usage numbers move with
+    /// the stepper instead of at the next open.
+    public func setCacheChatLimit(_ chats: Int) async {
+        cachePreferences = await diskCache.setChatLimit(chats)
+        cacheUsage = await diskCache.usage()
+    }
+
+    /// Delete everything this device cached. Switches and the limit stay as the user left them,
+    /// because Reset is about storage, not preferences.
+    public func resetCache() async {
+        guard !cacheBusy else { return }
+        cacheBusy = true
+        defer { cacheBusy = false }
+        await diskCache.reset()
+        cacheUsage = await diskCache.usage()
+        ClientLog.note("cache reset on \(hostName)", level: .info, category: "cache")
     }
 
     // MARK: Lifecycle
@@ -490,6 +553,7 @@ public final class AppModel: ObservableObject {
             let loaded = try await client.listBots()
             bots = loaded
             botsError = nil
+            await diskCache.storeBots(loaded)
             if selectedBotID == nil || !loaded.contains(where: { $0.id == selectedBotID }) {
                 selectedBotID = Self.defaultBot(in: loaded, hostName: hostName)?.id
             }
@@ -501,6 +565,29 @@ public final class AppModel: ObservableObject {
             botsError = error.localizedDescription
             ClientLog.note("profiles.list failed: \(error.localizedDescription)",
                            level: .error, category: "bots")
+            // Read-through: a host that cannot answer does not mean the user has no bots. Draw the
+            // last roster this device saw, with `botsError` still set so the list can say it is the
+            // cached copy rather than pretending the host just answered.
+            if bots.isEmpty, let cached = await diskCache.chatList(), !cached.bots.isEmpty {
+                bots = cached.bots.map(\.bot)
+                applyCachedPreviews(cached)
+                if selectedBotID == nil {
+                    selectedBotID = Self.defaultBot(in: bots, hostName: hostName)?.id
+                }
+                ClientLog.note("drawing \(bots.count) cached bots for \(hostName)",
+                               level: .info, category: "cache")
+            }
+        }
+    }
+
+    /// Paint the cached third lines and times for any bot the host has not covered.
+    ///
+    /// Unread counts are deliberately *not* applied: a badge is a claim about right now, and a
+    /// cached one would announce messages that may already have been read on another device.
+    private func applyCachedPreviews(_ document: CachedChatList) {
+        for (bot, preview) in document.previews where botPreviews[bot] == nil {
+            if let line = Self.previewLine(preview.text) { botPreviews[bot] = line }
+            if let at = Self.seconds(preview.timestamp) { botPreviewTimes[bot] = at }
         }
     }
 
@@ -592,6 +679,17 @@ public final class AppModel: ObservableObject {
             fromBridge = feed.previews
         } else if feed != nil {
             fromBridge = feed?.previews ?? [:]
+        }
+
+        // Write-through after the host answered, and read-through when it did not: the third line
+        // is the one piece of the list that is expensive to fetch (one request per bot on a host
+        // without the bridge route), so it is worth keeping between launches.
+        if let feed {
+            let rows = feed.previews.filter { ids.contains($0.key) }
+            let unread = feed.unread.filter { ids.contains($0.key) }
+            await diskCache.storePreviews(rows.mapValues { CachedPreview($0) }, unread: unread)
+        } else if let cached = await diskCache.chatList() {
+            applyCachedPreviews(cached)
         }
         // The third line and the order still apply from a stale answer — they are text and time,
         // not a claim about how much is waiting.
@@ -782,6 +880,44 @@ public final class AppModel: ObservableObject {
         recentTranscripts[id] = RecentTranscript(entries: entries, earlierCursor: cursor, total: total)
     }
 
+    /// Write the rows on screen to the device cache, without making anyone wait for the disk.
+    ///
+    /// Fire-and-forget on purpose: a transcript is written after a resume, a finished turn and a
+    /// page load — holding those up on I/O would trade a visible speed-up for a cache. The store is
+    /// an actor, so the writes serialize there, and a failure only means the next launch misses.
+    private func cacheTranscriptSoon(_ id: SessionID?) {
+        guard let id, !draftSessionIDs.contains(id), !transcript.isEmpty else { return }
+        let entries = transcript
+        let cursor = earlierCursor
+        let total = historyTotal
+        let previous = cacheWriteTask
+        let cache = diskCache
+        cacheWriteTask = Task {
+            _ = await previous?.value
+            await cache.storeMessages(entries, for: id, cursor: cursor, total: total)
+        }
+    }
+
+    /// Put the last cached copy of a chat on screen after the host failed to answer.
+    ///
+    /// Shared by both open paths — a plain `select` and the endless-chat opener — so an offline
+    /// launch shows the conversation the user was reading instead of an empty pane. The error the
+    /// caller raised stays on screen: cached rows are context, not a claim that the host answered.
+    @discardableResult
+    private func paintCachedConversation(_ id: SessionID) async -> Bool {
+        guard transcript.isEmpty, let cached = await diskCache.messages(for: id) else { return false }
+        let index = await diskCache.links(for: id)
+        selectedSessionID = id
+        transcript = SentAttachmentVault.decorate(cached.messages, sessionID: id)
+        if let index { transcript = index.attachMissing(to: transcript) }
+        earlierCursor = cached.cursor
+        historyTotal = cached.total
+        turnRowStart = transcript.count
+        ClientLog.note("painted \(cached.entries.count) cached rows after a failed resume",
+                       level: .info, category: "cache")
+        return true
+    }
+
     /// The two codes the host uses for "I have never seen that session id in this process".
     private static func isUnknownSession(_ error: GatewayError) -> Bool {
         guard case .rpc(let rpc) = error else { return false }
@@ -827,6 +963,12 @@ public final class AppModel: ObservableObject {
         // used to be painted as an unreachable host. Its pane is empty by definition, so adopt it
         // locally and let the first prompt persist the row — the next select is a real resume.
         if draftSessionIDs.contains(id) { return }
+        // No socket means no host to ask, so the device's only copy is the right thing to draw now
+        // rather than after the resume fails. Connected is deliberately excluded: a live host's
+        // answer must never be preceded by older rows on screen.
+        if transcript.isEmpty, !connection.isLive {
+            await paintCachedConversation(id)
+        }
         // A resume that is still in flight when the bot (or the session) changes must not land:
         // it carries the transcript of the thing the user just left.
         let epoch = botEpoch
@@ -838,6 +980,7 @@ public final class AppModel: ObservableObject {
             pendingRequests = resumed.openRequests
             adopt(resumed, session: id)
             remember(id, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
+            cacheTranscriptSoon(id)
         } catch is CancellationError {
             // SwiftUI cancels the `.task` when the screen goes away — backgrounding, the app
             // switcher, a pushed sheet. That is not a failed session, and surfacing it painted a
@@ -862,6 +1005,7 @@ public final class AppModel: ObservableObject {
                     adopt(retried, session: id)
                     remember(id, entries: transcript, cursor: retried.earlierCursor,
                              total: retried.historyTotal)
+                    cacheTranscriptSoon(id)
                     ClientLog.note("session.resume recovered on a fresh socket",
                                    level: .info, category: "session")
                     return
@@ -875,6 +1019,9 @@ public final class AppModel: ObservableObject {
             lastSendError = "could not open this session: \(Self.openReason(failure))"
             ClientLog.note("session.resume failed for \(id): \(failure.localizedDescription)",
                            level: .error, category: "session")
+            // Read-through: the host could not answer, so draw the last copy this device kept
+            // rather than an empty pane.
+            await paintCachedConversation(id)
         }
     }
 
@@ -982,6 +1129,7 @@ public final class AppModel: ObservableObject {
             pendingRequests = resumed.openRequests
             adopt(resumed, session: sid)
             remember(sid, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
+            cacheTranscriptSoon(sid)
             transcriptReloads += 1
             settleCompactionWait()
         } catch is CancellationError {
@@ -1312,6 +1460,11 @@ public final class AppModel: ObservableObject {
     /// Resume one stored id and put it on screen.
     private func openStoredConversation(_ stored: SessionID, botID: String,
                                         publish: Bool) async -> OpenOutcome {
+        // Offline, the resume will end in a failed call after however long the transport takes to
+        // admit it. The device's copy can go up now, and a live host never sees this branch.
+        if transcript.isEmpty, !connection.isLive {
+            await paintCachedConversation(stored)
+        }
         do {
             let resumed = try await client.resumeSession(stored, profile: botID)
             selectedSessionID = stored
@@ -1320,6 +1473,7 @@ public final class AppModel: ObservableObject {
             pendingRequests = resumed.openRequests
             adopt(resumed, session: stored)
             captureConversation(for: botID)
+            cacheTranscriptSoon(stored)
             // Whatever actually opened is the best cache this device can keep — including a host id
             // that replaced a different local one.
             Self.defaults.set(stored, forKey: Self.endlessKey(botID))
@@ -1337,10 +1491,12 @@ public final class AppModel: ObservableObject {
                 lastSendError = "could not open the conversation: \(error.localizedDescription)"
                 ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
                                level: .error, category: "session")
+                await paintCachedConversation(stored)
                 return .failed
             }
             // Forget it locally too, so an offline open does not retry a dead id.
             Self.defaults.removeObject(forKey: Self.endlessKey(botID))
+            await diskCache.discard(stored)
             return .forgotten
         }
     }
@@ -1518,6 +1674,11 @@ public final class AppModel: ObservableObject {
         // Fire-and-forget, after the local state is settled: this device is reset even if the
         // bridge never hears about it (a failure only means the other device has to reset too).
         Task { await publishSharedSession(nil, for: botID) }
+        // A reset conversation must not come back from the disk cache either — that is exactly the
+        // resurrection the in-memory cache already guards against.
+        if let stored, !stored.isEmpty {
+            Task { await diskCache.discard(stored) }
+        }
         guard let stored, selectedSessionID == stored else { return }
         // The conversation on screen is the one just forgotten: leaving its bubbles up would let
         // the user keep typing into a session nothing will reopen.
@@ -2917,6 +3078,7 @@ public final class AppModel: ObservableObject {
             runningSessions.remove(session)
             // The turn is now part of what a re-open should show instantly.
             remember(session, entries: transcript, cursor: earlierCursor, total: historyTotal)
+            cacheTranscriptSoon(session)
             // Not awaited: compaction is a model turn that can take minutes, and parking this loop
             // would hold back every later delta, approval and tool event behind it.
             Task { await self.autoCompactIfNeeded() }
@@ -3115,6 +3277,7 @@ public final class AppModel: ObservableObject {
                 turnRowStart += fresh.count
                 earlierAnchor = fold
                 earlierLoads += 1
+                cacheTranscriptSoon(sid)
                 return
             } catch {
                 guard selectedSessionID == sid else { return }

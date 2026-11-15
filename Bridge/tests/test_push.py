@@ -110,8 +110,51 @@ class TestTheRelayClient:
         class Boom:
             def __init__(self, *a, **k): raise OSError("no route")
 
-        monkeypatch.setattr("urllib.request.urlopen", Boom)
+        monkeypatch.setattr("hermes_bridge.push._OPENER.open", Boom)
         assert relay.send("http://127.0.0.1:1", "K", title="t", body="b") is False
+
+    def test_a_relay_cannot_redirect_this_host(self):
+        """A 30x from a registered endpoint must not be followed.
+
+        urllib replays the POST body to whatever the ``Location`` names, so a device that registered
+        ``http://<host>/<key>`` could otherwise make this process POST into a loopback service. The
+        relay refuses the hop, and the target is never touched.
+        """
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        hit = {"target": False}
+
+        class Silent(BaseHTTPRequestHandler):
+            def log_message(self, fmt: str, *args) -> None:  # keep the test output clean
+                pass
+
+        class Target(Silent):
+            def do_POST(self) -> None:  # noqa: N802 - http.server's spelling
+                hit["target"] = True
+                self.send_response(200)
+                self.end_headers()
+
+        target = HTTPServer(("127.0.0.1", 0), Target)
+        target_port = target.server_port
+
+        class Redirect(Silent):
+            def do_POST(self) -> None:  # noqa: N802
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{target_port}/stolen")
+                self.end_headers()
+
+        redirect = HTTPServer(("127.0.0.1", 0), Redirect)
+        for server in (target, redirect):
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            relay = BarkRelay(timeout=2)
+            sent = relay.send(f"http://127.0.0.1:{redirect.server_port}", "K", title="t", body="b")
+            assert sent is False
+            assert hit["target"] is False
+        finally:
+            for server in (target, redirect):
+                server.shutdown()
+                server.server_close()
 
 
 class TestTheWatcher:

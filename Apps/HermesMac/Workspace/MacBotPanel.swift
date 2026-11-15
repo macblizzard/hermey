@@ -13,7 +13,8 @@ import SwiftUI
 /// over it.
 ///
 /// It is a *panel*, not a sheet: nothing here is modal, and the transcript keeps scrolling behind
-/// it. Escape and the ✕ both put it away, and so does the same ⋯ that opened it.
+/// it. Escape and the ✕ both put it away, a click outside puts it away without eating the click,
+/// and so does the pill that opened it — the pill and ⌘E are the same toggle.
 struct MacBotPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var store: WorkspaceStore
@@ -67,7 +68,7 @@ struct MacBotPanel: View {
                     panel {
                         // "Search conversations" — the scope, said out loud: it searches this bot's
                         // talk, not the host's files (that is Library) and not the app's settings.
-                        row("Search conversations", icon: "magnifyingglass") {
+                        row("Search this conversation", icon: "magnifyingglass") {
                             store.openFindInChat()
                         }
                     }
@@ -112,6 +113,9 @@ struct MacBotPanel: View {
         // for the moment the two shades happen to match.
         .background(Tokens.sheet)
         .overlay(alignment: .leading) { Hairline(.vertical, color: Tokens.border) }
+        // A click that lands anywhere but on this panel puts it away. It is not absorbed: the panel
+        // is not modal, so the transcript still receives the click it was aimed at.
+        .background(OutsideClickCatcher { store.dismissBotPanelFromOutsideClick() })
         // Escape puts it away. The panel is not modal, so it does not steal the keyboard; this
         // only fires when the pointer or the focus is already in it.
         .onExitCommand { close() }
@@ -125,7 +129,7 @@ struct MacBotPanel: View {
     }
 
     private func close() {
-        withAnimation(.easeOut(duration: 0.16)) { store.isBotPanelPresented = false }
+        store.closeBotPanel()
     }
 
     // MARK: - Header

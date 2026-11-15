@@ -102,9 +102,7 @@ def create_bot_defaults_router(runtime) -> APIRouter:
             path.unlink(missing_ok=True)
             return payload()
         path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(body.text, encoding="utf-8")
-        temp.replace(path)
+        paths.atomic_write_text(path, body.text)
         return payload()
 
     return router

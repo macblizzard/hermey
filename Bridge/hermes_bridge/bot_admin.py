@@ -27,12 +27,13 @@ import logging
 import os
 import re
 import tarfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -58,6 +59,12 @@ STATE_FILE = paths.DISABLED_STATE_FILE
 DASHBOARD_URL = os.environ.get("HERMES_BRIDGE_DASHBOARD_URL", "http://127.0.0.1:9120")
 
 REQUEST_TIMEOUT = 120
+
+#: One lock for the disabled-bots file. Two devices toggling two bots read-modify-write the same
+#: document; without this the second save starts from the first request's read and drops its change
+#: — the same race the categories file has a lock for. Re-entrant because a mutation writes through
+#: ``_write_state``, which is called from inside it.
+_STATE_LOCK = threading.RLock()
 
 
 class EnabledChange(BaseModel):
@@ -167,20 +174,70 @@ def _routine_row(job: dict) -> dict:
 
 
 def _read_state() -> dict:
+    """The disabled markers, or an empty document when the file is absent or unreadable.
+
+    A damaged file is copied aside before it is treated as empty. Silently reading it as "nothing is
+    disabled" is the dangerous direction: every bot the owner switched off would quietly come back
+    on. Keeping the bytes makes the loss visible and recoverable, the same rule the categories file
+    follows.
+    """
     try:
-        return json.loads(STATE_FILE.read_text())
-    except (OSError, ValueError):
+        raw = STATE_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
+    except OSError:
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        try:
+            STATE_FILE.with_suffix(STATE_FILE.suffix + ".damaged").write_text(raw, encoding="utf-8")
+        except OSError:
+            pass
+        log.warning("disabled-bots state was not valid JSON; kept a .damaged copy")
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {name: entry for name, entry in data.items() if isinstance(entry, dict)}
 
 
 def _write_state(state: dict) -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2, sort_keys=True))
+    """Replace the whole document in one step, under the file's lock.
+
+    In-place ``write_text`` is not atomic: a crash or a full disk mid-write leaves JSON that parses
+    as nothing, which reads back as "every bot is enabled". The rename is the publish.
+    """
+    paths.atomic_write_text(STATE_FILE, json.dumps(state, indent=2, sort_keys=True))
 
 
 def disabled_profiles() -> set[str]:
     """Profiles the owner turned off — a peer's message must not be the way around that."""
     return {name for name, entry in _read_state().items() if entry.get("enabled") is False}
+
+
+def _mutate_state(change: Callable[[dict], Any]) -> Any:
+    """Apply one change to the disabled-bots document, under its lock, and return what it returned.
+
+    Read, change and write are one step for anyone else touching this file, and a change that raises
+    (a refusal, an unreachable dashboard) leaves the file exactly as it was.
+    """
+    with _STATE_LOCK:
+        state = _read_state()
+        outcome = change(state)
+        _write_state(state)
+        return outcome
+
+
+def _known_job_ids(entry: dict) -> list[str]:
+    """The job ids a disable recorded, filtered to ids that are safe in a dashboard URL.
+
+    They come back from disk, so they are caller-controllable in the sense that matters: a damaged
+    or hand-edited file must not be able to reshape the loopback request this route makes.
+    """
+    raw = entry.get("paused_jobs")
+    if not isinstance(raw, list):
+        return []
+    return [str(job_id) for job_id in raw if isinstance(job_id, str) and JOB_ID_RE.match(job_id)]
 
 
 def create_bot_admin_router(runtime) -> APIRouter:
@@ -220,9 +277,8 @@ def create_bot_admin_router(runtime) -> APIRouter:
             raise HTTPException(status_code=500,
                                 detail="the host reported success but the profile remains")
 
-        state = _read_state()
-        state.pop(profile, None)
-        _write_state(state)
+        # A deleted bot must not keep a disabled marker that a later bot with the same name inherits.
+        _mutate_state(lambda state: state.pop(profile, None))
 
         runtime.audit.emit("bots.purge", device_id=caller, method="bots.purge",
                            path=f"/v1/bots/{profile}/purge",
@@ -235,17 +291,18 @@ def create_bot_admin_router(runtime) -> APIRouter:
         """Disable = pause this bot's schedules; enable = resume the ones we paused."""
         caller = authenticate(authorization)
         _profile_dir(profile)
-        state = _read_state()
-        entry = state.get(profile, {})
 
-        if body.enabled:
-            resumed: list[str] = []
-            for job_id in entry.get("paused_jobs", []):
-                _dashboard("POST", f"/api/cron/jobs/{job_id}/resume?profile={profile}")
-                resumed.append(str(job_id))
-            state.pop(profile, None)
-            outcome = {"profile": profile, "enabled": True, "resumed_jobs": resumed}
-        else:
+        def change(state: dict) -> dict:
+            entry = state.get(profile, {})
+
+            if body.enabled:
+                resumed: list[str] = []
+                for job_id in _known_job_ids(entry):
+                    _dashboard("POST", f"/api/cron/jobs/{job_id}/resume?profile={profile}")
+                    resumed.append(job_id)
+                state.pop(profile, None)
+                return {"profile": profile, "enabled": True, "resumed_jobs": resumed}
+
             # Only the jobs that were running: resuming later must not wake a job the owner paused.
             running = [str(job["id"]) for job in _cron_jobs(profile) if not job.get("paused")]
             paused: list[str] = []
@@ -253,9 +310,10 @@ def create_bot_admin_router(runtime) -> APIRouter:
                 _dashboard("POST", f"/api/cron/jobs/{job_id}/pause?profile={profile}")
                 paused.append(job_id)
             state[profile] = {"enabled": False, "disabled_at": time.time(), "paused_jobs": paused}
-            outcome = {"profile": profile, "enabled": False, "paused_jobs": paused}
+            return {"profile": profile, "enabled": False, "paused_jobs": paused}
 
-        _write_state(state)
+        # One locked read-modify-write: two devices toggling two bots must both keep their change.
+        outcome = _mutate_state(change)
         runtime.audit.emit("bots.state", device_id=caller,
                            method="bots.state",
                            path=f"/v1/bots/{profile}/state",

@@ -30,6 +30,7 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from .device_auth import require_device
+from .paths import profiles_root
 
 #: Long enough that a burst of list refreshes is one read, short enough that a reply shows up
 #: while the user is still looking at the list.
@@ -51,25 +52,14 @@ class UnreadRequest(BaseModel):
 
 
 def _profiles_root() -> Path:
-    """Where the bots live, whether this process is given the install home or a profile home.
+    """Where the bots live.
 
-    ``HERMES_HOME`` can be either: the install home (``~/.hermes``, so bots are ``profiles/*``) or
-    a running profile (``~/.hermes/profiles/assistant``), in which case the other bots are its siblings.
-    Guessing wrong here means an endpoint that quietly answers nothing, which is worse than one
-    that is slow, so both shapes are checked against the filesystem.
+    One resolver for the whole bridge (``paths.profiles_root``): this module, the search, the
+    reply watcher and the attachment route each used to carry a copy, and every copy but this one
+    ignored ``HERMES_PROFILES_ROOT`` — the variable the installer actually sets — so on a deployed
+    host previews could answer nothing while the bot list was full.
     """
-    candidates: list[Path] = []
-    home = os.environ.get("HERMES_HOME")
-    if home:
-        base = Path(home)
-        candidates.append(base / "profiles")
-        if base.parent.name == "profiles":
-            candidates.append(base.parent)
-    candidates.append(Path.home() / ".hermes" / "profiles")
-    for candidate in candidates:
-        if candidate.is_dir():
-            return candidate
-    return candidates[-1]
+    return profiles_root()
 
 
 _MARKUP = re.compile(r"\*\*|__|`+")

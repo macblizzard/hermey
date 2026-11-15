@@ -51,6 +51,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from .device_auth import require_device
+from . import paths
 
 #: A profile name is a directory name elsewhere, so it is checked with the same shape the CLI uses.
 PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -119,11 +120,10 @@ def save(runtime, data: dict) -> None:
 
 
 def _write_document(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".writing")
-    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     # The move is the publish: a reader sees the old document or the new one, never a half of one.
-    temporary.replace(path)
+    # `atomic_write_text` uses a scratch name of its own per call — a fixed one (`.writing`) is
+    # shared by two concurrent writers and can publish a mix of both documents.
+    paths.atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
 #: One lock per state file, so two requests in one bridge cannot interleave their read-modify-write.

@@ -140,7 +140,10 @@ struct BotListScreen: View {
             }
             if model.botsLoading && model.bots.isEmpty {
                 loadingRow
-            } else if filtered.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
+            } else if filtered.isEmpty && trimmedQuery.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
+                // Only a genuinely empty list is an empty state. A query that matches no bot NAME
+                // must still show its message findings — hiding them here is what made search look
+                // broken at the third character.
                 emptySection
             } else if !trimmedQuery.isEmpty {
                 // Findings first: a phrase is the thing being looked for. The bot rows follow, so a
@@ -1004,7 +1007,7 @@ struct BotListScreen: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Tokens.textDim)
-            TextField("Search bots", text: $query)
+            TextField("Search bots and messages", text: $query)
                 .focused($searchFocused)
                 .font(TypeScale.font(TypeScale.chatBody))
                 .foregroundStyle(Tokens.textPrimary)

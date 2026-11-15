@@ -148,6 +148,24 @@ def _disabled(profile: str) -> bool:
     return profile in disabled_profiles()
 
 
+def _read_frame(raw: object) -> dict:
+    """One gateway frame, or a 502.
+
+    A gateway that answers with something that is not JSON (a stray log line, a half frame) used to
+    raise ``JSONDecodeError`` out of this route, which is an unhandled 500 with a Python traceback
+    where the caller was promised a queued delivery. It is an upstream fault, so it says so.
+    """
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", "replace")
+    try:
+        frame = json.loads(raw) if isinstance(raw, str) else None
+    except ValueError:
+        raise HTTPException(status_code=502, detail='gateway sent an unreadable frame') from None
+    if not isinstance(frame, dict):
+        raise HTTPException(status_code=502, detail='gateway sent an unreadable frame')
+    return frame
+
+
 async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[str, Optional[str]]:
     """Resume the stored session *within its profile*, submit, and wait for that session's completion.
 
@@ -196,7 +214,7 @@ async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[st
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise HTTPException(status_code=504, detail='gateway did not resume the session')
-            frame = json.loads(await asyncio.wait_for(upstream.recv(), timeout=remaining))
+            frame = _read_frame(await asyncio.wait_for(upstream.recv(), timeout=remaining))
             if frame.get("id") == 2:
                 if "error" in frame:
                     error = frame.get("error") or {}
@@ -220,13 +238,15 @@ async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[st
             if remaining <= 0:
                 break
             try:
-                frame = json.loads(await asyncio.wait_for(upstream.recv(), timeout=remaining))
+                frame = _read_frame(await asyncio.wait_for(upstream.recv(), timeout=remaining))
             except asyncio.TimeoutError:
                 break
             if frame.get("id") == 3 and "error" in frame:
                 raise HTTPException(status_code=502, detail='gateway refused the message')
-            params = frame.get("params") if isinstance(frame.get("params"), dict) else {}
-            payload = params.get("payload") if isinstance(params.get("payload"), dict) else params
+            raw_params = frame.get("params")
+            params: dict = raw_params if isinstance(raw_params, dict) else {}
+            nested = params.get("payload")
+            payload: dict = nested if isinstance(nested, dict) else params
             # The event name sits on `params.type` (the bridge keys `gateway.ready` off it) and, on
             # some events, again inside the payload. Read every place it may be rather than guess.
             name = params.get("type") or params.get("event") or payload.get("event") or payload.get("type")

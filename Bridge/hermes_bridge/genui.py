@@ -41,6 +41,7 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse, Response
 
 from .device_auth import require_device
+from . import paths
 from .paths import profiles_root
 
 #: A board id is eight lowercase hex characters; anything else never touches the disk.
@@ -153,7 +154,11 @@ def create_genui_router(runtime) -> APIRouter:
         exists; a native caller with a ticket needs no session at all.
         """
         if session:
-            if _session_device(session) is not None:
+            device_id = _session_device(session)
+            # A card session is a capability, but revocation has to land: the ticket that minted it
+            # is checked against the registry on every other route, so a revoked device must not
+            # keep reading boards for the rest of the session's two minutes.
+            if device_id is not None and runtime.registry.is_active(device_id):
                 return None
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         credential = _token(authorization, token)
@@ -319,10 +324,9 @@ def create_genui_router(runtime) -> APIRouter:
         text = json.dumps(state, ensure_ascii=False)
         if len(text.encode("utf-8")) > STATE_LIMIT:
             return JSONResponse(TOO_BIG, status_code=413)
-        # Same one-step write the plugin uses: a reader sees the old file or the new one.
-        tmp = board.with_name(f"{block_id}.state.json.tmp")
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(board.with_name(f"{block_id}.state.json"))
+        # Same one-step write the plugin uses: a reader sees the old file or the new one. The
+        # scratch name is unique per call, so two ticks landing together cannot share it.
+        paths.atomic_write_text(board.with_name(f"{block_id}.state.json"), text)
         return Response(status_code=204)
 
     return router

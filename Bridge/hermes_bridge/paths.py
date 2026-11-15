@@ -9,6 +9,7 @@ is an instant `EROFS` on the first bot delete.
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -42,11 +43,46 @@ def profiles_root() -> Path:
     ``HERMES_PROFILES_ROOT`` wins (the installer sets it), then ``HERMES_HOME``/profiles, then the
     conventional home. A bridge running under a different user than the agent still reads the right
     directory instead of silently reporting an empty bot list.
+
+    ``HERMES_HOME`` can be either the install home (``~/.hermes``, so bots are ``profiles/*``) or a
+    running profile (``~/.hermes/profiles/assistant``), in which case the bots are its siblings —
+    both shapes are honoured here because four modules used to carry their own copy of this rule and
+    three of them ignored ``HERMES_PROFILES_ROOT`` entirely.
     """
     explicit = os.environ.get("HERMES_PROFILES_ROOT", "").strip()
     if explicit:
         return Path(explicit).expanduser()
     home = os.environ.get("HERMES_HOME", "").strip()
     if home:
-        return Path(home).expanduser() / "profiles"
+        base = Path(home).expanduser()
+        if base.parent.name == "profiles":
+            return base.parent
+        return base / "profiles"
     return Path.home() / ".hermes" / "profiles"
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write *data* to *path* so a reader sees the old file or the new one, never half of either.
+
+    The temporary file is unique per call: with a fixed name two concurrent writers share one
+    scratch file, and the second ``replace`` can publish a mix of both payloads. The rename is the
+    publish, and it stays inside the destination directory so it is a same-filesystem move.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".writing")
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(data)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    """``atomic_write_bytes`` for text. See that function for why the temp name is unique."""
+    atomic_write_bytes(path, text.encode(encoding))

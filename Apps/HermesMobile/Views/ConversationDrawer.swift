@@ -170,7 +170,7 @@ struct ConversationDrawer: View {
             panel {
                 // "Search conversations" — the scope, said out loud: it searches this bot's talk,
                 // not the host's files (that is Library) and not the app's settings.
-                row("Search conversations", systemImage: "magnifyingglass", run: onSearch)
+                row("Search this conversation", systemImage: "magnifyingglass", run: onSearch)
             }
 
             // Compaction, the unread sweep and spoken replies are gone from this page: the first

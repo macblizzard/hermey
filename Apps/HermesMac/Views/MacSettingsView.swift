@@ -40,14 +40,20 @@ struct MacSettingsView: View {
             NotificationsSettingsTab(store: store)
                 .tabItem { Label("Notifications", systemImage: "bell") }
 
+            // What this Mac keeps, with real byte counts and the switches that govern them. Last
+            // before About, because storage is something a user looks for rather than tunes daily.
+            CachingSettingsTab(store: store)
+                .tabItem { Label("Caching", systemImage: "internaldrive") }
+
             // Last: a version number is something a user goes looking for, and it reports the
             // build CI stamped rather than anything this file could guess.
             AboutSettingsTab(store: store)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Six tabs now (Chat, Bots, Connection, Appearance, Notifications, About): at 560 the bar
-        // ran out of room and macOS pushed the last tab behind a chevron.
-        .frame(width: 620, height: 500)
+        // Seven tabs now (Chat, Bots, Connection, Appearance, Notifications, Caching, About): at the
+        // previous 620 the bar already pushed the last tab behind a chevron, so the window grew with
+        // the tab rather than hiding one.
+        .frame(width: 700, height: 500)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
         // Escape and a click outside both close this window, the way every other surface in the

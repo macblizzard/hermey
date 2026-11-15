@@ -567,17 +567,22 @@ struct ConversationScreen: View {
 
     // MARK: Transcript
 
-    /// Search visible transcript text, including the summaries of tool and reasoning rows.
+    /// The rows this conversation matches, in reading order, with the live turn last.
+    ///
+    /// Recomputed from the transcript on every keystroke by `ConversationSearch` — the same matcher
+    /// the Mac's in-chat search uses — so the count beside the field can never lag the text in it,
+    /// and a longer query can only narrow the answer. The old local copy tested each row with
+    /// `localizedCaseInsensitiveContains` against the raw stored text: locale- and
+    /// diacritic-sensitive, blind to a phrase split by a line break, and a separate implementation
+    /// from the Mac's. `ConversationSearch` states the contract; its tests hold it.
     private var searchMatches: [String] {
-        guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        var ids = model.visibleTranscript.filter { entry in
-            entry.text.localizedCaseInsensitiveContains(searchText)
-        }.map(\.id)
-        if !model.streamingText.isEmpty,
-           model.streamingText.localizedCaseInsensitiveContains(searchText) {
-            ids.append(Self.streamingSearchID)
-        }
-        return ids
+        ConversationSearch.ids(matching: searchText,
+                               in: model.visibleTranscript,
+                               id: \.id,
+                               text: \.text,
+                               extra: model.streamingText.isEmpty
+                                   ? nil
+                                   : (id: Self.streamingSearchID, text: model.streamingText))
     }
 
     private var selectedSearchID: String? {
@@ -587,26 +592,38 @@ struct ConversationScreen: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: 10) {
+        // One pass over the transcript per render, not one per reference: the count, the two
+        // buttons and the highlight all read the same answer.
+        let found = searchMatches
+        let status = ConversationSearch.status(query: searchText,
+                                               matched: found.count,
+                                               index: searchIndex)
+        return HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Tokens.textMuted)
-            TextField("Search messages", text: $searchText)
+            // "Search this conversation", not "Search messages": the bot list's field is the one
+            // that searches the host's conversations, and the two fields read as the same control
+            // (reported 2026-11-15). This one is deliberately scoped to the chat on screen.
+            TextField(ConversationSearch.prompt, text: $searchText)
                 .focused($searchFocused)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .accessibilityIdentifier("conversationSearchField")
-            Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                 ? "" : searchMatches.isEmpty ? "No matches" : "\(min(searchIndex + 1, searchMatches.count)) of \(searchMatches.count)")
+            Text(status)
                 .font(TypeScale.font(TypeScale.sm))
-                .foregroundStyle(Tokens.textSecondary)
-                .fixedSize()
+                .foregroundStyle(found.isEmpty && ConversationSearch.isActive(searchText)
+                                 ? Tokens.warning : Tokens.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .accessibilityIdentifier("conversationSearchCount")
+            // Disabled on the count, not on a stored list: the answer is recomputed for the query
+            // that is in the field right now, so the buttons cannot point at a previous one.
             Button { moveSearch(-1) } label: { Image(systemName: "chevron.up") }
-                .disabled(searchMatches.isEmpty)
+                .disabled(found.isEmpty)
                 .accessibilityLabel("Previous search result")
             Button { moveSearch(1) } label: { Image(systemName: "chevron.down") }
-                .disabled(searchMatches.isEmpty)
+                .disabled(found.isEmpty)
                 .accessibilityLabel("Next search result")
             Button("Done") {
                 searchFocused = false
@@ -627,9 +644,12 @@ struct ConversationScreen: View {
     }
 
     private func moveSearch(_ direction: Int) {
-        let count = searchMatches.count
-        guard count > 0 else { return }
-        searchIndex = (min(searchIndex, count - 1) + direction + count) % count
+        // Wraps at both ends and is defined at every count, including none — the old
+        // `(index + direction + count) % count` needed a guard and could still be handed an index
+        // earned under a wider query.
+        searchIndex = ConversationSearch.stepped(searchIndex,
+                                                 count: searchMatches.count,
+                                                 by: direction)
     }
 
     private func scrollToSearchResult(_ proxy: ScrollViewProxy) {
@@ -797,9 +817,11 @@ struct ConversationScreen: View {
             .onChange(of: searchIndex) {
                 scrollToSearchResult(proxy)
             }
-            .onChange(of: searchMatches) {
+            .onChange(of: searchMatches) { _, found in
                 guard isSearching else { return }
-                searchIndex = min(searchIndex, max(0, searchMatches.count - 1))
+                // Clamped, not assumed: the answer shrank while the index was earned under a
+                // longer list, and pointing past the end is how a search "loses" its last match.
+                searchIndex = ConversationSearch.clamped(searchIndex, count: found.count)
                 scrollToSearchResult(proxy)
             }
         }

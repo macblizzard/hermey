@@ -173,7 +173,7 @@ struct ConversationHeader: View {
                 // capsule *and its hit box* on a spring — a click that arrived while the shape was
                 // still moving could land outside it, which read as "the pill ignores clicks"
                 // (reported 2026-11-15).
-                Capsule().strokeBorder(hovered || store.isBotPanelPresented
+                Capsule().strokeBorder(hovered || store.isBotPanelVisible
                                        ? Tokens.borderStrong : Tokens.border,
                                        lineWidth: 1)
             )
@@ -190,7 +190,9 @@ struct ConversationHeader: View {
         .frame(maxWidth: max(180, width * 0.46))
         .accessibilityLabel("\(title), bot actions")
         .accessibilityIdentifier("botPanelButton")
-        .help(store.isBotPanelPresented ? "Close the bot panel" : "Bot panel — computer, workspace, skills, settings")
+        .help(store.isBotPanelVisible
+              ? "Close the bot panel (⌘E)"
+              : "Bot panel — computer, workspace, skills, settings (⌘E)")
     }
 
     /// `200 000` reads as a number; `200k` fits in a chip next to the model name.

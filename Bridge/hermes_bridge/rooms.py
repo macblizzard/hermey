@@ -114,18 +114,28 @@ ATTACHMENT_ROOT = paths.ROOM_ATTACHMENT_ROOT
 MAX_ATTACHMENTS = 4
 
 
-async def _rpc(method: str, params: dict) -> dict:
+async def _rpc(method: str, params: dict, config=None) -> dict:
     """One gateway call on a short-lived socket.
 
     Deliberately not pooled: a room read must not be able to hold a socket the conversation loop
     depends on, and the gateway is on loopback, so connect cost is a local handshake.
+
+    *config* is the bridge's own configuration, and it is preferred over the environment copy below:
+    the installer writes the real gateway port into ``HERMES_BRIDGE_GATEWAY_URL``, and this module's
+    own fallback port is only right on a default install — a host with a non-default dashboard port
+    had a rooms surface that answered 503 while the rest of the bridge worked.
     """
     import websockets
 
-    socket_url = _validated_gateway_ws()
-    url = f"{socket_url}?token={GATEWAY_TOKEN}" if GATEWAY_TOKEN else socket_url
+    if config is not None:
+        dial = config.upstream_url()          # already loopback-checked by BridgeConfig.validate()
+        shown = config.safe_gateway_url()
+    else:
+        socket_url = _validated_gateway_ws()
+        dial = f"{socket_url}?token={GATEWAY_TOKEN}" if GATEWAY_TOKEN else socket_url
+        shown = GATEWAY_WS.split("?")[0]
     try:
-        async with websockets.connect(url, open_timeout=10, max_size=None, proxy=None) as ws:
+        async with websockets.connect(dial, open_timeout=10, max_size=None, proxy=None) as ws:
             await asyncio.wait_for(ws.recv(), timeout=10)  # hello
             await ws.send(json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}))
             while True:
@@ -141,7 +151,7 @@ async def _rpc(method: str, params: dict) -> dict:
         raise
     except (OSError, asyncio.TimeoutError):
         # Exception text here can contain the dial URL, which contains the token.
-        log.warning("rooms rpc %s failed against %s", method, GATEWAY_WS.split("?")[0])
+        log.warning("rooms rpc %s failed against %s", method, shown)
         raise HTTPException(status_code=503, detail="gateway unavailable") from None
 
 
@@ -222,7 +232,7 @@ def _event_view(event: dict) -> dict:
 
 
 
-def _last_spoken(room: dict) -> dict:
+def _last_spoken(room: dict, config=None) -> dict:
     """Who spoke last in a room, and when — the two things a list row needs.
 
     Read from the room's own log rather than from `updated_at`, because a turn marker updates the
@@ -236,7 +246,7 @@ def _last_spoken(room: dict) -> dict:
     try:
         result = asyncio.run(_rpc("groups.log", {"room_id": room_id,
                                                  "since_seq": max(0, int(latest) - 8),
-                                                 "limit": 20}))
+                                                 "limit": 20}, config))
     except HTTPException:
         return {}
     spoken = [e for e in result.get("events") or []
@@ -263,7 +273,7 @@ def create_rooms_router(runtime) -> APIRouter:
     @router.get("")
     def list_rooms(authorization: str | None = Header(default=None)) -> dict:
         caller = authenticate(authorization)
-        result = asyncio.run(_rpc("groups.list", {"limit": 50}))
+        result = asyncio.run(_rpc("groups.list", {"limit": 50}, runtime.config))
         rooms = []
         for room in result.get("rooms") or []:
             entry = {
@@ -276,7 +286,7 @@ def create_rooms_router(runtime) -> APIRouter:
                 "latest_seq": room.get("latest_seq"),
                 "disbanded_at": room.get("disbanded_at"),
             }
-            entry.update(_last_spoken(room))
+            entry.update(_last_spoken(room, runtime.config))
             rooms.append(entry)
         runtime.audit.emit("rooms.list", device_id=caller, method="rooms.list",
                            path="/v1/rooms", nbytes=0, outcome="ok")
@@ -306,7 +316,7 @@ def create_rooms_router(runtime) -> APIRouter:
         slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "room"
         room_id = f"{slug}-{uuid.uuid4().hex[:8]}"
         result = asyncio.run(_rpc("groups.create", {"room_id": room_id, "name": name,
-                                                    "members": members}))
+                                                    "members": members}, runtime.config))
         room = result.get("room") or {}
         runtime.audit.emit("rooms.create", device_id=caller, method="rooms.create",
                            path="/v1/rooms", nbytes=len(room_id), outcome="ok")
@@ -325,7 +335,7 @@ def create_rooms_router(runtime) -> APIRouter:
         params: dict[str, Any] = {"room_id": room_id, "limit": 200}
         if since_seq:
             params["since_seq"] = int(since_seq)
-        result = asyncio.run(_rpc("groups.log", params))
+        result = asyncio.run(_rpc("groups.log", params, runtime.config))
         events = [_event_view(e) for e in result.get("events") or []]
         return {"events": [e for e in events if e["spoken"] or e["kind"] == "message.user"],
                 "latest_seq": result.get("latest_seq") or result.get("cursor") or 0}
@@ -349,7 +359,7 @@ def create_rooms_router(runtime) -> APIRouter:
             "room_id": room_id,
             "event_id": event_id,
             "payload": {"thread_id": "main", "text": text.strip()},
-        }))
+        }, runtime.config))
         runtime.audit.emit("rooms.send", device_id=caller, method="rooms.send",
                            path=f"/v1/rooms/{room_id}/send", nbytes=len(text.encode()), outcome="ok")
         return {"event": _event_view(result.get("event") or {}),
@@ -374,7 +384,7 @@ def create_rooms_router(runtime) -> APIRouter:
         # `groups.rename` writes an event like `groups.send` does, and the gateway demands an
         # `event_id` for it in this build — without one it answers a bare `invalid_params`.
         asyncio.run(_rpc("groups.rename", {"room_id": room_id, "name": name,
-                                          "event_id": f"rename-{uuid.uuid4().hex}"}))
+                                           "event_id": f"rename-{uuid.uuid4().hex}"}, runtime.config))
         runtime.audit.emit("rooms.rename", device_id=caller, method="rooms.rename",
                            path=f"/v1/rooms/{room_id}/rename", nbytes=len(name), outcome="ok")
         return {"room_id": room_id, "name": name}
@@ -390,7 +400,7 @@ def create_rooms_router(runtime) -> APIRouter:
         caller = authenticate(authorization)
         if not ROOM_ID_RE.match(room_id):
             raise HTTPException(status_code=422, detail="invalid room id")
-        asyncio.run(_rpc("groups.disband", {"room_id": room_id}))
+        asyncio.run(_rpc("groups.disband", {"room_id": room_id}, runtime.config))
         runtime.audit.emit("rooms.disband", device_id=caller, method="rooms.disband",
                            path=f"/v1/rooms/{room_id}/disband", nbytes=0, outcome="ok")
         return {"room_id": room_id, "disbanded": True}

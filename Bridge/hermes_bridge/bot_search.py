@@ -34,6 +34,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Header, Query
 
 from .device_auth import require_device
+from .paths import profiles_root
 
 #: Below this, a query matches everything and costs a full scan to prove it.
 MIN_QUERY = 2
@@ -53,19 +54,12 @@ SNIPPET_PAD = 80
 
 
 def _profiles_root() -> Path:
-    """Where the bots live — the same resolution rule the previews use, for the same reason."""
-    candidates: list[Path] = []
-    home = os.environ.get("HERMES_HOME")
-    if home:
-        base = Path(home)
-        candidates.append(base / "profiles")
-        if base.parent.name == "profiles":
-            candidates.append(base.parent)
-    candidates.append(Path.home() / ".hermes" / "profiles")
-    for candidate in candidates:
-        if candidate.is_dir():
-            return candidate
-    return candidates[-1]
+    """Where the bots live — the one resolver the whole bridge uses (``paths.profiles_root``).
+
+    The copy that used to live here ignored ``HERMES_PROFILES_ROOT``, which is what the installer
+    sets, so a correct install could answer an empty search against a full roster.
+    """
+    return profiles_root()
 
 
 def _snippet(text: str, needle: str) -> tuple[str, str]:

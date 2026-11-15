@@ -88,7 +88,7 @@ evidence; this table is the reasoning.
 
 | # | Threat | Goal | Control | Residual risk |
 |---|---|---|---|---|
-| T1 | A device on the tailnet that was never paired | drive the agent | `/v1/ws` requires a ticket from `/v1/token`, which requires a refresh token from a pairing claim; a claim requires a code only the host can mint (invariant 2, 10–12) | a tailnet member can still reach `/v1/health` and `/v1/pair/claim` (see T2) |
+| T1 | A device on the tailnet that was never paired | drive the agent | `/v1/ws` requires a ticket from `/v1/token`, which requires a refresh token from a pairing claim; a claim requires a code only the host can mint (invariant 2, 10–12) | a tailnet member can still reach `/v1/health`, `/v1/pair/claim` and `/v1/push/icon/<profile>.png` (see T2 and the surface map) |
 | T2 | Brute force of the 8-digit pairing code | pair an unauthorised device | 600 s TTL, single use, 64 outstanding max, **10 attempts/minute/source** (invariant 3–4). One source gets ~10 guesses per 60 s window against 10⁸ codes: a 1-in-5 000 000 chance per code | throttling is per source address; an attacker holding 1 000 tailnet addresses gets ~20 000 guesses per window — a 1-in-5 000 chance per code, and a missed code is dead. Holding 1 000 tailnet identities is already a different incident |
 | T3 | Stolen `bridge.db` (backup, misconfigured permissions, root on host) | mint tokens | refresh tokens are SHA-256 only (invariant 7); no gateway token in the DB | root on the host is game over regardless (A1) |
 | T4 | Stolen refresh token (malware on the phone, backup extraction) | impersonate the device | the token is useless without the `device_id`, which is not secret — **so a stolen token *is* enough** (invariant 8 is integrity, not proof-of-possession) | see **G1**: no signed assertion. Mitigation today is revocation + 15 min access tokens |
@@ -127,11 +127,11 @@ stored public key, reject clock skew > 60 s, and rate-limit per device. Until th
 token in the Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and rely on revocation. The
 unsigned Mac build cannot use the Keychain, so there it lives in the `0600` file described above.
 
-**G2 — revoking a device does not drop its live socket (medium).**
-`test_revoking_a_device_drops_its_live_socket` is `xfail`. Revocation blocks the next token and the
-next upgrade, but a connected client keeps its socket until it reconnects. *Fix:* keep a
-`device_id → set[socket]` map in the app runtime and close them from `DELETE /v1/devices/{id}` with
-`4401`.
+**G2 — revoking a device does not drop its live socket (fixed).** The runtime keeps a
+`device_id → set[socket]` map (`proxy.LiveSessions`), and `DELETE /v1/devices/{id}` closes every live
+relay for that device with `4401` before answering (`sockets_closed` in the response). The socket that
+was already upgraded is therefore torn down from this side, not on the client's next reconnect.
+Invariant 9 covers both the *new* token and the *open* socket now.
 
 **G3 — a frame split across WebSocket messages is rejected, not reassembled (low).**
 `test_a_chunked_frame_is_rejected_rather_than_half_forwarded` pins the behaviour: each half gets
@@ -175,9 +175,9 @@ no path.
 `HERMES_BRIDGE_GATEWAY_TOKEN`, start. Live sockets drop with `1011`; the app reconnects with a fresh
 ticket. No device has to re-pair.
 
-**Revoke a device:** `DELETE /v1/devices/{id}` (or the app's device list). Kills the refresh token and
-any unused ticket immediately; the live socket survives until reconnect (G2) — if that matters,
-restart the bridge or rotate the gateway token, both of which close every socket.
+**Revoke a device:** `DELETE /v1/devices/{id}` (or the app's device list). Kills the refresh token, any
+unused ticket, **and every live socket of that device** (`4401`) — the relay map is closed from this
+side rather than waiting for the phone to reconnect.
 
 **Read the audit log:** one JSON object per line on the `hermes_bridge.audit` logger. Fields:
 `ts, event, device, method, bytes, duration_ms, direction, outcome, reason, close_code`. Event names are
@@ -197,6 +197,45 @@ No accounts, no telemetry, no cloud relay, no public ingress, no second copy of 
 escalate its own permissions. The bridge is ~1.8k lines of Python that can be read in an afternoon,
 which is the point.
 
+
+## Surface map: what is reachable without a device ticket
+
+Every `/v1/**` route consumes a **single-use 30 s ticket** in `Authorization: Bearer …`, except the
+handful below. They are unauthenticated on purpose and bounded on purpose; anything added here needs
+the same reasoning written next to it.
+
+| Route | Why it is open | What it is bounded by |
+|---|---|---|
+| `GET /v1/health` | liveness for the installer and `hermey doctor` | returns `{status, protocol_version, ws}` only — no device count, no version of anything else |
+| `POST /v1/pair/start` | the host mints the code | **direct loopback only**: any `Forwarded` / `X-Forwarded-For` / `X-Real-IP` / `Tailscale-User-Login` header means it arrived through `tailscale serve` and is refused `403` |
+| `POST /v1/pair/claim` | the phone redeems the code it was shown | a live 8-digit code (single use, 600 s), 10 attempts/min/source, 32-device cap |
+| `POST /v1/token` | trades a refresh token for a ticket | a SHA-256 match against `device_id` + token; refused for a revoked device |
+| `GET /v1/push/icon/{profile}.png` | Bark fetches the image itself and holds no credential | only a bot's *face* and whether that bot exists; the profile name is `^[a-z0-9][a-z0-9_-]{0,63}$` |
+| `WS /v1/display/ws` | noVNC cannot set a header on its socket | accepts, *then* redeems a single-use 60 s display ticket and re-checks the device; a bad ticket closes `4401` |
+
+`POST /v1/bots/{profile}/message` is different again: it takes **no ticket**, because it is an
+operator command for the agent on the host, and it is refused `404` for any caller that arrived
+through a proxy (same loopback rule as `pair/start`).
+
+## Known residual risks (2026-11 audit)
+
+Written down because each is a real gap that is *not* hidden by the allow-list:
+
+- **The Bark relay endpoint is device-supplied.** `POST /v1/push/register` takes a URL a paired device
+  types, and the watcher POSTs banner JSON to it. A paired device can therefore make this process
+  issue an HTTP POST to any host it can reach (loopback included) — a stored SSRF. Redirects are now
+  refused (`push._NoRedirect`), so the destination is exactly what was registered, but the
+  registration itself is not restricted to public addresses because a self-hosted Bark server on the
+  LAN is the normal deployment. A paired device is already root-equivalent (above), so this adds no
+  reach; it is listed so nobody mistakes the relay for a hardened egress path.
+- **`access_token` in `POST /v1/token` is inert.** The response carries a random `access_token` that
+  no route accepts; only `ws_ticket` is a credential, and it is single use. A client that stores
+  `access_token` and sends it gets `401`. Kept for wire compatibility with shipped app builds.
+- **A pairing code is a shared secret on the host's screen** (A3). Its window is 600 s and clamped to
+  30–3600 s by `app._pairing_ttl`, so a mistyped override cannot mint a year-long code.
+- **Two processes on the same state file are not coordinated.** The categories, disabled-bots and
+  defaults files take an in-process lock and publish with an atomic rename, which covers the one
+  bridge a host runs. A second bridge pointed at the same `HERMES_BRIDGE_DB` is unsupported.
 
 ## Bot-to-bot messages
 

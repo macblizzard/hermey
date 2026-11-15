@@ -151,11 +151,29 @@ def export_backup(runtime) -> dict[str, Any]:
 
 
 def _write(directory: Path, relative: str, text: str) -> None:
-    path = directory / relative
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(text, encoding="utf-8")
-    temp.replace(path)
+    """Publish one document in a single step: a reader never sees half a soul."""
+    paths.atomic_write_text(directory / relative, text)
+
+
+def _one_line(value: object, limit: int = 200) -> str:
+    """A description is one line of prose, never YAML structure.
+
+    It arrives in a backup file a device supplies, and it used to be interpolated straight into
+    ``profile.yaml``: a newline let it open new keys (``model:``, ``soul:``), and a colon inside the
+    value produced a file the YAML parser rejects outright. Collapsing to one line and quoting the
+    scalar means the only thing a description can change is the description.
+    """
+    text = " ".join(str(value or "").split())
+    return text[:limit]
+
+
+#: A scalar that can be written unquoted: starts alphanumeric, no colon, no quote, no leading
+#: indicator character. Anything else is emitted as a JSON string, which is valid YAML.
+_PLAIN_SCALAR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._()/',+-]{0,199}$")
+
+
+def _yaml_scalar(text: str) -> str:
+    return text if _PLAIN_SCALAR.match(text) else json.dumps(text)
 
 
 def _create_profile(profile: str, description: str | None, soul: str) -> str:
@@ -168,8 +186,10 @@ def _create_profile(profile: str, description: str | None, soul: str) -> str:
     """
     directory = paths.profiles_root() / profile
     directory.mkdir(parents=True, exist_ok=True)
-    if description:
-        _write(directory, "profile.yaml", f"description: {description}\ndescription_auto: false\n")
+    line = _one_line(description)
+    if line:
+        _write(directory, "profile.yaml",
+               f"description: {_yaml_scalar(line)}\ndescription_auto: false\n")
     if soul:
         _write(directory, SOUL_NAME, soul)
     return "files"
@@ -202,10 +222,7 @@ def _restore_routines(directory: Path, routines: list[dict[str, Any]]) -> tuple[
         data["jobs"].append(routine)
         added += 1
     if added:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        temp.replace(path)
+        paths.atomic_write_text(path, json.dumps(data, indent=2))
     return added, kept
 
 
@@ -224,6 +241,24 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
     skipped: list[dict[str, Any]] = []
     routines_added = 0
     restart_required = False
+
+    # Categories first, by name: an id in a backup means nothing on this host, so each backup id is
+    # resolved to the local category carrying the same name. The assignments below used to be
+    # written with the *foreign* id, which left every restored bot pointing at a category that does
+    # not exist here — so a restore quietly lost the roster's grouping.
+    local_by_id: dict[str, str] = {}
+    for category in document.get("categories") or []:
+        if not isinstance(category, dict):
+            continue
+        name = str(category.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            local = _ensure_category(runtime, name)
+        except Exception:
+            continue
+        if local:
+            local_by_id[str(category.get("id") or "")] = local
 
     for entry in bots:
         if not isinstance(entry, dict):
@@ -266,21 +301,15 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
 
         wanted = [str(c) for c in (entry.get("categories") or []) if c]
         if wanted:
-            try:
-                _assign(runtime, profile, wanted[0])
-            except Exception:
+            local = local_by_id.get(wanted[0])
+            if local:
+                try:
+                    _assign(runtime, profile, local)
+                except Exception:
+                    skipped.append({"profile": profile, "reason": "category not restored"})
+            else:
                 skipped.append({"profile": profile,
-                                "reason": f"category {wanted[0]} not restored"})
-
-    # Categories themselves, by name: an id from another host means nothing here.
-    for category in document.get("categories") or []:
-        name = str((category or {}).get("name") or "").strip()
-        if not name:
-            continue
-        try:
-            _ensure_category(runtime, name)
-        except Exception:
-            pass
+                                "reason": "the backup names a category it does not carry"})
 
     return {
         "created": created,
@@ -294,21 +323,36 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
 
 def _ensure_category(runtime, name: str) -> str:
     """A category by name, created when this host does not have it. Ids are host-local, so a backup's
-    ids mean nothing here — the name is the identity a person recognises."""
-    data = bot_categories.load(runtime)
-    for category in data["categories"]:
-        if str(category.get("name", "")).casefold() == name.casefold():
-            return str(category.get("id", ""))
-    category = {"id": uuid.uuid4().hex[:12], "name": name, "created_at": time.time()}
-    data["categories"].append(category)
-    bot_categories.save(runtime, data)
-    return category["id"]
+    ids mean nothing here — the name is the identity a person recognises.
+
+    Through ``bot_categories.mutate`` so a restore cannot lose a change a device made at the same
+    moment: a bare ``load``/``save`` pair is the read-modify-write race that file has a lock for.
+    """
+    cleaned = " ".join(name.split())[:bot_categories.MAX_NAME]
+    if not cleaned:
+        return ""
+    created: list[str] = []
+
+    def change(data: dict) -> None:
+        for category in data["categories"]:
+            if str(category.get("name", "")).casefold() == cleaned.casefold():
+                created.append(str(category.get("id", "")))
+                return
+        if len(data["categories"]) >= bot_categories.MAX_CATEGORIES:
+            return
+        category = {"id": uuid.uuid4().hex[:12], "name": cleaned, "created_at": time.time()}
+        data["categories"].append(category)
+        created.append(category["id"])
+
+    bot_categories.mutate(runtime, change)
+    return created[0] if created else ""
 
 
 def _assign(runtime, profile: str, category_id: str) -> None:
-    data = bot_categories.load(runtime)
-    data["assignments"][profile] = category_id
-    bot_categories.save(runtime, data)
+    def change(data: dict) -> None:
+        data["assignments"][profile] = category_id
+
+    bot_categories.mutate(runtime, change)
 
 
 def create_backup_router(runtime) -> APIRouter:

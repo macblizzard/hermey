@@ -38,7 +38,8 @@ struct SidebarBotList: View {
     /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
     @State private var hoveredRow: String?
 
-    /// What ⌘E and the ⋯ are pointing at. The row draws the popover; see `BotMenuRouter`.
+    /// The header's **+** menu asks for the category prompt through here; the row's own menu needs
+    /// no router — it is the native `Menu` its ⋯ opens. See `BotMenuRouter`.
     @ObservedObject private var menuRouter = BotMenuRouter.shared
 
     /// One sheet at a time: sessions for a bot, or the category prompt. Two `.sheet` modifiers on
@@ -518,26 +519,20 @@ struct SidebarBotList: View {
         .contextMenu {
             BotRowMenu(menu: rowMenu(for: bot))
         }
-        // ⌘E opens this: a command cannot raise a `Menu`, so the menu is a popover the row owns
-        // (`BotMenuRouter`), anchored where the dots are.
-        .popover(isPresented: menuBinding(for: bot.id), arrowEdge: .trailing) {
-            BotOverflowPanel(menu: rowMenu(for: bot)) { menuRouter.close(botID: bot.id) }
-        }
         .help(bot.displayName)
         .accessibilityLabel(accessibilityLabel(for: bot))
     }
 
-    private func menuBinding(for botID: String) -> Binding<Bool> {
-        Binding(get: { menuRouter.botID == botID },
-                set: { if !$0 { menuRouter.close(botID: botID) } })
-    }
-
-    /// The row's ⋯: hidden until the pointer is on the row (or its menu is open), in a fixed slot
-    /// so revealing it moves nothing.
+    /// The row's ⋯: the same entries the right-click opens, as a native menu. It used to be a
+    /// popover the row drew itself, because ⌘E could not raise a `Menu` from the menu bar — ⌘E opens
+    /// the bot's panel now, so the pointer's menu went back to being a menu.
+    ///
+    /// Hidden until the pointer is on the row (or a menu is open), in a fixed slot so revealing it
+    /// moves nothing.
     @ViewBuilder
     private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {
-        Button {
-            menuRouter.toggle(botID: bot.id)
+        Menu {
+            BotRowMenu(menu: rowMenu(for: bot))
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
@@ -553,10 +548,12 @@ struct SidebarBotList: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
-        .help("Bot menu (⌘E)")
+        .help("Bot menu")
         .accessibilityLabel("Bot menu")
     }
 

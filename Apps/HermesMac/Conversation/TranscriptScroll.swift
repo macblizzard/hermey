@@ -40,11 +40,21 @@ struct TranscriptScroll: View {
     @FocusState private var searchFocused: Bool
     private let streamingID = "conversation-streaming-search"
 
+    /// The rows this conversation matches, in reading order, with the live turn last.
+    ///
+    /// `ConversationSearch` is the one matcher, shared with the phone: a substring of folded text,
+    /// so it answers at one character exactly as it does at four and a longer query can only narrow
+    /// the answer. The copy this replaces was the row's raw text through
+    /// `localizedCaseInsensitiveContains` — locale- and diacritic-sensitive, and blind to a phrase
+    /// the renderer wrapped across a line break.
     private var matches: [String] {
-        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        var ids = model.visibleTranscript.filter { $0.text.localizedCaseInsensitiveContains(query) }.map(\.id)
-        if model.isStreaming && model.streamingText.localizedCaseInsensitiveContains(query) { ids.append(streamingID) }
-        return ids
+        ConversationSearch.ids(matching: query,
+                               in: model.visibleTranscript,
+                               id: \.id,
+                               text: \.text,
+                               extra: model.isStreaming && !model.streamingText.isEmpty
+                                   ? (id: streamingID, text: model.streamingText)
+                                   : nil)
     }
 
     private var selectedMatch: String? {
@@ -53,8 +63,9 @@ struct TranscriptScroll: View {
     }
 
     private func moveMatch(_ direction: Int) {
-        guard !matches.isEmpty else { return }
-        matchIndex = (min(matchIndex, matches.count - 1) + direction + matches.count) % matches.count
+        // Wraps at both ends and is defined at every count, including none. The index is clamped
+        // inside `stepped`, so one earned under a wider query cannot point past a narrower answer.
+        matchIndex = ConversationSearch.stepped(matchIndex, count: matches.count, by: direction)
     }
 
     private let bottomID = "transcript-bottom"
@@ -146,7 +157,9 @@ struct TranscriptScroll: View {
             }
             .onChange(of: matches) { _, newMatches in
                 guard searching else { return }
-                matchIndex = min(matchIndex, max(0, newMatches.count - 1))
+                // Clamped rather than min()'d against a count that may be zero: an index earned
+                // under a wider query has to land on a row that still matches.
+                matchIndex = ConversationSearch.clamped(matchIndex, count: newMatches.count)
                 if let id = selectedMatch { proxy.scrollTo(id, anchor: .center) }
             }
         }
@@ -314,27 +327,37 @@ struct TranscriptScroll: View {
     /// The open search: field, match count, the two chevrons and Done, on the same measure and
     /// reading inset as the transcript beneath it.
     private var searchRow: some View {
-        HStack(spacing: 6) {
-            TextField("Search messages", text: $query)
+        // One pass over the transcript per render: the count, the colour and the two chevrons all
+        // read the same answer, so they cannot disagree mid-keystroke.
+        let found = matches
+        let label = ConversationSearch.status(query: query,
+                                              matched: found.count,
+                                              index: matchIndex)
+        return HStack(spacing: 6) {
+            // "Search this conversation", not "Search messages": the sidebar's field is the one
+            // that searches every bot's conversation on the host, and the two read as one control
+            // (reported 2026-11-15).
+            TextField(ConversationSearch.prompt, text: $query)
                 .focused($searchFocused)
                 .accessibilityIdentifier("conversationSearchField")
 
-            Text(countLabel)
+            Text(label)
                 .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(isEmptySearch ? Tokens.warning : Tokens.textMuted)
+                .foregroundStyle(ConversationSearch.isActive(query) && found.isEmpty
+                                 ? Tokens.warning : Tokens.textMuted)
                 .lineLimit(1)
                 .accessibilityIdentifier("conversationSearchCount")
 
             OpenBotIconButton("chevron.up",
                               label: "Previous search result",
                               size: .small,
-                              isDisabled: matches.isEmpty) {
+                              isDisabled: found.isEmpty) {
                 moveMatch(-1)
             }
             OpenBotIconButton("chevron.down",
                               label: "Next search result",
                               size: .small,
-                              isDisabled: matches.isEmpty) {
+                              isDisabled: found.isEmpty) {
                 moveMatch(1)
             }
 
@@ -363,15 +386,6 @@ struct TranscriptScroll: View {
         .accessibilityIdentifier("conversationSearchToggle")
         .accessibilityLabel("Search conversation")
         .help("Search conversation")
-    }
-
-    private var countLabel: String {
-        guard !query.isEmpty else { return "" }
-        return matches.isEmpty ? "No matches" : "\(min(matchIndex + 1, matches.count)) of \(matches.count)"
-    }
-
-    private var isEmptySearch: Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && matches.isEmpty
     }
 
     private var selectionSheetPresented: Binding<Bool> {

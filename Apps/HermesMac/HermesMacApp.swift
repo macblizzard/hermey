@@ -124,21 +124,19 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store.selectedBot == nil)
 
-            // ⌘E — the selected bot's own row menu, the same menu its ⋯ opens. It used to toggle
-            // the bot panel, which already has two doors (the chat header's pill and its own
-            // close button), so the key spent itself on something the owner could already reach
-            // and did nothing visible when that panel was open.
+            // ⌘E — the bot's panel on the right edge, the same panel the pill at the centre of the
+            // header opens. The key is the keyboard's copy of the pill, not a second door to a
+            // per-row menu: the panel *is* the menu, and it is the only place these verbs live on
+            // this shell.
             //
-            // Two things made it read as "⌘E does nothing", and neither is fixed by a nicer title:
-            // the item was gated by `.disabled(store.selectedBot == nil)`, and `store` here is a
-            // plain reference — not an observed object — so that gate is whatever the roster was
-            // when the menu was built, i.e. "no bots yet" at launch, and a disabled menu item
-            // swallows its key equivalent for the rest of the run. The action now checks for the
-            // selection itself: pressing ⌘E with nothing selected does nothing, instead of the
-            // shortcut being dead for every bot afterwards.
-            Button("Bot Menu") {
-                guard let id = store.model.selectedBotID else { return }
-                BotMenuRouter.shared.toggle(botID: id)
+            // The action checks the selection rather than the item being disabled: `store` here is a
+            // plain reference, so a `.disabled` gate is whatever the roster was when the menu was
+            // built — "no bots yet" at launch — and a disabled item swallows its key equivalent for
+            // the rest of the run. Pressing ⌘E before a bot arrives does nothing, quietly, instead
+            // of killing the shortcut.
+            Button(store.isBotPanelVisible ? "Hide Bot Actions" : "Show Bot Actions") {
+                guard store.model.selectedBotID != nil else { return }
+                store.toggleBotPanel()
             }
             .keyboardShortcut("e", modifiers: .command)
 

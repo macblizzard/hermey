@@ -65,7 +65,36 @@ from .voice import VoiceBackend, create_voice_router
 #: How long a minted pairing code stays usable. Ten minutes covers the walk from the host to a
 #: phone with the app open, and a code is single-use, loopback-minted and rate-limited, so a
 #: longer window buys usability without buying risk. Override with HERMES_BRIDGE_PAIRING_TTL.
-PAIRING_CODE_TTL_SECONDS = int(os.environ.get("HERMES_BRIDGE_PAIRING_TTL", "600"))
+PAIRING_CODE_TTL_MIN_SECONDS = 30
+PAIRING_CODE_TTL_MAX_SECONDS = 3600
+
+
+def _pairing_ttl() -> int:
+    """The configured pairing-code lifetime, clamped to something defensible.
+
+    The override is an operator convenience, not a policy dial: a typo used to be an ImportError
+    (killing the whole app at import) and ``HERMES_BRIDGE_PAIRING_TTL=31536000`` minted codes valid
+    for a year. Junk falls back to the shipped default; out-of-range values are clamped, and the
+    clamp is logged so an operator can see it was not honoured.
+    """
+    raw = os.environ.get("HERMES_BRIDGE_PAIRING_TTL", "").strip()
+    if not raw:
+        return 600
+    try:
+        value = int(raw, 10)
+    except ValueError:
+        logging.getLogger("hermes_bridge").warning(
+            "HERMES_BRIDGE_PAIRING_TTL=%r is not an integer; using 600 seconds", raw)
+        return 600
+    clamped = max(PAIRING_CODE_TTL_MIN_SECONDS, min(PAIRING_CODE_TTL_MAX_SECONDS, value))
+    if clamped != value:
+        logging.getLogger("hermes_bridge").warning(
+            "HERMES_BRIDGE_PAIRING_TTL=%s is outside %s-%s; using %s seconds",
+            value, PAIRING_CODE_TTL_MIN_SECONDS, PAIRING_CODE_TTL_MAX_SECONDS, clamped)
+    return clamped
+
+
+PAIRING_CODE_TTL_SECONDS = _pairing_ttl()
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
 WS_TICKET_TTL_SECONDS = 30
 MAX_CONTROL_BODY_BYTES = 1 * 1024 * 1024

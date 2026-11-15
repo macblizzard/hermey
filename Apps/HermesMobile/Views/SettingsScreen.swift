@@ -80,6 +80,34 @@ struct SettingsScreen: View {
         }
     }
 
+    /// What this device keeps: one row into the cache's own screen, with the real total on it so the
+    /// cost is visible without opening anything. The switches, the limit and the Reset button live
+    /// on `CachingSettingsScreen`, which is also what the Mac's Caching tab shows.
+    private var storageSection: some View {
+        Section {
+            NavigationLink {
+                CachingSettingsScreen(model: model)
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Caching")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Spacer(minLength: 8)
+                    Text(CacheFormat.size(model.cacheUsage.totalBytes))
+                        .font(.system(size: TypeScale.caption, design: .monospaced))
+                        .foregroundStyle(Tokens.textGroupedSecondary)
+                        .monospacedDigit()
+                }
+            }
+            .listRowBackground(Tokens.surface)
+        } header: {
+            sectionHeader("Storage")
+        } footer: {
+            Text("What this phone keeps so bot lists, chats and files open without the host. Nothing here is the only copy — the host always has the original.")
+                .font(TypeScale.font(TypeScale.label))
+        }
+    }
+
     /// Banners and the icon badge, plus the one thing the app cannot decide: the system's answer.
     ///
     /// The toggle is stored in `AppModel` (so it matches the Mac's); the permission is per app and
@@ -157,6 +185,7 @@ struct SettingsScreen: View {
         List {
             connectionSection
             appearanceSection
+            storageSection
             rosterSection
             notificationsSection
             chatSection
@@ -178,6 +207,7 @@ struct SettingsScreen: View {
         }
         .task { await app.loadDevices() }
         .task { await model.loadBotDefaults() }
+        .task { await model.loadCacheState() }
         .sheet(isPresented: $showLog) {
             ClientLogView(title: "Log", header: logHeader)
             .hermesSheetChrome()

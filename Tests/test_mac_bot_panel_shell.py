@@ -18,6 +18,10 @@ HEADER = (MAC / "Conversation" / "ConversationHeader.swift").read_text(encoding=
 PANEL = (MAC / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
 ROOTVIEW = (MAC / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
 STORE = (MAC / "Workspace" / "WorkspaceStore.swift").read_text(encoding="utf-8")
+APP = (MAC / "HermesMacApp.swift").read_text(encoding="utf-8")
+ROW_MENU = (MAC / "Sidebar" / "BotRowMenu.swift").read_text(encoding="utf-8")
+BOT_LIST = (MAC / "Sidebar" / "SidebarBotList.swift").read_text(encoding="utf-8")
+CATCHER = (MAC / "Support" / "OutsideClickCatcher.swift").read_text(encoding="utf-8")
 LAYOUT = (ROOT / "Sources" / "HermesAppKit" / "WindowLayout.swift").read_text(encoding="utf-8")
 
 
@@ -61,16 +65,46 @@ class TheNameIsTheControl(unittest.TestCase):
         self.assertNotIn("scaleEffect(", pill)
 
     def test_the_pill_has_a_keyboard_door(self) -> None:
-        # ⌘E is the keyboard's door to the *selected bot's menu* — the same menu its ⋯ opens.
-        # It used to toggle the bot panel, which the header pill already does from the pointer,
-        # and the item carried `.disabled(store.selectedBot == nil)`: `store` is a plain reference
-        # rather than an observed one, so that gate was whatever the roster was when the menu was
-        # built — "no bots yet" at launch — and a disabled item swallows its key for the rest of
-        # the run (reported 2026-11-15 as "⌘E does nothing").
-        app = (MAC / "HermesMacApp.swift").read_text(encoding="utf-8")
-        self.assertIn('.keyboardShortcut("e", modifiers: .command)', app)
-        self.assertIn("BotMenuRouter.shared.toggle(botID: id)", app)
-        self.assertNotIn('Button(store.isBotPanelPresented ? "Hide Bot Menu"', app)
+        # ⌘E is the pill's key: it opens the bot's panel on the right edge — the same panel the
+        # pill opens with the pointer, which is where this shell keeps a bot's verbs.
+        #
+        # Build 445 pointed the key at a per-row overflow popover instead: a second menu drawn over
+        # the transcript for a job the panel already does, so "⌘E" read as settings rather than as
+        # the panel (reported 2026-11-15). The key, the popover and the router state behind them are
+        # gone; the panel and ⌘E share one owner.
+        self.assertIn('.keyboardShortcut("e", modifiers: .command)', APP)
+        self.assertIn("store.toggleBotPanel()", APP)
+        # The pill and the key must land on the same method, or the two doors can disagree.
+        self.assertIn("store.toggleBotPanel()", HEADER)
+        self.assertNotIn("BotMenuRouter.shared.toggle", APP)
+        self.assertNotIn("BotMenuRouter.shared.toggle", BOT_LIST)
+        # The row's menu is a native `Menu` again: the popover it replaced went with the key.
+        self.assertNotIn("BotOverflowPanel", BOT_LIST)
+        self.assertNotIn("BotOverflowPanel", ROW_MENU)
+        self.assertNotIn(".popover(", BOT_LIST)
+
+    def test_one_piece_of_state_owns_the_panel(self) -> None:
+        # One property, one toggle, and two scoped closers that write the same property — not a
+        # second "is it open" flag for the pill, the key and the mouse to disagree about.
+        self.assertIn("func toggleBotPanel()", STORE)
+        self.assertIn("func dismissBotPanelFromOutsideClick()", STORE)
+        self.assertIn("func closeBotPanel()", STORE)
+        # Nothing outside the store assigns it: no view keeps its own copy of "is it open".
+        for source in (APP, PANEL, HEADER, ROOTVIEW, BOT_LIST):
+            self.assertNotIn("isBotPanelPresented =", source, "the panel has one owner")
+            self.assertNotIn("isBotPanelPresented.toggle()", source, "the panel has one toggle")
+
+    def test_a_click_outside_puts_it_away_without_eating_the_click(self) -> None:
+        # The panel is a pane, not a popover: SwiftUI dismisses a popover for you, and a pane it
+        # does not. A tap-catching backdrop would have closed it and swallowed the click, which
+        # breaks the transcript the panel is meant to sit beside — so the catcher watches the
+        # mouse-down and hands the event back either way.
+        self.assertIn("OutsideClickCatcher", PANEL)
+        self.assertIn("store.dismissBotPanelFromOutsideClick()", PANEL)
+        self.assertIn("NSEvent.addLocalMonitorForEvents", CATCHER)
+        self.assertIn("return event", CATCHER)
+        # A click in a sheet or another window belongs to that window, not to "outside the panel".
+        self.assertIn("event.window === window", CATCHER)
 
     def test_the_header_keeps_no_dropdown_of_its_own(self) -> None:
         # One door. The verbs are rows in the panel; a second menu beside the pill would be the

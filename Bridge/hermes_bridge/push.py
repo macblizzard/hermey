@@ -42,6 +42,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from .device_auth import require_device
+from .paths import profiles_root
 
 #: How often the host looks for new replies.
 #:
@@ -109,21 +110,29 @@ def _split_bark_url(raw: str) -> tuple[str, str]:
 
 
 def _profiles_root() -> Path:
-    candidates: list[Path] = []
-    home = os.environ.get("HERMES_HOME")
-    if home:
-        base = Path(home)
-        candidates.append(base / "profiles")
-        if base.parent.name == "profiles":
-            candidates.append(base.parent)
-    candidates.append(Path.home() / ".hermes" / "profiles")
-    for candidate in candidates:
-        if candidate.is_dir():
-            return candidate
-    return candidates[-1]
+    """Where the bots live — ``paths.profiles_root``, the bridge's single rule.
+
+    The copy that used to live here ignored ``HERMES_PROFILES_ROOT`` (what the installer sets), so
+    a banner watcher could sit on an empty directory while the roster was full.
+    """
+    return profiles_root()
 
 
 # MARK: - The relay client
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A registered relay endpoint is a URL a device typed; it does not get to forward this host.
+
+    urllib re-sends the request (method and body included) to whatever a 30x names, including a
+    loopback service. Refusing the redirect makes the hop a failed banner instead.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102, ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def icon_url(profile: str) -> str:
@@ -160,7 +169,10 @@ class BarkRelay:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            # No redirects: the endpoint is a URL a device typed, and urllib replays a POST body to
+            # a 30x Location, which turns a registered "relay" into a way to make this host POST
+            # into any service it can reach. A 3xx is a failed banner, not a hop.
+            with _OPENER.open(request, timeout=self.timeout) as response:
                 return 200 <= response.status < 300
         except (urllib.error.URLError, OSError, ValueError):
             return False

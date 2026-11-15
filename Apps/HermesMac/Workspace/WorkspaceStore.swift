@@ -872,8 +872,56 @@ final class WorkspaceStore: ObservableObject {
         })
     }
 
+    /// The bot panel's one door, from either keyboard or pointer: the pill at the centre of the
+    /// header and ⌘E both land here, and both toggle.
+    ///
+    /// It is the only thing that opens or closes `isBotPanelPresented` on purpose — Escape and the
+    /// panel's own ✕ go through `closeBotPanel()`, a click outside through
+    /// `dismissBotPanelFromOutsideClick()`. Every one of those writes the same property, so there
+    /// is no second “is the panel up” flag for the two doors to disagree about.
+    ///
+    /// A click on the pill while the panel is open is *two* answers to one click: the panel's
+    /// outside-click monitor closes it on mouse-down, and this toggle arrives on mouse-up. Without
+    /// the stamp that click would reopen the panel it just closed, i.e. the pill would look like it
+    /// only ever opens. The stamp is set by the dismissal, so the toggle belonging to that same
+    /// click is a no-op and the panel stays shut; the next deliberate press toggles as usual.
+    private var botPanelDismissedAt: Date = .distantPast
+    private static let sameClick: TimeInterval = 0.3
+
+    /// Open *and* on screen. The shared computer takes this panel's slot when it is up, so the flag
+    /// alone can be true with the panel hidden behind it — and a key that flips an invisible flag
+    /// reads as a key that does nothing.
+    var isBotPanelVisible: Bool { isBotPanelPresented && !isComputerPanelPresented }
+
     func toggleBotPanel() {
-        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented.toggle() }
+        if Date().timeIntervalSince(botPanelDismissedAt) < Self.sameClick { return }
+
+        guard !isBotPanelVisible else {
+            closeBotPanel()
+            return
+        }
+        // The panel is what ⌘E and the pill mean: when the computer has borrowed the slot, the
+        // toggle takes it back rather than writing state nobody can see.
+        withAnimation(.easeOut(duration: 0.16)) {
+            isComputerFullScreen = false
+            isComputerPanelPresented = false
+            isBotPanelPresented = true
+        }
+    }
+
+    /// A click landed somewhere the panel is not: the transcript, the sidebar, the header, another
+    /// window's chrome. The click is not swallowed (the panel is not modal), so it still does what
+    /// it was aimed at; this only puts the panel away.
+    func dismissBotPanelFromOutsideClick() {
+        guard isBotPanelPresented else { return }
+        botPanelDismissedAt = Date()
+        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented = false }
+    }
+
+    /// Closed from a control that belongs to the panel — Escape, the ✕, the reset flow. No stamp:
+    /// nothing here competes with the pill's own toggle.
+    func closeBotPanel() {
+        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented = false }
     }
 
     func toggleComputerPanel() {

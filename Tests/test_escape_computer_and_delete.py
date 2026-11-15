@@ -275,8 +275,9 @@ class ABotHasItsOwnNotes(unittest.TestCase):
         self.assertIn('@router.get("/{profile}/notes")', self.ROUTES)
         self.assertIn('@router.put("/{profile}/notes")', self.ROUTES)
         self.assertIn("MAX_NOTES_CHARS = 64_000", self.ROUTES)
-        # Written to a temporary file and moved into place: a lost wire must not leave half a note.
-        self.assertIn("temporary.replace(path)", self.ROUTES)
+        # Written to a scratch file of its own and moved into place: a lost wire must not leave half
+        # a note, and two writers must not share one scratch name (`paths.atomic_write_text`).
+        self.assertIn("paths.atomic_write_text(path, text)", self.ROUTES)
         # A symlink is refused, not followed or written through.
         self.assertIn("this is a symlink, not a notes file", self.ROUTES)
 
