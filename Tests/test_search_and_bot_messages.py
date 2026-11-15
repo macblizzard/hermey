@@ -14,6 +14,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+PAIR = (ROOT / "Sources" / "OpenBotUI" / "BotPairSheet.swift").read_text(encoding="utf-8")
+IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
+MAC_SCROLL = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
 BRIDGE = ROOT / "Bridge" / "hermes_bridge"
 SEARCH = (BRIDGE / "bot_search.py").read_text(encoding="utf-8")
 TRANSFERS = (BRIDGE / "bot_transfers.py").read_text(encoding="utf-8")
@@ -108,6 +111,27 @@ class ABotMessageReadsAsAPerson(unittest.TestCase):
         self.assertIn("BotMessageLabel.parse(entry.text)", MAC_ROW)
         self.assertIn('Text(label.incomingTitle)', IOS_ROW)
         self.assertIn('Text(label.incomingTitle)', MAC_ROW)
+
+
+class TheAttributionOpensTheExchange(unittest.TestCase):
+    def test_the_sheet_draws_both_directions_with_faces(self) -> None:
+        self.assertIn("public struct BotPairSheet", PAIR)
+        self.assertIn("entry.fromProfile", PAIR)
+        self.assertIn("BotIconPortrait(faces[sender]", PAIR)
+        # An empty record says so rather than showing a blank page.
+        self.assertIn("Nothing between these two yet", PAIR)
+
+    def test_the_phone_opens_it_from_the_attribution(self) -> None:
+        self.assertIn("pairPeer = label.senderProfile", IOS_ROW)
+        self.assertIn("BotPairSheet(current: botID, peer: peer.id", IOS_ROW)
+        # The row has to know which conversation it is in: the near side of the pair.
+        self.assertIn("botID: bot.id", IOS_SCREEN)
+
+    def test_the_mac_opens_it_from_the_attribution(self) -> None:
+        self.assertIn("onOpenPair?(profile)", MAC_ROW)
+        self.assertIn("onOpenPair: { peer in pairPeer = peer }", MAC_SCROLL)
+        # The sheet lives in the transcript, not the row: a row is torn down as it scrolls.
+        self.assertIn("BotPairSheet(current: model.selectedBotID", MAC_SCROLL)
 
 
 if __name__ == "__main__":

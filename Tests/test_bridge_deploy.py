@@ -27,8 +27,21 @@ class TheDeployIsOneCommand(unittest.TestCase):
 
     def test_it_restarts_the_unit_it_names(self) -> None:
         body = SCRIPT.read_text(encoding="utf-8")
-        self.assertIn('systemctl restart "$UNIT"', body)
+        # Stop, wait for the loopback port to be free, start: a plain `restart` races itself when the
+        # old process still holds the socket, and the new one dies with EADDRINUSE.
+        self.assertIn('systemctl stop "$UNIT"', body)
+        self.assertIn('systemctl start "$UNIT"', body)
         self.assertIn('HERMES_BRIDGE_UNIT:-hermey-bridge', body)
+
+    def test_it_follows_the_unit_that_is_actually_running(self) -> None:
+        """A host first installed under the predecessor's name serves from that unit.
+
+        Both units bind the same loopback port, so restarting the installer's name while the older one
+        runs is an EADDRINUSE crash loop that leaves the live bridge on the old code (found 2026-11-15).
+        """
+        body = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('systemctl is-active --quiet "$UNIT"', body)
+        self.assertIn("for candidate in hermes-native-bridge hermey-bridge", body)
 
     def test_the_default_unit_is_the_one_the_installer_creates(self) -> None:
         """A deploy must restart the unit the bridge actually runs as.
@@ -44,8 +57,10 @@ class TheDeployIsOneCommand(unittest.TestCase):
         self.assertIn('UNIT="${HERMES_BRIDGE_UNIT:-hermey-bridge}"', body)
         unit_line = [line for line in body.splitlines() if line.startswith("UNIT=")]
         self.assertEqual(len(unit_line), 1, "one place decides the unit")
-        self.assertNotIn("hermes-native-bridge", unit_line[0],
-                         "the predecessor unit is stopped, not deleted — deploying to it is a silent no-op")
+        # The fallback is deliberate and separate: it follows a *running* predecessor rather than
+        # deploying to a name nothing serves from.
+        self.assertIn("if [[ -z \"${HERMES_BRIDGE_UNIT:-}\" ]] && ! systemctl is-active --quiet \"$UNIT\"",
+                      body)
 
     def test_it_refuses_a_venv_without_python(self) -> None:
         body = SCRIPT.read_text(encoding="utf-8")

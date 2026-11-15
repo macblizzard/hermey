@@ -10,6 +10,8 @@ import SwiftUI
 /// OpenBot draws chat at, which is what keeps a wide window readable.
 struct TranscriptScroll: View {
     @ObservedObject var model: AppModel
+    /// The other bot, when the pair sheet is open. A non-empty id is the sheet's whole state.
+    @State private var pairPeer = ""
 
     /// Bumped by the header's magnifier (`WorkspaceStore.openFindInChat`). The search lives here,
     /// so this is a request to open the field and take the caret — not shared state: the field,
@@ -85,6 +87,18 @@ struct TranscriptScroll: View {
         .sheet(isPresented: selectionSheetPresented) {
             SelectTextSheet(text: selectionText ?? "") { selectionText = nil }
         }
+        // The exchange between two bots, opened from a bot-to-bot message's attribution line.
+        .sheet(isPresented: Binding(get: { !pairPeer.isEmpty },
+                                    set: { if !$0 { pairPeer = "" } })) {
+            BotPairSheet(current: model.selectedBotID ?? "",
+                         peer: pairPeer,
+                         displayName: { profile in
+                             model.bots.first { $0.id == profile }?.displayName
+                                 ?? profile.capitalized
+                         },
+                         load: { await model.transfers(between: model.selectedBotID ?? "",
+                                                       and: pairPeer) })
+        }
         // ⌘F and the magnifier land in the same place; a second press re-focuses a field that is
         // already open instead of doing nothing.
         .onChange(of: findRequest) { _, _ in openSearch() }
@@ -158,7 +172,8 @@ struct TranscriptScroll: View {
                                       session: model.selectedSessionID,
                                       userBubbleTint: userBubbleTint,
                                       onSelectText: { selectionText = $0 },
-                                      onReply: { model.reply(to: $0) })
+                                      onReply: { model.reply(to: $0) },
+                                      onOpenPair: { peer in pairPeer = peer })
                         .id(entry.id)
                         .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
                 case .toolRun(let run):
@@ -169,7 +184,8 @@ struct TranscriptScroll: View {
                                           session: model.selectedSessionID,
                                           userBubbleTint: userBubbleTint,
                                           onSelectText: { selectionText = $0 },
-                                          onReply: { model.reply(to: $0) })
+                                          onReply: { model.reply(to: $0) },
+                                      onOpenPair: { peer in pairPeer = peer })
                             .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
                     }
                     .id(run.id)

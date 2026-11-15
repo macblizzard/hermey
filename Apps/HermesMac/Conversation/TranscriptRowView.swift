@@ -24,6 +24,9 @@ struct TranscriptRowView: View {
     /// Replying needs the model (it holds the reply target), and a row is torn down as it scrolls,
     /// so the transcript owns that decision and the row only asks.
     var onReply: ((TranscriptEntry) -> Void)? = nil
+    /// The attribution line on a bot-to-bot message asks the transcript to open the pair's exchange
+    /// (the sheet lives there: a row is torn down as it scrolls and a sheet it owns goes with it).
+    var onOpenPair: ((String) -> Void)? = nil
     @State private var showingReactions = false
     @AppStorage("mac.messageReactions.v1") private var storedReactions = "{}"
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
@@ -116,16 +119,24 @@ struct TranscriptRowView: View {
     @ViewBuilder
     private func botMessageRow(_ label: BotMessageLabel) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                if let profile = label.senderProfile {
-                    BotIconPortrait(BotFace.default(for: profile), size: Geometry.rosterAvatarCompact)
+            Button {
+                if let profile = label.senderProfile { onOpenPair?(profile) }
+            } label: {
+                HStack(spacing: 6) {
+                    if let profile = label.senderProfile {
+                        BotIconPortrait(BotFace.default(for: profile), size: Geometry.rosterAvatarCompact)
+                    }
+                    Text(label.incomingTitle)
+                        .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                        .foregroundStyle(Tokens.accentText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                Text(label.incomingTitle)
-                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
-                    .foregroundStyle(Tokens.accentText)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(label.senderProfile == nil)
+            .help("Show the conversation between these two bots")
             Text(label.body)
                 .font(TypeScale.font(TypeScale.chatBody))
                 .foregroundStyle(Tokens.textPrimary)

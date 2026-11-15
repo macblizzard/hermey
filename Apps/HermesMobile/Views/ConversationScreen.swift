@@ -797,7 +797,7 @@ struct ConversationScreen: View {
                                   running: runningToolIDs)) { row in
                 switch row {
                 case .entry(let entry):
-                    MobileTranscriptRow(entry: entry, botTint: botTint)
+                    MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id)
                         .overlay {
                             if selectedSearchID == entry.id {
                                 RoundedRectangle(cornerRadius: 8)
@@ -808,7 +808,7 @@ struct ConversationScreen: View {
                         .id(entry.id)
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs)
+                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs, botID: bot.id)
                     }
                     .id(run.id)
                 }
