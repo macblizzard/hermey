@@ -1,6 +1,6 @@
 """Bounded transcript pages: keep a long conversation openable on a phone.
 
-`session.resume` answers with the WHOLE conversation in one JSON-RPC frame. cody's bot chat is
+`session.resume` answers with the WHOLE conversation in one JSON-RPC frame. One measured bot chat is
 1450 rows / 3.4 MB, and `URLSessionWebSocketTask` will not deliver a message that size: the app
 reports "Message too long" (EMSGSIZE) and the conversation never opens — then every reconnect
 retries the same oversized frame, which is the "reconnecting 5" banner in the screenshot that

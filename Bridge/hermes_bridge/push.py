@@ -1,8 +1,8 @@
 """Notifications that arrive while the app is shut: a relay, because APNs is not ours to use.
 
 Push to a sideloaded app needs a credential for the *team that signed it*. This host has none —
-the signing certificate belongs to a resale team, and no reseller hands out its APNs key (see the
-profile's own `application-identifier`: `TJ27FT3Y2M.…`). So the delivery goes through an app that
+the signing certificate belongs to a resale team, and no reseller hands out its APNs key. So the
+delivery goes through an app that
 already holds such a credential and sells the service as a product: **Bark**.
 
 Bark is an App Store client plus a self-hosted server. The phone shows a URL like
@@ -13,7 +13,7 @@ Hermey on the bot that spoke.
 What the bridge adds:
 
     POST /v1/push/register   {"url": "http://…/AbCdEf"}      this device's relay endpoint
-    POST /v1/push/presence   {"bot": "cody" | null}          what this device is looking at
+    POST /v1/push/presence   {"bot": "<profile>" | null}    what this device is looking at
     POST /v1/push/test                                       one banner, now
 
 …and a watcher that reads each bot's conversation on a timer and pushes what is new. The timer is

@@ -133,7 +133,7 @@ class RakazoIOSShellTests(unittest.TestCase):
         self.assertIn(".padding(.vertical, Geometry.rosterRowPadding)", IOS_ROSTER)
         self.assertIn("TypeScale.font(Tokens.rosterMeta", IOS_ROSTER)
         # Two lines of text — the chevron was what made it three — but the two unread indicators
-        # are back on the row after the restyle dropped them: Mohammad asked for the count on the
+        # are back on the row after the restyle dropped them: the maintainer asked for the count on the
         # face and the beacon at the edge twice, and a single static dot lost the number
         # (reported 2026-11-14). They are overlays, so the row is still two lines.
         self.assertNotIn('Image(systemName: "chevron.right")', IOS_ROSTER)
