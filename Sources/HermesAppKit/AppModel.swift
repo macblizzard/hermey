@@ -1,6 +1,7 @@
 #if canImport(Combine)
 import Foundation
 import Combine
+import CryptoKit
 import HermesKit
 #if canImport(os)
 import os
@@ -2023,6 +2024,33 @@ public final class AppModel: ObservableObject {
     /// One banner right now, from the Settings screen's own button.
     public func sendTestPush() async throws {
         try await client.sendTestPush()
+    }
+
+    /// Hand the host each bot's face, so a banner carries the portrait the roster shows.
+    ///
+    /// Rendering lives in the UI (`PushIcon`), so the model takes a closure rather than importing a
+    /// view layer it must not depend on. Unchanged faces cost one request and no write: the hash is
+    /// kept here and the host compares it to what it already has.
+    public func syncPushIcons(render: @MainActor (String) -> Data?) async {
+        for bot in bots {
+            guard let data = render(bot.id) else { continue }
+            let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            if pushIconDigests[bot.id] == digest { continue }
+            do {
+                try await client.uploadPushIcon(bot: bot.id, png: data, sha256: digest)
+                pushIconDigests[bot.id] = digest
+            } catch {
+                // A banner with no image is a smaller loss than a banner that is late: try again on
+                // the next launch, say nothing.
+                continue
+            }
+        }
+    }
+
+    /// What this device last sent, per bot, so an unchanged face is not re-uploaded every launch.
+    private var pushIconDigests: [String: String] {
+        get { Self.defaults.dictionary(forKey: "hermey.pushIconDigests") as? [String: String] ?? [:] }
+        set { Self.defaults.set(newValue, forKey: "hermey.pushIconDigests") }
     }
 
     /// This bot's own note, read from the host — the same file on every device.

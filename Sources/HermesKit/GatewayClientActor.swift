@@ -462,6 +462,11 @@ public actor GatewayClient: GatewayClientProtocol {
         try await sessionPointer.sendTestPush()
     }
 
+    public func uploadPushIcon(bot: String, png: Data, sha256: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.uploadPushIcon(bot: bot, png: png, sha256: sha256)
+    }
+
     /// Rooms are the bridge's, like the pointer and bot management.
     public func rooms() async throws -> [RoomSummary] {
         guard let sessionPointer else { return [] }

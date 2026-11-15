@@ -118,6 +118,14 @@ struct BotsTab: View {
                 // A room pushes like a bot's conversation: same stack, same back gesture, and the
                 // list keeps its scroll position underneath instead of being covered by a modal.
                 .onOpenURL { openBannerURL($0) }
+                // A banner shows the bot's own face; the host holds the render, not the geometry.
+                .task {
+                    guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey),
+                          !relay.isEmpty else { return }
+                    await model.syncPushIcons { id in
+                        PushIcon.png(for: model.botFaces[id] ?? BotFace.default(for: id))
+                    }
+                }
                 .navigationDestination(for: RoomSummary.self) { room in
                     RoomChatView(
                         room: room,
