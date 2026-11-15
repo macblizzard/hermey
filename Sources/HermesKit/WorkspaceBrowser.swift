@@ -165,8 +165,20 @@ public extension WorkspaceFile {
     /// "3 hours ago" style, from the host's ISO-8601 stamp.
     func whenText(now: Date = Date()) -> String {
         guard let date = ISO8601DateFormatter().date(from: modified) else { return "" }
+        #if canImport(Darwin)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: now)
+        #else
+        // `RelativeDateTimeFormatter` is Darwin-only, so keep this target buildable on Linux for
+        // logic tests; the apps always take the branch above.
+        let seconds = Int(now.timeIntervalSince(date))
+        let units: [(Int, String)] = [(31_536_000, "y"), (2_592_000, "mo"), (604_800, "w"),
+                                      (86_400, "d"), (3_600, "h"), (60, "m")]
+        for (size, label) in units where abs(seconds) >= size {
+            return "\(abs(seconds) / size)\(label) ago"
+        }
+        return "just now"
+        #endif
     }
 }

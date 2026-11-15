@@ -15,9 +15,18 @@ Two rules make it safe to write from either device:
 
 * **A category is deleted, a bot never is.** Deleting a category drops its assignments and the bots
   fall back to Uncategorized, which is what the app already draws for a bot with no assignment.
-* **Last write wins, whole file.** The app sends one assignment at a time and reads the answer back;
+* **Last write wins, whole file.** The app sends one change at a time and reads the answer back;
   there is no merge to get wrong, and a half-written file cannot exist because the write goes to a
   temporary file that is then moved into place.
+
+The client contract that goes with it (both apps follow it — see `AppModel`):
+
+* a device reads the document **on connect and after every write**, and caches the last answer so a
+  launch with no host still draws the groups; the cache is read-only, so two devices can never
+  disagree about who owns a category;
+* because every mutation is a read-modify-write *under this file's lock*, two devices sorting two
+  different bots both keep their change. Only the same bot filed twice is a conflict, and there the
+  later request wins — the answer it returns is the document both devices will show.
 
 Routes (device ticket, like every other `/v1/bots/**` route):
 
@@ -32,10 +41,11 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
@@ -104,10 +114,49 @@ def load(runtime) -> dict:
 
 def save(runtime, data: dict) -> None:
     path = state_file(runtime)
+    with _lock_for(path):
+        _write_document(path, data)
+
+
+def _write_document(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".writing")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # The move is the publish: a reader sees the old document or the new one, never a half of one.
     temporary.replace(path)
+
+
+#: One lock per state file, so two requests in one bridge cannot interleave their read-modify-write.
+#:
+#: The apps write the same file from two devices; without this, a `PUT` (read, change, save) and a
+#: `POST` landing together would each start from the same read and the second save would drop the
+#: first one's change. A *re-entrant* lock because `save()` takes it too, and a mutation calls it.
+_LOCKS: dict[str, threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(path: Path) -> threading.RLock:
+    key = str(path)
+    with _LOCKS_GUARD:
+        lock = _LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _LOCKS[key] = lock
+        return lock
+
+
+def mutate(runtime, change: Callable[[dict], Any]) -> Any:
+    """Apply one change to the document, under the file's lock, and return what it returned.
+
+    The read, the change and the write are one step for anyone else writing this file. A `change`
+    that raises (a 404, a 409) leaves the file exactly as it was: nothing is saved.
+    """
+    path = state_file(runtime)
+    with _lock_for(path):
+        data = load(runtime)
+        outcome = change(data)
+        save(runtime, data)
+        return outcome
 
 
 def _clean_name(name: str) -> str:
@@ -137,48 +186,58 @@ def create_bot_categories_router(runtime) -> APIRouter:
                         authorization: str | None = Header(default=None)) -> dict:
         require_device(runtime, authorization)
         name = _clean_name(body.name)
-        data = load(runtime)
-        if len(data["categories"]) >= MAX_CATEGORIES:
-            raise HTTPException(status_code=409,
-                                detail=f"this host holds {MAX_CATEGORIES} categories already")
-        if any(str(c.get("name", "")).casefold() == name.casefold() for c in data["categories"]):
-            raise HTTPException(status_code=409, detail="a category with that name exists")
-        category = {"id": uuid.uuid4().hex[:12], "name": name, "created_at": time.time()}
-        data["categories"].append(category)
-        save(runtime, data)
-        return {"category": category, **_payload(data)}
+
+        def change(data: dict) -> dict:
+            if len(data["categories"]) >= MAX_CATEGORIES:
+                raise HTTPException(status_code=409,
+                                    detail=f"this host holds {MAX_CATEGORIES} categories already")
+            if any(str(c.get("name", "")).casefold() == name.casefold()
+                   for c in data["categories"]):
+                raise HTTPException(status_code=409, detail="a category with that name exists")
+            category = {"id": uuid.uuid4().hex[:12], "name": name, "created_at": time.time()}
+            data["categories"].append(category)
+            return category
+
+        category = mutate(runtime, change)
+        return {"category": category, **_payload(load(runtime))}
 
     @router.patch("/bot-categories/{category_id}")
     def rename_category(category_id: str, body: CategoryWrite,
                         authorization: str | None = Header(default=None)) -> dict:
         require_device(runtime, authorization)
         name = _clean_name(body.name)
-        data = load(runtime)
-        target = next((c for c in data["categories"] if c.get("id") == category_id), None)
-        if target is None:
-            raise HTTPException(status_code=404, detail="no such category")
-        if any(c.get("id") != category_id and str(c.get("name", "")).casefold() == name.casefold()
-               for c in data["categories"]):
-            raise HTTPException(status_code=409, detail="a category with that name exists")
-        target["name"] = name
-        save(runtime, data)
-        return _payload(data)
+
+        def change(data: dict) -> None:
+            target = next((c for c in data["categories"] if c.get("id") == category_id), None)
+            if target is None:
+                raise HTTPException(status_code=404, detail="no such category")
+            if any(c.get("id") != category_id
+                   and str(c.get("name", "")).casefold() == name.casefold()
+                   for c in data["categories"]):
+                raise HTTPException(status_code=409, detail="a category with that name exists")
+            target["name"] = name
+
+        mutate(runtime, change)
+        return _payload(load(runtime))
 
     @router.delete("/bot-categories/{category_id}")
     def delete_category(category_id: str,
                         authorization: str | None = Header(default=None)) -> dict:
         require_device(runtime, authorization)
-        data = load(runtime)
-        remaining = [c for c in data["categories"] if c.get("id") != category_id]
-        if len(remaining) == len(data["categories"]):
-            raise HTTPException(status_code=404, detail="no such category")
-        data["categories"] = remaining
-        # Deleting a group never deletes a bot: a bot with no assignment is Uncategorized, which the
-        # list draws for anyone who has not sorted it.
-        data["assignments"] = {profile: category for profile, category in data["assignments"].items()
-                               if category != category_id}
-        save(runtime, data)
-        return _payload(data)
+
+        def change(data: dict) -> None:
+            remaining = [c for c in data["categories"] if c.get("id") != category_id]
+            if len(remaining) == len(data["categories"]):
+                raise HTTPException(status_code=404, detail="no such category")
+            data["categories"] = remaining
+            # Deleting a group never deletes a bot: a bot with no assignment is Uncategorized, which
+            # the list draws for anyone who has not sorted it.
+            data["assignments"] = {profile: category
+                                   for profile, category in data["assignments"].items()
+                                   if category != category_id}
+
+        mutate(runtime, change)
+        return _payload(load(runtime))
 
     @router.put("/bots/{profile}/category")
     def assign_category(profile: str, body: AssignmentWrite,
@@ -186,14 +245,16 @@ def create_bot_categories_router(runtime) -> APIRouter:
         require_device(runtime, authorization)
         if not PROFILE_RE.match(profile):
             raise HTTPException(status_code=422, detail="invalid profile name")
-        data = load(runtime)
-        if body.category_id is None:
-            data["assignments"].pop(profile, None)
-        else:
-            if not any(c.get("id") == body.category_id for c in data["categories"]):
-                raise HTTPException(status_code=404, detail="no such category")
-            data["assignments"][profile] = body.category_id
-        save(runtime, data)
-        return {"profile": profile, "category_id": body.category_id, **_payload(data)}
+
+        def change(data: dict) -> None:
+            if body.category_id is None:
+                data["assignments"].pop(profile, None)
+            else:
+                if not any(c.get("id") == body.category_id for c in data["categories"]):
+                    raise HTTPException(status_code=404, detail="no such category")
+                data["assignments"][profile] = body.category_id
+
+        mutate(runtime, change)
+        return {"profile": profile, "category_id": body.category_id, **_payload(load(runtime))}
 
     return router

@@ -214,6 +214,66 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
                         latestSeq: all.map(\.seq).max() ?? 0)
     }
 
+    // MARK: Categories
+
+    /// The host's category document, exactly as the bridge would hold it: groups plus assignments.
+    /// A test rewrites it to model what the *other* device did while this one was open.
+    var categoryState = BotCategoryState.empty
+    /// Every read that reached the host, so a test can prove a connect (or a write) refreshed.
+    private(set) var categoryReads = 0
+    /// Every write that reached the host, in order: `create:Work`, `assign:cody:work`.
+    private(set) var categoryWrites: [String] = []
+    /// Set to make every category call fail, the way a host that is not there does.
+    var categoryError: Error?
+    /// How long a read takes before its answer arrives. The document is captured first, so a slow
+    /// read answers with what the host held when it was asked — which is what a late answer is.
+    var categoryReadDelay: Duration?
+
+    func botCategories() async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryReads += 1
+        let answer = categoryState
+        if let categoryReadDelay { try? await Task.sleep(for: categoryReadDelay) }
+        return answer
+    }
+
+    func createBotCategory(name: String) async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryWrites.append("create:\(name)")
+        let category = BotCategory(id: "cat-\(categoryState.categories.count + 1)", name: name)
+        categoryState = BotCategoryState(categories: categoryState.categories + [category],
+                                         assignments: categoryState.assignments)
+        return categoryState
+    }
+
+    func renameBotCategory(id: String, name: String) async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryWrites.append("rename:\(id):\(name)")
+        categoryState = BotCategoryState(
+            categories: categoryState.categories.map { $0.id == id ? BotCategory(id: id, name: name) : $0 },
+            assignments: categoryState.assignments)
+        return categoryState
+    }
+
+    func deleteBotCategory(id: String) async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryWrites.append("delete:\(id)")
+        categoryState = BotCategoryState(
+            categories: categoryState.categories.filter { $0.id != id },
+            assignments: categoryState.assignments.filter { $0.value != id })
+        return categoryState
+    }
+
+    func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryWrites.append("assign:\(profile):\(categoryID ?? "-")")
+        var assignments = categoryState.assignments
+        assignments[profile] = categoryID
+        categoryState = BotCategoryState(categories: categoryState.categories,
+                                         assignments: assignments)
+        return categoryState
+    }
+
     // MARK: Discovery
 
     func modelOptions() async throws -> [ModelOption] { [] }

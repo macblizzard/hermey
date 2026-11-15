@@ -17,7 +17,11 @@ public struct BotCategory: Identifiable, Hashable, Codable, Sendable {
 }
 
 /// The whole document: the groups, and which bot sits in which.
-public struct BotCategoryState: Hashable, Sendable {
+///
+/// `Codable` on purpose: this is also the shape the app caches so a launch with no host still draws
+/// the groups the owner made. The cached copy is a *read* copy — every write still goes to the host
+/// and comes back as the whole document (`AppModel`), which is what keeps two devices agreeing.
+public struct BotCategoryState: Hashable, Sendable, Codable {
     public let categories: [BotCategory]
     /// profile id → category id
     public let assignments: [String: String]
@@ -27,6 +31,11 @@ public struct BotCategoryState: Hashable, Sendable {
     public init(categories: [BotCategory], assignments: [String: String]) {
         self.categories = categories
         self.assignments = assignments
+    }
+
+    /// The document as the cache stores it. Same keys the bridge sends, so one decoder reads both.
+    public func encoded() -> Data? {
+        try? JSONEncoder().encode(self)
     }
 
     public func categoryID(for profile: String) -> String? {

@@ -49,6 +49,9 @@ struct BotSidebarView: View {
         .task {
             await model.refreshDisabledBots()
             await model.refreshRooms()
+            // Groups live on the host and the other device writes them too, so the list asks for
+            // them whenever the panel appears rather than trusting what the last launch left.
+            await model.loadBotCategories()
         }
         .confirmationDialog(
             pendingRoomDelete.map { "Delete \($0.name)?" } ?? "Delete this group chat?",
@@ -212,6 +215,12 @@ struct BotSidebarView: View {
             }
             Button { store.isManageBotsPresented = true } label: {
                 Label("Manage bots…", systemImage: "slider.horizontal.3")
+            }
+            Divider()
+            // Groups are the owner's, stored on the host: they are made here rather than only from
+            // the phone, and the list's own category headings carry rename and delete.
+            Button { BotMenuRouter.shared.requestNewCategory() } label: {
+                Label("New category…", systemImage: "folder.badge.plus")
             }
             Divider()
             // Same control as the phone's list filter: a switch, not a second list.

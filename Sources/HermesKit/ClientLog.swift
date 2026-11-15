@@ -16,6 +16,143 @@ public enum ClientLogLevel: String, Codable, Sendable, CaseIterable {
         case .error: return "E"
         }
     }
+
+    /// What the level filter calls it. Plural, because choosing a level chooses every line at it.
+    public var filterName: String {
+        switch self {
+        case .info: return "Info"
+        case .warning: return "Warnings"
+        case .error: return "Errors"
+        }
+    }
+}
+
+/// Which end of the log reads first.
+///
+/// The two choices are named for their *opposites*, not for the same end twice: a menu reading
+/// "Newest first / Newest last" gives the reader nothing to tell apart, and a control whose two
+/// halves look identical is a control nobody can use (reported 2026-11-15, build 442).
+///
+/// Stored as its `rawValue` (see `ClientLogOrder.storageKey`), because a preference in
+/// `UserDefaults` outlives the shape of the enum that wrote it.
+public enum ClientLogOrder: String, Codable, Sendable, CaseIterable, Identifiable, Hashable {
+    /// The latest line at the top — what a reader wants when the failure just happened.
+    case newestFirst
+    /// The order the file is written in, oldest at the top — the sheet's original behaviour.
+    case oldestFirst
+
+    /// Where the choice is remembered, per device.
+    public static let storageKey = "hermey.logOrder"
+    /// The key build 442 and earlier wrote the same choice to, as a Bool. Read, never written.
+    public static let legacyStorageKey = "hermey.logNewestFirst"
+
+    public var id: String { rawValue }
+
+    /// What the segmented control and the menu say. Two different words, both about an end.
+    public var title: String {
+        switch self {
+        case .newestFirst: return "Newest first"
+        case .oldestFirst: return "Oldest first"
+        }
+    }
+
+    /// One line of reassurance under the control and in the VoiceOver value, so the choice is
+    /// never only implied by a highlight.
+    public var detail: String {
+        switch self {
+        case .newestFirst: return "The latest line is at the top"
+        case .oldestFirst: return "The latest line is at the bottom"
+        }
+    }
+
+    /// The entries in this order. `ClientLog.snapshot()` hands them over oldest first, so only one
+    /// of the two cases has anything to do.
+    public func arrange(_ entries: [ClientLogEntry]) -> [ClientLogEntry] {
+        switch self {
+        case .newestFirst: return Array(entries.reversed())
+        case .oldestFirst: return entries
+        }
+    }
+
+    /// The stored choice, falling back to the Bool that earlier builds wrote and then to the
+    /// sheet's original order.
+    public static func stored(in defaults: UserDefaults = .standard) -> ClientLogOrder {
+        if let raw = defaults.string(forKey: storageKey), let saved = ClientLogOrder(rawValue: raw) {
+            return saved
+        }
+        return defaults.bool(forKey: legacyStorageKey) ? .newestFirst : .oldestFirst
+    }
+
+    /// Remember the choice. Written through rather than batched: it is one tap, and a reader who
+    /// force-quits the app right after tapping it expects the next open to agree with them.
+    public func store(in defaults: UserDefaults = .standard) {
+        defaults.set(rawValue, forKey: Self.storageKey)
+    }
+}
+
+/// What the reader has narrowed the log to: an order, at most one level, at most one category, and
+/// a search phrase.
+///
+/// The whole of it is data with no view attached, which is the point: "does the list really
+/// re-sort, and does the filter really filter" is a question about these three functions, and it
+/// can be answered without a simulator (see `ClientLogTests`).
+public struct ClientLogQuery: Equatable, Sendable {
+    public var order: ClientLogOrder
+    /// `nil` shows every level.
+    public var level: ClientLogLevel?
+    /// `nil` shows every category.
+    public var category: String?
+    /// The phrase, as typed. Whitespace-only is treated as no search.
+    public var search: String
+
+    public init(order: ClientLogOrder = .oldestFirst,
+                level: ClientLogLevel? = nil,
+                category: String? = nil,
+                search: String = "") {
+        self.order = order
+        self.level = level
+        self.category = category
+        self.search = search
+    }
+
+    /// A search of spaces is not a search: a field the reader tabbed through must not empty the
+    /// list.
+    public var trimmedSearch: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Whether anything is hidden — what the sheet's "N of M" line and its "Show all" control read.
+    public var isFiltering: Bool {
+        level != nil || category != nil || !trimmedSearch.isEmpty
+    }
+
+    /// Whether one line survives the filter. The order is not part of this: it moves lines, it does
+    /// not drop them.
+    public func matches(_ entry: ClientLogEntry) -> Bool {
+        if let level, entry.level != level { return false }
+        if let category, entry.category != category { return false }
+
+        let phrase = trimmedSearch
+        if !phrase.isEmpty {
+            // Case- and width-insensitive: the reader is typing a fragment of a line they half
+            // remember, and the log writes categories in lower case.
+            let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive,
+                                                  .widthInsensitive]
+            let inMessage = entry.message.range(of: phrase, options: options) != nil
+            let inCategory = entry.category.range(of: phrase, options: options) != nil
+            let inLevel = entry.level.filterName.range(of: phrase, options: options) != nil
+            // The clock is searchable too: "what happened at 12:04" is a real question, and
+            // `line` is what the reader is looking at.
+            let inClock = entry.line.range(of: phrase, options: options) != nil
+            if !(inMessage || inCategory || inLevel || inClock) { return false }
+        }
+        return true
+    }
+
+    /// The lines the reader should see, in the order they asked for.
+    public func apply(to entries: [ClientLogEntry]) -> [ClientLogEntry] {
+        order.arrange(entries.filter(matches))
+    }
 }
 
 /// One recorded fact: when, how loud, from which part of the app, and what happened.
@@ -47,6 +184,14 @@ public struct ClientLogEntry: Identifiable, Codable, Sendable, Equatable {
                            parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0)
         return "\(clock)  \(level.marker)  \(category)  \(message)"
     }
+}
+
+/// A registered live tail. Hold on to it: `ClientLog.stopObserving` is what a closing sheet calls,
+/// and dropping the token without calling it would leave the handler registered for the life of
+/// the process.
+public struct ClientLogObserver: Sendable, Hashable {
+    public let id: UUID
+    public init(id: UUID = UUID()) { self.id = id }
 }
 
 /// What the app did, in the order it did it.
@@ -83,6 +228,9 @@ public final class ClientLog: @unchecked Sendable {
     private let queue = DispatchQueue(label: "dev.hermey.client-log", qos: .utility)
     private let fileURL: URL?
     private var buffer: [ClientLogEntry] = []
+    /// Live-tail handlers, touched only on `queue`. Keyed by token so a viewer that goes away can
+    /// take its handler with it — a sheet opened a dozen times must not leave a dozen closures.
+    private var observerStore: [UUID: @Sendable (ClientLogEntry) -> Void] = [:]
     private var flushScheduled = false
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -109,6 +257,10 @@ public final class ClientLog: @unchecked Sendable {
                 self.buffer.removeFirst(self.buffer.count - self.capacity)
             }
             self.scheduleFlushLocked()
+            // After the buffer, so a handler that asks the sheet to redraw sees the line it was
+            // told about. Never before the append: a live tail that fires early shows the reader a
+            // list that is one line behind, which is indistinguishable from a broken tail.
+            for handler in self.observerStore.values { handler(entry) }
         }
         #if canImport(os)
         // The same line in the system log, so `log stream --predicate 'subsystem == "dev.hermey.app"'`
@@ -141,6 +293,28 @@ public final class ClientLog: @unchecked Sendable {
             buffer.removeAll()
             if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
         }
+    }
+
+    // MARK: Live tail
+
+    /// Every line recorded from now on, handed to `handler` as it is appended.
+    ///
+    /// The log sheet is open precisely when the failure it is open for happens, which is why a
+    /// list that only re-reads on a button press shows the reader everything except the line they
+    /// are waiting for (reported 2026-11-15).
+    ///
+    /// The handler runs **on the log's own serial queue**, so it must not call back into
+    /// `snapshot()`, `text()` or any other `queue.sync` method — that deadlocks. Hop to the main
+    /// queue first; the viewer does exactly that.
+    public func observe(_ handler: @escaping @Sendable (ClientLogEntry) -> Void) -> ClientLogObserver {
+        let token = ClientLogObserver(id: UUID())
+        queue.async { self.observerStore[token.id] = handler }
+        return token
+    }
+
+    /// Stop the live tail. Safe to call twice, and safe from `deinit` of whatever held the token.
+    public func stopObserving(_ token: ClientLogObserver) {
+        queue.async { self.observerStore[token.id] = nil }
     }
 
     /// Write the buffer out now, debounce or not.
@@ -187,5 +361,26 @@ public extension ClientLog {
                      level: ClientLogLevel = .info,
                      category: String = "app") {
         shared.record(message, level: level, category: category)
+    }
+}
+
+public extension ClientLog {
+    /// Every category present in `entries`, alphabetically — the contents of the category filter.
+    ///
+    /// Derived from what is in the log rather than from a registry, so the menu can never offer a
+    /// category nothing has written yet.
+    static func categories(in entries: [ClientLogEntry]) -> [String] {
+        Array(Set(entries.map(\.category))).sorted { $0.localizedCompare($1) == .orderedAscending }
+    }
+
+    /// The lines `entries` turn into, in the order given: what Copy and Share hand over.
+    ///
+    /// Takes the entries rather than reading the buffer, so the sheet copies *what is on screen*
+    /// — including the reader's order and filter — instead of a log they never saw.
+    static func text(of entries: [ClientLogEntry], header: String = "") -> String {
+        let body = entries.map(\.line).joined(separator: "\n")
+        let head = header.isEmpty ? "" : header + "\n\n"
+        guard !body.isEmpty else { return head }
+        return head + body + "\n"
     }
 }

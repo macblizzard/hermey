@@ -61,10 +61,16 @@ class TheNameIsTheControl(unittest.TestCase):
         self.assertNotIn("scaleEffect(", pill)
 
     def test_the_pill_has_a_keyboard_door(self) -> None:
-        # ⌘E is the same door the pill is, for a keyboard (asked for 2026-11-15).
+        # ⌘E is the keyboard's door to the *selected bot's menu* — the same menu its ⋯ opens.
+        # It used to toggle the bot panel, which the header pill already does from the pointer,
+        # and the item carried `.disabled(store.selectedBot == nil)`: `store` is a plain reference
+        # rather than an observed one, so that gate was whatever the roster was when the menu was
+        # built — "no bots yet" at launch — and a disabled item swallows its key for the rest of
+        # the run (reported 2026-11-15 as "⌘E does nothing").
         app = (MAC / "HermesMacApp.swift").read_text(encoding="utf-8")
         self.assertIn('.keyboardShortcut("e", modifiers: .command)', app)
-        self.assertIn("store.toggleBotPanel()", app)
+        self.assertIn("BotMenuRouter.shared.toggle(botID: id)", app)
+        self.assertNotIn('Button(store.isBotPanelPresented ? "Hide Bot Menu"', app)
 
     def test_the_header_keeps_no_dropdown_of_its_own(self) -> None:
         # One door. The verbs are rows in the panel; a second menu beside the pill would be the

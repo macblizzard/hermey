@@ -10,6 +10,8 @@ The rules worth pinning are the ones a user would notice being broken:
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import httpx
 import pytest
 
@@ -110,6 +112,106 @@ class TestDeletingACategoryNeverDeletesABot:
 
     def test_deleting_an_unknown_category_is_a_404(self, bridge) -> None:
         assert _request(bridge, "DELETE", "/v1/bot-categories/nope").status_code == 404
+
+
+class TestTwoDevicesWriteOneFile:
+    """The phone and the Mac write the same document, so the host has to make the writes add up.
+
+    The rule the apps rely on: a mutation is a whole-file read-modify-write, and two of them cannot
+    interleave. A device that files one bot must never silently drop the other device's filing — the
+    two-device case is the whole reason this state is on the host.
+    """
+
+    def test_filings_from_many_requests_all_survive(self, bridge) -> None:
+        category = _create(bridge, "Work").json()["category"]["id"]
+        # Six, not sixteen: every request pairs first, and a claim is rate limited per address.
+        profiles = [f"bot{index}" for index in range(6)]
+
+        def file(profile: str):
+            return _request(bridge, "PUT", f"/v1/bots/{profile}/category",
+                            {"category_id": category})
+
+        with ThreadPoolExecutor(max_workers=len(profiles)) as pool:
+            responses = list(pool.map(file, profiles))
+
+        assert [r.status_code for r in responses] == [200] * len(profiles)
+        state = _request(bridge, "GET", "/v1/bot-categories").json()
+        assert state["assignments"] == {profile: category for profile in profiles}
+
+    def test_categories_created_at_once_all_survive(self, bridge) -> None:
+        names = [f"Group {index}" for index in range(6)]
+        with ThreadPoolExecutor(max_workers=len(names)) as pool:
+            responses = list(pool.map(lambda name: _create(bridge, name), names))
+
+        assert all(r.status_code == 200 for r in responses)
+        listed = [c["name"] for c in _request(bridge, "GET", "/v1/bot-categories").json()["categories"]]
+        assert sorted(listed) == sorted(names)
+
+    def test_the_same_bot_filed_twice_ends_at_the_later_request(self, bridge) -> None:
+        work = _create(bridge, "Work").json()["category"]["id"]
+        home = _create(bridge, "Home").json()["category"]["id"]
+
+        _request(bridge, "PUT", "/v1/bots/cody/category", {"category_id": work})
+        later = _request(bridge, "PUT", "/v1/bots/cody/category", {"category_id": home})
+
+        # "Last write wins" is not a merge rule to reason about: the answer to the last request *is*
+        # the document a read returns, so both devices draw the same list.
+        assert later.json()["assignments"] == {"cody": home}
+        assert _request(bridge, "GET", "/v1/bot-categories").json()["assignments"] == {"cody": home}
+
+    def test_a_mutation_in_flight_cannot_be_built_on_a_stale_read(self, bridge) -> None:
+        """The deterministic form of the race: one change is held open while a second lands.
+
+        Without a lock the second one reads the file the first has not written yet, saves its own
+        document, and the first then publishes over it — one of the two changes is gone. With the
+        lock the second waits for the first, so both are in the file.
+        """
+        import threading
+        import time
+
+        from hermes_bridge import bot_categories
+
+        runtime = bridge.app.state.bridge
+        first_started = threading.Event()
+        release_first = threading.Event()
+
+        def slow_change(data: dict) -> None:
+            first_started.set()
+            assert release_first.wait(5)
+            data["categories"].append({"id": "aaa", "name": "First"})
+
+        def quick_change(data: dict) -> None:
+            data["categories"].append({"id": "bbb", "name": "Second"})
+
+        first = threading.Thread(target=bot_categories.mutate, args=(runtime, slow_change))
+        first.start()
+        assert first_started.wait(5)
+        second = threading.Thread(target=bot_categories.mutate, args=(runtime, quick_change))
+        second.start()
+        # Long enough that the second is inside `mutate` — blocked on the lock, or, without one,
+        # between its read and its write.
+        time.sleep(0.2)
+        release_first.set()
+        first.join(5)
+        second.join(5)
+        assert not first.is_alive() and not second.is_alive()
+
+        names = sorted(c["id"] for c in bot_categories.load(runtime)["categories"])
+        assert names == ["aaa", "bbb"]
+
+    def test_a_refused_write_leaves_the_file_as_it_was(self, bridge) -> None:
+        kept = _create(bridge, "Work").json()["category"]["id"]
+        _request(bridge, "PUT", "/v1/bots/cody/category", {"category_id": kept})
+
+        assert _request(bridge, "PUT", "/v1/bots/aria/category",
+                        {"category_id": "nope"}).status_code == 404
+        assert _request(bridge, "DELETE", "/v1/bot-categories/nope").status_code == 404
+        assert _request(bridge, "PATCH", "/v1/bot-categories/nope",
+                        {"name": "Elsewhere"}).status_code == 404
+
+        state = _request(bridge, "GET", "/v1/bot-categories").json()
+        assert [c["id"] for c in state["categories"]] == [kept]
+        assert state["assignments"] == {"cody": kept}
 
 
 class TestTheRoutesNeedADevice:

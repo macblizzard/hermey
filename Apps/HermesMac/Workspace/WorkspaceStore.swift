@@ -220,6 +220,9 @@ final class WorkspaceStore: ObservableObject {
     /// this exists for the explicit "check again" affordance, which must not reconnect.
     func loadBots() async {
         await model.loadBots()
+        // The headings are host state beside the roster: the phone may have made one, or moved a
+        // bot into one, since this window last looked. Read with the list so a refresh is one act.
+        await model.loadBotCategories()
         await loadBotFaces()
         // Third line of every row. Cached per bot, so a second call is free and a bot that has
         // already answered is not asked again.

@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = (ROOT / "Sources" / "OpenBotUI" / "ClientLogView.swift").read_text(encoding="utf-8")
+MODEL_LOG = (ROOT / "Sources" / "HermesKit" / "ClientLog.swift").read_text(encoding="utf-8")
 IOS_LIST = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotListScreen.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
 
@@ -25,20 +26,58 @@ class TheLogCanBeReReadAndReversed(unittest.TestCase):
     def test_refresh_reads_the_log_again_without_closing(self) -> None:
         self.assertIn('Label("Refresh", systemImage: "arrow.clockwise")', LOG)
         # The same reload the sheet runs on appear — not a dismissal that reopens the view.
-        self.assertIn("reload()", LOG)
+        self.assertIn("feed.reload()", LOG)
         self.assertNotIn('dismiss()\n                        .onAppear', LOG)
 
     def test_the_order_is_a_persisted_choice_with_both_ends_named(self) -> None:
-        self.assertIn('@AppStorage("hermey.logNewestFirst")', LOG)
-        self.assertIn('Text("Newest first").tag(true)', LOG)
-        self.assertIn('Text("Newest last").tag(false)', LOG)
-        # The list reads through the choice; `entries` in file order is the storage, not the view.
-        self.assertIn("ForEach(ordered)", LOG)
-        self.assertIn("Array(entries.reversed())", LOG)
+        # Build 442 offered "Newest first / Newest last" — two options one word apart — and a menu
+        # that showed its selection only while it was open. The choice is now an enum whose two
+        # cases name opposite ends, a segmented control that shows which one is on, and the order
+        # itself is applied by the model.
+        self.assertIn("@AppStorage(ClientLogOrder.storageKey)", LOG)
+        self.assertIn("ClientLogOrder(rawValue: storedOrder)", LOG)
+        self.assertIn(".pickerStyle(.segmented)", LOG)
+        self.assertIn("ClientLogQuery(order: order, level: levelFilter", LOG)
+        # `entries` in file order is the storage, not the view.
+        self.assertIn("query.apply(to: feed.entries)", LOG)
+        self.assertNotIn("ForEach(entries)", LOG)
+        # The comparator and the two titles live where they can be unit-tested.
+        self.assertIn('case .newestFirst: return Array(entries.reversed())', MODEL_LOG)
+        self.assertIn('case .newestFirst: return "Newest first"', MODEL_LOG)
+        self.assertIn('case .oldestFirst: return "Oldest first"', MODEL_LOG)
 
     def test_the_default_is_the_order_the_sheet_always_had(self) -> None:
-        # `newestFirst = false` — newest last, oldest first: what a reader of this sheet knows.
-        self.assertIn("private var newestFirst = false", LOG)
+        # Nothing stored, no legacy Bool set: newest last, oldest first — what a reader of this
+        # sheet knows.
+        self.assertIn("return ClientLogOrder.stored()", LOG)
+        self.assertIn("public static func stored(in defaults: UserDefaults = .standard) -> ClientLogOrder",
+                      MODEL_LOG)
+        self.assertIn("? .newestFirst : .oldestFirst", MODEL_LOG)
+
+    def test_the_order_control_follows_the_newest_line(self) -> None:
+        # Acceptance: flipping the order keeps the reader on the newest entry, so the change is
+        # visible instead of leaving them mid-list at an offset that no longer means anything.
+        self.assertIn("proxy.scrollTo(id, anchor: anchor)", LOG)
+        self.assertIn(".onChange(of: order)", LOG)
+
+    def test_the_live_tail_and_the_entry_count_are_controls_not_side_effects(self) -> None:
+        # The phone and the Mac both get every option: pause, search, level, category, count.
+        self.assertIn("log.observe", LOG)
+        self.assertIn('Image(systemName: feed.isLive ? "pause.fill" : "play.fill")', LOG)
+        self.assertIn('TextField("Search the log"', LOG)
+        self.assertIn('Text("All levels")', LOG)
+        self.assertIn('Text("All categories")', LOG)
+        self.assertIn("Text(countLine)", LOG)
+
+    def test_both_apps_present_the_same_view(self) -> None:
+        # The parity fix: one presentation, reached from two places. A second, Mac-only log list is
+        # what let the two drift apart in the first place.
+        for host in (ROOT / "Apps" / "HermesMobile" / "Views" / "SettingsScreen.swift",
+                     ROOT / "Apps" / "HermesMac" / "Views" / "AboutSettingsTab.swift"):
+            self.assertIn('ClientLogView(title: "Log"', host.read_text(encoding="utf-8"))
+        viewers = [path for path in (ROOT / "Apps").rglob("*.swift")
+                   if "ClientLogEntry" in path.read_text(encoding="utf-8")]
+        self.assertEqual(viewers, [], "no app-side copy of the log list; the sheet is shared")
 
 
 class TheRowSwipesAreIconsOnly(unittest.TestCase):

@@ -7,11 +7,14 @@ import SwiftUI
 ///
 /// The rail's avatars stay the fastest switch; this list is the phone's bot list brought to the
 /// desktop: the profile's description under its name, a green dot for a reply that arrived while
-/// the conversation was not on screen, pin/hide from the row's context menu. The filter is the
-/// panel's search field (`BotSidebarView`), applied here against name and id, so the list needs no
-/// caption row of its own: the field says what the block is.
+/// the conversation was not on screen, pin/hide from the row's menu. The filter is the panel's
+/// search field (`BotSidebarView`), applied here against name and id, so the list needs no caption
+/// row of its own: the field says what the block is.
 ///
-/// Ordering is `AppModel.orderedBots` — pinned first, then last activity — so both surfaces agree.
+/// Ordering is `AppModel.orderedBots` — pinned first, then last activity — folded into the owner's
+/// categories by `AppModel.botGroups`, so both surfaces agree. The headings are the categories,
+/// drawn by `groupCaption`; a category with no bots still gets one, because a heading that appears
+/// only once it has a member is a heading nobody can find to fill.
 struct SidebarBotList: View {
     @ObservedObject var model: AppModel
     @ObservedObject var store: WorkspaceStore
@@ -30,6 +33,21 @@ struct SidebarBotList: View {
     var onRenameRoom: ((RoomSummary) -> Void)? = nil
 
     private var icons: [String: BotFace] { store.botFaces }
+
+    /// The row under the pointer, or whose overflow menu is open. One value for the whole list, so
+    /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
+    @State private var hoveredRow: String?
+
+    /// What ⌘E and the ⋯ are pointing at. The row draws the popover; see `BotMenuRouter`.
+    @ObservedObject private var menuRouter = BotMenuRouter.shared
+
+    /// One sheet at a time: sessions for a bot, or the category prompt. Two `.sheet` modifiers on
+    /// one view fight each other, so they share one item.
+    @State private var sheet: BotListSheet?
+    /// The category whose deletion is waiting on a confirmation.
+    @State private var pendingCategoryDelete: BotCategory?
+    /// A write that failed, said where the list can see it.
+    @State private var failure: String?
 
     private var trimmedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,11 +110,63 @@ struct SidebarBotList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if isFilteredEmpty {
-                emptyState
-            } else {
-                rows
+            Group {
+                if isFilteredEmpty {
+                    emptyState
+                } else {
+                    rows
+                }
             }
+            // The failure alert lives on the inner block so it cannot collide with the deletion
+            // confirmation on the outer one: two alerts on one node is one alert.
+            .alert("Category not changed",
+                   isPresented: Binding(get: { failure != nil },
+                                        set: { if !$0 { failure = nil } })) {
+                Button("OK", role: .cancel) { failure = nil }
+            } message: {
+                Text(failure ?? "")
+            }
+        }
+        .sheet(item: $sheet) { sheet in
+            switch sheet {
+            case .sessions(let bot):
+                BotSessionsSheet(model: model, bot: bot) { session in
+                    open(session: session, for: bot)
+                }
+                .hermesSheetChrome()
+            case .newCategory(let bot):
+                BotCategorySheet(
+                    title: "New category",
+                    confirmTitle: "Create",
+                    explanation: bot.map {
+                        "“\($0.displayName)” moves into it. Groups are stored on the host, so the phone and this Mac show the same ones."
+                    } ?? "Groups are stored on the host, so the phone and this Mac show the same ones.",
+                    commit: { name in await createCategory(named: name, assignTo: bot) })
+                .hermesSheetChrome()
+            case .renameCategory(let category):
+                BotCategorySheet(
+                    title: "Rename “\(category.name)”",
+                    confirmTitle: "Rename",
+                    explanation: "Every device that shows this group shows the new name.",
+                    initialName: category.name,
+                    commit: { name in await rename(category, to: name) })
+                .hermesSheetChrome()
+            }
+        }
+        .alert(pendingCategoryDelete.map { "Delete “\($0.name)”?" } ?? "Delete this category?",
+               isPresented: Binding(get: { pendingCategoryDelete != nil },
+                                    set: { if !$0 { pendingCategoryDelete = nil } }),
+               presenting: pendingCategoryDelete) { category in
+            Button("Delete category", role: .destructive) { delete(category) }
+            Button("Cancel", role: .cancel) { pendingCategoryDelete = nil }
+        } message: { category in
+            Text("The bots in it move to Uncategorized. Nothing is deleted but the group.")
+        }
+        // The header's **+** menu cannot present this list's sheet, so it asks through the router.
+        .onChange(of: menuRouter.wantsNewCategory) { _, wants in
+            guard wants else { return }
+            menuRouter.acknowledgeNewCategory()
+            sheet = .newCategory(nil)
         }
     }
 
@@ -119,14 +189,20 @@ struct SidebarBotList: View {
                                 .padding(.vertical, Geometry.rosterRowPadding)
                                 .frame(height: Geometry.rosterRow)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                        .fill(roomFill(room))
+                                )
                                 .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         // The same fill a selected bot uses, so "which conversation is open" reads
                         // the same whether it is a bot or a room.
-                        .hoverFill(rest: model.activeRoom?.id == room.id ? Tokens.controlActive : .clear,
-                                   hover: model.activeRoom?.id == room.id ? Tokens.controlActive : Tokens.controlHover)
+                        .onHover { inside in
+                            if inside { hoveredRow = roomKey(room.id) }
+                            else if hoveredRow == roomKey(room.id) { hoveredRow = nil }
+                        }
                         .contextMenu {
                             Button { onRenameRoom?(room) } label: {
                                 Label("Rename group chat…", systemImage: "pencil")
@@ -154,16 +230,24 @@ struct SidebarBotList: View {
                             }
                         } label: {
                             findingRow(hit)
+                                .background(
+                                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                        .fill(hoveredRow == hitKey(hit.id) ? Tokens.controlHover : .clear)
+                                )
                         }
                         .buttonStyle(.plain)
-                        .hoverFill()
+                        .onHover { inside in
+                            if inside { hoveredRow = hitKey(hit.id) }
+                            else if hoveredRow == hitKey(hit.id) { hoveredRow = nil }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
                     }
                 }
 
                 // The owner's groups, the same headings the phone draws: Pinned above everything,
                 // the categories by name, Uncategorized last (asked for 2026-11-15). While a search
-                // is running the answer is one flat list — a heading would split it up for nothing.
+                // is running the answer is one flat list — a heading would split it up for nothing —
+                // so the row carries its category as a chip instead.
                 if isSearching {
                     ForEach(visibleBots) { bot in
                         row(for: bot)
@@ -254,9 +338,13 @@ struct SidebarBotList: View {
         collapsedGroupsJSON = json
     }
 
-    /// A heading is a control, not a label: clicking it folds the group away.
+    /// A heading is a control, not a label: clicking it folds the group away, and right-clicking
+    /// it is where a group is renamed, emptied or added — the same three verbs the phone offers on
+    /// its category headers.
     @ViewBuilder
     private func groupCaption(_ group: BotGroup) -> some View {
+        let category = model.botCategories.first { $0.id == group.id }
+
         Button {
             withAnimation(.easeOut(duration: 0.12)) { toggleCollapsed(group) }
         } label: {
@@ -272,6 +360,7 @@ struct SidebarBotList: View {
                     .foregroundStyle(Tokens.textDim)
                 Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -279,6 +368,20 @@ struct SidebarBotList: View {
         .padding(.top, 10)
         .padding(.bottom, 2)
         .help(isCollapsed(group) ? "Expand \(group.name)" : "Collapse \(group.name)")
+        .contextMenu {
+            Button { sheet = .newCategory(nil) } label: {
+                Label("New category…", systemImage: "folder.badge.plus")
+            }
+
+            if let category {
+                Button { sheet = .renameCategory(category) } label: {
+                    Label("Rename “\(category.name)”…", systemImage: "pencil")
+                }
+                Button(role: .destructive) { pendingCategoryDelete = category } label: {
+                    Label("Delete “\(category.name)”", systemImage: "trash")
+                }
+            }
+        }
     }
 
     /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
@@ -290,6 +393,7 @@ struct SidebarBotList: View {
         // A room on screen owns the selection: the bot underneath is not the conversation the
         // pane is showing, and highlighting both made the sidebar look like two things were open.
         let isSelected = bot.id == model.selectedBotID && model.activeRoom == nil
+        let isHovered = hoveredRow == bot.id || menuRouter.botID == bot.id
         let isPinned = model.isPinned(botID: bot.id)
 
         return Button {
@@ -301,9 +405,13 @@ struct SidebarBotList: View {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
                 // the bot's id picks — never a bare initial. Rakazo draws the working state as a
                 // ring around the face, which is where this app already puts it.
+                //
+                // Live state is passed only for the bot whose turn is actually moving. An idle row
+                // hands the portrait no status at all, so nothing on this screen is being asked to
+                // animate on its behalf (see `BotIconPortrait` for the movement that remains).
                 BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: metrics.avatar,
-                                isWorking: bot.id == model.selectedBotID && model.isStreaming)
+                                status: portraitStatus(for: bot))
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
@@ -345,54 +453,115 @@ struct SidebarBotList: View {
 
                     }
 
-                    Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
-                        .font(TypeScale.font(Tokens.rosterMeta,
-                                             weight: model.hasUnread(bot.id) ? .medium : .regular))
-                        .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    // A flat search list has no headings, so the row says which group it is in;
+                    // with the headings on screen the heading already said it.
+                    HStack(spacing: 4) {
+                        if isSearching, let category = categoryName(for: bot) {
+                            Text(category.uppercased())
+                                .font(.system(size: 8, weight: .bold))
+                                .tracking(0.4)
+                                .foregroundStyle(Tokens.textDim)
+                                .lineLimit(1)
+                                .layoutPriority(-1)
+                        }
+
+                        Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
+                            .font(TypeScale.font(Tokens.rosterMeta,
+                                                 weight: model.hasUnread(bot.id) ? .medium : .regular))
+                            .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
 
                 Spacer(minLength: 0)
 
                 if model.hasUnread(bot.id) {
                     UnreadBeacon(diameter: 7)
+                        .opacity(isHovered ? 0 : 1)
                 }
             }
             .padding(.horizontal, metrics.rowPadding)
             .padding(.vertical, metrics.rowPadding)
             .frame(height: metrics.rowHeight)
+            // The hover fill is the row's own background, drawn at a fixed size: nothing here is
+            // padded, scaled or re-laid-out by the pointer, so a row never moves under it.
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .fill(isSelected ? Tokens.controlActive
+                          : (isHovered ? Tokens.controlHover : .clear))
+            )
+            // One hairline on hover, the chat header pill's own signal (a scale would move the hit
+            // box, which is what made that pill feel like it ignored clicks).
+            .overlay(
+                RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .strokeBorder(Tokens.borderStrong,
+                                  lineWidth: isHovered && !isSelected ? 1 : 0)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverFill(rest: isSelected ? Tokens.controlActive : .clear,
-                   hover: isSelected ? Tokens.controlActive : Tokens.controlHover)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
+        .onHover { inside in
+            if inside { hoveredRow = bot.id }
+            else if hoveredRow == bot.id { hoveredRow = nil }
+        }
+        // The ⋯ is a sibling of the row's button, not a button inside it: a control nested in a
+        // button's label is a control macOS never delivers a click to.
+        .overlay(alignment: .trailing) {
+            overflowButton(for: bot, isVisible: isHovered)
+                .padding(.trailing, metrics.rowPadding + 2)
+        }
         .contextMenu {
-            Button { store.openBotSettings(bot) } label: {
-                Label("Bot Settings", systemImage: "gearshape")
-            }
-
-            Button {
-                model.togglePin(botID: bot.id)
-            } label: {
-                Label(isPinned ? "Unpin" : "Pin to top",
-                      systemImage: isPinned ? "pin.slash" : "pin")
-            }
-
-            Button(role: .destructive) {
-                model.toggleHidden(botID: bot.id)
-            } label: {
-                Label("Hide bot", systemImage: "eye.slash")
-            }
+            BotRowMenu(menu: rowMenu(for: bot))
+        }
+        // ⌘E opens this: a command cannot raise a `Menu`, so the menu is a popover the row owns
+        // (`BotMenuRouter`), anchored where the dots are.
+        .popover(isPresented: menuBinding(for: bot.id), arrowEdge: .trailing) {
+            BotOverflowPanel(menu: rowMenu(for: bot)) { menuRouter.close(botID: bot.id) }
         }
         .help(bot.displayName)
         .accessibilityLabel(accessibilityLabel(for: bot))
     }
 
+    private func menuBinding(for botID: String) -> Binding<Bool> {
+        Binding(get: { menuRouter.botID == botID },
+                set: { if !$0 { menuRouter.close(botID: botID) } })
+    }
+
+    /// The row's ⋯: hidden until the pointer is on the row (or its menu is open), in a fixed slot
+    /// so revealing it moves nothing.
+    @ViewBuilder
+    private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {
+        Button {
+            menuRouter.toggle(botID: bot.id)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Tokens.textSecondary)
+                .frame(width: 20, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Tokens.control)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .strokeBorder(Tokens.border, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(isVisible)
+        .help("Bot menu (⌘E)")
+        .accessibilityLabel("Bot menu")
+    }
+
     /// A hidden bot is not gone: the filter reveals it here, and one click puts it back.
     private func hiddenRow(for bot: Bot) -> some View {
-        Button {
+        let isHovered = hoveredRow == hiddenKey(bot.id)
+
+        return Button {
             model.toggleHidden(botID: bot.id)
         } label: {
             HStack(spacing: 8) {
@@ -409,19 +578,27 @@ struct SidebarBotList: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
+                    .fill(isHovered ? Tokens.controlHover : .clear)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverFill()
+        .onHover { inside in
+            if inside { hoveredRow = hiddenKey(bot.id) }
+            else if hoveredRow == hiddenKey(bot.id) { hoveredRow = nil }
+        }
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous))
         .contextMenu {
-            Button {
-                model.toggleHidden(botID: bot.id)
-            } label: {
+            Button { model.toggleHidden(botID: bot.id) } label: {
                 Label("Show bot", systemImage: "eye")
             }
             Button { store.openBotSettings(bot) } label: {
                 Label("Bot Settings", systemImage: "gearshape")
+            }
+            Button { sheet = .newCategory(bot) } label: {
+                Label("New category…", systemImage: "folder.badge.plus")
             }
         }
         .help("Show \(bot.displayName) in the bot list")
@@ -458,7 +635,149 @@ struct SidebarBotList: View {
         }
     }
 
+    // MARK: The row's menu
+
+    /// One description of the menu, read by the native context menu and by the popover ⌘E opens.
+    private func rowMenu(for bot: Bot) -> BotMenu {
+        BotMenu(bot: bot,
+                face: store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
+                isPinned: model.isPinned(botID: bot.id),
+                isHidden: model.isHidden(botID: bot.id),
+                categories: model.botCategories,
+                currentCategoryID: model.categoryID(for: bot.id),
+                openSettings: { store.openBotSettings(bot) },
+                togglePin: { model.togglePin(botID: bot.id) },
+                toggleHidden: { model.toggleHidden(botID: bot.id) },
+                showSessions: { showSessions(for: bot) },
+                assignCategory: { categoryID in assign(category: categoryID, to: bot) },
+                newCategory: { sheet = .newCategory(bot) },
+                renameCategory: { category in sheet = .renameCategory(category) },
+                deleteCategory: { category in pendingCategoryDelete = category })
+    }
+
+    // MARK: Category writes
+
+    /// Every group is a document on the host; each call answers with the whole of it, so the list
+    /// redraws from the host's own answer rather than from a local guess.
+    private func assign(category categoryID: String?, to bot: Bot) {
+        menuRouter.close()
+        // @MainActor: `@State` is written from this task, and a plain `Task {}` started from a
+        // view helper is not main-actor bound.
+        Task { @MainActor in
+            do {
+                try await model.setBotCategory(bot.id, to: categoryID)
+            } catch {
+                failure = "The host did not accept the move: \(sentence(for: error))"
+            }
+        }
+    }
+
+    private func createCategory(named name: String, assignTo bot: Bot?) async -> String? {
+        let before = Set(model.botCategories.map(\.id))
+        do {
+            try await model.addBotCategory(name: name)
+        } catch {
+            return "The host did not create “\(name)”: \(sentence(for: error))"
+        }
+
+        guard let bot else { return nil }
+        guard let created = model.botCategories.first(where: { !before.contains($0.id) }) else {
+            return nil
+        }
+        do {
+            try await model.setBotCategory(bot.id, to: created.id)
+        } catch {
+            return "“\(created.name)” was created, but \(bot.displayName) could not be moved into it: \(sentence(for: error))"
+        }
+        return nil
+    }
+
+    private func rename(_ category: BotCategory, to name: String) async -> String? {
+        do {
+            try await model.renameBotCategory(id: category.id, to: name)
+            return nil
+        } catch {
+            return "The host did not rename it: \(sentence(for: error))"
+        }
+    }
+
+    private func delete(_ category: BotCategory) {
+        pendingCategoryDelete = nil
+        Task { @MainActor in
+            do {
+                try await model.deleteBotCategory(id: category.id)
+            } catch {
+                failure = "The host did not delete “\(category.name)”: \(sentence(for: error))"
+            }
+        }
+    }
+
+    /// The host writes the useful sentence; an NSError's is a sentence about a socket.
+    private func sentence(for error: Error) -> String {
+        if case let GatewayError.rpc(rpc) = error, !rpc.message.isEmpty { return rpc.message }
+        if let gateway = error as? GatewayError { return gateway.message }
+        return error.localizedDescription
+    }
+
+    // MARK: Sessions
+
+    /// **All sessions…** for one bot.
+    ///
+    /// `AppModel.sessions` is scoped to the bot on screen, so a bot that is not selected is opened
+    /// first — the same act as clicking its row — and the sheet waits for that switch to land.
+    /// Handing the sheet another bot's history under this one's name is the bug worth avoiding.
+    private func showSessions(for bot: Bot) {
+        menuRouter.close()
+
+        Task { @MainActor in
+            if model.selectedBotID != bot.id {
+                store.selectBot(bot.id)
+                var waited = 0
+                while model.selectedBotID != bot.id, waited < 60 {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    waited += 1
+                }
+            }
+            // The switch is a resume, and the popover this menu lives in is still dismissing:
+            // one beat between closing a popover and presenting a sheet over the same row.
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            sheet = .sessions(bot)
+        }
+    }
+
+    private func open(session: SessionSummary, for bot: Bot) {
+        Task {
+            // The sheet is dismissed by the caller; resuming paints the pane behind it.
+            await model.select(session.id)
+        }
+    }
+
     // MARK: Facts
+
+    /// The face's state, and only for the bot whose turn is live. Everything else is `nil`, the
+    /// portrait's own idle case: no sparks, no pulse, nothing asked of the renderer by a row that
+    /// is not doing anything.
+    private func portraitStatus(for bot: Bot) -> PortraitStatus? {
+        guard bot.id == model.selectedBotID else { return nil }
+        if model.hasPendingRequests { return .needsYou }
+        if model.isCompressing { return .compacting }
+        if model.isStreaming { return .working }
+        return nil
+    }
+
+    private func categoryName(for bot: Bot) -> String? {
+        guard let id = model.categoryID(for: bot.id) else { return nil }
+        return model.botCategories.first { $0.id == id }?.name
+    }
+
+    private func roomFill(_ room: RoomSummary) -> Color {
+        if model.activeRoom?.id == room.id { return Tokens.controlActive }
+        return hoveredRow == roomKey(room.id) ? Tokens.controlHover : .clear
+    }
+
+    private func roomKey(_ id: RoomSummary.ID) -> String { "room-\(id)" }
+    private func hitKey(_ id: BotSearchHit.ID) -> String { "hit-\(id)" }
+    private func hiddenKey(_ id: String) -> String { "hidden-\(id)" }
 
     /// A description written on the host is the useful line; without one, name what the row is.
     private func subtitle(for bot: Bot) -> String {
@@ -466,22 +785,31 @@ struct SidebarBotList: View {
         return bot.id == bot.displayName ? "Hermes profile" : bot.id
     }
 
-    /// Live state is only known for the bot whose sessions are loaded; the rest stay idle rather
-    /// than borrowing the selected bot's ring.
-    private func presence(for bot: Bot) -> Avatar.Presence {
-        guard bot.id == model.selectedBotID else { return .idle }
-        if model.hasPendingRequests { return .needsYou }
-        if model.isStreaming { return .running }
-        return .idle
-    }
-
     private func accessibilityLabel(for bot: Bot) -> String {
         var parts = [bot.displayName, "bot"]
         if model.isPinned(botID: bot.id) { parts.append("pinned") }
+        if let category = categoryName(for: bot) { parts.append("in \(category)") }
         let unread = model.unreadCount(bot.id)
         if unread > 0 { parts.append(unread == 1 ? "1 unread" : "\(unread) unread") }
         else if model.hasUnread(bot.id) { parts.append("unread") }
         return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Sheets
+
+/// One presentation at a time on this list: a bot's sessions, a new group, or a group's new name.
+private enum BotListSheet: Identifiable {
+    case sessions(Bot)
+    case newCategory(Bot?)
+    case renameCategory(BotCategory)
+
+    var id: String {
+        switch self {
+        case .sessions(let bot): return "sessions-\(bot.id)"
+        case .newCategory(let bot): return "new-\(bot?.id ?? "any")"
+        case .renameCategory(let category): return "rename-\(category.id)"
+        }
     }
 }
 

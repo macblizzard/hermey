@@ -53,6 +53,9 @@ struct BotListScreen: View {
     @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
     @State private var showAddCategory = false
     @State private var newCategoryName = ""
+    /// The last category write the host refused or could not be reached for. A group kept on the
+    /// phone alone is exactly the bug this surface exists to stop being silent.
+    @State private var categoryError: String?
 
     private var lastOpenedBots: [String: String] {
         guard let data = lastOpenedBotsJSON.data(using: .utf8),
@@ -130,6 +133,11 @@ struct BotListScreen: View {
             if let error = app.botFacesError {
                 Text("Could not refresh bot icons: \(error)").font(.caption).foregroundStyle(Tokens.danger)
             }
+            if let failure = categoryError {
+                // A failed write, said out loud. Groups live on the host; one that only exists on
+                // this phone would vanish at the next launch, so it is never pretended to be saved.
+                Text(failure).font(.caption).foregroundStyle(Tokens.danger)
+            }
             if model.botsLoading && model.bots.isEmpty {
                 loadingRow
             } else if filtered.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
@@ -172,9 +180,12 @@ struct BotListScreen: View {
             TextField("Name", text: $newCategoryName)
                 .textInputAutocapitalization(.words)
             Button("Add") {
-                let name = newCategoryName
-                guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                Task { try? await model.addBotCategory(name: name) }
+                let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                newCategoryName = ""
+                // Straight to the host, not into a local list: the Mac reads the same file, which
+                // is the only reason a group made here appears there.
+                writeCategories { try await model.addBotCategory(name: name) }
             }
             Button("Cancel", role: .cancel) { newCategoryName = "" }
         } message: {
@@ -393,14 +404,14 @@ struct BotListScreen: View {
             // as in Manage bots: a long press on the row is where a person looks first.
             Menu {
                 Button {
-                    Task { try? await model.setBotCategory(bot.id, to: nil) }
+                    assign(bot.id, to: nil)
                 } label: {
                     Label("Uncategorized",
                           systemImage: model.categoryID(for: bot.id) == nil ? "checkmark" : "tray")
                 }
                 ForEach(model.botCategories) { category in
                     Button {
-                        Task { try? await model.setBotCategory(bot.id, to: category.id) }
+                        assign(bot.id, to: category.id)
                     } label: {
                         Label(category.name,
                               systemImage: model.categoryID(for: bot.id) == category.id
@@ -683,6 +694,31 @@ struct BotListScreen: View {
         guard let data = try? JSONEncoder().encode(map),
               let json = String(data: data, encoding: .utf8) else { return }
         collapsedGroupsJSON = json
+    }
+
+    // MARK: Categories
+
+    /// One write through to the host, with its refusal kept on screen.
+    ///
+    /// Every category act is a host write — there is no local list to append to — so a failure is
+    /// reported here instead of being swallowed by `try?`, which is how a group could look created
+    /// on the phone and never reach the Mac.
+    private func writeCategories(_ change: @escaping () async throws -> Void) {
+        Task {
+            do {
+                try await change()
+                categoryError = nil
+            } catch {
+                categoryError = "Category not saved: \(error.localizedDescription)"
+                ClientLog.note("bots.categories write failed: \(error.localizedDescription)",
+                               level: .warning, category: "bots")
+            }
+        }
+    }
+
+    /// File one bot, or put it back in Uncategorized with `nil`.
+    private func assign(_ botID: String, to categoryID: String?) {
+        writeCategories { try await model.setBotCategory(botID, to: categoryID) }
     }
 
     private var hiddenSection: some View {

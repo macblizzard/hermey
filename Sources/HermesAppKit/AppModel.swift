@@ -390,6 +390,9 @@ public final class AppModel: ObservableObject {
         // Read here, not on connect: Settings can be opened before a host answers, and a toggle
         // that shows "on" until the socket comes up would be a lie about a stored choice.
         loadNotificationSettings()
+        // The groups are the host's, but the last document read is cached per host: a launch with
+        // no wire still draws the list the owner is used to instead of one Uncategorized bucket.
+        loadCachedBotCategories()
     }
 
     // MARK: Lifecycle
@@ -410,6 +413,10 @@ public final class AppModel: ObservableObject {
             loadHiddenBots()
             loadPinnedBots()
             await loadBots()
+            // After the roster, because a category heading with no bots to put in it is a heading
+            // nobody can act on — and because connect/reconnect is the moment the other device's
+            // new groups have to appear on this one.
+            await loadBotCategories()
             await loadModelLabel()
             await loadSessions()
             startUnreadSweep()
@@ -2043,18 +2050,49 @@ public final class AppModel: ObservableObject {
     // MARK: Categories
 
     /// The owner's groups of bots, as the host has them. One file on the host, so the other app
-    /// shows the same groups.
+    /// shows the same groups; this copy is a cache of the last answer, never a second source.
     @Published public private(set) var botCategoryState: BotCategoryState = .empty
 
     public var botCategories: [BotCategory] { botCategoryState.categories }
 
     public func categoryID(for botID: String) -> String? { botCategoryState.categoryID(for: botID) }
 
-    /// Read the host's groups. A failure is logged and leaves the last answer standing: an empty
-    /// document would read as "every category was deleted".
+    private var botCategoriesKey: String { "hermes.botCategories.\(hostName)" }
+
+    /// Which category read is the newest. A slow answer for a document that has since been written
+    /// over must not be published, exactly like `botEpoch` for the session list.
+    private var categoryToken = 0
+
+    /// Draw the last document this host answered with, before any wire exists. Read-only: an
+    /// assignment made offline is refused (and said so) rather than queued into a second truth
+    /// that the host would overwrite at the next connect anyway.
+    private func loadCachedBotCategories() {
+        guard let data = Self.defaults.data(forKey: botCategoriesKey),
+              let cached = try? JSONDecoder().decode(BotCategoryState.self, from: data) else { return }
+        botCategoryState = cached
+    }
+
+    /// One place that publishes and caches, so the cache can never lag the screen.
+    private func applyBotCategories(_ state: BotCategoryState) {
+        botCategoryState = state
+        if let data = state.encoded() { Self.defaults.set(data, forKey: botCategoriesKey) }
+    }
+
+    /// Read the host's groups.
+    ///
+    /// A failure is logged and leaves the last answer standing: an empty document would read as
+    /// "every category was deleted". Called on connect and reconnect (`start()`), on a pull to
+    /// refresh, and after every write — that last one is what makes a change made on the phone
+    /// appear here without the person going looking for a refresh.
     public func loadBotCategories() async {
+        // A read that started before a newer write must not publish over it: two category taps in
+        // a row would otherwise land in the order their answers happened to arrive.
+        categoryToken += 1
+        let token = categoryToken
         do {
-            botCategoryState = try await client.botCategories()
+            let state = try await client.botCategories()
+            guard token == categoryToken else { return }
+            applyBotCategories(state)
         } catch {
             ClientLog.note("bots.categories failed: \(error.localizedDescription)",
                            level: .warning, category: "bots")
@@ -2062,22 +2100,33 @@ public final class AppModel: ObservableObject {
     }
 
     /// Every write returns the whole document, so one call redraws the list — no local merge to
-    /// get wrong while the other device writes too.
+    /// get wrong while the other device writes too. The document is then re-read from the host:
+    /// the write's answer is what *this* write did, and the re-read is what the two devices agree
+    /// on (the host is the only writer, last write wins).
+    private func writeBotCategories(_ body: () async throws -> BotCategoryState) async throws {
+        let written = try await body()
+        categoryToken += 1
+        applyBotCategories(written)
+        await loadBotCategories()
+    }
+
     public func addBotCategory(name: String) async throws {
-        botCategoryState = try await client.createBotCategory(name: name)
+        try await writeBotCategories { try await client.createBotCategory(name: name) }
     }
 
     public func renameBotCategory(id: String, to name: String) async throws {
-        botCategoryState = try await client.renameBotCategory(id: id, name: name)
+        try await writeBotCategories { try await client.renameBotCategory(id: id, name: name) }
     }
 
     public func deleteBotCategory(id: String) async throws {
-        botCategoryState = try await client.deleteBotCategory(id: id)
+        try await writeBotCategories { try await client.deleteBotCategory(id: id) }
     }
 
     /// `nil` puts the bot back in Uncategorized.
     public func setBotCategory(_ botID: String, to categoryID: String?) async throws {
-        botCategoryState = try await client.setBotCategory(profile: botID, categoryID: categoryID)
+        try await writeBotCategories {
+            try await client.setBotCategory(profile: botID, categoryID: categoryID)
+        }
     }
 
     // MARK: Roster configuration

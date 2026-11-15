@@ -124,12 +124,23 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store.selectedBot == nil)
 
-            // ⌘E — the bot's own panel, the same door the pill opens. Asked for 2026-11-15.
-            Button(store.isBotPanelPresented ? "Hide Bot Menu" : "Bot Menu") {
-                store.toggleBotPanel()
+            // ⌘E — the selected bot's own row menu, the same menu its ⋯ opens. It used to toggle
+            // the bot panel, which already has two doors (the chat header's pill and its own
+            // close button), so the key spent itself on something the owner could already reach
+            // and did nothing visible when that panel was open.
+            //
+            // Two things made it read as "⌘E does nothing", and neither is fixed by a nicer title:
+            // the item was gated by `.disabled(store.selectedBot == nil)`, and `store` here is a
+            // plain reference — not an observed object — so that gate is whatever the roster was
+            // when the menu was built, i.e. "no bots yet" at launch, and a disabled menu item
+            // swallows its key equivalent for the rest of the run. The action now checks for the
+            // selection itself: pressing ⌘E with nothing selected does nothing, instead of the
+            // shortcut being dead for every bot afterwards.
+            Button("Bot Menu") {
+                guard let id = store.model.selectedBotID else { return }
+                BotMenuRouter.shared.toggle(botID: id)
             }
             .keyboardShortcut("e", modifiers: .command)
-            .disabled(store.selectedBot == nil)
 
             Menu("Switch Bot") {
                 ForEach(store.model.orderedBots) { bot in

@@ -26,6 +26,7 @@ METRICS = (ROOT / "Sources" / "OpenBotUI" / "BotListMetrics.swift").read_text(en
 IOS_SETTINGS = (ROOT / "Apps" / "HermesMobile" / "Views" / "SettingsScreen.swift").read_text(encoding="utf-8")
 MAC_SETTINGS = (ROOT / "Apps" / "HermesMac" / "Views" / "AppearanceSettingsTab.swift").read_text(encoding="utf-8")
 POINTER = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
+MAC_STORE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift").read_text(encoding="utf-8")
 
 
 class TheHostOwnsTheGroups(unittest.TestCase):
@@ -38,6 +39,45 @@ class TheHostOwnsTheGroups(unittest.TestCase):
                       '@router.put("/bots/{profile}/category")']:
             self.assertIn(route, source)
         self.assertIn("create_bot_categories_router(runtime)", APP_PY)
+
+    def test_every_mutation_is_one_locked_read_modify_write(self) -> None:
+        """A phone and a Mac write the same file; two requests must not build on one read."""
+        source = BRIDGE.read_text(encoding="utf-8")
+        self.assertIn("def mutate(runtime, change", source)
+        self.assertIn("with _lock_for(path):", source)
+        # Each route goes through `mutate` — a bare load/save pair in a route is the race back.
+        routes = source.split("def create_bot_categories_router", 1)[1]
+        self.assertEqual(routes.count("mutate(runtime, change)"), 4,
+                         "create, rename, delete and assign are all one locked mutation")
+        for name in ("create_category", "rename_category", "delete_category", "assign_category"):
+            body = routes.split(f"def {name}(", 1)[1]
+            self.assertIn("mutate(runtime, change)", body.split("@router", 1)[0],
+                          f"{name} must not read and write the file unlocked")
+
+    def test_last_write_wins_is_the_documented_rule(self) -> None:
+        source = BRIDGE.read_text(encoding="utf-8")
+        self.assertIn("Last write wins, whole file", source)
+        self.assertIn("later request wins", source)
+
+    def test_the_client_contract_is_read_on_connect_and_after_a_write(self) -> None:
+        # The Mac read the roster on connect and never the groups: creating one on the phone was
+        # invisible there. Both of these are the fix, and both are easy to delete by accident.
+        self.assertIn("await loadBotCategories()", MODEL.split("public func start()", 1)[1].split("public func stop()", 1)[0])
+        self.assertIn("await model.loadBotCategories()", MAC_STORE)
+        # And after a write, the document is re-read from the host instead of trusted from the answer.
+        self.assertIn("await loadBotCategories()", MODEL.split("private func writeBotCategories", 1)[1])
+
+    def test_the_last_document_is_cached_per_host_and_read_before_the_wire(self) -> None:
+        self.assertIn('private var botCategoriesKey: String { "hermes.botCategories.\\(hostName)" }', MODEL)
+        self.assertIn("loadCachedBotCategories()", MODEL.split("public init(client:", 1)[1])
+        # Offline is a read cache, never a second place a group can be created.
+        self.assertIn("guard let data = Self.defaults.data(forKey: botCategoriesKey)", MODEL)
+
+    def test_the_phone_says_when_a_category_write_did_not_land(self) -> None:
+        self.assertIn("writeCategories", IOS_LIST)
+        self.assertNotIn("try? await model.addBotCategory", IOS_LIST)
+        self.assertNotIn("try? await model.setBotCategory", IOS_LIST)
+        self.assertIn("Category not saved", IOS_LIST)
 
     def test_deleting_a_group_never_deletes_a_bot(self) -> None:
         source = BRIDGE.read_text(encoding="utf-8")
