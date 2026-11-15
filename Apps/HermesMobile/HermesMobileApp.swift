@@ -103,7 +103,7 @@ struct BotsTab: View {
         guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey), !relay.isEmpty else {
             return
         }
-        let faces = model.botFaces
+        let faces = app.botFaces
         await model.syncPushIcons { id in
             let face: BotFace = faces[id] ?? BotFace.default(for: id)
             return PushIcon.png(for: face)
