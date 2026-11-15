@@ -23,7 +23,7 @@ public enum PushIcon {
     @MainActor
     public static func png(for face: BotFace) -> Data? {
         let plate = RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
-            .fill(LinearGradient(colors: [Tokens.surfaceRaised, Tokens.background],
+            .fill(LinearGradient(colors: [Tokens.surfaceRaised, Tokens.surface],
                                  startPoint: .top, endPoint: .bottom))
         let portrait = BotIconPortrait(face, size: size * 0.76)
             .frame(width: size, height: size)
@@ -35,7 +35,8 @@ public enum PushIcon {
         return UIImage(cgImage: image).pngData()
         #else
         let representation = NSBitmapImageRep(cgImage: image)
-        return representation.representation(using: .png, properties: [:])
+        return representation.representation(using: NSBitmapImageRep.FileType.png,
+                                             properties: [NSBitmapImageRep.PropertyKey: Any]())
         #endif
     }
 }
