@@ -40,7 +40,7 @@ def device(bridge):
 
 class TestTheUrl:
     def test_it_splits_server_and_key(self):
-        assert _split_bark_url("http://100.86.19.1:8081/AbCdEf123") == ("http://100.86.19.1:8081",
+        assert _split_bark_url("http://your-host:8081/AbCdEf123") == ("http://your-host:8081",
                                                                        "AbCdEf123")
 
     def test_it_keeps_a_path_prefix(self):

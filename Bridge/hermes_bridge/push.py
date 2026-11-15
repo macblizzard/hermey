@@ -6,7 +6,7 @@ profile's own `application-identifier`: `TJ27FT3Y2M.…`). So the delivery goes 
 already holds such a credential and sells the service as a product: **Bark**.
 
 Bark is an App Store client plus a self-hosted server. The phone shows a URL like
-`http://100.86.19.1:8081/AbCdEf123`; POSTing JSON to it makes a real banner appear on the lock
+`http://your-host:8081/AbCdEf123`; POSTing JSON to it makes a real banner appear on the lock
 screen, through Bark's own APNs key. Tap-through is a `url` in the payload, so the banner opens
 Hermey on the bot that spoke.
 
