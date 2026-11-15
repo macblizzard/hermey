@@ -1221,22 +1221,29 @@ public final class AppModel: ObservableObject {
 
     // MARK: Endless conversation
 
-    /// The one conversation this bot has: resume it, or start and remember one.
+    /// The one conversation this bot has: open the host's canonical Bot Chat, or make this bot's
+    /// existing conversation into it.
     ///
-    /// The pointer is **shared**, not per device. `hermes.endlessSession.<botID>` is only this
-    /// device's cache now; the authority is the bridge's per-bot pointer
-    /// (`GET`/`PUT /v1/bots/{profile}/session`), so the phone and the Mac open the same stored
-    /// session instead of each minting its own. The order is:
+    /// Hermes already has an answer to "where is the forever-chat": the session titled exactly
+    /// `Bot Chat`, born hidden, resolved by name on every open, and shared by Desktop, the TUI,
+    /// `hermes -p <bot> chat -c "Bot Chat"`, cron `bot-chat` delivery and bot-to-bot messages. This
+    /// method opens **that** session, so the conversation here is the same conversation the official
+    /// app and the desktop show — and so a routine's report or another bot's DM lands in the chat the
+    /// user is actually reading. `CanonicalBotChat` holds the decision; this carries it out:
     ///
-    /// 1. ask the bridge for this bot's stored id — it is the shared answer and beats a stale
-    ///    local key;
-    /// 2. no host value: resume the locally known id and publish it, so the other device adopts it;
-    /// 3. neither: create, then publish the new stored id.
+    /// 1. the host names a Bot Chat → resume its **live tip** (the id rotation compaction moves the
+    ///    registry name away from);
+    /// 2. the host has none, but this bot already had a Hermey conversation → open it and give it the
+    ///    canonical name, so the user's history becomes the shared chat instead of being stranded
+    ///    behind a fresh empty one;
+    /// 3. neither → mint the canonical chat exactly as Desktop does (`title`, `hidden`,
+    ///    `follow_profile_config`).
     ///
-    /// Every bridge call fails open. An unreachable or older bridge leaves this device on its own
-    /// cache: opening a conversation is never blocked on the pointer, nothing about the sync leg
-    /// lands in `lastSendError`, and a failed publish is logged only (the other device keeps its
-    /// id until the next successful write).
+    /// The bridge pointer (`GET`/`PUT /v1/bots/{profile}/session`) demotes to a cache: it still
+    /// answers for the bot list's previews and for an older build or an unreadable host, but it no
+    /// longer decides which conversation the app considers this bot's. Every identity read fails
+    /// open — a host that cannot be asked leaves this device on its cached conversation, and nothing
+    /// about that leg lands in `lastSendError`.
     ///
     /// A stored id stays resumable until the host forgets the session: `4001` is "session not
     /// found" and `4007` is the same for an id from another profile, and only those two justify
@@ -1259,56 +1266,177 @@ public final class AppModel: ObservableObject {
         defer { isOpeningConversation = false }
         await loadModelLabel()
         let key = Self.endlessKey(botID)
-        let plan = EndlessSessionPolicy.plan(host: await sharedSessionPointer(for: botID),
-                                             local: Self.defaults.string(forKey: key))
-        if let stored = plan.resumedID {
-            do {
-                let resumed = try await client.resumeSession(stored, profile: botID)
-                selectedSessionID = stored
-                adoptResume(resumed.entries, cursor: resumed.earlierCursor,
-                            total: resumed.historyTotal, sessionID: stored)
-                pendingRequests = resumed.openRequests
-                adopt(resumed, session: stored)
-                captureConversation(for: botID)
-                // Whatever actually opened is the best cache this device can keep — including a
-                // host id that replaced a different local one.
-                Self.defaults.set(stored, forKey: key)
-                if plan.publish {
-                    await publishSharedSession(stored, for: botID)
+        let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: botID),
+                                        legacy: await bridgePointerID(for: botID),
+                                        local: Self.defaults.string(forKey: key))
+        switch plan.step {
+        case .resume(let stored):
+            switch await openStoredConversation(stored, botID: botID, publish: plan.publishCache) {
+            case .opened(let opened): return opened
+            case .failed: return nil
+            // The host forgot it: mint the replacement the user is owed.
+            case .forgotten: return await mintCanonicalChat(for: botID)
+            }
+        case .adopt(let stored):
+            switch await openStoredConversation(stored, botID: botID, publish: plan.publishCache) {
+            case .opened(let opened):
+                // The conversation this bot already had becomes the shared chat. Doing this after
+                // the resume, not before, keeps a failed open from renaming a session the user
+                // never got to see.
+                await adoptAsCanonicalChat(opened, botID: botID)
+                return opened
+            case .failed: return nil
+            case .forgotten: return await mintCanonicalChat(for: botID)
+            }
+        case .create:
+            return await mintCanonicalChat(for: botID)
+        }
+    }
+
+    /// What an attempt to open a stored conversation came to.
+    private enum OpenOutcome {
+        case opened(SessionID)
+        /// The host answered `4001`/`4007`: this id no longer exists for this bot.
+        case forgotten
+        /// Reported to the user; the conversation is not open.
+        case failed
+    }
+
+    /// Resume one stored id and put it on screen.
+    private func openStoredConversation(_ stored: SessionID, botID: String,
+                                        publish: Bool) async -> OpenOutcome {
+        do {
+            let resumed = try await client.resumeSession(stored, profile: botID)
+            selectedSessionID = stored
+            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                        total: resumed.historyTotal, sessionID: stored)
+            pendingRequests = resumed.openRequests
+            adopt(resumed, session: stored)
+            captureConversation(for: botID)
+            // Whatever actually opened is the best cache this device can keep — including a host id
+            // that replaced a different local one.
+            Self.defaults.set(stored, forKey: Self.endlessKey(botID))
+            if publish {
+                await publishSharedSession(stored, for: botID)
+            }
+            return .opened(stored)
+        } catch is CancellationError {
+            // Leaving the screen cancels the open-in-flight; the next visit resumes normally.
+            return .failed
+        } catch {
+            // Only a session the host has forgotten is worth replacing; a timeout or a dead socket
+            // must be reported, never papered over with a new empty conversation.
+            guard let gateway = error as? GatewayError, Self.isForgottenSession(gateway) else {
+                lastSendError = "could not open the conversation: \(error.localizedDescription)"
+                ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
+                               level: .error, category: "session")
+                return .failed
+            }
+            // Forget it locally too, so an offline open does not retry a dead id.
+            Self.defaults.removeObject(forKey: Self.endlessKey(botID))
+            return .forgotten
+        }
+    }
+
+    /// What the host says this bot's canonical chat is, or `.unavailable` when it cannot be asked.
+    ///
+    /// Never throws and never surfaces an error: an identity read that failed must not put a message
+    /// in front of a conversation that can still open from the cache.
+    private func canonicalChatState(for botID: String) async -> CanonicalBotChat.HostState {
+        do {
+            return try await client.canonicalBotChat(forProfile: botID)
+        } catch {
+            Self.noteSessionSync("could not read the host's Bot Chat for “\(botID)”: "
+                                 + "\(error.localizedDescription); using this device's conversation")
+            return .unavailable
+        }
+    }
+
+    /// The bridge's pointer, when it answered with something resumable.
+    private func bridgePointerID(for botID: String) async -> String? {
+        if case .value(let id) = await sharedSessionPointer(for: botID) { return id }
+        return nil
+    }
+
+    /// Name an existing conversation `Bot Chat`, making it the host's canonical chat.
+    ///
+    /// Best-effort by design: a failure here leaves the conversation open and working, just not
+    /// shared with Desktop and the official app, which is strictly better than refusing to open it.
+    private func adoptAsCanonicalChat(_ stored: SessionID, botID: String) async {
+        do {
+            try await client.titleSession(stored, title: CanonicalBotChat.title, profile: botID)
+            ClientLog.note("named \(stored) “\(CanonicalBotChat.title)” for \(botID): this bot's "
+                           + "conversation is now the shared one",
+                           level: .info, category: "session")
+        } catch {
+            if CanonicalBotChat.isTitleConflict(error) {
+                // Another row holds the name — the other device, or Desktop, minted the Bot Chat
+                // while this one was opening its legacy conversation. Do not fight it: the next open
+                // resolves the host's row and lands there.
+                Self.noteSessionSync("“\(botID)” already had a Bot Chat on the host; the conversation "
+                                     + "opened here stays separate until the next open")
+                return
+            }
+            Self.noteSessionSync("could not name \(stored) “\(CanonicalBotChat.title)” for “\(botID)”: "
+                                 + "\(error.localizedDescription)")
+        }
+    }
+
+    /// Mint this bot's canonical Bot Chat (`title` + `hidden`, exactly as Desktop does).
+    ///
+    /// The two recoverable failures both mean "a canonical chat exists already", and neither should
+    /// ever be shown as "could not start a conversation":
+    ///
+    /// * the host refuses the name because a row holds it — if that row is the conversation this
+    ///   device just reset, retire it and mint (bounded once, so two devices resetting at each other
+    ///   cannot ping-pong); otherwise open the row that holds it, because minting a second
+    ///   conversation next to a real Bot Chat is the failure Desktop documents as "retry, never
+    ///   mint";
+    /// * the gateway is too old to accept `title`/`hidden` at create — fall back to the
+    ///   pre-canonical plain create rather than leaving the user with no conversation at all.
+    private func mintCanonicalChat(for botID: String, retrying: Bool = false) async -> SessionID? {
+        do {
+            let created = try await client.createCanonicalSession(profile: botID,
+                                                                 idempotencyKey: "bot-chat:\(botID)")
+            return await adoptCreated(created, botID: botID)
+        } catch {
+            if CanonicalBotChat.isTitleConflict(error), !retrying {
+                var holder: SessionID?
+                if case .canonical(let existing) = await canonicalChatState(for: botID) {
+                    holder = existing
                 }
-                return stored
-            } catch is CancellationError {
-                // Leaving the screen cancels the open-in-flight; the next visit resumes normally.
-                return nil
-            } catch {
-                // Only a session the host has forgotten is worth replacing; a timeout or a dead
-                // socket must be reported, never papered over with a new empty conversation.
-                guard let gateway = error as? GatewayError, Self.isForgottenSession(gateway) else {
-                    lastSendError = "could not open the conversation: \(error.localizedDescription)"
-                    ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
-                                   level: .error, category: "session")
+                if let holder {
+                    if Self.defaults.string(forKey: Self.resetKey(botID)) == holder {
+                        await retireCanonicalChat(holder, botID: botID)
+                        return await mintCanonicalChat(for: botID, retrying: true)
+                    }
+                    Self.noteSessionSync("“\(botID)” already has a Bot Chat on the host; opening it "
+                                         + "instead of creating a second")
+                    if case .opened(let opened) = await openStoredConversation(holder, botID: botID,
+                                                                              publish: true) {
+                        return opened
+                    }
                     return nil
                 }
-                // Forget it locally too, so an offline open does not retry a dead id.
-                Self.defaults.removeObject(forKey: key)
             }
+            if CanonicalBotChat.isUnsupported(error), !retrying {
+                Self.noteSessionSync("this host does not accept a titled create for “\(botID)”; "
+                                     + "opening a plain conversation")
+                return await mintPlainConversation(for: botID)
+            }
+            lastSendError = "could not start a conversation: \(error.localizedDescription)"
+            ClientLog.note("session.create for \(botID) failed: \(error.localizedDescription)",
+                           level: .error, category: "session")
+            return nil
         }
+    }
+
+    /// The pre-canonical create: no title, no hidden flag. Only reached on a host that refuses both.
+    private func mintPlainConversation(for botID: String) async -> SessionID? {
         do {
-            // `createSession` answers with the **stored** id, which is what a later resume needs.
-            // The idempotency key is per bot, so two devices opening it at the same moment converge
-            // on one session instead of forking before either has published anything.
             let created = try await client.createSession(model: nil, provider: nil, profile: botID,
                                                          idempotencyKey: "bot-chat:\(botID)")
-            Self.defaults.set(created, forKey: key)
-            // The row does not exist until the first prompt, so this is a draft: mark it before
-            // `select`, whose resume would otherwise answer 4007 and report an unreachable host.
-            draftSessionIDs.insert(created)
-            await select(created)
-            // Always published: a conversation this device just minted cannot already be the
-            // bridge's answer (anything it held was absent or proven dead), and the other device
-            // needs it to converge.
-            await publishSharedSession(created, for: botID)
-            return created
+            return await adoptCreated(created, botID: botID)
         } catch {
             lastSendError = "could not start a conversation: \(error.localizedDescription)"
             ClientLog.note("session.create for \(botID) failed: \(error.localizedDescription)",
@@ -1317,13 +1445,60 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Put a just-created conversation on screen and record it everywhere it is worth recording.
+    ///
+    /// The row does not exist until the first prompt, so this is a draft: marking it before `select`
+    /// keeps that resume from answering `4007` and reporting an unreachable host. The publish always
+    /// happens — a conversation this device just minted cannot already be the bridge's answer.
+    private func adoptCreated(_ created: SessionID, botID: String) async -> SessionID {
+        Self.defaults.set(created, forKey: Self.endlessKey(botID))
+        draftSessionIDs.insert(created)
+        await select(created)
+        await publishSharedSession(created, for: botID)
+        return created
+    }
+
+    /// Retire a Bot Chat the way Desktop does: archive it, so its history is kept and the next open
+    /// mints a fresh canonical chat.
+    ///
+    /// The rename is the second half, and it exists only for a row this app *adopted*: the host
+    /// frees the exact title of an **archived and hidden** row on the next create on its own (the
+    /// canonical shape), but a visible row keeps its name, and an adopted row is visible. Refusal is
+    /// expected — and logged quietly — for the hidden case, where the identity guard declines by
+    /// design.
+    private func retireCanonicalChat(_ stored: SessionID, botID: String) async {
+        do {
+            try await client.archiveSession(stored, profile: botID)
+        } catch {
+            Self.noteSessionSync("could not archive the Bot Chat for “\(botID)”: "
+                                 + "\(error.localizedDescription)")
+        }
+        let retired = "\(CanonicalBotChat.title) · retired \(Self.retiredStamp())"
+        do {
+            try await client.titleSession(stored, title: retired, profile: botID)
+        } catch {
+            let reason = error.localizedDescription
+            if !reason.lowercased().contains("canonical") {
+                Self.noteSessionSync("could not rename the retired Bot Chat for “\(botID)”: \(reason)")
+            }
+        }
+    }
+
+    private static func retiredStamp() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: Date())
+    }
+
     /// Forget this bot's conversation so the next open starts a new one.
     ///
-    /// Only the stored id is cleared: the session itself stays on the host, because deleting
+    /// Only the stored id is cleared here: the session itself stays on the host, because deleting
     /// history is not what "reset" on this screen means (and the host refuses to delete a session
-    /// it still holds live). The clear is published to the bridge as well — otherwise the other
-    /// device would keep reopening the conversation, and the next open here would adopt it back
-    /// from the host.
+    /// it still holds live). `resetConversation` retires it properly — archives it, so the host stops
+    /// calling it the bot's Bot Chat and the next open can mint a successor with that name. The clear
+    /// is published to the bridge as well — otherwise the other device would keep reopening the
+    /// conversation, and the next open here would adopt it back from the host.
     public func resetEndlessSession(for botID: String) {
         let key = Self.endlessKey(botID)
         let stored = Self.defaults.string(forKey: key)
@@ -1371,7 +1546,15 @@ public final class AppModel: ObservableObject {
 
     public func resetConversation() async {
         guard let bot = selectedBotID else { return }
+        let retired = Self.defaults.string(forKey: Self.endlessKey(bot))
         resetEndlessSession(for: bot)
+        // Retire on the host *before* opening again: an archived Bot Chat stops being the canonical
+        // row, so the open below mints the fresh conversation the user asked for instead of being
+        // resolved straight back into the one they just reset. Best-effort — a failure only means the
+        // open takes the "this bot already has a Bot Chat" path.
+        if let retired, !retired.isEmpty {
+            await retireCanonicalChat(retired, botID: bot)
+        }
         _ = await endlessSession(for: bot)
         await loadBotPreviews(force: true)
     }

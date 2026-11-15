@@ -6,6 +6,28 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A bot's conversation is now the host's own Bot Chat, so the phone, the Mac and the official app
+  read and write the same thread.** Hermey used to keep its own idea of "this bot's conversation" —
+  one id in the bridge's `bot_sessions` row plus a per-device cache — which made the two Hermey
+  devices agree with each other and with nothing else: a routine's report, another bot's DM, or
+  anything typed in Desktop, the TUI or `hermes -p <bot> chat -c "Bot Chat"` landed in a conversation
+  Hermey never showed. Hermes already has that conversation: the session titled exactly `Bot Chat`,
+  created hidden, resolved by name on every open. Hermey now opens **that** session.
+  - On open it asks the host (`profiles.list` → `canonical_session`) and resumes the live
+    compression tip rather than the registry row, so rotation compaction cannot leave the app
+    following a conversation that stopped moving.
+  - A bot with no Bot Chat but with an existing Hermey conversation **adopts** it: the conversation
+    is opened and named `Bot Chat`, so history already on the device becomes the shared chat instead
+    of being stranded behind a fresh empty one. Only a bot with nothing anywhere gets a new one,
+    minted exactly as Desktop mints it (`title`, `hidden`, `follow_profile_config`).
+  - Two failures that mean "the canonical chat exists already" are handled silently: a title
+    conflict re-reads the host and opens the row that holds the name (never a second chat beside it),
+    and a host too old to accept a titled create falls back to a plain one. Every identity read fails
+    open — a host that cannot be asked leaves the device on its cached conversation, and nothing
+    about that leg is shown as an error.
+  - "Reset conversation" now retires the Bot Chat the way Desktop does (`session.archive`, keeping
+    the history) and the next open mints its successor, so reset means a new shared chat rather than
+    a private one.
 - **What a bot *is*, in one place: its portrait, its soul, and its memory.** The bot's own page has
   two new rows — **Soul** (its `SOUL.md`, editable) and **Memory** — and Bot Settings owns the three
   identity verbs together: **Bot icon**, **Soul** and **Memory**, beside the description. The icon

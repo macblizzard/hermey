@@ -11,32 +11,53 @@ Tapping a bot opens that bot's conversation. Leaving the conversation returns to
 
 ## 2. One endless conversation per bot
 
-There is **no session list** in the UI. Per bot there is exactly one session id, and it is
-**shared by every paired device** — the phone and the Mac open the same stored id instead of each
-minting its own.
+There is **no session list** in the UI. Per bot there is exactly one session, and it is shared by
+every paired device *and by Hermes itself*.
 
-The authority is the bridge (`GET`/`PUT /v1/bots/{profile}/session`, device-authenticated with a
-freshly minted single-use ticket, body `{"stored_session_id": …}`). On open:
+**The host owns the identity.** Hermes keeps exactly one canonical session per profile: the row
+titled exactly `Bot Chat`, born hidden, resolved by name on every open, and shared by Desktop, the
+TUI, `hermes -p <bot> chat -c "Bot Chat"`, cron `bot-chat` delivery, `message_agent` between bots and
+the official mobile app. Hermey opens **that** session, so the conversation here is the same
+conversation everywhere — a routine's report or another bot's DM lands in the chat the user reads.
 
-- ask the bridge for `stored_session_id`; if present → resume **that** id (always with `profile`;
-  a multiplexed gateway cannot resolve a stored id without it);
-- if the bridge has none → resume the locally cached id and **publish** it;
-- if neither → `session.create` (deterministic key `bot-chat:<profile>`), store the **stored** id
-  (`stored_session_id`), then publish it so the other device adopts it.
+On open (`CanonicalBotChat.plan`, carrying out by `AppModel.endlessSession(for:)`):
 
-Local cache: `UserDefaults`, key `hermes.endlessSession.<botID>`, value = stored session id. It is
-only a cache/fallback — a device that boots offline still opens its last conversation, and an older
-bridge (no such route) behaves exactly as before. Every pointer call fails open: a read that cannot
-be made falls back to the cache without publishing (a value we could not see must not be
-clobbered), and a failed publish is logged, never shown as a conversation error.
+- ask the host: `profiles.list` with `include_sessions`, read `canonical_session.resolved_id` — the
+  **live compression tip**, because rotation compaction can leave the registry title on a row that
+  is no longer the one moving. Resume it (always with `profile`; a multiplexed gateway cannot
+  resolve a stored id without it);
+- the host has no Bot Chat but this bot already has a conversation (bridge pointer, else the local
+  cache) → resume it and `session.title` it `Bot Chat`: the history the user already has becomes the
+  shared chat instead of being stranded behind a fresh empty one;
+- neither → `session.create` with `title: "Bot Chat"`, `hidden: true`, `follow_profile_config: true`
+  and the deterministic key `bot-chat:<profile>` — the same call Desktop makes.
+
+Two failures are handled without showing the user anything, because both mean "the canonical chat
+exists already": a **title conflict** on create re-reads the host and opens the row that holds the
+name (never mints a twin next to it — Desktop documents this as "retry, never mint"), and a host too
+old to accept `title`/`hidden` falls back to a plain create.
+
+The bridge pointer (`GET`/`PUT /v1/bots/{profile}/session`, device-authenticated with a freshly
+minted single-use ticket, body `{"stored_session_id": …}`) is a **cache** now, not the authority: it
+still answers for the bot list's previews and for an older build or an unreadable host, and every
+open publishes to it. Local cache: `UserDefaults`, key `hermes.endlessSession.<botID>`, value = stored
+session id. Every identity read fails open: a read that cannot be made falls back to the cache
+without publishing (a value we could not see must not be clobbered), and a failed publish is logged,
+never shown as a conversation error. A bot Chat read that *cannot* be made is `.unavailable`, never
+`.absent` — `.absent` licenses minting a new conversation, and minting one beside a real Bot Chat is
+how a client creates a second, competing chat.
 
 A stored id that answers `4001`/`4007` is forgotten and replaced by a create, and the replacement is
-published. "Reset conversation" (overflow menu, behind a confirmation) clears the local key **and**
-publishes an empty pointer; the old session is left on the host — reset means "stop reopening this",
-not "delete history". Because the deployed `PUT` refuses a null (`422`, "never a delete"), the reset
-device also keeps a local tombstone (`hermes.endlessSessionReset.<botID>`) so the bridge's row cannot
-pull the forgotten conversation straight back; the tombstone is retired as soon as a replacement is
-published.
+published. "Reset conversation" (overflow menu, behind a confirmation) clears the local key, publishes
+an empty pointer **and retires the Bot Chat on the host**: `session.archive`, which keeps the history
+but stops the host treating it as this bot's chat, so the next open mints a successor that can take
+the name. This is Desktop's retire semantics, not `/new` — a `/new` inside a Bot Chat is rerouted to
+`/compact` there, which is what this app's separate "compact now" affordance already does. Because
+the deployed `PUT` refuses a null (`422`, "never a delete"), the reset device also keeps a local
+tombstone (`hermes.endlessSessionReset.<botID>`) so the bridge's row cannot pull the forgotten
+conversation straight back; the tombstone is retired as soon as a replacement is published, and a
+create that finds the tombstoned row holding the name retires it and mints (bounded once, so two
+devices resetting at each other cannot ping-pong).
 
 ## 3. Auto-compaction
 

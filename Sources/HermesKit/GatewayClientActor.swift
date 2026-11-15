@@ -328,6 +328,70 @@ public actor GatewayClient: GatewayClientProtocol {
         // the session is live).
         if let idempotencyKey, !idempotencyKey.isEmpty { params["idempotency_key"] = .string(idempotencyKey) }
         let result = try await perform("session.create", params: .object(params), timeout: timeouts.sessionResume)
+        return try completeCreate(result, profile: profile)
+    }
+
+    /// `session.create` with the canonical chat's identity baked in (`CanonicalBotChat.title`).
+    ///
+    /// Two fields do the work, and both are Desktop's, measured on a live host:
+    /// `title` is the registry key Bot Mode resolves by exact name, and `hidden` keeps the row out of
+    /// any session list the user might see (the canonical chat is always born hidden —
+    /// `apps/desktop/src/plugins/hermes-bots/canonical-chat.ts`). `follow_profile_config` makes the
+    /// chat track the bot's own model/provider instead of freezing whatever this connection was
+    /// using, which is what a Bot Chat means.
+    public func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID {
+        var params: [String: JSONValue] = [
+            "title": .string(CanonicalBotChat.title),
+            "hidden": .bool(true),
+            "follow_profile_config": .bool(true),
+            "source": .string("bot_chat")
+        ]
+        if !profile.isEmpty { params["profile"] = .string(profile) }
+        if let idempotencyKey, !idempotencyKey.isEmpty { params["idempotency_key"] = .string(idempotencyKey) }
+        let result = try await perform("session.create", params: .object(params), timeout: timeouts.sessionResume)
+        return try completeCreate(result, profile: profile)
+    }
+
+    /// Which conversation the host says is this bot's canonical Bot Chat.
+    ///
+    /// Deliberately `perform`, not `performRead`: `performRead` memoises by (method, params), and an
+    /// identity answer that stale is actively dangerous — a cached "no Bot Chat" right after this
+    /// connection minted one is how a client creates a second one.
+    public func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState {
+        var params: [String: JSONValue] = ["include_sessions": .bool(true)]
+        if !profile.isEmpty { params["profile"] = .string(profile) }
+        let result = try await perform("profiles.list", params: .object(params), timeout: timeouts.call)
+        guard let raw = try GatewayPayloadDecoder.canonicalBotChatID(result, profile: profile),
+              let id = CanonicalBotChat.usableID(raw)
+        else { return .absent }
+        return .canonical(id)
+    }
+
+    /// `session.title` — the adoption step. A draft has no row yet, so the host answers `pending`
+    /// and applies the name on the first turn; either answer means "the host accepted it".
+    public func titleSession(_ session: SessionID, title: String, profile: String?) async throws {
+        var params: [String: JSONValue] = [
+            "session_id": .string(session),
+            "title": .string(title)
+        ]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.title", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// `session.archive` — retire a conversation without deleting its history.
+    public func archiveSession(_ session: SessionID, profile: String?) async throws {
+        var params: [String: JSONValue] = ["session_id": .string(session)]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.archive", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// The tail every create shares: learn both ids, bind the profile, and answer with the **stored**
+    /// one.
+    ///
+    /// Stored, not runtime: every caller treats the result as a session-list identity and hands it to
+    /// `session.resume`, which refuses a runtime id (`4007`). Returning the runtime id here made
+    /// "new chat" open a session that could not be resumed.
+    private func completeCreate(_ result: JSONValue?, profile: String?) throws -> SessionID {
         guard let runtimeID = result?["session_id"]?.stringValue else {
             throw GatewayError.malformedResponse(method: "session.create")
         }
@@ -335,9 +399,6 @@ public actor GatewayClient: GatewayClientProtocol {
         if let profile, !profile.isEmpty { boundProfile = profile }
         attachedRuntimeID = runtimeID
         attachedStoredID = storedID
-        // Return the **stored** id: every caller treats the result as a session-list identity and
-        // hands it to `session.resume`, which refuses a runtime id (`4007`). Returning the runtime
-        // id here made "new chat" open a session that could not be resumed.
         return storedID
     }
 
