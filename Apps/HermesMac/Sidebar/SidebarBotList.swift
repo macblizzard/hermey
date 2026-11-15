@@ -394,7 +394,7 @@ struct SidebarBotList: View {
         // A room on screen owns the selection: the bot underneath is not the conversation the
         // pane is showing, and highlighting both made the sidebar look like two things were open.
         let isSelected = bot.id == model.selectedBotID && model.activeRoom == nil
-        let isHovered = hoveredRow == bot.id || menuRouter.botID == bot.id
+        let isHovered = hoveredRow == bot.id
         let isPinned = model.isPinned(botID: bot.id)
 
         return Button {
@@ -660,7 +660,6 @@ struct SidebarBotList: View {
     /// Every group is a document on the host; each call answers with the whole of it, so the list
     /// redraws from the host's own answer rather than from a local guess.
     private func assign(category categoryID: String?, to bot: Bot) {
-        menuRouter.close()
         // @MainActor: `@State` is written from this task, and a plain `Task {}` started from a
         // view helper is not main-actor bound.
         Task { @MainActor in
@@ -727,7 +726,6 @@ struct SidebarBotList: View {
     /// first — the same act as clicking its row — and the sheet waits for that switch to land.
     /// Handing the sheet another bot's history under this one's name is the bug worth avoiding.
     private func showSessions(for bot: Bot) {
-        menuRouter.close()
 
         Task { @MainActor in
             if model.selectedBotID != bot.id {
