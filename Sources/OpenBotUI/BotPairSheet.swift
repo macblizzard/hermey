@@ -1,3 +1,4 @@
+import HermesKit
 import SwiftUI
 
 /// The exchanges between two bots, opened from the attribution line on a message one bot sent the
