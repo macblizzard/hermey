@@ -61,6 +61,8 @@ struct ConversationPane: View {
                     } else {
                         TranscriptScroll(model: model,
                                          findRequest: store.findRequest,
+                                         findSeed: store.findSeed,
+                                         findSeedRequest: store.findSeedRequest,
                                          bottomInset: composerHeight,
                                          userBubbleTint: botTint,
                                          faces: store.botFaces)

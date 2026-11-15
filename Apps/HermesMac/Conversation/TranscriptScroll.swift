@@ -20,6 +20,11 @@ struct TranscriptScroll: View {
     /// local to the reading surface (`TranscriptSearchState`), which is what keeps the sidebar's
     /// bot field and this one from ever being the same search.
     var findRequest: Int = 0
+    /// The phrase to open the bar with, when the request came from a finding in the bot panel's
+    /// search rather than from ⌘F. Only honoured while `findSeedRequest` names *this* request, so a
+    /// later plain ⌘F starts on an empty field instead of replaying the last finding.
+    var findSeed: String = ""
+    var findSeedRequest: Int = 0
     /// The composer's measured height. The capsule floats over the transcript and grows upward, so
     /// the last rows have to clear it by exactly this much.
     var bottomInset: CGFloat = 0
@@ -116,7 +121,7 @@ struct TranscriptScroll: View {
             // reached with ⌘F (the Conversation menu carries the same key), from the bot panel's
             // "Search this conversation" row, or from the palette. The field and its controls exist
             // only while the search is open — and they open here, over the transcript, not in the
-            // sidebar, whose field filters bots and nothing else.
+            // sidebar, whose field searches every conversation at once and lists what it found.
             if search.isOpen {
                 searchRow
                     .transition(.opacity)
@@ -152,6 +157,14 @@ struct TranscriptScroll: View {
         // ⌘F and the magnifier land in the same place; a second press re-focuses a field that is
         // already open instead of doing nothing.
         .onChange(of: findRequest) { _, _ in openSearch() }
+        // A seeded request that arrived while this pane was being built — the counter changed
+        // before the transcript existed, so the change above never fired. One shot, for this
+        // request only: the seed is matched by number, not by being non-empty.
+        .onAppear {
+            if findSeedRequest == findRequest, !findSeed.isEmpty, !search.isOpen {
+                openSearch()
+            }
+        }
     }
 
     // MARK: - Transcript
@@ -410,9 +423,10 @@ struct TranscriptScroll: View {
     /// The open search: field, match count, the two chevrons and Done, on the same measure and
     /// reading inset as the transcript beneath it.
     ///
-    /// It sits *over the transcript*, never in the bot panel: the panel's field filters bots, and a
-    /// user who typed "leak" into it was told "No bots match" while the conversation they wanted to
-    /// search was open behind it.
+    /// It sits *over the transcript*, never in the bot panel. The panel's field searches too — it
+    /// sends the phrase to the host, which scans every bot's conversation — but the answer there is
+    /// snippets; the row has to be *findable in the text*, with its neighbours around it, which is
+    /// what this bar does. A finding in the panel therefore opens this one, already filled.
     private var searchRow: some View {
         // One pass over the transcript per render: the count, the colour and the two chevrons all
         // read the same answer, so they cannot disagree mid-keystroke.
@@ -423,9 +437,9 @@ struct TranscriptScroll: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Tokens.textDim)
 
-            // "Search this conversation", not "Search messages": the sidebar's field is the one
-            // that filters bots and searches their transcripts on the host, and the two read as one
-            // control (reported 2026-11-15).
+            // "Search this conversation", not "Search messages": the sidebar's field asks the host
+            // about every conversation at once, and this one is the transcript you are looking at.
+            // Two scopes, two prompts (reported 2026-11-15).
             TextField(ConversationSearch.prompt, text: $search.query)
                 .textFieldStyle(.plain)
                 .font(TypeScale.font(TypeScale.label))
@@ -532,6 +546,12 @@ struct TranscriptScroll: View {
     }
 
     private func openSearch() {
+        // A finding opened it: the phrase arrives with the request, so the bar lands on the answer
+        // instead of asking the reader to type it again. Matched by request number, not by "is a
+        // seed set" — the same seed must not be replayed by the next ⌘F.
+        if findSeedRequest == findRequest, !findSeed.isEmpty, search.query != findSeed {
+            search.query = findSeed
+        }
         search.open()
         searchFocused = true
     }

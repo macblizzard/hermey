@@ -116,6 +116,10 @@ struct WorkspaceRoot: View {
             // The faces' answer too: taken from the system once, then the app's own switch owns it.
             BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
             auditLaunchSurfaces()
+            // Nothing starts focused. macOS puts the focus ring on the first focusable control of a
+            // new window, which made the bot list's "+" look selected at launch until a click moved
+            // it. Clearing the first responder removes that ring and leaves Tab navigation intact.
+            DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
             // Banners carry the bot's own portrait; the render needs a frame and the faces, so it
             // happens after the first pass rather than blocking it.
             Task { await uploadPushFaces() }

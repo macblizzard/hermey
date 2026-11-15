@@ -60,18 +60,20 @@ class TheBarIsOverTheTranscript(unittest.TestCase):
         self.assertIn("TextField(ConversationSearch.prompt, text: $searchText)", IOS_SCREEN)
 
     def test_the_sidebar_field_is_not_this_one(self) -> None:
-        # The regression, stated as a contract: the bot panel's field filters bots, and neither the
-        # panel nor its list may borrow the conversation prompt or the conversation matcher.
+        # The regression, stated as a contract: the bot panel's field is its own search — it asks
+        # the host about every conversation — and may not borrow the conversation prompt or the
+        # conversation matcher, which belong to the bar over the transcript.
         for source in (SIDEBAR, LIST):
             self.assertNotIn("ConversationSearch.prompt", source)
             self.assertNotIn("TranscriptSearchState", source)
-        self.assertIn('MacSidebarSearchField(text: $searchQuery, prompt: "Search bots")', SIDEBAR)
+        self.assertIn('prompt: "Search bots and messages"', SIDEBAR)
 
-    def test_the_sidebar_empty_state_names_the_bots_it_did_not_find(self) -> None:
-        self.assertIn('Text("No bots match \\"\\(trimmedQuery)\\"")', LIST)
-        # ...and says where the conversation is searched instead, so a mistyped field is a lesson
-        # rather than a dead end.
-        self.assertIn("⌘F searches the open conversation", LIST)
+    def test_the_sidebar_empty_state_no_longer_claims_it_searched_bots_only(self) -> None:
+        # It used to say "Bots only — ⌘F searches the open conversation". The field now sends the
+        # phrase to the host, so the empty state has to describe both halves of the answer.
+        self.assertNotIn("Bots only", LIST)
+        self.assertIn('Text("No matches for “\\(trimmedQuery)”")', LIST)
+        self.assertIn("Searched every bot's conversation and the bot names.", LIST)
 
 
 class ItUsesTheOneMatcher(unittest.TestCase):

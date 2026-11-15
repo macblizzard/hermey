@@ -8,8 +8,9 @@ import SwiftUI
 /// The rail's avatars stay the fastest switch; this list is the phone's bot list brought to the
 /// desktop: the profile's description under its name, a green dot for a reply that arrived while
 /// the conversation was not on screen, pin/hide from the row's menu. The filter is the panel's
-/// search field (`BotSidebarView`), applied here against name and id, so the list needs no caption
-/// row of its own: the field says what the block is.
+/// search field (`BotSidebarView`), applied here against name and id — and the same field's findings
+/// are drawn above the rows, so the panel answers "where did anyone say this?" as well as "which bot
+/// is this?".
 ///
 /// Ordering is `AppModel.orderedBots` — pinned first, then last activity — folded into the owner's
 /// categories by `AppModel.botGroups`, so both surfaces agree. The headings are the categories,
@@ -31,6 +32,14 @@ struct SidebarBotList: View {
     var onDeleteRoom: ((RoomSummary) -> Void)? = nil
     /// Rename lives on the row's context menu, like every other file-like name on the Mac.
     var onRenameRoom: ((RoomSummary) -> Void)? = nil
+    /// A finding was clicked. The panel owns what "open this hit" means (resume, then land on the
+    /// message), so the list reports the click rather than deciding it — the keyboard's Return and
+    /// this click must go through the same door.
+    var onOpenHit: ((BotSearchHit) -> Void)? = nil
+
+    /// The row the keyboard is on, drawn as the list's selection so the two agree about what Return
+    /// would open. `nil` while the pointer is the only thing choosing.
+    var highlighted: SidebarSearchRow? = nil
 
     private var icons: [String: BotFace] { store.botFaces }
 
@@ -64,20 +73,41 @@ struct SidebarBotList: View {
     }
 
     /// Name first, then id: a bot called "Assistant" whose profile id is `assistant` answers to either.
+    /// The rule lives in `SidebarSearch` so the panel's keyboard list and this list cannot disagree
+    /// about which bots the query matches.
     private func matches(_ bot: Bot) -> Bool {
-        guard isSearching else { return true }
-        return bot.displayName.localizedCaseInsensitiveContains(trimmedQuery)
-            || bot.id.localizedCaseInsensitiveContains(trimmedQuery)
+        SidebarSearch.matches(bot, query: trimmedQuery)
     }
 
-    /// Nothing to draw: no matching visible bots and no matching hidden ones to reveal.
+    /// The state the field is in, from the three facts this panel has: what was typed, what the host
+    /// last answered, and whether a request is out. One value, so the header, the row and the empty
+    /// state cannot tell three different stories about the same keystroke.
+    private var phase: SidebarSearchPhase {
+        SidebarSearch.phase(query: trimmedQuery,
+                            answered: model.searchQuery,
+                            running: model.searchRunning,
+                            hits: model.searchPage.hits.count,
+                            botMatches: visibleBots.count)
+    }
+
+    /// Findings belong to the phrase the host answered. While the next answer is in flight the old
+    /// rows must not be drawn under a new query: they describe a search the user has moved past.
+    private var activeHits: [BotSearchHit] {
+        isSearching && phase == .results ? model.searchPage.hits : []
+    }
+
+    /// Nothing to draw: no matching visible bots, no matching hidden ones to reveal, and no findings
+    /// above them. Findings count: a query that found messages has something to show even when no
+    /// bot name matched it.
     private var isFilteredEmpty: Bool {
-        visibleBots.isEmpty && !(showsHiddenBots && !hiddenBots.isEmpty)
+        visibleBots.isEmpty
+            && activeHits.isEmpty
+            && !(showsHiddenBots && !hiddenBots.isEmpty)
     }
 
     private var rowCount: Int {
         // A collapsed group contributes its heading and no rows: the block shrinks with it.
-        let bots = isSearching ? visibleBots.count
+        let bots = isSearching ? visibleBots.count + activeHits.count + 1
                                : model.botGroups.reduce(0) { total, group in
                                    total + (isCollapsed(group) ? 0 : group.bots.count)
                                }
@@ -175,110 +205,98 @@ struct SidebarBotList: View {
 
     @ViewBuilder
     private var rows: some View {
-        let rows = ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 1) {
-                if !roomRows.isEmpty {
-                    // No caption over either list. "CHATS" over a list of chats told the reader
-                    // what they were already looking at, and it cost a line above the first row.
-                    // The divider below the group chats is the whole separation.
-                    ForEach(roomRows) { room in
-                        Button { onOpenRoom?(room) } label: {
-                            GroupChatRow(room: room,
-                                         icons: icons,
-                                         unread: model.roomUnreadCount(room.id))
-                                .padding(.horizontal, Geometry.rosterRowPadding)
-                                .padding(.vertical, Geometry.rosterRowPadding)
-                                .frame(height: Geometry.rosterRow)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                                        .fill(roomFill(room))
-                                )
-                                .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        // The same fill a selected bot uses, so "which conversation is open" reads
-                        // the same whether it is a bot or a room.
-                        .onHover { inside in
-                            if inside { hoveredRow = roomKey(room.id) }
-                            else if hoveredRow == roomKey(room.id) { hoveredRow = nil }
-                        }
-                        .contextMenu {
-                            Button { onRenameRoom?(room) } label: {
-                                Label("Rename group chat…", systemImage: "pencil")
+        let rows = ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    if !roomRows.isEmpty {
+                        // No caption over either list. "CHATS" over a list of chats told the reader
+                        // what they were already looking at, and it cost a line above the first row.
+                        // The divider below the group chats is the whole separation.
+                        ForEach(roomRows) { room in
+                            Button { onOpenRoom?(room) } label: {
+                                GroupChatRow(room: room,
+                                             icons: icons,
+                                             unread: model.roomUnreadCount(room.id))
+                                    .padding(.horizontal, Geometry.rosterRowPadding)
+                                    .padding(.vertical, Geometry.rosterRowPadding)
+                                    .frame(height: Geometry.rosterRow)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                            .fill(roomFill(room))
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
+                                    .contentShape(Rectangle())
                             }
-                            Button(role: .destructive) { onDeleteRoom?(room) } label: {
-                                Label("Delete group chat", systemImage: "trash")
+                            .buttonStyle(.plain)
+                            // The same fill a selected bot uses, so "which conversation is open" reads
+                            // the same whether it is a bot or a room.
+                            .onHover { inside in
+                                if inside { hoveredRow = roomKey(room.id) }
+                                else if hoveredRow == roomKey(room.id) { hoveredRow = nil }
+                            }
+                            .contextMenu {
+                                Button { onRenameRoom?(room) } label: {
+                                    Label("Rename group chat…", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) { onDeleteRoom?(room) } label: {
+                                    Label("Delete group chat", systemImage: "trash")
+                                }
                             }
                         }
+
+                        Divider().padding(.horizontal, 8).padding(.vertical, 4)
                     }
 
-                    Divider().padding(.horizontal, 8).padding(.vertical, 4)
-                }
+                    // What the search found inside the conversations, above the rows: a phrase is the
+                    // thing being looked for, and a bot name is the fallback. The header counts what
+                    // the host answered, not what is drawn — the page is capped at 50.
+                    messagesSection
 
-                // What the search found inside the conversations, above the rows: a phrase is the
-                // thing being looked for, and a bot name is the fallback.
-                if isSearching, !model.searchPage.hits.isEmpty {
-                    SectionCaption("MESSAGES · \(model.searchPage.total)")
-                        .padding(.horizontal, 8)
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
-                    ForEach(model.searchPage.hits) { hit in
-                        Button {
-                            if let bot = model.bots.first(where: { $0.id == hit.profile }) {
-                                store.selectBot(bot.id)
-                            }
-                        } label: {
-                            findingRow(hit)
-                                .background(
-                                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                                        .fill(hoveredRow == hitKey(hit.id) ? Tokens.controlHover : .clear)
-                                )
+                    // The owner's groups, the same headings the phone draws: Pinned above everything,
+                    // the categories by name, Uncategorized last (asked for 2026-11-15). While a search
+                    // is running the answer is one flat list — a heading would split it up for nothing —
+                    // so the row carries its category as a chip instead.
+                    if isSearching {
+                        ForEach(visibleBots) { bot in
+                            row(for: bot, isKeyboardSelected: highlighted == .bot(bot.id))
+                                // The identity the keyboard scrolls to: a row and a finding share the
+                                // one namespace `SidebarSearchRow` defines.
+                                .id(SidebarSearchRow.bot(bot.id))
                         }
-                        .buttonStyle(.plain)
-                        .onHover { inside in
-                            if inside { hoveredRow = hitKey(hit.id) }
-                            else if hoveredRow == hitKey(hit.id) { hoveredRow = nil }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
-                    }
-                }
-
-                // The owner's groups, the same headings the phone draws: Pinned above everything,
-                // the categories by name, Uncategorized last (asked for 2026-11-15). While a search
-                // is running the answer is one flat list — a heading would split it up for nothing —
-                // so the row carries its category as a chip instead.
-                if isSearching {
-                    ForEach(visibleBots) { bot in
-                        row(for: bot)
-                    }
-                } else {
-                    ForEach(model.botGroups) { group in
-                        groupCaption(group)
-                        if !isCollapsed(group) {
-                            ForEach(group.bots) { bot in
-                                row(for: bot)
+                    } else {
+                        ForEach(model.botGroups) { group in
+                            groupCaption(group)
+                            if !isCollapsed(group) {
+                                ForEach(group.bots) { bot in
+                                    row(for: bot)
+                                }
                             }
                         }
                     }
-                }
 
-                if showsHiddenBots, !hiddenBots.isEmpty {
-                    SectionCaption("HIDDEN")
-                        .padding(.horizontal, 8)
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
+                    if showsHiddenBots, !hiddenBots.isEmpty {
+                        SectionCaption("HIDDEN")
+                            .padding(.horizontal, 8)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
 
-                    ForEach(hiddenBots) { bot in
-                        hiddenRow(for: bot)
+                        ForEach(hiddenBots) { bot in
+                            hiddenRow(for: bot)
+                        }
                     }
                 }
+                // The first row's rounded corner kept landing in the top fade, so the selected row
+                // looked half-faded before the list had scrolled at all — 6 pt was not enough, and
+                // the row is 16 pt clear of the edge now (reported twice, 2026-11-14).
+                .padding(.top, 16)
             }
-            // The first row's rounded corner kept landing in the top fade, so the selected row
-            // looked half-faded before the list had scrolled at all — 6 pt was not enough, and the
-            // row is 16 pt clear of the edge now (reported twice, 2026-11-14).
-            .padding(.top, 16)
+            // Up/Down must be able to reach every row, not only the ones already on screen: the
+            // keyboard's row is followed into view as soon as it moves.
+            .onChange(of: highlighted) { _, row in
+                guard let row else { return }
+                withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(row, anchor: .center) }
+            }
         }
 
         if fillsAvailableHeight {
@@ -299,22 +317,151 @@ struct SidebarBotList: View {
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                         .foregroundStyle(Tokens.textPrimary)
                         .lineLimit(1)
+                    // Whose turn the message was: "leak" is answered differently depending on
+                    // whether the bot said it or the user typed it.
+                    Text(hit.isOwner ? "you" : "bot")
+                        .font(TypeScale.font(Tokens.rosterMeta))
+                        .foregroundStyle(Tokens.textDim)
+                        .lineLimit(1)
                     Spacer(minLength: 4)
                     Text(RelativeTime.stamp(hit.at))
                         .font(TypeScale.font(Tokens.rosterMeta))
                         .foregroundStyle(Tokens.textDim)
                         .lineLimit(1)
                 }
-                Text(hit.snippet)
+                Text(emphasising(hit))
                     .font(TypeScale.font(Tokens.rosterMeta))
                     .foregroundStyle(Tokens.textSecondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .help(hit.snippet)
+    }
+
+    /// The snippet with every occurrence of the match weighted.
+    ///
+    /// Built by *range*, from the plain string the host sent — never by parsing markup. A snippet is
+    /// whatever was said in a conversation, so the one thing it must not be is a document: nothing
+    /// here interprets `<`, `&` or anything else, which is why a message mentioning HTML cannot
+    /// style the row or inject a control into it.
+    private func emphasising(_ hit: BotSearchHit) -> AttributedString {
+        var text = AttributedString(hit.snippet)
+        let needle = hit.match.isEmpty ? trimmedQuery : hit.match
+        guard !needle.isEmpty else { return text }
+
+        var searchStart = text.startIndex
+        // The host's snippet is a line or two; a cap keeps a pathological phrase ("a") from walking
+        // the string once per character.
+        var marks = 0
+        while marks < 8, searchStart < text.endIndex,
+              let found = text[searchStart..<text.endIndex].range(of: needle,
+                                                                  options: .caseInsensitive) {
+            text[found].font = .system(size: Tokens.rosterMeta, weight: .semibold)
+            text[found].foregroundColor = Tokens.textPrimary
+            searchStart = found.upperBound
+            marks += 1
+        }
+        return text
+    }
+
+    // MARK: The messages block
+
+    /// The panel's answer above the roster: what the host found inside the conversations, or the one
+    /// sentence that says why there is nothing to draw yet.
+    ///
+    /// Every state the field can be in is drawn here, in the same place, so the panel never looks
+    /// like a roster with a silent search running behind it.
+    @ViewBuilder
+    private var messagesSection: some View {
+        switch phase {
+        case .idle:
+            EmptyView()
+
+        case .tooShort:
+            // The host will not search one character, so the panel says what it needs instead of
+            // reporting an absence it never looked for.
+            hintRow("Type at least 2 characters to search messages.")
+
+        case .waiting:
+            // Between a keystroke and the request: the field is ahead of the host. Claiming "no
+            // matches" here is the bug this state exists to prevent.
+            HStack(spacing: 6) {
+                SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)
+                Text("Searching…")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textDim)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+
+        case .searching:
+            SectionCaption("MESSAGES")
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+            HStack(spacing: 6) {
+                SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)
+                Text("Searching…")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textDim)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+
+        case .results:
+            SectionCaption("MESSAGES · \(model.searchPage.total)")
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+            ForEach(activeHits) { hit in
+                Button { onOpenHit?(hit) } label: {
+                    findingRow(hit)
+                        .background(
+                            RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                .fill(hitFill(hit))
+                        )
+                }
+                .buttonStyle(.plain)
+                .onHover { inside in
+                    if inside { hoveredRow = hitKey(hit.id) }
+                    else if hoveredRow == hitKey(hit.id) { hoveredRow = nil }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
+                .id(SidebarSearchRow.message(hit.id))
+                .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+            }
+
+        case .messagesEmpty:
+            // The transcripts were searched and had nothing; the bots below did match. The count
+            // says both things at once without a second sentence.
+            SectionCaption("MESSAGES · 0")
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+            hintRow("No message mentions “\(trimmedQuery)”.")
+
+        case .noMatches:
+            // Both halves are empty, and the list's own empty state says so once.
+            EmptyView()
+        }
+    }
+
+    private func hitFill(_ hit: BotSearchHit) -> Color {
+        if highlighted == .message(hit.id) { return Tokens.controlActive }
+        return hoveredRow == hitKey(hit.id) ? Tokens.controlHover : .clear
+    }
+
+    private func hintRow(_ text: String) -> some View {
+        Text(text)
+            .font(TypeScale.font(TypeScale.caption))
+            .foregroundStyle(Tokens.textDim)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
     }
 
     // MARK: Category headings
@@ -390,7 +537,7 @@ struct SidebarBotList: View {
 
     private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
 
-    private func row(for bot: Bot) -> some View {
+    private func row(for bot: Bot, isKeyboardSelected: Bool = false) -> some View {
         // A room on screen owns the selection: the bot underneath is not the conversation the
         // pane is showing, and highlighting both made the sidebar look like two things were open.
         let isSelected = bot.id == model.selectedBotID && model.activeRoom == nil
@@ -492,7 +639,7 @@ struct SidebarBotList: View {
             // padded, scaled or re-laid-out by the pointer, so a row never moves under it.
             .background(
                 RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                    .fill(isSelected ? Tokens.controlActive
+                    .fill(isSelected || isKeyboardSelected ? Tokens.controlActive
                           : (isHovered ? Tokens.controlHover : .clear))
             )
             // One hairline on hover, the chat header pill's own signal (a scale would move the hit
@@ -605,31 +752,61 @@ struct SidebarBotList: View {
         .accessibilityLabel("Show \(bot.displayName)")
     }
 
-    /// One row that says why the block is empty. A query with no hits names the query, so a
-    /// mistyped search cannot be mistaken for a host that has no bots — and the second line says
-    /// where the *conversation* is searched, because this field is the one a reader reaches for
-    /// first and it filters bots only (reported 2026-11-15: "No bots match “leak”" was the answer
-    /// to a search meant for the transcript behind it).
+    /// One row that says why the block is empty — and it is a statement about *both* halves of the
+    /// answer, because the field searches both.
+    ///
+    /// The copy this replaces described the field as a bot filter and pointed at ⌘F for the
+    /// conversation. That was true of the panel it was written for and is not true of this one: the
+    /// field covers every bot's conversation itself. A phrase with no hits and no matching bot name
+    /// therefore says so once, names the phrase, and says what was searched, so a mistyped query
+    /// cannot be mistaken for a host with nothing to say.
     @ViewBuilder
     private var emptyState: some View {
         if isSearching {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("No bots match \"\(trimmedQuery)\"")
-                    .font(TypeScale.font(TypeScale.caption))
-                    .foregroundStyle(Tokens.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-                // Two different "no bot", two different next steps: a query that found messages
-                // above is not a query that found nothing, and a query that found nothing at all is
-                // probably the field that was mistaken for the conversation's.
-                Text(model.searchPage.hits.isEmpty
-                     ? "Bots only — ⌘F searches the open conversation."
-                     : "Matching messages are listed above.")
-                    .font(TypeScale.font(TypeScale.caption))
-                    .foregroundStyle(Tokens.textDim.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
+            switch phase {
+            case .tooShort:
+                VStack(alignment: .leading, spacing: 3) {
+                    // The host's floor, not ours: one character is a keystroke, not a search.
+                    Text("Type at least 2 characters to search messages.")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Bot names still filter as you type.")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+
+            case .waiting, .searching:
+                HStack(spacing: 8) {
+                    SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)
+                    Text("Searching every bot's conversation…")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+
+            case .noMatches:
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No matches for “\(trimmedQuery)”")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Searched every bot's conversation and the bot names.")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+
+            default:
+                // Findings are drawn above; a bot matched; or the field is empty. Nothing to add.
+                EmptyView()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
         } else if model.botsLoading {
             HStack(spacing: 8) {
                 SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)

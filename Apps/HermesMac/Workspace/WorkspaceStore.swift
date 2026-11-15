@@ -39,11 +39,17 @@ final class WorkspaceStore: ObservableObject {
     ///
     /// `TranscriptScroll` owns the search field and its matches — they are a reading tool, not app
     /// state — so this is a request counter, not a boolean: a second press has to re-open and
-    /// re-focus a search that is already up, which a Bool could not express. The request is
-    /// deliberately *not* shared with the bot panel's filter field: that one filters bots, and the
-    /// two were mistaken for each other (reported 2026-11-15: "No bots match “leak”" was the answer
-    /// to a search meant for the conversation behind it).
+    /// re-focus a search that is already up, which a Bool could not express. The panel's own field is
+    /// a different question with a different answer: it asks the host to scan *every* bot's
+    /// conversation and lists the snippets, and clicking one lands here through `openSearchHit`.
     @Published private(set) var findRequest = 0
+    /// The phrase the next find opened with, when it was opened *for* a finding rather than by ⌘F.
+    ///
+    /// Paired with `findSeedRequest` so it cannot outlive its request: a plain ⌘F afterwards must
+    /// start on an empty field rather than replay the phrase of the last search a user clicked.
+    @Published private(set) var findSeed = ""
+    /// Which `findRequest` the seed belongs to.
+    @Published private(set) var findSeedRequest = 0
     /// The bot whose settings sheet is open; `nil` closes it. The bot list's context menu, the
     /// conversation's menu and the Settings window's Bots tab all set this, so there is one
     /// sheet and one owner.
@@ -617,6 +623,44 @@ final class WorkspaceStore: ObservableObject {
     /// from the header's magnifier — which used to raise the palette instead.
     func openFindInChat() { findRequest += 1 }
 
+    /// Open a finding from the bot panel's search: that bot's conversation, then the phrase in it.
+    ///
+    /// The finding carries no message id — the host answers a profile, a session, a role, a time and
+    /// a snippet — so there is no row to scroll to by identity. The second door the ticket offered
+    /// is the one implemented: the conversation's own find bar, seeded with the same phrase. It uses
+    /// the shared matcher, lights every row that matches and puts the reader on the first, which is
+    /// what landing on a message means in a transcript this pane renders from its own cache. Two
+    /// further facts argue for it: the same phrase can appear in several messages, and a finding can
+    /// come from an older session than the one endless conversation this pane resumes — in which
+    /// case the bar honestly says it found nothing *here* rather than pretending to jump.
+    ///
+    /// The bot is selected first and the wait is for the conversation, not for a timer: searching a
+    /// transcript that is not on screen yet would find nothing and leave the seed spent.
+    func openSearchHit(_ hit: BotSearchHit, query: String) {
+        selectBot(hit.profile)
+        let needle = SidebarSearch.trimmed(query)
+        Task { [weak self] in
+            guard let self else { return }
+            var waited = 0
+            while model.selectedSessionID == nil, waited < 80 {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                waited += 1
+            }
+            guard model.selectedSessionID != nil, model.selectedBotID == hit.profile else { return }
+            // The pane paints on the next pass; the bar is put over the rows rather than under the
+            // one that was there when the click happened.
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            seedFind(needle)
+        }
+    }
+
+    /// Open the conversation's find bar with a phrase already in it.
+    private func seedFind(_ query: String) {
+        findSeed = query
+        findSeedRequest = findRequest + 1
+        findRequest += 1
+    }
+
     /// The live catalogue. Disabled entries are shown but cannot run: a palette that hides
     /// half its verbs is harder to learn than one that explains why a verb is unavailable.
     var commands: [WorkspaceCommand] {
@@ -625,7 +669,7 @@ final class WorkspaceStore: ObservableObject {
         items.append(WorkspaceCommand(
             id: "chat.find",
             title: "Find in Conversation…",
-            subtitle: "Search the transcript on screen — the bot panel's field filters bots",
+            subtitle: "Search the transcript on screen — the bot panel searches every conversation",
             systemImage: "magnifyingglass",
             shortcut: "⌘F",
             group: .chat,

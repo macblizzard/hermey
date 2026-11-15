@@ -114,8 +114,9 @@ struct WorkspaceCommands: Commands {
             // ⌘F — find inside the conversation on screen. It lives in the menu because a key you
             // cannot see is a key you cannot learn: the transcript has carried a hidden ⌘F for a
             // while, and the sidebar's field was mistaken for this search instead (reported
-            // 2026-11-15). The sidebar still filters bots and nothing else; this searches the
-            // transcript behind it, from a bar over the transcript.
+            // 2026-11-15). The sidebar's field asks the host about every bot's conversation too,
+            // and lists the findings; this puts the reader on the row inside the transcript on
+            // screen, from a bar over it.
             Button("Find in Conversation…") {
                 store.openFindInChat()
             }

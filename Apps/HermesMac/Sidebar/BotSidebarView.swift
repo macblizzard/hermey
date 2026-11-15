@@ -3,12 +3,18 @@ import HermesKit
 import OpenBotUI
 import SwiftUI
 
-/// The left panel: **bots, and nothing else**.
+/// The left panel: **bots, and the conversations behind them**.
 ///
 /// This is the phone's bot list on the desktop. One row per Hermes profile — name, description,
 /// pin, hide, unread dot, context menu — and clicking a row opens that bot's single endless
-/// conversation in the pane on the right. There is no session browser under it, no session
-/// search, and no "new session" button: a bot has one conversation, and the app resumes it.
+/// conversation in the pane on the right. There is no session browser under it and no "new session"
+/// button: a bot has one conversation, and the app resumes it.
+///
+/// The search is one field with two halves: from two characters on, the phrase goes to the host,
+/// which scans **every bot's conversation** and answers with snippets, drawn above the rows; below
+/// that, and alongside it, the same phrase filters bot names. Both halves are one combined list to
+/// the keyboard — findings first, then bots — so Up/Down and Return work without the user having to
+/// know which half a row came from.
 ///
 /// The header is one row of chrome: the bot filter (a field, not an icon that opens one), the
 /// hidden-bots filter and Settings. There is no footer — the list takes the panel's last point.
@@ -21,11 +27,19 @@ struct BotSidebarView: View {
     /// Hidden bots are a view preference; this reveals them so nothing becomes unreachable.
     @State private var showsHiddenBots = false
 
-    /// The live bot filter. Matched case-insensitively against name and id by `SidebarBotList`.
+    /// The live bot filter. Matched case-insensitively against name and id by `SidebarBotList`, and
+    /// — when it is two characters or longer — sent to the host, which searches every bot's
+    /// conversation and answers with findings. One field, two halves of one answer: the findings are
+    /// drawn above the rows by the same list.
     @State private var searchQuery = ""
     /// Search is a button, not a box: the field only exists while it is being used, so the row
     /// holds four glyphs and the list gets the width back.
     @State private var isSearching = false
+    /// Where the keyboard is in the combined answer (findings first, then bots). Owned here because
+    /// the keys arrive here; drawn by `SidebarBotList` because the rows live there.
+    @State private var searchSelection = SidebarSearchSelection()
+    /// The debounce in flight. Cancelled by the next keystroke, so a fast typist asks the host once.
+    @State private var searchTask: Task<Void, Never>?
 
 
     @State private var pendingRoomDelete: RoomSummary?
@@ -135,11 +149,11 @@ struct BotSidebarView: View {
                 Spacer(minLength: 0)
 
                 OpenBotIconButton("magnifyingglass",
-                                  label: isSearching ? "Close search" : "Search bots",
+                                  label: isSearching ? "Close search" : "Search bots and messages",
                                   size: .small) {
                     if isSearching { closeSearch() } else { isSearching = true }
                 }
-                .help(isSearching ? "Close search (esc)" : "Search bots")
+                .help(isSearching ? "Close search (esc)" : "Search bots and messages")
 
                 // The panel's own toggle, where Rakazo keeps it. The chat header shows one only
                 // while this panel is hidden, so the door is never gone.
@@ -170,7 +184,13 @@ struct BotSidebarView: View {
 
             if isSearching {
                 HStack(spacing: 6) {
-                    MacSidebarSearchField(text: $searchQuery, prompt: "Search bots")
+                    MacSidebarSearchField(text: $searchQuery,
+                                          prompt: "Search bots and messages",
+                                          onMoveUp: { moveHighlight(-1) },
+                                          onMoveDown: { moveHighlight(1) },
+                                          onSubmit: { openHighlighted() },
+                                          onEscape: { closeSearch() },
+                                          autofocuses: true)
                         .onChange(of: searchQuery) { _, typed in searchTranscripts(for: typed) }
                         .layoutPriority(1)
                         .accessibilityIdentifier("sidebar.botSearch")
@@ -186,22 +206,118 @@ struct BotSidebarView: View {
         .padding(.bottom, 6)
         .onExitCommand { if isSearching { closeSearch() } }
         .animation(.easeOut(duration: 0.12), value: isSearching)
+        // The keyboard walks the same list the pointer sees. Recomputed whenever a finding or a bot
+        // arrives; `SidebarSearchSelection` keeps the cursor on its row, or drops it if that row is
+        // gone.
+        .onChange(of: searchRows) { _, rows in searchSelection.update(rows: rows) }
     }
 
-    /// Typing is not a search per keystroke: a quarter second of quiet, then the host is asked.
+    /// The combined answer, in the order the keyboard walks it: findings first, then the bots whose
+    /// names match. The list draws its own copy of this order from the same helpers; this one exists
+    /// so Up/Down and Return know what "the next row" is without asking a view.
+    private var searchRows: [SidebarSearchRow] {
+        guard isSearching else { return [] }
+        return SidebarSearch.rows(hits: activeHits, botIDs: matchingBotIDs)
+    }
+
+    /// The bots the query matches, in the order the list draws them: visible first, then the hidden
+    /// ones when the panel is showing them.
+    private var matchingBotIDs: [String] {
+        guard isSearching else { return [] }
+        var ids = model.orderedBots
+            .filter { SidebarSearch.matches($0, query: searchQuery) }
+            .map(\.id)
+        if showsHiddenBots {
+            ids += model.bots
+                .filter { model.isHidden(botID: $0.id) && SidebarSearch.matches($0, query: searchQuery) }
+                .map(\.id)
+        }
+        return ids
+    }
+
+    /// Findings only while they answer the phrase in the field: a late answer to an older query is
+    /// not something Return should open.
+    private var activeHits: [BotSearchHit] {
+        guard isSearching else { return [] }
+        let phase = SidebarSearch.phase(query: searchQuery,
+                                        answered: model.searchQuery,
+                                        running: model.searchRunning,
+                                        hits: model.searchPage.hits.count,
+                                        botMatches: matchingBotIDs.count)
+        return phase == .results ? model.searchPage.hits : []
+    }
+
+    // MARK: - Search
+
+    /// Typing is not a search per keystroke.
+    ///
+    /// Two layers, on purpose. Here: a 200 ms quiet period, with the previous wait cancelled, so a
+    /// fast typist produces one request rather than one per character. In `AppModel`: a token that
+    /// every answer is checked against, so an answer to an older phrase that is already on the wire
+    /// cannot land on top of a newer one. The debounce keeps the wire quiet; the token keeps it
+    /// correct.
     private func searchTranscripts(for typed: String) {
-        Task {
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard typed == searchQuery else { return }
-            await store.model.searchTranscripts(typed)
+        searchTask?.cancel()
+        let needle = SidebarSearch.trimmed(typed)
+        guard needle.count >= SidebarSearch.minimumQuery else {
+            // Below the host's floor nothing is asked, and the previous answer is dropped at once:
+            // leaving it under a one-character field would describe a search nobody is running.
+            searchTask = Task {
+                // …unless a later keystroke overtook this one before it ran.
+                guard SidebarSearch.trimmed(searchQuery).count < SidebarSearch.minimumQuery else { return }
+                await store.model.searchTranscripts("")
+            }
+            return
+        }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            // A request that wakes up after the field moved on is not sent at all.
+            guard SidebarSearch.trimmed(searchQuery) == needle else { return }
+            await store.model.searchTranscripts(needle)
         }
     }
 
+    private func moveHighlight(_ direction: Int) {
+        // The rows may have arrived since the last keystroke; adopt them before moving.
+        searchSelection.update(rows: searchRows)
+        searchSelection.move(by: direction)
+    }
+
+    /// Return: open the row the keyboard is on, or the first row when it has not chosen one yet.
+    private func openHighlighted() {
+        searchSelection.update(rows: searchRows)
+        guard let row = searchSelection.opening else { return }
+        open(row)
+    }
+
+    private func open(_ row: SidebarSearchRow) {
+        switch row {
+        case .bot(let id):
+            store.selectBot(id)
+        case .message(let id):
+            guard let hit = model.searchPage.hits.first(where: { $0.id == id }) else { return }
+            openHit(hit)
+        }
+    }
+
+    /// A finding, opened.
+    ///
+    /// The bot's conversation is resumed first — that is what `selectBot` means on this app — and
+    /// then the reader is put at the message: see `WorkspaceStore.openSearchHit`. The phrase goes
+    /// with it, because that is what the conversation's own find bar needs to land on the row.
+    private func openHit(_ hit: BotSearchHit) {
+        store.openSearchHit(hit, query: searchQuery)
+    }
+
     private func closeSearch() {
+        searchTask?.cancel()
+        searchTask = nil
         withAnimation(.easeOut(duration: 0.12)) {
             isSearching = false
             searchQuery = ""
         }
+        searchSelection.clear()
         Task { await store.model.searchTranscripts("") }
     }
 
@@ -249,6 +365,10 @@ struct BotSidebarView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // The first focusable control in a new window wears the system focus ring, and a ring on
+        // the list's "+" at launch reads as "this is selected" when nothing is. The + is a verb,
+        // not a tab stop that benefits from the ring; Tab still reaches everything after it.
+        .focusEffectDisabled()
         .help("Add a bot, start a group chat, manage the list")
         .accessibilityLabel("Bot list menu")
     }
@@ -294,7 +414,9 @@ struct BotSidebarView: View {
                                // to edit with the conversation it belongs to on screen.
                                model.openRoom(room)
                                model.requestRename(room.id)
-                           })
+                           },
+                           onOpenHit: openHit,
+                           highlighted: searchSelection.highlighted)
         }
     }
 
