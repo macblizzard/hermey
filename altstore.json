@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.442",
+          "buildVersion": "442",
+          "date": "2026-11-15T19:33:02Z",
+          "localizedDescription": "Phase 6a \u2014 one window language.\n\n\u2022 Every sheet and menu now shares the app's own chrome: the same canvas behind it, the same dark appearance, and the same rounded corners as a card. No more black sheet next to a grey one, or a Mac sheet following the system theme while the window behind it is dark.\n\u2022 Nothing changes about what any sheet does \u2014 only how it sits in the app.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.442/Hermey-0.1.442-b442.ipa",
+          "size": 2676947,
+          "minOSVersion": "17.0",
+          "sha256": "76f549f56ae820f336061964e0aa79d00d461e30905bd25c58b0a3f844d95450"
+        },
+        {
           "version": "0.1.430",
           "buildVersion": "430",
           "date": "2026-11-15T18:18:14Z",
@@ -62,16 +72,6 @@
           "size": 2569192,
           "minOSVersion": "17.0",
           "sha256": "99d294be182dbcfd27291a78154dc6be2cc11d3bb323798576d1c92ab5ed4d9b"
-        },
-        {
-          "version": "0.1.416",
-          "buildVersion": "416",
-          "date": "2026-11-15T12:51:49Z",
-          "localizedDescription": "Phase 2 \u2014 the log sheet and the bot rows.\n\n\u2022 Settings \u25b8 View log can be re-read without closing it (Refresh) and read from either end \u2014 Newest first or Newest last, remembered per device.\n\u2022 Swipe a bot row left to pin or unpin it, right to mark it unread. Icons only, no words. Marking unread lights one unread \u2014 the newest message \u2014 rather than the whole history.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.416/Hermey-0.1.416-b416.ipa",
-          "size": 2527358,
-          "minOSVersion": "17.0",
-          "sha256": "95e906ac175987b70d56c806caeb5e247f64963eec3dd0e53c764f5c4d899077"
         }
       ],
       "appPermissions": {
