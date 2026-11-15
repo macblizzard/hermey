@@ -18,8 +18,8 @@ What the bridge adds:
 
 …and a watcher that reads each bot's conversation on a timer and pushes what is new. The timer is
 the honest part: the relay cannot be told "a reply arrived" by a process that does not exist, so the
-host looks for itself. Twenty seconds is fast enough to feel immediate and slow enough that reading
-every profile's `state.db` costs nothing.
+host looks for itself. Ten seconds is the point where a banner still feels like a reaction — the
+interval costs one read-only `state.db` open per bot, and a tick with nothing new writes nothing.
 
 A device is never pushed about the bot it says it is looking at, and a reply the *reader* wrote is
 never pushed at all. Both rules exist so a banner never announces something already on screen.
@@ -43,9 +43,13 @@ from pydantic import BaseModel
 
 from .device_auth import require_device
 
-#: How often the host looks for new replies. Bigger than the app's own 25 s sweep? Slightly less —
-#: a banner that arrives before the row would be strange, one that arrives after is just late.
-WATCH_SECONDS = 20.0
+#: How often the host looks for new replies.
+#:
+#: Ten seconds, not twenty: the gap between a bot answering and the phone buzzing is the whole
+#: perceived quality of the feature, and a tick is one read-only `state.db` open per bot — nothing is
+#: written unless a reply is actually new. Still above the point where the scan itself shows up in
+#: `journalctl`.
+WATCH_SECONDS = 10.0
 
 #: A banner body is a notification, not a message: two lines, then the app itself.
 MAX_BODY_CHARS = 140
