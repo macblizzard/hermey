@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.392",
+          "buildVersion": "392",
+          "date": "2026-11-15T02:23:03Z",
+          "localizedDescription": "Banners carry the bot's own face \u2014 the app renders each portrait exactly as the roster draws it and the host serves it to the relay \u2014 plus Time Sensitive. Paste Bark's URL in Settings \u2192 Notifications to turn it on.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.392/Hermey-0.1.392-b392.ipa",
+          "size": 2779360,
+          "minOSVersion": "17.0",
+          "sha256": "cd50c960f69e2db6692aa80e007721bf94f63c6742b76f72829f7d00a0359967"
+        },
+        {
           "version": "0.1.380",
           "buildVersion": "380",
           "date": "2026-11-15T02:09:58Z",
@@ -62,16 +72,6 @@
           "size": 2731500,
           "minOSVersion": "17.0",
           "sha256": "96b62fce54c39850d9b1f84039cdaeb99f87b330a2948274cda856f04906c740"
-        },
-        {
-          "version": "0.1.368",
-          "buildVersion": "368",
-          "date": "2026-11-14T21:36:20Z",
-          "localizedDescription": "Build from CI run 43643053176.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.368/Hermey-0.1.368-b368.ipa",
-          "size": 2730379,
-          "minOSVersion": "17.0",
-          "sha256": "c3ee691a77e10732c18473e5768f67a34f339398f3e8fbe6a3c517db0f83769d"
         }
       ],
       "appPermissions": {
