@@ -1897,6 +1897,61 @@ public final class AppModel: ObservableObject {
         botCategoryState = try await client.setBotCategory(profile: botID, categoryID: categoryID)
     }
 
+    // MARK: Roster configuration
+
+    /// The soul a new bot starts from, and the one Hermes itself would use.
+    @Published public private(set) var botDefaults: BotDefaults = .empty
+    /// One switch for both panes: a save in flight must not be doubled by a second tap.
+    @Published public private(set) var rosterBusy = false
+
+    public func loadBotDefaults() async {
+        if let defaults = try? await client.botDefaults() { botDefaults = defaults }
+    }
+
+    /// `nil` on success, or the sentence to show. An empty text is the reset, not an error.
+    public func saveDefaultSoul(_ text: String) async -> String? {
+        rosterBusy = true
+        defer { rosterBusy = false }
+        do {
+            botDefaults = try await client.setDefaultSoul(text)
+            return nil
+        } catch {
+            ClientLog.note("default soul refused: \(error.localizedDescription)",
+                           level: .warning, category: "roster")
+            return "The host refused the change: \(error.localizedDescription)"
+        }
+    }
+
+    /// Every bot's config as one document, or nil when the host would not answer.
+    public func backupDocument() async -> Data? {
+        rosterBusy = true
+        defer { rosterBusy = false }
+        do { return try await client.exportBackup() }
+        catch {
+            ClientLog.note("backup failed: \(error.localizedDescription)",
+                           level: .warning, category: "roster")
+            return nil
+        }
+    }
+
+    /// Rebuild what the document has and this host does not, then re-read the roster so the change is
+    /// visible without a relaunch.
+    public func restoreBackup(_ document: Data) async -> (BackupRestoreResult?, String?) {
+        rosterBusy = true
+        do {
+            let outcome = try await client.restoreBackup(document)
+            rosterBusy = false
+            await loadBots()
+            await loadBotCategories()
+            return (outcome, nil)
+        } catch {
+            rosterBusy = false
+            ClientLog.note("restore refused: \(error.localizedDescription)",
+                           level: .warning, category: "roster")
+            return (nil, "The host refused the file: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: Searching the transcripts
 
     /// The findings for the query on screen, and the query they belong to.

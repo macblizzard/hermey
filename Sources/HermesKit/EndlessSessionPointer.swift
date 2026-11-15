@@ -161,6 +161,18 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
 
+    /// `GET /v1/bot-defaults` — the soul a new bot starts from, and Hermes's own.
+    func botDefaults() async throws -> BotDefaults
+
+    /// `PUT /v1/bot-defaults/soul` — set it, or clear it with an empty text.
+    func setDefaultSoul(_ text: String) async throws -> BotDefaults
+
+    /// `GET /v1/backup` — every bot's config as one JSON document.
+    func exportBackup() async throws -> Data
+
+    /// `POST /v1/backup/restore` — create what the document has and this host does not.
+    func restoreBackup(_ document: Data) async throws -> BackupRestoreResult
+
     /// `POST /v1/push/register` — the relay endpoint this device's banners should go to.
     func registerPushRelay(_ url: String) async throws
 
@@ -224,6 +236,12 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
+        throw BotAdminUnavailable()
+    }
+    func botDefaults() async throws -> BotDefaults { throw BotAdminUnavailable() }
+    func setDefaultSoul(_ text: String) async throws -> BotDefaults { throw BotAdminUnavailable() }
+    func exportBackup() async throws -> Data { throw BotAdminUnavailable() }
+    func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
         throw BotAdminUnavailable()
     }
     func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
@@ -578,6 +596,31 @@ enum Failure: Error, Equatable, LocalizedError {
         let b = try Self.pathComponent(second)
         let data = try await bridgeGET("v1/bot-transfers?between=\(a),\(b)&limit=\(limit)", timeout: 20)
         return try BotTransfer.decodeList(data)
+    }
+
+    /// `GET /v1/bot-defaults`.
+    public func botDefaults() async throws -> BotDefaults {
+        try BotDefaults.decode(try await bridgeGET("v1/bot-defaults"))
+    }
+
+    /// `PUT /v1/bot-defaults/soul`. An empty text is the reset, and it is the same call on purpose.
+    public func setDefaultSoul(_ text: String) async throws -> BotDefaults {
+        try BotDefaults.decode(try await bridgePUT("v1/bot-defaults/soul", body: ["text": text]))
+    }
+
+    /// `GET /v1/backup` — handed back as bytes: the app writes it as a file, and does not need to
+    /// understand the document to keep it.
+    public func exportBackup() async throws -> Data {
+        try await bridgeGET("v1/backup", timeout: 120)
+    }
+
+    /// `POST /v1/backup/restore` — the document goes back exactly as it came out of the file.
+    public func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
+        guard let object = try JSONSerialization.jsonObject(with: document) as? [String: Any] else {
+            throw Failure.malformedResponse
+        }
+        return try BackupRestoreResult.decode(
+            try await bridgePOST("v1/backup/restore", body: object, timeout: 180))
     }
 
     public func reportPresence(bot: String?) async throws {
