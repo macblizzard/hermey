@@ -165,21 +165,24 @@ struct ConversationHeader: View {
             // floating over the content rather than pasted onto it.
             .background(
                 Capsule().fill(Tokens.surface)
-                    .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
+                    .shadow(color: .black.opacity(hovered ? 0.45 : 0.35),
+                            radius: hovered ? 16 : 12, y: 4)
             )
             .overlay(
-                Capsule().strokeBorder(store.isBotPanelPresented ? Tokens.borderStrong : Tokens.border,
+                // The border is the hover signal now. The old one was a scale, which resized the
+                // capsule *and its hit box* on a spring — a click that arrived while the shape was
+                // still moving could land outside it, which read as "the pill ignores clicks"
+                // (reported 2026-11-15).
+                Capsule().strokeBorder(hovered || store.isBotPanelPresented
+                                       ? Tokens.borderStrong : Tokens.border,
                                        lineWidth: 1)
             )
-            .contentShape(Capsule())
+            // A rectangle, not the capsule: the rounded ends were dead to the pointer, so aiming
+            // at the corner of the pill (the shape everyone sees) did nothing.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // A pointer resting on the name is a pointer about to click it: the capsule grows a few
-        // percent on a spring, so the header says "this is a control" before the click is made
-        // (asked for 2026-11-14). Reduce Motion keeps it still.
-        .scaleEffect(hovered ? 1.045 : 1.0, anchor: .center)
-        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.62),
-                   value: hovered)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
         .onHover { inside in
             guard inside != hovered else { return }
             hovered = inside
