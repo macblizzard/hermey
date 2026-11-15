@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.430",
+          "buildVersion": "430",
+          "date": "2026-11-15T18:18:14Z",
+          "localizedDescription": "Phase 5 \u2014 the soul a new bot starts from, and a backup that can rebuild your roster.\n\n\u2022 Settings \u2192 Bots (Mac) / Settings \u2192 Bots (phone): set the instructions every new bot begins with. Leave it empty and new bots start from Hermes's own default; 'Reset' does the same thing.\n\u2022 Export writes one JSON file with every bot's name, description, soul, memory, notes, categories and routines \u2014 no conversations. Restore reads it back on this or a fresh install: it creates bots that are missing, fills in documents that are empty, and never overwrites a bot's own words. Restored routines start running after the host restarts.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.430/Hermey-0.1.430-b430.ipa",
+          "size": 2661496,
+          "minOSVersion": "17.0",
+          "sha256": "e9dcd093f5b73388fe81a2014bc1b5a51dc28d595c1ecef81b4f9348112dd400"
+        },
+        {
           "version": "0.1.426",
           "buildVersion": "426",
           "date": "2026-11-15T15:25:37Z",
@@ -62,16 +72,6 @@
           "size": 2527358,
           "minOSVersion": "17.0",
           "sha256": "95e906ac175987b70d56c806caeb5e247f64963eec3dd0e53c764f5c4d899077"
-        },
-        {
-          "version": "0.1.413",
-          "buildVersion": "413",
-          "date": "2026-11-15T12:34:08Z",
-          "localizedDescription": "Phase 1 \u2014 the bot menu.\n\n\u2022 The pill that opens the bot panel now takes a click on its whole rectangle: the rounded ends used to be dead to the pointer, and a hover rescale moved the target while the pointer was arriving. Hover is now a brighter border and a deeper shadow, with no geometry change.\n\u2022 The bot panel's column starts 30 pt below the window's top edge instead of sitting against it.\n\u2022 \u2318E opens and closes the bot menu (Conversation \u25b8 Bot Menu), the same door the pill is.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.413/Hermey-0.1.413-b413.ipa",
-          "size": 2520741,
-          "minOSVersion": "17.0",
-          "sha256": "9eb2d772bcfb88c1233d71d6ac0b7733be0790cc4c6e9e8ea58d87f4eeb8e9a6"
         }
       ],
       "appPermissions": {
