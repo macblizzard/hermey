@@ -149,18 +149,23 @@ public struct BotIconPortrait: View {
     /// `isWorking` is kept because a dozen call sites pass it; `status` is the whole story, and a
     /// caller that knows which state it is should pass that instead.
     public var status: PortraitStatus?
+    /// Whether the face may animate at all. A roster legend does not need to breathe: idle rows
+    /// pass `false` and only the bot that is actually working (or selected) gets motion, which is
+    /// what keeps a long bot list from rebuilding twenty faces a second forever.
+    public var animates: Bool = true
 
     /// The way every caller should construct a portrait: shape and colour together.
     ///
     /// `isWorking` is here as well as on the legacy init, and with the same label order, because a
     /// call site written against the old signature must still resolve to the *face* overload.
     public init(_ face: BotFace, size: CGFloat = 56, isWorking: Bool = false,
-                status: PortraitStatus? = nil) {
+                status: PortraitStatus? = nil, animates: Bool = true) {
         self.icon = face.shape
         self.color = face.color.swatch
         self.size = size
         self.isWorking = isWorking || status == .working
         self.status = status ?? (isWorking ? .working : nil)
+        self.animates = animates
     }
 
     /// The legacy door: a bare shape, in the colour that shape used to be drawn in.
@@ -181,7 +186,9 @@ public struct BotIconPortrait: View {
     /// Motion is a courtesy, not the point: below 18 pt the face is a legend for a row, and a small
     /// thing that moves is a small thing that catches the eye for no reason. The app's own switch
     /// (Settings → Appearance) answers first; without one, the system's Reduce Motion does.
-    private var motionIsOn: Bool { BotFaceMotion.allows(reduceMotion: reduceMotion, size: size) }
+    private var motionIsOn: Bool {
+        animates && BotFaceMotion.allows(reduceMotion: reduceMotion, size: size)
+    }
 
     public var body: some View {
         ZStack {

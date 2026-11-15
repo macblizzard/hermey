@@ -331,7 +331,10 @@ struct BotListScreen: View {
                 // id picks. Initials are what made the first second of every launch look empty.
                 BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: metrics.avatar,
-                                isWorking: model.isStreaming && model.selectedBotID == bot.id)
+                                isWorking: model.isStreaming && model.selectedBotID == bot.id,
+                                // Same rule as the Mac: idle rows must not animate.
+                                animates: (model.isStreaming && model.selectedBotID == bot.id)
+                                    || bot.id == model.selectedBotID)
                     // The count sits on the face, bottom-right, nudged out so it reads as a badge on
                     // the avatar rather than a chip inside it. It was dropped in the roster restyle
                     // (2026-11-13) on the theory that the app badge was enough — it is not: the app

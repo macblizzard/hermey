@@ -411,7 +411,10 @@ struct SidebarBotList: View {
                 // animate on its behalf (see `BotIconPortrait` for the movement that remains).
                 BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
                                 size: metrics.avatar,
-                                status: portraitStatus(for: bot))
+                                status: portraitStatus(for: bot),
+                                // Only a moving bot animates. Everything else in the roster is a
+                                // legend, and a 20 fps timeline per idle row is pure heat.
+                                animates: portraitStatus(for: bot) != nil)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
