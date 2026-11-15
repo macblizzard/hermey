@@ -54,6 +54,11 @@ WATCH_SECONDS = 10.0
 #: A banner body is a notification, not a message: two lines, then the app itself.
 MAX_BODY_CHARS = 140
 
+#: How long a device's "I am reading this bot" claim is believed. The app clears it when it goes to
+#: the background, but a phone that sleeps mid-chat cannot send anything at all — and a stale claim
+#: silences that bot forever, which is how a reply went missing for eight hours.
+PRESENCE_SECONDS = 120.0
+
 #: Bark accepts a whole notification as JSON; a payload bigger than this is a mistake, not a note.
 MAX_URL_CHARS = 512
 
@@ -232,8 +237,9 @@ class ReplyWatcher:
         body = reply["text"][:MAX_BODY_CHARS]
         icon = icon_url(profile)
         for target in targets:
-            # The bot this device is reading is not news to it.
-            if target.get("preset_bot") == profile:
+            # The bot this device is reading is not news to it — but only while that claim is fresh.
+            if (target.get("preset_bot") == profile
+                    and time.time() - float(target.get("updated_at") or 0) < PRESENCE_SECONDS):
                 continue
             self.relay.send(target["endpoint"], target["key"], title=title, body=body,
                             group=profile, url=f"hermey://bot/{profile}", icon=icon)

@@ -183,9 +183,11 @@ class DeviceRegistry:
         return [dict(row) for row in rows]
 
     def set_push_presence(self, device_id: str, bot: Optional[str]) -> None:
+        # Stamped, not just stored: a phone that went to sleep mid-conversation never sends
+        # "I left", so the timestamp is what stops yesterday's chat from muting a bot today.
         with self._connect() as conn:
-            conn.execute("UPDATE push_targets SET preset_bot = ? WHERE device_id = ?",
-                         (bot, device_id))
+            conn.execute("UPDATE push_targets SET preset_bot = ?, updated_at = ? WHERE device_id = ?",
+                         (bot, time.time(), device_id))
             conn.commit()
 
     def set_push_prompt(self, profile: str, source: str) -> None:
