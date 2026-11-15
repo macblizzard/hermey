@@ -100,7 +100,12 @@ struct BotSidebarView: View {
                 onToggleEnabled: { profile, enabled in
                     try await model.setBotEnabled(profile, enabled)
                 },
-                onDelete: { profile in try await model.deleteBot(profile) })
+                onDelete: { profile in try await model.deleteBot(profile) },
+                categories: model.botCategories,
+                categoryID: { model.categoryID(for: $0) },
+                onSetCategory: { profile, category in
+                    try await model.setBotCategory(profile, to: category)
+                })
         }
     }
 

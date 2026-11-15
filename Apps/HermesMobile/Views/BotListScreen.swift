@@ -46,6 +46,13 @@ struct BotListScreen: View {
     /// its own controller. Same host TTS either way.
     @StateObject private var roomVoice = VoiceController()
     @AppStorage("lastOpenedBotsByHost") private var lastOpenedBotsJSON = "{}"
+    /// Which headings are collapsed. One JSON map rather than an `@AppStorage` per category: the
+    /// categories live on the host and come and go, and a property per key cannot follow that.
+    @AppStorage("hermey.collapsedBotGroups") private var collapsedGroupsJSON = "{}"
+    /// The list's size, dragged in Appearance. Default reproduces the shipped row exactly.
+    @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
+    @State private var showAddCategory = false
+    @State private var newCategoryName = ""
 
     private var lastOpenedBots: [String: String] {
         guard let data = lastOpenedBotsJSON.data(using: .utf8),
@@ -127,6 +134,12 @@ struct BotListScreen: View {
                 loadingRow
             } else if filtered.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
                 emptySection
+            } else if !trimmedQuery.isEmpty {
+                // A search is one flat list of what matched: headings would split the answer up
+                // while the person is looking for one name.
+                Section {
+                    ForEach(filtered) { bot in row(for: bot) }
+                }
             } else {
                 chatsSection
                 if showHidden, !hiddenBots.isEmpty { hiddenSection }
@@ -151,6 +164,20 @@ struct BotListScreen: View {
             // A pull-to-refresh is a request for what is on the host *now*, so the cached preview
             // lines are dropped rather than trusted.
             await model.loadBotPreviews(force: true)
+            // And the groups are host state too: the other device may have made one a minute ago.
+            await model.loadBotCategories()
+        }
+        .alert("New category", isPresented: $showAddCategory) {
+            TextField("Name", text: $newCategoryName)
+                .textInputAutocapitalization(.words)
+            Button("Add") {
+                let name = newCategoryName
+                guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                Task { try? await model.addBotCategory(name: name) }
+            }
+            Button("Cancel", role: .cancel) { newCategoryName = "" }
+        } message: {
+            Text("Groups live on the host, so the Mac shows the same ones. A bot with no group sits in Uncategorized.")
         }
         // First fill: one `session.list` per bot, bounded and cached, so the rows get their third
         // line without a pull.
@@ -159,6 +186,8 @@ struct BotListScreen: View {
             await model.refreshDisabledBots()
             await model.refreshRooms()
             await model.loadBotPreviews()
+            // The headings come from the host, like the bots themselves.
+            await model.loadBotCategories()
         }
         .confirmationDialog(deleteTitle,
                             isPresented: deleteIsPresented,
@@ -240,7 +269,12 @@ struct BotListScreen: View {
                 onToggleEnabled: { profile, enabled in
                     try await model.setBotEnabled(profile, enabled)
                 },
-                onDelete: { profile in try await model.deleteBot(profile) })
+                onDelete: { profile in try await model.deleteBot(profile) },
+                categories: model.botCategories,
+                categoryID: { model.categoryID(for: $0) },
+                onSetCategory: { profile, category in
+                    try await model.setBotCategory(profile, to: category)
+                })
         }
         .sheet(item: $soulBot) { bot in
             SoulEditorSheet(
@@ -256,17 +290,19 @@ struct BotListScreen: View {
 
     // MARK: Rows
 
+    private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
+
     private func row(for bot: Bot) -> some View {
         Button {
             Haptics.selection()
             recordOpened(bot)
             onOpenBot(bot)
         } label: {
-            HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
+            HStack(alignment: .center, spacing: metrics.gap) {
                 // A bot always has a face: its own if the host has one, otherwise the portrait its
                 // id picks. Initials are what made the first second of every launch look empty.
                 BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: Geometry.rosterAvatar,
+                                size: metrics.avatar,
                                 isWorking: model.isStreaming && model.selectedBotID == bot.id)
                     // The count sits on the face, bottom-right, nudged out so it reads as a badge on
                     // the avatar rather than a chip inside it. It was dropped in the roster restyle
@@ -274,7 +310,7 @@ struct BotListScreen: View {
                     // badge needs the app closed to be read, and the maintainer asked for both indicators
                     // by name. The beacon says *something* is waiting, this says *how much*.
                     .overlay(alignment: .bottomTrailing) {
-                        UnreadBadge(count: model.unreadCount(bot.id), size: 19)
+                        UnreadBadge(count: model.unreadCount(bot.id), size: metrics.badge)
                             .offset(x: 5, y: 4)
                     }
 
@@ -284,7 +320,7 @@ struct BotListScreen: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(bot.displayName)
-                            .font(TypeScale.font(TypeScale.sessionTitle,
+                            .font(TypeScale.font(metrics.nameSize,
                                                  weight: model.hasUnread(bot.id) ? .semibold : .medium))
                             .foregroundStyle(Tokens.textPrimary)
                             .lineLimit(1)
@@ -300,7 +336,7 @@ struct BotListScreen: View {
 
                         if let at = model.botPreviewTimes[bot.id] {
                             Text(RelativeTime.stamp(at))
-                                .font(TypeScale.font(Tokens.rosterMeta))
+                                .font(TypeScale.font(metrics.metaSize))
                                 .foregroundStyle(Tokens.textDim)
                                 .monospacedDigit()
                                 .lineLimit(1)
@@ -311,7 +347,7 @@ struct BotListScreen: View {
                     }
 
                     Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
-                        .font(TypeScale.font(TypeScale.sessionPreview,
+                        .font(TypeScale.font(metrics.previewSize,
                                              weight: model.hasUnread(bot.id) ? .medium : .regular))
                         .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
                         .lineLimit(1)
@@ -326,8 +362,8 @@ struct BotListScreen: View {
                     UnreadBeacon(diameter: 8)
                 }
             }
-            .padding(.vertical, Geometry.rosterRowPadding)
-            .frame(minHeight: Geometry.rosterRow)
+            .padding(.vertical, metrics.rowPadding)
+            .frame(minHeight: metrics.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -336,6 +372,27 @@ struct BotListScreen: View {
             // discovers, and both are things a person changes rarely and deliberately. They live in
             // Bot Settings, with the description and the memory (reported 2026-11-14).
             Button { settingsBot = bot } label: { Label("Bot Settings", systemImage: "gearshape") }
+            // Filing a bot is the one thing about it that is a list-wide act, so it is here as well
+            // as in Manage bots: a long press on the row is where a person looks first.
+            Menu {
+                Button {
+                    Task { try? await model.setBotCategory(bot.id, to: nil) }
+                } label: {
+                    Label("Uncategorized",
+                          systemImage: model.categoryID(for: bot.id) == nil ? "checkmark" : "tray")
+                }
+                ForEach(model.botCategories) { category in
+                    Button {
+                        Task { try? await model.setBotCategory(bot.id, to: category.id) }
+                    } label: {
+                        Label(category.name,
+                              systemImage: model.categoryID(for: bot.id) == category.id
+                              ? "checkmark" : "folder")
+                    }
+                }
+            } label: {
+                Label("Category", systemImage: "folder")
+            }
             Button {
                 model.togglePin(botID: bot.id)
             } label: {
@@ -480,14 +537,66 @@ struct BotListScreen: View {
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
     }
 
-    /// No heading: "CHATS" said out loud what the rows already are, and it pushed the first bot
-    /// down by a whole line for nothing (reported 2026-11-14).
+    /// The bots, folded into the owner's categories: Pinned above everything, then the categories
+    /// by name, then Uncategorized. Each heading collapses, and what it collapsed stays collapsed
+    /// on this device.
     private var chatsSection: some View {
-        Section {
-            ForEach(filtered) { bot in
-                row(for: bot)
+        ForEach(model.botGroups) { group in
+            Section {
+                if !isCollapsed(group) {
+                    ForEach(group.bots) { bot in
+                        row(for: bot)
+                    }
+                }
+            } header: {
+                groupHeader(group)
             }
         }
+    }
+
+    private func groupHeader(_ group: BotGroup) -> some View {
+        Button {
+            toggleCollapsed(group)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isCollapsed(group) ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Tokens.textDim)
+                Text(group.name.uppercased())
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                    .foregroundStyle(Tokens.textMuted)
+                Text("\(group.bots.count)")
+                    .font(TypeScale.font(metrics.metaSize))
+                    .foregroundStyle(Tokens.textDim)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .textCase(nil)
+        .accessibilityLabel("\(group.name), \(group.bots.count) bots")
+        .accessibilityHint(isCollapsed(group) ? "Expand" : "Collapse")
+    }
+
+    private var collapsedGroups: [String: Bool] {
+        guard let data = collapsedGroupsJSON.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: Bool].self, from: data) else { return [:] }
+        return map
+    }
+
+    /// Categories are host data, so a group id is only unique per host: the map is keyed by both.
+    private func collapseKey(for group: BotGroup) -> String { "\(hostKey ?? "")|\(group.id)" }
+
+    private func isCollapsed(_ group: BotGroup) -> Bool { collapsedGroups[collapseKey(for: group)] == true }
+
+    private func toggleCollapsed(_ group: BotGroup) {
+        var map = collapsedGroups
+        let key = collapseKey(for: group)
+        map[key] = !(map[key] ?? false)
+        guard let data = try? JSONEncoder().encode(map),
+              let json = String(data: data, encoding: .utf8) else { return }
+        collapsedGroupsJSON = json
     }
 
     private var hiddenSection: some View {
@@ -706,6 +815,12 @@ struct BotListScreen: View {
                     }
                     Button { showManageBots = true } label: {
                         Label("Manage bots", systemImage: "slider.horizontal.3")
+                    }
+                    Button {
+                        newCategoryName = ""
+                        showAddCategory = true
+                    } label: {
+                        Label("Add category", systemImage: "folder.badge.plus")
                     }
 
                     Divider()

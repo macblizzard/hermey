@@ -136,6 +136,25 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bots/{profile}/notes` — write the whole note back. Last write wins, on the host.
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
 
+    /// `GET /v1/bot-categories` — the owner's own groups, and which bot sits in which.
+    ///
+    /// Host state on purpose: the phone and the Mac must show the same groups, and a device that
+    /// kept its own would disagree with the other one the moment either was used.
+    func botCategories() async throws -> BotCategoryState
+
+    /// `POST /v1/bot-categories` — a new group. A duplicate name is the host's refusal, not ours.
+    func createBotCategory(name: String) async throws -> BotCategoryState
+
+    /// `PATCH /v1/bot-categories/{id}` — rename a group.
+    func renameBotCategory(id: String, name: String) async throws -> BotCategoryState
+
+    /// `DELETE /v1/bot-categories/{id}` — drop a group. Its bots fall to Uncategorized; no bot is
+    /// ever deleted with it.
+    func deleteBotCategory(id: String) async throws -> BotCategoryState
+
+    /// `PUT /v1/bots/{profile}/category` — put a bot in a group, or take it out with `nil`.
+    func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
+
     /// `POST /v1/push/register` — the relay endpoint this device's banners should go to.
     func registerPushRelay(_ url: String) async throws
 
@@ -186,6 +205,15 @@ public extension BotSessionPointerStore {
     func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
     func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    func botCategories() async throws -> BotCategoryState { throw BotAdminUnavailable() }
+    func createBotCategory(name: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
+    func renameBotCategory(id: String, name: String) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    func deleteBotCategory(id: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
+    func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
     func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
     func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
     func sendTestPush() async throws { throw BotAdminUnavailable() }
@@ -490,6 +518,40 @@ enum Failure: Error, Equatable, LocalizedError {
         _ = try await bridgePOST("v1/push/register", body: ["url": url], timeout: 20)
     }
 
+    // MARK: Categories
+
+    /// `GET /v1/bot-categories`.
+    public func botCategories() async throws -> BotCategoryState {
+        try BotCategoryState.decode(try await bridgeGET("v1/bot-categories", timeout: 20))
+    }
+
+    /// `POST /v1/bot-categories` — the host answers with the whole document, assignments included,
+    /// so one call is enough to redraw the list.
+    public func createBotCategory(name: String) async throws -> BotCategoryState {
+        try BotCategoryState.decode(try await bridgePOST("v1/bot-categories",
+                                                         body: ["name": name], timeout: 20))
+    }
+
+    public func renameBotCategory(id: String, name: String) async throws -> BotCategoryState {
+        let category = try Self.pathComponent(id)
+        return try BotCategoryState.decode(try await bridgePATCH("v1/bot-categories/\(category)",
+                                                                 body: ["name": name], timeout: 20))
+    }
+
+    public func deleteBotCategory(id: String) async throws -> BotCategoryState {
+        let category = try Self.pathComponent(id)
+        return try BotCategoryState.decode(try await bridgeDELETE("v1/bot-categories/\(category)",
+                                                                  timeout: 20))
+    }
+
+    /// `PUT /v1/bots/{profile}/category` — `category_id: null` means Uncategorized.
+    public func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        let name = try Self.pathComponent(profile)
+        let body: [String: Any] = ["category_id": categoryID ?? NSNull()]
+        return try BotCategoryState.decode(try await bridgePUT("v1/bots/\(name)/category",
+                                                               body: body, timeout: 20))
+    }
+
     public func reportPresence(bot: String?) async throws {
         _ = try await bridgePOST("v1/push/presence", body: ["bot": bot ?? NSNull()], timeout: 15)
     }
@@ -585,6 +647,42 @@ enum Failure: Error, Equatable, LocalizedError {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
+        }
+        return data
+    }
+
+    /// One authenticated PATCH against the bridge, JSON in and JSON out. A rename is a partial
+    /// update of one field, which is what PATCH is for.
+    func bridgePATCH(_ path: String, body: [String: Any], timeout: TimeInterval = 20) async throws -> Data {
+        let endpoint = try await endpoint()
+        var request = URLRequest(url: Self.bridgeURL(endpoint.baseURL, path))
+        request.httpMethod = "PATCH"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
+        }
+        return data
+    }
+
+    /// One authenticated DELETE. The host answers with the document it left behind, so the caller
+    /// can redraw from the answer instead of guessing what a deletion did.
+    func bridgeDELETE(_ path: String, timeout: TimeInterval = 20) async throws -> Data {
+        let endpoint = try await endpoint()
+        var request = URLRequest(url: Self.bridgeURL(endpoint.baseURL, path))
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
         guard (200..<300).contains(http.statusCode) else {

@@ -446,6 +446,32 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.saveNotes(text, for: profile)
     }
 
+    /// Categories are the bridge's too: one file on the host, read by both apps.
+    public func botCategories() async throws -> BotCategoryState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.botCategories()
+    }
+
+    public func createBotCategory(name: String) async throws -> BotCategoryState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.createBotCategory(name: name)
+    }
+
+    public func renameBotCategory(id: String, name: String) async throws -> BotCategoryState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.renameBotCategory(id: id, name: name)
+    }
+
+    public func deleteBotCategory(id: String) async throws -> BotCategoryState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.deleteBotCategory(id: id)
+    }
+
+    public func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.setBotCategory(profile: profile, categoryID: categoryID)
+    }
+
     /// Banners are the bridge's too: it is the process that sees every bot's replies.
     public func registerPushRelay(_ url: String) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }

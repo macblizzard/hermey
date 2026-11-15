@@ -145,6 +145,13 @@ public struct ManageBotsSheet: View {
     private let onToggleHidden: (String) -> Void
     private let onToggleEnabled: (String, Bool) async throws -> Void
     private let onDelete: (String) async throws -> Void
+    /// The owner's groups, as the host has them, and which bot is in which.
+    ///
+    /// Defaulted so a caller with no category support (a preview, an older host) still compiles and
+    /// simply shows Uncategorized for everything.
+    private let categories: [BotCategory]
+    private let categoryID: (String) -> String?
+    private let onSetCategory: (String, String?) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirming: Bot?
@@ -157,13 +164,19 @@ public struct ManageBotsSheet: View {
                 disabled: Set<String>,
                 onToggleHidden: @escaping (String) -> Void,
                 onToggleEnabled: @escaping (String, Bool) async throws -> Void,
-                onDelete: @escaping (String) async throws -> Void) {
+                onDelete: @escaping (String) async throws -> Void,
+                categories: [BotCategory] = [],
+                categoryID: @escaping (String) -> String? = { _ in nil },
+                onSetCategory: @escaping (String, String?) async throws -> Void = { _, _ in }) {
         self.bots = bots
         self.hidden = hidden
         self.disabled = disabled
         self.onToggleHidden = onToggleHidden
         self.onToggleEnabled = onToggleEnabled
         self.onDelete = onDelete
+        self.categories = categories
+        self.categoryID = categoryID
+        self.onSetCategory = onSetCategory
     }
 
     public var body: some View {
@@ -191,6 +204,37 @@ public struct ManageBotsSheet: View {
                                 .font(TypeScale.font(TypeScale.caption))
                                 .foregroundStyle(Tokens.textDim)
                                 .lineLimit(2)
+                        }
+                        // Which group this bot sits in. The host holds the answer, so the picker's
+                        // choice is the list's grouping on both apps (asked for 2026-11-15).
+                        HStack(spacing: 8) {
+                            Text("Category")
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textMuted)
+                            Picker("Category", selection: Binding(
+                                get: { categoryID(bot.id) ?? "" },
+                                set: { wanted in
+                                    Task {
+                                        busy = bot.id
+                                        failure = nil
+                                        do {
+                                            try await onSetCategory(bot.id,
+                                                                    wanted.isEmpty ? nil : wanted)
+                                        } catch {
+                                            failure = error.localizedDescription
+                                        }
+                                        busy = nil
+                                    }
+                                }
+                            )) {
+                                Text("Uncategorized").tag("")
+                                ForEach(categories) { category in
+                                    Text(category.name).tag(category.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            Spacer(minLength: 0)
                         }
                         HStack(spacing: 14) {
                             Toggle(isOn: Binding(

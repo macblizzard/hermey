@@ -132,6 +132,16 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Write the note back (`PUT`), whole: the host keeps one file and the last write wins.
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
 
+    /// The owner's groups of bots, and which bot sits in which (`GET /v1/bot-categories`).
+    ///
+    /// Host state, like the notes beside it: the phone and the Mac must show the same groups, so
+    /// neither device keeps its own.
+    func botCategories() async throws -> BotCategoryState
+    func createBotCategory(name: String) async throws -> BotCategoryState
+    func renameBotCategory(id: String, name: String) async throws -> BotCategoryState
+    func deleteBotCategory(id: String) async throws -> BotCategoryState
+    func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -272,6 +282,19 @@ extension GatewayClientProtocol {
     }
     public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
     public func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
+    public func botCategories() async throws -> BotCategoryState { throw BotAdminUnavailable() }
+    public func createBotCategory(name: String) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    public func renameBotCategory(id: String, name: String) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    public func deleteBotCategory(id: String) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    public func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
     public func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
     public func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
     public func sendTestPush() async throws { throw BotAdminUnavailable() }

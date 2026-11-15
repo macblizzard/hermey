@@ -1857,6 +1857,52 @@ public final class AppModel: ObservableObject {
         Self.defaults.set(botActivity.mapValues(\.timeIntervalSince1970), forKey: botActivityKey)
     }
 
+    // MARK: Categories
+
+    /// The owner's groups of bots, as the host has them. One file on the host, so the other app
+    /// shows the same groups.
+    @Published public private(set) var botCategoryState: BotCategoryState = .empty
+
+    public var botCategories: [BotCategory] { botCategoryState.categories }
+
+    public func categoryID(for botID: String) -> String? { botCategoryState.categoryID(for: botID) }
+
+    /// Read the host's groups. A failure is logged and leaves the last answer standing: an empty
+    /// document would read as "every category was deleted".
+    public func loadBotCategories() async {
+        do {
+            botCategoryState = try await client.botCategories()
+        } catch {
+            ClientLog.note("bots.categories failed: \(error.localizedDescription)",
+                           level: .warning, category: "bots")
+        }
+    }
+
+    /// Every write returns the whole document, so one call redraws the list — no local merge to
+    /// get wrong while the other device writes too.
+    public func addBotCategory(name: String) async throws {
+        botCategoryState = try await client.createBotCategory(name: name)
+    }
+
+    public func renameBotCategory(id: String, to name: String) async throws {
+        botCategoryState = try await client.renameBotCategory(id: id, name: name)
+    }
+
+    public func deleteBotCategory(id: String) async throws {
+        botCategoryState = try await client.deleteBotCategory(id: id)
+    }
+
+    /// `nil` puts the bot back in Uncategorized.
+    public func setBotCategory(_ botID: String, to categoryID: String?) async throws {
+        botCategoryState = try await client.setBotCategory(profile: botID, categoryID: categoryID)
+    }
+
+    /// The list, folded into its headings. Pinned above everything, categories by name,
+    /// Uncategorized last.
+    public var botGroups: [BotGroup] {
+        BotGrouping.groups(bots: orderedBots, state: botCategoryState, pinned: pinnedBots)
+    }
+
     // MARK: Bot pins
 
     /// Pin or unpin one bot. Pins are ordered by the host's own list, so there is no pin
