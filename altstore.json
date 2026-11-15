@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.409",
+          "buildVersion": "409",
+          "date": "2026-11-15T11:15:20Z",
+          "localizedDescription": "Notifications reach you with the app closed: the host no longer believes a stale 'I am reading this bot' claim, and the app now drops that claim when it leaves the foreground. Root cause of the replies that went missing.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.409/Hermey-0.1.409-b409.ipa",
+          "size": 2520775,
+          "minOSVersion": "17.0",
+          "sha256": "6a6483446951ee462c8f97ea28a94427b93ce3a8169029e978958bc810ca2c6b"
+        },
+        {
           "version": "0.1.404",
           "buildVersion": "404",
           "date": "2026-11-15T09:44:27Z",
@@ -62,16 +72,6 @@
           "size": 2772054,
           "minOSVersion": "17.0",
           "sha256": "be4c729b3dbcdd929fb6053902f701f515023a2aaad8552a95b741ede1a23440"
-        },
-        {
-          "version": "0.1.379",
-          "buildVersion": "379",
-          "date": "2026-11-15T01:25:47Z",
-          "localizedDescription": "Background notifications, via a relay: Settings \u2192 Notifications \u2192 paste the URL from Bark (free, App Store) and hit Send a test. The host now posts a banner when a bot replies in a chat you are not reading, and tapping it opens that bot. No Apple account needed; bark-server runs on the tailnet.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.379/Hermey-0.1.379-b379.ipa",
-          "size": 2772055,
-          "minOSVersion": "17.0",
-          "sha256": "9f8d500cdf0083d9ec3c1123bdc6226ca2af8eb498523c8d3d8f782097cc9da5"
         }
       ],
       "appPermissions": {
