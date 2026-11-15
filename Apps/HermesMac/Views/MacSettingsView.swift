@@ -251,11 +251,27 @@ private struct BotsSettingsTab: View {
                             }
                         }
                     }
+                    // The roster as a whole, below the bots themselves: what a new bot starts from,
+                    // and a file that can rebuild all of this on another host (asked for 2026-11-15).
+                    Section("New bots start from") {
+                        DefaultSoulPane(current: model.botDefaults.soul.text,
+                                        builtIn: model.botDefaults.builtIn,
+                                        present: model.botDefaults.soul.present,
+                                        isBusy: model.rosterBusy,
+                                        save: { await model.saveDefaultSoul($0) },
+                                        onChange: { await model.loadBotDefaults() })
+                    }
+                    Section("Backup") {
+                        BackupPane(botCount: model.bots.count,
+                                   export: { await model.backupDocument() },
+                                   restore: { await model.restoreBackup($0) })
+                    }
                 }
                 .scrollContentBackground(.hidden)
             }
         }
         .background(Tokens.canvas)
+        .task { await model.loadBotDefaults() }
     }
 
     private var hiddenBots: [Bot] {

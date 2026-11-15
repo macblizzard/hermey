@@ -149,6 +149,18 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// The recorded exchanges between two bots, oldest first (`GET /v1/bot-transfers`).
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
 
+    /// The soul a new bot starts from (`GET /v1/bot-defaults`).
+    func botDefaults() async throws -> BotDefaults
+
+    /// Set, or clear with an empty text, the soul a new bot starts from (`PUT /v1/bot-defaults/soul`).
+    func setDefaultSoul(_ text: String) async throws -> BotDefaults
+
+    /// Every bot's config as one JSON document (`GET /v1/backup`).
+    func exportBackup() async throws -> Data
+
+    /// Rebuild a roster from that document (`POST /v1/backup/restore`).
+    func restoreBackup(_ document: Data) async throws -> BackupRestoreResult
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -306,6 +318,12 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
+        throw BotAdminUnavailable()
+    }
+    public func botDefaults() async throws -> BotDefaults { throw BotAdminUnavailable() }
+    public func setDefaultSoul(_ text: String) async throws -> BotDefaults { throw BotAdminUnavailable() }
+    public func exportBackup() async throws -> Data { throw BotAdminUnavailable() }
+    public func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
         throw BotAdminUnavailable()
     }
     public func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }

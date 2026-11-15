@@ -29,6 +29,24 @@ struct SettingsScreen: View {
     /// The bot list's size, dragged here. Same key the Mac uses.
     @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
 
+    /// The soul a new bot starts from, and a JSON copy of the whole roster. Both live on the host, so
+    /// the phone and the Mac are editing the same thing (asked for 2026-11-15).
+    private var rosterSection: some View {
+        Section("Bots") {
+            DefaultSoulPane(current: model.botDefaults.soul.text,
+                            builtIn: model.botDefaults.builtIn,
+                            present: model.botDefaults.soul.present,
+                            isBusy: model.rosterBusy,
+                            save: { await model.saveDefaultSoul($0) },
+                            onChange: { await model.loadBotDefaults() })
+                .listRowBackground(Tokens.surface)
+            BackupPane(botCount: model.bots.count,
+                       export: { await model.backupDocument() },
+                       restore: { await model.restoreBackup($0) })
+                .listRowBackground(Tokens.surface)
+        }
+    }
+
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {
         Section("Appearance") {
@@ -139,6 +157,7 @@ struct SettingsScreen: View {
         List {
             connectionSection
             appearanceSection
+            rosterSection
             notificationsSection
             chatSection
             devicesSection
@@ -158,6 +177,7 @@ struct SettingsScreen: View {
             }
         }
         .task { await app.loadDevices() }
+        .task { await model.loadBotDefaults() }
         .sheet(isPresented: $showLog) {
             ClientLogView(title: "Log", header: logHeader)
         }
@@ -578,6 +598,24 @@ struct DevicesScreen: View {
     @State private var showRevokeConfirm = false
     @State private var pendingRemoval: PairedDevice?
     @State private var showRemovalConfirm = false
+
+    /// The soul a new bot starts from, and a JSON copy of the whole roster. Both live on the host, so
+    /// the phone and the Mac are editing the same thing (asked for 2026-11-15).
+    private var rosterSection: some View {
+        Section("Bots") {
+            DefaultSoulPane(current: model.botDefaults.soul.text,
+                            builtIn: model.botDefaults.builtIn,
+                            present: model.botDefaults.soul.present,
+                            isBusy: model.rosterBusy,
+                            save: { await model.saveDefaultSoul($0) },
+                            onChange: { await model.loadBotDefaults() })
+                .listRowBackground(Tokens.surface)
+            BackupPane(botCount: model.bots.count,
+                       export: { await model.backupDocument() },
+                       restore: { await model.restoreBackup($0) })
+                .listRowBackground(Tokens.surface)
+        }
+    }
 
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {

@@ -485,6 +485,27 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.botTransfers(between: first, and: second, limit: limit)
     }
 
+    /// Roster-level configuration is the bridge's: one file on the host, both apps reading it.
+    public func botDefaults() async throws -> BotDefaults {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.botDefaults()
+    }
+
+    public func setDefaultSoul(_ text: String) async throws -> BotDefaults {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.setDefaultSoul(text)
+    }
+
+    public func exportBackup() async throws -> Data {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.exportBackup()
+    }
+
+    public func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.restoreBackup(document)
+    }
+
     /// Banners are the bridge's too: it is the process that sees every bot's replies.
     public func registerPushRelay(_ url: String) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }
