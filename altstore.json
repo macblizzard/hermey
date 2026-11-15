@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.445",
+          "buildVersion": "445",
+          "date": "2026-11-15T20:55:58Z",
+          "localizedDescription": "Bot list hover, \u2318E menu, categories on desktop + host-owned sync, All sessions\u2026, log viewer parity and working sort, idle bot faces no longer animate.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.445/Hermey-0.1.445-b445.ipa",
+          "size": 2719174,
+          "minOSVersion": "17.0",
+          "sha256": "22248dcd9f308c2154ce14120e51b5c3a82ee4f4d2af83b9d734613655b58e9f"
+        },
+        {
           "version": "0.1.442",
           "buildVersion": "442",
           "date": "2026-11-15T19:33:02Z",
@@ -62,16 +72,6 @@
           "size": 2598479,
           "minOSVersion": "17.0",
           "sha256": "98df069ede948335dbf8eaca810186ff2bc1e34ccb5e51feb6151770e1a06313"
-        },
-        {
-          "version": "0.1.419",
-          "buildVersion": "419",
-          "date": "2026-11-15T13:14:27Z",
-          "localizedDescription": "Phase 3 \u2014 categories and list size.\n\n\u2022 Bot categories, stored on the host so the phone and the Mac see the same groups. Add category from the + menu, file a bot in Manage bots or from its long-press menu. Pinned sits above everything, Uncategorized last, and every heading collapses (remembered per device). Deleting a category moves its bots to Uncategorized \u2014 it never deletes a bot.\n\u2022 Appearance gains a Bot list size slider with a live sample row: drag left for a smaller list, right for a larger one. The default is exactly the size the list shipped with.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.419/Hermey-0.1.419-b419.ipa",
-          "size": 2569192,
-          "minOSVersion": "17.0",
-          "sha256": "99d294be182dbcfd27291a78154dc6be2cc11d3bb323798576d1c92ab5ed4d9b"
         }
       ],
       "appPermissions": {
