@@ -138,6 +138,47 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     /// Every idempotency key a create carried, in order.
     private(set) var createKeys: [String?] = []
 
+    // MARK: The host's canonical Bot Chat
+
+    /// What the host answers for `canonicalBotChat(forProfile:)`.
+    ///
+    /// `.absent` by default, because that is what a bot created before Bot Mode exists looks like:
+    /// the host answered and named no canonical chat, which licenses this app to adopt or mint one.
+    /// `canonicalChatError` models a host that cannot be asked at all.
+    var canonicalChat: CanonicalBotChat.HostState = .absent
+    var canonicalChatError: Error?
+    /// Every `titleSession` that crossed the boundary, so a test can prove what was named what.
+    private(set) var titled: [(id: SessionID, title: String)] = []
+    var titleError: Error?
+    /// Every `session.archive`, so a reset can be proved to retire rather than orphan.
+    private(set) var archived: [SessionID] = []
+    var archiveError: Error?
+
+    func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState {
+        if let canonicalChatError { throw canonicalChatError }
+        return canonicalChat
+    }
+
+    func titleSession(_ session: SessionID, title: String, profile: String?) async throws {
+        if let titleError { throw titleError }
+        titled.append((session, title))
+    }
+
+    func archiveSession(_ session: SessionID, profile: String?) async throws {
+        if let archiveError { throw archiveError }
+        archived.append(session)
+    }
+
+    /// Every canonical create, so a test can tell "minted the canonical chat" from "minted a plain
+    /// conversation".
+    private(set) var canonicalCreates = 0
+
+    func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID {
+        canonicalCreates += 1
+        createKeys.append(idempotencyKey)
+        return session
+    }
+
     func sharedSessionID(forBot profile: String) async throws -> SessionID? {
         if let hostPointerError { throw hostPointerError }
         return hostPointer

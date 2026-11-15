@@ -40,7 +40,14 @@ final class CanonicalBotChatTests: XCTestCase {
         let plan = CanonicalBotChat.plan(host: .absent, legacy: legacy, local: local)
         XCTAssertEqual(plan.step, .adopt(legacy),
                        "the bridge's id is at least shared with the other device, so it wins here")
-        XCTAssertTrue(plan.publishCache)
+        XCTAssertFalse(plan.publishCache,
+                       "the bridge already holds the id it just gave us; writing it back is a no-op")
+    }
+
+    func testALocallyKnownConversationIsPublishedWhenThePointerWasRead() {
+        let plan = CanonicalBotChat.plan(host: .absent, legacy: nil, local: local)
+        XCTAssertEqual(plan.step, .adopt(local))
+        XCTAssertTrue(plan.publishCache, "the other device can only adopt what the bridge holds")
     }
 
     func testADeviceOnlyConversationIsAdoptedToo() {
@@ -73,6 +80,13 @@ final class CanonicalBotChatTests: XCTestCase {
     func testAnUnreachableHostStillUsesTheBridgePointer() {
         let plan = CanonicalBotChat.plan(host: .unavailable, legacy: legacy, local: nil)
         XCTAssertEqual(plan.step, .resume(legacy))
+        XCTAssertFalse(plan.publishCache)
+    }
+
+    func testAnUnreachableHostPrefersTheSharedPointerOverTheDeviceCache() {
+        let plan = CanonicalBotChat.plan(host: .unavailable, legacy: legacy, local: local)
+        XCTAssertEqual(plan.step, .resume(legacy),
+                       "with nothing verifiable, the id the other device shares beats this one's own")
         XCTAssertFalse(plan.publishCache)
     }
 

@@ -100,11 +100,13 @@ public enum CanonicalBotChat {
             return planWithoutHost(legacy: legacy, local: local)
 
         case .unavailable:
-            // Fail open on the cache, but publish nothing: a value we could not read may exist, and
-            // writing over it would strand the other device on a conversation the host does not
-            // treat as this bot's. Creating is the one exception — a conversation this device just
-            // minted cannot already be the answer, so publishing it only helps.
-            if let id = usableID(local) ?? usableID(legacy) {
+            // Fail open on what is known, but publish nothing: a value we could not read may exist,
+            // and writing over it would strand the other device on a conversation the host does not
+            // treat as this bot's. The bridge's pointer comes first — it is at least shared with the
+            // other device, while the local cache is only what this device last opened. Creating is
+            // the one exception — a conversation this device just minted cannot already be the
+            // answer, so publishing it only helps.
+            if let id = usableID(legacy) ?? usableID(local) {
                 return Plan(step: .resume(id), publishCache: false)
             }
             return Plan(step: .create, publishCache: true)
@@ -115,7 +117,15 @@ public enum CanonicalBotChat {
         // The bridge pointer first, then the local cache: the pointer is at least shared with the
         // other device. Either one is adopted — renamed — rather than replaced, because the user's
         // history is in it.
-        if let id = usableID(legacy) ?? usableID(local) {
+        //
+        // The pointer is only republished when the id did **not** come from it: writing back a value
+        // the bridge just gave us is a no-op that costs a round trip and, worse, makes a read-only
+        // open look like a write in the logs. A locally-known id is different — the other device can
+        // only adopt what the bridge holds.
+        if let id = usableID(legacy) {
+            return Plan(step: .adopt(id), publishCache: false)
+        }
+        if let id = usableID(local) {
             return Plan(step: .adopt(id), publishCache: true)
         }
         return Plan(step: .create, publishCache: true)
