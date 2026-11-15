@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.416",
+          "buildVersion": "416",
+          "date": "2026-11-15T12:51:49Z",
+          "localizedDescription": "Phase 2 \u2014 the log sheet and the bot rows.\n\n\u2022 Settings \u25b8 View log can be re-read without closing it (Refresh) and read from either end \u2014 Newest first or Newest last, remembered per device.\n\u2022 Swipe a bot row left to pin or unpin it, right to mark it unread. Icons only, no words. Marking unread lights one unread \u2014 the newest message \u2014 rather than the whole history.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.416/Hermey-0.1.416-b416.ipa",
+          "size": 2527358,
+          "minOSVersion": "17.0",
+          "sha256": "95e906ac175987b70d56c806caeb5e247f64963eec3dd0e53c764f5c4d899077"
+        },
+        {
           "version": "0.1.413",
           "buildVersion": "413",
           "date": "2026-11-15T12:34:08Z",
@@ -62,16 +72,6 @@
           "size": 2783213,
           "minOSVersion": "17.0",
           "sha256": "6bb19ba73aed529b097c041529de8da47090c05608a06af03249494fb9337be0"
-        },
-        {
-          "version": "0.1.392",
-          "buildVersion": "392",
-          "date": "2026-11-15T02:23:03Z",
-          "localizedDescription": "Banners carry the bot's own face \u2014 the app renders each portrait exactly as the roster draws it and the host serves it to the relay \u2014 plus Time Sensitive. Paste Bark's URL in Settings \u2192 Notifications to turn it on.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.392/Hermey-0.1.392-b392.ipa",
-          "size": 2779360,
-          "minOSVersion": "17.0",
-          "sha256": "cd50c960f69e2db6692aa80e007721bf94f63c6742b76f72829f7d00a0359967"
         }
       ],
       "appPermissions": {
