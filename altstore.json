@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.449",
+          "buildVersion": "449",
+          "date": "2026-11-15T22:06:42Z",
+          "localizedDescription": "Search fixed (one matcher, correct labels, findings survive a name miss), \u2318E opens the bot panel, disk cache + Caching settings on both apps.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.449/Hermey-0.1.449-b449.ipa",
+          "size": 2813580,
+          "minOSVersion": "17.0",
+          "sha256": "12a1a14f645048be68e326890aac7b6908cff3abcbe7c55a6ef2b022c46353a5"
+        },
+        {
           "version": "0.1.445",
           "buildVersion": "445",
           "date": "2026-11-15T20:57:02Z",
@@ -62,16 +72,6 @@
           "size": 2620694,
           "minOSVersion": "17.0",
           "sha256": "ca1a8a00bfc2ee2bdcad35fb58a66ec79c8460c9810a9b8b82b727e7bbe517c6"
-        },
-        {
-          "version": "0.1.422",
-          "buildVersion": "422",
-          "date": "2026-11-15T13:39:50Z",
-          "localizedDescription": "Phase 4 \u2014 search inside the conversations, and bot-to-bot messages drawn as people.\n\n\u2022 Search now finds what was said, not just bot names: results show which bot, who wrote it, when, and the line around the match. Bot-name matches still come after them.\n\u2022 A message from another bot is drawn with that bot's face and 'Message from \u2026' above the words, instead of appearing as something you typed. Older messages written before this change read correctly too.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.422/Hermey-0.1.422-b422.ipa",
-          "size": 2598479,
-          "minOSVersion": "17.0",
-          "sha256": "98df069ede948335dbf8eaca810186ff2bc1e34ccb5e51feb6151770e1a06313"
         }
       ],
       "appPermissions": {
