@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.401",
+          "buildVersion": "401",
+          "date": "2026-11-15T09:14:34Z",
+          "localizedDescription": "Hermey's own banners now carry the bot's face: each portrait is rendered once at launch, cached, and attached to the notification. (The corner icon stays the app icon \u2014 iOS chooses it, not the app.) Bark banners unchanged.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.401/Hermey-0.1.401-b401.ipa",
+          "size": 2783213,
+          "minOSVersion": "17.0",
+          "sha256": "6bb19ba73aed529b097c041529de8da47090c05608a06af03249494fb9337be0"
+        },
+        {
           "version": "0.1.392",
           "buildVersion": "392",
           "date": "2026-11-15T02:23:03Z",
@@ -62,16 +72,6 @@
           "size": 2758972,
           "minOSVersion": "17.0",
           "sha256": "49482e90b330811b665afe02e53fa015e4979649364a893d86e544749fa9dcde"
-        },
-        {
-          "version": "0.1.371",
-          "buildVersion": "371",
-          "date": "2026-11-14T21:57:56Z",
-          "localizedDescription": "Build from CI run 43645054845.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.371/Hermey-0.1.371-b371.ipa",
-          "size": 2731500,
-          "minOSVersion": "17.0",
-          "sha256": "96b62fce54c39850d9b1f84039cdaeb99f87b330a2948274cda856f04906c740"
         }
       ],
       "appPermissions": {
