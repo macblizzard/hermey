@@ -90,6 +90,9 @@ struct WorkspaceRoot: View {
                 Task { await store.model.loadBotPreviews() }
                 ReplyNotifier.shared.refreshAuthorization()
             }
+            // And presence follows the window: a hidden or minimised app is not reading a chat, and
+            // the host treats that claim as what keeps a bot quiet.
+            Task { await store.model.reportPresence(bot: phase == .active ? store.model.selectedBotID : nil) }
         }
         // Banners: the decision is the model's, the delivery is the system's. Re-run when the
         // model is replaced (a re-pair builds a fresh one), because the sink lives on the model.

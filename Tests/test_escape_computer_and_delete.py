@@ -311,7 +311,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         self.assertIn("CFBundleURLSchemes:\n              - hermey", self.PLIST)
 
     def test_the_bot_on_screen_is_never_announced(self) -> None:
-        self.assertIn('if target.get("preset_bot") == profile:', self.PUSH)
+        self.assertIn('if (target.get("preset_bot") == profile', self.PUSH)
         # The phone and the Mac both report it.
         phone = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
         self.assertIn("await model.reportPresence(bot: bot.id)", phone)
@@ -365,6 +365,18 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         # And a banner is wanted with or without a relay.
         self.assertLess(shell.index("await MobileFaceCache.refresh(faces: faces)"),
                         shell.index('string(forKey: PushRelay.urlKey)'))
+
+    def test_reading_a_bot_means_the_app_is_on_screen(self) -> None:
+        # A presence claim is what silences a bot, so it has to expire with the app: a phone locked
+        # mid-chat once muted that bot for eight hours.
+        push = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
+        registry = (ROOT / "Bridge/hermes_bridge/registry.py").read_text(encoding="utf-8")
+        phone = (ROOT / "Apps/HermesMobile/HermesMobileApp.swift").read_text(encoding="utf-8")
+        mac = (ROOT / "Apps/HermesMac/Workspace/WorkspaceRoot.swift").read_text(encoding="utf-8")
+        self.assertIn("PRESENCE_SECONDS", push)
+        self.assertIn("updated_at", registry.split("def set_push_presence")[1].split("def ")[0])
+        self.assertIn("scenePhase", phone)
+        self.assertIn("scenePhase", mac)
 
     def test_one_field_is_the_whole_setup(self) -> None:
         self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)

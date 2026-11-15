@@ -90,6 +90,9 @@ struct BotsTab: View {
     /// Bot faces live in the environment (they are fetched and cached there), so a pushed room
     /// reads them from the same place the list does.
     @EnvironmentObject private var app: AppEnvironment
+    /// Whether the app is on screen. A phone that is locked or in another app is not reading this
+    /// chat, and the host must not be told otherwise — that claim is what mutes a bot's banners.
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     /// The room's voice: the same host TTS a conversation uses, in its own controller because a
     /// room never records and must not share a session with a conversation.
@@ -135,6 +138,12 @@ struct BotsTab: View {
                 // A room pushes like a bot's conversation: same stack, same back gesture, and the
                 // list keeps its scroll position underneath instead of being covered by a modal.
                 .onOpenURL { openBannerURL($0) }
+                .onChange(of: scenePhase) { _, phase in
+                    // Leaving the app releases the claim; coming back re-makes it for whatever chat
+                    // is showing. Without this a chat left open at lock time silenced that bot until
+                    // the app was reopened (a reply went unheard for eight hours).
+                    Task { await model.reportPresence(bot: phase == .active ? model.selectedBotID : nil) }
+                }
                 // A banner shows the bot's own face; the host holds the render, not the geometry.
                 .task { await uploadPushFaces() }
                 .navigationDestination(for: RoomSummary.self) { room in

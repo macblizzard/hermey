@@ -201,6 +201,29 @@ class TestTheWatcher:
 
         assert len(delivered) == 1
 
+    def test_a_claim_older_than_two_minutes_does_not_mute_a_bot(self, bridge, device, tmp_path,
+                                                                monkeypatch):
+        # The phone went to sleep mid-conversation and never said "I left": the stale claim used to
+        # silence that bot until the app was reopened — a reply vanished for eight hours.
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        self._profile(tmp_path, stamp=time.time() - 60)
+        device("/v1/push/register", {"url": "http://your-host:8081/Key123"})
+        device("/v1/push/presence", {"bot": "cody"})
+        registry = bridge.app.state.bridge.registry
+        with registry._connect() as conn:
+            conn.execute("UPDATE push_targets SET updated_at = ?", (time.time() - 8 * 3600,))
+            conn.commit()
+        delivered = []
+        monkeypatch.setattr(BarkRelay, "send",
+                            lambda self, *a, **k: delivered.append(k) or True)
+        watcher = ReplyWatcher(bridge.app.state.bridge, BarkRelay())
+        watcher.tick()
+
+        self._profile(tmp_path, session="s2", text="the reply that went missing", stamp=time.time())
+        watcher.tick()
+
+        assert len(delivered) == 1
+
     def test_the_bot_on_screen_is_not_announced(self, bridge, device, tmp_path, monkeypatch):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
         self._profile(tmp_path, stamp=time.time() - 60)
