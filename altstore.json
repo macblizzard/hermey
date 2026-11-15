@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.413",
+          "buildVersion": "413",
+          "date": "2026-11-15T12:34:08Z",
+          "localizedDescription": "Phase 1 \u2014 the bot menu.\n\n\u2022 The pill that opens the bot panel now takes a click on its whole rectangle: the rounded ends used to be dead to the pointer, and a hover rescale moved the target while the pointer was arriving. Hover is now a brighter border and a deeper shadow, with no geometry change.\n\u2022 The bot panel's column starts 30 pt below the window's top edge instead of sitting against it.\n\u2022 \u2318E opens and closes the bot menu (Conversation \u25b8 Bot Menu), the same door the pill is.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.413/Hermey-0.1.413-b413.ipa",
+          "size": 2520741,
+          "minOSVersion": "17.0",
+          "sha256": "9eb2d772bcfb88c1233d71d6ac0b7733be0790cc4c6e9e8ea58d87f4eeb8e9a6"
+        },
+        {
           "version": "0.1.409",
           "buildVersion": "409",
           "date": "2026-11-15T11:15:20Z",
@@ -62,16 +72,6 @@
           "size": 2779360,
           "minOSVersion": "17.0",
           "sha256": "cd50c960f69e2db6692aa80e007721bf94f63c6742b76f72829f7d00a0359967"
-        },
-        {
-          "version": "0.1.380",
-          "buildVersion": "380",
-          "date": "2026-11-15T02:09:58Z",
-          "localizedDescription": "Banners now carry the bot's own face: the app renders each portrait exactly as the roster draws it and the host serves it to the relay. Also Time Sensitive, so a reply can break through Focus. Paste Bark's URL in Settings \u2192 Notifications to turn it on.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.380/Hermey-0.1.380-b380.ipa",
-          "size": 2772054,
-          "minOSVersion": "17.0",
-          "sha256": "be4c729b3dbcdd929fb6053902f701f515023a2aaad8552a95b741ede1a23440"
         }
       ],
       "appPermissions": {
