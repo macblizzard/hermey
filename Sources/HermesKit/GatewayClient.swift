@@ -77,6 +77,32 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// notion drop the key and forward the plain call.
     func createSession(model: String?, provider: String?, profile: String?,
                        idempotencyKey: String?) async throws -> SessionID
+
+    /// Which conversation the **host** treats as this bot's one chat.
+    ///
+    /// Hermes keeps exactly one canonical session per profile: title exactly `Bot Chat`, born
+    /// hidden, resolved by name on every open, and shared by Desktop, the TUI,
+    /// `hermes -p <bot> chat -c "Bot Chat"`, cron `bot-chat` delivery and `message_agent`. Reading
+    /// it here is what makes a Hermey conversation the *same* conversation as those. See
+    /// `CanonicalBotChat`.
+    func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState
+
+    /// Name an existing session `Bot Chat` — the adoption step for a bot whose conversation started
+    /// life as a Hermey-only session. Throws when another row already holds the title
+    /// (`CanonicalBotChat.isTitleConflict`), which the caller resolves by switching to that row.
+    func titleSession(_ session: SessionID, title: String, profile: String?) async throws
+
+    /// Mint this bot's canonical Bot Chat the way Desktop does: title `Bot Chat`, born **hidden** so
+    /// it does not appear as a second row in a session list, and following the profile's own config
+    /// rather than whatever model the caller happened to be on.
+    ///
+    /// A host that does not accept `title`/`hidden` at create answers with an error; the caller
+    /// falls back to a plain `createSession`, which is the pre-canonical behaviour.
+    func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID
+
+    /// Archive a session. Used to *retire* a Bot Chat, matching Desktop: the archived row keeps its
+    /// history, its name is freed for a successor, and the next open mints a fresh canonical chat.
+    func archiveSession(_ session: SessionID, profile: String?) async throws
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry]
 
     /// One page of rows older than the transcript a resume already delivered.
@@ -555,6 +581,36 @@ public extension GatewayClientProtocol {
     func sharedSessionID(forBot profile: String) async throws -> SessionID? {
         _ = profile
         return nil
+    }
+
+    /// A client that cannot ask the host which conversation a bot has says so — `.unavailable`, not
+    /// `.absent`. The difference matters: `.absent` licenses minting a new one (which on a real host
+    /// that does have a Bot Chat is how a client ends up with a second, competing conversation),
+    /// while `.unavailable` sends the caller down the local-cache path exactly as this app behaved
+    /// before the host's Bot Chat became the authority.
+    func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState {
+        _ = profile
+        return .unavailable
+    }
+
+    /// A client that cannot rename cannot adopt. Loud rather than silent: the caller still opens the
+    /// conversation and logs that it could not be made the canonical chat.
+    func titleSession(_ session: SessionID, title: String, profile: String?) async throws {
+        _ = (session, title, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.title is not supported by this client"))
+    }
+
+    func archiveSession(_ session: SessionID, profile: String?) async throws {
+        _ = (session, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.archive is not supported by this client"))
+    }
+
+    /// No canonical create: the plain one is the honest degradation.
+    func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID {
+        try await createSession(model: nil, provider: nil, profile: profile,
+                                idempotencyKey: idempotencyKey)
     }
 
     /// A client that cannot write the pointer accepts the publish as a no-op. Reporting success is

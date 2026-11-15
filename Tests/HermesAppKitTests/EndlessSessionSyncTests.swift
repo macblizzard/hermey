@@ -4,12 +4,13 @@ import XCTest
 @testable import HermesAppKit
 import HermesKit
 
-/// One conversation per bot, shared by both devices.
+/// One conversation per bot, shared by both devices — and by the host.
 ///
-/// The bridge's pointer (`GET`/`PUT /v1/bots/{profile}/session`) is the authority; the per-bot
-/// `UserDefaults` key is only this device's cache. These tests pin the decision order and, just as
-/// importantly, that every sync failure fails open: a bridge that cannot be reached must never cost
-/// the user their conversation or put an error on screen.
+/// The authority is the **host's canonical Bot Chat** (`profiles.list` → `canonical_session`, the
+/// session titled exactly `Bot Chat`); the bridge's pointer (`GET`/`PUT /v1/bots/{profile}/session`)
+/// is a cache and the per-bot `UserDefaults` key is this device's cache. These tests pin the
+/// decision order and, just as importantly, that every identity read fails open: a host or bridge
+/// that cannot be reached must never cost the user their conversation or put an error on screen.
 @MainActor
 final class EndlessSessionSyncTests: XCTestCase {
 
@@ -28,6 +29,28 @@ final class EndlessSessionSyncTests: XCTestCase {
     }
 
     // MARK: Host wins
+
+    /// The whole point of the change: a bot whose conversation the host knows opens *that* one, and
+    /// both caches are repaired to agree with it.
+    func testTheHostsBotChatBeatsTheBridgePointer() async {
+        let bot = makeBot("canonical-wins")
+        defer { cache(nil, for: bot) }
+        cache("20260101_000020_stale", for: bot)
+        let host = ScriptedHost(session: "20260101_000021_canonical")
+        host.canonicalChat = .canonical("20260101_000021_canonical")
+        host.hostPointer = "20260101_000022_pointer"
+        let model = AppModel(client: host)
+
+        let opened = await model.endlessSession(for: bot)
+
+        XCTAssertEqual(opened, "20260101_000021_canonical",
+                       "Desktop, the TUI, cron and the official app all use the titled session")
+        XCTAssertEqual(host.resumed, ["20260101_000021_canonical"])
+        XCTAssertEqual(host.published.compactMap(\.id), ["20260101_000021_canonical"],
+                       "the pointer is a cache now, so it is repaired to agree with the host")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: key(bot)), "20260101_000021_canonical")
+        XCTAssertNil(model.lastSendError)
+    }
 
     func testHostPointerBeatsTheLocalCache() async {
         let bot = makeBot("host-wins")
@@ -76,6 +99,11 @@ final class EndlessSessionSyncTests: XCTestCase {
         XCTAssertEqual(host.published.map(\.id), ["20260101_000004_local"],
                        "the other device can only adopt what the bridge holds")
         XCTAssertEqual(host.published.map(\.profile), [bot])
+        XCTAssertEqual(host.titled.map(\.title), ["Bot Chat"],
+                       "opening it is not enough — it has to be named the canonical chat")
+        XCTAssertEqual(host.titled.map(\.id), ["20260101_000004_local"])
+        XCTAssertEqual(host.canonicalCreates, 0,
+                       "a bot that already has a conversation must not be given a second one")
     }
 
     func testCreatedConversationIsPublished() async {
@@ -147,12 +175,13 @@ final class EndlessSessionSyncTests: XCTestCase {
 
     // MARK: Fail open
 
-    func testUnreachableBridgeStillOpensTheConversation() async {
+    func testUnreachableHostAndBridgeStillOpenTheConversation() async {
         let bot = makeBot("offline")
         defer { cache(nil, for: bot) }
         cache("20260101_000010_local", for: bot)
         let host = ScriptedHost(session: "20260101_000010_local")
         host.hostPointerError = GatewayError.notConnected
+        host.canonicalChatError = GatewayError.notConnected
         let model = AppModel(client: host)
 
         let opened = await model.endlessSession(for: bot)
@@ -237,6 +266,27 @@ final class EndlessSessionSyncTests: XCTestCase {
         XCTAssertEqual(host.published.compactMap(\.id), ["20260101_000015_fresh"])
         XCTAssertNil(UserDefaults.standard.string(forKey: "hermes.endlessSessionReset.\(bot)"),
                      "publishing a replacement retires the tombstone")
+    }
+
+    /// Reset must *retire* the Bot Chat, not orphan it: the host keeps calling a row it still holds
+    /// the bot's chat, so a reset that only cleared local state would be undone by the next open.
+    /// Archiving ends that claim and leaves the history on the host.
+    func testResetRetiresTheBotChatOnTheHost() async {
+        let bot = makeBot("reset-retires")
+        defer {
+            cache(nil, for: bot)
+            UserDefaults.standard.removeObject(forKey: "hermes.endlessSessionReset.\(bot)")
+        }
+        cache("20260101_000016_live", for: bot)
+        let host = ScriptedHost(session: "20260101_000017_next")
+        host.canonicalChat = .canonical("20260101_000016_live")
+        let model = AppModel(client: host)
+
+        _ = await model.endlessSession(for: bot)
+        await model.resetConversation()
+
+        XCTAssertEqual(host.archived, ["20260101_000016_live"],
+                       "archiving is what stops the host treating it as this bot's chat")
     }
 }
 #endif

@@ -367,6 +367,42 @@ enum GatewayPayloadDecoder {
         return bots
     }
 
+    /// `profiles.list` with `include_sessions` — which conversation is this bot's canonical Bot Chat.
+    ///
+    /// Contract (`tui_gateway/contracts/profiles_vault_complete_foreign_subagents.py`):
+    /// `canonical_session` is `{id, resolved_id, title, …}`, and `resolved_id` is the **live
+    /// compression tip**. That is the id to hand `session.resume`: with rotation compaction the
+    /// registry title can sit on a row whose successor is the one that is live, so resuming `id`
+    /// opens a conversation that stopped moving. `id` is the fallback for a host that predates
+    /// `resolved_id`.
+    ///
+    /// A body without a `profiles` array is malformed, exactly as for `bots`. A row with no
+    /// `canonical_session` (or `null`) means "this bot has no Bot Chat yet" — the caller mints one.
+    static func canonicalBotChatID(_ result: JSONValue?, profile: String?) throws -> String? {
+        guard let rows = result?["profiles"]?.arrayValue else {
+            throw GatewayError.malformedResponse(method: "profiles.list")
+        }
+        let objects: [[String: JSONValue]] = rows.compactMap { value in
+            if case .object(let object) = value { return object }
+            return nil
+        }
+        let row: [String: JSONValue]?
+        if let profile, !profile.isEmpty {
+            row = objects.first { profileName($0) == profile }
+        } else {
+            row = objects.first
+        }
+        // A profile this connection does not serve is not listed at all: "no row" and "no Bot Chat"
+        // both mean nothing to resume here.
+        guard let row, let session = row["canonical_session"],
+              case .object(let canonical) = session
+        else { return nil }
+        for key in ["resolved_id", "id"] {
+            if let id = Bot.trimmed(canonical[key]?.stringValue ?? "") { return id }
+        }
+        return nil
+    }
+
     static func bot(_ value: JSONValue) -> Bot? {
         switch value {
         case .string(let name):
