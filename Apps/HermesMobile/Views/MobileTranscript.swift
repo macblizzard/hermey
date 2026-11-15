@@ -11,6 +11,11 @@ import OpenBotUI
 /// the assistant is plain body text on the canvas (no bubble — a long answer in a bubble
 /// is a wall inside a wall), and a tool result keeps the card the design system already
 /// has. Markers come from the block layer so a list looks the same everywhere.
+/// `.sheet(item:)` needs an identity; the peer's profile id is the identity.
+struct PeerRef: Identifiable {
+    let id: String
+}
+
 struct MobileTranscriptRow: View {
     let entry: TranscriptEntry
     /// The bot's swatch, for the user's own bubble. Passed in: a row inside a lazy stack must not
@@ -31,6 +36,10 @@ struct MobileTranscriptRow: View {
     /// parsing every visible row's markdown on each of those was the single most expensive thing the
     /// phone did while reading a conversation (the jitter reported 2026-11-14).
     @State private var markdownCache = RowMarkdownCache()
+    /// The bot whose conversation this row is in — the near side of a bot-to-bot exchange.
+    var botID: String = ""
+    /// The other bot, when the pair sheet is open.
+    @State private var pairPeer: String?
 
     /// One decoded attachment, ready for `ImageViewer`.
     struct ViewedAttachment: Identifiable {
@@ -110,6 +119,16 @@ struct MobileTranscriptRow: View {
             ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
                 .preferredColorScheme(.dark)
         }
+        .sheet(item: Binding(get: { pairPeer.map(PeerRef.init) },
+                             set: { pairPeer = $0?.id })) { peer in
+            BotPairSheet(current: botID, peer: peer.id,
+                         faces: app.botFaces,
+                         displayName: { profile in
+                             app.model.bots.first { $0.id == profile }?.displayName
+                                 ?? profile.capitalized
+                         },
+                         load: { await app.model.transfers(between: botID, and: peer.id) })
+        }
         .sheet(isPresented: $showingSelection) {
             NavigationStack {
                 ScrollView {
@@ -159,17 +178,29 @@ struct MobileTranscriptRow: View {
     @ViewBuilder
     private func botMessageRow(_ label: BotMessageLabel) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                if let profile = label.senderProfile {
-                    BotIconPortrait(app.botFaces[profile] ?? BotFace.default(for: profile),
-                                    size: Geometry.rosterAvatarCompact)
+            // The attribution is the door to the exchange itself: tapping it opens the record of
+            // what these two bots said to each other (asked for 2026-11-15).
+            Button {
+                pairPeer = label.senderProfile
+            } label: {
+                HStack(spacing: 6) {
+                    if let profile = label.senderProfile {
+                        BotIconPortrait(app.botFaces[profile] ?? BotFace.default(for: profile),
+                                        size: Geometry.rosterAvatarCompact)
+                    }
+                    Text(label.incomingTitle)
+                        .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                        .foregroundStyle(Tokens.accentText)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Tokens.textDim)
                 }
-                Text(label.incomingTitle)
-                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
-                    .foregroundStyle(Tokens.accentText)
-                    .lineLimit(1)
+                .contentShape(Rectangle())
             }
-            .accessibilityElement(children: .combine)
+            .buttonStyle(.plain)
+            .disabled(label.senderProfile == nil)
+            .accessibilityLabel("\(label.incomingTitle). Show the conversation between these two bots.")
 
             Text(label.body)
                 .font(TypeScale.font(TypeScale.chatBody))
