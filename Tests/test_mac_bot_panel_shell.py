@@ -48,10 +48,23 @@ class TheNameIsTheControl(unittest.TestCase):
         self.assertIn("botPanelButton", HEADER)
         self.assertIn("store.toggleBotPanel()", HEADER)
         # The dots are inside the capsule, beside the name — not a toolbar button at the far right.
-        pill = HEADER.split("private func pill(width: CGFloat)", 1)[1]
+        pill = HEADER.split("private func pill(width: CGFloat)", 1)[1].split("// MARK: - Previews", 1)[0]
         # The capsule is the door; the ⋯ was a second, smaller door drawn on the first one.
         self.assertNotIn('systemName: "ellipsis"', pill)
-        self.assertIn("contentShape(Capsule())", pill)
+        # The hit shape is the capsule's *rectangle*: the rounded ends used to be dead to the
+        # pointer, so aiming at the corner of the shape everyone sees did nothing
+        # (reported 2026-11-15 as "the pill is hit and miss").
+        self.assertIn("contentShape(Rectangle())", pill)
+        self.assertNotIn("contentShape(Capsule())", pill)
+        # And nothing rescales the control on hover: a spring changed the hit geometry while the
+        # pointer was still arriving, which is the other half of a click that does nothing.
+        self.assertNotIn("scaleEffect(", pill)
+
+    def test_the_pill_has_a_keyboard_door(self) -> None:
+        # ⌘E is the same door the pill is, for a keyboard (asked for 2026-11-15).
+        app = (MAC / "HermesMacApp.swift").read_text(encoding="utf-8")
+        self.assertIn('.keyboardShortcut("e", modifiers: .command)', app)
+        self.assertIn("store.toggleBotPanel()", app)
 
     def test_the_header_keeps_no_dropdown_of_its_own(self) -> None:
         # One door. The verbs are rows in the panel; a second menu beside the pill would be the
@@ -73,6 +86,13 @@ class TheNameIsTheControl(unittest.TestCase):
 
 
 class ThePanelIsAPane(unittest.TestCase):
+    def test_the_panel_starts_below_the_window_edge(self) -> None:
+        # The bot's face opened flush against the frame; the column now starts on its own inset
+        # (asked for 2026-11-15). The value lives with the other header geometry, not inline.
+        self.assertIn("Geometry.botPanelTopInset", PANEL)
+        tokens = (ROOT / "Sources" / "OpenBotUI" / "Tokens.swift").read_text(encoding="utf-8")
+        self.assertIn("public static let botPanelTopInset: CGFloat = 30", tokens)
+
     def test_it_sits_in_the_trailing_slot(self) -> None:
         self.assertIn("if store.isBotPanelPresented {", ROOTVIEW)
         self.assertIn("MacBotPanel(model: model, store: store)", ROOTVIEW)
