@@ -7,7 +7,7 @@
   "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
   "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
   "headerURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
-  "tintColor": "#007CF7",
+  "tintColor": "#9A9AA0",
   "featuredApps": [
     "dev.hermey.app.mobile"
   ],
@@ -19,10 +19,20 @@
       "subtitle": "Hermes Agent client",
       "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
       "iconURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
-      "tintColor": "#007CF7",
+      "tintColor": "#9A9AA0",
       "category": "utilities",
       "screenshots": [],
       "versions": [
+        {
+          "version": "0.1.404",
+          "buildVersion": "404",
+          "date": "2026-11-15T09:44:27Z",
+          "localizedDescription": "App icon is now white on black, and the sideload source's icon was regenerated with it \u2014 SideStore had been showing a blue mark from before the faces existed. Same build also carries the bot's face inside Hermey's own notification banners.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.404/Hermey-0.1.404-b404.ipa",
+          "size": 2520586,
+          "minOSVersion": "17.0",
+          "sha256": "7ef65b49f769ac8d235e2cd4dd88f470c7e9a1134b5683756941490dc61ec9df"
+        },
         {
           "version": "0.1.401",
           "buildVersion": "401",
@@ -62,16 +72,6 @@
           "size": 2772055,
           "minOSVersion": "17.0",
           "sha256": "9f8d500cdf0083d9ec3c1123bdc6226ca2af8eb498523c8d3d8f782097cc9da5"
-        },
-        {
-          "version": "0.1.374",
-          "buildVersion": "374",
-          "date": "2026-11-14T22:26:00Z",
-          "localizedDescription": "Build from CI run 43647613024.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.374/Hermey-0.1.374-b374.ipa",
-          "size": 2758972,
-          "minOSVersion": "17.0",
-          "sha256": "49482e90b330811b665afe02e53fa015e4979649364a893d86e544749fa9dcde"
         }
       ],
       "appPermissions": {
