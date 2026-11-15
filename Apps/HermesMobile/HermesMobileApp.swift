@@ -100,10 +100,12 @@ struct BotsTab: View {
     /// A method rather than a closure inside `.task`: inline, the nested `@MainActor` closure and the
     /// `??` chain together outrun the type checker ("unable to type-check in reasonable time").
     private func uploadPushFaces() async {
+        let faces = app.botFaces
+        // The banners' own pictures first: they are wanted whether or not a relay is registered.
+        await MobileFaceCache.refresh(faces: faces)
         guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey), !relay.isEmpty else {
             return
         }
-        let faces = app.botFaces
         await model.syncPushIcons { id in
             let face: BotFace = faces[id] ?? BotFace.default(for: id)
             return PushIcon.png(for: face)

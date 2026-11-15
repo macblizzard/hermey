@@ -351,6 +351,21 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         # A bot-to-bot message is the opposite case: its reply is what a banner is for.
         self.assertIn('set_push_prompt(profile, "program")', bot)
 
+    def test_the_phone_s_own_banner_carries_the_face(self) -> None:
+        cache = (ROOT / "Apps/HermesMobile/App/MobileFaceCache.swift").read_text(encoding="utf-8")
+        notes = (ROOT / "Apps/HermesMobile/App/ReplyNotifications.swift").read_text(encoding="utf-8")
+        shell = (ROOT / "Apps/HermesMobile/HermesMobileApp.swift").read_text(encoding="utf-8")
+        # A picture inside the banner is the only way to show a bot here: iOS takes the corner icon
+        # from the bundle, and no per-notification call can change it.
+        self.assertIn("UNNotificationAttachment", cache)
+        self.assertEqual(notes.count("content.attachments = [attachment]"), 2,
+                         "both the foreground post and the background sweep")
+        # Rendering is main-actor and the sweep is not, so the faces are cached as files at launch.
+        self.assertIn("await MobileFaceCache.refresh(faces: faces)", shell)
+        # And a banner is wanted with or without a relay.
+        self.assertLess(shell.index("await MobileFaceCache.refresh(faces: faces)"),
+                        shell.index('string(forKey: PushRelay.urlKey)'))
+
     def test_one_field_is_the_whole_setup(self) -> None:
         self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)
         self.assertIn('OpenBotButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)
