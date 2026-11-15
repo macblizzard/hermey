@@ -43,9 +43,9 @@ class TestTheUrl:
         assert _split_bark_url("http://your-host:8081/AbCdEf123") == ("http://your-host:8081",
                                                                        "AbCdEf123")
 
-    def test_it_keeps_a_path_prefix(self):
-        assert _split_bark_url("https://example.com/bark/AbCdEf/") == ("https://example.com/bark/AbCdEf"
-                                                                       .rsplit("/", 1)[0], "AbCdEf")
+    def test_the_copied_example_tail_is_ignored(self):
+        # Bark's copy button hands back `/KEY/title/body`; the key is the first segment, not the last.
+        assert _split_bark_url("http://host:8081/AbCdEf/title/body") == ("http://host:8081", "AbCdEf")
 
     @pytest.mark.parametrize("bad", ["", "100.0.0.1:8081/key", "http://host/", "http://host/k y"])
     def test_it_refuses_what_is_not_a_push_url(self, bad):
