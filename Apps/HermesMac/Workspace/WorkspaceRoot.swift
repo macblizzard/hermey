@@ -113,6 +113,9 @@ struct WorkspaceRoot: View {
             // The faces' answer too: taken from the system once, then the app's own switch owns it.
             BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
             auditLaunchSurfaces()
+            // Banners carry the bot's own portrait; the render needs a frame and the faces, so it
+            // happens after the first pass rather than blocking it.
+            Task { await uploadPushFaces() }
         }
         // One animation owner for the palette's whole lifecycle: the backdrop fades, the panel
         // rises a few points, and closing is the same motion in reverse.
@@ -227,6 +230,18 @@ struct WorkspaceRoot: View {
     /// fixed frame the panel was not. Rather than guess at a fix, the app now names what it actually
     /// has open — its windows with their frames, plus every flag that could raise an overlay — so the
     /// culprit is read out of Settings → View log instead of inferred from a photograph.
+    /// Render and upload each bot's face once per change, only when a relay is registered.
+    ///
+    /// Nothing is sent without a relay: the image exists to be shown in a banner, and a host with no
+    /// Bark URL would only store bytes nobody reads.
+    private func uploadPushFaces() async {
+        let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey) ?? ""
+        guard !relay.isEmpty else { return }
+        await store.model.syncPushIcons { id in
+            PushIcon.png(for: store.botFaces[id] ?? BotFace.default(for: id))
+        }
+    }
+
     private func auditLaunchSurfaces() {
         #if os(macOS)
         Task { @MainActor in

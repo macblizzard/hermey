@@ -53,6 +53,11 @@ MAX_BODY_CHARS = 140
 #: Bark accepts a whole notification as JSON; a payload bigger than this is a mistake, not a note.
 MAX_URL_CHARS = 512
 
+#: Where a notification image is fetched from. The dist server on `:8444` serves the symlinked
+#: icon directory, so the phone — not this process — does the fetching.
+ICON_BASE = os.environ.get("HERMEY_PUSH_ICON_BASE",
+                           "https://hermes.corvus-vibes.ts.net:8444/icons")
+
 _PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
@@ -110,6 +115,15 @@ def _profiles_root() -> Path:
 # MARK: - The relay client
 
 
+def icon_url(profile: str) -> str:
+    """The bot's own face, when the app has uploaded one. Empty means "no image", not a broken URL."""
+    from .push_icons import icon_exists
+
+    if not icon_exists(profile):
+        return ""
+    return f"{ICON_BASE.rstrip('/')}/{profile}.png"
+
+
 class BarkRelay:
     """One POST per banner. Bark's server takes the JSON and does the APNs work."""
 
@@ -125,6 +139,9 @@ class BarkRelay:
             payload["url"] = url
         if icon:
             payload["icon"] = icon
+        # A bot's reply is the reason the phone is buzzing at all; a Focus mode may still hold it
+        # back if the owner disagrees, but by default this is the "notify me" tier.
+        payload["level"] = "timeSensitive"
         request = urllib.request.Request(
             f"{base.rstrip('/')}/{key}",
             data=json.dumps(payload).encode("utf-8"),
@@ -201,12 +218,13 @@ class ReplyWatcher:
     def _push(self, profile: str, reply: dict, targets) -> None:
         title = profile.capitalize()
         body = reply["text"][:MAX_BODY_CHARS]
+        icon = icon_url(profile)
         for target in targets:
             # The bot this device is reading is not news to it.
             if target.get("preset_bot") == profile:
                 continue
             self.relay.send(target["endpoint"], target["key"], title=title, body=body,
-                            group=profile, url=f"hermey://bot/{profile}")
+                            group=profile, url=f"hermey://bot/{profile}", icon=icon)
 
     def _profiles(self) -> list[str]:
         root = _profiles_root()

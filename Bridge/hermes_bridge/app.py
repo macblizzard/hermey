@@ -44,6 +44,7 @@ from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_notes import create_bot_notes_router
 from .push import BarkRelay, ReplyWatcher, create_push_router
+from .push_icons import create_push_icon_router
 from .rooms import create_rooms_router
 from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
@@ -220,6 +221,7 @@ def create_app(
     app.include_router(create_bot_memory_router(runtime))
     app.include_router(create_bot_notes_router(runtime))
     app.include_router(create_push_router(runtime, relay))
+    app.include_router(create_push_icon_router(runtime))
     app.include_router(create_rooms_router(runtime))
     # The shared Bot Computer: status/lease/thumbnail over HTTP, raw RFB over its own WebSocket.
     # The two hooks exist for tests: production dials the configured gateway.

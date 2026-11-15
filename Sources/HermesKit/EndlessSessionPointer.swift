@@ -145,6 +145,9 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/push/test` — one banner, now.
     func sendTestPush() async throws
 
+    /// `PUT /v1/push/icon/{bot}` — the face this bot's banners should show.
+    func uploadPushIcon(bot: String, png: Data, sha256: String) async throws
+
     /// `GET /v1/rooms` — the group chats this host hosts.
     ///
     /// These four are protocol requirements, not free functions on an extension: a requirement that
@@ -186,6 +189,9 @@ public extension BotSessionPointerStore {
     func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
     func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
     func sendTestPush() async throws { throw BotAdminUnavailable() }
+    func uploadPushIcon(bot: String, png: Data, sha256: String) async throws {
+        throw BotAdminUnavailable()
+    }
 }
 
 /// Thrown by a pointer store that has no admin routes (older bridge, test double).
@@ -490,6 +496,14 @@ enum Failure: Error, Equatable, LocalizedError {
 
     public func sendTestPush() async throws {
         _ = try await bridgePOST("v1/push/test", body: [:], timeout: 20)
+    }
+
+    public func uploadPushIcon(bot: String, png: Data, sha256: String) async throws {
+        // Base64 in JSON rather than multipart: the bridge wants the bytes and a hash, and neither
+        // side then needs an encoder it does not already have.
+        _ = try await bridgePUT("v1/push/icon/\(bot)",
+                                body: ["png": png.base64EncodedString(), "sha256": sha256],
+                                timeout: 30)
     }
 
     private func decodeNotes(_ data: Data) -> BotNotes? {

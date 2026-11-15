@@ -321,6 +321,23 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         self.assertIn("if not self._primed:", self.PUSH)
         self.assertIn("push_watch", (ROOT / "Bridge/hermes_bridge/registry.py").read_text(encoding="utf-8"))
 
+    def test_the_banner_carries_the_bot_s_own_face(self) -> None:
+        push = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
+        icons = (ROOT / "Bridge/hermes_bridge/push_icons.py").read_text(encoding="utf-8")
+        exporter = (ROOT / "Sources/OpenBotUI/PushIcon.swift").read_text(encoding="utf-8")
+        # The app renders the real face (SwiftUI geometry, not a second drawing) and uploads bytes.
+        self.assertIn("ImageRenderer", exporter)
+        self.assertIn("BotIconPortrait(face", exporter)
+        self.assertIn("icon=icon", push)
+        # No render means no image: a URL pointing at nothing inside a notification is worse.
+        self.assertIn('if not icon_exists(profile):', push)
+        self.assertIn('return ""', push)
+        # A reply is why the phone buzzed, so it is the notify-me tier.
+        self.assertIn('payload["level"] = "timeSensitive"', push)
+        # The GET is unauthenticated for the relay app, and serves nothing but a named bot's face.
+        self.assertIn("def fetch(profile: str) -> Response:", icons)
+        self.assertIn("PNG_MAGIC", icons)
+
     def test_one_field_is_the_whole_setup(self) -> None:
         self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)
         self.assertIn('OpenBotButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)

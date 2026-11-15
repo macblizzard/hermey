@@ -126,6 +126,9 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// One banner right now, to prove the relay works.
     func sendTestPush() async throws
 
+    /// This bot's rendered face, so a banner can show it (`PUT /v1/push/icon/{bot}`).
+    func uploadPushIcon(bot: String, png: Data, sha256: String) async throws
+
     /// Write the note back (`PUT`), whole: the host keeps one file and the last write wins.
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes
 
@@ -272,6 +275,9 @@ extension GatewayClientProtocol {
     public func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }
     public func reportPresence(bot: String?) async throws { throw BotAdminUnavailable() }
     public func sendTestPush() async throws { throw BotAdminUnavailable() }
+    public func uploadPushIcon(bot: String, png: Data, sha256: String) async throws {
+        throw BotAdminUnavailable()
+    }
     public func saveNotes(_ text: String, for profile: String) async throws -> BotNotes {
         throw BotAdminUnavailable()
     }
