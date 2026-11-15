@@ -238,7 +238,7 @@ struct WorkspaceRoot: View {
         let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey) ?? ""
         guard !relay.isEmpty else { return }
         await store.model.syncPushIcons { id in
-            PushIcon.png(for: store.model.botFaces[id] ?? BotFace.default(for: id))
+            PushIcon.png(for: store.botFaces[id] ?? BotFace.default(for: id))
         }
     }
 
