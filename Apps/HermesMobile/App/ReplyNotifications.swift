@@ -78,6 +78,9 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
         content.body = note.body
         content.sound = .default
         content.userInfo = ["botID": note.botID]
+        if let attachment = MobileFaceCache.attachment(for: note.botID) {
+            content.attachments = [attachment]
+        }
         let request = UNNotificationRequest(identifier: note.identity, content: content, trigger: nil)
         center.add(request) { [weak self] error in
             guard let error else { return }
@@ -272,6 +275,10 @@ enum ReplyBackgroundRefresh {
         content.body = note.body
         content.sound = .default
         content.userInfo = ["botID": note.botID]
+        // The background sweep cannot render, so it uses the face the last launch cached.
+        if let attachment = MobileFaceCache.attachment(for: note.botID) {
+            content.attachments = [attachment]
+        }
         center.add(UNNotificationRequest(identifier: note.identity, content: content, trigger: nil),
                    withCompletionHandler: nil)
     }
