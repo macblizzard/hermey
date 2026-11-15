@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please **do not** open a public issue for a security problem. Use GitHub's private reporting
-([Security → Report a vulnerability](../../security/advisories/new)) or email the address on the
+([Security → Report a vulnerability](https://github.com/macblizzard/hermey/security/advisories/new)) or email the address on the
 maintainer's GitHub profile. You will get an acknowledgement within a few days; if the report is
 valid we will ship a fix and credit you unless you prefer otherwise.
 
