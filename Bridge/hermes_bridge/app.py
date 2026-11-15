@@ -43,6 +43,7 @@ from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_notes import create_bot_notes_router
+from .push import BarkRelay, ReplyWatcher, create_push_router
 from .rooms import create_rooms_router
 from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
@@ -168,9 +169,17 @@ def create_app(
         live=LiveSessions(),
     )
 
+    relay = BarkRelay()
+    watcher = ReplyWatcher(runtime, relay)
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        # Banners while the app is shut: a relay (Bark) plus a timer that reads each bot's
+        # conversation. Started here rather than at import so tests that build an app without
+        # touching the network do not spawn threads.
+        watcher.start()
         yield
+        watcher.stop()
         if registry is None:  # only close what this app created
             reg.close()
 
@@ -210,6 +219,7 @@ def create_app(
     app.include_router(create_bot_admin_router(runtime))
     app.include_router(create_bot_memory_router(runtime))
     app.include_router(create_bot_notes_router(runtime))
+    app.include_router(create_push_router(runtime, relay))
     app.include_router(create_rooms_router(runtime))
     # The shared Bot Computer: status/lease/thumbnail over HTTP, raw RFB over its own WebSocket.
     # The two hooks exist for tests: production dials the configured gateway.

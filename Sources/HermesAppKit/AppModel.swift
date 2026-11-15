@@ -2007,6 +2007,24 @@ public final class AppModel: ObservableObject {
         try await client.memory(profile)
     }
 
+    /// Where this device's banners go while the app is shut.
+    ///
+    /// Registering is the whole of the setup: the URL is the Bark app's own push address, and the
+    /// host keeps it per device. No Apple account, no key — see the bridge's `push.py` for why.
+    public func registerPushRelay(_ url: String) async throws {
+        try await client.registerPushRelay(url)
+    }
+
+    /// Tell the host which bot this device is reading, so its replies are not announced to it.
+    public func reportPresence(bot: String?) async {
+        try? await client.reportPresence(bot: bot)
+    }
+
+    /// One banner right now, from the Settings screen's own button.
+    public func sendTestPush() async throws {
+        try await client.sendTestPush()
+    }
+
     /// This bot's own note, read from the host — the same file on every device.
     public func notes(for profile: String) async throws -> BotNotes {
         try await client.notes(profile)

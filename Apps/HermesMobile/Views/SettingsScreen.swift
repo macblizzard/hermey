@@ -42,6 +42,9 @@ struct SettingsScreen: View {
     /// per device, which is why a denied permission is drawn here with the one door out of it.
     private var notificationsSection: some View {
         Section {
+            PushRelaySettings(register: { url in try await model.registerPushRelay(url) },
+                              sendTest: { try await model.sendTestPush() })
+
             Toggle(isOn: Binding(get: { model.replyNotificationsEnabled },
                                  set: { model.setReplyNotifications(enabled: $0) })) {
                 Text("Notify me about replies")

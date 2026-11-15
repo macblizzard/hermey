@@ -40,6 +40,25 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE INDEX IF NOT EXISTS devices_revoked_idx ON devices (revoked);
 -- The one conversation both apps mean by "this bot". A row is only rewritten,
 -- never deleted: a device that knows no session yet reads NULL.
+-- Where a device's banners go, and which bot it is reading.
+--
+-- A relay endpoint, not a device token: the signing certificate on this host has no APNs
+-- credential (see `push.py`), so delivery goes through an app that does. One row per device, and a
+-- row with no endpoint simply means "no banners on this device".
+CREATE TABLE IF NOT EXISTS push_targets (
+    device_id    TEXT PRIMARY KEY,
+    provider     TEXT NOT NULL,
+    endpoint     TEXT NOT NULL,
+    key          TEXT NOT NULL,
+    preset_bot   TEXT,
+    updated_at   REAL NOT NULL
+);
+-- The newest reply the watcher has already announced, per bot. Kept on disk so a bridge restart
+-- does not replay yesterday's replies as banners.
+CREATE TABLE IF NOT EXISTS push_watch (
+    profile      TEXT PRIMARY KEY,
+    last_at      REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS bot_sessions (
     profile            TEXT PRIMARY KEY,
     stored_session_id  TEXT NOT NULL,
@@ -131,6 +150,54 @@ class DeviceRegistry:
             if version < SCHEMA_VERSION:
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             conn.commit()
+
+    # -- push targets ------------------------------------------------------
+
+    def set_push_target(self, device_id: str, provider: str, endpoint: str, key: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO push_targets (device_id, provider, endpoint, key, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(device_id) DO UPDATE SET provider=excluded.provider, "
+                "endpoint=excluded.endpoint, key=excluded.key, updated_at=excluded.updated_at",
+                (device_id, provider, endpoint, key, time.time()))
+            conn.commit()
+
+    def push_target(self, device_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM push_targets WHERE device_id = ?",
+                               (device_id,)).fetchone()
+        return dict(row) if row else None
+
+    def push_targets(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM push_targets").fetchall()
+        return [dict(row) for row in rows]
+
+    def set_push_presence(self, device_id: str, bot: Optional[str]) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE push_targets SET preset_bot = ? WHERE device_id = ?",
+                         (bot, device_id))
+            conn.commit()
+
+    def push_watch(self, profile: str) -> Optional[float]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT last_at FROM push_watch WHERE profile = ?",
+                               (profile,)).fetchone()
+        return float(row["last_at"]) if row else None
+
+    def set_push_watch(self, profile: str, last_at: float) -> None:
+        with self._connect() as conn:
+            conn.execute("INSERT INTO push_watch (profile, last_at) VALUES (?, ?) "
+                         "ON CONFLICT(profile) DO UPDATE SET last_at=excluded.last_at",
+                         (profile, last_at))
+            conn.commit()
+
+    def stored_session(self, profile: str) -> Optional[str]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT stored_session_id FROM bot_sessions WHERE profile = ?",
+                               (profile,)).fetchone()
+        return str(row["stored_session_id"]) if row else None
 
     def close(self) -> None:
         with self._lock:

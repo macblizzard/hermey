@@ -95,6 +95,18 @@ struct BotsTab: View {
     /// room never records and must not share a session with a conversation.
     @StateObject private var roomVoice = VoiceController()
 
+    /// A banner's tap: `hermey://bot/<profile>` lands on that bot's conversation.
+    ///
+    /// The relay app (Bark) cannot deep-link into a view it knows nothing about, so the URL is the
+    /// whole contract. An unknown or stale bot is ignored rather than pushed as an empty thread.
+    private func openBannerURL(_ url: URL) {
+        guard url.scheme == "hermey", url.host == "bot" else { return }
+        let id = url.lastPathComponent
+        guard !id.isEmpty, let bot = model.bots.first(where: { $0.id == id }) else { return }
+        path = NavigationPath()
+        path.append(bot)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             BotListScreen(model: model,
@@ -105,6 +117,7 @@ struct BotsTab: View {
                 }
                 // A room pushes like a bot's conversation: same stack, same back gesture, and the
                 // list keeps its scroll position underneath instead of being covered by a modal.
+                .onOpenURL { openBannerURL($0) }
                 .navigationDestination(for: RoomSummary.self) { room in
                     RoomChatView(
                         room: room,

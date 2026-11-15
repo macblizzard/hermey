@@ -292,6 +292,40 @@ class ABotHasItsOwnNotes(unittest.TestCase):
         self.assertIn("Stored on the host", self.NOTES)
 
 
+class BannersArriveWhileTheAppIsShut(unittest.TestCase):
+    """The relay: no APNs credential of our own, so Bark carries the banner."""
+
+    PUSH = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
+    SETTINGS = (ROOT / "Sources/OpenBotUI/PushRelaySettings.swift").read_text(encoding="utf-8")
+    PLIST = (ROOT / "project.yml").read_text(encoding="utf-8")
+
+    def test_the_host_pushes_instead_of_the_app(self) -> None:
+        # A suspended app cannot poll, so the host does the looking and the relay does the drawing.
+        self.assertIn("class ReplyWatcher", self.PUSH)
+        self.assertIn('@router.post("/register")', self.PUSH)
+        self.assertIn('@router.post("/presence")', self.PUSH)
+        self.assertIn('@router.post("/test")', self.PUSH)
+
+    def test_a_banner_opens_the_bot_that_spoke(self) -> None:
+        self.assertIn('url=f"hermey://bot/{profile}"', self.PUSH)
+        self.assertIn("CFBundleURLSchemes:\n              - hermey", self.PLIST)
+
+    def test_the_bot_on_screen_is_never_announced(self) -> None:
+        self.assertIn('if target.get("preset_bot") == profile:', self.PUSH)
+        # The phone and the Mac both report it.
+        phone = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
+        self.assertIn("await model.reportPresence(bot: bot.id)", phone)
+        self.assertIn("await model.reportPresence(bot: nil)", phone)
+
+    def test_a_restart_does_not_replay_history(self) -> None:
+        self.assertIn("if not self._primed:", self.PUSH)
+        self.assertIn("push_watch", (ROOT / "Bridge/hermes_bridge/registry.py").read_text(encoding="utf-8"))
+
+    def test_one_field_is_the_whole_setup(self) -> None:
+        self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)
+        self.assertIn('OpenBotButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)
+
+
 class TheEmptyChatIsAnInvitation(unittest.TestCase):
     CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
 

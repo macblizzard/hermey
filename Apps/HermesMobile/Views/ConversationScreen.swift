@@ -232,8 +232,15 @@ struct ConversationScreen: View {
             guard let text = note.userInfo?["text"] as? String else { return }
             model.draft = text
         }
-        .onAppear { model.setVisibleBot(bot.id) }
-        .onDisappear { model.setVisibleBot(nil) }
+        .onAppear {
+            model.setVisibleBot(bot.id)
+            // The host does not push a bot's replies to the device reading it.
+            Task { await model.reportPresence(bot: bot.id) }
+        }
+        .onDisappear {
+            model.setVisibleBot(nil)
+            Task { await model.reportPresence(bot: nil) }
+        }
         .task(id: bot.id) {
             voice.transport = app.makeVoiceTransport()
             await openConversation()

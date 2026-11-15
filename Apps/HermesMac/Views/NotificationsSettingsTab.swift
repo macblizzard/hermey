@@ -30,6 +30,17 @@ struct NotificationsSettingsTab: View {
                 Text("Replies")
             }
 
+            Section {
+                PushRelaySettings(register: { url in try await model.registerPushRelay(url) },
+                                  sendTest: { try await model.sendTestPush() })
+            } header: {
+                Text("While the app is closed")
+            } footer: {
+                Text("Sideloaded builds have no Apple push credential of their own, so banners are "
+                     + "delivered through Bark. Nothing is sent unless a URL is registered here.")
+                    .font(TypeScale.font(TypeScale.caption))
+            }
+
             if !model.bots.isEmpty {
                 Section {
                     ForEach(model.bots) { bot in

@@ -446,6 +446,22 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.saveNotes(text, for: profile)
     }
 
+    /// Banners are the bridge's too: it is the process that sees every bot's replies.
+    public func registerPushRelay(_ url: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.registerPushRelay(url)
+    }
+
+    public func reportPresence(bot: String?) async throws {
+        guard let sessionPointer else { return }
+        try await sessionPointer.reportPresence(bot: bot)
+    }
+
+    public func sendTestPush() async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.sendTestPush()
+    }
+
     /// Rooms are the bridge's, like the pointer and bot management.
     public func rooms() async throws -> [RoomSummary] {
         guard let sessionPointer else { return [] }

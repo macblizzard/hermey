@@ -41,6 +41,15 @@ struct ConversationPane: View {
     }
 
     var body: some View {
+        content
+            // The host does not push a bot's replies to the device reading it — the same rule the
+            // phone follows, so a Mac left open on a chat stays quiet while the phone still buzzes.
+            .task(id: model.selectedBotID) {
+                await model.reportPresence(bot: model.selectedBotID)
+            }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             // Rakazo floats the header over the transcript instead of stacking it above: the row
             // costs layout, the content scrolls beneath it, and a hairline would put the bar back.
