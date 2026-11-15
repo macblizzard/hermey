@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.453",
+          "buildVersion": "453",
+          "date": "2026-11-15T23:32:37Z",
+          "localizedDescription": "Search every conversation from the Mac bot panel; no focus ring on the list menu at launch.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.453/Hermey-0.1.453-b453.ipa",
+          "size": 2834216,
+          "minOSVersion": "17.0",
+          "sha256": "f2c67012e1849dfec59b48965cad32f85703e3da4c74b5d9550cc5aec15c4dda"
+        },
+        {
           "version": "0.1.451",
           "buildVersion": "451",
           "date": "2026-11-15T22:53:01Z",
@@ -62,16 +72,6 @@
           "size": 2676947,
           "minOSVersion": "17.0",
           "sha256": "76f549f56ae820f336061964e0aa79d00d461e30905bd25c58b0a3f844d95450"
-        },
-        {
-          "version": "0.1.430",
-          "buildVersion": "430",
-          "date": "2026-11-15T18:18:14Z",
-          "localizedDescription": "Phase 5 \u2014 the soul a new bot starts from, and a backup that can rebuild your roster.\n\n\u2022 Settings \u2192 Bots (Mac) / Settings \u2192 Bots (phone): set the instructions every new bot begins with. Leave it empty and new bots start from Hermes's own default; 'Reset' does the same thing.\n\u2022 Export writes one JSON file with every bot's name, description, soul, memory, notes, categories and routines \u2014 no conversations. Restore reads it back on this or a fresh install: it creates bots that are missing, fills in documents that are empty, and never overwrites a bot's own words. Restored routines start running after the host restarts.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.430/Hermey-0.1.430-b430.ipa",
-          "size": 2661496,
-          "minOSVersion": "17.0",
-          "sha256": "e9dcd093f5b73388fe81a2014bc1b5a51dc28d595c1ecef81b4f9348112dd400"
         }
       ],
       "appPermissions": {
