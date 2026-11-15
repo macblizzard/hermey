@@ -10,7 +10,10 @@ class BotListRegressionTests(unittest.TestCase):
         source = SOURCE.read_text()
         list_body = source.split("        List {", 1)[1].split("        .listStyle", 1)[0]
         self.assertIn("            if showHidden, !hiddenBots.isEmpty {", list_body)
-        self.assertIn("} else if filtered.isEmpty && !(showHidden && !hiddenBots.isEmpty) {", list_body)
+        # The empty state must not swallow a query's message findings: a search whose text
+        # matches no bot NAME still has results to show (that was the "third character shows
+        # nothing" bug).
+        self.assertIn("} else if filtered.isEmpty && trimmedQuery.isEmpty", list_body)
 
     def test_filter_uses_explicit_reversible_action(self):
         source = SOURCE.read_text()

@@ -142,7 +142,7 @@ class ThePanelIsAPane(unittest.TestCase):
         # "Bot settings" is the header's Edit button now, and "Reset conversation" is the phone's
         # "Reset chat": one vocabulary across the two shells.
         for verb in ("Computer", "Model", "Library", "Skills", "MCP", "Routines",
-                     "Search conversations", "Mark all as read", "Reset chat"):
+                     "Search this conversation", "Mark all as read", "Reset chat"):
             self.assertIn(f'row("{verb}"', PANEL, f"the panel is missing {verb}")
         # The compaction row relabels itself while it runs, so it is matched by its words.
         self.assertIn('"Compact conversation"', PANEL)
