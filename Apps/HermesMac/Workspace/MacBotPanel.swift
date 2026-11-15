@@ -104,6 +104,9 @@ struct MacBotPanel: View {
         }
         .frame(width: WindowLayout.botPanelWidth)
         .frame(maxHeight: .infinity)
+        // The whole column starts below the window's top edge (asked for 2026-11-15): the face
+        // was opening flush against the frame, with the panel's first card almost touching it.
+        .padding(.top, Geometry.botPanelTopInset)
         // The panel is a sheet of its own: one step off the chat's canvas, so the boundary is a
         // change of surface rather than a drawn line — the hairline on the leading edge is there
         // for the moment the two shades happen to match.

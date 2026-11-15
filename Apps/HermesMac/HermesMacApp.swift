@@ -124,6 +124,13 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store.selectedBot == nil)
 
+            // ⌘E — the bot's own panel, the same door the pill opens. Asked for 2026-11-15.
+            Button(store.isBotPanelPresented ? "Hide Bot Menu" : "Bot Menu") {
+                store.toggleBotPanel()
+            }
+            .keyboardShortcut("e", modifiers: .command)
+            .disabled(store.selectedBot == nil)
+
             Menu("Switch Bot") {
                 ForEach(store.model.orderedBots) { bot in
                     Button(bot.id == store.model.selectedBotID

@@ -173,6 +173,10 @@ public enum Geometry {
     // pixels the status chip used to get. The transcript's top inset is derived from this, so the
     // rows move with it rather than under it.
     public static let chatHeaderPill: CGFloat = 40
+    /// The bot panel's own top inset. The panel hangs off the pill, so its face used to open
+    /// jammed against the window's top edge (reported 2026-11-15); this gives it the same
+    /// breathing room the sidebar's first row has.
+    public static let botPanelTopInset: CGFloat = 30
     /// The transcript reserves this much room for the floating header, plus scroll padding.
     public static let transcriptTopInset: CGFloat = 84
     public static let transcriptBottomInset: CGFloat = 52
