@@ -472,6 +472,19 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.setBotCategory(profile: profile, categoryID: categoryID)
     }
 
+    /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every
+    /// profile's transcript in one request.
+    public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.searchTranscripts(query, limit: limit, offset: offset)
+    }
+
+    public func botTransfers(between first: String, and second: String,
+                             limit: Int) async throws -> [BotTransfer] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.botTransfers(between: first, and: second, limit: limit)
+    }
+
     /// Banners are the bridge's too: it is the process that sees every bot's replies.
     public func registerPushRelay(_ url: String) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }

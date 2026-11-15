@@ -142,6 +142,13 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func deleteBotCategory(id: String) async throws -> BotCategoryState
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
 
+    /// Findings inside every bot's conversation (`GET /v1/search`). Names are the list's business;
+    /// a phrase a person remembers is this.
+    func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
+
+    /// The recorded exchanges between two bots, oldest first (`GET /v1/bot-transfers`).
+    func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
+
     /// Group chats hosted by this gateway (`GET /v1/rooms` on the bridge).
     func rooms() async throws -> [RoomSummary]
 
@@ -293,6 +300,12 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {
+        throw BotAdminUnavailable()
+    }
+    public func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
     }
     public func registerPushRelay(_ url: String) async throws { throw BotAdminUnavailable() }

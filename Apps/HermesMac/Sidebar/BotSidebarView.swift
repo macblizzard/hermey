@@ -164,6 +164,7 @@ struct BotSidebarView: View {
             if isSearching {
                 HStack(spacing: 6) {
                     MacSidebarSearchField(text: $searchQuery, prompt: "")
+                        .onChange(of: searchQuery) { _, typed in searchTranscripts(for: typed) }
                         .layoutPriority(1)
                         .accessibilityIdentifier("sidebar.botSearch")
 
@@ -180,11 +181,21 @@ struct BotSidebarView: View {
         .animation(.easeOut(duration: 0.12), value: isSearching)
     }
 
+    /// Typing is not a search per keystroke: a quarter second of quiet, then the host is asked.
+    private func searchTranscripts(for typed: String) {
+        Task {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard typed == searchQuery else { return }
+            await store.model.searchTranscripts(typed)
+        }
+    }
+
     private func closeSearch() {
         withAnimation(.easeOut(duration: 0.12)) {
             isSearching = false
             searchQuery = ""
         }
+        Task { await store.model.searchTranscripts("") }
     }
 
     /// The plus, in the filled square Rakazo gives it: the one button in the row that is a verb

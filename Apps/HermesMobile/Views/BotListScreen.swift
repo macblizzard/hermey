@@ -135,8 +135,9 @@ struct BotListScreen: View {
             } else if filtered.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
                 emptySection
             } else if !trimmedQuery.isEmpty {
-                // A search is one flat list of what matched: headings would split the answer up
-                // while the person is looking for one name.
+                // Findings first: a phrase is the thing being looked for. The bot rows follow, so a
+                // name search still works exactly as it did.
+                findingsSection
                 Section {
                     ForEach(filtered) { bot in row(for: bot) }
                 }
@@ -203,6 +204,14 @@ struct BotListScreen: View {
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
+        }
+        // Typing is not a search per keystroke: a quarter second of quiet, then the host is asked.
+        .onChange(of: query) { _, typed in
+            Task {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard typed == query else { return }
+                await model.searchTranscripts(typed)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             // Coming back to the app is the moment the other device's turn should show up here.
@@ -535,6 +544,75 @@ struct BotListScreen: View {
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
+    }
+
+    /// What the search found *inside* the conversations — the reason the field exists.
+    @ViewBuilder
+    private var findingsSection: some View {
+        if !model.searchPage.hits.isEmpty {
+            Section {
+                ForEach(model.searchPage.hits) { hit in
+                    Button {
+                        Haptics.selection()
+                        guard let bot = model.bots.first(where: { $0.id == hit.profile }) else { return }
+                        recordOpened(bot)
+                        onOpenBot(bot)
+                    } label: {
+                        findingRow(hit)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Tokens.canvas)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding,
+                                              bottom: 0, trailing: Geometry.rosterListPadding))
+                    .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+                }
+            } header: {
+                listHeading(model.searchRunning ? "SEARCHING…"
+                            : "MESSAGES · \(model.searchPage.total)")
+            }
+        }
+    }
+
+    /// One finding: which bot, what was said around the match, and when.
+    private func findingRow(_ hit: BotSearchHit) -> some View {
+        HStack(alignment: .top, spacing: metrics.gap) {
+            BotIconPortrait(app.botFaces[hit.profile] ?? BotFace.default(for: hit.profile),
+                            size: metrics.avatarCompact)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile)
+                        .font(TypeScale.font(metrics.previewSize, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .lineLimit(1)
+                    Text(hit.isOwner ? "you" : "bot")
+                        .font(TypeScale.font(Tokens.rosterMeta))
+                        .foregroundStyle(Tokens.textDim)
+                    Spacer(minLength: 6)
+                    Text(RelativeTime.stamp(hit.at))
+                        .font(TypeScale.font(metrics.metaSize))
+                        .foregroundStyle(Tokens.textDim)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+                Text(highlighted(hit.snippet, match: hit.match))
+                    .font(TypeScale.font(metrics.previewSize))
+                    .foregroundStyle(Tokens.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, metrics.rowPadding)
+        .contentShape(Rectangle())
+    }
+
+    /// The matched words in the snippet, weighted — so the eye finds its place in a two-line row.
+    private func highlighted(_ snippet: String, match: String) -> AttributedString {
+        var text = AttributedString(snippet)
+        guard !match.isEmpty,
+              let range = text.range(of: match, options: .caseInsensitive) else { return text }
+        text[range].font = .system(size: metrics.previewSize, weight: .semibold)
+        text[range].foregroundColor = Tokens.textPrimary
+        return text
     }
 
     /// The bots, folded into the owner's categories: Pinned above everything, then the categories

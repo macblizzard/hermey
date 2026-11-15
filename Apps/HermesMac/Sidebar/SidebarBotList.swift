@@ -140,6 +140,27 @@ struct SidebarBotList: View {
                     Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 }
 
+                // What the search found inside the conversations, above the rows: a phrase is the
+                // thing being looked for, and a bot name is the fallback.
+                if isSearching, !model.searchPage.hits.isEmpty {
+                    SectionCaption("MESSAGES · \(model.searchPage.total)")
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+                        .padding(.bottom, 2)
+                    ForEach(model.searchPage.hits) { hit in
+                        Button {
+                            if let bot = model.bots.first(where: { $0.id == hit.profile }) {
+                                store.selectBot(bot.id)
+                            }
+                        } label: {
+                            findingRow(hit)
+                        }
+                        .buttonStyle(.plain)
+                        .hoverFill()
+                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
+                    }
+                }
+
                 // The owner's groups, the same headings the phone draws: Pinned above everything,
                 // the categories by name, Uncategorized last (asked for 2026-11-15). While a search
                 // is running the answer is one flat list — a heading would split it up for nothing.
@@ -180,6 +201,35 @@ struct SidebarBotList: View {
         } else {
             rows.frame(height: listHeight)
         }
+    }
+
+    /// One search finding on the Mac: which bot, the snippet, when.
+    private func findingRow(_ hit: BotSearchHit) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            BotIconPortrait(store.botFaces[hit.profile] ?? BotFace.default(for: hit.profile),
+                            size: Geometry.rosterAvatarCompact)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile)
+                        .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(RelativeTime.stamp(hit.at))
+                        .font(TypeScale.font(Tokens.rosterMeta))
+                        .foregroundStyle(Tokens.textDim)
+                        .lineLimit(1)
+                }
+                Text(hit.snippet)
+                    .font(TypeScale.font(Tokens.rosterMeta))
+                    .foregroundStyle(Tokens.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .help(hit.snippet)
     }
 
     // MARK: Category headings

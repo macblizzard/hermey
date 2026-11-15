@@ -30,6 +30,8 @@ public struct BotListMetrics: Equatable {
     private func scaled(_ value: CGFloat) -> CGFloat { (value * CGFloat(scale)).rounded() }
 
     public var avatar: CGFloat { scaled(Geometry.rosterAvatar) }
+    /// The face on a search finding: a step smaller than a row's, so the snippet keeps its width.
+    public var avatarCompact: CGFloat { scaled(Geometry.rosterAvatarCompact) }
     public var rowHeight: CGFloat { scaled(Geometry.rosterRow) }
     public var rowPadding: CGFloat { scaled(Geometry.rosterRowPadding) }
     public var gap: CGFloat { scaled(Geometry.rosterRowGap) }
