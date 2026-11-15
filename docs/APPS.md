@@ -98,9 +98,17 @@ Dock tile or the app icon; zero clears it.
 - **macOS** delivers a banner as soon as the host reports the reply, even while the app is in the
   background, and clicking it opens that conversation.
 - **iOS** delivers a banner while the app is running. Once the phone has put the app away there is
-  no socket to hear with, so replies are picked up by a background refresh that iOS schedules —
-  expect delays in the tens of minutes, and only while the phone is awake. Immediate delivery on a
-  locked phone would need an APNs entitlement, which an AltStore/personal-team install cannot have.
+  no socket to hear with, so replies fall back to a background refresh that iOS schedules — expect
+  delays in the tens of minutes, and only while the phone is awake.
+- **A relay closes that gap, and it is the only way a sideloaded build can.** Push to an app needs a
+  credential for the team that signed it, and a personal or AltStore install has none. So the host
+  posts the banner to an app that already holds one: install **Bark** (free, App Store), copy the
+  address it shows, and paste it into Settings → **Replies** (iOS) or Settings → **Notifications**
+  (macOS). **Send a test** proves it. From then on the host checks every bot's conversation on a
+  ~20-second timer and pushes what is new, so a locked phone gets the banner promptly instead of
+  whenever iOS decides to wake the app. Nothing is sent until an address is registered; the address
+  is kept per device, and the same two rules still hold — a bot is never pushed about the chat on
+  screen, and your own reply never rings.
 - If a banner never appears, the first thing to check is the system permission: the app reports
   "Turned off in System Settings" (macOS) or offers a link straight to its iOS Settings page.
 

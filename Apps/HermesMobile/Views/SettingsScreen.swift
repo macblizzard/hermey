@@ -100,7 +100,7 @@ struct SettingsScreen: View {
         } header: {
             Text("Replies")
         } footer: {
-            Text("A banner and a badge when a bot replies in a chat you are not reading. iOS delivers these promptly while the app is running; once the phone has put the app away it checks in the background, on a schedule iOS decides — so a banner can arrive a few minutes late. A chat on screen never notifies.")
+            Text("A banner and a badge when a bot replies in a chat you are not reading. iOS delivers these promptly while the app is running; once the phone has put the app away it checks in the background, on a schedule iOS decides — so a banner can arrive a few minutes late unless a relay address is registered in this section, which delivers with the app closed. A chat on screen never notifies.")
         }
     }
 
