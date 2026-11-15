@@ -95,6 +95,21 @@ struct BotsTab: View {
     /// room never records and must not share a session with a conversation.
     @StateObject private var roomVoice = VoiceController()
 
+    /// Render and upload each bot's face — only when a relay is registered.
+    ///
+    /// A method rather than a closure inside `.task`: inline, the nested `@MainActor` closure and the
+    /// `??` chain together outrun the type checker ("unable to type-check in reasonable time").
+    private func uploadPushFaces() async {
+        guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey), !relay.isEmpty else {
+            return
+        }
+        let faces = model.botFaces
+        await model.syncPushIcons { id in
+            let face: BotFace = faces[id] ?? BotFace.default(for: id)
+            return PushIcon.png(for: face)
+        }
+    }
+
     /// A banner's tap: `hermey://bot/<profile>` lands on that bot's conversation.
     ///
     /// The relay app (Bark) cannot deep-link into a view it knows nothing about, so the URL is the
@@ -119,13 +134,7 @@ struct BotsTab: View {
                 // list keeps its scroll position underneath instead of being covered by a modal.
                 .onOpenURL { openBannerURL($0) }
                 // A banner shows the bot's own face; the host holds the render, not the geometry.
-                .task {
-                    guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey),
-                          !relay.isEmpty else { return }
-                    await model.syncPushIcons { id in
-                        PushIcon.png(for: model.botFaces[id] ?? BotFace.default(for: id))
-                    }
-                }
+                .task { await uploadPushFaces() }
                 .navigationDestination(for: RoomSummary.self) { room in
                     RoomChatView(
                         room: room,
