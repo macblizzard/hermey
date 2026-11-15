@@ -66,8 +66,12 @@ struct MacBotPanel: View {
                     }
 
                     panel {
-                        // "Search conversations" — the scope, said out loud: it searches this bot's
-                        // talk, not the host's files (that is Library) and not the app's settings.
+                        // "Search this conversation" — the scope, said out loud: it searches this
+                        // bot's talk, not the host's files (that is Library) and not the app's
+                        // settings. It opens the bar over the transcript, the same door ⌘F and the
+                        // Conversation menu open; it is *not* the panel's own field, which filters
+                        // bots (reported 2026-11-15: "No bots match" answered a search meant for the
+                        // conversation behind it).
                         row("Search this conversation", icon: "magnifyingglass") {
                             store.openFindInChat()
                         }

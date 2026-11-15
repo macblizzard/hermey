@@ -10,10 +10,11 @@ import Foundation
 ///   is a bug report, not a feature.
 /// * **Per host.** Two paired hosts mean two directories. A transcript cached from one host must
 ///   never be painted under the other's bot with the same name.
-/// * **Bounded by chats.** The Limit stepper governs how many conversations are kept: the least
-///   recently used chat (read or written) is dropped when a new one would exceed the limit, taking
-///   its messages and its files/links index with it. Nothing is left behind for a switch that is
-///   off.
+/// * **Bounded by chats.** The Limit is one number, and it governs both places a chat is kept: the
+///   chat-list document holds at most that many rows, and the messages directory holds at most that
+///   many transcripts. Each sheds the least recently used chat first — a read counts as use — and a
+///   chat the list drops loses its transcript and files/links index with it, so neither count can
+///   read higher than the number on screen. Nothing is left behind for a switch that is off.
 ///
 /// Storage layout, under `Application Support/Hermey/Cache/hosts/<host-key>/`:
 ///
@@ -31,11 +32,11 @@ import Foundation
 /// corrupt cache, and a corrupt cache is treated as a miss (the file is deleted, never trusted).
 public actor HermesCacheStore {
 
-    /// The stepper's default and range. 100 chats is what the official screen calls a good balance;
-    /// the floor is one chat rather than ten so a test — or a hand-edited settings file — can prove
-    /// eviction with a handful of rows instead of a hundred.
-    public static let defaultChatLimit = 100
-    public static let chatLimitRange = 1 ... 1_000
+    /// The picker's default: 100 chats. The three offered sizes live in `CacheChatLimit`; the store
+    /// only ever enforces one of them.
+    public static let defaultChatLimit = CacheChatLimit.standard
+    /// The sizes the Limit row offers, smallest first.
+    public static let chatLimitOptions = CacheChatLimit.options
     /// Rows kept per chat. A chat is the eviction unit (that is what the Limit counts), so one very
     /// long conversation still needs a ceiling of its own — otherwise the cache is bounded by the
     /// longest thread the user ever opened.
@@ -107,14 +108,17 @@ public actor HermesCacheStore {
         return preferences
     }
 
-    /// Change the chat limit. Lowering it evicts immediately rather than at the next write, so the
-    /// Usage numbers under the stepper are true the moment the user lets go.
+    /// Change the chat limit to one of `CacheChatLimit.options`.
+    ///
+    /// A value that is not one of them (a stored 196 from the old stepper, a hand-edited 1) lands on
+    /// the nearest option and is rewritten, so the number the picker shows and the number the cache
+    /// enforces are the same one. Lowering it evicts immediately rather than at the next write, so
+    /// the Usage numbers under the picker are true the moment the user lets go.
     @discardableResult
     public func setChatLimit(_ limit: Int) -> CachePreferences {
         prepare()
         var preferences = storedPreferences()
-        preferences.chatLimit = min(max(limit, Self.chatLimitRange.lowerBound),
-                                    Self.chatLimitRange.upperBound)
+        preferences.chatLimit = CacheChatLimit.nearest(to: limit)
         savePreferences(preferences)
         enforceChatLimit(preferences.chatLimit)
         return preferences
@@ -124,47 +128,64 @@ public actor HermesCacheStore {
 
     /// Store the bot directory as the host just answered it, keeping whatever previews are already
     /// cached for bots the preview feed has not covered yet.
+    ///
+    /// The document is trimmed **before** it is written: the limit is a promise about what is on
+    /// disk, and a file that briefly holds 190 rows would be a file the next launch has to repair.
     @discardableResult
     public func storeBots(_ bots: [Bot]) -> Bool {
         prepare()
-        guard storedPreferences().chatListEnabled else { return false }
-        var document = chatList() ?? CachedChatList()
-        let rows = bots.map(CachedBot.init)
-        // The preview sweep runs every 25 s on a live app; rewriting an identical document would be
-        // a disk write per tick for nothing.
-        guard document.bots != rows else { return false }
+        let preferences = storedPreferences()
+        guard preferences.chatListEnabled else { return false }
+        let existing = loadChatList()
+        guard !bots.isEmpty || existing != nil else { return false }
+        var document = existing ?? CachedChatList()
         document.schema = CachedChatList.currentSchema
         document.savedAt = clock().timeIntervalSince1970
-        document.bots = rows
-        return write(document, to: chatListURL)
+        document.bots = bots.map(CachedBot.init)
+        let trimmed = trimmedChatList(document, limit: preferences.chatLimit)
+        // The preview sweep runs every 25 s on a live app; rewriting an identical document would be
+        // a disk write per tick for nothing.
+        guard trimmed.document.bots != existing?.bots
+            || trimmed.document.previews != existing?.previews
+            || trimmed.document.unread != existing?.unread else { return false }
+        // Rows the limit did not keep are not retained chats any more: their transcripts go with
+        // them. The two directories are capped by the same number, so one cannot outlive the other.
+        forgetTranscripts(trimmed.dropped)
+        return write(trimmed.document, to: chatListURL)
     }
 
     /// Store the preview/unread snapshot — the rows the bridge reads off the host's message table.
+    ///
+    /// Previews are per chat, so they are trimmed with the rows: a preview for a chat the limit has
+    /// dropped is a line the list cannot draw and a byte the Usage number would have to lie about.
     @discardableResult
     public func storePreviews(_ previews: [String: CachedPreview],
                               unread: [String: Int] = [:]) -> Bool {
         prepare()
-        guard storedPreferences().chatListEnabled, !previews.isEmpty else { return false }
-        var document = chatList() ?? CachedChatList()
-        let merged = document.previews.merging(previews) { _, new in new }
-        guard merged != document.previews || document.unread != unread else { return false }
+        let preferences = storedPreferences()
+        guard preferences.chatListEnabled, !previews.isEmpty else { return false }
+        let existing = loadChatList()
+        var document = existing ?? CachedChatList()
         document.schema = CachedChatList.currentSchema
         document.savedAt = clock().timeIntervalSince1970
-        document.previews = merged
+        document.previews = document.previews.merging(previews) { _, new in new }
         document.unread = unread
-        return write(document, to: chatListURL)
+        let trimmed = trimmedChatList(document, limit: preferences.chatLimit)
+        guard trimmed.document.bots != existing?.bots
+            || trimmed.document.previews != existing?.previews
+            || trimmed.document.unread != existing?.unread else { return false }
+        forgetTranscripts(trimmed.dropped)
+        return write(trimmed.document, to: chatListURL)
     }
 
+    /// The chat list, with the limit applied.
+    ///
+    /// A read applies the limit as well as a write: a document left behind by a build whose Limit
+    /// row was a 1…1000 stepper (196 chats, 190 rows) must not be handed to the list whole, or the
+    /// row it feeds would count more chats than the user asked this device to keep.
     public func chatList() -> CachedChatList? {
         prepare()
-        guard let document: CachedChatList = decode(at: chatListURL) else { return nil }
-        guard document.schema == CachedChatList.currentSchema else {
-            // A document from a build that wrote a different shape is a miss, not something to
-            // guess at — and keeping it would make the Usage number include bytes nothing can read.
-            try? fileManager.removeItem(at: chatListURL)
-            return nil
-        }
-        return document
+        return limitedChatList()
     }
 
     // MARK: - Transcripts
@@ -227,7 +248,7 @@ public actor HermesCacheStore {
             try? fileManager.removeItem(at: url)
             return nil
         }
-        touch(chatID)
+        noteUse(chatID)
         return document
     }
 
@@ -240,7 +261,7 @@ public actor HermesCacheStore {
             try? fileManager.removeItem(at: url)
             return nil
         }
-        touch(chatID)
+        noteUse(chatID)
         return document
     }
 
@@ -256,6 +277,11 @@ public actor HermesCacheStore {
     // MARK: - Usage
 
     /// Measure what is on disk right now.
+    ///
+    /// Every count is in the unit its row's label names, and the two chat-unit counts (the Chat
+    /// List row and `chatCount`) are measured after the limit has been applied, so neither can read
+    /// higher than the number in the picker. `messages` is the other unit on purpose: it counts the
+    /// rows inside those chats.
     public func usage() -> CacheUsage {
         prepare()
         // Every section reports a row, even at zero: the Usage list must not lose a line (and its
@@ -345,6 +371,11 @@ public actor HermesCacheStore {
         #endif
         loadPreferences()
         loadIndex()
+        // A launch is the moment a cache left by a bigger limit — or by the build whose Limit row
+        // was a 1…1000 stepper — is brought back in line, before anything is painted or counted.
+        // Doing it here rather than in a caller means every entry point (a screen, a test, a
+        // background refresh) sees a cache that already obeys the number in its settings file.
+        enforceChatLimit(storedPreferences().chatLimit)
     }
 
     private func sectionDirectory(_ section: CacheSection) -> URL {
@@ -372,6 +403,13 @@ public actor HermesCacheStore {
         var preferences = CachePreferences.standard
     }
 
+    /// The limit exactly as the file states it, before `CachePreferences`' decoder puts it on an
+    /// offered size. Needed only so a migrated value can be written back once.
+    private struct RawSettings: Decodable {
+        struct RawPreferences: Decodable { var chatLimit: Int? }
+        var preferences: RawPreferences?
+    }
+
     private func storedPreferences() -> CachePreferences {
         if let preferencesStore { return preferencesStore }
         loadPreferences()
@@ -384,9 +422,17 @@ public actor HermesCacheStore {
             preferencesStore = .standard
             return
         }
-        var preferences = document.preferences
-        preferences.clampLimit()
+        // The decoder has already put the limit on the nearest offered size.
+        let preferences = document.preferences
         preferencesStore = preferences
+        if let data = try? Data(contentsOf: settingsURL),
+           let raw = (try? decoder.decode(RawSettings.self, from: data))?.preferences?.chatLimit,
+           raw != preferences.chatLimit {
+            // A value the old stepper (or a hand-edited file) left behind is rewritten as the
+            // option it landed on: the file, the picker and the number the cache enforces must not
+            // keep disagreeing launch after launch.
+            savePreferences(preferences)
+        }
     }
 
     private func savePreferences(_ preferences: CachePreferences) {
@@ -443,8 +489,17 @@ public actor HermesCacheStore {
             || fileManager.fileExists(atPath: linksURL(chatID).path)
     }
 
-    /// Mark a chat as used now. The index write is small and lands after the payload, so a crash in
-    /// between costs at most an eviction order, never a lost transcript.
+    /// Mark a chat as used now, and apply the limit if this read left the cache over it.
+    ///
+    /// The index write is small and lands after the payload, so a crash in between costs at most an
+    /// eviction order, never a lost transcript.
+    private func noteUse(_ chatID: String) {
+        touch(chatID)
+        let limit = storedPreferences().chatLimit
+        if index.chats.count > limit { enforceChatLimit(limit) }
+    }
+
+    /// Mark a chat as used now.
     private func touch(_ chatID: String) {
         index.sequence += 1
         index.chats[chatID] = CacheIndexEntry(touch: index.sequence,
@@ -452,11 +507,133 @@ public actor HermesCacheStore {
         saveIndex()
     }
 
+    // MARK: - The limit
+
+    /// Apply the limit to everything on disk that stands for a chat.
+    ///
+    /// Two places keep per-chat data, and the Limit is one number rather than a setting per place,
+    /// so both are brought down to it here:
+    ///
+    /// * `chat-list/chat-list.json` keeps at most `limit` chat rows, ranked by the newest evidence
+    ///   of use this device has.
+    /// * `messages/` keeps at most `limit` transcripts, least recently read or written first.
+    ///
+    /// The chat list is the authority on which chats exist: a row it drops is evicted completely —
+    /// transcript and files/links index included — so the two directories cannot disagree about a
+    /// chat that is no longer kept. A transcript the LRU drops while its chat is still listed is
+    /// only a copy of that chat's rows, and the chat stays in the list with nothing cached to show;
+    /// the next open fetches it again from the host.
     private func enforceChatLimit(_ limit: Int) {
-        var known = index.chats.filter { chatExists($0.key) }.map(\.key)
-        if index.chats.count != known.count {
-            index.chats = index.chats.filter { chatExists($0.key) }
+        _ = limitedChatList(limit: limit)
+        trimTranscripts(limit)
+    }
+
+    /// Like `chatList()`, but applies `limit` (default: the stored one) and writes the trim.
+    private func limitedChatList(limit: Int? = nil) -> CachedChatList? {
+        guard let document = loadChatList() else { return nil }
+        let trimmed = trimmedChatList(document, limit: limit ?? storedPreferences().chatLimit)
+        guard trimmed.document.bots != document.bots
+            || trimmed.document.previews != document.previews
+            || trimmed.document.unread != document.unread else { return document }
+        forgetTranscripts(trimmed.dropped)
+        write(trimmed.document, to: chatListURL)
+        return trimmed.document
+    }
+
+    /// Read and validate the chat list without applying anything.
+    private func loadChatList() -> CachedChatList? {
+        guard let document: CachedChatList = decode(at: chatListURL) else { return nil }
+        guard document.schema == CachedChatList.currentSchema else {
+            // A document from a build that wrote a different shape is a miss, not something to
+            // guess at — and keeping it would make the Usage number include bytes nothing can read.
+            try? fileManager.removeItem(at: chatListURL)
+            return nil
         }
+        return document
+    }
+
+    private struct ChatListTrim {
+        var document: CachedChatList
+        /// Chat ids the limit did not keep, so their files can go.
+        var dropped: [String]
+    }
+
+    /// Trim one chat-list document to the limit. Pure: the caller writes the result and deletes the
+    /// dropped chats, so a trim can be applied on a read, on a write and at launch with one rule.
+    ///
+    /// The rows are ranked by the only evidence this device has about a chat it has not opened: the
+    /// host's own newest-message time, which is what a preview carries. Rows without a preview keep
+    /// the host's order, whose first row is the newest. Ties keep the host's order too, so two
+    /// identical refreshes trim the same chat instead of flapping a row in and out of the cache on
+    /// every launch.
+    private func trimmedChatList(_ document: CachedChatList, limit: Int) -> ChatListTrim {
+        var document = document
+        var dropped: [String] = []
+        let ranked = rankedBots(in: document)
+        if ranked.count > limit {
+            let keep = Set(ranked.prefix(limit).map(\.id))
+            dropped = ranked.dropFirst(limit).map(\.id)
+            document.bots = document.bots.filter { keep.contains($0.id) }
+        }
+        let kept = Set(document.bots.map(\.id))
+        if document.bots.isEmpty {
+            // Previews without rows yet (the roster read failed, the sweep has not landed): keep the
+            // newest `limit` of them rather than every id the host ever named.
+            if document.previews.count > limit {
+                let newest = document.previews
+                    .sorted { left, right in
+                        let leftAt = left.value.timestamp ?? 0
+                        let rightAt = right.value.timestamp ?? 0
+                        return leftAt == rightAt ? left.key < right.key : leftAt > rightAt
+                    }
+                    .prefix(limit)
+                document.previews = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
+            }
+        } else {
+            document.previews = document.previews.filter { kept.contains($0.key) }
+        }
+        document.unread = document.unread.filter {
+            document.bots.isEmpty ? document.previews[$0.key] != nil : kept.contains($0.key)
+        }
+        return ChatListTrim(document: document, dropped: dropped)
+    }
+
+    /// The chat list's rows, most recently used first — the order the limit drops them in.
+    private func rankedBots(in document: CachedChatList) -> [CachedBot] {
+        document.bots.enumerated()
+            .sorted { left, right in
+                let leftAt = document.previews[left.element.id]?.timestamp
+                let rightAt = document.previews[right.element.id]?.timestamp
+                switch (leftAt, rightAt) {
+                case let (leftValue?, rightValue?) where leftValue != rightValue:
+                    return leftValue > rightValue
+                case (.some, .none): return true
+                case (.none, .some): return false
+                default: break
+                }
+                return left.offset < right.offset
+            }
+            .map(\.element)
+    }
+
+    /// Drop the transcripts of chats the limit did not keep, and forget them in the index.
+    private func forgetTranscripts(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            removeChatFiles(id)
+            index.chats[id] = nil
+        }
+        saveIndex()
+    }
+
+    /// Keep at most `limit` transcripts, shedding the least recently read or written first.
+    @discardableResult
+    private func trimTranscripts(_ limit: Int) -> [String] {
+        let present = index.chats.filter { chatExists($0.key) }
+        let removedStale = present.count != index.chats.count
+        if removedStale { index.chats = present }
+        var known = present.map(\.key)
+        var dropped: [String] = []
         while known.count > limit {
             guard let victim = known.min(by: { left, right in
                 (index.chats[left]?.touch ?? Int.min) < (index.chats[right]?.touch ?? Int.min)
@@ -464,8 +641,10 @@ public actor HermesCacheStore {
             removeChatFiles(victim)
             index.chats[victim] = nil
             known.removeAll { $0 == victim }
+            dropped.append(victim)
         }
-        saveIndex()
+        if removedStale || !dropped.isEmpty { saveIndex() }
+        return dropped
     }
 
     private func removeChatFiles(_ chatID: String) {

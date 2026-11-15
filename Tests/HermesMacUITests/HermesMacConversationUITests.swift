@@ -90,6 +90,62 @@ final class HermesMacConversationUITests: XCTestCase {
         wait(for: [closed], timeout: 10)
     }
 
+    /// The report, as a test: the search meant for the transcript must never be answered by the
+    /// bot list's field.
+    func testFindInConversationDoesNotOpenTheSidebarField() {
+        launchFixture()
+
+        app.typeKey("f", modifierFlags: .command)
+
+        XCTAssertTrue(identifier("conversationSearchField").waitForExistence(timeout: 10),
+                      "⌘F did not open the conversation bar")
+        XCTAssertFalse(identifier("sidebar.botSearch").exists,
+                       "⌘F opened the bot panel's filter instead of the conversation bar")
+        screenshot("Search · opened over the transcript")
+    }
+
+    /// Escape closes the bar *and clears it*: the next ⌘F starts from an empty field.
+    func testEscapeClosesTheBarAndClearsTheQuery() {
+        launchFixture()
+
+        app.typeKey("f", modifierFlags: .command)
+        let field = identifier("conversationSearchField")
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.click()
+        field.typeText("vault")
+        let count = identifier("conversationSearchCount")
+        XCTAssertTrue(waitForLabel("1 of 3", on: count, timeout: 10),
+                      "expected 3 matches, got \(count.label)")
+
+        app.typeKey(.escape, modifierFlags: [])
+        let closed = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: field)
+        wait(for: [closed], timeout: 10)
+
+        // Reopened, the field is empty: typing `vault` again answers `1 of 3`, where a surviving
+        // query would have made `vaultvault` and answered nothing.
+        app.typeKey("f", modifierFlags: .command)
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "⌘F did not reopen the bar")
+        field.click()
+        field.typeText("vault")
+        XCTAssertTrue(waitForLabel("1 of 3", on: count, timeout: 10),
+                      "Escape left the query behind: \(count.label)")
+    }
+
+    /// The bot panel's own row is the mouse door to the same bar.
+    func testTheBotPanelRowOpensTheConversationBar() {
+        launchFixture()
+
+        app.typeKey("e", modifierFlags: .command)
+        let row = element(containing: "Search this conversation")
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the bot panel's search row is missing")
+        row.click()
+
+        XCTAssertTrue(identifier("conversationSearchField").waitForExistence(timeout: 10),
+                      "the panel's row did not open the conversation bar")
+        XCTAssertFalse(identifier("sidebar.botSearch").exists,
+                       "the panel's row opened the bot filter instead")
+    }
+
     // MARK: - Message menu
 
     func testMessageContextMenuOffersShareAndCopy() {

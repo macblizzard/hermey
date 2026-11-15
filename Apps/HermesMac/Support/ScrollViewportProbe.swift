@@ -17,22 +17,32 @@ struct ScrollViewportProbe: NSViewRepresentable {
     /// Bump to ask for the newest message. A counter, not a flag: two requests in a row (open, then
     /// a send that lands) must scroll twice.
     var scrollSignal: Int
+    /// Whether content that arrives while the reader is at the bottom may pull the transcript down.
+    ///
+    /// Off while the in-chat search is open. The search owns the reading position then — a match has
+    /// been jumped to, and a streaming token that grows the document must not walk the reader away
+    /// from the row the chevrons landed on. An explicit `scrollSignal` still scrolls.
+    var followsGrowth: Bool = true
     /// Called when the verdict changes. False means "there is something newer below the fold".
     var onChange: (Bool) -> Void
 
     func makeNSView(context: Context) -> ProbeView {
         let view = ProbeView()
         view.onChange = onChange
+        view.followsGrowth = followsGrowth
         return view
     }
 
     func updateNSView(_ view: ProbeView, context: Context) {
         view.onChange = onChange
+        view.followsGrowth = followsGrowth
         view.requestScroll(signal: scrollSignal)
     }
 
     final class ProbeView: NSView {
         var onChange: ((Bool) -> Void)?
+        /// See `ScrollViewportProbe.followsGrowth`.
+        var followsGrowth = true
 
         private var boundsObserver: NSObjectProtocol?
         private var frameObserver: NSObjectProtocol?
@@ -119,8 +129,11 @@ struct ScrollViewportProbe: NSViewRepresentable {
         /// live card, a commentary row or a line of reasoning arrived, following switched itself
         /// off and everything after that landed below the fold. A growth is not a decision by the
         /// reader; only a scroll is.
+        ///
+        /// Never while the in-chat search is open (`followsGrowth`): the search owns the reading
+        /// position, and the reader is looking at a row they jumped to, not at the newest message.
         private func contentGrew() {
-            if lastVerdict != false {
+            if followsGrowth, lastVerdict != false {
                 scrollToBottom(attempts: 4)
             } else {
                 report()

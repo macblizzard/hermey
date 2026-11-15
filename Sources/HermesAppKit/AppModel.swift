@@ -277,7 +277,7 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var cachePreferences = CachePreferences.standard
     @Published public private(set) var cacheUsage = CacheUsage.empty
     /// True while a reset is being applied; the screen disables the destructive button rather than
-    /// letting a second reset race the first. The switches and the stepper are not gated: they are
+    /// letting a second reset race the first. The switches and the limit are not gated: they are
     /// absolute writes that the store serialises, and dropping one would lose the user's choice.
     @Published public private(set) var cacheBusy = false
 
@@ -440,8 +440,11 @@ public final class AppModel: ObservableObject {
         cacheUsage = await diskCache.usage()
     }
 
-    /// Set how many chats are kept. Lowering it evicts immediately, so the Usage numbers move with
-    /// the stepper instead of at the next open.
+    /// Set how many chats are kept — one of `CacheChatLimit.options`; anything else lands on the
+    /// nearest, because the picker and the store must never disagree about the number.
+    ///
+    /// Lowering it evicts immediately (chat list and transcripts both), so the Usage numbers move
+    /// with the choice instead of at the next open.
     public func setCacheChatLimit(_ chats: Int) async {
         cachePreferences = await diskCache.setChatLimit(chats)
         cacheUsage = await diskCache.usage()

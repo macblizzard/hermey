@@ -606,16 +606,30 @@ struct SidebarBotList: View {
     }
 
     /// One row that says why the block is empty. A query with no hits names the query, so a
-    /// mistyped search cannot be mistaken for a host that has no bots.
+    /// mistyped search cannot be mistaken for a host that has no bots — and the second line says
+    /// where the *conversation* is searched, because this field is the one a reader reaches for
+    /// first and it filters bots only (reported 2026-11-15: "No bots match “leak”" was the answer
+    /// to a search meant for the transcript behind it).
     @ViewBuilder
     private var emptyState: some View {
         if isSearching {
-            Text("No bots match \"\(trimmedQuery)\"")
-                .font(TypeScale.font(TypeScale.caption))
-                .foregroundStyle(Tokens.textDim)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("No bots match \"\(trimmedQuery)\"")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                // Two different "no bot", two different next steps: a query that found messages
+                // above is not a query that found nothing, and a query that found nothing at all is
+                // probably the field that was mistaken for the conversation's.
+                Text(model.searchPage.hits.isEmpty
+                     ? "Bots only — ⌘F searches the open conversation."
+                     : "Matching messages are listed above.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textDim.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
         } else if model.botsLoading {
             HStack(spacing: 8) {
                 SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)

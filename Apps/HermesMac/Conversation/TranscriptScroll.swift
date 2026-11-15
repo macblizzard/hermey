@@ -13,9 +13,12 @@ struct TranscriptScroll: View {
     /// The other bot, when the pair sheet is open. A non-empty id is the sheet's whole state.
     @State private var pairPeer = ""
 
-    /// Bumped by the header's magnifier (`WorkspaceStore.openFindInChat`). The search lives here,
-    /// so this is a request to open the field and take the caret — not shared state: the field,
-    /// its query and its match index are local to the reading surface.
+    /// Bumped by any of the three doors to find-in-conversation (`WorkspaceStore.openFindInChat`):
+    /// ⌘F and the Conversation menu's "Find in Conversation…", the bot panel's "Search this
+    /// conversation" row, and the ⌘K palette's verb. The search lives here, so this is a request to
+    /// open the field and take the caret — not shared state: the field, its query and its cursor are
+    /// local to the reading surface (`TranscriptSearchState`), which is what keeps the sidebar's
+    /// bot field and this one from ever being the same search.
     var findRequest: Int = 0
     /// The composer's measured height. The capsule floats over the transcript and grows upward, so
     /// the last rows have to clear it by exactly this much.
@@ -26,14 +29,13 @@ struct TranscriptScroll: View {
     /// The roster's faces, so the thinking row can turn the same face the sidebar shows.
     var faces: [String: BotFace] = [:]
 
-    /// Grouping is memoised: see `TranscriptRowCache` — a body pass per published token would
-    /// otherwise walk the whole conversation.
     /// Grouping is memoised: `TranscriptRowCache` walks the transcript only when it changes, and a
     /// body pass happens on every published token.
     @State private var rowCache = TranscriptRowCache()
-    @State private var searching = false
-    @State private var query = ""
-    @State private var matchIndex = 0
+    /// The bar, its field and its cursor: one value, so the three doors that open it (⌘F, the bot
+    /// panel's "Search this conversation", the Conversation menu) cannot each hold their own idea of
+    /// what is being searched. `TranscriptSearchState` owns the rules and is tested without a window.
+    @State private var search = TranscriptSearchState()
     /// "Select Text" is one sheet for the whole transcript, not one per row: a row lives inside a
     /// `LazyVStack`, so a sheet owned by a row is destroyed the moment that row scrolls out.
     @State private var selectionText: String?
@@ -48,24 +50,51 @@ struct TranscriptScroll: View {
     /// `localizedCaseInsensitiveContains` — locale- and diacritic-sensitive, and blind to a phrase
     /// the renderer wrapped across a line break.
     private var matches: [String] {
-        ConversationSearch.ids(matching: query,
+        // The live turn is searched as it is *drawn* (`visibleStreamingText`), not as it is stored:
+        // the bar counts what the reader can see, and the bubble under it draws the visible form.
+        ConversationSearch.ids(matching: search.query,
                                in: model.visibleTranscript,
                                id: \.id,
                                text: \.text,
-                               extra: model.isStreaming && !model.streamingText.isEmpty
-                                   ? (id: streamingID, text: model.streamingText)
+                               extra: model.isStreaming && !model.visibleStreamingText.isEmpty
+                                   ? (id: streamingID, text: model.visibleStreamingText)
                                    : nil)
     }
 
-    private var selectedMatch: String? {
-        guard searching, matches.indices.contains(matchIndex) else { return nil }
-        return matches[matchIndex]
-    }
+    private var selectedMatch: String? { search.selected(in: matches) }
 
     private func moveMatch(_ direction: Int) {
         // Wraps at both ends and is defined at every count, including none. The index is clamped
-        // inside `stepped`, so one earned under a wider query cannot point past a narrower answer.
-        matchIndex = ConversationSearch.stepped(matchIndex, count: matches.count, by: direction)
+        // inside `step`, so one earned under a wider query cannot point past a narrower answer.
+        search.step(by: direction, count: matches.count)
+    }
+
+    /// The tint a message row wears while the bar is open.
+    ///
+    /// The row the chevrons are on is the answer to "where am I"; the other rows that match are
+    /// tinted faintly, so a search does not look like a single highlighted line in a transcript full
+    /// of hits. Idle, every row is clear — the tint is chrome for the search, not for the message.
+    ///
+    /// `ids` are the ids this row answers for: its own for a message, a run's cards for a folded
+    /// run. `matched` and `selected` are passed in rather than read from `matches` because `matches`
+    /// walks the transcript: reading it per row would make drawing a search quadratic in the length
+    /// of the conversation.
+    private func fill(_ ids: [String], among matched: Set<String>, selected: String?) -> Color {
+        guard search.isOpen else { return .clear }
+        if let selected, ids.contains(selected) { return Tokens.accentSoft }
+        return ids.contains(where: matched.contains) ? Tokens.accentSoft.opacity(0.45) : .clear
+    }
+
+    /// The ring a folded run wears.
+    ///
+    /// A run's cards are hidden until it is opened, and its own header is drawn on a card of its
+    /// own, so a fill behind the group would sit under that card and never be seen. The match is
+    /// drawn as a ring around the one line that *is* on screen — which is also where the chevrons
+    /// land (`scrollTarget(for:)`).
+    private func ring(_ ids: [String], among matched: Set<String>, selected: String?) -> Color {
+        guard search.isOpen else { return .clear }
+        if let selected, ids.contains(selected) { return Tokens.accent }
+        return ids.contains(where: matched.contains) ? Tokens.accent.opacity(0.45) : .clear
     }
 
     private let bottomID = "transcript-bottom"
@@ -84,9 +113,11 @@ struct TranscriptScroll: View {
     var body: some View {
         VStack(spacing: 0) {
             // No permanent search *row*: idle, the transcript gets that height back and search is
-            // reached with ⌘F (or the palette). The field and its controls exist only while the
-            // search is open.
-            if searching {
+            // reached with ⌘F (the Conversation menu carries the same key), from the bot panel's
+            // "Search this conversation" row, or from the palette. The field and its controls exist
+            // only while the search is open — and they open here, over the transcript, not in the
+            // sidebar, whose field filters bots and nothing else.
+            if search.isOpen {
                 searchRow
                     .transition(.opacity)
             } else {
@@ -95,6 +126,12 @@ struct TranscriptScroll: View {
 
             transcript
         }
+        // Escape closes the bar and clears it. Both doors are wired: the hidden button owns the key
+        // while the field has the keyboard (a focused `TextField` cancels its own editing and the
+        // event never reaches `onExitCommand`), and `onExitCommand` covers the focus being
+        // elsewhere, on a chevron or on Done.
+        .background(escapeCloser)
+        .onExitCommand { closeSearch() }
         .sheet(isPresented: selectionSheetPresented) {
             SelectTextSheet(text: selectionText ?? "") { selectionText = nil }
             .hermesSheetChrome()
@@ -132,9 +169,12 @@ struct TranscriptScroll: View {
                     endSentinel
                 }
                 // The measuring device: it reads the scroll view's own offset and height, and it
-                // is what performs the jump when `scrollRequest` changes.
+                // is what performs the jump when `scrollRequest` changes. Growth-following is
+                // switched off while the search bar is up: a streaming token that lands mid-search
+                // must not drag the transcript away from the row the chevrons just jumped to.
                 .background(
-                    ScrollViewportProbe(scrollSignal: scrollRequest) { atBottom in
+                    ScrollViewportProbe(scrollSignal: scrollRequest,
+                                        followsGrowth: !search.ownsScrollPosition) { atBottom in
                         if atBottom != followsBottom { followsBottom = atBottom }
                     }
                 )
@@ -148,26 +188,59 @@ struct TranscriptScroll: View {
             .onChange(of: model.streamingText) { _, _ in follow(proxy) }
             .onChange(of: model.isStreaming) { _, _ in follow(proxy) }
             .onChange(of: model.selectedSessionID) { _, _ in openSession(proxy) }
-            .onChange(of: query) { _, _ in
-                matchIndex = 0
-                if let id = selectedMatch { proxy.scrollTo(id, anchor: .center) }
+            .onChange(of: search.query) { _, _ in
+                // The cursor has already been reset to the first result by the state's own
+                // assignment rule; this is the jump that shows it.
+                scrollToSelected(proxy)
             }
-            .onChange(of: matchIndex) { _, _ in
-                if let id = selectedMatch { proxy.scrollTo(id, anchor: .center) }
-            }
+            .onChange(of: search.index) { _, _ in scrollToSelected(proxy) }
             .onChange(of: matches) { _, newMatches in
-                guard searching else { return }
+                guard search.isOpen else { return }
                 // Clamped rather than min()'d against a count that may be zero: an index earned
                 // under a wider query has to land on a row that still matches.
-                matchIndex = ConversationSearch.clamped(matchIndex, count: newMatches.count)
-                if let id = selectedMatch { proxy.scrollTo(id, anchor: .center) }
+                search.reconcile(count: newMatches.count)
+                scrollToSelected(proxy)
             }
         }
     }
 
+    /// The rows as they are drawn, from the memoising cache — read here as well as in `rows` so the
+    /// search jumps to the row that exists on screen rather than to an id that only exists inside a
+    /// folded run.
+    private var groupedRows: [TranscriptRow] {
+        rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+                      running: Set(model.visibleLiveToolEntries.map(\.id)))
+    }
+
+    /// Where a match is actually drawn.
+    ///
+    /// A run of tool calls is one line: its individual cards are built only once the run is opened.
+    /// Scrolling to a hidden inner row does nothing at all, so a match inside a folded run is
+    /// anchored to the run — which is also the row that gets tinted, and the disclosure that shows
+    /// the card when it is opened.
+    private func scrollTarget(for id: String) -> String {
+        for row in groupedRows {
+            if row.id == id { return id }
+            if case .toolRun(let run) = row, run.entries.contains(where: { $0.id == id }) {
+                return run.id
+            }
+        }
+        return id
+    }
+
+    private func scrollToSelected(_ proxy: ScrollViewProxy) {
+        guard let id = selectedMatch else { return }
+        proxy.scrollTo(scrollTarget(for: id), anchor: .center)
+    }
+
     /// The messages, on the reading measure.
     private var rows: some View {
-        LazyVStack(alignment: .leading, spacing: 18) {
+        // One pass for the highlight, not one per row: `matches` walks the whole conversation, and a
+        // `LazyVStack` would otherwise pay for it once for every row it builds.
+        let matchedIDs = matches
+        let matched = Set(matchedIDs)
+        let selected = search.selected(in: matchedIDs)
+        return LazyVStack(alignment: .leading, spacing: 18) {
             if model.hasEarlierHistory {
                 EarlierHistoryRow(isLoading: model.loadingEarlier, total: model.historyTotal) {
                     Task { await model.loadEarlierHistory() }
@@ -177,8 +250,7 @@ struct TranscriptScroll: View {
             // Consecutive tool calls fold into one line: a turn that makes thirty calls should not
             // push its answer off the screen. The run's cards are one click away, each still its own
             // card with its own disclosure.
-            ForEach(rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
-                                  running: Set(model.visibleLiveToolEntries.map(\.id)))) { row in
+            ForEach(groupedRows) { row in
                 switch row {
                 case .entry(let entry):
                     TranscriptRowView(entry: entry,
@@ -190,7 +262,7 @@ struct TranscriptScroll: View {
                                       onReply: { model.reply(to: $0) },
                                       onOpenPair: { peer in pairPeer = peer })
                         .id(entry.id)
-                        .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
+                        .background(fill([entry.id], among: matched, selected: selected))
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
                         TranscriptRowView(entry: entry,
@@ -201,9 +273,16 @@ struct TranscriptScroll: View {
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) },
                                       onOpenPair: { peer in pairPeer = peer })
-                            .background(selectedMatch == entry.id ? Tokens.accentSoft : Color.clear)
+                            .background(fill([entry.id], among: matched, selected: selected))
                     }
                     .id(run.id)
+                    // The run answers for its cards: a query that matches only a folded command has
+                    // to say so on the one line that is drawn, and the chevrons land here.
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                            .strokeBorder(ring(run.entries.map(\.id), among: matched, selected: selected),
+                                          lineWidth: 1.5)
+                    )
                 }
             }
 
@@ -221,7 +300,7 @@ struct TranscriptScroll: View {
                                              faces[$0.id] ?? BotFace.default(for: $0.id)
                                          })
                     .id(streamingID)
-                    .background(selectedMatch == streamingID ? Tokens.accentSoft : Color.clear)
+                    .background(fill([streamingID], among: matched, selected: selected))
                     .transition(.opacity)
             }
         }
@@ -254,7 +333,7 @@ struct TranscriptScroll: View {
             Group {
                 // Hidden while the search row is up: the search owns the scroll position then,
                 // and this would compete with the chevrons that step through matches.
-                if !searching, !followsBottom {
+                if !search.ownsScrollPosition, !followsBottom {
                     scrollToBottomButton
                 }
             }
@@ -279,18 +358,22 @@ struct TranscriptScroll: View {
     /// floating control is the way back, and taking it re-arms the follow.
     private func follow(_ proxy: ScrollViewProxy) {
         guard Self.followsNewMessages else { return }
-        guard !searching, followsBottom else { return }
+        // An open bar owns the scroll position: a match has been jumped to, and a token arriving
+        // mid-search must not move it. `ownsScrollPosition` is the bar, not the query — the gap
+        // between ⌘F and the first keystroke is when a streaming turn most often lands.
+        guard !search.ownsScrollPosition, followsBottom else { return }
         // `proxy` is kept for the search jumps; the jump to the newest message is the probe's.
         _ = proxy
         scrollRequest += 1
     }
 
     /// A different conversation opens at its newest message, whatever the previous one's reading
-    /// position was — the follow is re-armed with it.
+    /// position was — the follow is re-armed with it. A search belongs to the conversation it was
+    /// typed in, so it goes with the old one: leaving it up would answer the new bot's rows with the
+    /// old bot's query.
     private func openSession(_ proxy: ScrollViewProxy) {
         _ = proxy
-        query = ""
-        matchIndex = 0
+        search.resetForConversationChange()
         followsBottom = true
         scrollRequest += 1
     }
@@ -326,24 +409,37 @@ struct TranscriptScroll: View {
 
     /// The open search: field, match count, the two chevrons and Done, on the same measure and
     /// reading inset as the transcript beneath it.
+    ///
+    /// It sits *over the transcript*, never in the bot panel: the panel's field filters bots, and a
+    /// user who typed "leak" into it was told "No bots match" while the conversation they wanted to
+    /// search was open behind it.
     private var searchRow: some View {
         // One pass over the transcript per render: the count, the colour and the two chevrons all
         // read the same answer, so they cannot disagree mid-keystroke.
         let found = matches
-        let label = ConversationSearch.status(query: query,
-                                              matched: found.count,
-                                              index: matchIndex)
+        let label = search.status(matched: found.count)
         return HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Tokens.textDim)
+
             // "Search this conversation", not "Search messages": the sidebar's field is the one
-            // that searches every bot's conversation on the host, and the two read as one control
-            // (reported 2026-11-15).
-            TextField(ConversationSearch.prompt, text: $query)
+            // that filters bots and searches their transcripts on the host, and the two read as one
+            // control (reported 2026-11-15).
+            TextField(ConversationSearch.prompt, text: $search.query)
+                .textFieldStyle(.plain)
+                .font(TypeScale.font(TypeScale.label))
+                .foregroundStyle(Tokens.textPrimary)
                 .focused($searchFocused)
+                .onSubmit {
+                    // Return walks the answer, the way ⌘G does in every Mac find bar.
+                    if !found.isEmpty { moveMatch(1) }
+                }
                 .accessibilityIdentifier("conversationSearchField")
 
             Text(label)
                 .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(ConversationSearch.isActive(query) && found.isEmpty
+                .foregroundStyle(search.isActive && found.isEmpty
                                  ? Tokens.warning : Tokens.textMuted)
                 .lineLimit(1)
                 .accessibilityIdentifier("conversationSearchCount")
@@ -363,16 +459,34 @@ struct TranscriptScroll: View {
 
             TextButton("Done", tone: Tokens.textMuted) { closeSearch() }
         }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        // The same quiet surface as the sidebar's filter field, so it reads as a control over the
+        // transcript rather than as another line of it.
+        .background(
+            RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
+                .fill(Tokens.control)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
+                .strokeBorder(Tokens.borderFocus, lineWidth: 1)
+        )
         .padding(.horizontal, Geometry.readingInset)
         // The pill floats over this row too, so the field starts below it.
         .padding(.top, Geometry.chatHeaderPill + 10)
+        .padding(.bottom, 4)
         .frame(maxWidth: Geometry.conversationMeasure + Geometry.readingInset * 2)
         .frame(maxWidth: .infinity)
+        // The caret on arrival. `openSearch()` also asks on the already-open path (a second ⌘F);
+        // this is the one that works when the row is being *inserted*, because focus assigned in the
+        // same update as the insertion lands before the field exists and is silently dropped.
+        .onAppear { searchFocused = true }
     }
 
     /// The keyboard door to search, kept while the row is hidden so ⌘F still works — and kept as a
     /// real `Button` with the same accessibility identifier, so the shortcut is discoverable to
-    /// VoiceOver and to the UI tests.
+    /// VoiceOver and to the UI tests. The key itself belongs to the Conversation menu's "Find in
+    /// Conversation…", which is the copy a user can actually see.
     private var searchShortcut: some View {
         Button {
             openSearch()
@@ -380,7 +494,6 @@ struct TranscriptScroll: View {
             EmptyView()
         }
         .buttonStyle(.plain)
-        .keyboardShortcut("f", modifiers: .command)
         .frame(width: 0, height: 0)
         .opacity(0)
         .accessibilityIdentifier("conversationSearchToggle")
@@ -388,19 +501,38 @@ struct TranscriptScroll: View {
         .help("Search conversation")
     }
 
+    /// Escape, while the bar is up.
+    ///
+    /// A hidden button is the only way to own the key while the field holds it: a focused
+    /// `TextField` handles Escape as "cancel editing" and the event never reaches `onExitCommand`.
+    /// Absent while the bar is closed, so the bot panel's own Escape and the sidebar's search keep
+    /// theirs.
+    @ViewBuilder
+    private var escapeCloser: some View {
+        if search.isOpen {
+            Button("") { closeSearch() }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.escape, modifiers: [])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+    }
+
     private var selectionSheetPresented: Binding<Bool> {
         Binding(get: { selectionText != nil },
                 set: { if !$0 { selectionText = nil } })
     }
 
+    /// Done, Escape: the bar goes and the field goes with it, so the next ⌘F starts empty rather
+    /// than reopening on an answer the reader has already finished with.
     private func closeSearch() {
-        searching = false
-        query = ""
-        matchIndex = 0
+        search.close()
+        searchFocused = false
     }
 
     private func openSearch() {
-        searching = true
+        search.open()
         searchFocused = true
     }
 }

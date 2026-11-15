@@ -34,12 +34,15 @@ final class WorkspaceStore: ObservableObject {
 
     @Published var isPairSheetPresented = false
     @Published var isPalettePresented = false
-    /// Bumped when the conversation header's magnifier asks for find-in-conversation.
+    /// Bumped when anything asks for find-in-conversation: ⌘F / the Conversation menu's "Find in
+    /// Conversation…", the bot panel's "Search this conversation" row, and the ⌘K palette's verb.
     ///
     /// `TranscriptScroll` owns the search field and its matches — they are a reading tool, not app
     /// state — so this is a request counter, not a boolean: a second press has to re-open and
-    /// re-focus a search that is already up, which a Bool could not express. ⌘F stays the
-    /// keyboard door; the magnifier is the discoverable one.
+    /// re-focus a search that is already up, which a Bool could not express. The request is
+    /// deliberately *not* shared with the bot panel's filter field: that one filters bots, and the
+    /// two were mistaken for each other (reported 2026-11-15: "No bots match “leak”" was the answer
+    /// to a search meant for the conversation behind it).
     @Published private(set) var findRequest = 0
     /// The bot whose settings sheet is open; `nil` closes it. The bot list's context menu, the
     /// conversation's menu and the Settings window's Bots tab all set this, so there is one
@@ -618,6 +621,16 @@ final class WorkspaceStore: ObservableObject {
     /// half its verbs is harder to learn than one that explains why a verb is unavailable.
     var commands: [WorkspaceCommand] {
         var items: [WorkspaceCommand] = []
+
+        items.append(WorkspaceCommand(
+            id: "chat.find",
+            title: "Find in Conversation…",
+            subtitle: "Search the transcript on screen — the bot panel's field filters bots",
+            systemImage: "magnifyingglass",
+            shortcut: "⌘F",
+            group: .chat,
+            isEnabled: model.selectedBotID != nil,
+            run: { [weak self] in self?.openFindInChat() }))
 
         items.append(WorkspaceCommand(
             id: "turn.interrupt",

@@ -5,10 +5,10 @@ import SwiftUI
 
 /// What this Mac keeps, in Settings.
 ///
-/// The same three switches, the same limit and the same measured Usage numbers as the phone's
-/// Caching screen — deliberately the same words, because the state is `AppModel`'s and the two
-/// platforms describing it differently would read as two different caches. Turning a section off
-/// deletes what it kept on this Mac; nothing on the host changes.
+/// The same three switches, the same three-size limit and the same measured Usage numbers as the
+/// phone's Caching screen — deliberately the same words (`CacheCopy`), because the state is
+/// `AppModel`'s and the two platforms describing it differently would read as two different caches.
+/// Turning a section off deletes what it kept on this Mac; nothing on the host changes.
 struct CachingSettingsTab: View {
     @ObservedObject var store: WorkspaceStore
 
@@ -27,15 +27,15 @@ struct CachingSettingsTab: View {
         .scrollContentBackground(.hidden)
         .background(Tokens.canvas)
         .task { await model.loadCacheState() }
-        .confirmationDialog("Reset the cache?",
+        .confirmationDialog(CacheCopy.resetConfirmTitle,
                             isPresented: $confirmReset,
                             titleVisibility: .visible) {
-            Button("Reset Cache", role: .destructive) {
+            Button(CacheCopy.resetTitle, role: .destructive) {
                 Task { await model.resetCache() }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Only this Mac's copy is deleted. Nothing is removed from the host.")
+            Text(CacheCopy.resetConfirmMessage)
         }
     }
 
@@ -57,9 +57,9 @@ struct CachingSettingsTab: View {
                 .padding(.vertical, 2)
             }
         } header: {
-            Text("Cached On This Device")
+            Text(CacheCopy.sectionsHeader)
         } footer: {
-            Text("Turning a section off deletes what this Mac kept for it. Nothing is removed from the host.")
+            Text(CacheCopy.sectionsFooter)
                 .font(TypeScale.font(TypeScale.caption))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -68,60 +68,46 @@ struct CachingSettingsTab: View {
 
     // MARK: - Limit
 
+    /// The same three sizes as the phone, with the current one checked in the menu — not a stepper,
+    /// which could only ever be a different number from the one the other platform shows.
     private var limit: some View {
         Section {
-            HStack(spacing: 8) {
-                Text("Limit")
-                    .foregroundStyle(Tokens.textPrimary)
-                Spacer(minLength: 8)
-                Text(countText(model.cachePreferences.chatLimit))
-                    .font(Tokens.mono)
-                    .foregroundStyle(Tokens.textMuted)
-                    .monospacedDigit()
-                Stepper("",
-                        value: limitBinding,
-                        in: HermesCacheStore.chatLimitRange,
-                        step: 10)
-                    .labelsHidden()
-                    .accessibilityLabel("Chats kept in the cache")
-                    .accessibilityIdentifier("caching.chatLimit")
+            Picker(CacheCopy.limitTitle, selection: limitBinding) {
+                ForEach(CacheChatLimit.options, id: \.self) { option in
+                    Text(CacheChatLimit.label(option)).tag(option)
+                }
             }
+            .pickerStyle(.menu)
             .font(TypeScale.font(Tokens.textMD))
+            .accessibilityLabel(CacheCopy.limitTitle)
+            .accessibilityIdentifier("caching.chatLimit")
         } header: {
-            Text("Limit")
+            Text(CacheCopy.limitTitle)
         } footer: {
-            Text("A good balance for daily use.")
+            Text(CacheCopy.limitFooter)
                 .font(TypeScale.font(TypeScale.caption))
                 .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func countText(_ value: Int) -> String {
-        value == 1 ? "1 chat" : "\(value) chats"
     }
 
     // MARK: - Usage
 
     private var usage: some View {
         Section {
-            usageRow("Total on this device",
+            usageRow(CacheCopy.totalRow,
                      value: CacheFormat.size(model.cacheUsage.totalBytes),
                      emphasised: true)
             ForEach(CacheSection.allCases, id: \.self) { section in
-                usageRow(section.title, value: detail(for: section))
+                usageRow(section.title, value: CacheFormat.detail(for: section, in: model.cacheUsage))
             }
         } header: {
-            Text("Usage")
+            Text(CacheCopy.usageHeader)
         } footer: {
-            Text("Older items are dropped first once the limit is reached.")
+            Text(CacheCopy.usageFooter)
                 .font(TypeScale.font(TypeScale.caption))
                 .foregroundStyle(Tokens.textMuted)
         }
-    }
-
-    private func detail(for section: CacheSection) -> String {
-        let use = model.cacheUsage.use(section)
-        return "\(CacheFormat.count(use.count, section)) · \(CacheFormat.size(use.bytes))"
     }
 
     private func usageRow(_ title: String, value: String, emphasised: Bool = false) -> some View {
@@ -134,6 +120,7 @@ struct CachingSettingsTab: View {
                 .font(Tokens.mono)
                 .foregroundStyle(emphasised ? Tokens.textPrimary : Tokens.textMuted)
                 .monospacedDigit()
+                .multilineTextAlignment(.trailing)
         }
     }
 
@@ -141,11 +128,11 @@ struct CachingSettingsTab: View {
 
     private var reset: some View {
         Section {
-            Button("Reset Cache", role: .destructive) { confirmReset = true }
+            Button(CacheCopy.resetTitle, role: .destructive) { confirmReset = true }
                 .disabled(model.cacheBusy)
                 .accessibilityIdentifier("caching.reset")
         } footer: {
-            Text("Deletes every cached item on this Mac. Bots and their conversations stay on the host and load again from it.")
+            Text(CacheCopy.resetFooter)
                 .font(TypeScale.font(TypeScale.caption))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -159,6 +146,7 @@ struct CachingSettingsTab: View {
                 set: { isOn in Task { await model.setCacheSection(section, enabled: isOn) } })
     }
 
+    /// Only the three offered sizes can be chosen; the store normalises anything else anyway.
     private var limitBinding: Binding<Int> {
         Binding(get: { model.cachePreferences.chatLimit },
                 set: { chats in Task { await model.setCacheChatLimit(chats) } })

@@ -1,5 +1,78 @@
 import Foundation
 
+// MARK: - The limit
+
+/// The Limit row's three choices: 25, 100 or 500 chats.
+///
+/// A dial in steps of ten invites the question "is 137 better than 136", which it is not: the limit
+/// is a decision between three sizes of cache, and 100 is the balance the screen has always
+/// recommended. Everything that stores a limit goes through here, so a value written by a hand-
+/// edited settings file, an older build (which had a 1…1000 stepper) or a test can only ever land
+/// on one of the three.
+///
+/// **The unit is a chat**, and a chat is one conversation: one row of the chat list (a bot's endless
+/// conversation) and one cached transcript. Both of those directories are capped by the same
+/// number, so neither the Chat List row nor the chat count in Usage can ever read higher than the
+/// limit.
+public enum CacheChatLimit {
+    /// The offered sizes, smallest first. Every stored limit is one of these.
+    public static let options = [25, 100, 500]
+    /// What a fresh install keeps.
+    public static let standard = 100
+
+    /// Whether a value is one the picker offers. Used by tests and by anything that has to tell a
+    /// migrated value from a chosen one.
+    public static func allows(_ chats: Int) -> Bool {
+        options.contains(chats)
+    }
+
+    /// The offered size a stored value stands for.
+    ///
+    /// Nearest wins, and a value exactly between two sizes (300, say) goes to the **smaller** one:
+    /// when the stored number is ambiguous the safe answer is the cache that keeps less, not the
+    /// one that silently grows to half a thousand chats. A negative or zero limit — which the old
+    /// stepper's range let a hand-edited file contain — lands on the floor.
+    public static func nearest(to chats: Int) -> Int {
+        // Clamped before any arithmetic so `Int.min` cannot overflow its way to a wrong answer.
+        let value = max(chats, 0)
+        var best = options[0]
+        var bestDistance = Int.max
+        for option in options {
+            let distance = abs(option - value)
+            if distance < bestDistance {
+                best = option
+                bestDistance = distance
+            }
+        }
+        return best
+    }
+
+    /// "100 chats" — the number and its unit, the same words in the picker and in every Usage row.
+    public static func label(_ chats: Int) -> String {
+        chats == 1 ? "1 chat" : "\(chats) chats"
+    }
+}
+
+/// Copy the two Caching surfaces share word for word.
+///
+/// The Mac tab and the phone screen draw the same state, so they must not describe it differently;
+/// the strings live here rather than in either view so "the same words" is a fact about the code
+/// instead of a habit of whoever edits the second file.
+public enum CacheCopy {
+    public static let title = "Caching"
+    public static let sectionsHeader = "Cached On This Device"
+    public static let sectionsFooter = "Turning a section off deletes what this device kept for it. Nothing is removed from the host."
+    public static let limitTitle = "Limit"
+    public static let limitFooter = "Up to this many chats are kept — the chat list and their messages. Older chats go first."
+    public static let usageHeader = "Usage"
+    public static let usageFooter = "Counts come from the files on this device. The chat list is counted in chats, the same unit as the limit."
+    public static let totalRow = "Total on this device"
+    public static let resetTitle = "Reset Cache"
+    public static let resetConfirmTitle = "Reset the cache?"
+    public static let resetConfirmMessage = "Only this device's copy is deleted. Nothing is removed from the host."
+    public static let resetFooter = "Deletes every cached item on this device. Bots and their conversations stay on the host and load again from it."
+}
+
 // MARK: - What the cache keeps
 
 /// One of the three things the Caching screen can switch off.
@@ -9,7 +82,12 @@ import Foundation
 /// disk. The raw values are the directory names — stable, because a cache written by one build is
 /// read by the next.
 public enum CacheSection: String, CaseIterable, Codable, Hashable, Sendable {
-    /// The bot directory and each row's third line.
+    /// The chat directory: one row per conversation, with its preview.
+    ///
+    /// The row's count is in **chats**, not "entries" and not "bots": the Limit counts chats, and a
+    /// number under this switch has to be in the same unit as the number the Limit is set to, or
+    /// the screen reads as a contradiction ("limit 100, 190 bots"). A bot has exactly one endless
+    /// conversation in this app, so a row is a chat.
     case chatList = "chat-list"
     /// The transcript rows of chats this device has opened.
     case messages
@@ -28,7 +106,7 @@ public enum CacheSection: String, CaseIterable, Codable, Hashable, Sendable {
     public var explanation: String {
         switch self {
         case .chatList:
-            return "Bot names, previews and times, so the list opens without waiting for the host."
+            return "Names, previews and times for your chats, so the list opens without waiting for the host."
         case .messages:
             return "Recent messages from chats you have opened, so a chat has something to show."
         case .filesAndLinks:
@@ -36,22 +114,27 @@ public enum CacheSection: String, CaseIterable, Codable, Hashable, Sendable {
         }
     }
 
-    /// What the Usage row counts: "18 bots", "412 messages", "37 items".
+    /// What the Usage row counts: "18 chats", "412 messages", "37 items".
+    ///
+    /// The chat list is counted in chats, because that is the unit the Limit is set in — a count in
+    /// any other unit would make a resumed cache look like it broke the limit.
     public var countNoun: String {
         switch self {
-        case .chatList: return "bots"
+        case .chatList: return "chats"
         case .messages: return "messages"
         case .filesAndLinks: return "items"
         }
     }
 }
 
-/// What the Caching screen's switches and stepper store.
+/// What the Caching screen's switches and Limit store.
 ///
 /// Defaults are all-on and 100 chats: caching is what makes the app usable on a train, so a fresh
-/// install should have it, and 100 is the number the official screen calls "a good balance for
-/// daily use". Persisted beside the cache (`settings.json`), not in `UserDefaults`: the copies must
-/// never disagree with the files they govern, and resetting the cache must not reset the switches.
+/// install should have it, and 100 is the option the screen calls "a good balance for daily use".
+/// `chatLimit` is always one of `CacheChatLimit.options` — the decoder and `clampLimit()` put a
+/// value from an older build (or a hand-edited file) on the nearest option rather than trusting it.
+/// Persisted beside the cache (`settings.json`), not in `UserDefaults`: the copies must never
+/// disagree with the files they govern, and resetting the cache must not reset the switches.
 public struct CachePreferences: Codable, Equatable, Sendable {
     public var chatListEnabled: Bool
     public var messagesEnabled: Bool
@@ -61,7 +144,7 @@ public struct CachePreferences: Codable, Equatable, Sendable {
     public init(chatListEnabled: Bool = true,
                 messagesEnabled: Bool = true,
                 filesAndLinksEnabled: Bool = true,
-                chatLimit: Int = HermesCacheStore.defaultChatLimit) {
+                chatLimit: Int = CacheChatLimit.standard) {
         self.chatListEnabled = chatListEnabled
         self.messagesEnabled = messagesEnabled
         self.filesAndLinksEnabled = filesAndLinksEnabled
@@ -86,10 +169,14 @@ public struct CachePreferences: Codable, Equatable, Sendable {
         }
     }
 
-    /// Clamped into the stepper's range so a hand-edited file cannot make the cache unbounded.
+    /// Put a limit on the nearest offered option.
+    ///
+    /// This is the migration path as well as the guard: a settings file written by the build with a
+    /// 1…1000 stepper can hold 137 or 196, and the screen now offers three choices. The stored value
+    /// is not merely displayed as one of them — it is rewritten, so the number the cache enforces and
+    /// the number the picker shows are the same one.
     public mutating func clampLimit() {
-        chatLimit = min(max(chatLimit, HermesCacheStore.chatLimitRange.lowerBound),
-                        HermesCacheStore.chatLimitRange.upperBound)
+        chatLimit = CacheChatLimit.nearest(to: chatLimit)
     }
 
     // A settings file from a newer build may omit a key; decoding must fill in the default rather
@@ -123,7 +210,11 @@ public struct CacheUsage: Equatable, Sendable {
     }
 
     public let sections: [CacheSection: SectionUse]
-    /// Chats with at least one cached file — what the Limit stepper governs.
+    /// Chats with at least one cached file — the transcripts the Limit governs.
+    ///
+    /// The unit is chats, like `CacheSection.chatList`'s count and the Limit itself, so no
+    /// chat-unit number on the screen can read higher than the limit. `count(.messages)` is the
+    /// other unit on purpose: it counts message rows *inside* those chats.
     public let chatCount: Int
 
     public init(sections: [CacheSection: SectionUse] = [:], chatCount: Int = 0) {
@@ -171,6 +262,15 @@ public enum CacheFormat {
         // "1 messages" is the kind of line that makes a screen feel unfinished.
         let word = (value == 1) ? String(noun.dropLast()) : noun
         return "\(value) \(word)"
+    }
+
+    /// One Usage row's value: the count in its own unit and the size, "18 chats · 412 KB".
+    ///
+    /// Shared by the phone's Caching screen and the Mac's tab so the same cache cannot be described
+    /// with two different strings.
+    public static func detail(for section: CacheSection, in usage: CacheUsage) -> String {
+        let use = usage.use(section)
+        return "\(count(use.count, section)) · \(size(use.bytes))"
     }
 }
 

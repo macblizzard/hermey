@@ -111,6 +111,18 @@ struct WorkspaceCommands: Commands {
 
             Divider()
 
+            // ⌘F — find inside the conversation on screen. It lives in the menu because a key you
+            // cannot see is a key you cannot learn: the transcript has carried a hidden ⌘F for a
+            // while, and the sidebar's field was mistaken for this search instead (reported
+            // 2026-11-15). The sidebar still filters bots and nothing else; this searches the
+            // transcript behind it, from a bar over the transcript.
+            Button("Find in Conversation…") {
+                store.openFindInChat()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
+            Divider()
+
             Button(store.isSidebarHidden ? "Show Bot Panel" : "Hide Bot Panel") {
                 store.toggleSidebar()
             }
