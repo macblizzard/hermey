@@ -86,6 +86,7 @@ struct TranscriptScroll: View {
         }
         .sheet(isPresented: selectionSheetPresented) {
             SelectTextSheet(text: selectionText ?? "") { selectionText = nil }
+            .hermesSheetChrome()
         }
         // The exchange between two bots, opened from a bot-to-bot message's attribution line.
         .sheet(isPresented: Binding(get: { !pairPeer.isEmpty },
@@ -98,6 +99,7 @@ struct TranscriptScroll: View {
                          },
                          load: { await model.transfers(between: model.selectedBotID ?? "",
                                                        and: pairPeer) })
+                .hermesSheetChrome()
         }
         // ⌘F and the magnifier land in the same place; a second press re-focuses a field that is
         // already open instead of doing nothing.

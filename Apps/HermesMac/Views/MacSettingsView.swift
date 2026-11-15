@@ -62,6 +62,7 @@ struct MacSettingsView: View {
                                 store: store,
                                 bot: bot,
                                 conversationIsOpen: store.model.selectedBotID == bot.id)
+            .hermesSheetChrome()
         }
     }
 }

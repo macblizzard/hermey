@@ -180,6 +180,7 @@ struct SettingsScreen: View {
         .task { await model.loadBotDefaults() }
         .sheet(isPresented: $showLog) {
             ClientLogView(title: "Log", header: logHeader)
+            .hermesSheetChrome()
         }
         .mobileConnectionBanner(connection: app.visibleConnection,
                                 turnRunning: model.isStreaming,

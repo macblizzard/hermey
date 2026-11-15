@@ -376,6 +376,7 @@ struct MobileApprovalSheet: View {
                                                            "command": .string("gh pr merge 41 --squash --delete-branch"),
                                                            "reason": .string("This merges the branch into main and deletes the remote branch."),
                                                        ])))
+            .hermesSheetChrome()
         }
         .preferredColorScheme(.dark)
 }

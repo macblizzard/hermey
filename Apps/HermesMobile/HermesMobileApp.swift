@@ -59,6 +59,7 @@ struct RootView: View {
             .tint(Tokens.accent)
             .sheet(isPresented: $app.isPairingPresented) {
                 PairingSheet()
+                .hermesSheetChrome()
             }
             .onChange(of: app.model.badgeCount) { _, count in
                 // The icon badge follows every change, not just new banners: reading a chat clears

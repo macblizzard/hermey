@@ -248,6 +248,7 @@ struct BotModelSettingsScreen: View {
                             do { try await saveIcon(face) }
                             catch { iconError = error.localizedDescription }
                         }
+                        .hermesSheetChrome()
                     }
                 }
                 if let editSoul {
@@ -263,6 +264,7 @@ struct BotModelSettingsScreen: View {
                     }
                     .sheet(isPresented: $showingMemory) {
                         BotMemorySheet(botName: bot.displayName, load: loadMemory)
+                        .hermesSheetChrome()
                     }
                 }
                 if let iconError {

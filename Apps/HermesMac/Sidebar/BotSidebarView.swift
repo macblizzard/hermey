@@ -74,6 +74,7 @@ struct BotSidebarView: View {
                 let created = try await model.addBot(name: name, description: description, soul: "")
                 if let face { try? await store.saveBotFace(botID: created, face: face) }
             }
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $store.isStartGroupChatPresented) {
             StartGroupChatSheet(
@@ -84,12 +85,14 @@ struct BotSidebarView: View {
                                                    members: members)
                 },
                 onCreated: { room in model.openRoom(room) })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $store.isGroupChatsPresented) {
             GroupChatsSheet(
                 load: { try await model.groupChats() },
                 onOpen: { room in model.openRoom(room) },
                 onNew: { store.isStartGroupChatPresented = true })
+            .hermesSheetChrome()
         }
         .sheet(isPresented: $store.isManageBotsPresented) {
             ManageBotsSheet(
@@ -106,6 +109,7 @@ struct BotSidebarView: View {
                 onSetCategory: { profile, category in
                     try await model.setBotCategory(profile, to: category)
                 })
+            .hermesSheetChrome()
         }
     }
 
