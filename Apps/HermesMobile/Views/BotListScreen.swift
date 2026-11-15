@@ -271,7 +271,7 @@ struct BotListScreen: View {
                     // The count sits on the face, bottom-right, nudged out so it reads as a badge on
                     // the avatar rather than a chip inside it. It was dropped in the roster restyle
                     // (2026-11-13) on the theory that the app badge was enough — it is not: the app
-                    // badge needs the app closed to be read, and Mohammad asked for both indicators
+                    // badge needs the app closed to be read, and the maintainer asked for both indicators
                     // by name. The beacon says *something* is waiting, this says *how much*.
                     .overlay(alignment: .bottomTrailing) {
                         UnreadBadge(count: model.unreadCount(bot.id), size: 19)

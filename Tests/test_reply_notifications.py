@@ -109,7 +109,7 @@ class ThePhoneDelivers(unittest.TestCase):
                       "without this iOS draws nothing over the app")
 
     def test_the_row_keeps_both_indicators(self) -> None:
-        # Mohammad's instruction, twice: the breathing beacon at the row's trailing edge says
+        # The maintainer's instruction, twice: the breathing beacon at the row's trailing edge says
         # *something* arrived, and the numeric capsule on the avatar says *how much*. A restyle
         # replaced both with one static dot ("the count lives in the app badge"), which the user
         # cannot read with the app open — reported 2026-11-14 as "no unread count badges".
