@@ -110,11 +110,14 @@ class RakazoGeometryTests(unittest.TestCase):
         self.assertEqual(value(TOKENS, "composerTextMaxHeight"), "100")
 
     def test_the_row_is_built_from_the_tokens_not_from_literals(self) -> None:
-        self.assertIn("size: Geometry.rosterAvatar", ROSTER)
-        self.assertIn(".frame(height: Geometry.rosterRow)", ROSTER)
-        self.assertIn("spacing: Geometry.rosterRowGap", ROSTER)
-        self.assertIn("TypeScale.font(Tokens.rosterName", ROSTER)
-        self.assertIn("TypeScale.font(Tokens.rosterMeta", ROSTER)
+        # The row's sizes come from `BotListMetrics`, which multiplies the same tokens by the
+        # owner's chosen list size — so the numbers are still in `Tokens`/`Geometry`, not in the
+        # row (asked for 2026-11-15).
+        self.assertIn("size: metrics.avatar", ROSTER)
+        self.assertIn(".frame(height: metrics.rowHeight)", ROSTER)
+        self.assertIn("spacing: metrics.gap", ROSTER)
+        self.assertIn("public var avatar", (ROOT / "Sources" / "OpenBotUI" / "BotListMetrics.swift").read_text())
+        self.assertIn("Geometry.rosterAvatar", (ROOT / "Sources" / "OpenBotUI" / "BotListMetrics.swift").read_text())
 
 
 IOS_ROSTER = (ROOT / "Apps/HermesMobile/Views/BotListScreen.swift").read_text()
@@ -127,11 +130,11 @@ class RakazoIOSShellTests(unittest.TestCase):
     """The phone's own anatomy, not just the shared tokens."""
 
     def test_the_roster_row_is_the_same_row_as_the_macs(self) -> None:
-        self.assertIn("size: Geometry.rosterAvatar", IOS_ROSTER)
-        self.assertIn("spacing: Geometry.rosterRowGap", IOS_ROSTER)
-        self.assertIn(".frame(minHeight: Geometry.rosterRow)", IOS_ROSTER)
-        self.assertIn(".padding(.vertical, Geometry.rosterRowPadding)", IOS_ROSTER)
-        self.assertIn("TypeScale.font(Tokens.rosterMeta", IOS_ROSTER)
+        self.assertIn("size: metrics.avatar", IOS_ROSTER)
+        self.assertIn("spacing: metrics.gap", IOS_ROSTER)
+        self.assertIn(".frame(minHeight: metrics.rowHeight)", IOS_ROSTER)
+        self.assertIn(".padding(.vertical, metrics.rowPadding)", IOS_ROSTER)
+        self.assertIn("TypeScale.font(metrics.metaSize", IOS_ROSTER)
         # Two lines of text — the chevron was what made it three — but the two unread indicators
         # are back on the row after the restyle dropped them: the maintainer asked for the count on the
         # face and the beacon at the edge twice, and a single static dot lost the number

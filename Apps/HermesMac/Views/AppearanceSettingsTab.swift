@@ -15,6 +15,8 @@ struct AppearanceSettingsTab: View {
     @AppStorage(BotFaceMotion.defaultsKey) private var animateFaces = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
+    /// The bot list's size, dragged here. Stored under the same key the phone uses.
+    @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
 
     private var percent: Int { Int((opacity * 100).rounded()) }
 
@@ -81,6 +83,41 @@ struct AppearanceSettingsTab: View {
                 opacity = 1
             }
             .disabled(opacity >= 0.999)
+
+            Divider().padding(.vertical, 2)
+
+            Text("Bot list")
+                .font(TypeScale.font(Tokens.textLG, weight: .semibold))
+                .foregroundStyle(Tokens.textPrimary)
+
+            Text("How big a row in the bot list is: the face, the name and the line under it move together. The middle is the size the list shipped with.")
+                .font(TypeScale.font(TypeScale.caption))
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Image(systemName: "textformat.size")
+                    .foregroundStyle(Tokens.textMuted)
+                    .font(.system(size: 11))
+
+                Slider(value: $listScale,
+                       in: BotListMetrics.minScale...BotListMetrics.maxScale,
+                       step: 0.01)
+                    .accessibilityIdentifier("appearanceBotListScale")
+
+                Text("\(Int((listScale * 100).rounded())) %")
+                    .font(.system(size: TypeScale.caption, design: .monospaced))
+                    .foregroundStyle(Tokens.textSecondary)
+                    .monospacedDigit()
+                    .frame(width: 44, alignment: .trailing)
+            }
+
+            BotListScalePreview(scale: listScale)
+
+            Button("Default size") {
+                listScale = BotListMetrics.defaultScale
+            }
+            .disabled(abs(listScale - BotListMetrics.defaultScale) < 0.005)
 
             Spacer(minLength: 0)
         }

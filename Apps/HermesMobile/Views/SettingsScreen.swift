@@ -26,6 +26,8 @@ struct SettingsScreen: View {
     /// Whether the log sheet is up. The log is a tool, not a setting, so it opens from a row and
     /// closes with nothing remembered.
     @State private var showLog = false
+    /// The bot list's size, dragged here. Same key the Mac uses.
+    @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
 
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {
@@ -33,6 +35,30 @@ struct SettingsScreen: View {
             ThemePicker()
                 .padding(.vertical, 4)
                 .listRowBackground(Tokens.surface)
+
+            // The bot list's own size: the face, the name and the line under it move together
+            // (asked for 2026-11-15).
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Bot list size")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Spacer()
+                    Text("\(Int((listScale * 100).rounded())) %")
+                        .font(.system(size: TypeScale.caption, design: .monospaced))
+                        .foregroundStyle(Tokens.textMuted)
+                        .monospacedDigit()
+                }
+                Slider(value: $listScale,
+                       in: BotListMetrics.minScale...BotListMetrics.maxScale,
+                       step: 0.01) {
+                    Text("Bot list size")
+                }
+                .accessibilityIdentifier("appearanceBotListScale")
+                BotListScalePreview(scale: listScale)
+            }
+            .padding(.vertical, 4)
+            .listRowBackground(Tokens.surface)
         }
     }
 

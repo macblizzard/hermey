@@ -57,8 +57,16 @@ struct SidebarBotList: View {
     }
 
     private var rowCount: Int {
-        visibleBots.count + (showsHiddenBots ? hiddenBots.count : 0)
+        // A collapsed group contributes its heading and no rows: the block shrinks with it.
+        let bots = isSearching ? visibleBots.count
+                               : model.botGroups.reduce(0) { total, group in
+                                   total + (isCollapsed(group) ? 0 : group.bots.count)
+                               }
+        return bots + (showsHiddenBots ? hiddenBots.count : 0)
     }
+
+    /// One heading per group, drawn above its rows.
+    private var captionCount: Int { isSearching ? 0 : model.botGroups.count }
 
     /// Group chats sit above the bots and are searchable only by their own names' absence: the
     /// search box filters bots, so a search hides the rooms instead of pretending to match them.
@@ -68,9 +76,15 @@ struct SidebarBotList: View {
     private var listHeight: CGFloat {
         let hiddenExtra = showsHiddenBots && !hiddenBots.isEmpty ? 24 : 0
         let roomExtra = roomRows.isEmpty ? 0 : CGFloat(roomRows.count) * 44 + 34
-        return min(CGFloat(max(rowCount, 1)) * SidebarBotList.rowHeight + CGFloat(hiddenExtra) + roomExtra + 2,
-                   SidebarBotList.rowHeight * 5 + 2)
+        let rowHeight = SidebarBotList.rowHeight * listScale
+        return min(CGFloat(max(rowCount, 1)) * rowHeight
+                   + CGFloat(captionCount) * SidebarBotList.captionHeight
+                   + CGFloat(hiddenExtra) + roomExtra + 2,
+                   rowHeight * 5 + 2)
     }
+
+    /// A heading row: caption type, its chevron and a 12 pt rhythm above and below.
+    static let captionHeight: CGFloat = 26
 
     /// Name, description, last message: three lines at caption sizes, plus the row's own padding.
     /// One number, used by both the row and the block's height cap, so they cannot drift apart.
@@ -126,8 +140,22 @@ struct SidebarBotList: View {
                     Divider().padding(.horizontal, 8).padding(.vertical, 4)
                 }
 
-                ForEach(visibleBots) { bot in
-                    row(for: bot)
+                // The owner's groups, the same headings the phone draws: Pinned above everything,
+                // the categories by name, Uncategorized last (asked for 2026-11-15). While a search
+                // is running the answer is one flat list — a heading would split it up for nothing.
+                if isSearching {
+                    ForEach(visibleBots) { bot in
+                        row(for: bot)
+                    }
+                } else {
+                    ForEach(model.botGroups) { group in
+                        groupCaption(group)
+                        if !isCollapsed(group) {
+                            ForEach(group.bots) { bot in
+                                row(for: bot)
+                            }
+                        }
+                    }
                 }
 
                 if showsHiddenBots, !hiddenBots.isEmpty {
@@ -154,6 +182,60 @@ struct SidebarBotList: View {
         }
     }
 
+    // MARK: Category headings
+
+    /// Which headings are collapsed, remembered on this device. One JSON map, because the
+    /// categories themselves live on the host and come and go.
+    @AppStorage("hermey.collapsedBotGroups.mac") private var collapsedGroupsJSON = "{}"
+
+    private var collapsedGroups: [String: Bool] {
+        guard let data = collapsedGroupsJSON.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: Bool].self, from: data) else { return [:] }
+        return map
+    }
+
+    private func isCollapsed(_ group: BotGroup) -> Bool { collapsedGroups[group.id] == true }
+
+    private func toggleCollapsed(_ group: BotGroup) {
+        var map = collapsedGroups
+        map[group.id] = !(map[group.id] ?? false)
+        guard let data = try? JSONEncoder().encode(map),
+              let json = String(data: data, encoding: .utf8) else { return }
+        collapsedGroupsJSON = json
+    }
+
+    /// A heading is a control, not a label: clicking it folds the group away.
+    @ViewBuilder
+    private func groupCaption(_ group: BotGroup) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.12)) { toggleCollapsed(group) }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: isCollapsed(group) ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Tokens.textDim)
+                Text(group.name.uppercased())
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                    .foregroundStyle(Tokens.textMuted)
+                Text("\(group.bots.count)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Tokens.textDim)
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+        .help(isCollapsed(group) ? "Expand \(group.name)" : "Collapse \(group.name)")
+    }
+
+    /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
+    @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
+
+    private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
+
     private func row(for bot: Bot) -> some View {
         // A room on screen owns the selection: the bot underneath is not the conversation the
         // pane is showing, and highlighting both made the sidebar look like two things were open.
@@ -165,18 +247,18 @@ struct SidebarBotList: View {
             Haptics.selection()
             store.selectBot(bot.id)
         } label: {
-            HStack(alignment: .center, spacing: Geometry.rosterRowGap) {
+            HStack(alignment: .center, spacing: metrics.gap) {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
                 // the bot's id picks — never a bare initial. Rakazo draws the working state as a
                 // ring around the face, which is where this app already puts it.
                 BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: Geometry.rosterAvatar,
+                                size: metrics.avatar,
                                 isWorking: bot.id == model.selectedBotID && model.isStreaming)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
                     .overlay(alignment: .bottomTrailing) {
-                        UnreadBadge(count: model.unreadCount(bot.id), size: 17)
+                        UnreadBadge(count: model.unreadCount(bot.id), size: (17 * CGFloat(listScale)).rounded())
                             .offset(x: 5, y: 4)
                     }
 
@@ -186,7 +268,7 @@ struct SidebarBotList: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(bot.displayName)
-                            .font(TypeScale.font(Tokens.rosterName,
+                            .font(TypeScale.font((Tokens.rosterName * CGFloat(listScale)).rounded(),
                                                  weight: model.hasUnread(bot.id) ? .semibold : .medium))
                             .foregroundStyle(Tokens.textPrimary)
                             .lineLimit(1)
@@ -227,9 +309,9 @@ struct SidebarBotList: View {
                     UnreadBeacon(diameter: 7)
                 }
             }
-            .padding(.horizontal, Geometry.rosterRowPadding)
-            .padding(.vertical, Geometry.rosterRowPadding)
-            .frame(height: Geometry.rosterRow)
+            .padding(.horizontal, metrics.rowPadding)
+            .padding(.vertical, metrics.rowPadding)
+            .frame(height: metrics.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
