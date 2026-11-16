@@ -24,54 +24,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.467",
-          "buildVersion": "467",
-          "date": "2026-11-16T06:46:34Z",
-          "localizedDescription": "No borrowed names: HermeyUI module, house palettes Midnight and Graphite.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.467/Hermey-0.1.467-b467.ipa",
-          "size": 2862022,
+          "version": "0.1.473",
+          "buildVersion": "473",
+          "date": "2026-11-16T10:18:15Z",
+          "localizedDescription": "Reference bot faces with live activity, \u2318F toggle, auto-compact removed, no borrowed names.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.473/Hermey-0.1.473-b473.ipa",
+          "size": 2892659,
           "minOSVersion": "17.0",
-          "sha256": "215175ed4616735587c86020e3866a45eb475a1477cf42dee6f6591ba3f453d1"
-        },
-        {
-          "version": "0.1.464",
-          "buildVersion": "464",
-          "date": "2026-11-16T06:09:11Z",
-          "localizedDescription": "Dissolve sits behind the bar buttons (no more mask over the rows), and category headings scroll away instead of pinning.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.464/Hermey-0.1.464-b464.ipa",
-          "size": 2861943,
-          "minOSVersion": "17.0",
-          "sha256": "ab5c13caeb77c1833bec3f285bb4c69048ca53a9309a805f8530846dcebdb2aa"
-        },
-        {
-          "version": "0.1.462",
-          "buildVersion": "462",
-          "date": "2026-11-16T05:52:42Z",
-          "localizedDescription": "Bot list dissolve is now a short band under the bar buttons; section labels stay crisp.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.462/Hermey-0.1.462-b462.ipa",
-          "size": 2861308,
-          "minOSVersion": "17.0",
-          "sha256": "e4c122a70d88a93845e3eb8dc8b7357f43f8bbe6d1beb5958335e546eee88fbb"
-        },
-        {
-          "version": "0.1.457",
-          "buildVersion": "457",
-          "date": "2026-11-16T01:09:36Z",
-          "localizedDescription": "Bot list top dissolve finishes above the content edge: rows are crisp at rest, only fading as they pass under the bar.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.457/Hermey-0.1.457-b457.ipa",
-          "size": 2860686,
-          "minOSVersion": "17.0",
-          "sha256": "79efd4b24d054787eda91fbebaf802789a0f6dbede6bbc6c4d0fead6e48241b4"
-        },
-        {
-          "version": "0.1.455",
-          "buildVersion": "455",
-          "date": "2026-11-16T00:15:28Z",
-          "localizedDescription": "Settings rows reachable (sheet had no navigation stack): Caching live with 25/100/500, Devices revoke/remove, bot-list top fade restored, All sessions on iOS, hand-picked sessions stick.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.455/Hermey-0.1.455-b455.ipa",
-          "size": 2860530,
-          "minOSVersion": "17.0",
-          "sha256": "74a1c7278fc6b0ad0eaf9a2bce2f22898920100f81ac35c589c8d1c56341a22c"
+          "sha256": "b4f50962f78fe9bb0248f52f7e07da90f1c0dbe2d2d619886a0640c7b2e5834b"
         }
       ],
       "appPermissions": {
