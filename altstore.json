@@ -1,7 +1,7 @@
 {
   "name": "Hermey",
   "identifier": "dev.hermey.app.source",
-  "sourceURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/altstore.json",
+  "sourceURL": "https://github.com/macblizzard/hermey/releases/latest/download/altstore.json",
   "schemaVersion": 1,
   "subtitle": "Hermes Agent",
   "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
