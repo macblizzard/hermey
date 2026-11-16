@@ -9,12 +9,12 @@
   "headerURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
   "tintColor": "#9A9AA0",
   "featuredApps": [
-    "dev.hermey.app.mobile"
+    "hermey.HermeyUI.resources"
   ],
   "apps": [
     {
       "name": "Hermey",
-      "bundleIdentifier": "dev.hermey.app.mobile",
+      "bundleIdentifier": "hermey.HermeyUI.resources",
       "developerName": "Hermey",
       "subtitle": "Hermes Agent client",
       "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
@@ -24,14 +24,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.477",
-          "buildVersion": "477",
-          "date": "2026-11-16T10:43:34Z",
-          "localizedDescription": "Static boot screen, no bot-list loading placeholders, animating status face, banner faces restored, icon picker fixed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.477/Hermey-0.1.477-b477.ipa",
-          "size": 2908190,
+          "version": "0.1.482",
+          "buildVersion": "482",
+          "date": "2026-11-16T11:22:41Z",
+          "localizedDescription": "Launch face is the Hermey mark; the working row wears the bot own face and colour; face writes fixed on the bridge.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.482/Hermey-0.1.482-b482.ipa",
+          "size": 3038737,
           "minOSVersion": "17.0",
-          "sha256": "e226142d6fe90f4c3eab662e56a2501c00027ec1dd78882b6ef72f290751727e"
+          "sha256": "8478b9a14f5e49f62bcfcef12fcfba6a5a1a61563c161ad6eb239800233b3cf2"
         }
       ],
       "appPermissions": {
