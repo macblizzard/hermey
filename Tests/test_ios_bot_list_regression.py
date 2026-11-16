@@ -39,14 +39,30 @@ class BotListRegressionTests(unittest.TestCase):
         self.assertIn('.contentMargins(.top, 2, for: .scrollContent)', source)
 
     def test_the_top_edge_fades_instead_of_banding(self):
-        # Content scrolling under the bar dissolves into the canvas. The fade must not swallow a
-        # tap: it sits over the rows.
+        # Content scrolling under the bar dissolves into the canvas. This has to be a *mask*, not a
+        # gradient painted over the list: an overlay is anchored to the scroll view's own top edge,
+        # which on a NavigationStack root is the window top — so the ramp sat behind the status and
+        # navigation bars and nothing faded (build 453's "the top fade got lost"). A mask also
+        # cannot swallow a tap, which is what the old `allowsHitTesting(false)` was there for.
         source = SOURCE.read_text()
-        self.assertIn('.overlay(alignment: .top) { topFade }', source)
-        fade = source.split("private var topFade: some View", 1)[1].split("private func listHeading", 1)[0]
+        self.assertIn(".mask { topFadeMask }", source)
+        fade = source.split("private var topFadeMask: some View", 1)[1].split("private var listHeading", 1)[0]
         self.assertIn("LinearGradient(", fade)
-        self.assertIn("Tokens.canvas.opacity(0)", fade, "it has to reach clear, or it is a band")
-        self.assertIn(".allowsHitTesting(false)", fade)
+        self.assertIn("color: .clear", fade, "it has to reach clear, or it is a band")
+        self.assertIn("proxy.safeAreaInsets.top", fade,
+                      "the ramp must be measured from the bottom of the bar, not the window edge")
+        self.assertNotIn("ignoresSafeArea(edges: .top)", fade,
+                         "a ramp that extends into the bar is the fade that got lost")
+        # Over an empty list there is nothing to dissolve; a gradient there would only dim the
+        # empty state's hero block.
+        self.assertIn("hasRowsToFade", fade)
+        self.assertIn("Color.black", fade)
+
+    def test_the_fade_is_a_mask_not_an_overlay(self):
+        # The overlay form is the defect, not just its height: keep it out.
+        source = SOURCE.read_text()
+        self.assertNotIn(".overlay(alignment: .top) { topFade }", source)
+        self.assertNotIn("private var topFade: some View", source)
 
 
 if __name__ == "__main__":

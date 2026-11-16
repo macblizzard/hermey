@@ -33,6 +33,9 @@ struct BotListScreen: View {
     /// plumbing from the tab, and so a long-press can never accidentally open the chat.
     @State private var settingsBot: Bot?
     @State private var soulBot: Bot?
+    /// The bot whose **All sessions…** sheet is open. Presented from this screen so a long-press
+    /// can list every conversation the host keeps without leaving the list first.
+    @State private var sessionsBot: Bot?
     @State private var showAddBot = false
     @State private var showManageBots = false
     @State private var showStartGroupChat = false
@@ -159,13 +162,17 @@ struct BotListScreen: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Tokens.canvas)
         // The rows start under the bar's own buttons, not a section header below them.
         .contentMargins(.top, 2, for: .scrollContent)
         // A fade, not a band: what scrolls up dissolves into the canvas instead of running into
-        // the two bar buttons. Drawn over the content and under nothing else, so a row's tap still
-        // lands — the gradient never takes a touch.
-        .overlay(alignment: .top) { topFade }
+        // the two bar buttons. A mask over the scroll content, so the fade is geometry rather than
+        // paint — it cannot take a touch (the first row stays tappable) and it cannot draw a band
+        // over an empty list (there is nothing under it to veil). See `topFadeMask` for why the
+        // previous `overlay` version was invisible.
+        .mask { topFadeMask }
+        // Behind the masked content, so a row fading out resolves to the canvas and not to whatever
+        // the window happens to be showing.
+        .background(Tokens.canvas)
         // No app name in the bar: the icon you tapped already said which app this is, and every
         // point it takes is a bot the list does not show. The bar keeps only its two verbs.
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -239,6 +246,12 @@ struct BotListScreen: View {
             }
         }
         .toolbar { toolbarContent }
+        .sheet(item: $sessionsBot) { bot in
+            BotSessionsSheet(model: model, bot: bot) { session in
+                open(session: session, for: bot)
+            }
+            .hermesSheetChrome()
+        }
         .sheet(item: $settingsBot) { bot in
             settingsSheet(for: bot)
             .hermesSheetChrome()
@@ -252,7 +265,10 @@ struct BotListScreen: View {
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showAppSettings) {
-            SettingsScreen(model: model)
+            // `SettingsSheet`, not a bare `SettingsScreen`: a sheet does not inherit the stack it
+            // was presented from, so its `NavigationLink` rows (Caching, Devices) had no
+            // navigation container and SwiftUI drew them disabled.
+            SettingsSheet(model: model)
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showStartGroupChat) {
@@ -426,6 +442,15 @@ struct BotListScreen: View {
                 }
             } label: {
                 Label("Category", systemImage: "folder")
+            }
+            // Every conversation the host holds for this bot, not just the one tapping it opens:
+            // a routine's run, another bot's DM and a terminal's `hermes -p <bot> chat` all sit
+            // beside the Bot Chat, and the Mac has listed them since its sessions sheet landed.
+            // The phone had no door to any of them (2026-11-16).
+            Button {
+                showSessions(for: bot)
+            } label: {
+                Label("All sessions…", systemImage: "clock.arrow.circlepath")
             }
             Button {
                 model.togglePin(botID: bot.id)
@@ -727,6 +752,43 @@ struct BotListScreen: View {
         writeCategories { try await model.setBotCategory(botID, to: categoryID) }
     }
 
+    // MARK: Sessions
+
+    /// **All sessions…** for one bot.
+    ///
+    /// `AppModel.sessions` is scoped to the bot on screen, so a bot that is not selected is opened
+    /// first — the same act as tapping its row — and the sheet waits for that switch: `selectBot`
+    /// is awaited here, and it does not return until that bot's `session.list` has landed. (The Mac
+    /// polls `selectedBotID` because its store starts the switch in a detached task; iOS hands back
+    /// a finished switch.) Listing another bot's history under this one's name is the bug that
+    /// ordering exists to prevent, and the sheet checks the scope again before drawing a row.
+    ///
+    /// The presentation waits one run loop beat, deliberately: the context menu is still closing and
+    /// iOS drops a sheet presented from inside that dismissal.
+    private func showSessions(for bot: Bot) {
+        Task { @MainActor in
+            if model.selectedBotID != bot.id {
+                await model.selectBot(bot.id)
+            }
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            sessionsBot = bot
+        }
+    }
+
+    /// Open one of those sessions.
+    ///
+    /// The pick is recorded on the model as well as resumed: `endlessSession(for:)` resolves the
+    /// host's canonical `Bot Chat` on every appear, and before `openSession` existed that opener
+    /// replaced a hand-picked conversation a moment after it opened. The push is the tab's, so the
+    /// list's own navigation stays the only way in.
+    private func open(session: SessionSummary, for bot: Bot) {
+        Task { @MainActor in
+            recordOpened(bot)
+            await model.openSession(session.id, for: bot.id)
+            onOpenBot(bot)
+        }
+    }
+
     private var hiddenSection: some View {
         Section("HIDDEN") {
             ForEach(hiddenBots) { bot in
@@ -743,25 +805,57 @@ struct BotListScreen: View {
         }
     }
 
-    /// The bar's fade: the canvas, going soft at the top of the list.
+    /// The bar's fade: rows dissolve as they slide under the navigation bar.
     ///
-    /// iOS draws a *band* under the bar once content scrolls behind it, and on this near-black
-    /// canvas a band reads as a seam across the rows. This does the same job softly — whatever
-    /// scrolls up dissolves before it reaches the two buttons — and it costs nothing at rest, since
-    /// a gradient from the canvas to itself is invisible over an empty list.
-    private var topFade: some View {
-        LinearGradient(stops: [
-            .init(color: Tokens.canvas, location: 0),
-            // 0.45 rather than halfway: the opaque run has to end above the first row, and the
-            // rest of the height is the soft fall-off a scrolling row dissolves into.
-            .init(color: Tokens.canvas, location: 0.45),
-            .init(color: Tokens.canvas.opacity(0), location: 1),
-        ], startPoint: .top, endPoint: .bottom)
-        .frame(height: 84)
-        // A fade that takes a touch is a dead strip over the first bot.
-        .allowsHitTesting(false)
-        .ignoresSafeArea(edges: .top)
+    /// This was written as a canvas→clear gradient laid *over* the list, 84 pt tall, with
+    /// `.ignoresSafeArea(edges: .top)` so it would reach the bar. It never faded anything, and the
+    /// source looked right while it failed:
+    ///
+    /// * An `.overlay` is positioned in the modified view's own bounds, and a `List` that is a
+    ///   `NavigationStack` root spans the **whole window** — its top edge is the top of the screen,
+    ///   not the bottom of the bar. So the gradient's 84 pt sat behind the status bar and the
+    ///   navigation bar (≈ 100 pt on a notched phone), and the rows below the bar met the canvas
+    ///   with the hard seam the fade was written to remove.
+    /// * Laid out below the bar instead, that same gradient would have been worse than the seam:
+    ///   its first 45 % is fully opaque canvas, i.e. a 38 pt band painted over the first bot — the
+    ///   "band" its own comment promised not to draw. `.allowsHitTesting(false)` would have kept
+    ///   the tap alive under a strip nobody could read.
+    ///
+    /// A mask fixes both without choosing between them. It measures the one edge that matters — the
+    /// bottom of the bar, from `safeAreaInsets` rather than a guessed constant — and runs clear
+    /// exactly at that edge, so a row's pixels fade out over `fadeRun` points as they cross under
+    /// the bar and the first row (which starts below the bar) is only slightly veiled at its very
+    /// top. A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
+    /// it masks nothing, so there is no band — which is why the empty case gets a plain opaque mask
+    /// instead of a gradient across the hero block.
+    private var topFadeMask: some View {
+        GeometryReader { proxy in
+            // Status bar + navigation bar, measured. A large title, a taller bar on a device with
+            // no notch, or the search field's inset all move the edge this ramp has to end on.
+            let bar = max(proxy.safeAreaInsets.top, 0)
+            if hasRowsToFade {
+                VStack(spacing: 0) {
+                    LinearGradient(stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: 1),
+                    ], startPoint: .top, endPoint: .bottom)
+                    .frame(height: bar + Self.fadeRun)
+                    Color.black
+                }
+            } else {
+                Color.black
+            }
+        }
     }
+
+    /// Whether there is a row to dissolve. Over the empty state's hero face, or a search that
+    /// matched nothing, the fade has nothing to do and a gradient would only dim the top of
+    /// whatever is there.
+    private var hasRowsToFade: Bool { !model.bots.isEmpty }
+
+    /// How far below the bar a row keeps dissolving. Short on purpose: every point of it is a point
+    /// of the first row that is veiled at rest, and the bar itself is already opaque.
+    private static let fadeRun: CGFloat = 14
 
     private func listHeading(_ title: String) -> some View {
         Text(title)

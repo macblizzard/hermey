@@ -615,28 +615,96 @@ struct SettingsScreen: View {
     }
 }
 
+// MARK: - Settings, as a sheet
+
+/// Settings where the app actually presents it: as the bot list's sheet.
+///
+/// The stack is created **here**, at the presentation boundary, and not inside `SettingsScreen`.
+/// A sheet is its own presentation context — it does not inherit the `NavigationStack` it was
+/// presented from — so a `SettingsScreen` put into a sheet bare left every `NavigationLink` row
+/// with no navigation container to resolve against. SwiftUI draws such a link disabled and a tap
+/// does nothing, which is one report with two faces: "Storage/Caching is greyed out and cannot be
+/// changed" and "Devices is greyed out and I cannot remove paired devices" (both rows had already
+/// loaded their data — `.task` on the parent still runs — so they showed live subtitles while
+/// being inert).
+///
+/// The Done button belongs to the sheet, not to the screen: `SettingsScreen` can push two levels
+/// down (Caching, Devices), and a sheet whose only exit is the swipe gesture is a trap. Pushed
+/// screens get the system's back button from this same stack.
+struct SettingsSheet: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            SettingsScreen(model: model)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") { dismiss() }
+                            .accessibilityIdentifier("settings.done")
+                    }
+                }
+        }
+    }
+}
+
 // MARK: - Devices
 
 /// The device list, one screen down.
 ///
-/// Revoking is one-way on the bridge, so the toggle is guarded by a confirmation and the row
-/// lands in a revoked state rather than pretending it can be switched back on.
+/// Revoking is one-way on the bridge, so the row offers `Revoke` behind a confirmation and then
+/// lands in a revoked state rather than pretending it can be switched back on. A revoked row offers
+/// the other one-way verb, `Remove`, which deletes its record from the host.
 struct DevicesScreen: View {
     @EnvironmentObject private var app: AppEnvironment
 
-    @State private var allowedOverrides: [String: Bool] = [:]
-    @State private var pendingRevoke: PairedDevice?
-    @State private var showRevokeConfirm = false
-    @State private var pendingRemoval: PairedDevice?
-    @State private var showRemovalConfirm = false
+    /// The one confirmation this screen can be waiting on.
+    ///
+    /// One enum rather than two `confirmationDialog` modifiers on the same list: two dialogs
+    /// attached to one view is a stacked-presentation hazard, and a screen that can only be waiting
+    /// for one answer has no use for two flags.
+    private enum Prompt {
+        case revoke(PairedDevice)
+        case remove(PairedDevice)
 
-    private var appearanceSection: some View {
-        Section("Appearance") {
-            ThemePicker()
-                .padding(.vertical, 4)
-                .listRowBackground(Tokens.surface)
+        var device: PairedDevice {
+            switch self {
+            case .revoke(let device), .remove(let device): return device
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .revoke(let device): return "Revoke \(device.name)?"
+            case .remove(let device): return "Remove \(device.name)?"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .revoke:
+                return "The host deletes this device's refresh token immediately, and any open websocket ticket stops working."
+            case .remove:
+                return "Permanently remove this revoked device's record from the host. This does not remove any other devices."
+            }
+        }
+
+        var confirmTitle: String {
+            switch self {
+            case .revoke: return "Revoke"
+            case .remove: return "Remove device"
+            }
+        }
+
+        var cancelTitle: String {
+            switch self {
+            case .revoke: return "Keep access"
+            case .remove: return "Cancel"
+            }
         }
     }
+
+    @State private var prompt: Prompt?
 
     var body: some View {
         List {
@@ -653,8 +721,7 @@ struct DevicesScreen: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if device.revoked {
                                 Button("Remove", role: .destructive) {
-                                    pendingRemoval = device
-                                    showRemovalConfirm = true
+                                    prompt = .remove(device)
                                 }
                                 .disabled(app.removingDevice || app.store.host == nil)
                             }
@@ -676,7 +743,7 @@ struct DevicesScreen: View {
                     }
                 }
             } footer: {
-                Text("Turning a device off revokes it on the host. That cannot be undone — pair it again to give it access. Swipe a revoked device to remove its record.")
+                Text("Revoke removes a device's access on the host. That cannot be undone — pair it again to give it access. A revoked device can then be removed here for good.")
                     .font(TypeScale.font(TypeScale.label))
             }
         }
@@ -687,31 +754,26 @@ struct DevicesScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await app.loadDevices() }
         .task { await app.loadDevices() }
-        .confirmationDialog(revokeTitle,
-                            isPresented: $showRevokeConfirm,
-                            titleVisibility: .visible) {
-            Button("Revoke", role: .destructive) { confirmRevoke() }
-            Button("Keep access", role: .cancel) { restorePendingToggle() }
-        } message: {
-            Text("The host deletes this device's refresh token immediately, and any open websocket ticket stops working.")
-        }
-        .onChange(of: showRevokeConfirm) { presented in
-            if !presented { restorePendingToggle() }
-        }
-        .confirmationDialog(pendingRemoval.map { "Remove \($0.name)?" } ?? "Remove this device?",
-                            isPresented: $showRemovalConfirm,
-                            titleVisibility: .visible) {
-            Button("Remove device", role: .destructive) {
-                guard let device = pendingRemoval else { return }
-                pendingRemoval = nil
-                Task { await app.removeRevoked(device) }
-            }
-            Button("Cancel", role: .cancel) { pendingRemoval = nil }
-        } message: {
-            Text("Permanently remove this revoked device's record from the host. This does not remove any other devices.")
+        // `presenting:` hands the dialog the prompt it was opened with, so the buttons do not
+        // change underneath a dismissal.
+        .confirmationDialog(prompt?.title ?? "Devices",
+                            isPresented: Binding(get: { prompt != nil },
+                                                 set: { if !$0 { prompt = nil } }),
+                            titleVisibility: .visible,
+                            presenting: prompt) { prompt in
+            Button(prompt.confirmTitle, role: .destructive) { confirm(prompt) }
+            Button(prompt.cancelTitle, role: .cancel) { self.prompt = nil }
+        } message: { prompt in
+            Text(prompt.message)
         }
     }
 
+    /// One device, with the one verb that applies to it on the row.
+    ///
+    /// The verb used to be a `Toggle` — an access switch that could only ever go one way, since
+    /// revoking is one-way on the bridge — and permanent removal existed only behind a trailing
+    /// swipe, which is a gesture nobody is told about. Both actions now sit where the device is:
+    /// `Revoke` while it still has access, `Remove` once it is revoked. Each one asks first.
     private func deviceRow(_ device: PairedDevice) -> some View {
         HStack(spacing: 12) {
             Image(systemName: device.platform.lowercased() == "ios" ? "iphone" : "desktopcomputer")
@@ -733,6 +795,9 @@ struct DevicesScreen: View {
                     if device.deviceID == app.store.host?.deviceID {
                         StatusChip("this phone", tone: .accent, size: .small)
                     }
+                    if device.revoked {
+                        StatusChip("revoked", tone: .danger, size: .small)
+                    }
                 }
 
                 Text(subtitle(for: device))
@@ -743,18 +808,42 @@ struct DevicesScreen: View {
 
             Spacer(minLength: 8)
 
-            Toggle("", isOn: allowedBinding(for: device))
-                .labelsHidden()
-                .tint(Tokens.success)
-                .disabled(device.revoked || app.store.host == nil)
-                .accessibilityLabel("\(device.name) has access")
-                .accessibilityHint("Turning this off revokes the device on the host")
+            action(for: device)
         }
         .padding(.vertical, 2)
     }
 
+    /// Revoke, or remove. Never both: a device with access has nothing to remove, and a revoked
+    /// one has no access left to take away.
+    @ViewBuilder
+    private func action(for device: PairedDevice) -> some View {
+        if device.revoked {
+            Button("Remove") {
+                Haptics.selection()
+                prompt = .remove(device)
+            }
+            .buttonStyle(.borderless)
+            .font(TypeScale.font(TypeScale.md))
+            .foregroundStyle(Tokens.danger)
+            .disabled(app.removingDevice || app.store.host == nil)
+            .accessibilityLabel("Remove \(device.name) permanently")
+            .accessibilityIdentifier("devices.remove.\(device.deviceID)")
+        } else {
+            Button("Revoke") {
+                Haptics.selection()
+                prompt = .revoke(device)
+            }
+            .buttonStyle(.borderless)
+            .font(TypeScale.font(TypeScale.md))
+            .foregroundStyle(Tokens.danger)
+            .disabled(app.store.host == nil)
+            .accessibilityLabel("Revoke \(device.name)")
+            .accessibilityIdentifier("devices.revoke.\(device.deviceID)")
+        }
+    }
+
     private func subtitle(for device: PairedDevice) -> String {
-        if device.revoked { return "Revoked" }
+        if device.revoked { return "No access · remove to clear its record" }
         let platform = device.platformLabel
         if let seen = device.lastSeenAt {
             return "\(platform) · seen \(RelativeTime.short(seen))"
@@ -762,41 +851,27 @@ struct DevicesScreen: View {
         return platform
     }
 
-    private func allowedBinding(for device: PairedDevice) -> Binding<Bool> {
-        Binding(get: {
-            allowedOverrides[device.deviceID] ?? !device.revoked
-        }, set: { wantsAccess in
-            guard !wantsAccess, !device.revoked else {
-                allowedOverrides[device.deviceID] = nil
-                return
+    /// Both verbs go through the bridge, and both end by re-reading the host's list.
+    ///
+    /// `AppEnvironment.revoke` flips the local row the moment the bridge answers, which is what
+    /// makes the screen move immediately; the refresh after it is what turns this phone's optimism
+    /// back into a fact about the host. `removeRevoked` already refreshes, so it needs nothing
+    /// extra here.
+    private func confirm(_ prompt: Prompt) {
+        let device = prompt.device
+        self.prompt = nil
+        switch prompt {
+        case .revoke:
+            Task {
+                await app.revoke(device)
+                // Revoking *this* phone unpairs it, which clears the list already; asking the host
+                // for a device list we no longer have a token for would only print "not paired"
+                // over the result.
+                if app.isPaired { await app.loadDevices() }
             }
-            Haptics.selection()
-            allowedOverrides[device.deviceID] = false
-            pendingRevoke = device
-            showRevokeConfirm = true
-        })
-    }
-
-    private var revokeTitle: String {
-        guard let device = pendingRevoke else { return "Revoke this device?" }
-        return "Revoke \(device.name)?"
-    }
-
-    private func confirmRevoke() {
-        guard let device = pendingRevoke else { return }
-        pendingRevoke = nil
-        Task {
-            await app.revoke(device)
-            // Either way the override goes: a revoked row reads its own state, a failed
-            // revoke reads `false` again and the toggle springs back on.
-            allowedOverrides[device.deviceID] = nil
+        case .remove:
+            Task { await app.removeRevoked(device) }
         }
-    }
-
-    private func restorePendingToggle() {
-        guard let device = pendingRevoke else { return }
-        allowedOverrides[device.deviceID] = nil
-        pendingRevoke = nil
     }
 }
 

@@ -302,7 +302,9 @@ class NoTabBarAndTwoFades(unittest.TestCase):
     def test_settings_still_has_a_door(self) -> None:
         self.assertIn("Button { showAppSettings = true }", self.LIST)
         self.assertIn('Label("Settings", systemImage: "gearshape")', self.LIST)
-        self.assertIn("SettingsScreen(model: model)", self.LIST)
+        # And the door is a sheet with its own navigation stack: Settings pushes Caching and
+        # Devices, and a bare `SettingsScreen` in a sheet has no container for those links.
+        self.assertIn("SettingsSheet(model: model)", self.LIST)
 
     def test_nothing_is_masked_or_faded_over_the_transcript(self) -> None:
         # Not a fade at the foot, not a fade at the top, not a gradient laid over the words. Every

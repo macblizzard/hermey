@@ -17,6 +17,16 @@ struct CachingSettingsScreen: View {
     @ObservedObject var model: AppModel
 
     @State private var confirmReset = false
+    /// The switch position and the limit the user just chose, held until the store answers.
+    ///
+    /// `AppModel.cachePreferences` is the store's copy, and it only changes when the actor call
+    /// returns. A `Toggle` bound straight to it therefore renders the *old* value for the length of
+    /// a disk write — the switch snaps back under the finger and the row reads as inert. These two
+    /// keep the control where the user put it; each is cleared as soon as the store has answered,
+    /// because from that moment the store's value is the truth (and the only thing that can correct
+    /// a write that did not land).
+    @State private var pendingSection: [CacheSection: Bool] = [:]
+    @State private var pendingLimit: Int?
 
     var body: some View {
         List {
@@ -161,22 +171,34 @@ struct CachingSettingsScreen: View {
     // MARK: - Bindings
 
     /// Optimistic on purpose: the switch moves under the finger, the store catches up, and a failure
-    /// shows in the Usage numbers (and the log) rather than by snapping the switch back.
+    /// shows in the Usage numbers (and the log) rather than by snapping the switch back. The pending
+    /// value is dropped once the store has answered, so the switch is still the store's state and
+    /// not a local opinion that could outlive the screen.
     private func binding(for section: CacheSection) -> Binding<Bool> {
-        Binding(get: { model.cachePreferences.isEnabled(section) },
+        Binding(get: { pendingSection[section] ?? model.cachePreferences.isEnabled(section) },
                 set: { isOn in
                     Haptics.selection()
-                    Task { await model.setCacheSection(section, enabled: isOn) }
+                    pendingSection[section] = isOn
+                    Task { @MainActor in
+                        await model.setCacheSection(section, enabled: isOn)
+                        // Only the write that is still the user's last word clears the override:
+                        // two quick flips leave the later one in charge.
+                        if pendingSection[section] == isOn { pendingSection[section] = nil }
+                    }
                 })
     }
 
     /// The picker can only offer the three options, so the value it writes is always one of them;
     /// the store normalises anyway, because a stale `AppModel` must not be able to store a fourth.
     private var limitBinding: Binding<Int> {
-        Binding(get: { model.cachePreferences.chatLimit },
+        Binding(get: { pendingLimit ?? model.cachePreferences.chatLimit },
                 set: { chats in
                     Haptics.selection()
-                    Task { await model.setCacheChatLimit(chats) }
+                    pendingLimit = chats
+                    Task { @MainActor in
+                        await model.setCacheChatLimit(chats)
+                        pendingLimit = nil
+                    }
                 })
     }
 }

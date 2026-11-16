@@ -1408,6 +1408,28 @@ public final class AppModel: ObservableObject {
     /// opening a new conversation. Any other failure (a timeout, a dead socket) is reported
     /// instead — starting a blank conversation over a transient error would hide the user's
     /// history behind a new empty one.
+    /// Hand-picked sessions waiting to be honoured once, by bot.
+    ///
+    /// `endlessSession(for:)` resolves the host's canonical `Bot Chat` on every appear, so a
+    /// conversation picked by hand has to be recorded here or it is overruled a moment later.
+    private var pinnedSessionPicks: [String: SessionID] = [:]
+
+    /// Open a session the user picked by hand (the All Sessions sheet) and make the pick stick.
+    ///
+    /// The bot is switched first because the sheet's rows are scoped to the selected bot and the
+    /// model only lists sessions for the conversation it holds; the pick is recorded before the
+    /// resume so an appear that lands mid-request still honours it.
+    public func openSession(_ id: SessionID, for botID: String) async {
+        if botID != selectedBotID {
+            captureConversation(for: selectedBotID)
+            resetForBotSwitch()
+            selectedBotID = botID
+            await loadModelLabel()
+        }
+        pinnedSessionPicks[botID] = id
+        if selectedSessionID != id { await select(id) }
+    }
+
     public func endlessSession(for botID: String) async -> SessionID? {
         if botID != selectedBotID {
             // The transcript, tools and streaming state on screen belong to the bot being left —
@@ -1422,6 +1444,16 @@ public final class AppModel: ObservableObject {
         // "start the conversation".
         isOpeningConversation = !restoreConversation(for: botID)
         defer { isOpeningConversation = false }
+        // A pick made in All Sessions outranks the canonical chat exactly once, and it is checked
+        // after the cached paint (a pick may have nothing cached, and the pane must not flash
+        // empty while the resume runs) and before the canonical plan (which would otherwise resume
+        // `Bot Chat` and replace the conversation the user just chose). Consumed here, so the
+        // *following* visit goes back to the bot's endless conversation, which must not drift.
+        if let picked = pinnedSessionPicks.removeValue(forKey: botID) {
+            await loadModelLabel()
+            await select(picked)
+            return selectedSessionID
+        }
         await loadModelLabel()
         let key = Self.endlessKey(botID)
         let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: botID),
