@@ -19,7 +19,18 @@ struct HermesMacApp: App {
 
     var body: some Scene {
         WindowGroup("Hermey") {
-            WorkspaceRoot(store: store)
+            // The window root, with the launch screen over it until the app is usable. The gate is
+            // `LaunchGateView` (the readiness decision) and the picture is `BootScreen`; the shell
+            // underneath is built from the first frame, so the fade uncovers the workspace rather
+            // than an empty panel. An unpaired Mac never sees the splash at all: the gate leaves at
+            // once for the pair UI, which is what this window *is* on a fresh install.
+            LaunchGateView(model: store.model,
+                           isPaired: { store.isPaired },
+                           fadeOut: BootScreen.fadeOutDuration) {
+                BootScreen()
+            } content: {
+                WorkspaceRoot(store: store)
+            }
                 // The shell lays out exactly this much chrome around the conversation: the bot
                 // panel at its floor, the divider strip and its hairline, and — when it is open —
                 // the bot's own panel or the shared computer. There is no surround: the shell

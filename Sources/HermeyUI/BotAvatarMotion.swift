@@ -142,13 +142,19 @@ public enum BotAvatarMotion {
         UserDefaults.standard.set(!reduceMotion, forKey: defaultsKey)
     }
 
-    /// Whether this avatar may move at all.
+    /// Whether this avatar should move at all.
+    ///
+    /// `minimumSize` is the caller's floor, not a global rule: a 16 pt face in a status row is the
+    /// only thing on screen and is worth animating, while the same 16 pt in a long list is not.
+    /// It defaults to the house floor so a caller that does not think about it gets the cheap
+    /// answer.
     public static func allows(activity: BotAvatarActivity,
                               reduceMotion: Bool,
                               animates: Bool = true,
-                              size: Double) -> Bool {
+                              size: Double,
+                              minimumSize: Double = minimumAnimatingSize) -> Bool {
         guard animates, !reduceMotion, activity.isAnimated else { return false }
-        return size >= minimumAnimatingSize
+        return size >= minimumSize
     }
 
     /// The cycle length for an activity, in seconds. Zero for the rest.

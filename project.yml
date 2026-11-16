@@ -123,7 +123,14 @@ targets:
         CFBundleName: Hermey
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        UILaunchScreen: {}
+        # The static launch screen iOS paints before any of our code runs. It cannot animate and it
+        # cannot read `ThemeRuntime` — it is a compiled storyboard-less colour — so it is pinned to
+        # the *default* theme's canvas (`ThemeCatalog.midnight`, 0x0A0A0A). That is the whole job of
+        # this key: without it the system paints its own background (white on a light device) for the
+        # frames between the tap and the first SwiftUI draw, which is the flash `BootScreen` exists to
+        # prevent. A person on another theme sees a few dark frames before the splash, never white.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
         UIRequiresFullScreen: false
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

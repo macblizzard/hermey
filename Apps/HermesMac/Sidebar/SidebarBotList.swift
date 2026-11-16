@@ -810,14 +810,11 @@ struct SidebarBotList: View {
                 EmptyView()
             }
         } else if model.botsLoading {
-            HStack(spacing: 8) {
-                SpinningRing(color: Tokens.textDim, size: 9, lineWidth: 1.3)
-                Text("Asking the host which bots it serves…")
-                    .font(TypeScale.font(TypeScale.caption))
-                    .foregroundStyle(Tokens.textDim)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 2)
+            // Nothing. A roster being re-read is not a host with no bots, and the pre-roster window
+            // belongs to the launch screen (`BootScreen`), not to a spinner here — this list is only
+            // drawn once the roster exists. Saying "no bots" mid-refresh would be the same lie in a
+            // slower font, so the row simply says nothing until the answer lands.
+            EmptyView()
         } else {
             Text(hiddenBots.isEmpty ? "No bots found on this host." : "All bots are hidden. Use the filter to show them.")
                 .font(TypeScale.font(TypeScale.caption))

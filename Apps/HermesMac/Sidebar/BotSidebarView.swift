@@ -392,9 +392,13 @@ struct BotSidebarView: View {
         if !store.isPaired {
             unpairedState
         } else if model.bots.isEmpty {
-            if model.botsLoading {
-                discoveringBotsState
-            } else if let error = model.botsError {
+            // No "finding bots" state of its own: while the roster is being asked for, the launch
+            // screen is what covers this panel (`BootScreen` / `LaunchGateView`), and a spinner
+            // behind a splash is a second, invisible loading state. The states below are the ones
+            // that can still be true once the gate has opened — a host that failed, a host that is
+            // not connected (the deadline's path, with its own Connect button), or a host that
+            // answered with no bots at all.
+            if let error = model.botsError {
                 botsErrorState(error)
             } else if model.connection.isLive {
                 noBotsState
@@ -515,21 +519,6 @@ struct BotSidebarView: View {
                           size: .small,
                           isDisabled: !model.connection.isLive) {
                 Task { await store.loadBots() }
-            }
-            .padding(.horizontal, 8)
-        }
-        .padding(.top, 8)
-    }
-
-    private var discoveringBotsState: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionCaption("FINDING BOTS")
-                .padding(.horizontal, 8)
-            HStack(spacing: 8) {
-                SpinningRing(color: Tokens.textDim, size: 10, lineWidth: 1.4)
-                Text("Asking the host which bots it serves…")
-                    .font(TypeScale.font(Tokens.textSM))
-                    .foregroundStyle(Tokens.textMuted)
             }
             .padding(.horizontal, 8)
         }

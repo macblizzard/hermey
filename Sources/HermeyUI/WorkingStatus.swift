@@ -52,10 +52,11 @@ public struct WorkingStatus: View {
                               color: color,
                               activity: activity,
                               size: 16,
-                              // The caller only draws this row while a turn is in flight. At 16 pt
-                              // the view keeps it still by its own rule (the size floor), so this
-                              // row never costs a timeline.
-                              animates: true)
+                              // This row is only drawn while a turn is in flight, and the face is
+                              // the whole status indicator — so it moves even at 16 pt, past the
+                              // house floor that keeps list-sized faces cheap.
+                              animates: true,
+                              animatingFrom: 0)
             } else {
                 SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)
             }

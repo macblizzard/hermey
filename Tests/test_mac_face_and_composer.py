@@ -53,7 +53,8 @@ class TheFaceSaysWhatItIsDoing(unittest.TestCase):
         # Reduce Motion, the app's switch and the size floor all stop it.
         self.assertIn("accessibilityReduceMotion", self.AVATAR_VIEW)
         self.assertIn("animates && appAllowsMotion", self.AVATAR_VIEW)
-        self.assertIn("return size >= minimumAnimatingSize", motion)
+        self.assertIn("minimumSize: Double = minimumAnimatingSize", motion)
+        self.assertIn("return size >= minimumSize", motion)
 
     def test_the_header_asks_the_tracker_instead_of_deriving(self) -> None:
         self.assertIn("store.activity(for: bot.id)", HEADER)

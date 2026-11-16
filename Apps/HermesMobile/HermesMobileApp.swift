@@ -26,12 +26,22 @@ struct HermesMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            // The app, with the launch screen over it until it is usable. One gate for both shells:
+            // `LaunchGateView` owns the `LaunchReadiness` decision, `BootScreen` is only its picture,
+            // and the bot list underneath is drawn from the first frame so the fade uncovers rows
+            // rather than an empty box.
+            LaunchGateView(model: app.model,
+                           isPaired: { app.isPaired },
+                           fadeOut: BootScreen.fadeOutDuration) {
+                BootScreen()
+            } content: {
+                RootView()
+            }
                 .environmentObject(app)
                 .preferredColorScheme(.dark)
                 .task {
                     ThemeRuntime.restoreFromDefaults()
-        TypeScale.restoreScale()
+                    TypeScale.restoreScale()
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()

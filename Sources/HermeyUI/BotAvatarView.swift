@@ -68,6 +68,9 @@ public struct BotAvatarView: View {
     /// `false` for its idle rows, which is the difference between one face rebuilding per frame and
     /// twenty.
     public var animates: Bool
+    /// The size at which this face starts moving. Defaults to the house floor; a surface where the
+    /// face *is* the status (the working row) passes `0` so even a 16 pt icon moves.
+    public var animatingFrom: Double
     /// Spoken label, e.g. the bot's name. Without one the avatar is hidden from the accessibility
     /// tree — it is decoration beside a name that is already read out.
     public var label: String?
@@ -85,6 +88,7 @@ public struct BotAvatarView: View {
                 size: CGFloat = 36,
                 reduceMotion: Bool = false,
                 animates: Bool = true,
+                animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize,
                 label: String? = nil,
                 pageBackground: Color? = nil) {
         self.identity = identity
@@ -93,6 +97,7 @@ public struct BotAvatarView: View {
         self.size = size
         self.reduceMotion = reduceMotion
         self.animates = animates
+        self.animatingFrom = animatingFrom
         self.label = label
         self.pageBackground = pageBackground
     }
@@ -109,7 +114,8 @@ public struct BotAvatarView: View {
         let moves = BotAvatarMotion.allows(activity: activity,
                                            reduceMotion: reduceMotion || systemReduceMotion,
                                            animates: animates && appAllowsMotion,
-                                           size: size)
+                                           size: size,
+                                           minimumSize: animatingFrom)
         let traits = BotAvatarMotionTraits(identity: resolved.identity)
 
         TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !moves)) { context in

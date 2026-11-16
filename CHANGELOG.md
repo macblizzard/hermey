@@ -6,6 +6,12 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Changed
+- **The bot list and the Mac sidebar no longer have a loading state of their own.** "Loading bots…",
+  "Looking for bots…", "FINDING BOTS / Asking the host which bots it serves…" and their spinners are
+  gone: the launch screen covers the pre-roster window instead, and a spinner behind a splash was a
+  placeholder for a placeholder. What remains is what can still be true once the gate opens — a failed
+  host, a host that is not connected (with its own Connect button), or a host that answered with no
+  bots. Nothing in either shell renders a pre-roster placeholder in the launch path.
 - **No borrowed names anywhere in the source.** The design-system module is `HermeyUI` (was a
   third-party app's name), its controls are `HermeyButton` / `HermeyIconButton` /
   `HermeyModelLabel` / `HermeyChatText`, and the two house palettes are **Midnight** (default) and
@@ -31,6 +37,16 @@ All notable changes to Hermey are recorded here. The format follows
   opened from a bot-list finding still arrives pre-filled and is never a toggle.
 
 ### Added
+- **A launch screen, and one honest answer to "is the app usable yet?".** Both shells now open
+  onto a still `BootScreen` — the active theme's canvas with the house face in the middle, 108 pt,
+  no motion at all — and `LaunchReadiness` (in `HermesKit`) is the only thing that decides when it
+  goes away: gateway connected, roster answered, the selected bot's sessions answered. A host that
+  never answers leaves through its **12 s deadline** into the app's own connect/pair UI instead of
+  holding someone on an animation; a failed socket and an unpaired install hand off at once. The
+  gate is `LaunchGateView` (in `HermesAppKit`), wired in both `WindowGroup`s, and the fade out is
+  the reference's own 180 ms. The static launch screen iOS paints before our code runs is pinned to
+  Midnight's canvas (`UILaunchScreen` → `LaunchBackground`), so there is no white frame first — iOS
+  cannot animate that surface, and it cannot follow a runtime theme either.
 - **A bot's conversation is now the host's own Bot Chat, so the phone, the Mac and the official app
   read and write the same thread.** Hermey used to keep its own idea of "this bot's conversation" —
   one id in the bridge's `bot_sessions` row plus a per-device cache — which made the two Hermey

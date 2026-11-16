@@ -141,8 +141,14 @@ struct BotListScreen: View {
                 // this phone would vanish at the next launch, so it is never pretended to be saved.
                 Text(failure).font(.caption).foregroundStyle(Tokens.danger)
             }
-            if model.botsLoading && model.bots.isEmpty {
-                loadingRow
+            if model.bots.isEmpty && model.botsLoading {
+                // Nothing of the list's own while the roster is still being asked for. The launch
+                // screen is what the person is looking at during that window (see `BootScreen` and
+                // `LaunchGateView`), and a second "Loading bots…" under it is a placeholder for a
+                // placeholder. A host that never answers leaves through
+                // `LaunchReadiness.Failure.deadline`, which uncovers the connection banner's own
+                // words and its retry — not an empty list pretending to load.
+                EmptyView()
             } else if filtered.isEmpty && trimmedQuery.isEmpty && !(showHidden && !hiddenBots.isEmpty) {
                 // Only a genuinely empty list is an empty state. A query that matches no bot NAME
                 // must still show its message findings — hiding them here is what made search look
@@ -514,18 +520,6 @@ struct BotListScreen: View {
         return parts.joined(separator: ", ")
     }
 
-    private var loadingRow: some View {
-        HStack(spacing: 10) {
-            SpinningRing(color: Tokens.textMuted, size: 12, lineWidth: 1.5)
-            Text("Loading bots…")
-                .font(TypeScale.font(TypeScale.lg))
-                .foregroundStyle(Tokens.textMuted)
-        }
-        .listRowBackground(Tokens.canvas)
-        .listRowSeparator(.hidden)
-        .padding(.vertical, 8)
-    }
-
     // MARK: Empty states
 
     /// The dialog's three arguments as properties: inline, they were enough to push this view's
@@ -870,8 +864,6 @@ struct BotListScreen: View {
                                  body: "No bot on this host matches “\(trimmedQuery)”.")
                 } else if !app.isPaired {
                     unpairedState
-                } else if model.botsLoading {
-                    loadingBlock
                 } else if let error = model.botsError {
                     errorState(error)
                 } else {
@@ -906,17 +898,6 @@ struct BotListScreen: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 28)
-        .padding(.top, 56)
-    }
-
-    private var loadingBlock: some View {
-        VStack(spacing: 10) {
-            SpinningRing(color: Tokens.textMuted, size: 14, lineWidth: 1.5)
-            Text("Looking for bots…")
-                .font(TypeScale.font(TypeScale.lg))
-                .foregroundStyle(Tokens.textMuted)
-        }
-        .frame(maxWidth: .infinity)
         .padding(.top, 56)
     }
 

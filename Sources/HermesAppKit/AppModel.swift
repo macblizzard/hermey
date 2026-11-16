@@ -35,6 +35,14 @@ public final class AppModel: ObservableObject {
         }
 
         public var isLive: Bool { self == .connected }
+
+        /// The socket, or the first read over it, gave up. Distinct from "still dialling": a failure
+        /// carries a reason, and the launch gate hands the app's own UI the moment one exists rather
+        /// than waiting out its deadline for a host that has already answered "no".
+        public var isFailed: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
     @Published public private(set) var connection: Connection = .idle
@@ -50,6 +58,13 @@ public final class AppModel: ObservableObject {
     /// and the app falls back to one unscoped session list — degraded, but not broken.
     @Published public private(set) var bots: [Bot] = []
     @Published public private(set) var botsLoading = false
+    /// Whether `profiles.list` has *answered* this launch attempt — including answering with an empty
+    /// list, and including failing.
+    ///
+    /// `bots.isEmpty` cannot tell "this host serves no bots" from "nobody has asked yet", and the
+    /// launch screen has to know the difference: the first is a usable app, the second is a splash
+    /// that should still be up. Reset by `start()`, so a reconnect starts a fresh question.
+    @Published public private(set) var rosterAnswered = false
     /// The bot whose sessions and transcript are on screen. `nil` means "not chosen yet", which
     /// is also what an unscoped `session.list` means.
     @Published public private(set) var selectedBotID: String?
@@ -60,6 +75,11 @@ public final class AppModel: ObservableObject {
 
     @Published public private(set) var sessions: [SessionSummary] = []
     @Published public private(set) var sessionsLoading = false
+    /// Whether `session.list` has answered for the bot that was selected when it was asked.
+    ///
+    /// The second half of "the app is usable": a roster of names with no session list behind it is
+    /// the bot list as it looks while it is still assembling, which is what the launch screen covers.
+    @Published public private(set) var sessionsAnswered = false
     @Published public var selectedSessionID: SessionID?
     /// Sessions this app created that the host has not persisted yet (see `newSession`).
     ///
@@ -478,6 +498,11 @@ public final class AppModel: ObservableObject {
     /// before the bot is known would have to be thrown away (or worse, shown).
     public func start() async {
         connection = .connecting
+        // A fresh dial is a fresh set of questions: the launch gate reads these as the app's own
+        // "usable yet", and a reconnect that inherited the last session's answer would open the
+        // gate on a roster that has not been read yet.
+        rosterAnswered = false
+        sessionsAnswered = false
         do {
             try await client.connect()
             connection = .connected
@@ -560,7 +585,12 @@ public final class AppModel: ObservableObject {
     /// bot pane can say what happened instead of implying this host has no bots.
     public func loadBots() async {
         botsLoading = true
-        defer { botsLoading = false }
+        // Both exits are an answer: a roster, or a reason there is none. The launch gate wants the
+        // arrival, not the verdict — a failed read is handled by its own phase.
+        defer {
+            botsLoading = false
+            rosterAnswered = true
+        }
         do {
             let loaded = try await client.listBots()
             bots = loaded
@@ -619,7 +649,15 @@ public final class AppModel: ObservableObject {
         let bot = selectedBotID
         let epoch = botEpoch
         sessionsLoading = true
-        defer { if epoch == botEpoch { sessionsLoading = false } }
+        // A new question, so the old answer no longer stands until this one lands: the gate reads
+        // `sessionsAnswered` and must not see last bot's arrival as this bot's.
+        sessionsAnswered = false
+        defer {
+            if epoch == botEpoch {
+                sessionsLoading = false
+                sessionsAnswered = true
+            }
+        }
         do {
             let loaded = try await client.listSessions(limit: 50, profile: bot, includeHidden: true)
             // Rows requested for the bot we have since left are *another bot's* sessions. Landing
