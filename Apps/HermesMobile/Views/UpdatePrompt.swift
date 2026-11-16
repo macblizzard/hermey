@@ -33,43 +33,50 @@ struct UpdatePrompt: View {
     @State private var canOpenInAltStore = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Update available")
-                    .font(TypeScale.font(TypeScale.xl, weight: .semibold))
-                    .foregroundStyle(Tokens.textPrimary)
+        VStack(alignment: .leading, spacing: 0) {
+            // What is available, and what changed. This scrolls: release notes can be long.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Update available")
+                        .font(TypeScale.font(TypeScale.xl, weight: .semibold))
+                        .foregroundStyle(Tokens.textPrimary)
 
-                Text("\(update.version) is ready. You're on \(currentVersion) (build \(currentBuild)).")
-                    .font(TypeScale.font(TypeScale.md))
-                    .foregroundStyle(Tokens.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("\(update.version) is ready. You're on \(currentVersion) (build \(currentBuild)).")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                if update.size > 0 {
-                    Text(byteCount(update.size))
-                        .font(.system(size: TypeScale.caption, design: .monospaced))
-                        .foregroundStyle(Tokens.textMuted)
-                        .monospacedDigit()
-                }
+                    if update.size > 0 {
+                        Text(byteCount(update.size))
+                            .font(.system(size: TypeScale.caption, design: .monospaced))
+                            .foregroundStyle(Tokens.textMuted)
+                            .monospacedDigit()
+                    }
 
-                // What changed, as the publisher wrote it. Scrollable and capped: release notes can
-                // be long, and the card must never push its own buttons off the sheet.
-                if !update.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    ScrollView {
+                    // What changed, as the publisher wrote it.
+                    if !update.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(update.notes)
                             .font(TypeScale.font(TypeScale.sm))
                             .foregroundStyle(Tokens.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                .fill(Tokens.surface))
                     }
-                    .frame(maxHeight: 220)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                        .fill(Tokens.surface))
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            // The actions never scroll and never shrink.
+            //
+            // They used to sit at the end of one stack whose notes view scrolled the whole card, so
+            // a `.medium` detent with real release notes put the Download button below the fold —
+            // "there is no download button" was a card whose buttons were off-screen, not a missing
+            // button. Whatever the notes length, this part is on screen.
             VStack(spacing: 10) {
+
                 Button {
                     Haptics.impact()
                     download()
@@ -105,6 +112,7 @@ struct UpdatePrompt: View {
                 // Escape on a hardware keyboard dismisses, the same as the button and the swipe.
                 .keyboardShortcut(.cancelAction)
             }
+            .padding(.top, 18)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -140,16 +148,26 @@ struct UpdatePrompt: View {
 /// The single control surface is the `isPromptVisible` binding: dismissing by button, Escape or
 /// swipe all arrive here as `false`, so "Not now" and a swipe cannot drift apart in what they
 /// remember. Nothing else in the tree is conditioned on the card being up.
+///
+/// The `host` is what makes the card actually appear. A sheet asked for by a view that is covered by
+/// another sheet is not presented — it waits for the covering sheet to close. The manual check lives
+/// inside the Settings sheet, so a card presented from the app shell behind it was invisible until
+/// Settings was dismissed, which read as a dead button. Each presenter therefore serves one host and
+/// the other stands down.
 struct UpdatePromptPresenter: ViewModifier {
     @ObservedObject var updates: UpdateChecker
+    let host: UpdateChecker.PromptHost
+
+    /// Whether this context is the one that should be showing the card.
+    private var isMine: Bool { updates.isPromptVisible && updates.promptHost == host }
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: Binding(get: { updates.isPromptVisible },
+            .sheet(isPresented: Binding(get: { isMine },
                                         set: { presented in
                                             // Only the dismissal edge carries information; the
                                             // presentation edge is driven by `check`.
-                                            guard !presented else { return }
+                                            guard !presented, isMine else { return }
                                             updates.dismissPrompt()
                                         })) {
                 if let update = updates.available {
@@ -164,15 +182,24 @@ struct UpdatePromptPresenter: ViewModifier {
                                  },
                                  notNow: { updates.dismissPrompt() })
                         .hermesSheetChrome()
-                        .presentationDetents([.medium])
+                        // `.large` as well as `.medium`: the notes scroll inside the card, but a
+                        // card that can only ever be half-height is one the user cannot grow to
+                        // read.
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
                 }
             }
     }
 }
 
 extension View {
-    /// Present the update card over this screen. Applied once, at the mobile shell's root.
-    func updatePrompt(_ updates: UpdateChecker) -> some View {
-        modifier(UpdatePromptPresenter(updates: updates))
+    /// Present the update card over this screen.
+    ///
+    /// Applied twice by design: once at the app shell (`.root`, for the launch and foreground
+    /// checks) and once inside the Settings sheet (`.settings`, for the manual check made there).
+    func updatePrompt(_ updates: UpdateChecker,
+                      host: UpdateChecker.PromptHost = .root) -> some View {
+        modifier(UpdatePromptPresenter(updates: updates, host: host))
     }
 }
+

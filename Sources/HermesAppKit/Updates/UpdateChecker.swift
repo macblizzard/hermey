@@ -90,6 +90,23 @@ public final class UpdateChecker: ObservableObject {
     /// its own to put a card over their chat.
     @Published public private(set) var isPromptVisible = false
 
+    /// Which presentation context the card belongs to.
+    ///
+    /// A sheet presented from a view that is itself covered by another sheet is not shown at all:
+    /// it is queued, and it appears only when the covering sheet goes away. That was the whole of
+    /// "I tapped Check for Updates, no Download button appeared, double-tapping did nothing, and the
+    /// modal showed up after I closed Settings" — the card had been asked for by a view underneath
+    /// the Settings sheet, so it waited there while the row already said an update existed.
+    ///
+    /// So the card is presented by the context that asked for it: a manual check comes from the
+    /// Settings sheet and is shown over it, while the launch and foreground checks come from the app
+    /// shell. Each presenter shows the card only for its own host, so exactly one of them acts and
+    /// the other stays out of the way.
+    public enum PromptHost: Sendable { case root, settings }
+
+    @Published public private(set) var promptHost: PromptHost = .root
+
+
     /// A check is in flight. The Settings row reads this to say so instead of looking unresponsive.
     @Published public private(set) var isChecking = false
 
@@ -188,8 +205,22 @@ public final class UpdateChecker: ObservableObject {
         }
 
         available = found
+        // The card is shown by whoever asked: a manual check is made from inside the Settings
+        // sheet, so it must be presented *there*, over the sheet the user is looking at.
+        promptHost = manual ? .settings : .root
         isPromptVisible = true
     }
+
+    /// Move a visible card to another presentation context, without withdrawing it.
+    ///
+    /// The case it exists for: the card was presented over the Settings sheet and the sheet was
+    /// closed while the card was still up. The offer is then neither withdrawn nor recorded as "not
+    /// now" — it continues over the app shell, which is what the user was left looking at.
+    public func rehost(_ host: PromptHost) {
+        guard isPromptVisible, promptHost != host else { return }
+        promptHost = host
+    }
+
 
     /// The user dismissed the card — "Not now", Cancel, Escape or a swipe all land here.
     ///
@@ -216,13 +247,38 @@ public final class UpdateChecker: ObservableObject {
         for url in [Self.sourceURL, Self.fallbackSourceURL].compactMap({ $0 }) {
             do {
                 let data = try await fetch(url)
-                if let update = Self.update(in: data) { return update }
+                if let update = Self.update(in: data) {
+                    // An entry this platform cannot install is not an update. The mac feed names a
+                    // `.dmg`; handing that to a phone opened a disk image in Safari, which is what
+                    // "it downloads the dmg instead of the ipa" was — the manifest, not the card.
+                    guard Self.isInstallable(update.url) else {
+                        print("[updates] \(url.lastPathComponent) advertises "
+                              + "\(update.url.lastPathComponent) — not installable here")
+                        continue
+                    }
+                    return update
+                }
             } catch {
                 print("[updates] \(url.lastPathComponent) unavailable: \(error.localizedDescription)")
             }
         }
         return nil
     }
+
+    /// Whether this platform can install a feed's artifact.
+    ///
+    /// iOS installs a `.ipa` through a sideloading app and nothing else, so a `.dmg` from a shared
+    /// feed is refused rather than offered. Other platforms keep the publisher's link: this checker
+    /// is not the macOS updater (Sparkle is), and refusing a shape it does not know about would be
+    /// this layer inventing a policy.
+    static func isInstallable(_ url: URL) -> Bool {
+#if os(iOS)
+        return url.pathExtension.lowercased() == "ipa"
+#else
+        return true
+#endif
+    }
+
 
     private func fetch(_ url: URL) async throws -> Data {
         var request = URLRequest(url: url)

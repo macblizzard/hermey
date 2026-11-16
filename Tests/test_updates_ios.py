@@ -179,7 +179,7 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
         presenter = block(self.source, "struct UpdatePromptPresenter: ViewModifier {",
                           "extension View {")
         self.assertIn("set: { presented in", presenter)
-        self.assertIn("guard !presented else { return }", presenter)
+        self.assertIn("guard !presented, isMine else { return }", presenter)
         self.assertIn("updates.dismissPrompt()", presenter)
 
     def test_download_opens_the_feeds_url_in_the_system_browser(self):
@@ -241,3 +241,71 @@ class TheEntryPointsAsk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TheCardIsShownByWhoeverAsked(unittest.TestCase):
+    """A sheet asked for by a covered view is queued, not shown.
+
+    The report: "the check for update checks fine, but when it finds a new version there is no
+    download button, double tapping does nothing, but after closing the settings pane the download
+    modal shows and finally it can be downloaded". All three symptom are one cause — the card was
+    presented by the app shell, which the Settings sheet was covering, so it waited there with
+    `isPromptVisible` already true (hence a dead second tap) and appeared when Settings closed.
+    """
+
+    def setUp(self):
+        self.checker = read(CHECKER_PATH)
+        self.prompt = read(PROMPT_PATH)
+        self.settings = read(SETTINGS_PATH)
+
+    def test_the_checker_names_a_host_for_the_card(self):
+        self.assertIn("public enum PromptHost: Sendable { case root, settings }", self.checker)
+        self.assertIn("public private(set) var promptHost: PromptHost = .root", self.checker)
+
+    def test_a_manual_check_is_hosted_where_it_was_made(self):
+        self.assertIn("promptHost = manual ? .settings : .root", self.checker,
+                      "a manual check comes from the Settings sheet and must be shown over it")
+
+    def test_a_presenter_only_acts_for_its_own_host(self):
+        presenter = block(self.prompt, "struct UpdatePromptPresenter: ViewModifier {", "extension View {")
+        self.assertIn("let host: UpdateChecker.PromptHost", presenter)
+        self.assertIn("updates.isPromptVisible && updates.promptHost == host", presenter)
+
+    def test_the_settings_sheet_hosts_its_own_card(self):
+        sheet = block(self.settings, "struct SettingsSheet: View {", "// MARK: - Devices")
+        self.assertIn(".updatePrompt(app.updates, host: .settings)", sheet)
+
+    def test_the_shell_still_hosts_the_unsolicited_card(self):
+        self.assertIn(".updatePrompt(app.updates)", read(APP_PATH))
+
+    def test_closing_settings_keeps_a_visible_card(self):
+        sheet = block(self.settings, "struct SettingsSheet: View {", "// MARK: - Devices")
+        self.assertIn("app.updates.rehost(.root)", sheet,
+                      "the offer continues over the app instead of vanishing with the sheet")
+        rehost = block(self.checker, "public func rehost(", "/// The user dismissed the card")
+        self.assertIn("guard isPromptVisible", rehost,
+                      "re-hosting must not resurrect a card the user dismissed")
+        self.assertNotIn("dismissPrompt()", rehost, "moving the card is not answering it")
+
+    def test_the_actions_are_not_inside_the_scrolling_area(self):
+        body = block(self.prompt, "ScrollView {", "// The actions never scroll")
+        self.assertNotIn('Text("Download")', body,
+                         "a long release note must not push the Download button below the fold")
+
+
+class OnlyAnArtifactThisPlatformCanInstall(unittest.TestCase):
+    """"It downloads the dmg instead of the ipa" — a phone was handed the mac artifact."""
+
+    def setUp(self):
+        self.checker = read(CHECKER_PATH)
+
+    def test_the_guard_is_ipa_only_on_ios(self):
+        guard = block(self.checker, "static func isInstallable(", "private func fetch(")
+        self.assertIn("#if os(iOS)", guard)
+        self.assertIn('url.pathExtension.lowercased() == "ipa"', guard)
+        self.assertIn("#else", guard)
+
+    def test_an_uninstallable_entry_is_skipped_not_offered(self):
+        latest = block(self.checker, "private func latestUpdate() async", "static func isInstallable(")
+        self.assertIn("guard Self.isInstallable(update.url) else {", latest)
+        self.assertIn("continue", latest,
+                      "the fallback feed is tried, and a .dmg is never returned as an update")
