@@ -521,9 +521,10 @@ final class WorkspaceStore: ObservableObject {
 
     // MARK: Approvals
 
-    func approve(_ request: ServerRequest) {
+    /// - Parameter remembering: send `always`, which the host records in its allow-list.
+    func approve(_ request: ServerRequest, remembering: Bool = false) {
         Task { [weak self] in
-            await self?.model.approve(request)
+            await self?.model.approve(request, remembering: remembering)
         }
     }
 

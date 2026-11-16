@@ -3178,9 +3178,20 @@ public final class AppModel: ObservableObject {
     }
 
     /// Allow, in the strongest form the host offered (`once` by default).
-    public func approve(_ request: ServerRequest) async {
+    ///
+    /// - Parameter remembering: send `always` instead, which the host records in its own allow-list and
+    ///   honours in later sessions (`tools/approval.py: is_approved() honours 'always' choices from
+    ///   previous sessions`). This is the same `choice` field the CLI's `[a]lways` sends; the gateway
+    ///   advertises it in `choices` only when a permanent answer is allowed, which is why the card asks
+    ///   the request before offering the button.
+    public func approve(_ request: ServerRequest, remembering: Bool = false) async {
         let offered = Self.choices(for: request)
-        let choice = offered.first { $0 == "once" } ?? offered.first ?? "once"
+        let wanted = remembering ? "always" : "once"
+        // Only a choice the host advertised is sent: inventing `always` for a request that did not offer
+        // it would be this client deciding a security question on the host's behalf.
+        let choice = offered.contains(wanted)
+            ? wanted
+            : (offered.first { $0 == "once" } ?? offered.first ?? "once")
         await respond(request, choice: choice)
     }
 

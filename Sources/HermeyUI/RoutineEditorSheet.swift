@@ -134,7 +134,6 @@ public struct RoutineEditorSheet: View {
                     }
                 }
             }
-            .interactiveDismissDisabled(isSaving)
         }
     }
 
