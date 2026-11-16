@@ -134,6 +134,14 @@ public struct BotRoutine: Identifiable, Hashable, Sendable {
         )
     }
 
+    /// `{"routine": {...}}` → the row the create route answered with.
+    public static func decodeOne(_ data: Data) -> BotRoutine? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let row = object["routine"] as? [String: Any]
+        else { return nil }
+        return decode(row)
+    }
+
     /// `{"routines": [...]}` → rows, in the order the bridge sent them (soonest first).
     public static func decodeList(_ data: Data) -> [BotRoutine] {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -142,3 +150,200 @@ public struct BotRoutine: Identifiable, Hashable, Sendable {
         return rows.compactMap(decode)
     }
 }
+
+// MARK: - Creating one
+
+/// The schedule picker's modes: the same six the official app offers.
+public enum RoutineScheduleMode: String, CaseIterable, Sendable, Identifiable {
+    case daily, weekly, monthly, repeat, once, custom
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .daily: return "Daily"
+        case .weekly: return "Weekly"
+        case .monthly: return "Monthly"
+        case .repeat: return "Repeat"
+        case .once: return "Once"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+/// When a routine runs, as a picker holds it — and the host's own schedule string it becomes.
+///
+/// The app never parses a schedule back out of this; it only produces one. The host accepts a cron
+/// expression ("0 9 * * *"), an interval ("every 2h"), an absolute ISO timestamp for a one-shot, and
+/// any other text with a schedule it understands for Custom, so each mode maps onto the shape it is
+/// really expressing instead of everything being forced into cron.
+public struct RoutineSchedule: Equatable, Sendable {
+    public enum RepeatUnit: String, CaseIterable, Sendable, Identifiable {
+        case minutes, hours
+        public var id: String { rawValue }
+        public var label: String { self == .minutes ? "Minutes" : "Hours" }
+        var suffix: String { self == .minutes ? "m" : "h" }
+    }
+
+    public var mode: RoutineScheduleMode = .daily
+    /// 24-hour clock, local to the phone: the host resolves the expression in the profile's timezone.
+    public var hour: Int = 9
+    public var minute: Int = 0
+    /// `Calendar`'s numbering (1 = Sunday), converted for cron below. Monday by default.
+    public var weekday: Int = 2
+    public var dayOfMonth: Int = 1
+    public var repeatCount: Int = 15
+    public var repeatUnit: RepeatUnit = .minutes
+    public var onceAt: Date = Date().addingTimeInterval(3600)
+    public var custom: String = ""
+
+    public init() {}
+
+    /// The string the bridge and the host both understand.
+    public var expression: String {
+        switch mode {
+        case .daily:
+            return "\(minute) \(hour) * * *"
+        case .weekly:
+            // cron counts Sunday as 0; Calendar counts it as 1, so Sunday wraps to 0 and the rest
+            // shift down by one.
+            return "\(minute) \(hour) * * \(weekday % 7)"
+        case .monthly:
+            return "\(minute) \(hour) \(dayOfMonth) * *"
+        case .repeat:
+            return "every \(repeatCount)\(repeatUnit.suffix)"
+        case .once:
+            return Self.isoStamp(onceAt)
+        case .custom:
+            return custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    /// What the form says under the picker, in words — the official app's "Daily at 09:00".
+    public var summary: String {
+        let clock = String(format: "%02d:%02d", hour, minute)
+        switch mode {
+        case .daily:
+            return "Daily at \(clock)"
+        case .weekly:
+            return "Weekly on \(Self.weekdayName(weekday)) at \(clock)"
+        case .monthly:
+            return "Monthly on the \(Self.ordinal(dayOfMonth)) at \(clock)"
+        case .repeat:
+            let unit = repeatCount == 1 ? (repeatUnit == .minutes ? "minute" : "hour")
+                                        : repeatUnit.label.lowercased()
+            return "Every \(repeatCount) \(unit)"
+        case .once:
+            let day = Self.dayStamp(onceAt)
+            return "Once on \(day) at \(Self.clockStamp(onceAt))"
+        case .custom:
+            let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Custom schedule" : trimmed
+        }
+    }
+
+    /// A one-shot needs a time in the future; every other mode is valid as soon as it is built.
+    public var isValid: Bool {
+        if mode == .custom { return !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if mode == .once { return onceAt > Date() }
+        if mode == .repeat { return repeatCount >= 1 }
+        return true
+    }
+
+    static func weekdayName(_ weekday: Int) -> String {
+        let names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        let index = max(1, min(7, weekday)) - 1
+        return names[index]
+    }
+
+    static func ordinal(_ day: Int) -> String {
+        let suffix: String
+        switch (day % 100, day % 10) {
+        case (11...13, _): suffix = "th"
+        case (_, 1): suffix = "st"
+        case (_, 2): suffix = "nd"
+        case (_, 3): suffix = "rd"
+        default: suffix = "th"
+        }
+        return "\(day)\(suffix)"
+    }
+
+    /// `2026-11-18T09:00:00` in local time — what the host reads as an absolute one-shot.
+    static func isoStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:00"
+        return formatter.string(from: date)
+    }
+
+    static func dayStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "d MMM"
+        return formatter.string(from: date)
+    }
+
+    static func clockStamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
+/// The New Routine form's contents.
+///
+/// `problem` is the whole validation rule, in one place: the Create button reads it, the message under
+/// the button is it, and the bridge enforces the same sentence, so a form and a replayed request
+/// cannot disagree about whether a routine is complete.
+public struct RoutineDraft: Equatable, Sendable {
+    public var name: String = ""
+    public var schedule: RoutineSchedule = RoutineSchedule()
+    public var prompt: String = ""
+    /// Skill names, one per entry. The form splits its comma-separated field into these.
+    public var skills: [String] = []
+    public var script: String = ""
+    /// "local" keeps the run in the history; "bot-chat:<profile>" posts it into a bot's chat.
+    public var deliver: String = "local"
+    public var paused: Bool = false
+
+    public init() {}
+
+    /// Nil when the draft can be created; otherwise the sentence to show.
+    public var problem: String? {
+        let scheduleText = schedule.expression.trimmingCharacters(in: .whitespacesAndNewlines)
+        if scheduleText.isEmpty { return "Pick when this routine should run." }
+        if !schedule.isValid { return "A one-shot routine needs a time in the future." }
+
+        let promptText = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scriptText = script.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSkill = skills.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if promptText.isEmpty && scriptText.isEmpty && !hasSkill {
+            return "This routine needs a prompt, a skill, or a script."
+        }
+        return nil
+    }
+
+    public var isCreatable: Bool { problem == nil }
+
+    /// The JSON body of `POST /v1/bots/{profile}/routines`.
+    public func payload() -> [String: Any] {
+        var body: [String: Any] = [
+            "schedule": schedule.expression,
+            "deliver": deliver,
+            "paused": paused,
+        ]
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty { body["name"] = trimmedName }
+        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedPrompt.isEmpty { body["prompt"] = trimmedPrompt }
+        let trimmedScript = script.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedScript.isEmpty { body["script"] = trimmedScript }
+        let cleanedSkills = skills.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !cleanedSkills.isEmpty { body["skills"] = cleanedSkills }
+        return body
+    }
+}
+

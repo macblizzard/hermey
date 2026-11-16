@@ -334,6 +334,9 @@ struct ConversationScreen: View {
                 load: { try await model.routines(for: bot.id) },
                 setPaused: { jobID, paused in
                     try await model.setRoutinePaused(jobID, paused: paused, for: bot.id)
+                },
+                create: { draft in
+                    try await model.createRoutine(draft, for: bot.id)
                 })
             .hermesSheetChrome()
         }

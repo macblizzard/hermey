@@ -2782,6 +2782,12 @@ public final class AppModel: ObservableObject {
         try await client.routines(profile)
     }
 
+    /// Create a routine from the New Routine form. Returns the row the host made, so the list can
+    /// show it without a re-read.
+    public func createRoutine(_ draft: RoutineDraft, for profile: String) async throws -> BotRoutine {
+        try await client.createRoutine(profile, draft: draft)
+    }
+
     /// Pause one routine, or put it back on its schedule.
     public func setRoutinePaused(_ jobID: String, paused: Bool, for profile: String) async throws {
         try await client.setRoutinePaused(profile, jobID: jobID, paused: paused)

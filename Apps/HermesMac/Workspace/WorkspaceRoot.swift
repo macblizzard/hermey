@@ -166,6 +166,9 @@ struct WorkspaceRoot: View {
                     load: { try await store.model.routines(for: bot.id) },
                     setPaused: { jobID, paused in
                         try await store.model.setRoutinePaused(jobID, paused: paused, for: bot.id)
+                    },
+                    create: { draft in
+                        try await store.model.createRoutine(draft, for: bot.id)
                     })
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
