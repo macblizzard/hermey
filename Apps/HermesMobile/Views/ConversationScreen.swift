@@ -337,7 +337,9 @@ struct ConversationScreen: View {
                 },
                 create: { draft in
                     try await model.createRoutine(draft, for: bot.id)
-                })
+                },
+                deliveries: RoutineDelivery.options(
+                    bots: model.bots.map { (profile: $0.id, name: $0.displayName) }))
             .hermesSheetChrome()
         }
         .fullScreenCover(isPresented: $showComputer) {

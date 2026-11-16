@@ -91,10 +91,23 @@ class TheSheetHasAPlus(unittest.TestCase):
         self.assertIn('Image(systemName: "plus")', SHEET)
         self.assertIn('.accessibilityLabel("Add routine")', SHEET)
         self.assertIn("showNewRoutine = true", SHEET)
-        self.assertIn("RoutineEditorSheet(botName: botName)", SHEET)
+        self.assertIn("RoutineEditorSheet(botName: botName, deliveries: deliveries)", SHEET)
+
+    def test_send_to_lists_every_bot_from_the_shell_that_knows_them(self) -> None:
+        # "built the send to for all bots": the form's choices come from the roster, and each bot maps
+        # to the host's own delivery string.
+        self.assertIn("deliveries: [RoutineDelivery]", EDITOR)
+        self.assertIn("ForEach(deliveries)", EDITOR)
+        self.assertIn("static func options(bots: [(profile: String, name: String)])", ROUTINES)
+        self.assertIn('"bot-chat:\\(profile)"', ROUTINES)
+        for rel in (("Apps", "HermesMobile", "Views", "ConversationScreen.swift"),
+                    ("Apps", "HermesMac", "Workspace", "WorkspaceRoot.swift")):
+            source = ROOT.joinpath(*rel).read_text(encoding="utf-8")
+            self.assertIn("RoutineDelivery.options(", source, f"{rel[-1]} does not pass the roster")
 
     def test_the_list_is_re_read_after_a_create(self) -> None:
-        made = block(SHEET, "RoutineEditorSheet(botName: botName) { draft in", "return made")
+        made = block(SHEET, "RoutineEditorSheet(botName: botName, deliveries: deliveries) { draft in",
+                     "return made")
         self.assertIn("await reload()", made,
                       "next_run_at is the host's answer and must not be guessed at")
 

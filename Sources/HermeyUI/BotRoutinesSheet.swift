@@ -22,6 +22,8 @@ public struct BotRoutinesSheet: View {
     /// Creates one from the New Routine form. Nil closes the + button, for a shell that can read
     /// routines but cannot write them (a preview, or an older host).
     private let create: ((RoutineDraft) async throws -> BotRoutine)?
+    /// The form's "Send to" choices, supplied by the shell that knows the roster.
+    private let deliveries: [RoutineDelivery]
 
     @Environment(\.dismiss) private var dismiss
     @State private var routines: [BotRoutine] = []
@@ -33,11 +35,13 @@ public struct BotRoutinesSheet: View {
     public init(botName: String,
                 load: @escaping () async throws -> [BotRoutine],
                 setPaused: @escaping (String, Bool) async throws -> Void,
-                create: ((RoutineDraft) async throws -> BotRoutine)? = nil) {
+                create: ((RoutineDraft) async throws -> BotRoutine)? = nil,
+                deliveries: [RoutineDelivery] = [.local, .defaultBotChat]) {
         self.botName = botName
         self.load = load
         self.setPaused = setPaused
         self.create = create
+        self.deliveries = deliveries
     }
 
     public var body: some View {
@@ -117,7 +121,7 @@ public struct BotRoutinesSheet: View {
         .task { await reload() }
         .sheet(isPresented: $showNewRoutine) {
             if let create {
-                RoutineEditorSheet(botName: botName) { draft in
+                RoutineEditorSheet(botName: botName, deliveries: deliveries) { draft in
                     let made = try await create(draft)
                     // Re-read rather than append: the row the scheduler will actually fire carries a
                     // `next_run_at` only the host knows, and guessing at it puts a wrong time on

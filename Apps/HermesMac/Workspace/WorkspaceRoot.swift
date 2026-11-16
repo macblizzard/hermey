@@ -169,7 +169,9 @@ struct WorkspaceRoot: View {
                     },
                     create: { draft in
                         try await store.model.createRoutine(draft, for: bot.id)
-                    })
+                    },
+                    deliveries: RoutineDelivery.options(
+                        bots: store.model.bots.map { (profile: $0.id, name: $0.displayName) }))
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,

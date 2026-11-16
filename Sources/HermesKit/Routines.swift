@@ -348,3 +348,40 @@ public struct RoutineDraft: Equatable, Sendable {
     }
 }
 
+/// Where a routine's result goes — the form's "Send to" row.
+///
+/// The values are the host's own delivery strings: `local` keeps the run in the history, `bot-chat`
+/// posts it into the bot's canonical chat, and `bot-chat:<profile>` into a named bot's chat. The list
+/// is built from the bots the app already knows about, so it cannot offer a target the host has no
+/// profile for.
+public struct RoutineDelivery: Identifiable, Hashable, Sendable {
+    public let label: String
+    public let value: String
+    public var id: String { value }
+
+    public init(label: String, value: String) {
+        self.label = label
+        self.value = value
+    }
+
+    /// Nothing is sent anywhere; the run is kept for the history.
+    public static let local = RoutineDelivery(label: "Nowhere", value: "local")
+    /// The platform's home channel for this bot, resolved by the host at fire time.
+    public static let defaultBotChat = RoutineDelivery(label: "Bot Chat (default)", value: "bot-chat")
+
+    /// Nowhere, the default chat, then one entry per bot — in the order the app lists its bots, so the
+    /// picker reads like the roster behind it.
+    public static func options(bots: [(profile: String, name: String)]) -> [RoutineDelivery] {
+        var seen = Set<String>()
+        var all: [RoutineDelivery] = [.local, .defaultBotChat]
+        for bot in bots {
+            let profile = bot.profile.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !profile.isEmpty, seen.insert(profile).inserted else { continue }
+            let name = bot.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            all.append(RoutineDelivery(label: "Bot Chat (\(name.isEmpty ? profile : name))",
+                                       value: "bot-chat:\(profile)"))
+        }
+        return all
+    }
+}
+

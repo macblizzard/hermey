@@ -14,6 +14,9 @@ import HermesKit
 /// the list that has to show it.
 public struct RoutineEditorSheet: View {
     private let botName: String
+    /// Where the result can go: Nowhere, the default bot chat, and one entry per bot. Passed in rather
+    /// than read from a model, so the form stays previewable and cannot show a target that does not exist.
+    private let deliveries: [RoutineDelivery]
     private let create: (RoutineDraft) async throws -> BotRoutine
 
     @Environment(\.dismiss) private var dismiss
@@ -22,8 +25,11 @@ public struct RoutineEditorSheet: View {
     @State private var isSaving = false
     @State private var failure: String?
 
-    public init(botName: String, create: @escaping (RoutineDraft) async throws -> BotRoutine) {
+    public init(botName: String,
+                deliveries: [RoutineDelivery] = [.local, .defaultBotChat],
+                create: @escaping (RoutineDraft) async throws -> BotRoutine) {
         self.botName = botName
+        self.deliveries = deliveries
         self.create = create
     }
 
@@ -72,10 +78,12 @@ public struct RoutineEditorSheet: View {
 
                 Section {
                     Picker("Send to", selection: $draft.deliver) {
-                        Text("Nowhere").tag("local")
-                        Text("Bot Chat (\(botName))").tag("bot-chat:\(botName)")
+                        ForEach(deliveries) { delivery in
+                            Text(delivery.label).tag(delivery.value)
+                        }
                     }
                     .font(TypeScale.font(TypeScale.md))
+                    .accessibilityIdentifier("routine.deliver")
                 } footer: {
                     Text("Results are always kept in the routine's history too.")
                         .font(TypeScale.font(TypeScale.sm))

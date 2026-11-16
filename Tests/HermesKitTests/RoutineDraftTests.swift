@@ -151,4 +151,25 @@ final class RoutineDraftTests: XCTestCase {
         XCTAssertEqual(routine?.schedule, "0 9 * * *")
         XCTAssertNil(BotRoutine.decodeOne(Data("{}".utf8)))
     }
+
+    func testSendToOffersNowhereTheDefaultAndEveryBot() {
+        let options = RoutineDelivery.options(bots: [
+            (profile: "anika", name: "Anika"),
+            (profile: "cody", name: ""),
+            (profile: "cody", name: "Cody"),      // duplicate profile, ignored
+            (profile: "  ", name: "blank"),        // no profile, ignored
+        ])
+
+        XCTAssertEqual(options.map(\.value), ["local", "bot-chat", "bot-chat:anika", "bot-chat:cody"])
+        XCTAssertEqual(options.map(\.label).first, "Nowhere")
+        XCTAssertEqual(options[1].label, "Bot Chat (default)")
+        XCTAssertEqual(options[2].label, "Bot Chat (Anika)")
+        XCTAssertEqual(options[3].label, "Bot Chat (cody)",
+                       "a bot with no display name falls back to its profile, not to an empty bracket")
+
+        // Nothing but the two fixed entries when there is no roster yet: a picker with a blank option is
+        // worse than one with two.
+        let empty = RoutineDelivery.options(bots: [])
+        XCTAssertEqual(empty.map(\.value), ["local", "bot-chat"])
+    }
 }
