@@ -29,6 +29,8 @@ ALLOWED_AUDIT_KEYS = {
     "reason",
     "close_code",
     "profile",
+    "error_code",
+    "error_kind",
 }
 
 
@@ -160,6 +162,54 @@ def test_prompt_text_is_relayed_but_never_logged(bridge, fake_gateway, caplog):
     response = bridge.audit.last("client_response")
     assert response["method"] == "prompt.submit"
     assert response["duration_ms"] >= 0
+
+
+def test_a_gateway_error_is_logged_by_kind_and_never_by_text(bridge, fake_gateway):
+    """A failure has to be diagnosable later without the message going into the log.
+
+    The live case this was written for: `prompt.submit` failed twice with an 85-byte error in 3 ms and
+    the audit line said only `outcome: error` — no way to tell a busy session from a bad parameter.
+    """
+    fake_gateway.auto_respond = False
+    ticket = bridge.pair()["ticket"]
+    secret = "PROMPT-TEXT-4a1d-must-not-be-logged"
+
+    async def scenario():
+        async with open_ws(bridge.ws_url(ticket)) as ws:
+            await recv_frame(ws)
+            await ws.send(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 7,
+                        "method": "prompt.submit",
+                        "params": {"session_id": "s1", "text": secret},
+                    }
+                )
+                + "\n"
+            )
+            sent = fake_gateway.wait_for(lambda f: f.get("method") == "prompt.submit")
+            # The gateway's message quotes the client's own prompt, which is exactly why it must not
+            # be logged verbatim.
+            fake_gateway.push(
+                {
+                    "jsonrpc": "2.0",
+                    "id": sent["id"],
+                    "error": {"code": -32000, "message": f"session is busy: {secret}"},
+                }
+            )
+            answer = await recv_frame(ws)
+            assert answer["error"]["code"] == -32000
+
+    asyncio.run(scenario())
+
+    record = bridge.audit.last("client_response")
+    assert record["outcome"] == "error"
+    assert record["error_code"] == -32000
+    assert record["error_kind"] == "session_busy"
+    logged = json.dumps(bridge.audit.records)
+    assert secret not in logged
+    assert set(record).issubset(ALLOWED_AUDIT_KEYS)
 
 
 def test_approval_server_request_round_trips(bridge, fake_gateway):
