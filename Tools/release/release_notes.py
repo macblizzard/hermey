@@ -66,7 +66,9 @@ def main() -> int:
             continue
         seen.append(line)
     if not seen:
-        print(f"No user-visible changes since {tag}." if tag else "First published build.")
+        # A shallow CI checkout has one commit and no tags, so there is nothing to read — and a
+        # release note is never the place to fail a build.
+        print(f"No user-visible changes since {tag}." if tag else "Build published from CI.")
         return 0
     for line in seen[:MAX_LINES]:
         print(f"– {line}")
