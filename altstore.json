@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.517",
-          "buildVersion": "517",
-          "date": "2026-11-16T20:34:59Z",
-          "localizedDescription": "Update card: \"Check for Updates\" now shows the card over the Settings sheet instead of only after it closes, and the Download button is never below the fold. The update source names the IPA again rather than the macOS disk image, the app refuses a link it cannot install on iOS, and the published source's bundle identifier is the app's own. Sideloader hand-off now offers AltStore, SideStore, Feather and FlareStore, each shown only when that app is installed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.517/Hermey-0.1.517-b517.ipa",
-          "size": 3147833,
+          "version": "0.1.518",
+          "buildVersion": "518",
+          "date": "2026-11-16T20:40:28Z",
+          "localizedDescription": "Build 518 carries no code change beyond the version, so a phone on 0.1.517 has something newer to find and can show the sideloader hand-off added in 0.1.517.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.518/Hermey-0.1.518-b518.ipa",
+          "size": 3147835,
           "minOSVersion": "17.0",
-          "sha256": "825724eac402d9fedd4cb68dcdd300a506677c77380acba76a8f3baefe7bf587"
+          "sha256": "3e72ff30d97f08f7cc2c145a2689c46793f25dc52042f707d0fa7bf9e16f2c9d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.517 (517)",
-      "identifier": "hermes-0.1.517-517",
-      "caption": "Update card: \"Check for Updates\" now shows the card over the Settings sheet instead of only after it closes, and the Download button is never below the fold. The update source names the IPA again rather than the macOS disk image, the app refuses a link it cannot install on iOS, and the published source's bundle identifier is the app's own. Sideloader hand-off now offers AltStore, SideStore, Feather and FlareStore, each shown only when that app is installed.",
-      "date": "2026-11-16T20:34:59Z",
+      "title": "Hermes 0.1.518 (518)",
+      "identifier": "hermes-0.1.518-518",
+      "caption": "Build 518 carries no code change beyond the version, so a phone on 0.1.517 has something newer to find and can show the sideloader hand-off added in 0.1.517.",
+      "date": "2026-11-16T20:40:28Z",
       "tintColor": "#9A9AA0"
     }
   ],
