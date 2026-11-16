@@ -320,6 +320,11 @@ struct MobileStreamingBubble: View {
     let text: String
     /// The bot's face while it works, in place of the wheel.
     var bot: String?
+    /// That bot's stored face (`#RRGGBB::shape_N`), so the row wears the same body the roster does
+    /// instead of the one its id alone would derive.
+    var color: String?
+    /// What the bot is doing right now, from `AppModel.activity(forBot:)`.
+    var activity: BotAvatarActivity = .working
 
     @State private var markdown = IncrementalMarkdown()
     @State private var caretOn = false
@@ -328,7 +333,7 @@ struct MobileStreamingBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if markdown.blocks.isEmpty {
-                WorkingStatus(bot: bot)
+                WorkingStatus(bot: bot, activity: activity, color: color)
             } else {
                 MobileMarkdownText(blocks: markdown.blocks)
                     .textSelection(.enabled)
@@ -373,9 +378,10 @@ struct MobileStreamingBubble: View {
 /// is `WorkingStatus(bot:)`, which every shell already draws.
 struct MobileTypingIndicator: View {
     var bot: String?
+    var color: String?
 
     var body: some View {
-        WorkingStatus(bot: bot)
+        WorkingStatus(bot: bot, color: color)
             .accessibilityLabel("Hermes is thinking")
     }
 }

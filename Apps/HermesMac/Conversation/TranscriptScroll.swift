@@ -321,7 +321,8 @@ struct TranscriptScroll: View {
             if model.isStreaming {
                 StreamingAssistantBubble(text: model.visibleStreamingText,
                                          bot: model.selectedBot?.id,
-                                         color: model.selectedBot.flatMap { faces[$0.id]?.raw })
+                                         color: model.selectedBot.flatMap { faces[$0.id]?.raw },
+                                         activity: model.selectedBot.map { model.activity(forBot: $0.id) } ?? .working)
                     .id(streamingID)
                     .background(fill([streamingID], among: matched, selected: selected))
                     .transition(.opacity)
@@ -663,11 +664,13 @@ struct StreamingAssistantBubble: View {
     /// be a wheel with a phrase beside it.
     var bot: String?
     var color: String?
+    /// What the bot is doing right now, so the row's face is the same activity the roster shows.
+    var activity: BotAvatarActivity = .working
 
     var body: some View {
         Group {
             if text.isEmpty {
-                WorkingStatus(bot: bot, color: color)
+                WorkingStatus(bot: bot, activity: activity, color: color)
             } else {
                 MarkdownTextView(text: text, isStreaming: true)
             }

@@ -885,7 +885,9 @@ struct ConversationScreen: View {
 
             if model.isStreaming || !model.visibleStreamingText.isEmpty {
                 MobileStreamingBubble(text: model.visibleStreamingText,
-                                      bot: model.selectedBot?.id)
+                                      bot: model.selectedBot?.id,
+                                      color: model.selectedBot.flatMap { app.botFaces[$0.id]?.raw },
+                                      activity: model.selectedBot.map { model.activity(forBot: $0.id) } ?? .working)
                     .overlay {
                         if selectedSearchID == Self.streamingSearchID {
                             RoundedRectangle(cornerRadius: 8)

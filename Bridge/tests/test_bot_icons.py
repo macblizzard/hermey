@@ -135,3 +135,33 @@ def test_a_face_is_a_shape_and_a_colour_and_half_a_pair_is_refused(tmp_path):
         assert client.put('/v1/bot-icons/beacon', headers=auth(), json={}).status_code == 200
         body = client.get('/v1/bot-icons', headers=auth()).json()
         assert 'beacon' not in body['faces'] and 'beacon' not in body['icons']
+
+
+def test_avatar_only_write_fills_the_legacy_icon_column(tmp_path):
+    """The live bridge answered 500 here: `icon` is NOT NULL, and a row carrying only `avatar`
+    left it NULL, so every face change from the phone failed with an IntegrityError."""
+    config = BridgeConfig(db_path=tmp_path / 'bridge.db')
+    app = create_app(config)
+    runtime = app.state.bridge
+    runtime.registry.add_device(device_id='phone', name='phone', platform='test',
+                                public_key='test', refresh_token='secret-phone')
+    with TestClient(app) as client:
+        def headers():
+            # Tickets are single-use: one request, one ticket.
+            token = client.post('/v1/token', json={'device_id': 'phone',
+                                                  'refresh_token': 'secret-phone'}).json()['ws_ticket']
+            return {'Authorization': 'Bearer ' + token}
+
+        response = client.put('/v1/bot-icons/cody', headers=headers(),
+                              json={'avatar': '#1CC3B0::shape_3'})
+        assert response.status_code == 200, response.text
+        faces = client.get('/v1/bot-icons', headers=headers()).json()
+        assert faces['faces']['cody']['avatar'] == '#1CC3B0::shape_3'
+        # An old build still reads `icons`, so a fresh row must carry a name there, not a NULL.
+        assert faces['icons']['cody'] == 'shape_3'
+
+        # A legacy row's own icon survives a face change: an old device keeps the face it knows.
+        client.put('/v1/bot-icons/sage', headers=headers(), json={'icon': 'ember'})
+        assert client.put('/v1/bot-icons/sage', headers=headers(),
+                          json={'avatar': '#3B82F6::shape_1'}).status_code == 200
+        assert client.get('/v1/bot-icons', headers=headers()).json()['icons']['sage'] == 'ember'

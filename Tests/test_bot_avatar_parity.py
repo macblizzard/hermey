@@ -470,7 +470,7 @@ class TheModuleFitsTheRepo(unittest.TestCase):
         # The transcript's own working row does not draw the face itself: it hands the bot to
         # `WorkingStatus`, which does — one drawing, two surfaces.
         transcript = read(ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift")
-        self.assertIn("WorkingStatus(bot: bot, color: color)", transcript)
+        self.assertIn("WorkingStatus(bot: bot, activity: activity, color: color)", transcript)
         self.assertIn("StreamingAssistantBubble(text: model.visibleStreamingText", transcript)
 
     def test_the_old_face_system_is_gone(self) -> None:

@@ -143,11 +143,16 @@ def create_bot_icons_router(runtime) -> APIRouter:
                                     detail='avatar must be #RRGGBB or #RRGGBB::shape_N')
             colour, shape = split_avatar(body.avatar)
             with runtime.registry._lock, runtime.registry._connect() as conn:
+                # `icon` is NOT NULL from the column's first life (a pre-pair single icon). A row
+                # written with only `avatar` must still fill it: the legacy column is what an old
+                # build reads, so it keeps whatever icon that row already had, and a brand-new row
+                # gets the shape's own name rather than a NULL the schema refuses.
                 conn.execute(
                     'INSERT INTO bot_icons (bot_id, icon, shape, color, avatar) VALUES (?, ?, ?, ?, ?) '
-                    'ON CONFLICT(bot_id) DO UPDATE SET icon = excluded.icon, '
+                    'ON CONFLICT(bot_id) DO UPDATE SET '
+                    "icon = COALESCE(NULLIF(bot_icons.icon, ''), excluded.icon), "
                     'shape = excluded.shape, color = excluded.color, avatar = excluded.avatar',
-                    (bot_id, None, shape or '', colour, body.avatar))
+                    (bot_id, shape or 'shape_0', shape or '', colour, body.avatar))
                 conn.commit()
             return {'bot_id': bot_id, 'face': {'avatar': body.avatar}}
 

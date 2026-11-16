@@ -219,14 +219,14 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
         # The old spinner turned at whatever size it was asked for; the avatar holds still below its
         # own floor, so this row never buys a timeline.
         self.assertIn("size: 16,", self.WORKING)
-        self.assertIn("WorkingStatus(bot: bot, color: color)", self.MAC_SCROLL)
+        self.assertIn("WorkingStatus(bot: bot, activity: activity, color: color)", self.MAC_SCROLL)
 
     def test_one_row_not_two(self) -> None:
         # The face goes *inside* the working row both shells already draw; the separate "Thinking…"
         # line that was added first is gone (reported 2026-11-14).
         self.assertNotIn('Text("Thinking…")', self.MAC_SCROLL)
         self.assertNotIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
-        self.assertIn("WorkingStatus(bot: bot)", (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8"))
+        self.assertIn("WorkingStatus(bot: bot, activity: activity, color: color)", (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8"))
 
 
 class ABotHasItsOwnNotes(unittest.TestCase):
