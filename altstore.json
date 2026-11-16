@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.525",
-          "buildVersion": "525",
-          "date": "2026-11-16T22:22:55Z",
-          "localizedDescription": "Approval cards can answer always: the host records it and stops asking. Every mobile sheet can be swiped down (one drag indicator at the sheet-chrome layer, no sheet refuses the gesture).",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.525/Hermey-0.1.525-b525.ipa",
-          "size": 3194860,
+          "version": "0.1.526",
+          "buildVersion": "526",
+          "date": "2026-11-16T23:39:35Z",
+          "localizedDescription": "Launch warms every bot conversation in the background, so switching bots paints instead of loading fresh. Approval cards can answer always. Every sheet swipes down.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.526/Hermey-0.1.526-b526.ipa",
+          "size": 3200884,
           "minOSVersion": "17.0",
-          "sha256": "3747fe344b80ae1d6e590f6d55c2a1de8069c0c289c9a1abd790eaadefd1a057"
+          "sha256": "0d92e252f2826f47f0eac7de69a67d30843043054dd3c64c65f318a46c40eec5"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.525 (525)",
-      "identifier": "hermes-0.1.525-525",
-      "caption": "Approval cards can answer always: the host records it and stops asking. Every mobile sheet can be swiped down (one drag indicator at the sheet-chrome layer, no sheet refuses the gesture).",
-      "date": "2026-11-16T22:22:55Z",
+      "title": "Hermes 0.1.526 (526)",
+      "identifier": "hermes-0.1.526-526",
+      "caption": "Launch warms every bot conversation in the background, so switching bots paints instead of loading fresh. Approval cards can answer always. Every sheet swipes down.",
+      "date": "2026-11-16T23:39:35Z",
       "tintColor": "#9A9AA0"
     }
   ],
