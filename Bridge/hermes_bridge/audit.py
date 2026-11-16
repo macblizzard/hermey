@@ -47,6 +47,23 @@ EVENTS = frozenset(
     }
 )
 
+#: Closed set of failure kinds for `error_kind`. A JSON-RPC error message can quote the client's own
+#: input, so the message itself is never logged; the caller classifies it into one of these instead.
+ERROR_KINDS = frozenset(
+    {
+        "session_busy",
+        "unknown_session",
+        "not_ready",
+        "invalid_params",
+        "unauthorised",
+        "approval_pending",
+        "gateway_unavailable",
+        "method_not_found",
+        "internal",
+        "other",
+    }
+)
+
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9_.:-]{1,96}$")
 _SAFE_PATH = re.compile(r"^/[A-Za-z0-9/_.-]{1,96}$")
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -95,6 +112,8 @@ class AuditLog:
         reason: Optional[str] = None,
         close_code: Optional[int] = None,
         profile: Optional[str] = None,
+        error_code: Optional[int] = None,
+        error_kind: Optional[str] = None,
     ) -> dict[str, Any]:
         if event not in EVENTS:
             raise ValueError(f"unknown audit event: {event!r}")
@@ -126,6 +145,15 @@ class AuditLog:
             # A profile name is not a secret, but it is still caller-supplied:
             # it goes through the same closed character set as a token.
             record["profile"] = profile if _SAFE_TOKEN.match(profile) else "invalid"
+        if error_code is not None:
+            try:
+                record["error_code"] = int(error_code)
+            except (TypeError, ValueError):
+                pass
+        if error_kind is not None:
+            # Not caller text: the emitter passes a slug from a closed set, so a message that quoted
+            # a prompt cannot reach the log through this field.
+            record["error_kind"] = error_kind if error_kind in ERROR_KINDS else "other"
 
         line = json.dumps(record, separators=(",", ":"), ensure_ascii=True)
         self._logger.info(line)

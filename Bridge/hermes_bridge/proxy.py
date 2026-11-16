@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -72,6 +73,35 @@ _ERROR_INVALID_REQUEST = -32600
 _ERROR_METHOD_NOT_FOUND = -32601
 _ERROR_INTERNAL = -32603
 _ERROR_SERVER_BUSY = -32000
+
+#: Ordered patterns that name a failure without recording its text. The gateway's message can quote
+#: the client's own input, so only the matching slug is logged (`audit.ERROR_KINDS`).
+_ERROR_KIND_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("session_busy", re.compile(r"busy|in progress|already running|turn in progress")),
+    ("unknown_session", re.compile(r"unknown session|no such session|session not found|not found")),
+    ("not_ready", re.compile(r"not ready|not open|not connected|unavailable|closed|no session")),
+    ("approval_pending", re.compile(r"approval|permission|confirm")),
+    ("unauthorised", re.compile(r"unauthori[sz]ed|forbidden|token|ticket|auth")),
+    ("invalid_params", re.compile(r"invalid|missing|required|unsupported|too large|malformed")),
+    ("method_not_found", re.compile(r"method not found|unknown method")),
+)
+
+
+def error_kind(frame: dict) -> Optional[str]:
+    """Classify a JSON-RPC error frame into a closed-set slug, never the message itself."""
+    detail = frame.get("error")
+    if not isinstance(detail, dict):
+        return None
+    code = detail.get("code")
+    if code == _ERROR_METHOD_NOT_FOUND:
+        return "method_not_found"
+    if code == _ERROR_INTERNAL:
+        return "internal"
+    message = str(detail.get("message") or "").lower()
+    for kind, pattern in _ERROR_KIND_PATTERNS:
+        if pattern.search(message):
+            return kind
+    return "other"
 #: The bridge no longer holds the transcript a paging request was cut from (a bridge restart, or a
 #: request for a session this connection never resumed). The app reopens the conversation, which
 #: re-resumes and re-fills the cache.
@@ -764,6 +794,8 @@ class GatewayProxy:
                 nbytes=len(raw),
                 outcome="error" if frame.get("error") else "ok",
                 direction="gateway_to_client",
+                error_code=(frame.get("error") or {}).get("code") if isinstance(frame.get("error"), dict) else None,
+                error_kind=error_kind(frame),
             )
         else:
             self._audit.emit(
