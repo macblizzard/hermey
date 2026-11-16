@@ -350,6 +350,16 @@ public final class AppModel: ObservableObject {
     }
 
     private var conversationCache: [String: ConversationSnapshot] = [:]
+    /// When each snapshot was taken, so a return visit inside `conversationCacheFreshness` can be
+    /// answered from the cache without asking the host at all.
+    private var conversationCacheStamp: [String: Date] = [:]
+    /// How long a cached conversation is trusted without a round trip.
+    ///
+    /// Returning to a chat you left seconds ago should be instant, and the live socket already
+    /// appends anything the bot says while you are away — so a resume inside this window buys
+    /// nothing and costs a visible reload. Longer than this, the host is asked and the snapshot is
+    /// refreshed in place.
+    public static let conversationCacheFreshness: TimeInterval = 120
     /// Bots in the order they were last *left*, so the cache can shed the oldest instead of growing
     /// with every bot the user ever clicked. Eight transcripts of a few hundred rows is small;
     /// unbounded is not.
@@ -860,6 +870,9 @@ public final class AppModel: ObservableObject {
                                                        openRequests: pendingRequests,
                                                        contextUsed: contextUsed,
                                                        contextMax: contextMax)
+        conversationCacheStamp[botID] = Date()
+        ClientLog.note("cached \(transcript.count) rows for \(botID) before switching away",
+                       level: .info, category: "cache")
         conversationCacheOrder.removeAll { $0 == botID }
         conversationCacheOrder.append(botID)
         while conversationCacheOrder.count > Self.conversationCacheLimit {
@@ -889,7 +902,13 @@ public final class AppModel: ObservableObject {
     /// Put a remembered conversation back on screen, before any network call is made.
     @discardableResult
     func restoreConversation(for botID: String) -> Bool {
-        guard let snapshot = conversationCache[botID] else { return false }
+        guard let snapshot = conversationCache[botID] else {
+            ClientLog.note("no cached conversation for \(botID): the pane has to wait for a resume",
+                           level: .info, category: "cache")
+            return false
+        }
+        ClientLog.note("restored \(snapshot.entries.count) cached rows for \(botID)",
+                       level: .info, category: "cache")
         selectedSessionID = snapshot.sessionID
         transcript = snapshot.entries
         earlierCursor = snapshot.earlierCursor
@@ -1491,8 +1510,20 @@ public final class AppModel: ObservableObject {
         // Cached, so the pane has something the instant it is asked; nothing cached means the
         // resume is the first thing that will exist, and the pane should say "opening", not
         // "start the conversation".
-        isOpeningConversation = !restoreConversation(for: botID)
+        let restored = restoreConversation(for: botID)
+        isOpeningConversation = !restored
         defer { isOpeningConversation = false }
+        // A chat you left seconds ago is already on screen, and anything said since arrives on the
+        // live socket, so asking the host again only reloads what the person is reading. Inside the
+        // freshness window the cache *is* the answer; past it, the resume below refreshes in place.
+        if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
+           let stamp = conversationCacheStamp[botID],
+           Date().timeIntervalSince(stamp) < Self.conversationCacheFreshness {
+            ClientLog.note("returned to \(botID) from cache "
+                           + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume",
+                           level: .info, category: "cache")
+            return selectedSessionID
+        }
         // A pick made in All Sessions outranks the canonical chat exactly once, and it is checked
         // after the cached paint (a pick may have nothing cached, and the pane must not flash
         // empty while the resume runs) and before the canonical plan (which would otherwise resume
