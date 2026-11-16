@@ -43,16 +43,21 @@ final class ConversationPrefetchTests: XCTestCase {
         let (model, client) = await opened(entries: [line("one"), line("two")])
         let cody = bot("cody"), atlas = bot("atlas")
         defer { forget([cody, atlas]) }
-        client.bots = [Bot(id: cody, displayName: "Cody"), Bot(id: atlas, displayName: "Atlas")]
+        // `loadBots()` selects a default bot — that is what the app does — so the roster carries a
+        // third id and the assertions are about the two that are *not* on screen.
+        client.bots = [Bot(id: bot("selected"), displayName: "Selected"),
+                       Bot(id: cody, displayName: "Cody"),
+                       Bot(id: atlas, displayName: "Atlas")]
         await model.loadBots()
+        let selected = try? XCTUnwrap(model.selectedBotID)
+        let onScreen = model.selectedBotID
 
         await model.prefetchConversations()
 
-        // Cold: nothing on screen, nothing selected, and both bots cached.
-        XCTAssertNil(model.selectedBotID, "a sweep must not select a bot")
+        XCTAssertEqual(model.selectedBotID, onScreen, "a sweep must not change which bot is open")
         XCTAssertTrue(model.transcript.isEmpty, "a sweep must not paint anything")
 
-        for id in [cody, atlas] {
+        for id in [cody, atlas] where id != selected {
             XCTAssertTrue(model.restoreConversation(for: id),
                           "\(id) was not warmed, so opening it would start from an empty pane")
             XCTAssertEqual(model.transcript.count, 2)
