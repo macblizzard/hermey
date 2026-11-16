@@ -506,3 +506,44 @@ def main_verify_only(repo: str, version: str, build: str) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+def git_blob_sha(data: bytes) -> str:
+    """The SHA-1 git itself computes for a blob: `sha1("blob <len>\\0" + data)`.
+
+    A 10 MB disk image cannot be read back through the contents API — GitHub answers with an empty
+    `content` for any file over 1 MB and expects the caller to fetch the blob — but it always answers
+    with the blob's own SHA. Comparing that against the hash computed here proves the very bytes that
+    were pushed, without downloading them twice.
+    """
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def verify_pages_file(repo: str, path: str, expected_size: int, expected_blob_sha: str,
+                      branch: str = "gh-pages", attempts: int = 4) -> None:
+    """Prove a Pages file is the bytes we just pushed, by reading it back through the API.
+
+    The *served* URL cannot be checked inside a publish: GitHub builds and publishes a Pages site
+    after the commit lands, which takes tens of seconds to minutes. The commit is immediate and is
+    exactly what the later Pages build serves, so that is what this checks — and it is written down
+    as an eventual guarantee in `docs/APPS.md` rather than presented as a wire-level one.
+    """
+    github = GitHub(resolve_token(None))
+    problem = ""
+    for attempt in range(1, attempts + 1):
+        status, raw = github.request(f"{API}/repos/{repo}/contents/{path}?ref={branch}")
+        if status == 404:
+            problem = f"{repo}/{branch}/{path} is not there"
+        elif status >= 300:
+            problem = f"{repo}/{branch}/{path} -> HTTP {status}"
+        else:
+            entry = json.loads(raw or b"{}")
+            if int(entry.get("size") or 0) != expected_size:
+                problem = f"{path}: {entry.get('size')} bytes on {branch}, expected {expected_size}"
+            elif entry.get("sha") != expected_blob_sha:
+                problem = f"{path}: blob on {branch} is {entry.get('sha')}, expected {expected_blob_sha}"
+            else:
+                print(f"  pages    {repo}/{path} verified at the API ({expected_size} bytes)")
+                return
+        if attempt < attempts:
+            time.sleep(2)
+    raise SystemExit(f"pages verification failed: {problem}")

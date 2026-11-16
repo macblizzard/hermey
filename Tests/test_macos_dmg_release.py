@@ -64,7 +64,13 @@ class TheDownloadDoesNotStall(unittest.TestCase):
                       "a fresh single commit each release, or the repo gains 7 MB per version")
 
     def test_the_docs_name_the_direct_url(self) -> None:
-        self.assertIn("macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg", DOCS)
+        # The page, not one hardcoded filename: the publish writes the versioned name beside the
+        # stable alias, so the docs send people to the listing that always shows both.
+        self.assertIn("macblizzard.github.io/hermey-downloads/", DOCS)
+        self.assertIn("Hermey-macOS-<version>.dmg", DOCS,
+                      "the filename tells the person which build they downloaded")
+        self.assertIn("Hermey-macOS-unsigned.dmg", DOCS,
+                      "the stable alias is still explained, for links already in circulation")
 
 
 class TheReleaseCarriesIt(unittest.TestCase):

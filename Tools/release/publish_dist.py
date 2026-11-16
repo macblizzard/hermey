@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+from dataclasses import dataclass
 import hashlib
 import html
 import json
@@ -49,6 +50,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from publish_source import read_ipa, safe_component  # noqa: E402  (same directory)
 
 TINT = "#007CF7"
+#: The GitHub document has always used this grey; kept so the published source does not change
+#: colour mid-history for no reason. Everything else about the two documents is shared.
+TINT_GITHUB = "#9A9AA0"
 SOURCE_NAME = "Hermey"
 SOURCE_ID = "dev.hermey.app.source"
 #: Links already in a message thread, a bookmark or an old release note. Written every publish, so it
@@ -153,14 +157,57 @@ def verify(directory: Path, base_url: str, names: list[str], version: str, build
     raise SystemExit("publish verification failed:\n  " + "\n  ".join(problems))
 
 
-def source_document(info: dict, entry: dict, base_url: str, notes: str) -> dict:
+@dataclass(frozen=True)
+class Destination:
+    """Where a document is published, expressed as the only fields that may differ.
+
+    One measurement produces the entry (size, sha256, version, build); a destination only rewrites
+    where the bytes live. Two generators used to do this and drifted apart in exactly these fields.
+    """
+    name: str
+    base_url: str
+    tint: str = TINT
+    icon_url: str | None = None
+    header_url: str | None = None
+    source_url: str | None = None
+
+
+def verify_url(url: str, expected_size: int, expected_sha: str, label: str,
+               attempts: int = 4, insecure: bool = False) -> None:
+    """Fetch one published URL and compare it with the bytes it is supposed to be.
+
+    Used for destinations we do not serve ourselves: the release asset is on GitHub's CDN, which
+    answers 502/504 often enough that an upload can look complete while the asset is momentarily
+    unavailable. Retries are for that, not for hiding a mismatch — a wrong length or digest fails on
+    the last attempt with the reason.
+    """
+    problem = ""
+    for attempt in range(1, attempts + 1):
+        try:
+            body = fetch(f"{url}?cb={int(time.time())}{attempt}", insecure=insecure)
+        except Exception as error:  # noqa: BLE001
+            problem = str(error)
+        else:
+            if len(body) != expected_size:
+                problem = f"served {len(body)} bytes, expected {expected_size}"
+            elif hashlib.sha256(body).hexdigest() != expected_sha:
+                problem = "served bytes differ from the published artifact"
+            else:
+                print(f"  verified {label} over the wire ({expected_size} bytes)")
+                return
+        if attempt < attempts:
+            time.sleep(2)
+    raise SystemExit(f"{label} failed verification: {problem}")
+
+
+def source_document(info: dict, entry: dict, destination: Destination, notes: str) -> dict:
     """One document, generated from the staged artifact: version, build, size and sha256 all come
     from the entry, which was measured on the file that was just renamed into place."""
-    base = base_url.rstrip("/")
+    base = destination.base_url.rstrip("/")
     version = entry["version"]
     build = entry["buildVersion"]
     bundle = str(info["CFBundleIdentifier"])
-    return {
+    document = {
         "name": SOURCE_NAME,
         "identifier": SOURCE_ID,
         "subtitle": "Your Hermes bots, on your phone",
@@ -169,9 +216,9 @@ def source_document(info: dict, entry: dict, base_url: str, notes: str) -> dict:
             "through one gateway; approvals, streaming replies and tool output appear in the "
             "conversation. Builds are unsigned and must be re-signed by your sideloading app."
         ),
-        "iconURL": f"{base}/icon-512.png",
-        "headerURL": f"{base}/app-icon-1024.png",
-        "tintColor": TINT,
+        "iconURL": destination.icon_url or f"{base}/icon-512.png",
+        "headerURL": destination.header_url or f"{base}/app-icon-1024.png",
+        "tintColor": destination.tint,
         "featuredApps": [bundle],
         "apps": [{
             "name": SOURCE_NAME,
@@ -182,8 +229,8 @@ def source_document(info: dict, entry: dict, base_url: str, notes: str) -> dict:
                 "Chats with every Hermes bot, streaming replies, tool cards, inline approvals and "
                 "per-device pairing."
             ),
-            "iconURL": f"{base}/icon-512.png",
-            "tintColor": TINT,
+            "iconURL": destination.icon_url or f"{base}/icon-512.png",
+            "tintColor": destination.tint,
             "category": "utilities",
             "screenshots": [],
             # One entry, deliberately: the directory keeps only the newest IPA, so a longer history
@@ -199,9 +246,12 @@ def source_document(info: dict, entry: dict, base_url: str, notes: str) -> dict:
             "identifier": f"hermes-{version}-{build}",
             "caption": notes or f"Build {build}",
             "date": entry["date"],
-            "tintColor": TINT,
+            "tintColor": destination.tint,
         }],
     }
+    if destination.source_url:
+        document["sourceURL"] = destination.source_url
+    return document
 
 
 def landing_page(base_url: str, version: str, build: str, ipa_name: str, ipa_size: int,
@@ -260,7 +310,7 @@ def publish(directory: Path, base_url: str, ipa: Path, dmg: Path | None, notes: 
         "minOSVersion": str(info.get("MinimumOSVersion") or "17.0"),
         "sha256": sha,
     }
-    document = source_document(info, entry, base_url, notes)
+    document = source_document(info, entry, Destination(name="mirror", base_url=base_url), notes)
     payload = json.dumps(document, indent=2) + "\n"
     for manifest in MANIFEST_NAMES:
         write_atomic(directory / manifest, payload)

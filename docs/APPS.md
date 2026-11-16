@@ -26,11 +26,19 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 
 ## macOS
 
-1. Download `Hermey-macOS-unsigned.dmg` — a direct link, with no release-CDN redirect in front of it:
-   <https://macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg>
-   (the same file is attached to the [latest release](../releases/latest), but GitHub's release CDN
-   stalls mid-transfer on some networks). Open the image and drag `Hermey` onto the `Applications`
-   shortcut in the same window.
+1. Download the disk image — a direct link, with no release-CDN redirect in front of it:
+   <https://macblizzard.github.io/hermey-downloads/>
+   The newest build is published there as `Hermey-macOS-<version>.dmg`, so the filename tells you
+   which build you have; `Hermey-macOS-unsigned.dmg` on the same page is the *same bytes* under a
+   name older links use, rewritten every publish.
+   (the same artifact is attached to the [latest release](../releases/latest), but GitHub's release
+   CDN stalls mid-transfer on some networks). Open the image and drag `Hermey` onto the
+   `Applications` shortcut in the same window.
+
+   **How current is that page?** The publisher writes and verifies the file in GitHub on every
+   release, but GitHub then builds the Pages site; serve time lags the release by tens of seconds to
+   a few minutes. If the version in the filename is not the newest release, wait a minute and reload
+   — Pages is a mirror of the release, and the release itself is always current.
 2. The app is unsigned, so macOS quarantines it on first launch. Authorise it once, either way:
 
    ```bash

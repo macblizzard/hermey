@@ -24,6 +24,32 @@ REPO=${REPO:-macblizzard/hermey}
 # A run that names one must also name the URL it is served on: left to itself the publish tool fills
 # in a placeholder host, and a mirrored manifest whose downloads point at a name nobody has looks
 # exactly like a successful publish. That is the failure this guard exists to make impossible.
+# One token source for the whole publish. `gh auth status` on this host reports "not logged into any
+# GitHub hosts" while `hosts.yml` holds a working token, so the token is read from the file rather
+# than assumed to be in the environment — a publish that dies at the last step having already pushed
+# a release is worse than one that refuses to start.
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="${GH_TOKEN:-}"
+  if [ -z "$GITHUB_TOKEN" ] && [ -r "${HOME}/.config/gh/hosts.yml" ]; then
+    GITHUB_TOKEN=$(python3 -c "import re,pathlib;print(re.search(r'oauth_token:\s*(\S+)', pathlib.Path('${HOME}/.config/gh/hosts.yml').read_text()).group(1))")
+  fi
+  [ -n "$GITHUB_TOKEN" ] || {
+    echo "no GitHub token: set GH_TOKEN or run 'gh auth login'" >&2
+    exit 1
+  }
+  export GITHUB_TOKEN
+fi
+
+# The macOS download in `docs/APPS.md` lives in a separate Pages repo, and nothing passed this flag
+# for five days: the documented link served a build from 2026-11-11 while the tailnet copy was
+# current. It is part of the publish now, published from the same artifact.
+DOWNLOAD_ARGS=()
+if [ -n "${DOWNLOADS_REPO:-}" ]; then
+  : "${GITHUB_TOKEN:=${GH_TOKEN:-}}"
+  export GITHUB_TOKEN
+  DOWNLOAD_ARGS=(--downloads-repo "$DOWNLOADS_REPO")
+fi
+
 MIRROR_ARGS=()
 if [ -n "${MIRROR_TO:-}" ]; then
   [ -n "${MIRROR_BASE_URL:-}" ] || {
@@ -50,6 +76,7 @@ python3 Tools/release/publish_altstore.py \
   ${MAC:+--mac-dmg "$MAC"} \
   --repo "$REPO" \
   ${MIRROR_ARGS[@]+"${MIRROR_ARGS[@]}"} \
+  ${DOWNLOAD_ARGS[@]+"${DOWNLOAD_ARGS[@]}"} \
   --notes "${NOTES:-Build from CI run $RUN_ID.}"
 
 echo

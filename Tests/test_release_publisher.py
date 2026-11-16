@@ -118,3 +118,58 @@ class OneDirectory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TwoDestinationsOneDocument(unittest.TestCase):
+    """The GitHub documents and the served documents come from one generator, by adapter."""
+
+    def test_the_github_document_is_not_assembled_by_hand(self) -> None:
+        self.assertIn("publish_dist.source_document(", ALTSTORE)
+        self.assertIn("publish_dist.Destination(", ALTSTORE)
+        # The old shape: a dict literal built inline from `app.update({...})`.
+        self.assertNotIn('app.update({"', ALTSTORE)
+        self.assertIn('base_url=f"https://github.com/{args.repo}/releases/download/{tag}"', ALTSTORE)
+
+    def test_only_the_destination_differs(self) -> None:
+        dist = DIST
+        for field in ('name: str', 'base_url: str', 'tint: str', 'icon_url: str | None',
+                      'header_url: str | None', 'source_url: str | None'):
+            self.assertIn(field, dist.split("class Destination", 1)[1].split("def ", 1)[0])
+
+    def test_the_mirror_document_does_not_advertise_a_github_source_url(self) -> None:
+        # A mirror manifest that names the release asset tells a sideloader to leave the mirror.
+        self.assertIn('if destination.source_url:', DIST)
+        self.assertIn('document["sourceURL"] = destination.source_url', DIST)
+
+
+class TheDocumentedMacLinkIsPublished(unittest.TestCase):
+    def test_the_publish_passes_the_downloads_repo(self) -> None:
+        shell = (RELEASE / "publish_github.sh").read_text(encoding="utf-8")
+        self.assertIn("DOWNLOADS_REPO", shell)
+        self.assertIn('DOWNLOAD_ARGS=(--downloads-repo "$DOWNLOADS_REPO")', shell)
+        self.assertIn('${DOWNLOAD_ARGS[@]+"${DOWNLOAD_ARGS[@]}"}', shell)
+
+    def test_the_downloads_repo_gets_a_versioned_name_andthe_alias(self) -> None:
+        self.assertIn('versioned = f"Hermey-macOS-{safe_component(version)}.dmg"', ALTSTORE)
+        self.assertIn("shutil.copy2(dmg, work / publish_dist.STABLE_DMG_ALIAS)", ALTSTORE)
+
+    def test_the_commit_is_verified_even_though_pages_lags(self) -> None:
+        self.assertIn("sync_store.verify_pages_file(slug, versioned, size,", ALTSTORE)
+        self.assertIn("sync_store.git_blob_sha(dmg.read_bytes())", ALTSTORE,
+                      "a >1 MB file cannot be read back through the contents API: compare the blob SHA")
+        store = (RELEASE / "sync_store.py").read_text(encoding="utf-8")
+        self.assertIn("def verify_pages_file(", store)
+        self.assertIn("def git_blob_sha(", store)
+        self.assertIn("GitHub builds and publishes a Pages site", store)
+
+    def test_the_docs_state_the_pages_lag_instead_of_implying_match(self) -> None:
+        docs = (ROOT / "docs" / "APPS.md").read_text(encoding="utf-8")
+        self.assertIn("Pages is a mirror of the release, and the release itself is always current", docs)
+
+
+class TheReleaseAssetIsVerified(unittest.TestCase):
+    def test_the_uploaded_asset_is_fetched_back(self) -> None:
+        self.assertIn('publish_dist.verify_url(download, len(data), digest, "release asset"', ALTSTORE)
+        self.assertIn("attempts=16", ALTSTORE, "a fresh asset 404s on the CDN for ~30 s")
+
+    def test_the_skip_is_explicit_and_named(self) -> None:
+        self.assertIn('"--skip-release-verify"', ALTSTORE)

@@ -118,7 +118,8 @@ padding:0 1.5rem;color:#111}}a{{color:#0b6bcb}}code{{background:#f2f2f2;padding:
 <p>This repo exists so the app has a download URL that does not go through GitHub's release CDN,
 which stalls mid-transfer on some networks. The site links these files directly.</p>
 <ul>
-  <li><a href="{name}">Hermey for macOS</a> &mdash; disk image, unsigned, {version}</li>
+  <li><a href="{name}">Hermey for macOS, {version}</a> &mdash; disk image, unsigned</li>
+  <li><a href="{alias}">{alias}</a> &mdash; the same build under the name older links use</li>
 </ul>
 <p>iPhone builds live with each release:
 <a href="https://github.com/{repo}/releases">github.com/{repo}/releases</a>.</p>
@@ -127,26 +128,48 @@ which stalls mid-transfer on some networks. The site links these files directly.
 """
 
 
-def push_to_downloads_repo(slug: str, dmg: Path, version: str, repo: str) -> str:
-    """Force-push a fresh single commit carrying the image, so the repo never accumulates 7 MB blobs."""
+def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo: str) -> dict:
+    """Force-push a fresh single commit carrying the image, so the repo never accumulates blobs.
+
+    This is the only public URL that is not GitHub's release CDN or the tailnet, and `docs/APPS.md`
+    points at it — while nothing passed `--downloads-repo`, so it sat at a five-day-old build while
+    the flag existed. It is published from the *same* artifact as the tailnet copy, under a versioned
+    name, with the stable name written beside it in the same commit: a reader can tell which build
+    they downloaded from the filename, and an old link still resolves to that same build.
+    """
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         raise SystemExit("--downloads-repo needs GITHUB_TOKEN in the environment")
+    versioned = f"Hermey-macOS-{safe_component(version)}.dmg"
     work = Path(tempfile.mkdtemp(prefix="hermey-downloads-"))
     try:
         run(["git", "init", "-q", "-b", "gh-pages"], cwd=work)
-        shutil.copy2(dmg, work / dmg.name)
+        shutil.copy2(dmg, work / versioned)
+        shutil.copy2(dmg, work / publish_dist.STABLE_DMG_ALIAS)
         (work / "index.html").write_text(
-            DOWNLOADS_PAGE.format(name=dmg.name, version=version, repo=repo), encoding="utf-8")
+            DOWNLOADS_PAGE.format(name=versioned, alias=publish_dist.STABLE_DMG_ALIAS,
+                                  version=f"{version} (build {build})", repo=repo),
+            encoding="utf-8")
         (work / ".nojekyll").write_text("", encoding="utf-8")
         run(["git", "add", "-A"], cwd=work)
         run(["git", "-c", "user.name=Hermey release", "-c", "user.email=release@hermey.local",
-             "commit", "-q", "-m", f"downloads: {dmg.name} for {version}"], cwd=work)
+             "commit", "-q", "-m", f"downloads: {versioned} for {version} ({build})"], cwd=work)
         url = f"https://x-access-token:{token}@github.com/{slug}.git"
         run(["git", "push", "-q", "-f", url, "gh-pages:gh-pages"], cwd=work)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    return f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/{dmg.name}"
+
+    size, digest = publish_dist.digest_of(dmg)
+    # The commit is what this publish can prove: GitHub's Pages build for the served URL takes tens
+    # of seconds to minutes, so the served copy is verified on the API layer here and stated as
+    # eventual in the docs, not claimed as wire-verified.
+    sync_store.verify_pages_file(slug, versioned, size, sync_store.git_blob_sha(dmg.read_bytes()))
+    return {
+        "versioned": f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/{versioned}",
+        "stable": f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/"
+                  f"{publish_dist.STABLE_DMG_ALIAS}",
+        "bytes": size,
+    }
 
 
 def main() -> int:
@@ -173,6 +196,7 @@ def main() -> int:
     # its own origin (a container mid-bringup), and it says so loudly.
     parser.add_argument("--skip-mirror-verify", action="store_true")
     parser.add_argument("--insecure-mirror-verify", action="store_true")
+    parser.add_argument("--skip-release-verify", action="store_true")
     args = parser.parse_args()
 
     info = read_ipa(args.ipa)
@@ -210,6 +234,11 @@ def main() -> int:
     else:
         print(f"  release {tag} already exists — reusing it")
 
+    # The asset is one of the two destinations that is not ours; fetch it back. A fresh asset can
+    # 404 on the CDN for ~30 s, which is what the retries are for — not for a wrong digest.
+    if not args.skip_release_verify:
+        publish_dist.verify_url(download, len(data), digest, "release asset", attempts=16)
+
     # The one-line installer in every doc is `releases/latest/download/install.sh`, so the script has
     # to be an asset of the release — it was not, and that URL answered 404 while the release page
     # looked complete (the same way a missing icon did). `gh release upload` keeps the file's name.
@@ -233,41 +262,38 @@ def main() -> int:
         run(["git", "clone", "--depth", "1", f"https://github.com/{args.repo}.git", str(work)])
         path = work / "altstore.json"
         source = json.loads(path.read_text()) if path.exists() else {}
-        app = (source.get("apps") or [{}])[0]
-        versions = [v for v in app.get("versions", [])
-                    if not (v.get("version") == version and v.get("buildVersion") == build)]
-        versions.insert(0, entry)
-        app.update({
-            "name": SOURCE_NAME,
-            "bundleIdentifier": bundle,
-            "developerName": "Hermey",
-            "subtitle": "Hermes Agent client",
-            "localizedDescription": "Native client for a self-hosted Hermes Agent gateway.",
-            "iconURL": icon_url,
-            "tintColor": "#9A9AA0",
-            "category": "utilities",
-            "screenshots": [],
-            "versions": versions[:args.keep],
-            "appPermissions": {"entitlements": [], "privacy": {
-                "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device."}},
-        })
-        source.update({
-            "name": "Hermey",
-            "identifier": SOURCE_ID,
-            # The release asset, not `main`: the manifest is generated and no longer tracked there, so a
-            # raw URL would 404 and a sideloading app that follows `sourceURL` would stop updating.
-            "sourceURL": f"https://github.com/{args.repo}/releases/latest/download/altstore.json",
-            "schemaVersion": source.get("schemaVersion", 1),
-            "subtitle": "Hermes Agent",
-            "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
-            "iconURL": icon_url,
-            "headerURL": icon_url,
-            "tintColor": "#9A9AA0",
-            "featuredApps": [bundle],
-            "apps": [app],
-            "news": source.get("news", []),
-        })
-        path.write_text(json.dumps(source, indent=2) + "\n")
+        # The document is not assembled here: `publish_dist.source_document` builds it from one
+        # measured entry, and a Destination only rewrites where the bytes live. Two generators was
+        # how the GitHub document and the mirror document drifted into disagreeing field by field.
+        history: list[dict] = []
+        if path.exists():
+            try:
+                previous = json.loads(path.read_text())
+            except json.JSONDecodeError:
+                previous = {}
+            history = [version_entry
+                       for version_entry in ((previous.get("apps") or [{}])[0].get("versions") or [])
+                       if (version_entry.get("version"), version_entry.get("buildVersion"))
+                       != (version, build)]
+        document = publish_dist.source_document(
+            info,
+            entry,
+            publish_dist.Destination(
+                name="github",
+                base_url=f"https://github.com/{args.repo}/releases/download/{tag}",
+                tint=publish_dist.TINT_GITHUB,
+                icon_url=icon_url,
+                header_url=icon_url,
+                source_url=f"https://github.com/{args.repo}/releases/latest/download/altstore.json",
+            ),
+            args.notes,
+        )
+        # Newest first. `altstore.json` is untracked in `main`, so in practice the clone has no
+        # manifest and this list is exactly one entry — the history is carried by release assets,
+        # which are never deleted, not by a document that is regenerated each time.
+        document["apps"][0]["versions"] = [entry, *history][:args.keep]
+        path.write_text(json.dumps(document, indent=2) + "\n")
+
         if args.mirror_to:
             # The served directory has exactly one writer, and it is not this file. `publish_dist`
             # stages each artifact atomically, generates `altstore.json`/`source.json`/`index.html`
@@ -316,9 +342,10 @@ def main() -> int:
         shutil.rmtree(work, ignore_errors=True)
 
     if args.downloads_repo and args.mac_dmg and args.mac_dmg.exists():
-        published_dmg = push_to_downloads_repo(
-            args.downloads_repo, args.mac_dmg, f"{version} (build {build})", args.repo)
-        print(f"\n  mac      {published_dmg}")
+        published = push_to_downloads_repo(args.downloads_repo, args.mac_dmg, version, build,
+                                           args.repo)
+        print(f"\n  mac      {published['versioned']}  ({published['bytes']} bytes)")
+        print(f"  mac      {published['stable']}")
 
     print(f"\n  source   https://github.com/{args.repo}/releases/latest/download/altstore.json")
     print(f"  ipa      {download}  ({len(data)} bytes)")
