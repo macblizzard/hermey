@@ -1032,15 +1032,8 @@ struct BotListScreen: View {
                 // Hidden bots), and a glyph that means "more options" beside a gear that means
                 // "settings" gave two buttons the same promise.
                 Menu {
-                    Button {
-                        showHidden.toggle()
-                    } label: {
-                        Label("Hidden bots", systemImage: showHidden ? "checkmark" : "circle")
-                    }
-                    .accessibilityValue(showHidden ? "On" : "Off")
-
-                    Divider()
-
+                    // Adding comes first: the menu opens from a +, and the first rows should be the
+                    // things that + promises.
                     Button { showAddBot = true } label: {
                         Label("Add bot", systemImage: "plus.circle")
                     }
@@ -1061,6 +1054,16 @@ struct BotListScreen: View {
                     }
 
                     Divider()
+
+                    // The two list-wide switches sit at the foot together: what the list shows, and
+                    // what the badges say. Hidden bots used to open the menu, above the actions that
+                    // create things, which put a view toggle where the + pointed.
+                    Button {
+                        showHidden.toggle()
+                    } label: {
+                        Label("Hidden bots", systemImage: showHidden ? "checkmark" : "circle")
+                    }
+                    .accessibilityValue(showHidden ? "On" : "Off")
 
                     // Clears every badge on the list at once: a person who is done with the app
                     // should not have to open each chat to say so.

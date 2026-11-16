@@ -106,6 +106,13 @@ public final class UpdateChecker: ObservableObject {
 
     @Published public private(set) var promptHost: PromptHost = .root
 
+    /// Whether the launch screen has left and the app's own screen is on show.
+    ///
+    /// The card is never presented over the splash: a check that answers during boot is held until
+    /// the fade is done, so the update appears on a screen the person can act on instead of behind a
+    /// logo. `LaunchGateView` reports the moment; nothing is presented before it.
+    @Published public private(set) var isShellReady = false
+
 
     /// A check is in flight. The Settings row reads this to say so instead of looking unresponsive.
     @Published public private(set) var isChecking = false
@@ -161,12 +168,17 @@ public final class UpdateChecker: ObservableObject {
     ///
     /// - Parameter manual: a person tapped "Check for Updates". A manual check ignores both the
     ///   24-hour throttle and the remembered skip, because it is an explicit request to be told.
-    public func check(manual: Bool = false) async {
+    /// - Parameter atLaunch: this is the check a cold start makes. It ignores the 24-hour throttle —
+    ///   opening the app is the moment a person expects to be told about a new build, and a phone
+    ///   opened twice in a minute costs one extra request, not one per launch of a session — while a
+    ///   build the user already answered "Not now" to still stays answered (see `skippedBuild`).
+    public func check(manual: Bool = false, atLaunch: Bool = false) async {
         // Two triggers can fire within a second of each other (launch and the first foreground
         // notification); one round trip answers both.
         guard !isChecking else { return }
 
-        if !manual, let lastCheck, Date().timeIntervalSince(lastCheck) < Self.minimumCheckInterval {
+        if !manual, !atLaunch, let lastCheck,
+           Date().timeIntervalSince(lastCheck) < Self.minimumCheckInterval {
             return
         }
 
@@ -177,6 +189,9 @@ public final class UpdateChecker: ObservableObject {
 
         // The attempt is what gets remembered, not the success: a feed that is down for a day must
         // not be re-asked on every foreground, and the next launch is the natural retry.
+        // The attempt is what gets remembered, so a launch that found nothing is not re-asked by the
+        // foreground notification a second later. A manual check is never throttled, so it records
+        // nothing.
         if !manual {
             let now = Date()
             defaults.set(now, forKey: DefaultsKey.lastCheck)
@@ -219,6 +234,14 @@ public final class UpdateChecker: ObservableObject {
     public func rehost(_ host: PromptHost) {
         guard isPromptVisible, promptHost != host else { return }
         promptHost = host
+    }
+
+    /// The launch screen has gone. A card that arrived during boot is presented now.
+    ///
+    /// Idempotent and safe to call on every launch: it only ever turns the gate on.
+    public func shellDidReveal() {
+        guard !isShellReady else { return }
+        isShellReady = true
     }
 
 

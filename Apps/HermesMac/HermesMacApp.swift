@@ -46,6 +46,19 @@ struct HermesMacApp: App {
         #endif
     }
 
+    /// One background check per launch, whatever Sparkle's own schedule says.
+    ///
+    /// `SUEnableAutomaticChecks` with `SUScheduledCheckInterval: 86400` means "at most once a day",
+    /// so a Mac restarted after a release could sit on the old build until tomorrow. A cold start is
+    /// the moment a person expects to be told, so it asks. `checkForUpdatesInBackground` is the
+    /// silent variant — Sparkle still draws its own dismissible prompt when it finds something, and
+    /// nothing here installs, gates or blocks: the workspace is usable throughout.
+    private func checkForUpdatesAtLaunch() {
+        #if canImport(Sparkle)
+        updater.updater.checkForUpdatesInBackground()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup("Hermey") {
             // The window root, with the launch screen over it until the app is usable. The gate is
@@ -74,6 +87,8 @@ struct HermesMacApp: App {
                 .task {
                     await store.attachFixtureHostIfNeeded()
                     await store.connectOnLaunchIfPaired()
+                    // Last, so dialling the host is not delayed by the feed.
+                    checkForUpdatesAtLaunch()
                 }
         }
         .windowStyle(.hiddenTitleBar)

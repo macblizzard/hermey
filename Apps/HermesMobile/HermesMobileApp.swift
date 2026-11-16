@@ -32,7 +32,10 @@ struct HermesMobileApp: App {
             // rather than an empty box.
             LaunchGateView(model: app.model,
                            isPaired: { app.isPaired },
-                           fadeOut: BootScreen.fadeOutDuration) {
+                           fadeOut: BootScreen.fadeOutDuration,
+                           // The card is held until the splash has gone, so an update found during
+                           // boot appears on the list rather than behind the logo.
+                           onContentRevealed: { app.updates.shellDidReveal() }) {
                 BootScreen()
             } content: {
                 RootView()
@@ -49,7 +52,13 @@ struct HermesMobileApp: App {
                 // Its own task, not a step inside `start()`: the feed is a public URL and the app
                 // must be usable before it answers. An unreachable feed is a no-op (see
                 // `UpdateChecker`), so first paint never waits on it.
-                .task { await app.updates.check() }
+                //
+                // `atLaunch`: every cold start asks, rather than once per 24 h. The check runs while
+                // the splash is up and its answer is presented the moment the splash leaves, so a
+                // person who opens the app is told about a new build without going looking for it.
+                // A build they already answered "Not now" to stays answered until a newer one
+                // appears — that is what keeps this from being a nag on every launch.
+                .task { await app.updates.check(atLaunch: true) }
         }
     }
 }

@@ -238,7 +238,13 @@ struct UpdatePromptPresenter: ViewModifier {
     let host: UpdateChecker.PromptHost
 
     /// Whether this context is the one that should be showing the card.
-    private var isMine: Bool { updates.isPromptVisible && updates.promptHost == host }
+    ///
+    /// `isShellReady` is the boot screen's veto: a check that answers during launch has already
+    /// opened the card, and presenting it over the splash would put it behind a logo. The card
+    /// appears the moment the launch screen is gone.
+    private var isMine: Bool {
+        updates.isPromptVisible && updates.promptHost == host && updates.isShellReady
+    }
 
     func body(content: Content) -> some View {
         content

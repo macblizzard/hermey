@@ -45,6 +45,12 @@ public struct LaunchGateView<Boot: View, Content: View>: View {
     private let fadeOut: TimeInterval
     private let boot: Boot
     private let content: Content
+    /// Called once, after the launch screen has finished fading out.
+    ///
+    /// The shells hang work that must not happen over the splash on this — the iOS update card is
+    /// the first: its check runs during boot and its answer is held until here. Optional, so a
+    /// preview or a test host that does not care does not have to pass anything.
+    private let onContentRevealed: (() -> Void)?
 
     @State private var readiness: LaunchReadiness
 
@@ -55,11 +61,13 @@ public struct LaunchGateView<Boot: View, Content: View>: View {
                 isPaired: @escaping () -> Bool,
                 deadline: TimeInterval = LaunchReadiness.defaultDeadline,
                 fadeOut: TimeInterval = 0.18,
+                onContentRevealed: (() -> Void)? = nil,
                 @ViewBuilder boot: () -> Boot,
                 @ViewBuilder content: () -> Content) {
         self.model = model
         self.isPaired = isPaired
         self.fadeOut = max(fadeOut, 0)
+        self.onContentRevealed = onContentRevealed
         self.boot = boot()
         self.content = content()
         _readiness = State(initialValue: LaunchReadiness(deadline: deadline))
@@ -97,6 +105,14 @@ public struct LaunchGateView<Boot: View, Content: View>: View {
             try? await Task.sleep(nanoseconds: Self.tick)
             evaluate()
         }
+        guard !Task.isCancelled else { return }
+        // After the fade, not when it starts: the shell is only really on show once the launch
+        // screen has stopped drawing over it.
+        if fadeOut > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(fadeOut * 1_000_000_000))
+        }
+        guard !Task.isCancelled else { return }
+        onContentRevealed?()
     }
 
     /// One evaluation. The machine is advanced on a copy so an unchanged phase costs no redraw —

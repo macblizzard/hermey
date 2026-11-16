@@ -84,7 +84,7 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
 
     def setUp(self):
         self.source = read(CHECKER_PATH)
-        self.check = block(self.source, "public func check(manual: Bool = false) async {",
+        self.check = block(self.source, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
                            "/// The user dismissed the card")
 
     def test_the_keys_are_stable_and_declared_once(self):
@@ -93,10 +93,21 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
         self.assertEqual(self.source.count('"hermey.updates.lastCheck"'), 1)
         self.assertIn("UserDefaults", self.source)
 
-    def test_the_throttle_is_one_day_and_only_covers_unsolicited_checks(self):
+    def test_the_throttle_is_one_day_and_only_covers_scheduled_checks(self):
         self.assertIn("24 * 60 * 60", self.source)
-        self.assertIn("if !manual, let lastCheck", self.check,
-                      "the 24 h gate must not apply to a manual check")
+        self.assertIn("if !manual, !atLaunch, let lastCheck", self.check,
+                      "the 24 h gate must not apply to a manual check or to the launch check")
+
+    def test_a_cold_start_asks_the_feed_every_time(self):
+        # "when i close and run the app, it should do the new update check immediately at bootup".
+        # The throttle covers the foreground notification; the launch check bypasses it.
+        self.assertIn("atLaunch: this is the check a cold start makes", self.source)
+        self.assertIn("!manual, !atLaunch", self.check)
+        # ...and the launch check is remembered, so the foreground notification a second later is
+        # not a second request.
+        record = block(self.check, "let found = await latestUpdate()", "guard let found else")
+        self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", record)
+        self.assertIn("if !manual {", record)
 
     def test_a_manual_check_always_reaches_the_feed(self):
         manual_path = block(self.check, "let found = await latestUpdate()", "guard found.build > currentBuild")
@@ -249,8 +260,20 @@ class TheEntryPointsAsk(unittest.TestCase):
         self.assertIn("self.updates = UpdateChecker()", read(ENVIRONMENT_PATH))
 
     def test_launch_checks_without_waiting_for_first_paint(self):
-        self.assertIn(".task { await app.updates.check() }", self.source,
+        self.assertIn(".task { await app.updates.check(atLaunch: true) }", self.source,
                       "the check needs its own task, not a step inside app.start()")
+
+    def test_the_card_waits_for_the_splash(self):
+        # A check that answers during boot must not present over the launch screen: the gate reports
+        # when the fade is done, and the presenter refuses until then.
+        self.assertIn("onContentRevealed: { app.updates.shellDidReveal() }", self.source)
+        gate = read(ROOT / "Sources" / "HermesAppKit" / "LaunchGateView.swift")
+        self.assertIn("onContentRevealed?()", gate)
+        self.assertIn("private let onContentRevealed: (() -> Void)?", gate)
+        self.assertIn("fadeOut * 1_000_000_000", gate,
+                      "after the fade, not when it starts")
+        presenter = block(read(PROMPT_PATH), "struct UpdatePromptPresenter: ViewModifier {", "extension View {")
+        self.assertIn("updates.isShellReady", presenter)
 
     def test_foreground_checks_even_when_unpaired(self):
         handler = block(self.source, ".onChange(of: scenePhase) { phase in", "MobileReplyNotifier.shared.refreshAuthorization()")

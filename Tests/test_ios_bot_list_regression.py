@@ -118,3 +118,15 @@ class TheBarHasSettingsAndACreateMenu(unittest.TestCase):
                     "New group chat", "Mark all as read"):
             self.assertIn(row, self.menu, f"the menu lost {row!r} when Settings moved out")
 
+
+    def test_hidden_bots_sits_at_the_foot_beside_mark_all_as_read(self) -> None:
+        # "put the hidden bots option before the mark all as read on the + buttons list, right now it
+        # comes on top": the menu opens from a +, so it opens with the things that add; the two
+        # list-wide switches close it together.
+        hidden = self.menu.index("Hidden bots")
+        mark = self.menu.index("Mark all as read")
+        group = self.menu.index("New group chat")
+        self.assertLess(group, hidden, "Hidden bots moved below the create actions")
+        self.assertLess(hidden, mark, "Hidden bots sits immediately above Mark all as read")
+        tail = self.menu[hidden:]
+        self.assertNotIn("Add bot", tail, "the two switches are the last thing in the menu")
