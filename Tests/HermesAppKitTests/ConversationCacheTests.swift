@@ -81,14 +81,16 @@ final class ConversationCacheTests: XCTestCase {
         XCTAssertEqual(model.transcript.count, 3,
                        "the cached conversation is painted before the host answers")
         _ = await switching.value
-        XCTAssertEqual(model.transcript.count, 3)
+        XCTAssertEqual(model.transcript.count, 3,
+                       "inside the freshness window the cache answers: no resume, no reload")
 
-        // And the answer still wins: a cache that is behind the host is refreshed, not trusted.
+        // Past the window the host is asked again, and its answer replaces the snapshot.
+        model.conversationCacheFreshness = 0
         client.resumeDelay = nil
         client.entries = [line("alpha"), line("beta"), line("gamma"), line("delta")]
         await model.endlessSession(for: atlas)
         await model.endlessSession(for: cody)
-        XCTAssertEqual(model.transcript.count, 4, "the host's answer replaces the snapshot")
+        XCTAssertEqual(model.transcript.count, 4, "a stale cache is refreshed, not trusted")
         await model.stop()
     }
 

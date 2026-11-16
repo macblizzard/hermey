@@ -359,7 +359,10 @@ public final class AppModel: ObservableObject {
     /// appends anything the bot says while you are away — so a resume inside this window buys
     /// nothing and costs a visible reload. Longer than this, the host is asked and the snapshot is
     /// refreshed in place.
-    public static let conversationCacheFreshness: TimeInterval = 120
+    public static let defaultCacheFreshness: TimeInterval = 120
+    /// The instance's window; a test sets it to zero to exercise the resume path, and a future
+    /// setting could let a person choose it.
+    public var conversationCacheFreshness: TimeInterval = Self.defaultCacheFreshness
     /// Bots in the order they were last *left*, so the cache can shed the oldest instead of growing
     /// with every bot the user ever clicked. Eight transcripts of a few hundred rows is small;
     /// unbounded is not.
@@ -1518,7 +1521,7 @@ public final class AppModel: ObservableObject {
         // freshness window the cache *is* the answer; past it, the resume below refreshes in place.
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
-           Date().timeIntervalSince(stamp) < Self.conversationCacheFreshness {
+           Date().timeIntervalSince(stamp) < conversationCacheFreshness {
             ClientLog.note("returned to \(botID) from cache "
                            + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume",
                            level: .info, category: "cache")

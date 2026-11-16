@@ -9,8 +9,8 @@ MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
 
 class TheCacheIsTrusted(unittest.TestCase):
     def test_a_fresh_snapshot_answers_without_a_resume(self) -> None:
-        self.assertIn("public static let conversationCacheFreshness: TimeInterval = 120", MODEL)
-        self.assertIn("Date().timeIntervalSince(stamp) < Self.conversationCacheFreshness", MODEL)
+        self.assertIn("public static let defaultCacheFreshness: TimeInterval = 120", MODEL)
+        self.assertIn("Date().timeIntervalSince(stamp) < conversationCacheFreshness", MODEL)
         self.assertIn("return selectedSessionID", MODEL.split("from cache")[1][:400])
 
     def test_the_skip_never_hides_a_deliberate_session_pick(self) -> None:
