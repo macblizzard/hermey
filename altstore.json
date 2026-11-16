@@ -24,7 +24,7 @@
         {
           "version": "0.1.484",
           "buildVersion": "484",
-          "date": "2026-11-16T12:05:13Z",
+          "date": "2026-11-16T12:06:14Z",
           "localizedDescription": "Launch mark loads from the app catalogue; splash floor 0.5 s so it is actually seen.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.484/Hermey-0.1.484-b484.ipa",
           "size": 3143094,
@@ -46,7 +46,7 @@
       "title": "Hermes 0.1.484 (484)",
       "identifier": "hermes-0.1.484-484",
       "caption": "Launch mark loads from the app catalogue; splash floor 0.5 s so it is actually seen.",
-      "date": "2026-11-16T12:05:13Z",
+      "date": "2026-11-16T12:06:14Z",
       "tintColor": "#9A9AA0"
     }
   ],
