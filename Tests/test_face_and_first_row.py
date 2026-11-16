@@ -307,8 +307,10 @@ class NoTabBarAndTwoFades(unittest.TestCase):
         self.assertIn("BotsTab(model: app.model)", self.APP)
 
     def test_settings_still_has_a_door(self) -> None:
-        self.assertIn("Button { showAppSettings = true }", self.LIST)
-        self.assertIn('Label("Settings", systemImage: "gearshape")', self.LIST)
+        # A button of its own in the trailing corner now, not the last row of the menu.
+        self.assertIn("showAppSettings = true", self.LIST)
+        self.assertIn('Image(systemName: "gearshape")', self.LIST)
+        self.assertIn('.accessibilityLabel("Settings")', self.LIST)
         # And the door is a sheet with its own navigation stack: Settings pushes Caching and
         # Devices, and a bare `SettingsScreen` in a sheet has no container for those links.
         self.assertIn("SettingsSheet(model: model)", self.LIST)
