@@ -205,9 +205,10 @@ public struct RoutineSchedule: Equatable, Sendable {
         case .daily:
             return "\(minute) \(hour) * * *"
         case .weekly:
-            // cron counts Sunday as 0; Calendar counts it as 1, so Sunday wraps to 0 and the rest
-            // shift down by one.
-            return "\(minute) \(hour) * * \(weekday % 7)"
+            // cron counts Sunday as 0 and Saturday as 6; Calendar counts Sunday as 1 and Saturday as
+            // 7. The conversion is therefore a subtraction, not a wrap: `weekday % 7` sends Monday to
+            // 2 (Wednesday) and Sunday to 1 (Monday).
+            return "\(minute) \(hour) * * \(max(0, min(6, weekday - 1)))"
         case .monthly:
             return "\(minute) \(hour) \(dayOfMonth) * *"
         case .repeating:
