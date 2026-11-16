@@ -166,6 +166,12 @@ def desired_manifest(current: dict | None, repo: str, ipa: dict, ipa_bytes: byte
         }
         app = manifest["apps"][0]
 
+    # The manifest advertises where its own next version will be found. `main` no longer tracks the
+    # manifest (it is generated, and it names the mirror host), so a raw URL there 404s and a
+    # sideloading app that follows `sourceURL` silently stops updating. Forced here rather than
+    # inherited from whatever the current copy said.
+    manifest["sourceURL"] = f"https://github.com/{repo}/releases/latest/download/altstore.json"
+
     # Newest first, and the entry we just built must be the only one carrying this build.
     versions = [entry] + [v for v in app.get("versions", []) if v.get("buildVersion") != build]
     app["versions"] = versions[:20]
