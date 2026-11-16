@@ -270,6 +270,14 @@ try:
 except Exception: print("")' 2>/dev/null || true)
 fi
 
+# A banner's picture is fetched by the phone, so the bridge has to be told this host's public name —
+# and the only place that name exists is here. An install with no tailnet name (or `--no-serve`) has
+# nothing to name, and then the bridge sends no image rather than a URL on somebody else's tailnet.
+PUSH_ICON_ENV=""
+if [ -n "$TAIL_HOST" ] && [ "$DO_SERVE" != no ]; then
+  PUSH_ICON_ENV="Environment=HERMEY_PUSH_ICON_BASE=https://$TAIL_HOST:$HTTPS_PORT/v1/push/icon"
+fi
+
 # ---------------------------------------------------------------- units
 say "Writing the services"
 cat > "/etc/systemd/system/$BR_UNIT.service" <<EOF
@@ -293,9 +301,13 @@ Environment=HERMES_BRIDGE_STATE_DIR=$STATE
 Environment=HERMES_PROFILES_ROOT=$PROFILES_ROOT
 Environment=XDG_STATE_HOME=$STATE
 Environment=HERMES_BRIDGE_PUBLIC_HOST=${TAIL_HOST:-127.0.0.1}
+$PUSH_ICON_ENV
 ExecStart=$PREFIX/venv/bin/python -m hermes_bridge
 WorkingDirectory=$PREFIX
-Restart=on-failure
+# Restart on a clean exit too, not only on failure: a SIGTERM looks like a successful stop to
+# systemd, so on-failure leaves the bridge dead after a stray kill and every paired device silently
+# loses its host. (No backticks below: this block is an unquoted heredoc and the shell runs them.)
+Restart=always
 RestartSec=2
 # Loopback networking and one state directory: nothing else.
 NoNewPrivileges=yes
