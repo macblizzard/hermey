@@ -105,7 +105,7 @@ Dock tile or the app icon; zero clears it.
   posts the banner to an app that already holds one: install **Bark** (free, App Store), copy the
   address it shows, and paste it into Settings → **Replies** (iOS) or Settings → **Notifications**
   (macOS). **Send a test** proves it. From then on the host checks every bot's conversation on a
-  ~20-second timer and pushes what is new, so a locked phone gets the banner promptly instead of
+  ~10-second timer and pushes what is new, so a locked phone gets the banner promptly instead of
   whenever iOS decides to wake the app. Nothing is sent until an address is registered; the address
   is kept per device, and the same two rules still hold — a bot is never pushed about the chat on
   screen, and your own reply never rings.
