@@ -28,7 +28,7 @@ final class RoutineDraftTests: XCTestCase {
         schedule.dayOfMonth = 15
         XCTAssertEqual(schedule.expression, "0 9 15 * *")
 
-        schedule.mode = .repeat
+        schedule.mode = .repeating
         schedule.repeatCount = 15
         schedule.repeatUnit = .minutes
         XCTAssertEqual(schedule.expression, "every 15m")
@@ -70,7 +70,7 @@ final class RoutineDraftTests: XCTestCase {
         schedule.dayOfMonth = 22
         XCTAssertEqual(schedule.summary, "Monthly on the 22nd at 09:00")
 
-        schedule.mode = .repeat
+        schedule.mode = .repeating
         schedule.repeatCount = 1
         schedule.repeatUnit = .hours
         XCTAssertEqual(schedule.summary, "Every 1 hour", "one of them is not \"every 1 hours\"")

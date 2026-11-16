@@ -155,7 +155,7 @@ public struct BotRoutine: Identifiable, Hashable, Sendable {
 
 /// The schedule picker's modes: the same six the official app offers.
 public enum RoutineScheduleMode: String, CaseIterable, Sendable, Identifiable {
-    case daily, weekly, monthly, repeat, once, custom
+    case daily, weekly, monthly, repeating, once, custom
 
     public var id: String { rawValue }
 
@@ -164,7 +164,7 @@ public enum RoutineScheduleMode: String, CaseIterable, Sendable, Identifiable {
         case .daily: return "Daily"
         case .weekly: return "Weekly"
         case .monthly: return "Monthly"
-        case .repeat: return "Repeat"
+        case .repeating: return "Repeat"
         case .once: return "Once"
         case .custom: return "Custom"
         }
@@ -210,7 +210,7 @@ public struct RoutineSchedule: Equatable, Sendable {
             return "\(minute) \(hour) * * \(weekday % 7)"
         case .monthly:
             return "\(minute) \(hour) \(dayOfMonth) * *"
-        case .repeat:
+        case .repeating:
             return "every \(repeatCount)\(repeatUnit.suffix)"
         case .once:
             return Self.isoStamp(onceAt)
@@ -229,7 +229,7 @@ public struct RoutineSchedule: Equatable, Sendable {
             return "Weekly on \(Self.weekdayName(weekday)) at \(clock)"
         case .monthly:
             return "Monthly on the \(Self.ordinal(dayOfMonth)) at \(clock)"
-        case .repeat:
+        case .repeating:
             let unit = repeatCount == 1 ? (repeatUnit == .minutes ? "minute" : "hour")
                                         : repeatUnit.label.lowercased()
             return "Every \(repeatCount) \(unit)"
@@ -246,17 +246,17 @@ public struct RoutineSchedule: Equatable, Sendable {
     public var isValid: Bool {
         if mode == .custom { return !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         if mode == .once { return onceAt > Date() }
-        if mode == .repeat { return repeatCount >= 1 }
+        if mode == .repeating { return repeatCount >= 1 }
         return true
     }
 
-    static func weekdayName(_ weekday: Int) -> String {
+    public static func weekdayName(_ weekday: Int) -> String {
         let names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         let index = max(1, min(7, weekday)) - 1
         return names[index]
     }
 
-    static func ordinal(_ day: Int) -> String {
+    public static func ordinal(_ day: Int) -> String {
         let suffix: String
         switch (day % 100, day % 10) {
         case (11...13, _): suffix = "th"

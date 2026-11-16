@@ -158,7 +158,7 @@ public struct RoutineEditorSheet: View {
             }
             timePicker
 
-        case .repeat:
+        case .repeating:
             Stepper(value: $draft.schedule.repeatCount, in: 1...1440) {
                 Text("Every \(draft.schedule.repeatCount) \(draft.schedule.repeatUnit.label.lowercased())")
                     .font(TypeScale.font(TypeScale.md))

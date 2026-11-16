@@ -115,8 +115,11 @@ class TheFormMatchesTheReference(unittest.TestCase):
 
     def test_every_schedule_mode_is_offered(self) -> None:
         self.assertIn("ForEach(RoutineScheduleMode.allCases)", EDITOR)
-        for mode in ("daily", "weekly", "monthly", "repeat", "once", "custom"):
+        # `repeat` is a Swift keyword, so the case is spelled `repeating`; the label a person reads
+        # is still "Repeat".
+        for mode in ("daily", "weekly", "monthly", "repeating", "once", "custom"):
             self.assertIn(f"case .{mode}", ROUTINES, f"the picker promises {mode} but the model has no case")
+        self.assertIn('case .repeating: return "Repeat"', ROUTINES)
 
     def test_the_button_obeys_the_rule_and_says_why(self) -> None:
         self.assertIn(".disabled(!draft.isCreatable)", EDITOR)
