@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.455",
+          "buildVersion": "455",
+          "date": "2026-11-16T00:15:28Z",
+          "localizedDescription": "Settings rows reachable (sheet had no navigation stack): Caching live with 25/100/500, Devices revoke/remove, bot-list top fade restored, All sessions on iOS, hand-picked sessions stick.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.455/Hermey-0.1.455-b455.ipa",
+          "size": 2860530,
+          "minOSVersion": "17.0",
+          "sha256": "74a1c7278fc6b0ad0eaf9a2bce2f22898920100f81ac35c589c8d1c56341a22c"
+        },
+        {
           "version": "0.1.453",
           "buildVersion": "453",
           "date": "2026-11-15T23:32:37Z",
@@ -62,16 +72,6 @@
           "size": 2719174,
           "minOSVersion": "17.0",
           "sha256": "22248dcd9f308c2154ce14120e51b5c3a82ee4f4d2af83b9d734613655b58e9f"
-        },
-        {
-          "version": "0.1.442",
-          "buildVersion": "442",
-          "date": "2026-11-15T19:33:02Z",
-          "localizedDescription": "Phase 6a \u2014 one window language.\n\n\u2022 Every sheet and menu now shares the app's own chrome: the same canvas behind it, the same dark appearance, and the same rounded corners as a card. No more black sheet next to a grey one, or a Mac sheet following the system theme while the window behind it is dark.\n\u2022 Nothing changes about what any sheet does \u2014 only how it sits in the app.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.442/Hermey-0.1.442-b442.ipa",
-          "size": 2676947,
-          "minOSVersion": "17.0",
-          "sha256": "76f549f56ae820f336061964e0aa79d00d461e30905bd25c58b0a3f844d95450"
         }
       ],
       "appPermissions": {
