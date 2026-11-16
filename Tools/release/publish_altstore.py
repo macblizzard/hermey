@@ -32,6 +32,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_stamp  # noqa: E402  (same directory: the visible build line)
+import publish_dist  # noqa: E402  (same directory: the one writer of the served directory)
 import sync_store  # noqa: E402  (same directory: the Pages/manifest plumbing)
 from publish_source import read_ipa  # noqa: E402  (same directory, shared IPA reader)
 
@@ -168,6 +169,10 @@ def main() -> int:
     # 504 for these .ipa assets while serving the .zip from the same release, so the host that holds
     # the file is the host that serves it.
     parser.add_argument("--mirror-base-url", default="https://hermes.example.ts.net:8444")
+    # The wire check is the point of the mirror path; skipping it is for a host that cannot reach
+    # its own origin (a container mid-bringup), and it says so loudly.
+    parser.add_argument("--skip-mirror-verify", action="store_true")
+    parser.add_argument("--insecure-mirror-verify", action="store_true")
     args = parser.parse_args()
 
     info = read_ipa(args.ipa)
@@ -264,28 +269,14 @@ def main() -> int:
         })
         path.write_text(json.dumps(source, indent=2) + "\n")
         if args.mirror_to:
-            args.mirror_to.mkdir(parents=True, exist_ok=True)
-            # Copy the assets ourselves, before rewriting the URLs: the rewrite only points at files
-            # the mirror already holds, and relying on a separate publish step to have put them
-            # there is how v153 shipped a "mirrored" source whose downloads still went to GitHub.
-            # The mirror's filenames are the *published* ones, not the artifact names CI hands us
-            # (`Hermes-unsigned.ipa` vs `Hermey-<version>-b<build>.ipa`); matching on the artifact
-            # name silently left the new build out of the mirror and the rewrite skipped it.
-            if args.ipa and Path(args.ipa).is_file():
-                shutil.copy2(args.ipa, args.mirror_to / asset_name)
-            if args.mac_dmg and Path(args.mac_dmg).is_file():
-                shutil.copy2(args.mac_dmg, args.mirror_to / Path(args.mac_dmg).name)
-                shutil.copy2(args.mac_dmg, args.mirror_to / "Hermey-macOS-unsigned.dmg")
-            mirrored = json.loads(path.read_text())
-            for entry in mirrored.get("apps", []):
-                for published in entry.get("versions", []):
-                    url = published.get("downloadURL", "")
-                    name = url.rsplit("/", 1)[-1]
-                    # Only rewrite to a file the mirror actually holds; a name it never received
-                    # must keep the URL that works rather than point at a 404.
-                    if name and (args.mirror_to / name).is_file():
-                        published["downloadURL"] = f"{args.mirror_base_url.rstrip('/')}/{name}"
-            (args.mirror_to / "altstore.json").write_text(json.dumps(mirrored, indent=2) + "\n")
+            # The served directory has exactly one writer, and it is not this file. `publish_dist`
+            # stages each artifact atomically, generates `altstore.json`/`source.json`/`index.html`
+            # from the file it just renamed into place, and fetches every advertised URL back over
+            # the origin before returning. This used to be three scripts writing here and one
+            # hand-maintained manifest, and the served `source.json` sat at 0.1.52 for ~430 builds.
+            publish_dist.publish(args.mirror_to, args.mirror_base_url, args.ipa, args.mac_dmg,
+                                 args.notes, verify_wire=not args.skip_mirror_verify,
+                                 insecure=args.insecure_mirror_verify)
 
         icon = Path(__file__).resolve().parent / "app-icon-512.png"
         if icon.exists() and not (work / "icon-512.png").exists():

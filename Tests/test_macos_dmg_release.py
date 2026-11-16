@@ -76,9 +76,15 @@ class TheReleaseCarriesIt(unittest.TestCase):
         self.assertNotIn("--mac-zip", PUBLISH, "two Mac artifacts was the old contract; one is the new")
         self.assertNotIn("mac_zip", PUBLISH)
 
-    def test_the_mirror_gets_a_stable_name(self) -> None:
-        self.assertIn('args.mirror_to / "Hermey-macOS-unsigned.dmg"', PUBLISH,
-                      "the site links the stable name, not the versioned one")
+    def test_the_mirror_gets_a_versioned_name_and_a_stable_alias(self) -> None:
+        # The disk image used to keep one filename forever, which is how a fresh Mac install ran a
+        # build from hours earlier. The mirror is published by `publish_dist`, which writes the
+        # versioned name and keeps the old stable name as a byte-identical alias for links already
+        # in the wild.
+        dist = (ROOT / "Tools" / "release" / "publish_dist.py").read_text()
+        self.assertIn('dmg_name = f"Hermey-macOS-{version}.dmg"', dist)
+        self.assertIn('STABLE_DMG_ALIAS = "Hermey-macOS-unsigned.dmg"', dist)
+        self.assertIn("stage(dmg, directory, STABLE_DMG_ALIAS)", dist)
 
 
 class TheDocsSaySo(unittest.TestCase):

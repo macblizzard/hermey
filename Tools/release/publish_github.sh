@@ -6,9 +6,11 @@
 #   NOTES="what changed" Tools/release/publish_github.sh
 #
 #   # and, on the host that also serves the tailnet mirror:
-#   MIRROR_TO=/srv/hermey-dist MIRROR_BASE_URL=https://host.example.ts.net:8444 \
+#   MIRROR_TO=/srv/hermes-apps-dist MIRROR_BASE_URL=https://host.example.ts.net:8444 \
 #     Tools/release/publish_github.sh
 #
+# The mirror half is `Tools/release/publish_dist.py`, which stages atomically, generates the mirror's
+# manifests from the staged file, and verifies them over the wire before this script exits 0.
 # The IPA becomes a release asset, and `altstore.json` is written to the release and to `gh-pages`,
 # so the install URL works from anywhere — no Tailscale, no self-hosted file server, no cache to
 # fight. `macblizzard/hermey` is the only shipping target; the predecessor repo is gone.

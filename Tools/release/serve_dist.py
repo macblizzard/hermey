@@ -37,7 +37,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=9000)
     parser.add_argument("--bind", default="127.0.0.1")
-    parser.add_argument("--directory", default="/srv/hermey-dist")
+    parser.add_argument("--directory", default="/srv/hermes-apps-dist")
     args = parser.parse_args()
 
     handler = partial(NoCacheHandler, directory=args.directory)
