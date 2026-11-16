@@ -101,6 +101,9 @@ struct HermesMacApp: App {
                     await store.connectOnLaunchIfPaired()
                     // Last, so dialling the host is not delayed by the feed.
                     checkForUpdatesAtLaunch()
+                    // Then warm every bot's conversation behind the window, so switching bots
+                    // paints instead of waiting on a resume.
+                    await store.model.prefetchConversations()
                 }
         }
         .windowStyle(.hiddenTitleBar)

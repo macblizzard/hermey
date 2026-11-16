@@ -107,6 +107,15 @@ struct RootView: View {
             }
             // The card is advisory and sits over the app; nothing below it is disabled or hidden.
             .updatePrompt(app.updates)
+            // Warm every bot's conversation behind the list, so opening one paints instead of
+            // waiting. Runs on the shell's own task — after the launch gate, never during the
+            // splash — and again when the socket comes back, which is the moment a cold start's
+            // empty cache is worth refilling.
+            .task { await app.model.prefetchConversations() }
+            .onChange(of: app.model.connection.isLive) { _, live in
+                guard live else { return }
+                Task { await app.model.prefetchConversations() }
+            }
     }
 }
 
