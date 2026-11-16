@@ -181,6 +181,14 @@ class NoSecondLoadingStateInTheRoster(unittest.TestCase):
         # The empty state must still not swallow a query's message findings.
         self.assertIn("} else if filtered.isEmpty && trimmedQuery.isEmpty", source)
 
+    def test_neither_shell_claims_no_bots_before_the_host_answers(self) -> None:
+        # "No bots found on this host" is a claim about a reply. Before one arrives — the deadline's
+        # path — the phone defers to its connection banner and the Mac says what is actually true.
+        self.assertIn("!model.rosterAnswered", read(MOBILE_LIST))
+        mac = read(MAC_SIDEBAR)
+        self.assertIn("model.rosterAnswered", mac)
+        self.assertIn("awaitingRosterState", mac)
+
     def test_the_mac_sidebar_has_no_finding_bots_state(self) -> None:
         source = read(MAC_SIDEBAR)
         for gone in ("discoveringBotsState", "FINDING BOTS", "Asking the host which bots"):

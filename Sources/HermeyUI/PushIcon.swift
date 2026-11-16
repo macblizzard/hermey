@@ -26,13 +26,12 @@ public enum PushIcon {
         let plate = RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
             .fill(LinearGradient(colors: [Tokens.surfaceRaised, Tokens.surface],
                                  startPoint: .top, endPoint: .bottom))
-        // Still, and at the activity a banner is for: something just arrived, so the face is idle —
-        // and `animates: false` keeps `TimelineView` out of an offscreen render.
-        let portrait = BotAvatarView(identity: botID,
-                                     color: color,
-                                     activity: .idle,
-                                     size: size * 0.76,
-                                     animates: false)
+        // `BotAvatarStill`, not `BotAvatarView`: the animated view draws inside a `TimelineView`,
+        // which `ImageRenderer` cannot sample — the render came back blank and every banner lost
+        // its face. This is the same body and bars with no timeline to sample.
+        let portrait = BotAvatarStill(identity: botID,
+                                      color: color,
+                                      size: size * 0.76)
             .frame(width: size, height: size)
             .background(plate)
         let renderer = ImageRenderer(content: portrait)

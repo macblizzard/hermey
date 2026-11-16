@@ -299,7 +299,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         exporter = (ROOT / "Sources/HermeyUI/PushIcon.swift").read_text(encoding="utf-8")
         # The app renders the real face (SwiftUI geometry, not a second drawing) and uploads bytes.
         self.assertIn("ImageRenderer", exporter)
-        self.assertIn("BotAvatarView(identity: botID", exporter)
+        self.assertIn("BotAvatarStill(identity: botID", exporter)
         self.assertIn("icon=icon", push)
         # No render means no image: a URL pointing at nothing inside a notification is worse. A host
         # that was never told its own public name has nothing to hand over either — the base used to

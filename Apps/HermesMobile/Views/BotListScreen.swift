@@ -864,6 +864,12 @@ struct BotListScreen: View {
                                  body: "No bot on this host matches “\(trimmedQuery)”.")
                 } else if !app.isPaired {
                     unpairedState
+                } else if model.botsError == nil && !model.rosterAnswered {
+                    // The deadline's path, not a loading state: the gateway has not listed its bots
+                    // and never did. The banner over this list is what says so, with its own retry;
+                    // the list will not answer for a host it has not heard from — "No bots found on
+                    // this host" is a claim about a reply that never arrived.
+                    EmptyView()
                 } else if let error = model.botsError {
                     errorState(error)
                 } else {

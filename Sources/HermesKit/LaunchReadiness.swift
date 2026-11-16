@@ -121,7 +121,8 @@ public struct LaunchReadiness: Equatable, Sendable {
     /// long as a splash is believable.
     public static let defaultDeadline: TimeInterval = 12
 
-    /// The hard stop, in seconds. Zero or negative is treated as zero: expire on the second frame.
+    /// The hard stop, in seconds. Zero or negative is treated as zero: expire on the first
+    /// evaluation rather than on a later one.
     public let deadline: TimeInterval
 
     public private(set) var phase: Phase = .waiting

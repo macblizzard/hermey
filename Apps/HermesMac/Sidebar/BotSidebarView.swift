@@ -400,8 +400,12 @@ struct BotSidebarView: View {
             // answered with no bots at all.
             if let error = model.botsError {
                 botsErrorState(error)
-            } else if model.connection.isLive {
+            } else if model.connection.isLive, model.rosterAnswered {
                 noBotsState
+            } else if model.connection.isLive {
+                // The socket is up and the roster never arrived: the deadline's path. Saying "no
+                // bots found" here would blame the host for a question it has not answered.
+                awaitingRosterState
             } else {
                 notConnectedState
             }
@@ -488,6 +492,35 @@ struct BotSidebarView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
             HermeyButton("Check again",
+                          systemImage: "arrow.clockwise",
+                          kind: .secondary,
+                          size: .small) {
+                Task { await store.loadBots() }
+            }
+            .padding(.horizontal, 8)
+        }
+        .padding(.top, 8)
+    }
+
+    /// Connected, but the roster never came back — the launch gate's deadline path.
+    ///
+    /// This is not a loading state: the launch screen had the loading window and gave up on it, so
+    /// what is left is a fact ("the host has not listed its bots") and the one action that re-asks.
+    private var awaitingRosterState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionCaption("WAITING FOR THE HOST")
+                .padding(.horizontal, 8)
+            Text("The host's connection is up, but it has not listed its bots.")
+                .font(TypeScale.font(Tokens.textSM, weight: .medium))
+                .foregroundStyle(Tokens.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+            Text("Ask it again — a host that is still starting its gateway will answer on the second try.")
+                .font(TypeScale.font(Tokens.textSM))
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+            HermeyButton("Ask again",
                           systemImage: "arrow.clockwise",
                           kind: .secondary,
                           size: .small) {
