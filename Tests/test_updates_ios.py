@@ -210,6 +210,13 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
         # Feather: scheme://install/<ipa> — a path, not a query item.
         self.assertIn('SideloadingApp(name: "Feather", scheme: "feather")', table)
         self.assertIn("UpdatePrompt.pathLink(scheme: \"feather\", ipa: $0)", table)
+        # FlareStore: flarestore://downloadApp=<ipa>, read from FlareStore 1.5.0's own URL types.
+        self.assertIn('SideloadingApp(name: "FlareStore", scheme: "flarestore")', table)
+        self.assertIn("UpdatePrompt.flareLink(ipa: $0)", table)
+        self.assertIn('URL(string: "flarestore://downloadApp=" + target)', self.source,
+                      "concatenated, not assembled: URLComponents cannot put a URL in the host")
+        self.assertNotIn('scheme: "flare"', table,
+                         "the `flare://` alias would show the same app twice — offer one scheme per app")
         self.assertIn("static func queryLink(scheme: String, ipa: URL)", self.source)
         self.assertIn("percentEncodedPath", self.source,
                       "the nested URL must keep one layer of escaping, not two")
@@ -225,7 +232,7 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
         self.assertIn("LSApplicationQueriesSchemes:", project)
         table = block(self.source, "static let all: [SideloadingApp] = [", "]\n}")
         schemes = re.findall(r'scheme: "([a-z]+)"', table)
-        self.assertGreaterEqual(len(schemes), 3)
+        self.assertGreaterEqual(len(schemes), 4)
         for scheme in schemes:
             self.assertIn(f"- {scheme}", project,
                           f"{scheme} is offered by the card but not declared in project.yml")

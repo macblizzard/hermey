@@ -26,9 +26,8 @@ import HermeyUI
 /// scheme must also be listed in the Info.plist's `LSApplicationQueriesSchemes` — iOS answers "no"
 /// silently for an undeclared one, so the two lists have to agree.
 ///
-/// Adding a store is one entry here plus its scheme in `project.yml`. FlareStore is *not* in the
-/// list: its published material documents no install deep link, so a button for it would either be
-/// invisible or open nothing.
+/// Adding a store is one entry here plus its scheme in `project.yml`. FlareStore's link is not in
+/// its public documentation — it was read out of FlareStore 1.5.0 itself (see `flareLink`).
 struct SideloadingApp: Identifiable {
     let name: String
     /// The scheme, exactly as the app registers it.
@@ -47,6 +46,9 @@ struct SideloadingApp: Identifiable {
         },
         SideloadingApp(name: "Feather", scheme: "feather") {
             UpdatePrompt.pathLink(scheme: "feather", ipa: $0)
+        },
+        SideloadingApp(name: "FlareStore", scheme: "flarestore") {
+            UpdatePrompt.flareLink(ipa: $0)
         },
     ]
 }
@@ -191,6 +193,23 @@ struct UpdatePrompt: View {
         // `percentEncodedPath`, so the nested URL keeps one layer of escaping instead of two.
         components.percentEncodedPath = "/" + ipa.absoluteString
         return components.url
+    }
+
+    /// `flarestore://downloadApp=<ipa>` — FlareStore's shape: no host, one `key=value` after `//`.
+    ///
+    /// FlareStore documents no install deep link on its site, so this was read from the app itself:
+    /// the 1.5.0 build registers `flarestore` and `flare` in `CFBundleURLTypes`, and the links it
+    /// ships as examples are compiled into the binary —
+    /// `flarestore://downloadApp=https://example.com/app.ipa`, beside `importCert=`, `addRepo=`,
+    /// `viewApp=` and a `flare://` alias of the same set.
+    ///
+    /// Built by concatenation, not `URLComponents`: the value is a whole URL, and a component-built
+    /// link would put it in the host, which cannot carry `://`. `URL(string:)` accepts the raw result
+    /// and hands the app the same string its own example shows. Spaces are the one character that
+    /// would break that parsing, so they are escaped and nothing else is.
+    static func flareLink(ipa: URL) -> URL? {
+        let target = ipa.absoluteString.replacingOccurrences(of: " ", with: "%20")
+        return URL(string: "flarestore://downloadApp=" + target)
     }
 
     /// Decimal megabytes, because that is the number the download page shows. Arithmetic rather than

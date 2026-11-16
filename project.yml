@@ -183,6 +183,7 @@ targets:
           - altstore
           - sidestore
           - feather
+          - flarestore
         # A phone tears the socket down the moment the app leaves the foreground, so the only way a
         # suspended app can learn that a bot replied is one of iOS's own background refreshes —
         # which needs the fetch mode plus the exact identifier the app registers. iOS refuses a
