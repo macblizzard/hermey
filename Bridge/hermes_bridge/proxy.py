@@ -291,6 +291,12 @@ class GatewayProxy:
         #: Requests parked while their session is being reattached: our resume id -> (pending, refusal).
         self._autoresume: dict[tuple[str, object], tuple[_Pending, dict]] = {}
         self._autoresume_seq = 0
+        #: Old runtime id -> the id `session.resume` actually attached. A resume does not resurrect the
+        #: id the client stored: the host mints a new runtime for that stored session, and a request
+        #: still carrying the old id is refused with 4001 all over again. Observed live on
+        #: 2026-11-16 — the bridge logged `resuming` then `resumed`, and the client still got
+        #: "session not found", because the re-sent frame named the id the host had just replaced.
+        self._session_alias: dict[str, str] = {}
         self._server_requests: dict[tuple[str, object], _ServerRequest] = {}
         self._server_seq = 0
         self._caps_sent = False
@@ -441,11 +447,32 @@ class GatewayProxy:
             )
             return
 
+        self._adopt_current_session_id(parsed)
+
         method = parsed.get("method")
         if method is not None:
             await self._handle_client_request(parsed, method, raw)
             return
         await self._handle_client_response(parsed, raw)
+
+    def _adopt_current_session_id(self, frame: dict) -> None:
+        """Point a request at the session a resume actually attached.
+
+        Every session-scoped call the client makes carries its stored id. Once a resume has replaced
+        that id, a frame still naming the old one is rewritten here — one place, before dispatch —
+        rather than in each method, and the client never has to learn the new id to keep working.
+        """
+        if not self._session_alias:
+            return
+        params = frame.get("params")
+        if not isinstance(params, dict):
+            return
+        current = params.get("session_id")
+        if not isinstance(current, str):
+            return
+        replacement = self._session_alias.get(current)
+        if replacement:
+            params["session_id"] = replacement
 
     async def _handle_client_request(self, frame: dict, method: object, raw: bytes) -> None:
         request_id = frame.get("id")
@@ -906,6 +933,7 @@ class GatewayProxy:
             return
         pending.retried = True
         pending.started = time.monotonic()
+        self._remember_resumed_id(pending, frame)
         self._pending[id_key(pending.frame.get("id"))] = pending
         self._audit.emit(
             "session_autoresume",
@@ -914,7 +942,33 @@ class GatewayProxy:
             outcome="resumed",
             direction="gateway_to_client",
         )
+        # Re-send against the id the resume produced, not the one the client stored: resuming a stored
+        # session mints a new runtime id, and the old one stays refused.
+        self._adopt_current_session_id(pending.frame)
         await self._send_upstream(self._encode(pending.frame))
+
+    def _remember_resumed_id(self, pending: _Pending, frame: dict) -> None:
+        """Record the runtime id `session.resume` attached, for this frame and every later one."""
+        result = frame.get("result")
+        if not isinstance(result, dict):
+            return
+        fresh = result.get("session_id")
+        if not isinstance(fresh, str) or not fresh or fresh == pending.session_id:
+            return
+        if pending.session_id:
+            self._session_alias[pending.session_id] = fresh
+        # The resume's own id is what the re-sent frame must name.
+        if isinstance(pending.frame, dict):
+            params = pending.frame.get("params")
+            if isinstance(params, dict):
+                params["session_id"] = fresh
+        self._audit.emit(
+            "session_rekeyed",
+            device_id=self._device_id,
+            method=pending.method,
+            direction="gateway_to_client",
+            outcome="adopted",
+        )
 
     # -- transport helpers -------------------------------------------------
 
