@@ -1006,17 +1006,34 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(searchOpen ? "Close search" : "Search bots")
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            // One group, because the order inside it is the order on screen: Settings first,
+            // then the create menu. Two separate trailing items would leave the pairing to
+            // SwiftUI's own preference, and the gear could land on either side of the plus.
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Settings used to be the last row of the menu, which is where an app-level
+                // destination goes to be missed: a person looking for theme, pairing or update
+                // checks opens the ⋯ and reads a list of things that add or change bots. It is a
+                // control of its own now, in the corner the thumb already reaches.
+                Button {
+                    showAppSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+                .accessibilityIdentifier("botList.settings")
+
+                // A plus, because that is what the menu is for: everything in it creates or
+                // maintains something. It wore ⋯ while it also carried navigation (Settings,
+                // Hidden bots), and a glyph that means "more options" beside a gear that means
+                // "settings" gave two buttons the same promise.
                 Menu {
-                    Button {
-                        showHidden.toggle()
-                    } label: {
-                        Label("Hidden bots", systemImage: showHidden ? "checkmark" : "circle")
-                    }
-                    .accessibilityValue(showHidden ? "On" : "Off")
-
-                    Divider()
-
+                    // Adding comes first: the menu opens from a +, and the first rows should be the
+                    // things that + promises.
                     Button { showAddBot = true } label: {
                         Label("Add bot", systemImage: "plus.circle")
                     }
@@ -1038,33 +1055,35 @@ struct BotListScreen: View {
 
                     Divider()
 
+                    // The two list-wide switches sit at the foot together: what the list shows, and
+                    // what the badges say. Hidden bots used to open the menu, above the actions that
+                    // create things, which put a view toggle where the + pointed.
+                    Button {
+                        showHidden.toggle()
+                    } label: {
+                        Label("Hidden bots", systemImage: showHidden ? "checkmark" : "circle")
+                    }
+                    .accessibilityValue(showHidden ? "On" : "Off")
+
                     // Clears every badge on the list at once: a person who is done with the app
                     // should not have to open each chat to say so.
                     Button { model.markAllRead() } label: {
                         Label("Mark all as read", systemImage: "checkmark.circle")
                     }
                     .disabled(!model.hasAnyUnread)
-
-                    Divider()
-
-                    // The app's own settings, not the bot's: the list has no tab bar under it any
-                    // more, so this is where pairing, theme and notifications live now.
-                    Button { showAppSettings = true } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
                 } label: {
-                    // Three dots, because this is a menu and not a filter: the old funnel icon
-                    // promised "narrow the list" and then offered to add a bot. A bare glyph: the
-                    // bar already draws its own control chrome, and a second surface inside it read
-                    // as a box in a circle.
-                    Image(systemName: "ellipsis")
+                    // A bare glyph: the bar already draws its own control chrome, and a second
+                    // surface inside it reads as a box in a circle. The accent tint stays as the
+                    // one signal that a filter is on behind it.
+                    Image(systemName: "plus")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(showHidden ? Tokens.accentText : Tokens.textPrimary)
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Bot list menu")
+                .accessibilityLabel("Add or manage")
+                .accessibilityIdentifier("botList.add")
             }
         }
         if !app.isPaired {

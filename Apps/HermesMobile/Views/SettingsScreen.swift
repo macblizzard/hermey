@@ -613,11 +613,23 @@ struct CheckForUpdatesRow: View {
 /// screens get the system's back button from this same stack.
 struct SettingsSheet: View {
     @ObservedObject var model: AppModel
+    @EnvironmentObject private var app: AppEnvironment
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             SettingsScreen(model: model)
+                // The manual check is made in here, so the card it produces has to be presented in
+                // here. Presented from the shell behind this sheet, it was queued and did not appear
+                // until Settings was closed — the report that reads as "no download button, double
+                // tap does nothing, and then the modal shows up after closing the pane".
+                .updatePrompt(app.updates, host: .settings)
+                .onDisappear {
+                    // Settings went away while the card was still up: the offer continues over the
+                    // app instead of disappearing with the sheet it was attached to. Nothing is
+                    // recorded as "not now" here — the user did not answer.
+                    app.updates.rehost(.root)
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Done") { dismiss() }

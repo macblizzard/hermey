@@ -350,6 +350,9 @@ public final class AppModel: ObservableObject {
     }
 
     private var conversationCache: [String: ConversationSnapshot] = [:]
+    /// One sweep at a time: a second launch trigger while the first is still walking the roster would
+    /// read every bot twice.
+    private var isPrefetching = false
     /// When each snapshot was taken, so a return visit inside `conversationCacheFreshness` can be
     /// answered from the cache without asking the host at all.
     private var conversationCacheStamp: [String: Date] = [:]
@@ -913,6 +916,89 @@ public final class AppModel: ObservableObject {
         activeRoom = nil
         if let resolved { restoreConversation(for: resolved) }
         await loadSessions()
+    }
+
+    /// Warm every bot's conversation in the background, so opening one paints instead of waiting.
+    ///
+    /// Asked for on 2026-11-16: "when the app is booted, load all bot chats in the background, so that
+    /// when i go to each bot it doesnt have to load it fresh every single time after bootup".
+    ///
+    /// This is a *read*, not an open: it resolves the same conversation id `endlessSession` would
+    /// (`CanonicalBotChat.plan`, the one authority for that question) and fetches its newest page with
+    /// `session.history`, which attaches no transport and cannot move the client's bound profile. A bot
+    /// whose plan says `create` is skipped on purpose — a background sweep must never mint a session
+    /// the person has not asked for.
+    ///
+    /// What it stores is deliberately marked `.distantPast` on the host stamp, so opening the bot still
+    /// resumes: the snapshot is there to be *painted* while that round trip runs, not to stand in for
+    /// it. Freshness would otherwise let a warm cache skip the read and leave paging on a cursor this
+    /// prefetch never had.
+    public func prefetchConversations() async {
+        // `connection.isLive` is the pairing answer that matters here: an unpaired model has no
+        // transport, and the socket is the thing this sweep reads through.
+        guard connection.isLive, bots.count > 1, !isPrefetching else { return }
+        isPrefetching = true
+        defer { isPrefetching = false }
+
+        let pageSize = 40
+        var warmed = 0
+        for bot in bots.prefix(Self.conversationCacheLimit) {
+            guard connection.isLive else { break }
+            // The conversation on screen has its own lifecycle; the sweep must not touch it.
+            if bot.id == selectedBotID { continue }
+            // Already warm and recent: another read buys nothing.
+            if let stamp = conversationCacheStamp[bot.id],
+               Date().timeIntervalSince(stamp) < conversationCacheFreshness,
+               conversationCache[bot.id]?.entries.isEmpty == false {
+                continue
+            }
+
+            let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: bot.id),
+                                            legacy: await bridgePointerID(for: bot.id),
+                                            local: Self.defaults.string(forKey: Self.endlessKey(bot.id)))
+            let stored: SessionID
+            switch plan.step {
+            case .resume(let id), .adopt(let id):
+                stored = id
+            case .create:
+                // Nothing to read yet, and minting one here would be the sweep inventing a
+                // conversation. It stays empty until the person opens it.
+                continue
+            }
+
+            do {
+                let entries = try await client.history(stored, limit: pageSize)
+                guard !entries.isEmpty else { continue }
+                conversationCache[bot.id] = ConversationSnapshot(
+                    sessionID: stored,
+                    entries: SentAttachmentVault.decorate(entries, sessionID: stored),
+                    earlierCursor: nil,
+                    historyTotal: entries.count,
+                    openRequests: [],
+                    contextUsed: nil,
+                    contextMax: nil)
+                conversationCacheStamp[bot.id] = Date()
+                conversationCacheHostStamp[bot.id] = .distantPast
+                conversationCacheOrder.removeAll { $0 == bot.id }
+                conversationCacheOrder.append(bot.id)
+                while conversationCacheOrder.count > Self.conversationCacheLimit {
+                    let evicted = conversationCacheOrder.removeFirst()
+                    conversationCache.removeValue(forKey: evicted)
+                    conversationCacheStamp.removeValue(forKey: evicted)
+                    conversationCacheHostStamp.removeValue(forKey: evicted)
+                }
+                warmed += 1
+            } catch {
+                ClientLog.note("prefetch of \(bot.id) failed: \(error.localizedDescription)",
+                               level: .info, category: "cache")
+            }
+            // Sequential and gentle: this runs behind a screen the person is already using, and a
+            // burst of eight reads is what makes a host feel slow.
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        if warmed > 0 {
+            ClientLog.note("prefetched \(warmed) conversation(s) at launch", level: .info, category: "cache")
+        }
     }
 
     /// Remember what is on screen for the bot being left.
@@ -2782,6 +2868,12 @@ public final class AppModel: ObservableObject {
         try await client.routines(profile)
     }
 
+    /// Create a routine from the New Routine form. Returns the row the host made, so the list can
+    /// show it without a re-read.
+    public func createRoutine(_ draft: RoutineDraft, for profile: String) async throws -> BotRoutine {
+        try await client.createRoutine(profile, draft: draft)
+    }
+
     /// Pause one routine, or put it back on its schedule.
     public func setRoutinePaused(_ jobID: String, paused: Bool, for profile: String) async throws {
         try await client.setRoutinePaused(profile, jobID: jobID, paused: paused)
@@ -3172,9 +3264,20 @@ public final class AppModel: ObservableObject {
     }
 
     /// Allow, in the strongest form the host offered (`once` by default).
-    public func approve(_ request: ServerRequest) async {
+    ///
+    /// - Parameter remembering: send `always` instead, which the host records in its own allow-list and
+    ///   honours in later sessions (`tools/approval.py: is_approved() honours 'always' choices from
+    ///   previous sessions`). This is the same `choice` field the CLI's `[a]lways` sends; the gateway
+    ///   advertises it in `choices` only when a permanent answer is allowed, which is why the card asks
+    ///   the request before offering the button.
+    public func approve(_ request: ServerRequest, remembering: Bool = false) async {
         let offered = Self.choices(for: request)
-        let choice = offered.first { $0 == "once" } ?? offered.first ?? "once"
+        let wanted = remembering ? "always" : "once"
+        // Only a choice the host advertised is sent: inventing `always` for a request that did not offer
+        // it would be this client deciding a security question on the host's behalf.
+        let choice = offered.contains(wanted)
+            ? wanted
+            : (offered.first { $0 == "once" } ?? offered.first ?? "once")
         await respond(request, choice: choice)
     }
 

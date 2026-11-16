@@ -30,27 +30,34 @@ struct ApprovalRequestView: View {
         }
     }
 
-    /// Approval, sudo and secret all resolve to "may this run?" — one card, one pair of
-    /// answers.
+    /// Approval, sudo and secret all resolve to "may this run?" — one card, one pair of answers.
     ///
-    /// `allowsAlways` is false on purpose: remembering a decision is a host-side allow-list
-    /// we have no verb for, and a button that says "Always" and then forgets would be a lie
-    /// told by the UI about a security decision.
-    // TODO(protocol): map a remembered decision once the gateway exposes an allow-list call.
+    /// There *is* a verb for remembering: the answer carries `choice`, and `always` is the token the
+    /// host records in its own allow-list (the CLI's `[a]lways` sends the same one). The gateway only
+    /// advertises it in `choices` for a request that may be answered permanently, so the button
+    /// follows the offer rather than assuming it.
     private var approvalCard: some View {
         ApprovalCard(tool: presentation.tool,
                      command: presentation.command,
                      why: presentation.rationale,
                      scope: presentation.scope,
-                     allowsAlways: false,
+                     allowsAlways: offersAlways,
                      onAnswer: { decision in
                          switch decision {
-                         case .once, .always:
+                         case .always:
+                             store.approve(request, remembering: true)
+                         case .once:
                              store.approve(request)
                          case .denied:
                              store.deny(request)
                          }
                      })
+    }
+
+    /// Whether the host offered a permanent answer for this request.
+    private var offersAlways: Bool {
+        guard case .array(let items)? = request.params["choices"] else { return false }
+        return items.contains { $0.stringValue == "always" }
     }
 }
 

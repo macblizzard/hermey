@@ -129,7 +129,7 @@ which stalls mid-transfer on some networks. The site links these files directly.
 
 
 def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo: str,
-                           entry: dict, notes: str, info: dict) -> dict:
+                           entry: dict, notes: str, info: dict, *, ios_entry: dict) -> dict:
     """Force-push a fresh single commit carrying the image, so the repo never accumulates blobs.
 
     This is the only public URL that is not GitHub's release CDN or the tailnet, and `docs/APPS.md`
@@ -137,10 +137,21 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
     the flag existed. It is published from the *same* artifact as the tailnet copy, under a versioned
     name, with the stable name written beside it in the same commit: a reader can tell which build
     they downloaded from the filename, and an old link still resolves to that same build.
+
+    `ios_entry` is built from the IPA and passed separately from `entry` on purpose. This function
+    publishes *two* kinds of artifact into one directory (the DMG, and the sideload source a phone
+    reads), and the phone's manifest must describe the phone's file. The version of this that reused
+    the mac-flavoured entry published `altstore.json` naming
+    `.../v0.1.515/Hermey-macOS-unsigned.dmg`, so an iOS update check found an update and Safari
+    downloaded a disk image. The identifier is checked below rather than trusted.
     """
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         raise SystemExit("--downloads-repo needs GITHUB_TOKEN in the environment")
+    advertised = (ios_entry.get("downloadURL") or "").rsplit("/", 1)[-1]
+    if not advertised.lower().endswith(".ipa"):
+        raise SystemExit(
+            f"--downloads-repo: altstore.json would advertise {advertised!r}, which is not the IPA")
     versioned = f"Hermey-macOS-{safe_component(version)}.dmg"
     owner, name = slug.split("/")
     pages_base = f"https://{owner}.github.io/{name}"
@@ -163,10 +174,11 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
             publish_dist.mac_feed_document(entry, dmg_url, size, digest, notes), encoding="utf-8")
         # The iOS notifier reads `altstore.json` first and only falls back to `mac.json`, and it is
         # told to read it from Pages. Publishing the DMG without this file answered 404 exactly where
-        # a phone looks first.
+        # a phone looks first — and publishing it from the DMG's numbers answered 200 with a disk
+        # image, which is worse: the phone offered the update and Safari downloaded a `.dmg`.
         (work / "altstore.json").write_text(
             json.dumps(publish_dist.source_document(
-                info, entry,
+                info, ios_entry,
                 publish_dist.Destination(
                     name="pages",
                     base_url=f"https://github.com/{repo}/releases/download/v{version}",
@@ -385,8 +397,22 @@ def main() -> int:
         shutil.rmtree(work, ignore_errors=True)
 
     if args.downloads_repo and args.mac_dmg and args.mac_dmg.exists():
+        # The phone's entry, built from the IPA's own bytes and never from the disk image: this is
+        # what `altstore.json` on Pages advertises, and the whole point is that it cannot drift to
+        # the mac artifact.
+        ios_entry = {
+            "version": version,
+            "buildVersion": build,
+            "date": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "localizedDescription": args.notes or f"Build {version} ({build}).",
+            "downloadURL": download,
+            "size": len(data),
+            "minOSVersion": min_os,
+            "sha256": digest,
+        }
         published = push_to_downloads_repo(args.downloads_repo, args.mac_dmg, version, build,
-                                           args.repo, entry, args.notes, info)
+                                           args.repo, entry, args.notes, info, ios_entry=ios_entry)
+
         print(f"\n  mac      {published['versioned']}  ({published['bytes']} bytes)")
         print(f"  mac      {published['stable']}")
 

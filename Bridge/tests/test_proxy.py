@@ -326,6 +326,71 @@ def test_a_session_that_really_is_gone_still_answers_the_client(bridge, fake_gat
     assert bridge.audit.last("session_autoresume")["outcome"] == "failed"
 
 
+def test_a_resume_rekeys_the_session_and_later_frames_follow(bridge, fake_gateway):
+    """Resuming a stored session mints a NEW runtime id, and the old one stays refused.
+
+    Observed live 2026-11-16: the bridge logged `resuming` then `resumed`, and the client was still
+    handed "session not found" — the retry named the id the host had just replaced. So the retry
+    adopts the resume's id, and every later frame from the same client is rewritten to it.
+    """
+    stored = "20261116_2234_e1c0aa"
+    fresh = "20261116_2241_9f31b2"
+    fake_gateway.auto_respond = False
+    ticket = bridge.pair()["ticket"]
+
+    async def scenario():
+        async with open_ws(bridge.ws_url(ticket)) as ws:
+            await recv_frame(ws)
+            await ws.send(
+                json.dumps({"jsonrpc": "2.0", "id": 41, "method": "prompt.submit",
+                            "params": {"session_id": stored, "text": "hello"}}) + "\n")
+            first = fake_gateway.wait_for(lambda f: f.get("method") == "prompt.submit")
+            fake_gateway.push({"jsonrpc": "2.0", "id": first["id"],
+                               "error": {"code": 4001, "message": "not in memory"}})
+
+            resume = fake_gateway.wait_for(lambda f: f.get("method") == "session.resume")
+            fake_gateway.push({"jsonrpc": "2.0", "id": resume["id"],
+                               "result": {"session_id": fresh, "stored_session_id": stored}})
+
+            deadline = time.time() + 5
+            retry = None
+            while time.time() < deadline and retry is None:
+                attempts = [f for f in list(fake_gateway.received)
+                            if f.get("method") == "prompt.submit"]
+                if len(attempts) >= 2:
+                    retry = attempts[1]
+                else:
+                    time.sleep(0.01)
+            assert retry is not None, "the prompt was never retried"
+            assert retry["params"]["session_id"] == fresh, \
+                "the retry must name the id the resume attached, not the stored one"
+            assert retry["params"]["text"] == "hello"
+
+            fake_gateway.push({"jsonrpc": "2.0", "id": retry["id"],
+                               "result": {"status": "streaming", "turn_id": "t2"}})
+            answer = await recv_frame(ws)
+            assert answer["id"] == 41
+            assert answer["result"]["status"] == "streaming"
+
+            # A later call from the same client, still naming the stored id (this is the shape of the
+            # session.title refusals in the journal): it is rewritten before dispatch.
+            await ws.send(
+                json.dumps({"jsonrpc": "2.0", "id": 42, "method": "session.title",
+                            "params": {"session_id": stored, "title": "x"}}) + "\n")
+            follow = fake_gateway.wait_for(lambda f: f.get("method") == "session.title")
+            assert follow["params"]["session_id"] == fresh
+            fake_gateway.push({"jsonrpc": "2.0", "id": follow["id"], "result": {"ok": True}})
+            final = await recv_frame(ws)
+            assert final["id"] == 42
+
+    asyncio.run(scenario())
+
+    assert bridge.audit.last("session_rekeyed")["outcome"] == "adopted"
+    refusals = [r for r in bridge.audit.records if r.get("event") == "client_response"
+                and r.get("outcome") == "error"]
+    assert refusals == [], "the client was told about a refusal that was repaired"
+
+
 def test_approval_server_request_round_trips(bridge, fake_gateway):
     ticket = bridge.pair()["ticket"]
 

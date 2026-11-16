@@ -84,7 +84,7 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
 
     def setUp(self):
         self.source = read(CHECKER_PATH)
-        self.check = block(self.source, "public func check(manual: Bool = false) async {",
+        self.check = block(self.source, "public func check(manual: Bool = false, atLaunch: Bool = false) async {",
                            "/// The user dismissed the card")
 
     def test_the_keys_are_stable_and_declared_once(self):
@@ -93,10 +93,21 @@ class ComparisonsAndRememberedDecisions(unittest.TestCase):
         self.assertEqual(self.source.count('"hermey.updates.lastCheck"'), 1)
         self.assertIn("UserDefaults", self.source)
 
-    def test_the_throttle_is_one_day_and_only_covers_unsolicited_checks(self):
+    def test_the_throttle_is_one_day_and_only_covers_scheduled_checks(self):
         self.assertIn("24 * 60 * 60", self.source)
-        self.assertIn("if !manual, let lastCheck", self.check,
-                      "the 24 h gate must not apply to a manual check")
+        self.assertIn("if !manual, !atLaunch, let lastCheck", self.check,
+                      "the 24 h gate must not apply to a manual check or to the launch check")
+
+    def test_a_cold_start_asks_the_feed_every_time(self):
+        # "when i close and run the app, it should do the new update check immediately at bootup".
+        # The throttle covers the foreground notification; the launch check bypasses it.
+        self.assertIn("atLaunch: this is the check a cold start makes", self.source)
+        self.assertIn("!manual, !atLaunch", self.check)
+        # ...and the launch check is remembered, so the foreground notification a second later is
+        # not a second request.
+        record = block(self.check, "let found = await latestUpdate()", "guard let found else")
+        self.assertIn("defaults.set(now, forKey: DefaultsKey.lastCheck)", record)
+        self.assertIn("if !manual {", record)
 
     def test_a_manual_check_always_reaches_the_feed(self):
         manual_path = block(self.check, "let found = await latestUpdate()", "guard found.build > currentBuild")
@@ -179,7 +190,7 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
         presenter = block(self.source, "struct UpdatePromptPresenter: ViewModifier {",
                           "extension View {")
         self.assertIn("set: { presented in", presenter)
-        self.assertIn("guard !presented else { return }", presenter)
+        self.assertIn("guard !presented, isMine else { return }", presenter)
         self.assertIn("updates.dismissPrompt()", presenter)
 
     def test_download_opens_the_feeds_url_in_the_system_browser(self):
@@ -189,23 +200,53 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
                       "the primary action is opening the IPA URL, not installing anything")
         self.assertNotIn("URLSession", self.source, "the card must not download anything")
 
-    def test_altstore_is_optional_and_asked_first(self):
-        self.assertIn('components.scheme = "altstore"', self.source)
+    def test_a_sideloader_button_only_exists_behind_the_installed_check(self):
         self.assertIn('components.host = "install"', self.source)
-        self.assertIn("UIApplication.shared.canOpenURL($0)", self.source)
-        # The button only exists behind the check.
-        guarded = block(self.source, "if canOpenInAltStore, let altStore", 'Text("Not now")')
-        self.assertIn("UIApplication.shared.open(altStore)", guarded)
+        self.assertIn("UIApplication.shared.canOpenURL", self.source)
+        # The buttons are drawn from the detected list, so an app the phone does not have is never
+        # offered — and sideStore's own docs warn that a `sidestore://` link without SideStore
+        # installed crashes it, which is the same reason the check has to come first.
+        self.assertIn("ForEach(installedApps)", self.source)
+        self.assertIn("installedApps = SideloadingApp.all.filter", self.source)
+        guarded = block(self.source, "ForEach(installedApps)", 'Text("Not now")')
+        self.assertIn("UIApplication.shared.open(link)", guarded)
+
+    def test_every_sideloader_uses_the_link_shape_its_app_documents(self):
+        table = block(self.source, "static let all: [SideloadingApp] = [", "]\n}")
+        # AltStore and SideStore: scheme://install?url=<ipa>
+        self.assertIn('SideloadingApp(name: "AltStore", scheme: "altstore")', table)
+        self.assertIn("UpdatePrompt.queryLink(scheme: \"altstore\", ipa: $0)", table)
+        self.assertIn('SideloadingApp(name: "SideStore", scheme: "sidestore")', table)
+        self.assertIn("UpdatePrompt.queryLink(scheme: \"sidestore\", ipa: $0)", table)
+        # Feather: scheme://install/<ipa> — a path, not a query item.
+        self.assertIn('SideloadingApp(name: "Feather", scheme: "feather")', table)
+        self.assertIn("UpdatePrompt.pathLink(scheme: \"feather\", ipa: $0)", table)
+        # FlareStore: flarestore://downloadApp=<ipa>, read from FlareStore 1.5.0's own URL types.
+        self.assertIn('SideloadingApp(name: "FlareStore", scheme: "flarestore")', table)
+        self.assertIn("UpdatePrompt.flareLink(ipa: $0)", table)
+        self.assertIn('URL(string: "flarestore://downloadApp=" + target)', self.source,
+                      "concatenated, not assembled: URLComponents cannot put a URL in the host")
+        self.assertNotIn('scheme: "flare"', table,
+                         "the `flare://` alias would show the same app twice — offer one scheme per app")
+        self.assertIn("static func queryLink(scheme: String, ipa: URL)", self.source)
+        self.assertIn("percentEncodedPath", self.source,
+                      "the nested URL must keep one layer of escaping, not two")
 
     def test_no_version_literal_is_baked_into_the_card(self):
         self.assertIsNone(re.search(r"\b0\.1\.\d{2,}\b", self.source))
 
-    def test_the_altstore_scheme_is_declared_for_can_open_url(self):
+    def test_every_offered_scheme_is_declared_for_can_open_url(self):
         # iOS answers `canOpenURL` false for an undeclared scheme, which would hide the button on the
-        # phones that do have AltStore.
+        # phones that do have the app. The declared list and the offered list must agree, so this
+        # reads the schemes out of the code and checks each one is in the Info.plist.
         project = read(ROOT / "project.yml")
         self.assertIn("LSApplicationQueriesSchemes:", project)
-        self.assertIn("- altstore", project)
+        table = block(self.source, "static let all: [SideloadingApp] = [", "]\n}")
+        schemes = re.findall(r'scheme: "([a-z]+)"', table)
+        self.assertGreaterEqual(len(schemes), 4)
+        for scheme in schemes:
+            self.assertIn(f"- {scheme}", project,
+                          f"{scheme} is offered by the card but not declared in project.yml")
 
 
 class TheEntryPointsAsk(unittest.TestCase):
@@ -219,8 +260,20 @@ class TheEntryPointsAsk(unittest.TestCase):
         self.assertIn("self.updates = UpdateChecker()", read(ENVIRONMENT_PATH))
 
     def test_launch_checks_without_waiting_for_first_paint(self):
-        self.assertIn(".task { await app.updates.check() }", self.source,
+        self.assertIn(".task { await app.updates.check(atLaunch: true) }", self.source,
                       "the check needs its own task, not a step inside app.start()")
+
+    def test_the_card_waits_for_the_splash(self):
+        # A check that answers during boot must not present over the launch screen: the gate reports
+        # when the fade is done, and the presenter refuses until then.
+        self.assertIn("onContentRevealed: { app.updates.shellDidReveal() }", self.source)
+        gate = read(ROOT / "Sources" / "HermesAppKit" / "LaunchGateView.swift")
+        self.assertIn("onContentRevealed?()", gate)
+        self.assertIn("private let onContentRevealed: (() -> Void)?", gate)
+        self.assertIn("fadeOut * 1_000_000_000", gate,
+                      "after the fade, not when it starts")
+        presenter = block(read(PROMPT_PATH), "struct UpdatePromptPresenter: ViewModifier {", "extension View {")
+        self.assertIn("updates.isShellReady", presenter)
 
     def test_foreground_checks_even_when_unpaired(self):
         handler = block(self.source, ".onChange(of: scenePhase) { phase in", "MobileReplyNotifier.shared.refreshAuthorization()")
@@ -241,3 +294,71 @@ class TheEntryPointsAsk(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TheCardIsShownByWhoeverAsked(unittest.TestCase):
+    """A sheet asked for by a covered view is queued, not shown.
+
+    The report: "the check for update checks fine, but when it finds a new version there is no
+    download button, double tapping does nothing, but after closing the settings pane the download
+    modal shows and finally it can be downloaded". All three symptom are one cause — the card was
+    presented by the app shell, which the Settings sheet was covering, so it waited there with
+    `isPromptVisible` already true (hence a dead second tap) and appeared when Settings closed.
+    """
+
+    def setUp(self):
+        self.checker = read(CHECKER_PATH)
+        self.prompt = read(PROMPT_PATH)
+        self.settings = read(SETTINGS_PATH)
+
+    def test_the_checker_names_a_host_for_the_card(self):
+        self.assertIn("public enum PromptHost: Sendable { case root, settings }", self.checker)
+        self.assertIn("public private(set) var promptHost: PromptHost = .root", self.checker)
+
+    def test_a_manual_check_is_hosted_where_it_was_made(self):
+        self.assertIn("promptHost = manual ? .settings : .root", self.checker,
+                      "a manual check comes from the Settings sheet and must be shown over it")
+
+    def test_a_presenter_only_acts_for_its_own_host(self):
+        presenter = block(self.prompt, "struct UpdatePromptPresenter: ViewModifier {", "extension View {")
+        self.assertIn("let host: UpdateChecker.PromptHost", presenter)
+        self.assertIn("updates.isPromptVisible && updates.promptHost == host", presenter)
+
+    def test_the_settings_sheet_hosts_its_own_card(self):
+        sheet = block(self.settings, "struct SettingsSheet: View {", "// MARK: - Devices")
+        self.assertIn(".updatePrompt(app.updates, host: .settings)", sheet)
+
+    def test_the_shell_still_hosts_the_unsolicited_card(self):
+        self.assertIn(".updatePrompt(app.updates)", read(APP_PATH))
+
+    def test_closing_settings_keeps_a_visible_card(self):
+        sheet = block(self.settings, "struct SettingsSheet: View {", "// MARK: - Devices")
+        self.assertIn("app.updates.rehost(.root)", sheet,
+                      "the offer continues over the app instead of vanishing with the sheet")
+        rehost = block(self.checker, "public func rehost(", "/// The user dismissed the card")
+        self.assertIn("guard isPromptVisible", rehost,
+                      "re-hosting must not resurrect a card the user dismissed")
+        self.assertNotIn("dismissPrompt()", rehost, "moving the card is not answering it")
+
+    def test_the_actions_are_not_inside_the_scrolling_area(self):
+        body = block(self.prompt, "ScrollView {", "// The actions never scroll")
+        self.assertNotIn('Text("Download")', body,
+                         "a long release note must not push the Download button below the fold")
+
+
+class OnlyAnArtifactThisPlatformCanInstall(unittest.TestCase):
+    """"It downloads the dmg instead of the ipa" — a phone was handed the mac artifact."""
+
+    def setUp(self):
+        self.checker = read(CHECKER_PATH)
+
+    def test_the_guard_is_ipa_only_on_ios(self):
+        guard = block(self.checker, "static func isInstallable(", "private func fetch(")
+        self.assertIn("#if os(iOS)", guard)
+        self.assertIn('url.pathExtension.lowercased() == "ipa"', guard)
+        self.assertIn("#else", guard)
+
+    def test_an_uninstallable_entry_is_skipped_not_offered(self):
+        latest = block(self.checker, "private func latestUpdate() async", "static func isInstallable(")
+        self.assertIn("guard Self.isInstallable(update.url) else {", latest)
+        self.assertIn("continue", latest,
+                      "the fallback feed is tried, and a .dmg is never returned as an update")

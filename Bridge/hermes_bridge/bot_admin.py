@@ -71,6 +71,28 @@ class EnabledChange(BaseModel):
     enabled: bool
 
 
+class RoutineCreate(BaseModel):
+    """A new routine for one bot — what the phone's "New Routine" form sends.
+
+    `schedule` is the host's own schedule string, not a parsed one: the app builds it from a picker
+    ("daily at 09:00" becomes a cron expression, "repeat" becomes an interval) and the dashboard is
+    the only place that decides whether it is valid. At least one of `prompt`, `skills` and `script`
+    is required — a routine with none of them has nothing to do — and that rule is enforced here as
+    well as in the form, because a second client or a replayed request must not be able to create a
+    job that can never run.
+    """
+
+    schedule: str
+    name: str = ""
+    prompt: str = ""
+    skills: list[str] = []
+    script: str = ""
+    # "local" keeps the result for the history; "bot-chat:<profile>" posts it into a bot's chat.
+    deliver: str = "local"
+    paused: bool = False
+    timezone: str | None = None
+
+
 class RoutineStateChange(BaseModel):
     """Pause or resume one of a bot's routines.
 
@@ -117,20 +139,35 @@ def _dashboard_url() -> str:
     return DASHBOARD_URL.rstrip("/")
 
 
-def _dashboard(method: str, path: str) -> tuple[int, Any]:
-    """One call to the loopback dashboard, with the token it was started with."""
+def _dashboard(method: str, path: str, body: dict | None = None) -> tuple[int, Any]:
+    """One call to the loopback dashboard, with the token it was started with.
+
+    `body` is JSON-encoded here rather than by the caller: every write in this module goes through
+    this one function, so the content type and the encoding cannot drift between routes.
+    """
     token = os.environ.get("HERMES_DASHBOARD_SESSION_TOKEN", "")
     if not token:
         raise HTTPException(status_code=503, detail="dashboard token is not configured")
+    headers = {"Authorization": f"Bearer {token}"}
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
     request = urllib.request.Request(f"{_dashboard_url()}{path}", method=method,
-                                     headers={"Authorization": f"Bearer {token}"})
+                                     headers=headers, data=data)
     try:
         with _OPENER.open(request, timeout=REQUEST_TIMEOUT) as response:
             body = response.read()
             return response.status, json.loads(body) if body.strip() else None
     except urllib.error.HTTPError as error:
-        # The body can echo the request; the device gets a fixed sentence instead.
+        # The body can echo the request; the device gets a fixed sentence instead. A 422 is the
+        # exception: that is the scheduler rejecting the *form* (an unparseable schedule, an unknown
+        # timezone), and a person needs to know which field to change rather than that something
+        # went wrong.
         log.warning("dashboard refused %s %s: %s", method, path, error.code)
+        if error.code in (400, 422):
+            raise HTTPException(status_code=422,
+                                detail="The scheduler rejected this routine's schedule.") from None
         raise HTTPException(status_code=502, detail="dashboard refused the request") from None
     except (urllib.error.URLError, TimeoutError):
         raise HTTPException(status_code=503, detail="dashboard unreachable") from None
@@ -336,6 +373,60 @@ def create_bot_admin_router(runtime) -> APIRouter:
         # next run; it sorts to the bottom by name rather than jumping around.
         rows.sort(key=lambda row: (row["next_run_at"] or "~", row["name"]))
         return {"routines": rows}
+
+    @router.post("/{profile}/routines")
+    def create_routine(profile: str, body: RoutineCreate,
+                       authorization: str | None = Header(default=None)) -> dict:
+        """Create one of this bot's routines, through the dashboard that owns the scheduler.
+
+        Nothing is written here: the job is posted to `/api/cron/jobs`, so the host's own validation,
+        defaults, timezone handling and `next_run_at` are the ones that apply. One rule is checked
+        first because it is the form's rule too — a routine needs a prompt, a skill or a script —
+        and a job with none of them would sit in the list forever doing nothing.
+        """
+        caller = authenticate(authorization)
+        _profile_dir(profile)
+
+        schedule = body.schedule.strip()
+        if not schedule:
+            raise HTTPException(status_code=422, detail="This routine needs a schedule.")
+
+        skills = [skill.strip() for skill in body.skills if skill.strip()]
+        prompt = body.prompt.strip()
+        script = body.script.strip()
+        if not (prompt or skills or script):
+            # The same words the official app shows, so the message a person sees in the app is the
+            # message the server would have given them.
+            raise HTTPException(status_code=422,
+                                detail="This routine needs a prompt, a skill, or a script.")
+
+        payload: dict = {"schedule": schedule, "deliver": body.deliver or "local"}
+        if body.name.strip():
+            payload["name"] = body.name.strip()
+        if prompt:
+            payload["prompt"] = prompt
+        if skills:
+            payload["skills"] = skills
+        if script:
+            payload["script"] = script
+            # A script with no prompt is the host's script-only shape: stdout is delivered verbatim
+            # and no agent runs. Sending `no_agent: false` there would pay for a model call that the
+            # routine never asked for.
+            if not prompt:
+                payload["no_agent"] = True
+        if body.paused:
+            payload["paused"] = True
+        if body.timezone:
+            payload["timezone"] = body.timezone
+
+        _status, created = _dashboard("POST", f"/api/cron/jobs?profile={profile}", body=payload)
+        if not isinstance(created, dict) or not created.get("id"):
+            raise HTTPException(status_code=502, detail="the scheduler did not return the new routine")
+
+        runtime.audit.emit("bots.routine_create", device_id=caller, method="bots.routine_create",
+                           path=f"/v1/bots/{profile}/routines", nbytes=len(prompt) + len(script),
+                           outcome="created")
+        return {"routine": _routine_row(created)}
 
     @router.post("/{profile}/routines/{job_id}/state")
     def set_routine_state(profile: str, job_id: str, body: RoutineStateChange,

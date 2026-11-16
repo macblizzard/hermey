@@ -121,3 +121,30 @@ class TheComposerIsQuiet(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheMacAsksAtLaunch(unittest.TestCase):
+    """A cold start checks for updates, on both shells.
+
+    Sparkle's `SUEnableAutomaticChecks` with `SUScheduledCheckInterval: 86400` is a "once a day at
+    most" policy, so a Mac restarted after a release could sit on the old build until tomorrow. The
+    launch check is explicit, silent, and never blocks: Sparkle draws its own dismissible prompt.
+    """
+
+    def setUp(self) -> None:
+        self.source = (MAC / "HermesMacApp.swift").read_text(encoding="utf-8")
+
+    def test_the_app_asks_the_feed_at_every_launch(self) -> None:
+        self.assertIn("updater.updater.checkForUpdatesInBackground()", self.source)
+        self.assertIn("checkForUpdatesAtLaunch()", self.source)
+
+    def test_the_launch_check_runs_after_dialling_the_host(self) -> None:
+        task = self.source.split("await store.connectOnLaunchIfPaired()", 1)[1]
+        self.assertIn("checkForUpdatesAtLaunch()", task.split("}", 1)[0],
+                      "the feed must not delay the first connection")
+
+    def test_nothing_installs_itself(self) -> None:
+        project = (ROOT / "project.yml").read_text(encoding="utf-8")
+        self.assertIn("SUAutomaticallyUpdate: false", project,
+                      "an update may ask; it may not install behind the user")
+

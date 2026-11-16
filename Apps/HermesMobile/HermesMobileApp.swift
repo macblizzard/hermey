@@ -32,7 +32,10 @@ struct HermesMobileApp: App {
             // rather than an empty box.
             LaunchGateView(model: app.model,
                            isPaired: { app.isPaired },
-                           fadeOut: BootScreen.fadeOutDuration) {
+                           fadeOut: BootScreen.fadeOutDuration,
+                           // The card is held until the splash has gone, so an update found during
+                           // boot appears on the list rather than behind the logo.
+                           onContentRevealed: { app.updates.shellDidReveal() }) {
                 BootScreen()
             } content: {
                 RootView()
@@ -49,7 +52,13 @@ struct HermesMobileApp: App {
                 // Its own task, not a step inside `start()`: the feed is a public URL and the app
                 // must be usable before it answers. An unreachable feed is a no-op (see
                 // `UpdateChecker`), so first paint never waits on it.
-                .task { await app.updates.check() }
+                //
+                // `atLaunch`: every cold start asks, rather than once per 24 h. The check runs while
+                // the splash is up and its answer is presented the moment the splash leaves, so a
+                // person who opens the app is told about a new build without going looking for it.
+                // A build they already answered "Not now" to stays answered until a newer one
+                // appears — that is what keeps this from being a nag on every launch.
+                .task { await app.updates.check(atLaunch: true) }
         }
     }
 }
@@ -98,6 +107,15 @@ struct RootView: View {
             }
             // The card is advisory and sits over the app; nothing below it is disabled or hidden.
             .updatePrompt(app.updates)
+            // Warm every bot's conversation behind the list, so opening one paints instead of
+            // waiting. Runs on the shell's own task — after the launch gate, never during the
+            // splash — and again when the socket comes back, which is the moment a cold start's
+            // empty cache is worth refilling.
+            .task { await app.model.prefetchConversations() }
+            .onChange(of: app.model.connection.isLive) { _, live in
+                guard live else { return }
+                Task { await app.model.prefetchConversations() }
+            }
     }
 }
 

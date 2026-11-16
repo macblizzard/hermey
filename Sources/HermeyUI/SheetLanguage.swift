@@ -28,6 +28,12 @@ public struct HermesSheetChrome: ViewModifier {
             #if os(iOS)
             .presentationCornerRadius(Tokens.radiusGrouped)
             .presentationBackground(Tokens.canvas)
+            // Every sheet gets the grabber, because every sheet can be swiped away. It used to be
+            // per-sheet, so a screen could be dismissible and still look like a page — reported
+            // 2026-11-16 ("some closes with swipe down some doesn't"). This modifier is applied at
+            // every presentation site (pinned by `test_window_language`), so the affordance cannot
+            // drift sheet by sheet either.
+            .presentationDragIndicator(.visible)
             #endif
     }
 }

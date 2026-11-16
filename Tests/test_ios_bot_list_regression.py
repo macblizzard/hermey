@@ -27,7 +27,8 @@ class BotListRegressionTests(unittest.TestCase):
         source = SOURCE.read_text()
         self.assertIn('ToolbarItem(placement: .topBarLeading)', source)
         self.assertIn('ToolbarItem(placement: .topBarTrailing)', source)
-        self.assertIn('.accessibilityLabel("Bot list menu")', source)
+        self.assertIn('.accessibilityLabel("Add or manage")', source)
+        self.assertIn('.accessibilityLabel("Settings")', source)
         self.assertNotIn('.navigationBarTitleDisplayMode', source)
 
     def test_the_chats_label_is_gone_and_the_list_sits_closer(self):
@@ -70,3 +71,62 @@ class BotListRegressionTests(unittest.TestCase):
                             "a pinned section header is back; headings must scroll with the list")
         self.assertIn('scrollingHeading { listHeading("GROUP CHATS") }', source)
         self.assertIn("scrollingHeading { groupHeader(group) }", source)
+
+
+class TheBarHasSettingsAndACreateMenu(unittest.TestCase):
+    """Settings is its own control, immediately left of the +, and the + only adds things.
+
+    He asked for it directly: "move the settings out of the 3dot menu on homescreen of ios app, and
+    put it immediately on the left of the 3dot button and also change the 3dot button to a + button
+    so that it makes more sense that way". Two properties follow, and both are easy to lose in a
+    later tidy-up: the ORDER inside the trailing group (declaration order is screen order, so the
+    gear must be declared before the menu) and the ABSENCE of Settings from the menu body.
+    """
+
+    def setUp(self) -> None:
+        self.source = SOURCE.read_text(encoding="utf-8")
+        self.trailing = self.source.split("ToolbarItemGroup(placement: .topBarTrailing) {", 1)[1]
+        self.trailing = self.trailing.split("if !app.isPaired {", 1)[0]
+        # The menu body only: everything between `Menu {` and the label block that ends it. Slicing
+        # on the first `} label: {` would cut at the first Button's label.
+        self.menu = self.trailing.split("Menu {", 1)[1]
+        self.menu = self.menu.split('Image(systemName: "plus")', 1)[0]
+        self.menu = self.menu.rsplit("} label: {", 1)[0]
+
+    def test_the_settings_button_comes_before_the_menu(self) -> None:
+        settings = self.trailing.index("showAppSettings = true")
+        menu = self.trailing.index("Menu {")
+        self.assertLess(settings, menu,
+                        "in a ToolbarItemGroup the declaration order is the left-to-right order")
+
+    def test_settings_is_a_gear_with_its_own_label(self) -> None:
+        block = self.trailing.split("Menu {", 1)[0]
+        self.assertIn('Image(systemName: "gearshape")', block)
+        self.assertIn('.accessibilityLabel("Settings")', block)
+
+    def test_settings_is_no_longer_a_row_in_the_menu(self) -> None:
+        self.assertNotIn("showAppSettings", self.menu)
+        self.assertNotIn('Label("Settings"', self.menu)
+
+    def test_the_menu_wears_a_plus(self) -> None:
+        label = self.trailing.rsplit("} label: {", 1)[1]
+        self.assertIn('Image(systemName: "plus")', label)
+        self.assertNotIn('Image(systemName: "ellipsis")', label)
+
+    def test_the_menu_still_holds_everything_that_adds_or_maintains(self) -> None:
+        for row in ("Hidden bots", "Add bot", "Manage bots", "Add category",
+                    "New group chat", "Mark all as read"):
+            self.assertIn(row, self.menu, f"the menu lost {row!r} when Settings moved out")
+
+
+    def test_hidden_bots_sits_at_the_foot_beside_mark_all_as_read(self) -> None:
+        # "put the hidden bots option before the mark all as read on the + buttons list, right now it
+        # comes on top": the menu opens from a +, so it opens with the things that add; the two
+        # list-wide switches close it together.
+        hidden = self.menu.index("Hidden bots")
+        mark = self.menu.index("Mark all as read")
+        group = self.menu.index("New group chat")
+        self.assertLess(group, hidden, "Hidden bots moved below the create actions")
+        self.assertLess(hidden, mark, "Hidden bots sits immediately above Mark all as read")
+        tail = self.menu[hidden:]
+        self.assertNotIn("Add bot", tail, "the two switches are the last thing in the menu")

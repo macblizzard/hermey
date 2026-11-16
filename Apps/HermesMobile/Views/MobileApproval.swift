@@ -25,6 +25,13 @@ struct PendingRequestPresentation: Equatable {
     let scope: String
     let choices: [ApprovalChoice]
 
+    /// Whether the host offered a permanent answer for this request.
+    ///
+    /// The gateway builds `choices` as `["once", "session", "always", "deny"]` and drops `always`
+    /// (and `session`) for a request that must be asked every time, so this reads the offer rather
+    /// than assuming it.
+    var hostOffersAlways: Bool { choices.contains { $0.id == "always" } }
+
     var isApproval: Bool {
         let lowered = method.lowercased()
         return lowered.contains("approval") || lowered == "sudo" || lowered.contains("terminal.read")
@@ -115,9 +122,9 @@ struct MobilePendingRequestCard: View {
                              scope: presentation.scope,
                              status: .pending,
                              // The gateway's own `choices` decide which buttons exist
-                             // (`fixtures/NOTES.md` §6); the card must not invent an
-                             // "Always" the host did not offer.
-                             allowsAlways: false) { decision in
+                             // (`fixtures/NOTES.md` §6); the card must not invent an "Always" the
+                             // host did not offer — and must not hide one it did.
+                             allowsAlways: presentation.hostOffersAlways) { decision in
                     Haptics.selection()
                     answer(decision)
                 }
@@ -152,9 +159,12 @@ struct MobilePendingRequestCard: View {
 
     private func answer(_ decision: ApprovalCard.Decision) {
         Task {
-            if decision == .denied {
+            switch decision {
+            case .denied:
                 await model.deny(request)
-            } else {
+            case .always:
+                await model.approve(request, remembering: true)
+            case .once:
                 await model.approve(request)
             }
         }
@@ -278,7 +288,7 @@ struct MobileApprovalSheet: View {
                                  scope: presentation.scope,
                                  status: .pending,
                                  answering: pendingDecision,
-                                 allowsAlways: false) { decision in
+                                 allowsAlways: presentation.hostOffersAlways) { decision in
                         answer(decision)
                     }
                 } else {
@@ -331,9 +341,12 @@ struct MobileApprovalSheet: View {
         pendingDecision = decision
         Haptics.selection()
         Task {
-            if decision == .denied {
+            switch decision {
+            case .denied:
                 await model.deny(request)
-            } else {
+            case .always:
+                await model.approve(request, remembering: true)
+            case .once:
                 await model.approve(request)
             }
             pendingDecision = nil

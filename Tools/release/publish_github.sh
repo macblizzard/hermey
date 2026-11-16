@@ -40,13 +40,15 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
   export GITHUB_TOKEN
 fi
 
-# The macOS download in `docs/APPS.md` lives in a separate Pages repo, and nothing passed this flag
-# for five days: the documented link served a build from 2026-11-11 while the tailnet copy was
-# current. It is part of the publish now, published from the same artifact.
+# The macOS download in `docs/APPS.md` lives in a separate Pages repo. This flag used to be opt-in
+# and the documented publish command never set it, so the *only public* macOS link served a build
+# from 2026-11-11 while the release was current — twice, the second time on 2026-11-16, with a comment
+# right here claiming it was part of the publish. It is not opt-in any more: the repo is named below,
+# the image is published from the same artifact as the release, and `DOWNLOADS_REPO=` is the explicit
+# way to skip it.
+DOWNLOADS_REPO=${DOWNLOADS_REPO-macblizzard/hermey-downloads}
 DOWNLOAD_ARGS=()
-if [ -n "${DOWNLOADS_REPO:-}" ]; then
-  : "${GITHUB_TOKEN:=${GH_TOKEN:-}}"
-  export GITHUB_TOKEN
+if [ -n "$DOWNLOADS_REPO" ]; then
   DOWNLOAD_ARGS=(--downloads-repo "$DOWNLOADS_REPO")
 fi
 

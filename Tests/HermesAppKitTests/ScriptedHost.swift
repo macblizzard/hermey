@@ -110,7 +110,13 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         createKeys.append(idempotencyKey)
         return session
     }
-    func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] { entries }
+    /// How many times a page was read, so a test can prove a sweep skipped a bot.
+    private(set) var historyReads = 0
+
+    func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] {
+        historyReads += 1
+        return entries
+    }
 
     // MARK: Older transcript pages
 

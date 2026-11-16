@@ -124,6 +124,9 @@ public protocol BotSessionPointerStore: Sendable {
     /// over a bot that runs four of them every night.
     func routines(_ profile: String) async throws -> [BotRoutine]
 
+    /// `POST /v1/bots/{profile}/routines` — create one from the New Routine form.
+    func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine
+
     /// `POST /v1/bots/{profile}/routines/{jobID}/state` — pause one routine, or resume it.
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
 
@@ -217,6 +220,9 @@ public extension BotSessionPointerStore {
     func setBotEnabled(_ profile: String, enabled: Bool) async throws { throw BotAdminUnavailable() }
     func disabledBots() async throws -> Set<String> { [] }
     func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
+    func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine {
+        throw BotAdminUnavailable()
+    }
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
         throw BotAdminUnavailable()
     }
@@ -498,6 +504,20 @@ enum Failure: Error, Equatable, LocalizedError {
         let name = try Self.pathComponent(profile)
         let data = try await bridgeGET("v1/bots/\(name)/routines", timeout: 20)
         return BotRoutine.decodeList(data)
+    }
+
+    /// `POST /v1/bots/{profile}/routines`.
+    ///
+    /// The draft is validated in the app as well, but this is the route that decides: a caller that
+    /// builds its own body gets the same refusal, and the message is the one the form shows.
+    public func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgePOST("v1/bots/\(name)/routines",
+                                        body: draft.payload(), timeout: 60)
+        guard let routine = BotRoutine.decodeOne(data) else {
+            throw BotAdminUnavailable()
+        }
+        return routine
     }
 
     /// `POST /v1/bots/{profile}/routines/{jobID}/state`.

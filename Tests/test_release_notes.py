@@ -48,8 +48,16 @@ class BothPromptsCarryThem(unittest.TestCase):
         self.assertIn("notes: document.notes", CHECKER)
 
     def test_the_card_shows_them_without_pushing_its_buttons_away(self) -> None:
+        # The notes are the scrolling part and the actions are outside it. Capping the notes view
+        # with `.frame(maxHeight:)` while the buttons sat after it in the same stack is what pushed
+        # the Download button below the fold of a `.medium` detent — "there is no download button".
         self.assertIn("if !update.notes.trimmingCharacters", PROMPT)
-        self.assertIn(".frame(maxHeight: 220)", PROMPT)
+        scrolling = PROMPT.split("ScrollView {", 1)[1].split("// The actions never scroll", 1)[0]
+        self.assertIn("Text(update.notes)", scrolling)
+        self.assertNotIn('Text("Download")', scrolling)
+        actions = PROMPT.split("// The actions never scroll", 1)[1]
+        self.assertIn('Text("Download")', actions)
+        self.assertIn(".presentationDetents([.medium, .large])", PROMPT)
 
 
 if __name__ == "__main__":

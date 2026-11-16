@@ -173,3 +173,76 @@ class TheReleaseAssetIsVerified(unittest.TestCase):
 
     def test_the_skip_is_explicit_and_named(self) -> None:
         self.assertIn('"--skip-release-verify"', ALTSTORE)
+
+def _plist(payload: dict) -> bytes:
+    import plistlib
+    return plistlib.dumps(payload)
+
+
+class TheSideloadSourceDescribesThePhoneNotTheMac(unittest.TestCase):
+    """`altstore.json` on the Pages mirror named the DMG, so an iOS update downloaded a disk image.
+
+    The mirror publishes two artifacts into one directory: the disk image and the sideload source a
+    phone reads. Reusing the mac-flavoured entry for the phone's manifest is the defect; the IPA's
+    own numbers now build that entry, and a non-IPA identifier is refused.
+    """
+
+    def test_the_downloads_repo_writes_the_ipa_entry(self) -> None:
+        block = ALTSTORE.split("def push_to_downloads_repo(", 1)[1].split("def main(", 1)[0]
+        self.assertIn("ios_entry: dict", block)
+        self.assertIn("source_document(\n                info, ios_entry,", block)
+        self.assertNotIn("source_document(\n                info, entry,", block)
+
+    def test_a_non_ipa_identifier_is_refused(self) -> None:
+        block = ALTSTORE.split("def push_to_downloads_repo(", 1)[1].split("def main(", 1)[0]
+        self.assertIn('advertised.lower().endswith(".ipa")', block)
+        self.assertIn("which is not the IPA", block)
+
+    def test_the_ios_entry_is_built_from_the_ipa_bytes(self) -> None:
+        tail = ALTSTORE.split("if args.downloads_repo and", 1)[1]
+        self.assertIn('"downloadURL": download,', tail)
+        self.assertIn('"size": len(data),', tail)
+        self.assertIn('"sha256": digest,', tail)
+        self.assertNotIn("dmg_size", tail.split("published = push_to_downloads_repo", 1)[0])
+
+
+class TheSourceNamesTheAppBundleNotANestedOne(unittest.TestCase):
+    """The published source advertised `hermey.HermeyUI.resources` — a nested resource bundle.
+
+    A sideloading app matches an update to the installed app by bundle identifier, so the wrong one
+    is not cosmetic: "update" installs a stranger. The first `Info.plist` in the zip was the nested
+    bundle's, because it sorts inside the .app.
+    """
+
+    def _fake_ipa(self) -> pathlib.Path:
+        import tempfile, zipfile
+        directory = pathlib.Path(tempfile.mkdtemp())
+        ipa = directory / "Hermey-test.ipa"
+        nested = {
+            "CFBundleIdentifier": "hermey.HermeyUI.resources",
+            "CFBundleShortVersionString": "1.0",
+            "CFBundleVersion": "1",
+            "CFBundlePackageType": "BNDL",
+        }
+        app = {
+            "CFBundleIdentifier": "dev.hermey.app.mobile",
+            "CFBundleShortVersionString": "0.1.516",
+            "CFBundleVersion": "516",
+            "CFBundlePackageType": "APPL",
+        }
+        with zipfile.ZipFile(ipa, "w") as archive:
+            # The nested bundle first, in the order a real archive carries it.
+            archive.writestr("Payload/Hermey.app/HermesApps_HermeyUI.bundle/Info.plist", _plist(nested))
+            archive.writestr("Payload/Hermey.app/Info.plist", _plist(app))
+        return ipa
+
+    def test_the_app_plist_wins(self) -> None:
+        import sys
+        sys.path.insert(0, str(RELEASE))
+        import publish_source
+        info = publish_source.read_ipa(self._fake_ipa())
+        self.assertEqual(info["CFBundleIdentifier"], "dev.hermey.app.mobile")
+        self.assertEqual(info["CFBundleVersion"], "516")
+
+    def test_the_app_plist_is_identified_by_package_type(self) -> None:
+        self.assertIn('candidate.get("CFBundlePackageType") == "APPL"', SOURCE)

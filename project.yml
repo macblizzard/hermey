@@ -176,8 +176,14 @@ targets:
         # declared — that is iOS's rule for "is this app installed" — which would hide the AltStore
         # button on every phone, including the ones that have it. Only the query needs the entry;
         # nothing is opened unless the query already answered true.
+        # Each sideloading app the update card can offer. iOS answers `canOpenURL` with "no" for a
+        # scheme that is not listed here — silently — so this list and `SideloadingApp.all` in
+        # UpdatePrompt.swift must name the same schemes.
         LSApplicationQueriesSchemes:
           - altstore
+          - sidestore
+          - feather
+          - flarestore
         # A phone tears the socket down the moment the app leaves the foreground, so the only way a
         # suspended app can learn that a bot replied is one of iOS's own background refreshes —
         # which needs the fetch mode plus the exact identifier the app registers. iOS refuses a

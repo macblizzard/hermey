@@ -137,6 +137,9 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Pause or resume one of this bot's routines.
     func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws
 
+    /// Create one (`POST /v1/bots/{profile}/routines` on the bridge) and return the row it made.
+    func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine
+
     /// What this bot remembers: its own notes and the owner's profile, read-only.
     func memory(_ profile: String) async throws -> BotMemory
 
@@ -323,6 +326,11 @@ extension GatewayClientProtocol {
     /// bot that runs every night.
     public func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
     public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
+        throw BotAdminUnavailable()
+    }
+    /// A client with no bridge cannot create a schedule either; the app shows the failure rather than
+    /// pretending the routine exists.
+    public func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine {
         throw BotAdminUnavailable()
     }
     public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }

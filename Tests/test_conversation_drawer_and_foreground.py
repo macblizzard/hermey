@@ -39,8 +39,10 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertIn("Text(title)", pill)
 
     def test_the_bot_list_keeps_its_own_menu(self) -> None:
-        self.assertIn('Image(systemName: "ellipsis")', LIST,
-                      "he asked for the list to keep it")
+        # The list still owns its control in the trailing corner; it is a + now, because the menu
+        # only creates and maintains things. Settings moved out into a button of its own.
+        self.assertIn('Image(systemName: "plus")', LIST,
+                      "he asked for the list to keep the menu")
 
     def test_the_drawer_is_a_page_that_rises(self) -> None:
         self.assertIn(".overlay {", SCREEN)

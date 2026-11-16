@@ -19,19 +19,29 @@ public struct BotRoutinesSheet: View {
     private let botName: String
     private let load: () async throws -> [BotRoutine]
     private let setPaused: (String, Bool) async throws -> Void
+    /// Creates one from the New Routine form. Nil closes the + button, for a shell that can read
+    /// routines but cannot write them (a preview, or an older host).
+    private let create: ((RoutineDraft) async throws -> BotRoutine)?
+    /// The form's "Send to" choices, supplied by the shell that knows the roster.
+    private let deliveries: [RoutineDelivery]
 
     @Environment(\.dismiss) private var dismiss
     @State private var routines: [BotRoutine] = []
     @State private var isLoading = true
     @State private var failure: String?
     @State private var busyJobID: String?
+    @State private var showNewRoutine = false
 
     public init(botName: String,
                 load: @escaping () async throws -> [BotRoutine],
-                setPaused: @escaping (String, Bool) async throws -> Void) {
+                setPaused: @escaping (String, Bool) async throws -> Void,
+                create: ((RoutineDraft) async throws -> BotRoutine)? = nil,
+                deliveries: [RoutineDelivery] = [.local, .defaultBotChat]) {
         self.botName = botName
         self.load = load
         self.setPaused = setPaused
+        self.create = create
+        self.deliveries = deliveries
     }
 
     public var body: some View {
@@ -60,7 +70,7 @@ public struct BotRoutinesSheet: View {
                         Label("No routines", systemImage: "clock.arrow.circlepath")
                             .font(TypeScale.font(TypeScale.md))
                             .foregroundStyle(Tokens.textSecondary)
-                        Text("\(botName) has nothing scheduled. Ask it to set one up in chat.")
+                        Text("\(botName) has nothing scheduled. Tap + to add one, or ask it in chat.")
                             .font(TypeScale.font(TypeScale.sm))
                             .foregroundStyle(Tokens.textDim)
                     }
@@ -84,8 +94,27 @@ public struct BotRoutinesSheet: View {
             .inlineSheetTitle()
             .sheetSizing()
             .toolbar {
+                // The + sits beside the title, before Done — and both live in ONE toolbar item, as an
+                // HStack. A `ToolbarItemGroup` whose first member is conditional is not portable: on
+                // macOS the group collapsed to the member that existed, so the + replaced Done and the
+                // sheet had no way out (reported 2026-11-16, force-quit required). One item, two
+                // buttons, no placement left to the platform.
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    HStack(spacing: 12) {
+                        if let create {
+                            Button {
+                                showNewRoutine = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .accessibilityLabel("Add routine")
+                            .accessibilityIdentifier("routines.add")
+                        }
+                        // Done is unconditional: this sheet is reached from a drawer row on the phone and
+                        // from a panel on the Mac, and neither has another way back.
+                        Button("Done") { dismiss() }
+                            .accessibilityIdentifier("routines.done")
+                    }
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -98,6 +127,19 @@ public struct BotRoutinesSheet: View {
             }
         }
         .task { await reload() }
+        .sheet(isPresented: $showNewRoutine) {
+            if let create {
+                RoutineEditorSheet(botName: botName, deliveries: deliveries) { draft in
+                    let made = try await create(draft)
+                    // Re-read rather than append: the row the scheduler will actually fire carries a
+                    // `next_run_at` only the host knows, and guessing at it puts a wrong time on
+                    // screen that the next refresh then has to correct.
+                    await reload()
+                    return made
+                }
+                .hermesSheetChrome()
+            }
+        }
     }
 
     private func row(_ routine: BotRoutine) -> some View {

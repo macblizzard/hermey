@@ -484,6 +484,11 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.routines(profile)
     }
 
+    public func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.createRoutine(profile, draft: draft)
+    }
+
     public func setRoutinePaused(_ profile: String, jobID: String, paused: Bool) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }
         try await sessionPointer.setRoutinePaused(profile, jobID: jobID, paused: paused)
