@@ -81,6 +81,9 @@ public struct BotAvatarView: View {
     public var pageBackground: Color?
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// Backgrounded windows keep their faces still: the Mac target had no such gate, so a minimised
+    /// conversation went on redrawing 30 times a second behind another app.
+    @Environment(\.scenePhase) private var scenePhase
     /// The app's own motion switch (Settings → Appearance). Read here rather than sampled in a
     /// helper so flipping it redraws the faces that are on screen.
     @AppStorage(BotAvatarMotion.defaultsKey) private var appAllowsMotion = true
@@ -116,13 +119,20 @@ public struct BotAvatarView: View {
         let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: color)
         let moves = BotAvatarMotion.allows(activity: activity,
                                            reduceMotion: reduceMotion || systemReduceMotion,
-                                           animates: animates && appAllowsMotion,
+                                           animates: animates && appAllowsMotion
+                                               && scenePhase == .active,
                                            size: size,
                                            minimumSize: animatingFrom)
         let traits = BotAvatarMotionTraits(identity: resolved.identity)
 
-        TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !moves)) { context in
-            content(resolved: resolved, traits: traits, moves: moves, date: context.date)
+        // Built once per body evaluation, not once per tick: the shape's arcs were being re-rastered
+        // 30 times a second inside the timeline closure (`A8_mark_constmask` in Tinker's sample).
+        let facePath = resolved.shape.path(inSide: size)
+
+        TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
+                                paused: !moves)) { context in
+            content(resolved: resolved, facePath: facePath, traits: traits, moves: moves,
+                    date: context.date)
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
@@ -134,6 +144,7 @@ public struct BotAvatarView: View {
 
     @ViewBuilder
     private func content(resolved: BotAvatarIdentity,
+                         facePath: Path,
                          traits: BotAvatarMotionTraits,
                          moves: Bool,
                          date: Date) -> some View {
@@ -155,7 +166,7 @@ public struct BotAvatarView: View {
                 Color.clear
             } else {
                 ZStack {
-                    resolved.shape.path(inSide: size)
+                    facePath
                         .fill(resolved.color.color)
                         .brightness(body.brightness)
                     eyesLayer(resolved: resolved, pose: eyes)

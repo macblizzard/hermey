@@ -124,7 +124,13 @@ struct TranscriptRowView: View {
             } label: {
                 HStack(spacing: 6) {
                     if let profile = label.senderProfile {
-                        BotAvatarView(identity: profile, size: Geometry.rosterAvatarCompact)
+                        // `animates: false`: a transcript row is a record of what was said, not a live status.
+                        // Every other face site already gates on activity; this one did not, so an
+                        // idle 30 Hz timeline ran per bot-message row (Tinker's measurement,
+                        // 2026-11-16: ~19 pp of a core from face animation alone).
+                        BotAvatarView(identity: profile,
+                                      size: Geometry.rosterAvatarCompact,
+                                      animates: false)
                     }
                     Text(label.incomingTitle)
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))

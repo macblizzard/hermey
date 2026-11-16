@@ -139,6 +139,17 @@ public enum BotAvatarMotion {
     /// battery bug, and the same beat the old spinner used.
     public static let frameInterval: Double = 1.0 / 30.0
 
+    /// The beat a face draws at, per activity.
+    ///
+    /// The reference animates idle too (breathe, a glance, a blink), and that life is the point —
+    /// but a web page gets it from the compositor while a SwiftUI `TimelineView` redraws the whole
+    /// subtree, so the same motion costs ~19 pp of a core on this Mac. Idle keeps its motion at a
+    /// third of the beat: a 0.5 % breath and a 0.16 s blink survive 10 Hz, and twenty list rows stop
+    /// costing what one working face should.
+    public static func frameInterval(for activity: BotAvatarActivity) -> Double {
+        activity == .idle ? 1.0 / 10.0 : frameInterval
+    }
+
     /// The working ring's stroke turn, `rakazo-avatar-spin`.
     public static let workingRingDuration: Double = 1.2
 

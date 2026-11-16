@@ -164,9 +164,13 @@ class TheFaceMovesLikeTheReference(unittest.TestCase):
     def test_the_timeline_pauses_when_nothing_moves(self) -> None:
         # Thirty frames a second, and only for a face that is allowed to move: a paused
         # `TimelineView` costs nothing, which is what keeps a roster of twenty rows cheap.
-        self.assertIn("TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !moves))",
-                      self.AVATAR)
+        # The beat is per activity now — idle draws at a third of the rate — and a face also stops
+        # when its window is not frontmost (Tinker's 42 %-of-a-core report, 2026-11-16).
+        self.assertIn("BotAvatarMotion.frameInterval(for: activity)", self.AVATAR)
+        self.assertIn("paused: !moves", self.AVATAR)
+        self.assertIn("scenePhase == .active", self.AVATAR)
         self.assertIn("public static let frameInterval: Double = 1.0 / 30.0", self.MOTION)
+        self.assertIn("activity == .idle ? 1.0 / 10.0 : frameInterval", self.MOTION)
 
     def test_the_ring_is_drawn_only_while_the_bot_works(self) -> None:
         self.assertNotIn("BotAvatarRing(size:", self.AVATAR)
