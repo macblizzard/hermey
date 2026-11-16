@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.521",
-          "buildVersion": "521",
-          "date": "2026-11-16T21:22:07Z",
-          "localizedDescription": "Routines can be created from the app: a + on the routines sheet opens the New Routine form (name, when, what it should do, where it goes, and skills/script behind Advanced), and the bridge creates the job on the host. Both apps check for updates at launch.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.521/Hermey-0.1.521-b521.ipa",
-          "size": 3191574,
+          "version": "0.1.522",
+          "buildVersion": "522",
+          "date": "2026-11-16T21:43:21Z",
+          "localizedDescription": "Routines: Send to now lists every bot, not just the one you are in. The bridge adopts the runtime id a resume attaches, so a message sent after the host reaps a session is retried against the right id instead of failing with \"session not found\".",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.522/Hermey-0.1.522-b522.ipa",
+          "size": 3194702,
           "minOSVersion": "17.0",
-          "sha256": "8d3a50cea869a9732fc566f0b75cf09623ef32e63fc7e75e7c0062f0f30e41b8"
+          "sha256": "a730d8616c7b833ed872fca0b05709469c5d3efaaf170c66b8e97604f6f98ea3"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.521 (521)",
-      "identifier": "hermes-0.1.521-521",
-      "caption": "Routines can be created from the app: a + on the routines sheet opens the New Routine form (name, when, what it should do, where it goes, and skills/script behind Advanced), and the bridge creates the job on the host. Both apps check for updates at launch.",
-      "date": "2026-11-16T21:22:07Z",
+      "title": "Hermes 0.1.522 (522)",
+      "identifier": "hermes-0.1.522-522",
+      "caption": "Routines: Send to now lists every bot, not just the one you are in. The bridge adopts the runtime id a resume attaches, so a message sent after the host reaps a session is retried against the right id instead of failing with \"session not found\".",
+      "date": "2026-11-16T21:43:21Z",
       "tintColor": "#9A9AA0"
     }
   ],
