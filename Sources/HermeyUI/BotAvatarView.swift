@@ -154,7 +154,7 @@ public struct BotAvatarView: View {
         // blink closes them. Nothing else moves — the reference's faces are still, patient things
         // with very active eyes.
         let frame = moves
-            ? BotAvatarMotion.frame(activity: activity, traits: traits, at: time)
+            ? BotAvatarMotion.frame(activity: activity, traits: traits, at: time, side: Double(size))
             : .rest
         let body = frame.body
         let eyes = frame.eyes

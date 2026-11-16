@@ -78,6 +78,25 @@ final class BotAvatarEyeMotionTests: XCTestCase {
         XCTAssertEqual(lidded.first ?? 0, 0.9, accuracy: 0.01)
     }
 
+    func testWorkingIsNotJustABlink() {
+        // The reference's working state only breathes and blinks, and on a small face that read as a
+        // dead icon with a twitch — so working now pans across its work.
+        let poses = samples(.working, seconds: 6)
+        let travel = (poses.map(\.offsetX).max() ?? 0) - (poses.map(\.offsetX).min() ?? 0)
+        XCTAssertGreaterThan(travel, 0.05, "a working face should move its eyes, not only its lids")
+    }
+
+    func testSmallFacesExaggerate() {
+        // A 20-unit gaze is ~6 pt on a 120 pt face and ~1 pt on a 32 pt row: the same track has to be
+        // amplified where the face is small, or only the blink is visible.
+        let traits = BotAvatarMotionTraits(phase: 0, eyeLoop: 0)
+        let at32 = BotAvatarMotion.frame(activity: .reading, traits: traits, at: 2.0, side: 32)
+        let at160 = BotAvatarMotion.frame(activity: .reading, traits: traits, at: 2.0, side: 160)
+        XCTAssertGreaterThan(abs(at32.eyes.offsetX), abs(at160.eyes.offsetX))
+        XCTAssertEqual(BotAvatarMotion.emphasis(forSize: 160), 1, accuracy: 0.001)
+        XCTAssertGreaterThan(BotAvatarMotion.emphasis(forSize: 16), 1)
+    }
+
     func testTwoBotsDoNotMoveInLockstep() {
         // Their bodies breathe out of phase (`traits.phase`); the eyes are identical until a blink
         // is due, so breathing is the honest thing to compare at an arbitrary instant.

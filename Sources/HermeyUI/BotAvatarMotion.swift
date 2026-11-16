@@ -457,6 +457,11 @@ public enum BotAvatarMotion {
     static let thinkingLidTrack: [(Double, Double)] = [(0, 1), (0.08, 1), (0.24, 0.8), (0.4, 0.8), (0.56, 0.68), (0.65, 0.68), (0.82, 0.9), (0.9, 0.9), (1, 1)]
     static let computerXTrack: [(Double, Double)] = [(0, -10), (0.08, -10), (0.18, 10), (0.34, 10), (0.48, -8), (0.76, -8), (0.92, -10), (1, -10)]
     static let computerYTrack: [(Double, Double)] = [(0, -3), (0.34, -3), (0.48, 6), (0.76, 6), (0.92, -3), (1, -3)]
+    /// Working has no eye track in the reference (it only breathes and blinks), but a bot that is
+    /// running looks dead if nothing above its lid moves — the same finding as the ring: the face is
+    /// the only signal there is. A small pan across the work, three beats per cycle.
+    static let workingXTrack: [(Double, Double)] = [(0, -6), (0.22, 6), (0.46, 2), (0.7, -4), (0.88, 0), (1, -6)]
+    static let workingYTrack: [(Double, Double)] = [(0, 0), (0.3, 2), (0.6, 0), (1, 0)]
 
     /// The eyes' outer edges sit 60 units apart in the 259-unit box, and `BotAvatarEyePose`
     /// translates as a fraction of the eyes' own box — so the reference's units divide by 60.
@@ -490,6 +495,17 @@ public enum BotAvatarMotion {
     /// Whether this state wears the "needs attention" lid rather than blinking (`waiting`).
     static func needsAttention(_ activity: BotAvatarActivity) -> Bool {
         activity == .waiting
+    }
+
+    /// How much the face exaggerates its movement at a given side.
+    ///
+    /// The reference's units are a fraction of a big avatar: a 20-unit gaze is 5 % of a 120 pt face
+    /// (~6 pt) but 1.2 pt on a 32 pt row, which reads as "only the blink moves". Small faces
+    /// therefore travel further — capped, so a 16 pt icon gains life without looking twitchy.
+    public static func emphasis(forSize side: Double) -> Double {
+        let reference: Double = 120
+        guard side > 0 else { return 1 }
+        return min(2.6, max(1, (reference / side).squareRoot()))
     }
 
     /// The whole face at one instant, evaluated exactly as `logoAvatarFrame` does.
@@ -536,6 +552,9 @@ public enum BotAvatarMotion {
             if activity == .idle {
                 eyeX = sample(idleXTrack, at: p) * traits.side
                 eyeY = sample(idleYTrack, at: p)
+            } else {
+                eyeX = sample(workingXTrack, at: p)
+                eyeY = sample(workingYTrack, at: p)
             }
         case .reading:
             eyeX += sample(readingXTrack, at: p)
@@ -561,6 +580,21 @@ public enum BotAvatarMotion {
                                    offsetY: eyeY * eyeUnits,
                                    scaleY: lid * blink)
         )
+    }
+
+    /// The whole face at one instant, with the movement exaggerated for the side it will draw at.
+    public static func frame(activity: BotAvatarActivity,
+                             traits: BotAvatarMotionTraits,
+                             at time: Double,
+                             side: Double) -> Frame {
+        let plain = frame(activity: activity, traits: traits, at: time)
+        let gain = emphasis(forSize: side)
+        var eyes = plain.eyes
+        eyes.offsetX *= gain
+        eyes.offsetY *= gain
+        var body = plain.body
+        body.translateY *= gain
+        return Frame(body: body, eyes: eyes)
     }
 
     /// The eyes alone, for callers that draw a body of their own.
