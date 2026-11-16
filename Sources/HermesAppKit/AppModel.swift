@@ -369,6 +369,34 @@ public final class AppModel: ObservableObject {
     private var conversationCacheOrder: [String] = []
     private static let conversationCacheLimit = 8
 
+    /// The host's newest-message stamp each snapshot already contained, per bot.
+    ///
+    /// Two clocks are compared all over this model — the device's and the host's — and comparing
+    /// them is how a fast phone ends up either pinned to its cache for good or reloading every bot
+    /// on every look. This map holds a *host* stamp and is only ever compared with another host
+    /// stamp, which makes "has the host written since I took this snapshot?" a question with an
+    /// honest answer.
+    private var conversationCacheHostStamp: [String: Date] = [:]
+
+    /// The host's newest-message stamp the transcript on screen already contains, per bot.
+    ///
+    /// The same fact for the open conversation: the re-read in `reconcileOpenChatWithHost` happens
+    /// exactly when a sweep reports a stamp newer than this one.
+    private var transcriptHostStamp: [String: Date] = [:]
+
+    /// Sessions the host has said something about while this client was looking elsewhere.
+    ///
+    /// Every live branch in `apply(_:)` returns early for a session that is not on screen, and that
+    /// is right — the transcript belongs to one bot. What was missing is the *record* that the other
+    /// session moved. Without it a cached conversation could not tell "nothing has happened since I
+    /// left" from "a reply landed and the event was dropped", and it answered the second case with a
+    /// two-minute-old snapshot while the list row and the banner had already announced the reply
+    /// (reported 2026-11-16: "the bot list and the notification know, the chat loads much later").
+    private var unseenSessions: Set<SessionID> = []
+    private var unseenSessionOrder: [SessionID] = []
+    /// Bounded: an app left running must not accumulate every session the host ever mentioned.
+    private static let unseenSessionLimit = 32
+
     // MARK: Composer
 
     /// Last message exchanged per bot, so the list can order by real activity rather than by
@@ -692,7 +720,16 @@ public final class AppModel: ObservableObject {
     /// are in flight at a time. On a host with fifteen profiles a serial sweep is fifteen round
     /// trips deep before the list stops being two lines per row, and a cold profile can take
     /// seconds to answer its first `session.list`.
+    ///
+    /// The sweep then ends by reconciling the open conversation: it is the only clock in the model
+    /// that can notice a message the socket never carried at all.
     public func loadBotPreviews(force: Bool = false) async {
+        await readPreviews(force: force)
+        await reconcileOpenChatWithHost()
+    }
+
+    /// Read every bot's newest message. `loadBotPreviews` is what callers use.
+    private func readPreviews(force: Bool) async {
         let ids = bots.map(\.id)
         guard !ids.isEmpty else { return }
         if previewsInFlight && !force { return }
@@ -805,6 +842,24 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Re-read the open conversation when a sweep says the host has written since.
+    ///
+    /// The live socket is the fast path and covers a turn in progress. It is not the only writer on
+    /// the host: another device's turn, an agent posting outside a run, a bot-to-bot transfer — all
+    /// of those produce no `message.complete` on this socket, and until now nothing re-read an idle
+    /// conversation, so the open chat was the one place that stayed behind while the row and the
+    /// banner moved on (reported 2026-11-16). The refresh is in place: it neither clears the pane nor
+    /// drops the pages already loaded, and `adoptResume` merges.
+    private func reconcileOpenChatWithHost() async {
+        guard let bot = selectedBotID, let sid = selectedSessionID, connection.isLive,
+              !isStreaming, !sending, !isCompressing,
+              !draftSessionIDs.contains(sid),
+              latestHostStamp(for: bot) > (transcriptHostStamp[bot] ?? .distantPast) else { return }
+        ClientLog.note("sweep saw a newer host message for \(bot): re-reading the open chat",
+                       level: .info, category: "cache")
+        await refreshTranscript(sid)
+    }
+
     /// Retry a dropped connection without losing the open session.
     public func retryConnection() async {
         let previous = selectedSessionID
@@ -874,12 +929,17 @@ public final class AppModel: ObservableObject {
                                                        contextUsed: contextUsed,
                                                        contextMax: contextMax)
         conversationCacheStamp[botID] = Date()
+        // What the host had written when this snapshot was taken, so a later sweep can say whether
+        // the snapshot is still the newest thing there is (see `endlessSession`).
+        conversationCacheHostStamp[botID] = latestHostStamp(for: botID)
         ClientLog.note("cached \(transcript.count) rows for \(botID) before switching away",
                        level: .info, category: "cache")
         conversationCacheOrder.removeAll { $0 == botID }
         conversationCacheOrder.append(botID)
         while conversationCacheOrder.count > Self.conversationCacheLimit {
-            conversationCache.removeValue(forKey: conversationCacheOrder.removeFirst())
+            let evicted = conversationCacheOrder.removeFirst()
+            conversationCache.removeValue(forKey: evicted)
+            conversationCacheHostStamp.removeValue(forKey: evicted)
         }
     }
 
@@ -944,6 +1004,49 @@ public final class AppModel: ObservableObject {
         compactionNotice = nil
         sending = false
         lastSendError = nil
+    }
+
+    /// The host's own timestamp for the newest message it holds for a bot.
+    ///
+    /// `botPreviewTimes` is written from the host's answer (`previews`, or a `session.list` row), so
+    /// it is a *host* stamp; comparing it with `Date()` would be comparing two clocks. It is
+    /// compared only with the stamps recorded in `conversationCacheHostStamp` /
+    /// `transcriptHostStamp`, never with the device's clock.
+    private func latestHostStamp(for botID: String) -> Date {
+        botPreviewTimes[botID] ?? .distantPast
+    }
+
+    /// The transcript on screen now contains the host's newest message for this bot.
+    private func markTranscriptCurrent() {
+        guard let bot = selectedBotID else { return }
+        transcriptHostStamp[bot] = latestHostStamp(for: bot)
+    }
+
+    /// Remember that a session moved while it was not the one on screen.
+    private func noteUnseen(_ session: SessionID) {
+        guard unseenSessions.insert(session).inserted else { return }
+        unseenSessionOrder.append(session)
+        while unseenSessionOrder.count > Self.unseenSessionLimit {
+            unseenSessions.remove(unseenSessionOrder.removeFirst())
+        }
+    }
+
+    /// The session an event names, for the events that name one.
+    private static func session(of event: ClientEvent) -> SessionID? {
+        switch event {
+        case .messageDelta(let session, _),
+             .messageComplete(let session, _),
+             .thinkingDelta(let session, _),
+             .interimMessage(let session, _, _, _),
+             .toolStart(let session, _, _, _),
+             .toolProgress(let session, _, _),
+             .toolComplete(let session, _, _, _, _, _),
+             .contextUsage(let session, _, _, _),
+             .sessionUpdated(let session):
+            return session
+        case .ready, .state, .request, .requestCancelled, .error, .unknown:
+            return nil
+        }
     }
 
     /// Record the transcript for a session so leaving and coming back is instant.
@@ -1203,6 +1306,9 @@ public final class AppModel: ObservableObject {
             pendingRequests = resumed.openRequests
             adopt(resumed, session: sid)
             remember(sid, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
+            markTranscriptCurrent()
+            unseenSessions.remove(sid)
+            unseenSessionOrder.removeAll { $0 == sid }
             cacheTranscriptSoon(sid)
             transcriptReloads += 1
             settleCompactionWait()
@@ -1516,12 +1622,22 @@ public final class AppModel: ObservableObject {
         let restored = restoreConversation(for: botID)
         isOpeningConversation = !restored
         defer { isOpeningConversation = false }
-        // A chat you left seconds ago is already on screen, and anything said since arrives on the
-        // live socket, so asking the host again only reloads what the person is reading. Inside the
-        // freshness window the cache *is* the answer; past it, the resume below refreshes in place.
+        // A chat you left seconds ago is already on screen, so asking the host again only reloads
+        // what the person is reading — **unless something arrived since**, which the cache cannot
+        // know and the socket may not have said: a reply to a bot that was not on screen is dropped
+        // by every branch of `apply(_:)`, not buffered. The row and the banner learn about it from
+        // the sweep, so a pane opened on the strength of that banner used to paint the reply's
+        // absence and make no host read at all for up to two minutes.
+        //
+        // Two facts, both already in hand, decide it: `unseenSessions` (the socket named a session
+        // that is not the one on screen) and the host's own newest stamp for this bot against the
+        // stamp this snapshot contained. Neither compares the host's clock with ours.
+        let hostIsAhead = latestHostStamp(for: botID) > (conversationCacheHostStamp[botID] ?? .distantPast)
+        let socketSaidSo = selectedSessionID.map { unseenSessions.contains($0) } ?? false
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
-           Date().timeIntervalSince(stamp) < conversationCacheFreshness {
+           Date().timeIntervalSince(stamp) < conversationCacheFreshness,
+           !hostIsAhead, !socketSaidSo {
             ClientLog.note("returned to \(botID) from cache "
                            + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume",
                            level: .info, category: "cache")
@@ -1590,6 +1706,9 @@ public final class AppModel: ObservableObject {
                         total: resumed.historyTotal, sessionID: stored)
             pendingRequests = resumed.openRequests
             adopt(resumed, session: stored)
+            markTranscriptCurrent()
+            unseenSessions.remove(stored)
+            unseenSessionOrder.removeAll { $0 == stored }
             captureConversation(for: botID)
             cacheTranscriptSoon(stored)
             // Whatever actually opened is the best cache this device can keep — including a host id
@@ -3081,6 +3200,11 @@ public final class AppModel: ObservableObject {
         // Before any of the branches below: an event for a bot the user is not looking at is still
         // *that bot's* activity, and those branches return early for exactly that reason.
         trackActivity(event)
+        // And the same for the transcript it belongs to: the branch will drop the event, so the one
+        // fact worth keeping — that session has moved — is recorded here, while it is still in hand.
+        if let moving = Self.session(of: event), moving != selectedSessionID {
+            noteUnseen(moving)
+        }
         // And after every one of them, including the early returns: the model's own run flags are
         // the authority for the open bot, whatever the event said.
         defer { syncActivityWithRunState() }
@@ -3158,7 +3282,12 @@ public final class AppModel: ObservableObject {
             guard session == selectedSessionID else { return }
             if let bot = selectedBotID {
                 recordActivity(for: bot)
-                // A reply for a bot you are not looking at is the only thing that earns a dot.
+                // Kept for the one case it can still be true in — a bot selected while no window is
+                // showing one (`visibleBotID` nil). The guard at the top of this branch means a reply
+                // for a *different* bot never reaches here at all; that bot's dot and banner come
+                // from the sweep (`noteRemoteActivity`), which is the only reader that sees every
+                // bot's newest message. Believing otherwise is what made the cache shortcut in
+                // `endlessSession` look safe.
                 if visibleBotID != bot { unreadBots.insert(bot) }
             }
             // A completion with no text would otherwise leave a blank bubble beside the streamed
@@ -3188,6 +3317,11 @@ public final class AppModel: ObservableObject {
             sealedInterimKeys.removeAll()
             sealedCommentary.removeAll()
             runningSessions.remove(session)
+            // The reply just rendered *is* the host's newest message for this bot, so the sweep has
+            // nothing to reconcile here; and the session is on screen, so it is no longer unseen.
+            markTranscriptCurrent()
+            unseenSessions.remove(session)
+            unseenSessionOrder.removeAll { $0 == session }
             // The turn is now part of what a re-open should show instantly.
             remember(session, entries: transcript, cursor: earlierCursor, total: historyTotal)
             cacheTranscriptSoon(session)
