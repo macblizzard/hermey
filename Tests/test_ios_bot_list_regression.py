@@ -39,31 +39,34 @@ class BotListRegressionTests(unittest.TestCase):
         self.assertIn('.contentMargins(.top, 2, for: .scrollContent)', source)
 
     def test_the_top_edge_fades_instead_of_banding(self):
-        # Content scrolling under the bar dissolves into the canvas. This has to be a *mask*, not a
-        # gradient painted over the list: an overlay is anchored to the scroll view's own top edge,
-        # which on a NavigationStack root is the window top — so the ramp sat behind the status and
-        # navigation bars and nothing faded (build 453's "the top fade got lost"). A mask also
-        # cannot swallow a tap, which is what the old `allowsHitTesting(false)` was there for.
+        # The dissolve lives in the bar's own strip and ends where the first row begins. Two shapes
+        # were tried and both were wrong in ways the screenshots proved: a mask inside the scroll
+        # view inherited that view's safe-area inset and reached two rows down (it HID a bot), and a
+        # ramp drawn downward from y = 0 veiled the section labels at rest. So: an overlay, offset
+        # upward by the measured bar height, drawn only above the content's first row.
         source = SOURCE.read_text()
-        self.assertIn(".mask { topFadeMask }", source)
-        fade = source.split("private var topFadeMask: some View", 1)[1].split("private var listHeading", 1)[0]
+        self.assertIn(".overlay(alignment: .top) {", source)
+        self.assertIn("if hasRowsToFade { topDissolve }", source)
+        fade = source.split("private var topDissolve: some View", 1)[1].split("private var listHeading", 1)[0]
         self.assertIn("LinearGradient(", fade)
-        self.assertIn("color: .clear", fade, "it has to reach clear, or it is a band")
+        self.assertIn("opacity(0)", fade, "it has to reach clear, or it is a band")
         self.assertIn("proxy.safeAreaInsets.top", fade,
-                      "the ramp must be measured from the bottom of the bar, not the window edge")
-        self.assertNotIn("ignoresSafeArea(edges: .top)", fade,
-                         "a ramp that extends into the bar is the fade that got lost")
+                      "the strip's height must be measured from the bar, not guessed")
+        self.assertIn(".offset(y: -bar)", fade,
+                      "the dissolve has to sit ABOVE the content's origin, behind the buttons")
+        self.assertIn("allowsHitTesting(false)", fade,
+                      "the strip must not swallow a tap on the first row")
+        self.assertNotIn("topFadeMask", source,
+                         "the mask hid the first bot: its inset put the band over the rows")
         # Over an empty list there is nothing to dissolve; a gradient there would only dim the
         # empty state's hero block.
-        self.assertIn("hasRowsToFade", fade)
-        self.assertIn("Color.black", fade)
+        self.assertIn("hasRowsToFade", source)
 
-    def test_the_fade_is_a_mask_not_an_overlay(self):
-        # The overlay form is the defect, not just its height: keep it out.
+    def test_the_category_headings_scroll_with_the_rows(self):
+        # `Section(header:)` pins on iOS: the category labels stuck to the bar and the bots slid
+        # under them (reported on build 462). The headings are rows now, so nothing pins.
         source = SOURCE.read_text()
-        self.assertNotIn(".overlay(alignment: .top) { topFade }", source)
-        self.assertNotIn("private var topFade: some View", source)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertNotRegex(source, r"\} header: \{",
+                            "a pinned section header is back; headings must scroll with the list")
+        self.assertIn('scrollingHeading { listHeading("GROUP CHATS") }', source)
+        self.assertIn("scrollingHeading { groupHeader(group) }", source)

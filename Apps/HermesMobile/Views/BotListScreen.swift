@@ -164,12 +164,13 @@ struct BotListScreen: View {
         .scrollContentBackground(.hidden)
         // The rows start under the bar's own buttons, not a section header below them.
         .contentMargins(.top, 2, for: .scrollContent)
-        // A fade, not a band: what scrolls up dissolves into the canvas instead of running into
-        // the two bar buttons. A mask over the scroll content, so the fade is geometry rather than
-        // paint — it cannot take a touch (the first row stays tappable) and it cannot draw a band
-        // over an empty list (there is nothing under it to veil). See `topFadeMask` for why the
-        // previous `overlay` version was invisible.
-        .mask { topFadeMask }
+        // Nothing masks the rows. A mask measured inside the scroll view inherits that view's own
+        // safe-area inset, which reached two rows down and hid a bot completely; the dissolve
+        // belongs to the bar and is drawn over it (see `topDissolve`), so the list below the
+        // buttons is never dimmed at rest.
+        .overlay(alignment: .top) {
+            if hasRowsToFade { topDissolve }
+        }
         // Behind the masked content, so a row fading out resolves to the canvas and not to whatever
         // the window happens to be showing.
         .background(Tokens.canvas)
@@ -549,11 +550,10 @@ struct BotListScreen: View {
     private var roomsSection: some View {
         if !model.rooms.isEmpty {
             Section {
+                scrollingHeading { listHeading("GROUP CHATS") }
                 ForEach(model.rooms) { room in
                     roomRow(room)
                 }
-            } header: {
-                listHeading("GROUP CHATS")
             }
         }
     }
@@ -601,6 +601,10 @@ struct BotListScreen: View {
     private var findingsSection: some View {
         if !model.searchPage.hits.isEmpty {
             Section {
+                scrollingHeading {
+                    listHeading(model.searchRunning ? "SEARCHING…"
+                                : "MESSAGES · \(model.searchPage.total)")
+                }
                 ForEach(model.searchPage.hits) { hit in
                     Button {
                         Haptics.selection()
@@ -617,9 +621,6 @@ struct BotListScreen: View {
                                               bottom: 0, trailing: Geometry.rosterListPadding))
                     .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
                 }
-            } header: {
-                listHeading(model.searchRunning ? "SEARCHING…"
-                            : "MESSAGES · \(model.searchPage.total)")
             }
         }
     }
@@ -671,13 +672,12 @@ struct BotListScreen: View {
     private var chatsSection: some View {
         ForEach(model.botGroups) { group in
             Section {
+                scrollingHeading { groupHeader(group) }
                 if !isCollapsed(group) {
                     ForEach(group.bots) { bot in
                         row(for: bot)
                     }
                 }
-            } header: {
-                groupHeader(group)
             }
         }
     }
@@ -790,7 +790,8 @@ struct BotListScreen: View {
     }
 
     private var hiddenSection: some View {
-        Section("HIDDEN") {
+        Section {
+            scrollingHeading { listHeading("HIDDEN") }
             ForEach(hiddenBots) { bot in
                 Button {
                     model.toggleHidden(botID: bot.id)
@@ -805,67 +806,47 @@ struct BotListScreen: View {
         }
     }
 
-    /// The bar's fade: rows dissolve as they slide under the navigation bar.
-    ///
-    /// This was written as a canvas→clear gradient laid *over* the list, 84 pt tall, with
-    /// `.ignoresSafeArea(edges: .top)` so it would reach the bar. It never faded anything, and the
-    /// source looked right while it failed:
-    ///
-    /// * An `.overlay` is positioned in the modified view's own bounds, and a `List` that is a
-    ///   `NavigationStack` root spans the **whole window** — its top edge is the top of the screen,
-    ///   not the bottom of the bar. So the gradient's 84 pt sat behind the status bar and the
-    ///   navigation bar (≈ 100 pt on a notched phone), and the rows below the bar met the canvas
-    ///   with the hard seam the fade was written to remove.
-    /// * Laid out below the bar instead, that same gradient would have been worse than the seam:
-    ///   its first 45 % is fully opaque canvas, i.e. a 38 pt band painted over the first bot — the
-    ///   "band" its own comment promised not to draw. `.allowsHitTesting(false)` would have kept
-    ///   the tap alive under a strip nobody could read.
-    ///
-    /// A mask fixes both without choosing between them. It measures the one edge that matters — the
-    /// bottom of the bar, from `safeAreaInsets` rather than a guessed constant — and finishes its
-    /// dissolve inside a short `fadeBand` that ends exactly on that edge, so a row is only dimmed
-    /// while it slides under the bar's buttons and everything at rest below them — the section
-    /// labels included — is fully opaque. (Earlier versions ramped across the whole bar, which
-    /// veiled the labels and the top of the first row at rest: a smudge over the list, not a
-    /// dissolve. The fade belongs to the buttons.) A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
-    /// it masks nothing, so there is no band — which is why the empty case gets a plain opaque mask
-    /// instead of a gradient across the hero block.
-    private var topFadeMask: some View {
-        GeometryReader { proxy in
-            // Status bar + navigation bar, measured. A large title, a taller bar on a device with
-            // no notch, or the search field's inset all move the edge this ramp has to end on.
-            let bar = max(proxy.safeAreaInsets.top, 0)
-            if hasRowsToFade {
-                VStack(spacing: 0) {
-                    // Nothing to dissolve above the buttons: the bar covers it and the bar is
-                    // opaque, so that whole span is simply "hidden".
-                    Color.clear.frame(height: max(bar - Self.fadeBand, 0))
-                    // The dissolve itself: a short band ending exactly on the content edge, so
-                    // rows fade out under the buttons and the section labels below them are crisp.
-                    // (A ramp across the whole bar looked like a smudge reaching down onto the
-                    // labels — the fade belongs to the buttons, not to the list.)
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black, location: 1),
-                    ], startPoint: .top, endPoint: .bottom)
-                    .frame(height: Self.fadeBand)
-                    Color.black
-                }
-            } else {
-                Color.black
-            }
-        }
-    }
-
     /// Whether there is a row to dissolve. Over the empty state's hero face, or a search that
     /// matched nothing, the fade has nothing to do and a gradient would only dim the top of
     /// whatever is there.
     private var hasRowsToFade: Bool { !model.bots.isEmpty }
 
-    /// The height of the dissolve band itself, ending on the content edge. It sits under the two
-    /// bar buttons and above the section labels, so what fades is a row sliding under the buttons —
-    /// never the labels, which used to sit under an 87 % veil when the ramp spanned the whole bar.
-    private static let fadeBand: CGFloat = 10
+    /// The dissolve, sitting *behind* the bar's buttons.
+    ///
+    /// The rows are laid out from the top of the scroll area (`.contentMargins(..., .scrollContent)`),
+    /// so y = 0 is where content begins and the bar occupies the space *above* it — a negative
+    /// offset, measured from the list's own `safeAreaInsets.top` rather than a guessed constant.
+    /// The gradient therefore ramps in the bar's own strip and ends exactly where the first row
+    /// begins: rows sliding up vanish into the canvas, and nothing at rest — section labels, first
+    /// bot — is ever veiled. (Two earlier attempts drew the ramp downward from y = 0, which put it
+    /// over the labels; one reached two rows down and hid a bot entirely.)
+    ///
+    /// Hit testing is off, so the strip cannot swallow a tap on the first row.
+    private var topDissolve: some View {
+        GeometryReader { proxy in
+            let bar = max(proxy.safeAreaInsets.top, 0)
+            LinearGradient(stops: [
+                .init(color: Tokens.canvas, location: 0),
+                .init(color: Tokens.canvas.opacity(0.86), location: 0.72),
+                .init(color: Tokens.canvas.opacity(0), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(height: bar)
+            .offset(y: -bar)
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// A heading that scrolls away with its rows.
+    ///
+    /// `Section(header:)` pins on iOS, so a category label stuck to the bar while the bots slid
+    /// under it. The heading is a row now — same look, no pinning.
+    private func scrollingHeading<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .listRowBackground(Tokens.canvas)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 4, leading: Geometry.rosterListPadding,
+                                      bottom: 2, trailing: Geometry.rosterListPadding))
+    }
 
     private func listHeading(_ title: String) -> some View {
         Text(title)
