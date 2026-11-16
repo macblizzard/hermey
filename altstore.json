@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.506",
-          "buildVersion": "506",
-          "date": "2026-11-16T17:32:05Z",
-          "localizedDescription": "\u2013 Three feeds from one measurement, an iOS notifier that never gates, and Sparkle on macOS\n\u2013 A bot's message to another bot is drawn as prose, not as markdown source\n\u2013 Eyes act per activity, and the spinning ring is gone\n\u2013 Rakazo's own frame model, and macOS banners wear the bot\n\u2013 The reference motion model belongs inside BotAvatarMotion\n\u2013 The transcript stops animating, idle draws at a third of the beat, and offscreen faces rest\n\u2013 A chat you left a minute ago is answered from cache, not resumed again\n\u2013 The cache freshness is an instance seam, and the old test now says the new truth\n\u2013 Name the type, not `Self`, in the stored freshness default\n\u2013 Working moves, and small faces exaggerate their gaze\n\u2013 Both update prompts carry release notes, generated from the release's own commits",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.506/Hermey-0.1.506-b506.ipa",
-          "size": 3177166,
+          "version": "0.1.515",
+          "buildVersion": "515",
+          "date": "2026-11-16T19:36:41Z",
+          "localizedDescription": "A busy bot face performs now, and the chat stops lagging behind the list.\n\nBot face: every busy state jumps and flips between its acting \u2014 crouch, leap, squash-and-stretch landing, then a 360\u00b0 roll or an out-and-back 180\u00b0 twist, one stunt every ~2.6-3 s, direction alternating so no face spins one way forever. The eyes act faster than the body: a saccade every ~0.9 s, a two-step double take every fifth, a squint on a slower clock. Two faces never perform in lockstep, an instant always draws the same face, and idle, waiting and error stay exactly as they were. Reduce Motion and the Appearance switch still stop everything; the leap is capped in points so a 16 pt face never draws over the text beside it.\n\nChat wiring: a reply the bot list and the notification already announced is now in the chat when you open it. The app used to trust a two-minute-old cached conversation and skip the host read entirely, because it assumed anything new would arrive on the live socket \u2014 but a reply for a bot that is not on screen is dropped, not buffered. Now an unseen session, or a host message newer than the snapshot's, forces the read; and an idle open chat re-reads itself when the host has written, which also covers messages that produce no socket event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing new still comes from the cache, instantly.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.515/Hermey-0.1.515-b515.ipa",
+          "size": 3184403,
           "minOSVersion": "17.0",
-          "sha256": "219762e0cdb8509d5e539e7886ab4bcaf22f02342f3fc13a6c47b695939304c7"
+          "sha256": "3f4916ba4988b9a3c54911cb531d6652d366f96c2c86fb9185fb71a4989f6be1"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.506 (506)",
-      "identifier": "hermes-0.1.506-506",
-      "caption": "\u2013 Three feeds from one measurement, an iOS notifier that never gates, and Sparkle on macOS\n\u2013 A bot's message to another bot is drawn as prose, not as markdown source\n\u2013 Eyes act per activity, and the spinning ring is gone\n\u2013 Rakazo's own frame model, and macOS banners wear the bot\n\u2013 The reference motion model belongs inside BotAvatarMotion\n\u2013 The transcript stops animating, idle draws at a third of the beat, and offscreen faces rest\n\u2013 A chat you left a minute ago is answered from cache, not resumed again\n\u2013 The cache freshness is an instance seam, and the old test now says the new truth\n\u2013 Name the type, not `Self`, in the stored freshness default\n\u2013 Working moves, and small faces exaggerate their gaze\n\u2013 Both update prompts carry release notes, generated from the release's own commits",
-      "date": "2026-11-16T17:32:05Z",
+      "title": "Hermes 0.1.515 (515)",
+      "identifier": "hermes-0.1.515-515",
+      "caption": "A busy bot face performs now, and the chat stops lagging behind the list.\n\nBot face: every busy state jumps and flips between its acting \u2014 crouch, leap, squash-and-stretch landing, then a 360\u00b0 roll or an out-and-back 180\u00b0 twist, one stunt every ~2.6-3 s, direction alternating so no face spins one way forever. The eyes act faster than the body: a saccade every ~0.9 s, a two-step double take every fifth, a squint on a slower clock. Two faces never perform in lockstep, an instant always draws the same face, and idle, waiting and error stay exactly as they were. Reduce Motion and the Appearance switch still stop everything; the leap is capped in points so a 16 pt face never draws over the text beside it.\n\nChat wiring: a reply the bot list and the notification already announced is now in the chat when you open it. The app used to trust a two-minute-old cached conversation and skip the host read entirely, because it assumed anything new would arrive on the live socket \u2014 but a reply for a bot that is not on screen is dropped, not buffered. Now an unseen session, or a host message newer than the snapshot's, forces the read; and an idle open chat re-reads itself when the host has written, which also covers messages that produce no socket event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing new still comes from the cache, instantly.",
+      "date": "2026-11-16T19:36:41Z",
       "tintColor": "#9A9AA0"
     }
   ],
