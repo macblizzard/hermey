@@ -42,9 +42,12 @@ final class BotAvatarEyeMotionTests: XCTestCase {
     }
 
     func testTheErrorStateIsStill() {
-        // Everything else about an error is already said loudly; a blinking failure looks alive.
+        // The reference gives error a half-closed lid (0.68) and no tracks: a failure reads as
+        // "gone quiet", and a blinking one reads as alive. Every sample is the same pose.
         let poses = samples(.error, seconds: 4)
-        XCTAssertTrue(poses.allSatisfy { $0 == .rest })
+        let first = poses.first
+        XCTAssertTrue(poses.allSatisfy { $0 == first }, "error must not animate")
+        XCTAssertEqual(first?.scaleY ?? 0, 0.68, accuracy: 0.001)
     }
 
     func testReadingHoldsItsLidsHalfClosed() {

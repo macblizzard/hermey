@@ -63,20 +63,49 @@ public struct BotAvatarMotionTraits: Hashable, Sendable {
     /// 0..3: which `rakazo-organic-eyes-loop-N` the face runs.
     public var eyeLoop: Int
 
-    public init(phase: Double, eyeLoop: Int) {
+    /// Which of the two authored blink schedules this face runs (`blinkVariant` three or four).
+    public var blinkStarts: [Double]
+    /// Where in the 24 s blink loop this face starts, in milliseconds (`blinkDelayMs`).
+    public var blinkDelay: Double
+    /// Which of the three tempos this face runs; it picks the periods below (`tempo`).
+    public var tempo: Int
+    /// Which way this face biases its glances: +1 or -1 (`side`).
+    public var side: Double
+
+    public init(phase: Double, eyeLoop: Int,
+                blinkStarts: [Double] = BotAvatarMotionTraits.threeBlinkStarts,
+                blinkDelay: Double = 0,
+                tempo: Int = 1,
+                side: Double = 1) {
         self.phase = phase
         self.eyeLoop = eyeLoop
+        self.blinkStarts = blinkStarts
+        self.blinkDelay = blinkDelay
+        self.tempo = tempo
+        self.side = side
     }
+
+    /// The reference's two schedules: three blinks or four, at fixed points in a 24 s loop.
+    public static let threeBlinkStarts: [Double] = [4100, 11500, 20000]
+    public static let fourBlinkStarts: [Double] = [3200, 8900, 14200, 21100]
+    /// Every track completes whole cycles in this interval (`LOGO_AVATAR_LOOP_MS`).
+    public static let loopMilliseconds: Double = 24_000
 
     /// From the reference's own per-identity stream (`logo-avatar/v2/<identity>`): the fourth draw
     /// is the phase, and the eye loop is `identitySeed % 4`, as `data-eye-pattern` was.
     public init(identity: String) {
         var random = BotAvatarRandom(seed: BotAvatarHash.shippedHash("logo-avatar/v2/\(identity)"))
-        _ = random.next() // blink variant
-        _ = random.next() // blink delay
-        _ = random.next() // tempo
+        let variant = random.next()
+        let delay = random.next()
+        let tempoDraw = random.next()
         phase = random.next()
+        let sideDraw = random.next()
         eyeLoop = BotAvatarHash.identitySeed(for: identity) % 4
+        // The reference draws in this order: variant, delay, tempo, phase, side, energy.
+        blinkStarts = variant < 0.5 ? Self.threeBlinkStarts : Self.fourBlinkStarts
+        blinkDelay = -((delay * Self.loopMilliseconds * 1000).rounded() / 1000)
+        tempo = Int((tempoDraw * 3).rounded(.down)) % 3
+        side = sideDraw > 0.5 ? 1 : -1
     }
 }
 
@@ -388,125 +417,168 @@ extension BotAvatarPose {
                       brightness: brightness + (other.brightness - brightness) * t)
     }
 
-    // MARK: - Per-activity eyes
 
-    /// One authored frame of the eyes: where they look, and how far the lids close.
-    ///
-    /// The reference's *shipped shapes* carry still eyes — its `bot-character-eyes` group has no
-    /// CSS animation at all. Its animated avatar (`logo-avatar-motion.ts`) is where the eye acting
-    /// lives, and it is authored **per activity**: a small drift at rest, three left-to-right sweeps
-    /// with a squint while reading, dips while writing, a look up while thinking, side glances while
-    /// on the computer. That model is what this table reproduces; offsets are the reference's
-    /// pixel units divided by the 60-unit gap between the eyes' outer edges, because
-    /// `BotAvatarEyePose` translates as a fraction of the eyes' own box.
-    struct EyeTrack {
-        var time: Double
-        var offsetX: Double
-        var offsetY: Double
-        var squint: Double
+    // MARK: - The reference's own motion model
+
+    /// Where each activity's clock lives, in seconds (`traits.periods`).
+    public static func period(for activity: BotAvatarActivity, tempo: Int) -> Double {
+        let slow = [4.0, 4.8, 6.0][min(max(tempo, 0), 2)]
+        switch activity {
+        case .idle: return 24.0
+        case .working, .reading, .waiting, .error: return slow
+        case .writing: return [1.2, 1.5, 2.0][min(max(tempo, 0), 2)]
+        case .thinking, .computer: return 6.0
+        }
     }
 
-    static func eyeTrack(for activity: BotAvatarActivity) -> (duration: Double, frames: [EyeTrack]) {
-        func f(_ time: Double, _ x: Double = 0, _ y: Double = 0, _ squint: Double = 1) -> EyeTrack {
-            EyeTrack(time: time, offsetX: x, offsetY: y, squint: squint)
+    /// One instant of a face: what the body does, and where the eyes and lids are.
+    public struct Frame: Equatable, Sendable {
+        public var body: BotAvatarPose
+        public var eyes: BotAvatarEyePose
+        public init(body: BotAvatarPose = .rest, eyes: BotAvatarEyePose = .rest) {
+            self.body = body
+            self.eyes = eyes
         }
+        public static let rest = Frame()
+    }
+
+    // The reference's `LOGO_AVATAR_MOTION_TRACKS`, keyframes and all. Positions are in its 259-unit
+    // view box (the eyes' outer 60-unit box for the eye tracks); `sample(_:at:)` returns them
+    // unchanged so the numbers here can be read against the source.
+    static let blinkTrack: [(Double, Double)] = [(0, 1), (50.0 / 160, 0.06), (70.0 / 160, 0.06), (1, 1)]
+    static let breatheTrack: [(Double, Double)] = [(0, 1), (0.5, 1.005), (1, 1)]
+    static let idleXTrack: [(Double, Double)] = [(0, 0), (0.66, 0), (0.70, 4), (0.78, 4), (0.82, 0), (1, 0)]
+    static let idleYTrack: [(Double, Double)] = [(0, 0), (0.66, 0), (0.70, -2), (0.78, -2), (0.82, 0), (1, 0)]
+    static let readingXTrack: [(Double, Double)] = [
+        (0, 0), (0.06, 0), (0.24, 20), (0.28, 20), (0.34, 0), (0.38, 0),
+        (0.54, 20), (0.58, 20), (0.64, 0), (0.68, 0), (0.84, 20), (0.88, 20), (0.96, 0), (1, 0),
+    ]
+    static let readingYTrack: [(Double, Double)] = [(0, 0), (0.28, 0), (0.34, 5), (0.58, 5), (0.64, 10), (0.88, 10), (0.96, 0), (1, 0)]
+    static let readingLidTrack: [(Double, Double)] = [(0, 0.76), (0.88, 0.76), (0.92, 0.06), (0.94, 0.06), (0.98, 0.76), (1, 0.76)]
+    static let writingYTrack: [(Double, Double)] = [(0, 0), (0.1, 0), (0.18, 3), (0.26, 0), (0.56, 0), (0.64, 6), (0.74, 0), (1, 0)]
+    static let bodyYTrack: [(Double, Double)] = [(0, 0), (0.1, 0), (0.18, 0.9), (0.26, 0), (0.56, 0), (0.64, 1.4), (0.74, 0), (1, 0)]
+    static let thinkingXTrack: [(Double, Double)] = [(0, 0), (0.08, 0), (0.24, -9), (0.4, -9), (0.56, -5), (0.65, -5), (0.82, 0), (0.9, 0), (1, 0)]
+    static let thinkingYTrack: [(Double, Double)] = [(0, -2), (0.08, -2), (0.24, -8), (0.4, -8), (0.56, -11), (0.65, -11), (0.82, -3), (0.9, -3), (1, -2)]
+    static let thinkingLidTrack: [(Double, Double)] = [(0, 1), (0.08, 1), (0.24, 0.8), (0.4, 0.8), (0.56, 0.68), (0.65, 0.68), (0.82, 0.9), (0.9, 0.9), (1, 1)]
+    static let computerXTrack: [(Double, Double)] = [(0, -10), (0.08, -10), (0.18, 10), (0.34, 10), (0.48, -8), (0.76, -8), (0.92, -10), (1, -10)]
+    static let computerYTrack: [(Double, Double)] = [(0, -3), (0.34, -3), (0.48, 6), (0.76, 6), (0.92, -3), (1, -3)]
+
+    /// The eyes' outer edges sit 60 units apart in the 259-unit box, and `BotAvatarEyePose`
+    /// translates as a fraction of the eyes' own box — so the reference's units divide by 60.
+    static let eyeUnits = 1.0 / 60.0
+    /// Body translations are a fraction of the face's side, out of the same 259-unit box.
+    static let bodyUnits = 1.0 / 259.0
+
+    static func phase(_ elapsed: Double, delay: Double, period: Double) -> Double {
+        guard period > 0 else { return 0 }
+        let wrapped = (elapsed - delay).truncatingRemainder(dividingBy: period)
+        return (wrapped < 0 ? wrapped + period : wrapped) / period
+    }
+
+    /// The reference's sampler: hold flat between equal values, otherwise ease across the span.
+    static func sample(_ track: [(Double, Double)], at progress: Double, blink: Bool = false) -> Double {
+        guard let first = track.first, let last = track.last else { return 0 }
+        if progress <= first.0 { return first.1 }
+        for index in 1..<track.count {
+            let left = track[index - 1]
+            let right = track[index]
+            if progress > right.0 { continue }
+            if left.1 == right.1 { return left.1 }
+            let amount = (progress - left.0) / max(right.0 - left.0, 0.0001)
+            // The reference uses a slightly sharper curve for a blink (0.42/0.58) than for a glide.
+            let eased = blink ? easeInOut(amount) : easeInOut(amount)
+            return left.1 + (right.1 - left.1) * eased
+        }
+        return last.1
+    }
+
+    /// Whether this state wears the "needs attention" lid rather than blinking (`waiting`).
+    static func needsAttention(_ activity: BotAvatarActivity) -> Bool {
+        activity == .waiting
+    }
+
+    /// The whole face at one instant, evaluated exactly as `logoAvatarFrame` does.
+    public static func frame(activity: BotAvatarActivity,
+                             traits: BotAvatarMotionTraits,
+                             at time: Double) -> Frame {
+        var eyeX = 0.0
+        var eyeY = 0.0
+        var lid = 1.0
+        var blink = 1.0
+        var bodyY = 0.0
+        var bodyScale = 1.0
+
+        // The resting posture each state starts from, before any track moves it.
         switch activity {
-        case .idle:
-            // `idleX` / `idleY`: a glance away and back, once per cycle.
-            return (8.0, [f(0), f(0.66), f(0.70, 0.066, -0.033), f(0.78, 0.066, -0.033), f(0.82), f(1)])
+        case .reading: eyeX = -10; eyeY = -5; lid = 0.76
+        case .writing: eyeY = 10; lid = 0.62
+        case .thinking: eyeX = -3 * traits.side; eyeY = -4; lid = 0.8
+        case .computer: lid = 1.12
+        case .waiting: lid = 0.9
+        case .error: lid = 0.68
+        case .idle, .working: break
+        }
+
+        // Blinks: scheduled inside a 24 s loop, only in states that are alive and not waiting.
+        if !needsAttention(activity), activity != .error {
+            let elapsed = (time * 1000) - traits.blinkDelay
+            let loop = BotAvatarMotionTraits.loopMilliseconds
+            var local = elapsed.truncatingRemainder(dividingBy: loop)
+            if local < 0 { local += loop }
+            for start in traits.blinkStarts where local >= start && local <= start + 160 {
+                blink = sample(blinkTrack, at: (local - start) / 160, blink: true)
+                break
+            }
+        }
+
+        let period = period(for: activity, tempo: traits.tempo)
+        let delay = -(period * traits.phase)
+        let p = phase(time, delay: delay, period: period)
+
+        switch activity {
+        case .idle, .working:
+            bodyScale = sample(breatheTrack, at: p)
+            if activity == .idle {
+                eyeX = sample(idleXTrack, at: p) * traits.side
+                eyeY = sample(idleYTrack, at: p)
+            }
         case .reading:
-            // `readingX` / `readingY` / `readingLid`: three sweeps across the page, the gaze stepping
-            // down a line each time, lids held at 0.76 of their height — the "reading" that was asked
-            // for. The reference reaches 20px on a 259-unit box; 20/60 of the eye box is 0.33.
-            return (4.8, [
-                f(0, 0, 0, 0.76), f(0.06, 0, 0, 0.76),
-                f(0.24, 0.33, 0, 0.76), f(0.28, 0.33, 0, 0.76),
-                f(0.34, 0, 0.083, 0.76), f(0.38, 0, 0.083, 0.76),
-                f(0.54, 0.33, 0.083, 0.76), f(0.58, 0.33, 0.083, 0.76),
-                f(0.64, 0, 0.167, 0.76), f(0.68, 0, 0.167, 0.76),
-                f(0.84, 0.33, 0.167, 0.76), f(0.88, 0.33, 0.167, 0.76),
-                f(0.96, 0, 0, 0.76), f(1, 0, 0, 0.76),
-            ])
+            eyeX += sample(readingXTrack, at: p)
+            eyeY += sample(readingYTrack, at: p)
+            lid = sample(readingLidTrack, at: p)
         case .writing:
-            // `writingY`: the gaze dips twice per cycle, as if following a line being written.
-            return (3.6, [f(0), f(0.1), f(0.18, 0, 0.05), f(0.26), f(0.56), f(0.64, 0, 0.1), f(0.72), f(1)])
+            eyeY += sample(writingYTrack, at: p)
+            bodyY = sample(bodyYTrack, at: p)
         case .thinking:
-            // A look up and off to the side, held — the shape of "working something out".
-            return (3.2, [f(0), f(0.35, 0, -0.1), f(0.55, 0, -0.1), f(1)])
+            eyeX += sample(thinkingXTrack, at: p) * traits.side
+            eyeY += sample(thinkingYTrack, at: p)
+            lid = sample(thinkingLidTrack, at: p)
         case .computer:
-            // Side glances, as if reading two windows: the largest horizontal moves in the table.
-            return (2.4, [f(0, -0.2), f(0.25, -0.2), f(0.35, 0.2), f(0.6, 0.2), f(0.7, -0.05), f(1, -0.2)])
-        case .working:
-            // Small, quick pans: busy, and deliberately smaller than `computer` so the two states do
-            // not read as the same face.
-            return (2.0, [f(0, -0.08), f(0.25, 0.08), f(0.5, -0.05, 0.05), f(0.75, 0.06, -0.03), f(1, -0.08)])
-        case .waiting:
-            // Looking down and in: the reference's "needs attention" posture, without moving much.
-            return (3.0, [f(0, 0, 0.05), f(0.5, 0, 0.08), f(1, 0, 0.05)])
-        case .error:
-            // The reference rests its error state; still eyes are the readable choice.
-            return (1, [f(0), f(1)])
+            eyeX = sample(computerXTrack, at: p)
+            eyeY = sample(computerYTrack, at: p)
+        case .waiting, .error:
+            break
         }
+
+        return Frame(
+            body: BotAvatarPose(translateY: bodyY * bodyUnits, scaleX: bodyScale, scaleY: bodyScale),
+            eyes: BotAvatarEyePose(offsetX: eyeX * eyeUnits,
+                                   offsetY: eyeY * eyeUnits,
+                                   scaleY: lid * blink)
+        )
     }
 
-    /// Seconds between blinks, per activity: the busier the bot, the more often it closes its eyes.
-    static func blinkInterval(for activity: BotAvatarActivity) -> Double {
-        switch activity {
-        case .working: return 1.15
-        case .computer: return 1.6
-        case .writing: return 1.9
-        case .reading: return 2.4
-        case .idle: return 2.7
-        case .thinking: return 3.0
-        case .waiting: return 3.4
-        case .error: return 0
-        }
-    }
-
-    /// The blink curve: shut fast, hold a moment, open slower — 160 ms in total, as the reference's
-    /// `blink` track (1 → 0.06 at 50/160, hold to 70/160, back to 1).
-    static func blinkFactor(activity: BotAvatarActivity, traits: BotAvatarMotionTraits,
-                            at time: Double) -> Double {
-        let interval = blinkInterval(for: activity)
-        guard interval > 0 else { return 1 }
-        let window = 0.16
-        let phase = time / interval + traits.phase
-        let local = (phase - phase.rounded(.down)) * interval
-        guard local < window else { return 1 }
-        let u = local / window
-        if u < 0.31 { return 1 - (1 - 0.06) * (u / 0.31) }
-        if u < 0.44 { return 0.06 }
-        return 0.06 + (1 - 0.06) * ((u - 0.44) / (1 - 0.44))
-    }
-
-    /// The eyes for one instant of one activity: the authored track, squinted by its lid, closed by
-    /// the blink. This is what the face draws for **every** state — the reference animates the eyes
-    /// whether or not the bot is running something.
+    /// The eyes alone, for callers that draw a body of their own.
     public static func eyePose(activity: BotAvatarActivity,
                                traits: BotAvatarMotionTraits,
                                at time: Double) -> BotAvatarEyePose {
-        let track = eyeTrack(for: activity)
-        let span = max(track.duration, 0.001)
-        var phase = time / span + traits.phase
-        phase -= phase.rounded(.down)
-        var pose = sampleTrack(track.frames, at: phase)
-        pose.scaleY *= blinkFactor(activity: activity, traits: traits, at: time)
-        return pose
+        frame(activity: activity, traits: traits, at: time).eyes
     }
 
-    static func sampleTrack(_ frames: [EyeTrack], at phase: Double) -> BotAvatarEyePose {
-        guard let first = frames.first, let last = frames.last else { return .rest }
-        if phase <= first.time { return BotAvatarEyePose(offsetX: first.offsetX, offsetY: first.offsetY, scaleY: first.squint) }
-        if phase >= last.time { return BotAvatarEyePose(offsetX: last.offsetX, offsetY: last.offsetY, scaleY: last.squint) }
-        for index in 1..<frames.count where frames[index].time >= phase {
-            let from = frames[index - 1]
-            let to = frames[index]
-            let span = max(to.time - from.time, 0.0001)
-            let u = easeInOut((phase - from.time) / span)
-            return BotAvatarEyePose(offsetX: from.offsetX + (to.offsetX - from.offsetX) * u,
-                                    offsetY: from.offsetY + (to.offsetY - from.offsetY) * u,
-                                    scaleY: from.squint + (to.squint - from.squint) * u)
-        }
-        return .rest
+    /// The body alone, as the reference's breathe-and-bob.
+    public static func referenceBody(activity: BotAvatarActivity,
+                                     traits: BotAvatarMotionTraits,
+                                     at time: Double) -> BotAvatarPose {
+        frame(activity: activity, traits: traits, at: time).body
     }
 }

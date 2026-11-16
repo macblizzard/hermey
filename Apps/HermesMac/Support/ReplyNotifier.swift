@@ -26,6 +26,9 @@ final class ReplyNotifier: NSObject, ObservableObject, UNUserNotificationCenterD
 
     /// Set by the shell: a tap on a banner is a request to read that bot.
     var onGraphite: ((String) -> Void)?
+    /// Set by the shell: the bot's stored face (`#RRGGBB::shape_N`), so the banner can show the bot
+    /// itself rather than the app icon. Without it the banner still works, it just wears the logo.
+    var faceFor: ((String) -> String?)?
 
     /// What Settings reports. `.notDetermined` means the prompt has not been answered.
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
@@ -79,6 +82,9 @@ final class ReplyNotifier: NSObject, ObservableObject, UNUserNotificationCenterD
         content.body = note.body
         content.sound = .default
         content.userInfo = ["botID": note.botID]
+        if let face = MacFaceCache.attachment(for: note.botID, color: faceFor?(note.botID)) {
+            content.attachments = [face]
+        }
         // Not a thread: two bots replying at once are two separate things to read, and macOS
         // stacks them by thread identically — but a thread per *bot* would hide the second
         // bot's banner behind the first's group.

@@ -43,14 +43,18 @@ import SwiftUI
 /// }
 /// ```
 ///
-/// — which is why the ring is public on its own.
+/// — which is why the face and the picture are drawn by different code.
 ///
 /// ## What it draws
 ///
 /// The body is filled with the bot's palette colour, the eyes are cut out in the page colour unless
-/// the body is nearly white or black (`BotAvatarPalette.eyeTone`), and a bot at work wears the
-/// reference's spinning ring — a 45-of-138-unit arc with a comet head, in its own colour, 1.2 s a
-/// turn. Below 24 pt, under Reduce Motion, or when `animates` is false, everything holds still.
+/// the body is nearly white or black (`BotAvatarPalette.eyeTone`), and the **state is drawn as
+/// motion**: the body breathes (and bobs while writing) while the eyes and lids run that state's
+/// authored track — sweeps while reading, dips while writing, a look up while thinking, side
+/// glances on the computer — with a scheduled blink. This is the reference's own model
+/// (`logoAvatarFrame`), not an approximation of it: its shipped faces are near-still bodies with very
+/// active eyes, not spinning rings. Below 24 pt, under Reduce Motion, or when `animates` is false,
+/// the face holds still.
 public struct BotAvatarView: View {
     /// The bot's id. The colour and the shape are both derived from it when nothing is stored.
     public var identity: String
@@ -134,18 +138,20 @@ public struct BotAvatarView: View {
                          moves: Bool,
                          date: Date) -> some View {
         let time = date.timeIntervalSinceReferenceDate
-        let body = moves ? BotAvatarMotion.bodyPose(activity: activity, at: time, traits: traits) : .rest
-        // The eyes act in every state, from that state's own track: a drift at rest, sweeps while
-        // reading, dips while writing, a look up while thinking. That acting is what the reference
-        // does instead of dressing the face in a progress ring.
-        let eyes = moves && activity != .error
-            ? BotAvatarMotion.eyePose(activity: activity, traits: traits, at: time)
+        // One frame, evaluated exactly as the reference's `logoAvatarFrame`: the body breathes (and
+        // bobs while writing), the eyes and lids follow the state's authored track, and a scheduled
+        // blink closes them. Nothing else moves — the reference's faces are still, patient things
+        // with very active eyes.
+        let frame = moves
+            ? BotAvatarMotion.frame(activity: activity, traits: traits, at: time)
             : .rest
+        let body = frame.body
+        let eyes = frame.eyes
 
         ZStack {
             if resolved.isImage {
-                // A photo avatar is the caller's to draw; the ring above is the part of this view
-                // that still applies. An empty face is the honest placeholder for a shape module.
+                // A photo avatar is the caller's to draw. An empty face is the honest placeholder
+                // for a shape module.
                 Color.clear
             } else {
                 ZStack {

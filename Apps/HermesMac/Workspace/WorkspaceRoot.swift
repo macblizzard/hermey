@@ -98,6 +98,9 @@ struct WorkspaceRoot: View {
         // model is replaced (a re-pair builds a fresh one), because the sink lives on the model.
         .task(id: ObjectIdentifier(store.model)) {
             ReplyNotifier.shared.onGraphite = { botID in store.selectBot(botID) }
+            // The banner wears the bot's own face: the app icon cannot vary per notification, an
+            // attachment can (same trick as the phone's push icons).
+            ReplyNotifier.shared.faceFor = { botID in store.botFaces[botID]?.raw }
             ReplyNotifier.shared.requestAuthorizationIfNeeded()
             ReplyNotifier.shared.updateBadge(store.model.badgeCount)
             store.model.replyNotificationSink = { note in

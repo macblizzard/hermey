@@ -497,7 +497,7 @@ class TheModuleFitsTheRepo(unittest.TestCase):
         # The ring is gone from the face: the reference's shipped bots wear none, and the acting
         # happens in the eyes and body instead (asked for 2026-11-16).
         self.assertNotIn("BotAvatarRing(size:", view)
-        self.assertIn("BotAvatarMotion.eyePose(activity: activity", view)
+        self.assertIn("BotAvatarMotion.frame(activity: activity", view)
 
 
 if __name__ == "__main__":
