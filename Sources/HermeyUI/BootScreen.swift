@@ -42,6 +42,9 @@ import SwiftUI
 public struct BootScreen: View {
 
     /// The face's side, in points.
+    /// Width ÷ height of the mark after its plate was made transparent: 790 × 770.
+    public static let markAspect: CGFloat = 790.0 / 770.0
+
     public static let faceSide: CGFloat = 108
 
     /// How long the launch screen takes to leave once the app is usable.
@@ -57,7 +60,8 @@ public struct BootScreen: View {
     /// whatever an id happens to hash to. Any id works; this one is the app's name.
     public static let houseIdentity = "hermey"
 
-    /// The face's identity: it picks the body's shape and, with no `color`, its colour.
+    /// Kept for source compatibility with the callers that already pass it; the launch face is the
+    /// brand mark (`Resources/HermeyMark.png`), which does not vary by identity.
     public var identity: String
     /// A stored `#RRGGBB` / `#RRGGBB::shape_N` value, as `BotAvatarView` takes it. `nil` derives both
     /// from `identity`.
@@ -85,13 +89,15 @@ public struct BootScreen: View {
         let fill = background ?? Tokens.canvas
         ZStack {
             fill
-            BotAvatarView(identity: identity,
-                          color: color,
-                          activity: .idle,
-                          size: side,
-                          animates: false,
-                          pageBackground: fill)
-                .frame(width: side, height: side)
+            // The app's own mark — the black-and-white face the icon is made of — not a bot's
+            // identity-derived body: at launch there is no bot, and a coloured face would claim
+            // there were. Transparent background, so it sits on whatever canvas the theme is.
+            Image("HermeyMark", bundle: .module)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(BootScreen.markAspect, contentMode: .fit)
+                .frame(width: side, height: side / BootScreen.markAspect)
+                .accessibilityHidden(true)
         }
         // The fill reaches the window's edges: on iOS that is under the status bar and the home
         // indicator, on the Mac under the (hidden) title bar, which is the whole point of a launch

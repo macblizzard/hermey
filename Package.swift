@@ -14,7 +14,8 @@ let package = Package(
         // Wire protocol, transport, stores. No UI, no SwiftUI.
         .target(name: "HermesKit", path: "Sources/HermesKit"),
         // The house design system: tokens + components.
-        .target(name: "HermeyUI", dependencies: ["HermesKit"], path: "Sources/HermeyUI"),
+        .target(name: "HermeyUI", dependencies: ["HermesKit"], path: "Sources/HermeyUI",
+                resources: [.process("Resources")]),
         // Incremental markdown / code / tool-output rendering.
         .target(name: "HermesRender", dependencies: ["HermesKit"], path: "Sources/HermesRender"),
         // Shared application state consumed by both app shells.
