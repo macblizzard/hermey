@@ -24,14 +24,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.473",
-          "buildVersion": "473",
-          "date": "2026-11-16T10:18:15Z",
-          "localizedDescription": "Reference bot faces with live activity, \u2318F toggle, auto-compact removed, no borrowed names.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.473/Hermey-0.1.473-b473.ipa",
-          "size": 2892659,
+          "version": "0.1.477",
+          "buildVersion": "477",
+          "date": "2026-11-16T10:43:34Z",
+          "localizedDescription": "Static boot screen, no bot-list loading placeholders, animating status face, banner faces restored, icon picker fixed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.477/Hermey-0.1.477-b477.ipa",
+          "size": 2908190,
           "minOSVersion": "17.0",
-          "sha256": "b4f50962f78fe9bb0248f52f7e07da90f1c0dbe2d2d619886a0640c7b2e5834b"
+          "sha256": "e226142d6fe90f4c3eab662e56a2501c00027ec1dd78882b6ef72f290751727e"
         }
       ],
       "appPermissions": {
