@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.484",
-          "buildVersion": "484",
-          "date": "2026-11-16T12:27:15Z",
-          "localizedDescription": "Update feeds: appcast.xml and mac.json now published alongside the build.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.484/Hermey-0.1.484-b484.ipa",
-          "size": 3143094,
+          "version": "0.1.496",
+          "buildVersion": "496",
+          "date": "2026-11-16T14:51:45Z",
+          "localizedDescription": "Faces run the reference motion model; macOS banners wear the bot; markdown in bot-to-bot rows; lower face cost.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.496/Hermey-0.1.496-b496.ipa",
+          "size": 3172324,
           "minOSVersion": "17.0",
-          "sha256": "7011608f10a83e03f856e5b536d590ea270111055ad414a0556e0f601ff37ac3"
+          "sha256": "89975f5f2263ccb2a70d575b31c0e359ea9d34a48f843d1b61b752a27ce9b40a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.484 (484)",
-      "identifier": "hermes-0.1.484-484",
-      "caption": "Update feeds: appcast.xml and mac.json now published alongside the build.",
-      "date": "2026-11-16T12:27:15Z",
+      "title": "Hermes 0.1.496 (496)",
+      "identifier": "hermes-0.1.496-496",
+      "caption": "Faces run the reference motion model; macOS banners wear the bot; markdown in bot-to-bot rows; lower face cost.",
+      "date": "2026-11-16T14:51:45Z",
       "tintColor": "#9A9AA0"
     }
   ],
