@@ -61,7 +61,10 @@ jobs:
 
   packages:
     name: Swift packages (build + test)
-    runs-on: macos-26
+    # `macos-26` is a thin image: the job below sat 15 minutes with no runner assigned and GitHub
+    # cancelled it (empty step list, no runner name) — twice. `macos-15` has the same Xcode 16 /
+    # Swift 6 toolchain this package needs (`swift-tools-version:5.9`) and capacity that answers.
+    runs-on: macos-15
     needs: changes
     if: needs.changes.outputs.mac == 'true'
     timeout-minutes: 30
@@ -86,7 +89,9 @@ jobs:
 
   apps:
     name: Apps (macOS + iOS, unsigned artifacts)
-    runs-on: macos-26
+    # See the note on the Swift-packages job: `macos-26` starved the queue and the job was cancelled
+    # without ever starting. The apps target macOS 14 / iOS 17, which `macos-15` builds.
+    runs-on: macos-15
     needs: changes
     if: needs.changes.outputs.mac == 'true'
     timeout-minutes: 45
