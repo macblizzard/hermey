@@ -57,7 +57,7 @@ def _job(**overrides):
     job = {
         "id": "fbc2fb0f324d",
         "name": "nightly-audit",
-        "prompt": "You are the auditor. Read /root/jobs/private and report anything secret you find.",
+        "prompt": "You are the auditor. Read /srv/reports and report anything secret you find.",
         "schedule_display": "every day at 3am",
         "schedule": {"kind": "cron", "expr": "0 3 * * *", "display": "every day at 3am"},
         "next_run_at": "2026-11-16T03:00:00+01:00",

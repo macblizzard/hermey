@@ -63,10 +63,12 @@ PRESENCE_SECONDS = 120.0
 #: Bark accepts a whole notification as JSON; a payload bigger than this is a mistake, not a note.
 MAX_URL_CHARS = 512
 
-#: Where a notification image is fetched from. The dist server on `:8444` serves the symlinked
-#: icon directory, so the phone — not this process — does the fetching.
-ICON_BASE = os.environ.get("HERMEY_PUSH_ICON_BASE",
-                           "https://hermes.corvus-vibes.ts.net:8444/icons")
+#: Where a notification image is fetched from: the bridge's own unauthenticated
+#: `GET /v1/push/icon/<profile>.png`, spelled with the host's public name because the *phone* — not
+#: this process — does the fetching. Unset means no image at all. A compiled-in default cannot be
+#: right here: any hostname written into the source is one installation's tailnet, and every other
+#: host would hand the relay a URL nothing answers.
+ICON_BASE = os.environ.get("HERMEY_PUSH_ICON_BASE", "").strip()
 
 _PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -136,10 +138,14 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def icon_url(profile: str) -> str:
-    """The bot's own face, when the app has uploaded one. Empty means "no image", not a broken URL."""
+    """The bot's own face, when the host has a public name and the app uploaded one.
+
+    Empty means "no image", not a broken URL: a registered relay fetches the picture itself, so a
+    host that was never given a public base has nothing it could hand over.
+    """
     from .push_icons import icon_exists
 
-    if not icon_exists(profile):
+    if not ICON_BASE or not icon_exists(profile):
         return ""
     return f"{ICON_BASE.rstrip('/')}/{profile}.png"
 

@@ -330,8 +330,10 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         self.assertIn("ImageRenderer", exporter)
         self.assertIn("BotIconPortrait(face", exporter)
         self.assertIn("icon=icon", push)
-        # No render means no image: a URL pointing at nothing inside a notification is worse.
-        self.assertIn('if not icon_exists(profile):', push)
+        # No render means no image: a URL pointing at nothing inside a notification is worse. A host
+        # that was never told its own public name has nothing to hand over either — the base used to
+        # be one installation's tailnet name compiled into the source.
+        self.assertIn('if not ICON_BASE or not icon_exists(profile):', push)
         self.assertIn('return ""', push)
         # A reply is why the phone buzzed, so it is the notify-me tier.
         self.assertIn('payload["level"] = "timeSensitive"', push)

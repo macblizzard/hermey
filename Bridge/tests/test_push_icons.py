@@ -127,3 +127,28 @@ class TestFetch:
         assert push.icon_url("aria") == "https://host:8444/icons/aria.png"
         # No render yet means no image, not a URL that 404s inside a notification.
         assert push.icon_url("unrendered") == ""
+
+    def test_a_host_with_no_public_name_sends_no_image(self, device, monkeypatch):
+        # The relay fetches the picture over the internet, so the URL has to name a host the phone can
+        # reach. One that was never told its own public name has nothing to hand over — and an image
+        # URL left in a banner then points at somebody else's tailnet or nowhere at all.
+        from hermes_bridge import push
+
+        _upload(device, profile="aria")
+        monkeypatch.setattr(push, "ICON_BASE", "")
+
+        assert push.icon_url("aria") == ""
+
+
+class TestNoBakedHost:
+    def test_the_icon_base_is_not_compiled_in(self):
+        # The default used to be one installation's tailnet name, so every other host advertised a
+        # picture on a network it does not own. Read the module's source: the constant is evaluated at
+        # import, and this suite's own environment is not a fresh install's.
+        from pathlib import Path
+
+        from hermes_bridge import push
+
+        source = Path(push.__file__).read_text(encoding="utf-8")
+        assert ".ts.net" not in source
+        assert 'os.environ.get("HERMEY_PUSH_ICON_BASE", "")' in source

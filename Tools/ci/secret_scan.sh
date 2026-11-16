@@ -31,6 +31,19 @@ scan "Google API key"            '\bAIza[0-9A-Za-z_-]{35}\b'
 scan "JWT"                       '\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.'
 scan "tailnet address"           '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b'
 
+# A tailnet DNS name is not a secret; it is however somebody's private network, and it names their
+# installation — which is how one host's `…ts.net` ended up as a compiled-in default in the bridge.
+# `example` and `tailnet` are the placeholders the tests and docs use, so they are the allowlist and
+# everything else under two labels is treated as real.
+tunnel=$(git ls-files -z | xargs -0 grep -InE --binary-files=without-match \
+           '[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net' 2>/dev/null \
+         | grep -vE '\.(example|tailnet)\.ts\.net' || true)
+if [ -n "$tunnel" ]; then
+  echo "::error::tailnet hostname"
+  printf '%s\n' "$tunnel" | cut -c1-200
+  fail=1
+fi
+
 # A tailnet address is not a secret; it is however somebody's private network, and this repo is
 # published. Keep the check separate so the failure message can say which of the two it is.
 printf 'secret scan: %s\n' "$([ $fail -eq 0 ] && echo clean || echo FAILED)"
