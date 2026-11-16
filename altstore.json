@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.467",
+          "buildVersion": "467",
+          "date": "2026-11-16T06:46:34Z",
+          "localizedDescription": "No borrowed names: HermeyUI module, house palettes Midnight and Graphite.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.467/Hermey-0.1.467-b467.ipa",
+          "size": 2862022,
+          "minOSVersion": "17.0",
+          "sha256": "215175ed4616735587c86020e3866a45eb475a1477cf42dee6f6591ba3f453d1"
+        },
+        {
           "version": "0.1.464",
           "buildVersion": "464",
           "date": "2026-11-16T06:09:11Z",
@@ -62,16 +72,6 @@
           "size": 2860530,
           "minOSVersion": "17.0",
           "sha256": "74a1c7278fc6b0ad0eaf9a2bce2f22898920100f81ac35c589c8d1c56341a22c"
-        },
-        {
-          "version": "0.1.453",
-          "buildVersion": "453",
-          "date": "2026-11-15T23:32:37Z",
-          "localizedDescription": "Search every conversation from the Mac bot panel; no focus ring on the list menu at launch.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.453/Hermey-0.1.453-b453.ipa",
-          "size": 2834216,
-          "minOSVersion": "17.0",
-          "sha256": "f2c67012e1849dfec59b48965cad32f85703e3da4c74b5d9550cc5aec15c4dda"
         }
       ],
       "appPermissions": {
