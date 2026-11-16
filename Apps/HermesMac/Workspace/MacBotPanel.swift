@@ -183,7 +183,7 @@ struct MacBotPanel: View {
                     }
 
                     Button {
-                        if let bot { store.openBotSettings(bot) }
+                        if let bot { store.openSettings(for: bot) }
                     } label: {
                         Text("Edit")
                             .font(TypeScale.font(TypeScale.sm, weight: .medium))

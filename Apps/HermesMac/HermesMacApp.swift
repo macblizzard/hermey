@@ -133,7 +133,7 @@ struct WorkspaceCommands: Commands {
 
             Button("Bot Settings…") {
                 guard let bot = store.selectedBot else { return }
-                store.openBotSettings(bot)
+                store.openSettings(for: bot)
             }
             .disabled(store.selectedBot == nil)
 

@@ -61,7 +61,7 @@ final class WorkspaceStore: ObservableObject {
     ///
     /// `AppModel.modelLabel` is read once per connect and per endless-session open; this asks the
     /// same profile-scoped catalogue call and is refreshed whenever the open bot changes.
-    @Published private(set) var openBotModelLabel: String?
+    @Published private(set) var openModelLabel: String?
     @Published private(set) var sidebarWidth: CGFloat = Geometry.sidebarDefault
 
     /// Whether the bot panel is collapsed. Remembered between launches: a window too narrow for
@@ -203,7 +203,7 @@ final class WorkspaceStore: ObservableObject {
 
 
     /// Open one bot's settings, from wherever the user asked for it.
-    func openBotSettings(_ bot: Bot) {
+    func openSettings(for bot: Bot) {
         botSettingsBot = bot
     }
 
@@ -213,13 +213,13 @@ final class WorkspaceStore: ObservableObject {
     /// replaces. Called when the workspace appears, when the bot changes, and after a settings write.
     func refreshHermeyModelLabel() async {
         guard let id = model.selectedBotID else {
-            openBotModelLabel = nil
+            openModelLabel = nil
             return
         }
         do {
-            openBotModelLabel = try await model.modelCatalog(for: id).current?.label
+            openModelLabel = try await model.modelCatalog(for: id).current?.label
         } catch {
-            openBotModelLabel = nil
+            openModelLabel = nil
         }
     }
 
@@ -741,7 +741,7 @@ final class WorkspaceStore: ObservableObject {
             isEnabled: selectedBot != nil,
             run: { [weak self] in
                 guard let self, let bot = self.selectedBot else { return }
-                self.openBotSettings(bot)
+                self.openSettings(for: bot)
             }))
 
         items.append(WorkspaceCommand(

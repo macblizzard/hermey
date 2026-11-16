@@ -272,7 +272,7 @@ final class AppEnvironment: ObservableObject {
 
     /// A bot the user asked to read by tapping a banner. The bots tab watches this, pushes the
     /// conversation and clears it: a tap is an event, not a setting.
-    @Published var openBotRequest: String?
+    @Published var botToOpenRequest: String?
 
     /// Banners and the app-icon badge. Wired once, at launch, because the model's sink is what
     /// fires when a *reply* arrives while the app is running — and iOS needs it in place before
@@ -280,7 +280,7 @@ final class AppEnvironment: ObservableObject {
     func startReplyNotifications() {
         MobileReplyNotifier.shared.onGraphite = { [weak self] botID in
             guard let self else { return }
-            self.openBotRequest = botID
+            self.botToOpenRequest = botID
         }
         MobileReplyNotifier.shared.requestAuthorizationIfNeeded()
         MobileReplyNotifier.shared.refreshAuthorization()

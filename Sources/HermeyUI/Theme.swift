@@ -72,14 +72,12 @@ public enum ThemeCatalog {
         nord,
     ]
 
-    /// Ids this catalogue published under earlier names. A stored choice has to keep working —
-    /// falling back to the default would silently repaint a user who picked one — so the old ids
-    /// are resolved forward. Nothing else in the app refers to them.
-    static let supersededIDs: [String: String] = ["rakazo": "midnight", "openbot": "graphite"]
-
+    /// An id this build does not publish resolves to the default. The catalogue is the single
+    /// source of truth: a name that is no longer in it — including one from an older build — is
+    /// not carried forward as a lookup table, so nothing outside these palettes has to be named
+    /// in the source to keep an install working.
     public static func theme(id: String) -> ThemePalette {
-        let resolved = supersededIDs[id] ?? id
-        return all.first { $0.id == resolved } ?? midnight
+        all.first { $0.id == id } ?? midnight
     }
 
     // MARK: - Palettes
@@ -189,8 +187,9 @@ public enum ThemeRuntime {
         }
         let id = stored ?? ThemeCatalog.defaultID
         let palette = ThemeCatalog.theme(id: id)
-        // A name from before the rename is written back as the id it now has, so the next read is
-        // not a lookup through the compatibility table.
+        // Whatever is stored, what the app is actually wearing is written back: a value this build
+        // does not publish is replaced by the palette it resolved to, once, instead of being
+        // re-resolved on every launch.
         if palette.id != id { UserDefaults.standard.set(palette.id, forKey: defaultsKey) }
         active = palette
         return palette.id

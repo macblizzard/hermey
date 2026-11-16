@@ -36,7 +36,7 @@ struct ConversationHeader: View {
     /// `deepseek-v4.1-flash` fits; a provider-qualified id does not, and the chip is `fixedSize`,
     /// so it is shortened here rather than pushing the header's controls out of the strip.
     private var modelChipLabel: String? {
-        guard let raw = store.openBotModelLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let raw = store.openModelLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else { return nil }
         let words = raw.split(separator: " ")
         let short = words.prefix(2).joined(separator: " ")

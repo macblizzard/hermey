@@ -168,13 +168,13 @@ struct BotsTab: View {
         .onChange(of: app.store.host?.baseURL) { _, _ in roomVoice.transport = app.makeVoiceTransport() }
         // A tapped banner names the bot it was about. The list pushes it like a row press, then
         // clears the request — a tap is an event and must not re-open the bot on every redraw.
-        .onChange(of: app.openBotRequest) { _, request in
+        .onChange(of: app.botToOpenRequest) { _, request in
             guard let request, let bot = model.bots.first(where: { $0.id == request }) else {
-                app.openBotRequest = nil
+                app.botToOpenRequest = nil
                 return
             }
             path.append(bot)
-            app.openBotRequest = nil
+            app.botToOpenRequest = nil
         }
         .badge(model.pendingRequests.count)
     }

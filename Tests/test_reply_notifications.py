@@ -181,7 +181,7 @@ class ThePhoneDelivers(unittest.TestCase):
 
     def test_the_sink_and_the_tap_are_wired(self) -> None:
         self.assertIn("model.replyNotificationSink = { note in", IOS_ENV)
-        self.assertIn("openBotRequest", IOS_ENV)
+        self.assertIn("botToOpenRequest", IOS_ENV)
         self.assertIn("path.append(bot)", IOS_APP)
 
     def test_settings_offers_the_system_door(self) -> None:

@@ -741,7 +741,7 @@ struct SidebarBotList: View {
             Button { model.toggleHidden(botID: bot.id) } label: {
                 Label("Show bot", systemImage: "eye")
             }
-            Button { store.openBotSettings(bot) } label: {
+            Button { store.openSettings(for: bot) } label: {
                 Label("Bot Settings", systemImage: "gearshape")
             }
             Button { sheet = .newCategory(bot) } label: {
@@ -836,7 +836,7 @@ struct SidebarBotList: View {
                 isHidden: model.isHidden(botID: bot.id),
                 categories: model.botCategories,
                 currentCategoryID: model.categoryID(for: bot.id),
-                openSettings: { store.openBotSettings(bot) },
+                openSettings: { store.openSettings(for: bot) },
                 togglePin: { model.togglePin(botID: bot.id) },
                 toggleHidden: { model.toggleHidden(botID: bot.id) },
                 showSessions: { showSessions(for: bot) },

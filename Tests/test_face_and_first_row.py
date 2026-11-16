@@ -140,7 +140,7 @@ class ThePanelIsOnlyVerbs(unittest.TestCase):
         self.assertIn("size: 56", self.PANEL)
         self.assertIn('Text(bot?.displayName ?? "No bot")', self.PANEL)
         self.assertIn('Text("Edit")', self.PANEL)
-        self.assertIn("store.openBotSettings(bot)", self.PANEL)
+        self.assertIn("store.openSettings(for: bot)", self.PANEL)
 
     def test_no_connection_row(self) -> None:
         self.assertNotIn("connectionRow", self.PANEL)
