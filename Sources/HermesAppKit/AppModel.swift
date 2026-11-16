@@ -934,7 +934,9 @@ public final class AppModel: ObservableObject {
     /// it. Freshness would otherwise let a warm cache skip the read and leave paging on a cursor this
     /// prefetch never had.
     public func prefetchConversations() async {
-        guard isPaired, connection.isLive, bots.count > 1, !isPrefetching else { return }
+        // `connection.isLive` is the pairing answer that matters here: an unpaired model has no
+        // transport, and the socket is the thing this sweep reads through.
+        guard connection.isLive, bots.count > 1, !isPrefetching else { return }
         isPrefetching = true
         defer { isPrefetching = false }
 

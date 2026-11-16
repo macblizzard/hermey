@@ -119,7 +119,8 @@ final class ConversationPrefetchTests: XCTestCase {
         defer { forget([cody]) }
         client.bots = [Bot(id: cody), Bot(id: bot("other"))]
         await model.loadBots()
-        // No `start()`: the transport was never dialled, so there is nothing to read from.
+        // No `start()`: the transport was never dialled, so `connection.isLive` is false and the
+        // sweep has nothing to read through.
         let readsBefore = client.historyReads
         await model.prefetchConversations()
         XCTAssertEqual(client.historyReads, readsBefore)
