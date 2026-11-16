@@ -1,9 +1,9 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
-// TODO(design-system): no "unsupported request" state exists in OpenBotUI yet.
+// TODO(design-system): no "unsupported request" state exists in HermeyUI yet.
 
 /// A request this build cannot render.
 ///
@@ -52,7 +52,7 @@ struct MacUnknownRequestCard: View {
 
                 Spacer(minLength: 8)
 
-                OpenBotButton("Decline", kind: .danger, size: .small) {
+                HermeyButton("Decline", kind: .danger, size: .small) {
                     Haptics.selection()
                     store.decline(request)
                 }

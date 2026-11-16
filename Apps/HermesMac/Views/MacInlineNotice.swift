@@ -1,7 +1,7 @@
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
-// TODO(design-system): no inline notice row exists in OpenBotUI yet — the connection banner
+// TODO(design-system): no inline notice row exists in HermeyUI yet — the connection banner
 // speaks transport states, not "the host refused your token".
 
 /// One sentence and, optionally, the verb that fixes it.

@@ -6,7 +6,7 @@ import XCTest
 /// on the right. These cases pin the arithmetic the window minimum, the pane floors and the
 /// grow-the-window helper all read.
 final class WindowLayoutTests: XCTestCase {
-    /// 8 + 240 + 7 + 1 + 424 + 8 — the Rakazo shell's two-pane minimum: the bot panel's 240 pt
+    /// 8 + 240 + 7 + 1 + 424 + 8 — the Midnight shell's two-pane minimum: the bot panel's 240 pt
     /// floor, the divider, the hairline and the conversation's 424 pt floor. No surround: the shell
     /// reaches the window edge, so there is no band of frame colour to reserve.
     func testTwoPanesMatchTheShellsLongStandingMinimum() {
@@ -60,7 +60,7 @@ final class WindowLayoutTests: XCTestCase {
 
     /// The reading pane gives width back when it stops being the only pane, and the two of them
     /// still fit inside the panel's opening width plus one more pane's worth of slack — the panel
-    /// opens at 384 (Rakazo's default), not at its 1000 pt ceiling.
+    /// opens at 384 (the default), not at its 1000 pt ceiling.
     func testTheConversationGivesWidthBackToTheComputer() {
         XCTAssertLessThan(WindowLayout.conversationMinWithComputer, WindowLayout.conversationMin)
         XCTAssertLessThanOrEqual(WindowLayout.conversationMinWithComputer + WindowLayout.computerMin,

@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PAIR = (ROOT / "Sources" / "OpenBotUI" / "BotPairSheet.swift").read_text(encoding="utf-8")
+PAIR = (ROOT / "Sources" / "HermeyUI" / "BotPairSheet.swift").read_text(encoding="utf-8")
 IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
 MAC_SCROLL = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
 BRIDGE = ROOT / "Bridge" / "hermes_bridge"

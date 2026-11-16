@@ -82,7 +82,7 @@ public struct BotNotesSheet: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            OpenBotButton("Done", kind: .secondary, size: .small) { dismiss() }
+            HermeyButton("Done", kind: .secondary, size: .small) { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
@@ -142,7 +142,7 @@ public struct BotNotesSheet: View {
 
             Spacer(minLength: 8)
 
-            OpenBotButton(isSaving ? "Saving…" : "Save",
+            HermeyButton(isSaving ? "Saving…" : "Save",
                           kind: .primary,
                           size: .small,
                           isDisabled: isSaving || !isDirty) {

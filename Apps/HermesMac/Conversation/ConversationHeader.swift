@@ -1,12 +1,12 @@
 import Foundation
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The pill above the transcript: which bot this is, and the way into its panel.
 ///
-/// Rakazo's anatomy, and the reason there is no header bar: the name is the control. The pill
+/// the shell's anatomy, and the reason there is no header bar: the name is the control. The pill
 /// floats at the centre of the pane, the transcript scrolls beneath it, and clicking it opens the
 /// bot's own panel on the right edge — computer, workspace, skills, settings, compact, reset. The
 /// chips beside it are only the facts the transcript cannot say about itself, and only while they
@@ -81,7 +81,7 @@ struct ConversationHeader: View {
 
     private func header(width: CGFloat) -> some View {
         ZStack {
-            // Rakazo's shape, and the reason the header has no bar: the **name is the control**.
+            // the house shape, and the reason the header has no bar: the **name is the control**.
             // One pill at the centre of the pane — portrait, name, and the ⋯ inside the same
             // capsule — and clicking it slides the bot's own panel in from the right edge, where
             // every verb about this bot lives. A menu that drops down from the corner has to be
@@ -89,11 +89,11 @@ struct ConversationHeader: View {
             pill(width: width)
 
             HStack(spacing: 8) {
-                // The toggle lives in the bot panel's own header now — Rakazo's arrangement. It
+                // The toggle lives in the bot panel's own header now — the house arrangement. It
                 // reappears here only while the panel is hidden, because a hidden panel with its
                 // only door inside it is a panel that cannot be brought back.
                 if store.isSidebarHidden {
-                    OpenBotIconButton("sidebar.leading", label: "Show the bot panel", size: .small) {
+                    HermeyIconButton("sidebar.leading", label: "Show the bot panel", size: .small) {
                         store.toggleSidebar()
                     }
                     .help("Show the bot panel")

@@ -23,7 +23,7 @@ public enum BlockText {
 
         case .heading(_, let text):
             var heading = InlineMarkdown.attributedString(text)
-            // Headings are bold even without `**`, as in OpenBot.
+            // Headings are bold even without `**`, as in Graphite.
             heading.setAll(BoldAttribute.self, to: true)
             return heading
 

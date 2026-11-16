@@ -3,7 +3,7 @@ import UIKit
 import UniformTypeIdentifiers
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// The conversation with one bot — one endless thread, always.
 ///

@@ -1,6 +1,6 @@
 import SwiftUI
 import HermesKit
-import OpenBotUI
+import HermeyUI
 
 /// A profile default is distinct from any live session override. The caller supplies
 /// profile-scoped gateway operations; this screen never creates or replaces a chat.

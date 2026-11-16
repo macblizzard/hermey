@@ -3,11 +3,11 @@ import AVFoundation
 import UIKit
 import HermesKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 
 /// One row of the conversation.
 ///
-/// The shapes are OpenBot's three: the user's message is a right-aligned tinted bubble,
+/// The shapes are three: the user's message is a right-aligned tinted bubble,
 /// the assistant is plain body text on the canvas (no bubble — a long answer in a bubble
 /// is a wall inside a wall), and a tool result keeps the card the design system already
 /// has. Markers come from the block layer so a list looks the same everywhere.

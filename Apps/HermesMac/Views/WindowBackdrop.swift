@@ -1,5 +1,5 @@
 import AppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Where the window's transparency setting lives, so the slider and the window read one key.

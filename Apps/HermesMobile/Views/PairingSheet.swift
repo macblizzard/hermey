@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBotUI
+import HermeyUI
 
 /// Pairing: the QR the host shows, or the digits it prints.
 ///
@@ -197,7 +197,7 @@ struct PairingSheet: View {
     }
 
     private var actions: some View {
-        OpenBotButton("Pair this phone",
+        HermeyButton("Pair this phone",
                       systemImage: "link",
                       kind: .primary,
                       isDisabled: !canPair || app.isPairing,

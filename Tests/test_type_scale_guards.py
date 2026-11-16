@@ -12,8 +12,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPONENTS = (ROOT / "Sources" / "OpenBotUI" / "Components.swift").read_text(encoding="utf-8")
-COMPOSER = (ROOT / "Sources" / "OpenBotUI" / "ComposerTextView.swift").read_text(encoding="utf-8")
+COMPONENTS = (ROOT / "Sources" / "HermeyUI" / "Components.swift").read_text(encoding="utf-8")
+COMPOSER = (ROOT / "Sources" / "HermeyUI" / "ComposerTextView.swift").read_text(encoding="utf-8")
 
 
 class TypeScaleGuards(unittest.TestCase):

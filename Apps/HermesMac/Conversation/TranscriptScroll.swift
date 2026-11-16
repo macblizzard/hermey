@@ -1,13 +1,13 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The scrolled transcript, with the live turn appended at the bottom.
 ///
 /// Rows are laid out in a `LazyVStack` so a long conversation only builds the rows on
 /// screen, and each row is capped at `Geometry.conversationMeasure` (640 pt) — the measure
-/// OpenBot draws chat at, which is what keeps a wide window readable.
+/// Graphite draws chat at, which is what keeps a wide window readable.
 struct TranscriptScroll: View {
     @ObservedObject var model: AppModel
     /// The other bot, when the pair sheet is open. A non-empty id is the sheet's whole state.
@@ -458,13 +458,13 @@ struct TranscriptScroll: View {
                 .lineLimit(1)
                 .accessibilityIdentifier("conversationSearchCount")
 
-            OpenBotIconButton("chevron.up",
+            HermeyIconButton("chevron.up",
                               label: "Previous search result",
                               size: .small,
                               isDisabled: found.isEmpty) {
                 moveMatch(-1)
             }
-            OpenBotIconButton("chevron.down",
+            HermeyIconButton("chevron.down",
                               label: "Next search result",
                               size: .small,
                               isDisabled: found.isEmpty) {

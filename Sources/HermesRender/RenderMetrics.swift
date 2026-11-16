@@ -8,8 +8,8 @@ public enum RenderPlatform: String, CaseIterable, Sendable {
 
 /// Chat typography, in the block layer.
 ///
-/// OpenBot draws chat text at **16 pt on a 22 pt line on iOS** and **14 pt/1.62 on
-/// macOS** (`Sources/OpenBotUI/Tokens.swift`, mirroring upstream
+/// Graphite draws chat text at **16 pt on a 22 pt line on iOS** and **14 pt/1.62 on
+/// macOS** (`Sources/HermeyUI/Tokens.swift`, mirroring upstream
 /// `chat-text-styles.ts`). Those numbers used to be decided by whichever view
 /// happened to draw the message; keeping them here means a transcript, a markdown
 /// block, a diff and a tool-output window all agree.
@@ -22,12 +22,12 @@ public struct ChatTextMetrics: Equatable, Sendable {
     public let bodySize: CGFloat
     /// Absolute body line height in points: 22 on iOS, 14 × 1.62 = 22.68 on macOS.
     public let bodyLineHeight: CGFloat
-    /// Monospace size for code, inline code and diffs (OpenBot `Tokens.mono`).
+    /// Monospace size for code, inline code and diffs (Graphite `Tokens.mono`).
     public let codeSize: CGFloat
     /// Monospace line height; tool output and diffs are dense, 1.45 × size.
     public let codeLineHeight: CGFloat
 
-    /// The CSS-style line-height multiple OpenBot's macOS table uses (1.62).
+    /// The CSS-style line-height multiple the macOS table uses (1.62).
     public var bodyLineHeightMultiple: CGFloat { bodyLineHeight / bodySize }
 
     public init(
@@ -46,9 +46,9 @@ public struct ChatTextMetrics: Equatable, Sendable {
         self.codeLineHeight = (codeSize * 1.45).rounded()
     }
 
-    /// 16 pt on a 22 pt line — OpenBot's iOS chat text.
+    /// 16 pt on a 22 pt line — the shell's iOS chat text.
     public static let iOS = ChatTextMetrics(platform: .iOS, bodySize: 16, bodyLineHeight: 22)
-    /// 14 pt on a 1.62 line — OpenBot's macOS chat text (22.68 pt).
+    /// 14 pt on a 1.62 line — the shell's macOS chat text (22.68 pt).
     public static let macOS = ChatTextMetrics(platform: .macOS, bodySize: 14, bodyLineHeight: 14 * 1.62)
 
     public static func forPlatform(_ platform: RenderPlatform) -> ChatTextMetrics {
@@ -61,7 +61,7 @@ public struct ChatTextMetrics: Equatable, Sendable {
     // MARK: Block sizes
     //
     // Headings scale off body copy so the ramp is identical in both apps; the
-    // h5/h6 values flatten because OpenBot never draws chat headings smaller than
+    // h5/h6 values flatten because Graphite never draws chat headings smaller than
     // body copy (they are distinguished by weight and colour instead).
     static let headingScale: [CGFloat] = [1.5, 1.32, 1.18, 1.08, 1.0, 1.0]
 

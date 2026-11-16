@@ -460,7 +460,7 @@ struct Triangle: Shape {
     }
 }
 
-/// Shape × colour, the way Rakazo draws it: one big portrait, then the silhouettes, then the
+/// Shape × colour, the way Midnight draws it: one big portrait, then the silhouettes, then the
 /// swatches.
 ///
 /// Selection is controlled by the caller — persistence is never local. The two grids are separate

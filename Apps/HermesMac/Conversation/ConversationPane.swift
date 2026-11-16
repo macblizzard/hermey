@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// How tall the floating foot is right now. The composer grows upward as a draft gets longer, and
@@ -51,7 +51,7 @@ struct ConversationPane: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            // Rakazo floats the header over the transcript instead of stacking it above: the row
+            // Midnight floats the header over the transcript instead of stacking it above: the row
             // costs layout, the content scrolls beneath it, and a hairline would put the bar back.
             // The composer floats the same way, from the other edge.
             ZStack(alignment: .top) {
@@ -72,7 +72,7 @@ struct ConversationPane: View {
                 // the header pill floats over the top — so text passes *under* them and fades out
                 // rather than stopping dead at the window edge. The top band is the pill's own
                 // height, which is what makes a scrolled transcript read as one surface going
-                // edge to edge (Rakazo's look; the strip alone was visible before).
+                // edge to edge (the house look; the strip alone was visible before).
                 .mask(
                     VStack(spacing: 0) {
                         LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
@@ -142,11 +142,11 @@ struct ConversationPane: View {
         }
         // Bot change and appearance both land here, so the chip is never a bot behind.
         .task(id: model.selectedBotID) {
-            await store.refreshOpenBotModelLabel()
+            await store.refreshHermeyModelLabel()
         }
         .onChange(of: model.connection) { _ in
             // The chip is a host fact: re-ask when the wire comes back.
-            Task { await store.refreshOpenBotModelLabel() }
+            Task { await store.refreshHermeyModelLabel() }
         }
     }
 
@@ -223,11 +223,11 @@ private struct ConversationEmptyState: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if !store.isPaired {
-                OpenBotButton("Pair host…", systemImage: "link", kind: .primary, size: .small) {
+                HermeyButton("Pair host…", systemImage: "link", kind: .primary, size: .small) {
                     store.isPairSheetPresented = true
                 }
             } else if !model.connection.isLive {
-                OpenBotButton("Connect",
+                HermeyButton("Connect",
                               systemImage: "bolt.horizontal",
                               kind: .primary,
                               size: .small,
@@ -235,11 +235,11 @@ private struct ConversationEmptyState: View {
                     Task { await store.connect() }
                 }
             } else if model.bots.isEmpty {
-                OpenBotButton("Check again", systemImage: "arrow.clockwise", kind: .secondary, size: .small) {
+                HermeyButton("Check again", systemImage: "arrow.clockwise", kind: .secondary, size: .small) {
                     Task { await store.loadBots() }
                 }
             } else if model.selectedBotID != nil && !model.isOpeningConversation {
-                OpenBotButton("Open conversation",
+                HermeyButton("Open conversation",
                               systemImage: "bubble.left",
                               kind: .secondary,
                               size: .small) {

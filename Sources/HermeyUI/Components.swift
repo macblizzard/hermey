@@ -1,4 +1,4 @@
-// The OpenBotUI component library.
+// The HermeyUI component library.
 //
 // Every screen in both apps is assembled from these pieces; a screen supplies content
 // and state, never a colour, radius, font size or duration. The inventory:
@@ -12,7 +12,7 @@
 //   ContextGauge    ok / warn > 70% / compact > 85%, ring or bar
 //   ConnectionBanner reconnecting / offline / protocol mismatch
 //   GroupedListRow  + GroupedSection: the 16 pt grouped card
-//   OpenBotButton   primary / secondary / ghost / danger, 44 pt hit target on iOS
+//   HermeyButton   primary / secondary / ghost / danger, 44 pt hit target on iOS
 //   Hairline, TypeScale, Motion, Haptics, RelativeTime — the shared decisions
 //
 // Values come from Tokens.swift only. Platform-only APIs are behind #if; the density
@@ -33,10 +33,10 @@ import AppKit
 ///
 /// The sizes are the token values from `Tokens` (10–16 pt, never larger inside UI
 /// chrome); the platform constants are the two rows of the UX spec's typography table,
-/// which are the desktop and mobile tables OpenBot keeps separately
+/// which are the desktop and mobile tables Graphite keeps separately
 /// (`chat-text-styles.ts`). Nothing here invents a size.
 public enum TypeScale {
-    /// Section captions and the smallest meta line. `--openbot-text-*` starts at 12, so
+    /// Section captions and the smallest meta line. `--graphite-text-*` starts at 12, so
     /// 10 and 11 are the two label steps the desktop uses below it.
     public static let caption: CGFloat = 10
     /// Glyphs and the smallest secondary text; nothing in the app should be smaller.
@@ -248,7 +248,7 @@ public enum RelativeTime {
 
 // MARK: - Rules and surfaces
 
-/// The 1 px hairline every OpenBot surface uses. `Divider` is two points on Retina and
+/// The 1 px hairline every Graphite surface uses. `Divider` is two points on Retina and
 /// a different colour on each platform; this is exactly one device pixel of one token.
 public struct Hairline: View {
     public enum Axis { case horizontal, vertical }

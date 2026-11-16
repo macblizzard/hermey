@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// iOS shell.
 ///
@@ -131,7 +131,7 @@ struct BotsTab: View {
     var body: some View {
         NavigationStack(path: $path) {
             BotListScreen(model: model,
-                          onOpenBot: { path.append($0) },
+                          onGraphite: { path.append($0) },
                           onOpenRoom: { path.append($0) })
                 .navigationDestination(for: Bot.self) { bot in
                     ConversationScreen(model: model, bot: bot)

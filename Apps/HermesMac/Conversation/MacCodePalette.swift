@@ -1,5 +1,5 @@
 import HermesRender
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Syntax colours for code, as token *roles* rather than raw hex.

@@ -26,7 +26,7 @@ public struct GenUICardsResolver: Sendable {
     }
 
     /// No host paired: a card cannot be drawn, and the transcript says so quietly.
-    public static let unavailable = GenUICardsResolver(url: { _ in nil }, palette: { GenUIPalette.rakazo })
+    public static let unavailable = GenUICardsResolver(url: { _ in nil }, palette: { GenUIPalette.midnight })
 }
 
 private struct GenUICardsKey: EnvironmentKey {
@@ -52,8 +52,8 @@ public extension GenUIPalette {
                      scheme: "dark")
     }
 
-    /// The Rakazo palette, for previews and for the moment before the theme is read.
-    static var rakazo: GenUIPalette {
+    /// The Midnight palette, for previews and for the moment before the theme is read.
+    static var midnight: GenUIPalette {
         GenUIPalette(ink: "#F5F5F5", background: "#0A0A0A", accent: "#4D9BFF",
                      muted: "#A5A5A5", good: "#00BA69", scheme: "dark")
     }

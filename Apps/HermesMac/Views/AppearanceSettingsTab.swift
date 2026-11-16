@@ -1,5 +1,5 @@
 import AppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Settings → Appearance.

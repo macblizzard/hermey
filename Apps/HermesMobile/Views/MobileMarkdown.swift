@@ -1,9 +1,9 @@
 import SwiftUI
 import HermesKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 
-/// Markdown, drawn the way OpenBot draws a message: 16 pt on a 22 pt line, code in
+/// Markdown, drawn the way Graphite draws a message: 16 pt on a 22 pt line, code in
 /// the mono face on the inset surface, tables as a real grid.
 ///
 /// The block list comes from `HermesRender` (the block layer decides what is a

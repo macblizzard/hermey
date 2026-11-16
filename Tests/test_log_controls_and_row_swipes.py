@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOG = (ROOT / "Sources" / "OpenBotUI" / "ClientLogView.swift").read_text(encoding="utf-8")
+LOG = (ROOT / "Sources" / "HermeyUI" / "ClientLogView.swift").read_text(encoding="utf-8")
 MODEL_LOG = (ROOT / "Sources" / "HermesKit" / "ClientLog.swift").read_text(encoding="utf-8")
 IOS_LIST = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotListScreen.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")

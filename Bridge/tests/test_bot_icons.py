@@ -45,7 +45,7 @@ def test_all_gallery_icons_round_trip_and_unknown_is_rejected(tmp_path):
     from pathlib import Path
     import re
 
-    source = (Path(__file__).resolve().parents[2] / 'Sources/OpenBotUI/BotIconGallery.swift').read_text()
+    source = (Path(__file__).resolve().parents[2] / 'Sources/HermeyUI/BotIconGallery.swift').read_text()
     # The enum's `case` lines, comments stripped: the doc comment above the first line moved the
     # old single-regex parse into the colour enum next door.
     block = re.search(r'public enum BotIcon:.*?\n\}', source, re.S).group(0)

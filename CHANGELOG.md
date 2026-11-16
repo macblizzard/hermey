@@ -5,6 +5,13 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **No borrowed names anywhere in the source.** The design-system module is `HermeyUI` (was a
+  third-party app's name), its controls are `HermeyButton` / `HermeyIconButton` /
+  `HermeyModelLabel` / `HermeyChatText`, and the two house palettes are **Midnight** (default) and
+  **Graphite**. A stored theme id from before the rename resolves forward through
+  `ThemeCatalog.supersededIDs`, so nobody is silently repainted; the palette is unchanged.
+
 ### Added
 - **A bot's conversation is now the host's own Bot Chat, so the phone, the Mac and the official app
   read and write the same thread.** Hermey used to keep its own idea of "this bot's conversation" —
@@ -107,7 +114,7 @@ All notable changes to Hermey are recorded here. The format follows
   only gated the *live* reasoning block, and the client synthesises a reasoning row when a turn ends
   — so the text disappeared while it streamed and came back with the answer. Row visibility is one
   rule now (`TranscriptVisibility`), applied to both shells.
-- **The Mac window is edge to edge at the top, the way Rakazo is.** `.hiddenTitleBar` removed the
+- **The Mac window is edge to edge at the top, the way Midnight is.** `.hiddenTitleBar` removed the
   title bar but not the inset that stood where it was, so both panes began ~32 pt down and the
   transcript was clipped against that line — the strip read as a title bar and the first visible
   line was sliced through its glyphs. The panes now start at the window's own top edge, the pill sits
@@ -249,7 +256,7 @@ All notable changes to Hermey are recorded here. The format follows
   pixel dimensions and file size, Copy, and — for pictures you did not send — Save (Mac: a save panel;
   phone: the share sheet). The
   bytes are shown exactly as they arrived — nothing is re-encoded. `ImageViewer` lives in
-  `OpenBotUI`, so the artifacts a host generates will open in the same one once they are rendered in
+  `HermeyUI`, so the artifacts a host generates will open in the same one once they are rendered in
   a transcript (they are not drawn anywhere yet — the host sends no attachment metadata for its own
   replies, so that needs a host-side fetch, not a view).
 - **The footer fits a phone.** The bar was four text controls plus a primary button, so on a narrow
@@ -377,7 +384,7 @@ All notable changes to Hermey are recorded here. The format follows
 ### Added
 - **Tooltips on the desktop's buttons.** Glyph buttons had no answer on hover while every one of them
   already carried a `label` for VoiceOver and the message row already passed a `help:` that was never
-  used. `OpenBotIconButton` now shows its label as the tooltip (macOS only — iOS has no hover), the
+  used. `HermeyIconButton` now shows its label as the tooltip (macOS only — iOS has no hover), the
   message action glyphs show theirs, and the composer's dismiss/cancel-reply/remove-attachment ✕, the
   jump-to-latest button and read-aloud are all named. Menu items and alert buttons are left alone:
   macOS does not draw tooltips inside menus.

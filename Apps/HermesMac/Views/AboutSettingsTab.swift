@@ -1,6 +1,6 @@
 import AppKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The app's own identity, in one place.

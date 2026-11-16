@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BUTTON = (ROOT / "Sources" / "OpenBotUI" / "CodeCopyButton.swift").read_text(encoding="utf-8")
+BUTTON = (ROOT / "Sources" / "HermeyUI" / "CodeCopyButton.swift").read_text(encoding="utf-8")
 MAC_BLOCKS = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacBlockView.swift").read_text(encoding="utf-8")
 IOS_MARKDOWN = (ROOT / "Apps" / "HermesMobile" / "Views" / "MobileMarkdown.swift").read_text(encoding="utf-8")
 
@@ -34,7 +34,7 @@ class CodeCopyButton(unittest.TestCase):
     def test_both_platforms_use_the_shared_button(self) -> None:
         self.assertIn("CodeCopyButton(code: body)", MAC_BLOCKS)
         self.assertIn("CodeCopyButton(code: body)", IOS_MARKDOWN)
-        self.assertNotIn('OpenBotIconButton("doc.on.doc"', MAC_BLOCKS,
+        self.assertNotIn('HermeyIconButton("doc.on.doc"', MAC_BLOCKS,
                          "the silent copy button is what this replaces")
 
     def test_the_phone_code_block_has_a_header_with_the_verb(self) -> None:

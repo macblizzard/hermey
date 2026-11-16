@@ -27,7 +27,7 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
     static let shared = MobileReplyNotifier()
 
     /// Set by the shell: tapping a banner opens that bot.
-    var onOpenBot: ((String) -> Void)?
+    var onGraphite: ((String) -> Void)?
 
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @Published private(set) var deliveryError: String?
@@ -118,7 +118,7 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let botID = response.notification.request.content.userInfo["botID"] as? String
         Task { @MainActor in
-            if let botID { self.onOpenBot?(botID) }
+            if let botID { self.onGraphite?(botID) }
         }
         completionHandler()
     }

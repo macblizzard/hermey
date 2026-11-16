@@ -14,8 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAC = ROOT / "Apps" / "HermesMac"
-CONTROLS = (ROOT / "Sources" / "OpenBotUI" / "Controls.swift").read_text(encoding="utf-8")
-ROW = (ROOT / "Sources" / "OpenBotUI" / "QuickReactionRow.swift").read_text(encoding="utf-8")
+CONTROLS = (ROOT / "Sources" / "HermeyUI" / "Controls.swift").read_text(encoding="utf-8")
+ROW = (ROOT / "Sources" / "HermeyUI" / "QuickReactionRow.swift").read_text(encoding="utf-8")
 
 
 def source(relative: str) -> str:
@@ -24,12 +24,12 @@ def source(relative: str) -> str:
 
 class SharedControlsCarryTooltips(unittest.TestCase):
     def test_every_icon_button_takes_its_label_as_its_tooltip(self) -> None:
-        icon = CONTROLS.split("public struct OpenBotIconButton", 1)[1]
+        icon = CONTROLS.split("public struct HermeyIconButton", 1)[1]
         self.assertIn(".help(label)", icon,
                       "the label is already written for VoiceOver; a glyph should say it on hover")
 
     def test_the_tooltip_is_macos_only(self) -> None:
-        icon = CONTROLS.split("public struct OpenBotIconButton", 1)[1]
+        icon = CONTROLS.split("public struct HermeyIconButton", 1)[1]
         block = icon.split("#if os(macOS)", 1)
         self.assertEqual(len(block), 2, "iOS has no hover, so the modifier is compiled out there")
         self.assertIn(".help(label)", block[1].split("#endif", 1)[0])

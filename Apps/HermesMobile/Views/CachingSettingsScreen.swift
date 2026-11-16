@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// What this device keeps, on the phone.
 ///

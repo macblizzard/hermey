@@ -1,12 +1,12 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The bot's own panel, on the right edge: everything that acts on *this* conversation, one click
 /// from the name at the centre of the header.
 ///
-/// Rakazo puts its verbs in a panel beside the chat rather than in a menu bar across the top. The
+/// Midnight puts its verbs in a panel beside the chat rather than in a menu bar across the top. The
 /// reason is the same one that made the phone's drawer work: a dropdown is a list you have to aim
 /// at and re-open for every verb, while a panel can stay open beside the thing it acts on — you
 /// compact a long conversation and watch the transcript rewrite itself without the panel closing
@@ -201,7 +201,7 @@ struct MacBotPanel: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 6)
 
-                OpenBotIconButton("xmark", label: "Close the bot panel", size: .small) { close() }
+                HermeyIconButton("xmark", label: "Close the bot panel", size: .small) { close() }
                     .help("Close (esc)")
             }
             .padding(.horizontal, 10)

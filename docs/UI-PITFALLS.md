@@ -85,7 +85,7 @@ They are listed here so the next change does not rediscover them.
 
 ## Toolbar
 
-- `.topBarTrailing` / `.topBarLeading` do not exist on macOS: a shared `OpenBotUI` view that sets
+- `.topBarTrailing` / `.topBarLeading` do not exist on macOS: a shared `HermeyUI` view that sets
   them fails the Swift package build (and so `main`), even though the iOS app compiles fine. Use
   `.primaryAction` in shared code, or wrap the item in `#if os(iOS)`.
 - A bar button is a glyph, not a disc: `Tokens.control` is the fill for a control sitting on a

@@ -1,5 +1,5 @@
 import Foundation
-import OpenBotUI
+import HermeyUI
 
 /// Token counts, printed the way the header prints them: `12k / 1M`.
 ///

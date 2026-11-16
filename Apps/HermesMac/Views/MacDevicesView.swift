@@ -1,4 +1,4 @@
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Management uses its own window so it is available even while the socket is disconnected.
@@ -18,7 +18,7 @@ struct MacDevicesView: View {
                     .foregroundStyle(Tokens.textPrimary)
                 Spacer()
                 if busy { ProgressView().controlSize(.small) }
-                OpenBotButton("Refresh",
+                HermeyButton("Refresh",
                               kind: .secondary,
                               size: .small,
                               isDisabled: busy || store.pairing == nil || store.pairing?.isTicketOnly == true) {
@@ -68,7 +68,7 @@ struct MacDevicesView: View {
                                     .textSelection(.enabled)
                             }
                             Spacer()
-                            OpenBotButton(device.revoked ? "Remove…" : "Revoke…",
+                            HermeyButton(device.revoked ? "Remove…" : "Revoke…",
                                           kind: .ghost,
                                           size: .small,
                                           isDisabled: busy) { pending = device }

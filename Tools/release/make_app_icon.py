@@ -2,7 +2,7 @@
 """Draw the app icon — a bot face, lit and rounded, in the same family as the roster's.
 
 Why a script and not a design file: the icon has to match the faces drawn in
-`Sources/OpenBotUI/BotSilhouette.swift`, and those are geometry with three numbers per shape. A
+`Sources/HermeyUI/BotSilhouette.swift`, and those are geometry with three numbers per shape. A
 drawing that can only be edited by hand drifts the moment a face changes; this renders the same
 silhouette from the same normalised points, so the app's mark and the app's bots can be changed in
 one place.

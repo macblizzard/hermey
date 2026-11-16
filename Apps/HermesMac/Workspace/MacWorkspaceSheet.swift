@@ -3,7 +3,7 @@ import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
 import HermesKit
-import OpenBotUI
+import HermeyUI
 
 /// The bot's workspace on the Mac: the list on the left, the document on the right.
 ///

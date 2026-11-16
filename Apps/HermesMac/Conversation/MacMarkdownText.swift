@@ -1,6 +1,6 @@
 import AppKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Draws the `AttributedString` the block layer compiled, run by run.

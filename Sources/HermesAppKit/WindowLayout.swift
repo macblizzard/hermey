@@ -15,7 +15,7 @@ public enum WindowLayout {
     /// edge on every side, so the frame the traffic lights sit on is the app's own canvas and there
     /// is no band of frame colour to reserve.
     public static let surround: CGFloat = 0
-    /// The bot panel's narrowest width — Rakazo's 240 pt floor (`BOTS_SIDEBAR_MIN_WIDTH`), the same
+    /// The bot panel's narrowest width — the 240 pt floor (`BOTS_SIDEBAR_MIN_WIDTH`), the same
     /// number its drag strip clamps to.
     public static let sidebarFloor: CGFloat = 240
     /// Its widest: `BOTS_SIDEBAR_MAX_WIDTH`.
@@ -29,11 +29,11 @@ public enum WindowLayout {
     /// A conversation's floor while the shared computer is beside it: two panes share the window, so
     /// the reading pane gives some back instead of pushing the window's edges out of view.
     public static let conversationMinWithComputer: CGFloat = 360
-    /// The bot panel's (Rakazo's right panel) floor and the width it opens at.
+    /// The bot panel's (the house right panel) floor and the width it opens at.
     public static let computerMin: CGFloat = 320
     public static let computerIdeal: CGFloat = 384
     public static let computerMax: CGFloat = 1000
-    /// The bot panel's width — Rakazo's right-hand panel, one step narrower than its roster.
+    /// The bot panel's width — the house right-hand panel, one step narrower than its roster.
     public static let botPanelWidth: CGFloat = 316
     /// The window height below which the shell stops being usable at all.
     public static let heightMin: CGFloat = 560

@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAC = ROOT / "Apps" / "HermesMac"
 LAYOUT = (ROOT / "Sources" / "HermesAppKit" / "WindowLayout.swift").read_text(encoding="utf-8")
-TOKENS = (ROOT / "Sources" / "OpenBotUI" / "Tokens.swift").read_text(encoding="utf-8")
+TOKENS = (ROOT / "Sources" / "HermeyUI" / "Tokens.swift").read_text(encoding="utf-8")
 
 
 class WindowLayoutGuards(unittest.TestCase):
@@ -59,7 +59,7 @@ class WindowLayoutGuards(unittest.TestCase):
         self.assertTrue(conversation and layout_value, "both files still name the conversation's floor")
         assert conversation is not None and layout_value is not None
         self.assertEqual(conversation.group(1), layout_value.group(1),
-                         "OpenBotUI and WindowLayout must agree on the conversation's floor")
+                         "HermeyUI and WindowLayout must agree on the conversation's floor")
 
         # The Mac shell aliases the floor rather than restating it, so a dragged panel cannot drift.
         self.assertIn("static let sidebarFloor: CGFloat = WindowLayout.sidebarFloor", self.store)

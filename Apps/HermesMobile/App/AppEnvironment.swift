@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -278,7 +278,7 @@ final class AppEnvironment: ObservableObject {
     /// fires when a *reply* arrives while the app is running — and iOS needs it in place before
     /// the first refresh lands.
     func startReplyNotifications() {
-        MobileReplyNotifier.shared.onOpenBot = { [weak self] botID in
+        MobileReplyNotifier.shared.onGraphite = { [weak self] botID in
             guard let self else { return }
             self.openBotRequest = botID
         }

@@ -1,5 +1,5 @@
 import HermesRender
-import OpenBotUI
+import HermeyUI
 
 /// Chat metrics at the user's chosen text size.
 ///

@@ -115,7 +115,7 @@ final class AppModelRoomUnreadTests: XCTestCase {
         XCTAssertEqual(storedMark(host, "r1"), 3)
     }
 
-    func testUnreadElsewhereCountsRoomsAndSkipsTheOpenBot() async {
+    func testUnreadElsewhereCountsRoomsAndSkipsTheGraphite() async {
         let host = hostName("elsewhere")
         defer { UserDefaults.standard.removeObject(forKey: readKey(host)) }
         let client = ScriptedHost(session: "s1")

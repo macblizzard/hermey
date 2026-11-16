@@ -1,6 +1,6 @@
-"""The Rakazo shell's numbers, pinned.
+"""The Midnight shell's numbers, pinned.
 
-The restyle is a port of a specification taken from Rakazo's own source (`packages/ui-tokens`,
+The restyle is a port of a specification taken from the reference shell's own source (`packages/ui-tokens`,
 `apps/web/src/pages/shell/*`, `apps/web/src/lib/bots-sidebar-pref.ts`). A port drifts one number at
 a time — a 16 that becomes a 12, a 38 pt avatar that shrinks back to 26 — and nothing catches it
 because every individual value still looks reasonable. These cases fail when a ported value moves,
@@ -13,8 +13,8 @@ import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TOKENS = (ROOT / "Sources/OpenBotUI/Tokens.swift").read_text()
-THEME = (ROOT / "Sources/OpenBotUI/Theme.swift").read_text()
+TOKENS = (ROOT / "Sources/HermeyUI/Tokens.swift").read_text()
+THEME = (ROOT / "Sources/HermeyUI/Theme.swift").read_text()
 WINDOW = (ROOT / "Sources/HermesAppKit/WindowLayout.swift").read_text()
 ROSTER = (ROOT / "Apps/HermesMac/Sidebar/SidebarBotList.swift").read_text()
 HEADER = (ROOT / "Apps/HermesMac/Conversation/ConversationHeader.swift").read_text()
@@ -29,9 +29,9 @@ def value(source: str, name: str) -> str:
     return match.group(1)
 
 
-class RakazoTokensTests(unittest.TestCase):
-    def test_the_palette_is_the_one_from_rakazo(self) -> None:
-        self.assertIn('id: "rakazo", name: "Rakazo"', THEME)
+class MidnightTokensTests(unittest.TestCase):
+    def test_the_palette_is_the_one_from_midnight(self) -> None:
+        self.assertIn('id: "midnight", name: "Midnight"', THEME)
         self.assertIn("canvas: 0x0A0A0A", THEME)          # webDarkTokens.background
         self.assertIn("surface: 0x232323", THEME)         # webDarkTokens.muted
         self.assertIn("accent: 0x4D9BFF", THEME)          # unread / statusWorking
@@ -39,17 +39,17 @@ class RakazoTokensTests(unittest.TestCase):
         self.assertIn("danger: 0xFF6463", THEME)          # webDarkTokens.destructive
         self.assertIn("borderAlpha: 0.10", THEME)         # border #F5F5F51A
 
-    def test_rakazo_is_the_house_theme_and_openbot_is_the_way_back(self) -> None:
-        self.assertIn('public static let defaultID = "rakazo"', THEME)
-        self.assertIn("all: [ThemePalette] = [\n        rakazo,\n        openbot,", THEME)
+    def test_midnight_is_the_house_theme_and_graphite_is_the_way_back(self) -> None:
+        self.assertIn('public static let defaultID = "midnight"', THEME)
+        self.assertIn("all: [ThemePalette] = [\n        midnight,\n        graphite,", THEME)
 
     def test_a_previous_install_moves_once_and_only_from_the_old_default(self) -> None:
-        # Wearing "openbot" because it was the default is not a choice; picking it is.
-        self.assertIn('stored == nil || stored == "openbot"', THEME)
-        self.assertIn("hermey.theme.migrated.rakazo", THEME)
+        # Wearing "graphite" because it was the default is not a choice; picking it is.
+        self.assertIn('stored == nil || stored == "graphite"', THEME)
+        self.assertIn("hermey.theme.migrated.midnight", THEME)
 
 
-class RakazoGeometryTests(unittest.TestCase):
+class MidnightGeometryTests(unittest.TestCase):
     def test_the_radius_chain(self) -> None:
         self.assertEqual(value(TOKENS, "radiusCard"), "16")      # rows and cards
         self.assertEqual(value(TOKENS, "radiusBubble"), "20")    # bubbles, large dialogs
@@ -116,17 +116,17 @@ class RakazoGeometryTests(unittest.TestCase):
         self.assertIn("size: metrics.avatar", ROSTER)
         self.assertIn(".frame(height: metrics.rowHeight)", ROSTER)
         self.assertIn("spacing: metrics.gap", ROSTER)
-        self.assertIn("public var avatar", (ROOT / "Sources" / "OpenBotUI" / "BotListMetrics.swift").read_text())
-        self.assertIn("Geometry.rosterAvatar", (ROOT / "Sources" / "OpenBotUI" / "BotListMetrics.swift").read_text())
+        self.assertIn("public var avatar", (ROOT / "Sources" / "HermeyUI" / "BotListMetrics.swift").read_text())
+        self.assertIn("Geometry.rosterAvatar", (ROOT / "Sources" / "HermeyUI" / "BotListMetrics.swift").read_text())
 
 
 IOS_ROSTER = (ROOT / "Apps/HermesMobile/Views/BotListScreen.swift").read_text()
 IOS_TRANSCRIPT = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text()
 IOS_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
-ROOM_ROW = (ROOT / "Sources/OpenBotUI/GroupChatViews.swift").read_text()
+ROOM_ROW = (ROOT / "Sources/HermeyUI/GroupChatViews.swift").read_text()
 
 
-class RakazoIOSShellTests(unittest.TestCase):
+class MidnightIOSShellTests(unittest.TestCase):
     """The phone's own anatomy, not just the shared tokens."""
 
     def test_the_roster_row_is_the_same_row_as_the_macs(self) -> None:
@@ -167,13 +167,13 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class RakazoMacTopEdgeTests(unittest.TestCase):
+class MidnightMacTopEdgeTests(unittest.TestCase):
     """The panes start at the window's own top edge.
 
     `.hiddenTitleBar` took the bar away but left the inset that stood where it was, so both panes
     began ~32 pt down and the transcript was clipped against that line — the first visible line
     sliced through its glyphs, and the strip read as a visible title bar. Reported 2026-11-14
-    against Rakazo's edge-to-edge window.
+    against the edge-to-edge window.
     """
 
     def test_the_shell_ignores_the_titlebar_inset(self) -> None:

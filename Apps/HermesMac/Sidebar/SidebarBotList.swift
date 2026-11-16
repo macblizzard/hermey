@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The bots block at the top of the left pane.
@@ -551,7 +551,7 @@ struct SidebarBotList: View {
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
                 // Same rule as the phone: the host's icon if there is one, otherwise the portrait
-                // the bot's id picks — never a bare initial. Rakazo draws the working state as a
+                // the bot's id picks — never a bare initial. Midnight draws the working state as a
                 // ring around the face, which is where this app already puts it.
                 //
                 // Live state is passed only for the bot whose turn is actually moving. An idle row
@@ -571,7 +571,7 @@ struct SidebarBotList: View {
                             .offset(x: 5, y: 4)
                     }
 
-                // Two lines, in Rakazo's order: the name and when it last spoke on the first, what
+                // Two lines, in the house order: the name and when it last spoke on the first, what
                 // it said on the second. A bot with no preview yet falls back to its description so
                 // the second line is never empty.
                 VStack(alignment: .leading, spacing: 4) {

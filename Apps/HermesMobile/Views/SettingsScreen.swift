@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// Settings holds settings.
 ///

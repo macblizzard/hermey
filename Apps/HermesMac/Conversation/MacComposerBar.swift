@@ -1,7 +1,7 @@
 import AppKit
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The composer, wired to the model's single draft.

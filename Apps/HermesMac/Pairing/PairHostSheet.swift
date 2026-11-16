@@ -1,5 +1,5 @@
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Pair this Mac with a Hermes host.
@@ -238,11 +238,11 @@ struct PairHostSheet: View {
 
             Spacer(minLength: 0)
 
-            OpenBotButton("Cancel", kind: .ghost) {
+            HermeyButton("Cancel", kind: .ghost) {
                 dismiss()
             }
 
-            OpenBotButton("Pair",
+            HermeyButton("Pair",
                           systemImage: "link",
                           kind: .primary,
                           isBusy: isConnecting,

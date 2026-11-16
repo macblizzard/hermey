@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 import UniformTypeIdentifiers
 

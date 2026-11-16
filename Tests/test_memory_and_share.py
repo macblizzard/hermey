@@ -89,7 +89,7 @@ class TheHostServesMemory(unittest.TestCase):
         self.assertIn("public struct BotMemoryDocument", kit)
 
     def test_the_sheet_is_shared_by_both_shells(self) -> None:
-        self.assertTrue((ROOT / "Sources" / "OpenBotUI" / "BotMemorySheet.swift").is_file())
+        self.assertTrue((ROOT / "Sources" / "HermeyUI" / "BotMemorySheet.swift").is_file())
         self.assertIn("BotMemorySheet(", read(MAC_SETTINGS))
 
 

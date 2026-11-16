@@ -24,7 +24,7 @@ MAC_SETTINGS = (MAC / "Views" / "MacBotSettingsSheet.swift").read_text(encoding=
 IOS_SETTINGS = (ROOT / "Apps/HermesMobile/Views/BotModelSettingsScreen.swift").read_text(encoding="utf-8")
 IOS_LIST = (ROOT / "Apps/HermesMobile/Views/BotListScreen.swift").read_text(encoding="utf-8")
 IOS_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
-GALLERY = (ROOT / "Sources/OpenBotUI/BotIconGallery.swift").read_text(encoding="utf-8")
+GALLERY = (ROOT / "Sources/HermeyUI/BotIconGallery.swift").read_text(encoding="utf-8")
 
 
 class EscapeClosesTheTopmostThing(unittest.TestCase):
@@ -131,8 +131,8 @@ class AModelIsItsOwnDoor(unittest.TestCase):
 class TheFacesHaveLightAndMotion(unittest.TestCase):
     """#100, tiers one and two: shading inside the silhouette, then breathing and blinking."""
 
-    SHADING = (ROOT / "Sources/OpenBotUI/BotFaceShading.swift").read_text(encoding="utf-8")
-    SILHOUETTE = (ROOT / "Sources/OpenBotUI/BotSilhouette.swift").read_text(encoding="utf-8")
+    SHADING = (ROOT / "Sources/HermeyUI/BotFaceShading.swift").read_text(encoding="utf-8")
+    SILHOUETTE = (ROOT / "Sources/HermeyUI/BotSilhouette.swift").read_text(encoding="utf-8")
 
     def test_the_light_stays_inside_the_shape(self) -> None:
         # Three layers, all masked by the silhouette: the outline that makes a face recognisable
@@ -183,7 +183,7 @@ class TheFacesHaveLightAndMotion(unittest.TestCase):
         self.assertNotIn("@State private var breathing", portrait)
         # The app's own answer comes first; the system's Reduce Motion is the fallback.
         self.assertIn("BotFaceMotion.allows(reduceMotion: reduceMotion, size: size)", portrait)
-        motion = (ROOT / "Sources/OpenBotUI/BotFaceShading.swift").read_text(encoding="utf-8")
+        motion = (ROOT / "Sources/HermeyUI/BotFaceShading.swift").read_text(encoding="utf-8")
         # An explicit answer in the app wins; without one, the system decides — and the answer is
         # seeded on first launch so the switch and the faces can never disagree again.
         self.assertIn("return choice ?? !reduceMotion", motion)
@@ -230,7 +230,7 @@ class TheAppIconIsOneOfTheFaces(unittest.TestCase):
 
 
 class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
-    SPINNER = (ROOT / "Sources/OpenBotUI/BotFaceSpinner.swift").read_text(encoding="utf-8")
+    SPINNER = (ROOT / "Sources/HermeyUI/BotFaceSpinner.swift").read_text(encoding="utf-8")
     PHONE_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
     MAC_SCROLL = (ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift").read_text(encoding="utf-8")
 
@@ -249,7 +249,7 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
         # One row, not two: the face goes *inside* the working row both shells already draw, and the
         # separate "Thinking…" line that was added first is gone (reported 2026-11-14: it added a
         # second line instead of replacing the original spinner).
-        working = (ROOT / "Sources/OpenBotUI/WorkingStatus.swift").read_text(encoding="utf-8")
+        working = (ROOT / "Sources/HermeyUI/WorkingStatus.swift").read_text(encoding="utf-8")
         self.assertIn("public var face: BotFace?", working)
         self.assertIn("BotFaceSpinner(face: face, size: 16)", working)
         self.assertIn("WorkingStatus(face: face)", self.MAC_SCROLL)
@@ -261,7 +261,7 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
 class ABotHasItsOwnNotes(unittest.TestCase):
     """A per-bot note: one file on the host, opened from either shell's bot menu."""
 
-    NOTES = (ROOT / "Sources/OpenBotUI/BotNotesSheet.swift").read_text(encoding="utf-8")
+    NOTES = (ROOT / "Sources/HermeyUI/BotNotesSheet.swift").read_text(encoding="utf-8")
     ROUTES = (ROOT / "Bridge/hermes_bridge/bot_notes.py").read_text(encoding="utf-8")
     MAC_PANEL = (MAC / "Workspace" / "MacBotPanel.swift").read_text(encoding="utf-8")
     DRAWER = (ROOT / "Apps/HermesMobile/Views/ConversationDrawer.swift").read_text(encoding="utf-8")
@@ -297,7 +297,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
     """The relay: no APNs credential of our own, so Bark carries the banner."""
 
     PUSH = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
-    SETTINGS = (ROOT / "Sources/OpenBotUI/PushRelaySettings.swift").read_text(encoding="utf-8")
+    SETTINGS = (ROOT / "Sources/HermeyUI/PushRelaySettings.swift").read_text(encoding="utf-8")
     PLIST = (ROOT / "project.yml").read_text(encoding="utf-8")
 
     def test_the_host_pushes_instead_of_the_app(self) -> None:
@@ -325,7 +325,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
     def test_the_banner_carries_the_bot_s_own_face(self) -> None:
         push = (ROOT / "Bridge/hermes_bridge/push.py").read_text(encoding="utf-8")
         icons = (ROOT / "Bridge/hermes_bridge/push_icons.py").read_text(encoding="utf-8")
-        exporter = (ROOT / "Sources/OpenBotUI/PushIcon.swift").read_text(encoding="utf-8")
+        exporter = (ROOT / "Sources/HermeyUI/PushIcon.swift").read_text(encoding="utf-8")
         # The app renders the real face (SwiftUI geometry, not a second drawing) and uploads bytes.
         self.assertIn("ImageRenderer", exporter)
         self.assertIn("BotIconPortrait(face", exporter)
@@ -383,7 +383,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
 
     def test_one_field_is_the_whole_setup(self) -> None:
         self.assertIn('TextField("http://your-host:8081/your-key"', self.SETTINGS)
-        self.assertIn('OpenBotButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)
+        self.assertIn('HermeyButton(isTesting ? "Sending…" : "Send a test"', self.SETTINGS)
 
 
 class TheEmptyChatIsAnInvitation(unittest.TestCase):

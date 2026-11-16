@@ -9,7 +9,7 @@ import SwiftUI
 /// approval buttons must never be smaller than that. Disabled is an explicit parameter
 /// rather than an environment read: a `ButtonStyle` does not see `\.isEnabled`
 /// reliably, and a button that looks enabled but is not is worse than no button.
-public struct OpenBotButton: View {
+public struct HermeyButton: View {
     public enum Kind: Equatable {
         case primary
         case secondary
@@ -89,7 +89,7 @@ public struct OpenBotButton: View {
 
     private var foreground: Color {
         switch kind {
-        // --openbot-text-on-accent is #ffffff, which is text-primary in the dark palette.
+        // --graphite-text-on-accent is #ffffff, which is text-primary in the dark palette.
         case .primary: return Tokens.textPrimary
         case .secondary: return Tokens.textSecondary
         case .ghost: return Tokens.textMuted
@@ -136,17 +136,17 @@ public struct OpenBotButton: View {
 
 /// Icon-only button for a toolbar or a card corner. `label` is required: an icon has no
 /// accessible name of its own.
-public struct OpenBotIconButton: View {
+public struct HermeyIconButton: View {
     private let systemImage: String
     private let label: String
-    private let size: OpenBotButton.Size
+    private let size: HermeyButton.Size
     private let isDisabled: Bool
     private let isBusy: Bool
     private let action: () -> Void
 
     public init(_ systemImage: String,
                 label: String,
-                size: OpenBotButton.Size = .regular,
+                size: HermeyButton.Size = .regular,
                 isDisabled: Bool = false,
                 isBusy: Bool = false,
                 action: @escaping () -> Void) {
@@ -259,20 +259,20 @@ public struct PressableButtonStyle: ButtonStyle {
 #Preview("Buttons · dark") {
     VStack(alignment: .leading, spacing: 14) {
         HStack(spacing: 8) {
-            OpenBotButton("Allow once", kind: .primary) {}
-            OpenBotButton("Always for this session", kind: .ghost) {}
-            OpenBotButton("Deny", kind: .danger) {}
+            HermeyButton("Allow once", kind: .primary) {}
+            HermeyButton("Always for this session", kind: .ghost) {}
+            HermeyButton("Deny", kind: .danger) {}
         }
         HStack(spacing: 8) {
-            OpenBotButton("Send", systemImage: "arrow.up", kind: .primary, size: .small) {}
-            OpenBotButton("Retry", kind: .secondary, size: .small) {}
-            OpenBotButton("Sending", kind: .secondary, size: .small, isBusy: true) {}
-            OpenBotButton("Disabled", kind: .primary, size: .small, isDisabled: true) {}
+            HermeyButton("Send", systemImage: "arrow.up", kind: .primary, size: .small) {}
+            HermeyButton("Retry", kind: .secondary, size: .small) {}
+            HermeyButton("Sending", kind: .secondary, size: .small, isBusy: true) {}
+            HermeyButton("Disabled", kind: .primary, size: .small, isDisabled: true) {}
         }
         HStack(spacing: 8) {
-            OpenBotButton("Continue", kind: .primary, corners: .capsule) {}
-            OpenBotIconButton("paperclip", label: "Attach a file") {}
-            OpenBotIconButton("mic", label: "Dictate") {}
+            HermeyButton("Continue", kind: .primary, corners: .capsule) {}
+            HermeyIconButton("paperclip", label: "Attach a file") {}
+            HermeyIconButton("mic", label: "Dictate") {}
             TextButton("Retry") {}
         }
     }

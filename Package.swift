@@ -6,15 +6,15 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "HermesKit", targets: ["HermesKit"]),
-        .library(name: "OpenBotUI", targets: ["OpenBotUI"]),
+        .library(name: "HermeyUI", targets: ["HermeyUI"]),
         .library(name: "HermesRender", targets: ["HermesRender"]),
         .library(name: "HermesAppKit", targets: ["HermesAppKit"]),
     ],
     targets: [
         // Wire protocol, transport, stores. No UI, no SwiftUI.
         .target(name: "HermesKit", path: "Sources/HermesKit"),
-        // The OpenBot design system: tokens + components.
-        .target(name: "OpenBotUI", dependencies: ["HermesKit"], path: "Sources/OpenBotUI"),
+        // The house design system: tokens + components.
+        .target(name: "HermeyUI", dependencies: ["HermesKit"], path: "Sources/HermeyUI"),
         // Incremental markdown / code / tool-output rendering.
         .target(name: "HermesRender", dependencies: ["HermesKit"], path: "Sources/HermesRender"),
         // Shared application state consumed by both app shells.

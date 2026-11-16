@@ -1,9 +1,9 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
-// TODO(design-system): a clarify/question card is not in OpenBotUI yet. It is built here
+// TODO(design-system): a clarify/question card is not in HermeyUI yet. It is built here
 // from the same tokens and controls so the palette stays consistent; swap it for the
 // design system's own card when that lands.
 
@@ -50,7 +50,7 @@ struct MacClarifyCard: View {
             if !presentation.choices.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(presentation.choices, id: \.self) { choice in
-                        OpenBotButton(choice, kind: .secondary, size: .small) {
+                        HermeyButton(choice, kind: .secondary, size: .small) {
                             Haptics.selection()
                             store.answer(request, choice: choice)
                         }
@@ -81,7 +81,7 @@ struct MacClarifyCard: View {
                     .onSubmit { submit() }
                     .accessibilityLabel("Your answer")
 
-                OpenBotButton("Answer",
+                HermeyButton("Answer",
                               systemImage: "arrow.up",
                               kind: .primary,
                               size: .small,

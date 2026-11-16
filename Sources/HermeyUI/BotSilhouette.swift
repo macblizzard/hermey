@@ -6,7 +6,7 @@ import SwiftUI
 /// robots, and they were ten variations of one idea — the state badge had to sit on top of a busy
 /// mark, and at 22 pt in a list row the antenna was a smudge.
 ///
-/// Rakazo's answer is better and this is it: a single solid shape with two dark bars for eyes. The
+/// the shell's answer is better and this is it: a single solid shape with two dark bars for eyes. The
 /// shape does all the identifying, the eyes do all the character, and because the mass is solid, a
 /// badge or a spark on the corner reads instantly instead of competing with the drawing beneath it.
 ///

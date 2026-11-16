@@ -41,7 +41,7 @@ targets:
       - package: HermesApps
         product: HermesKit
       - package: HermesApps
-        product: OpenBotUI
+        product: HermeyUI
       - package: HermesApps
         product: HermesRender
       - package: HermesApps
@@ -111,7 +111,7 @@ targets:
       - package: HermesApps
         product: HermesKit
       - package: HermesApps
-        product: OpenBotUI
+        product: HermeyUI
       - package: HermesApps
         product: HermesRender
       - package: HermesApps

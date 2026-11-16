@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// What a bot may reach for: its skills, and its MCP servers.
 ///

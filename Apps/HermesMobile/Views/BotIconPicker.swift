@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-import OpenBotUI
+import HermeyUI
 import HermesKit
 
 /// One request consumes one freshly minted bridge ticket. Never pass a ticket

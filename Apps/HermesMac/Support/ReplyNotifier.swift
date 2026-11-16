@@ -25,7 +25,7 @@ final class ReplyNotifier: NSObject, ObservableObject, UNUserNotificationCenterD
     static let shared = ReplyNotifier()
 
     /// Set by the shell: a tap on a banner is a request to read that bot.
-    var onOpenBot: ((String) -> Void)?
+    var onGraphite: ((String) -> Void)?
 
     /// What Settings reports. `.notDetermined` means the prompt has not been answered.
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
@@ -115,7 +115,7 @@ final class ReplyNotifier: NSObject, ObservableObject, UNUserNotificationCenterD
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let botID = response.notification.request.content.userInfo["botID"] as? String
         Task { @MainActor in
-            if let botID { self.onOpenBot?(botID) }
+            if let botID { self.onGraphite?(botID) }
         }
         completionHandler()
     }

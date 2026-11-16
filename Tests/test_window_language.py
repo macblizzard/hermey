@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LANGUAGE = (ROOT / "Sources" / "OpenBotUI" / "SheetLanguage.swift").read_text(encoding="utf-8")
+LANGUAGE = (ROOT / "Sources" / "HermeyUI" / "SheetLanguage.swift").read_text(encoding="utf-8")
 DOC = (ROOT / "docs" / "UI-WINDOWS.md").read_text(encoding="utf-8")
 
 APPS = sorted((ROOT / "Apps").rglob("*.swift"))

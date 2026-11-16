@@ -1,4 +1,4 @@
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The 7 pt grab strip between the bot panel and the conversation.

@@ -21,7 +21,7 @@ KIT = (ROOT / "Sources" / "HermesKit" / "BotDefaults.swift").read_text(encoding=
 POINTER = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
 CLIENT = (ROOT / "Sources" / "HermesKit" / "GatewayClient.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
-PANES = (ROOT / "Sources" / "OpenBotUI" / "BotSettingsPanes.swift").read_text(encoding="utf-8")
+PANES = (ROOT / "Sources" / "HermeyUI" / "BotSettingsPanes.swift").read_text(encoding="utf-8")
 IOS = (ROOT / "Apps" / "HermesMobile" / "Views" / "SettingsScreen.swift").read_text(encoding="utf-8")
 MAC = (ROOT / "Apps" / "HermesMac" / "Views" / "MacSettingsView.swift").read_text(encoding="utf-8")
 

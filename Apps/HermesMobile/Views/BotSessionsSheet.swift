@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// **All sessions…** — every conversation the host holds for one bot, newest first, with the one
 /// on screen marked.

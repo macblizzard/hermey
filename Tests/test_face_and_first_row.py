@@ -17,8 +17,8 @@ def source(*parts: str) -> str:
     return (ROOT.joinpath(*parts)).read_text()
 
 
-GALLERY = source("Sources", "OpenBotUI", "BotIconGallery.swift")
-SILHOUETTE = source("Sources", "OpenBotUI", "BotSilhouette.swift")
+GALLERY = source("Sources", "HermeyUI", "BotIconGallery.swift")
+SILHOUETTE = source("Sources", "HermeyUI", "BotSilhouette.swift")
 HEADER = source("Apps", "HermesMac", "Conversation", "ConversationHeader.swift")
 SIDEBAR = source("Apps", "HermesMac", "Sidebar", "BotSidebarView.swift")
 ROOTVIEW = source("Apps", "HermesMac", "Workspace", "WorkspaceRoot.swift")
@@ -118,7 +118,7 @@ class TheLaunchIsAConversation(unittest.TestCase):
     def test_the_last_bot_comes_back(self) -> None:
         self.assertIn('"hermey.lastBot.', self.STORE)
         self.assertIn("func restoreLastBot()", self.STORE)
-        self.assertIn("rememberOpenBot()", self.STORE)
+        self.assertIn("rememberGraphite()", self.STORE)
         # Restored before the "nothing on screen yet" open, so the two do not both open a bot.
         restore = self.STORE.index("restoreLastBot()")
         needed = self.STORE.index("await openConversationIfNeeded()")
@@ -148,7 +148,7 @@ class ThePanelIsOnlyVerbs(unittest.TestCase):
         self.assertNotIn('"Pair host…"', self.PANEL)
 
     def test_the_close_button_stays(self) -> None:
-        self.assertIn('OpenBotIconButton("xmark", label: "Close the bot panel"', self.PANEL)
+        self.assertIn('HermeyIconButton("xmark", label: "Close the bot panel"', self.PANEL)
 
 
 class ThePhoneFloatsLikeTheWindow(unittest.TestCase):
@@ -235,8 +235,8 @@ class TheChromeIsGlass(unittest.TestCase):
     """Liquid Glass where the OS has it, the theme's surface where it does not — one shape either way."""
 
     CHAT = source("Apps", "HermesMobile", "Views", "ConversationScreen.swift")
-    GLASS = source("Sources", "OpenBotUI", "LiquidGlass.swift")
-    COMPOSER = source("Sources", "OpenBotUI", "Composer.swift")
+    GLASS = source("Sources", "HermeyUI", "LiquidGlass.swift")
+    COMPOSER = source("Sources", "HermeyUI", "Composer.swift")
 
     def test_the_helper_is_the_platform_s_glass(self) -> None:
         # The hand-built wash-and-rim recipe is gone. It existed because an opaque canvas band sat

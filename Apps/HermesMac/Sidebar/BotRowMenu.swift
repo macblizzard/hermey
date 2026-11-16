@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// A request from the sidebar's header to the sidebar's list.

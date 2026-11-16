@@ -15,11 +15,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-GALLERY = (ROOT / "Sources" / "OpenBotUI" / "BotIconGallery.swift").read_text(encoding="utf-8")
+GALLERY = (ROOT / "Sources" / "HermeyUI" / "BotIconGallery.swift").read_text(encoding="utf-8")
 HEADER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationHeader.swift").read_text(encoding="utf-8")
 PANE = (ROOT / "Apps" / "HermesMac" / "Conversation" / "ConversationPane.swift").read_text(encoding="utf-8")
 COMPOSER_BAR = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerBar.swift").read_text(encoding="utf-8")
-COMPOSER = (ROOT / "Sources" / "OpenBotUI" / "Composer.swift").read_text(encoding="utf-8")
+COMPOSER = (ROOT / "Sources" / "HermeyUI" / "Composer.swift").read_text(encoding="utf-8")
 TRANSCRIPT = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
 SIDEBAR = (ROOT / "Apps" / "HermesMac" / "Sidebar" / "BotSidebarView.swift").read_text(encoding="utf-8")
 ROSTER = (ROOT / "Apps" / "HermesMac" / "Sidebar" / "SidebarBotList.swift").read_text(encoding="utf-8")
@@ -55,7 +55,7 @@ class TheSidebarRowIsOneCluster(unittest.TestCase):
         row = SIDEBAR.split("private var header: some View", 1)[1].split("private var closeSearch", 1)[0]
         # The spacer comes first: nothing is drawn on the leading edge at all.
         self.assertLess(row.index("Spacer(minLength: 0)"),
-                        row.index('OpenBotIconButton("magnifyingglass"'))
+                        row.index('HermeyIconButton("magnifyingglass"'))
         for glyph in ("magnifyingglass", "sidebar.left", "gearshape"):
             self.assertGreater(row.index(glyph), row.index("Spacer(minLength: 0)"))
 

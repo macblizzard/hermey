@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -48,7 +48,7 @@ struct WorkspaceRoot: View {
                 // a fresh subtree is what guarantees none of them kept the old palette. The model
                 // lives outside this identity, so nothing about the conversation is lost.
                 .id("\(themeID)-\(store.themeVersion)")
-                // Edge to edge, on every side. Rakazo has no frame inside the window: the sidebar's
+                // Edge to edge, on every side. Midnight has no frame inside the window: the sidebar's
                 // fill and the chat's canvas run out to the window's own rounded corners, and the
                 // only thing drawn over the top edge is the traffic lights. The 8 pt surround and
                 // the stroked border this used to wear read as a window inside a window.
@@ -97,7 +97,7 @@ struct WorkspaceRoot: View {
         // Banners: the decision is the model's, the delivery is the system's. Re-run when the
         // model is replaced (a re-pair builds a fresh one), because the sink lives on the model.
         .task(id: ObjectIdentifier(store.model)) {
-            ReplyNotifier.shared.onOpenBot = { botID in store.selectBot(botID) }
+            ReplyNotifier.shared.onGraphite = { botID in store.selectBot(botID) }
             ReplyNotifier.shared.requestAuthorizationIfNeeded()
             ReplyNotifier.shared.updateBadge(store.model.badgeCount)
             store.model.replyNotificationSink = { note in
@@ -349,7 +349,7 @@ struct WorkspaceShell: View {
     /// edge. The panels paint their backgrounds through it; only the sidebar's *content* starts
     /// below it, so the buttons never land on the search field.
     ///
-    /// 4 pt: Rakazo's first row (its search, its toggles, its plus) sits **on the traffic lights'
+    /// 4 pt: the house first row (its search, its toggles, its plus) sits **on the traffic lights'
     /// line**, not under it. With a 34 pt row the centre lands at 21 — within a point of the lights'
     /// 20 pt centre — and the chat header's pill is on the same line.
     static let titlebarStrip: CGFloat = 4
@@ -461,7 +461,7 @@ struct WorkspaceShell: View {
         // The panes start at the **window's** top edge, not at the bottom of the strip a title bar
         // would occupy. `.hiddenTitleBar` removed the bar but not the inset that stood where it
         // was, so both panes began 32 pt down and the transcript was clipped against that line,
-        // cutting the first visible line through its glyphs. Rakazo has no such strip: its text
+        // cutting the first visible line through its glyphs. Midnight has no such strip: its text
         // runs to the edge and dissolves under its own floating pill. The traffic lights need no
         // reservation — they live in the window's frame view and are hit-tested before this content
         // — and the 6 pt drag strip still owns the gesture at the top.

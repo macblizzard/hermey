@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The left panel: **bots, and the conversations behind them**.
@@ -134,7 +134,7 @@ struct BotSidebarView: View {
 
     /// The panel's chrome row: search, the panel's own toggle, then the verbs and Settings.
     ///
-    /// Rakazo's arrangement, and the reason the search box is gone: a permanently open field costs
+    /// the house arrangement, and the reason the search box is gone: a permanently open field costs
     /// the row its whole width for the one moment in ten it is used. The magnifier opens it, the ✕
     /// or Escape closes it, and the roster gets its width back in between.
     private var header: some View {
@@ -148,16 +148,16 @@ struct BotSidebarView: View {
                 // groups when it is one.
                 Spacer(minLength: 0)
 
-                OpenBotIconButton("magnifyingglass",
+                HermeyIconButton("magnifyingglass",
                                   label: isSearching ? "Close search" : "Search bots and messages",
                                   size: .small) {
                     if isSearching { closeSearch() } else { isSearching = true }
                 }
                 .help(isSearching ? "Close search (esc)" : "Search bots and messages")
 
-                // The panel's own toggle, where Rakazo keeps it. The chat header shows one only
+                // The panel's own toggle, where Midnight keeps it. The chat header shows one only
                 // while this panel is hidden, so the door is never gone.
-                OpenBotIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
+                HermeyIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
                     store.toggleSidebar()
                 }
                 .help("Hide the bot panel")
@@ -195,7 +195,7 @@ struct BotSidebarView: View {
                         .layoutPriority(1)
                         .accessibilityIdentifier("sidebar.botSearch")
 
-                    OpenBotIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
+                    HermeyIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
                         .help("Close search (esc)")
                 }
                 .padding(.horizontal, Geometry.sidebarInset)
@@ -321,7 +321,7 @@ struct BotSidebarView: View {
         Task { await store.model.searchTranscripts("") }
     }
 
-    /// The plus, in the filled square Rakazo gives it: the one button in the row that is a verb
+    /// The plus, in the filled square Midnight gives it: the one button in the row that is a verb
     /// rather than a view control. The verbs are ours — add, group chat, manage, hidden, read.
     private var addMenu: some View {
         Menu {
@@ -431,7 +431,7 @@ struct BotSidebarView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
-            OpenBotButton("Pair host…", systemImage: "link", kind: .secondary, size: .small) {
+            HermeyButton("Pair host…", systemImage: "link", kind: .secondary, size: .small) {
                 store.isPairSheetPresented = true
             }
             .padding(.horizontal, 8)
@@ -454,7 +454,7 @@ struct BotSidebarView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
-            OpenBotButton("Connect",
+            HermeyButton("Connect",
                           systemImage: "bolt.horizontal",
                           kind: .secondary,
                           size: .small,
@@ -483,7 +483,7 @@ struct BotSidebarView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
-            OpenBotButton("Check again",
+            HermeyButton("Check again",
                           systemImage: "arrow.clockwise",
                           kind: .secondary,
                           size: .small) {
@@ -509,7 +509,7 @@ struct BotSidebarView: View {
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
-            OpenBotButton("Try again",
+            HermeyButton("Try again",
                           systemImage: "arrow.clockwise",
                           kind: .secondary,
                           size: .small,

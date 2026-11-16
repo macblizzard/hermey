@@ -3,13 +3,13 @@ import XCTest
 
 final class RenderMetricsTests: XCTestCase {
 
-    func testIOSMatchesOpenBotChatText() {
+    func testIOSMatchesHermeyChatText() {
         XCTAssertEqual(ChatTextMetrics.iOS.bodySize, 16)
         XCTAssertEqual(ChatTextMetrics.iOS.bodyLineHeight, 22)
         XCTAssertEqual(ChatTextMetrics.iOS.bodyLineHeightMultiple, 22.0 / 16.0, accuracy: 0.0001)
     }
 
-    func testMacOSMatchesOpenBotChatText() {
+    func testMacOSMatchesHermeyChatText() {
         XCTAssertEqual(ChatTextMetrics.macOS.bodySize, 14)
         XCTAssertEqual(ChatTextMetrics.macOS.bodyLineHeight, 22.68, accuracy: 0.001)
         XCTAssertEqual(ChatTextMetrics.macOS.bodyLineHeightMultiple, 1.62, accuracy: 0.0001)

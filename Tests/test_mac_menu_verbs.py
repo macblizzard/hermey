@@ -17,7 +17,7 @@ class NoDuplicateVerbs(unittest.TestCase):
         self.assertIn('row("Computer", icon: "display"', PANEL)
         self.assertIn("store.toggleComputerPanel()", PANEL)
         self.assertEqual(PANEL.count("toggleComputerPanel()"), 1)
-        self.assertNotIn('OpenBotIconButton("display"', HEADER)
+        self.assertNotIn('HermeyIconButton("display"', HEADER)
         self.assertNotIn("Bot computer…", PANEL)
 
 

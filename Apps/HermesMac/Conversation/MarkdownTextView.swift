@@ -1,5 +1,5 @@
 import HermesRender
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// A message body, rendered incrementally.

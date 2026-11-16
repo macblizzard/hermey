@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The Mac twin of the phone's `BotModelSettingsScreen`.
@@ -58,7 +58,7 @@ struct MacBotSettingsSheet: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    OpenBotButton("Choose bot icon…",
+                    HermeyButton("Choose bot icon…",
                                   kind: .secondary,
                                   size: .small,
                                   isDisabled: store.pairing == nil || store.pairing?.isTicketOnly == true) {
@@ -121,7 +121,7 @@ struct MacBotSettingsSheet: View {
 
             Spacer(minLength: 8)
 
-            OpenBotButton("Done", kind: .secondary, size: .small) {
+            HermeyButton("Done", kind: .secondary, size: .small) {
                 dismiss()
             }
         }
@@ -136,7 +136,7 @@ struct MacBotSettingsSheet: View {
     private var dangerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionCaption("DELETE")
-            OpenBotButton(deleting ? "Deleting…" : "Delete this bot…",
+            HermeyButton(deleting ? "Deleting…" : "Delete this bot…",
                           kind: .secondary,
                           size: .small,
                           isDisabled: deleting || store.pairing == nil || store.pairing?.isTicketOnly == true) {
@@ -180,11 +180,11 @@ struct MacBotSettingsSheet: View {
     private var soulSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionCaption("IDENTITY AND MEMORY")
-            OpenBotButton("Edit SOUL.md…", kind: .secondary, size: .small) {
+            HermeyButton("Edit SOUL.md…", kind: .secondary, size: .small) {
                 showingSoul = true
             }
             // Read-only, and read fresh: the agent rewrites these two whenever it learns something.
-            OpenBotButton("Memory…", kind: .secondary, size: .small) {
+            HermeyButton("Memory…", kind: .secondary, size: .small) {
                 showingMemory = true
             }
             Text("The prompt this bot is built on. Saved to the host; a conversation already open keeps the soul it started with until it is reset.")
@@ -222,7 +222,7 @@ struct MacBotSettingsSheet: View {
                 .disabled(descriptionBusy)
 
             HStack(spacing: 8) {
-                OpenBotButton("Save description", kind: .secondary, size: .small,
+                HermeyButton("Save description", kind: .secondary, size: .small,
                               isDisabled: descriptionBusy || trimmedDescription == savedDescription) {
                     Task { await writeDescription() }
                 }

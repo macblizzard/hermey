@@ -1,7 +1,7 @@
 import AppKit
 import HermesKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// One transcript entry, drawn by role.

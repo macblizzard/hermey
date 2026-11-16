@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBotUI
+import HermeyUI
 
 /// The paperclip's menu.
 ///

@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VIEWER = (ROOT / "Sources" / "OpenBotUI" / "ImageViewer.swift").read_text(encoding="utf-8")
+VIEWER = (ROOT / "Sources" / "HermeyUI" / "ImageViewer.swift").read_text(encoding="utf-8")
 MAC_ROW = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptRowView.swift").read_text(encoding="utf-8")
 IOS_ROW = (ROOT / "Apps" / "HermesMobile" / "Views" / "MobileTranscript.swift").read_text(encoding="utf-8")
 

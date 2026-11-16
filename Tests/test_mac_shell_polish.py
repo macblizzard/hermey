@@ -17,7 +17,7 @@ HEADER = (MAC / "Conversation" / "ConversationHeader.swift").read_text(encoding=
 TRANSCRIPT = (MAC / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
 SIDEBAR = (MAC / "Sidebar" / "BotSidebarView.swift").read_text(encoding="utf-8")
 COMPOSER_BAR = (MAC / "Conversation" / "MacComposerBar.swift").read_text(encoding="utf-8")
-COMPOSER = (ROOT / "Sources" / "OpenBotUI" / "Composer.swift").read_text(encoding="utf-8")
+COMPOSER = (ROOT / "Sources" / "HermeyUI" / "Composer.swift").read_text(encoding="utf-8")
 
 
 class ThePillFloats(unittest.TestCase):
@@ -44,19 +44,19 @@ class ThePillFloats(unittest.TestCase):
 class TheSidebarRowIsIcons(unittest.TestCase):
     def test_search_is_a_button_not_a_box(self) -> None:
         self.assertIn("private var isSearching", SIDEBAR)
-        self.assertIn('OpenBotIconButton("magnifyingglass"', SIDEBAR)
+        self.assertIn('HermeyIconButton("magnifyingglass"', SIDEBAR)
         # The field is the *second* row, not the first: opened in place it took the traffic lights'
         # line and blended into the window's chrome (reported 2026-11-14). So the icon row comes
         # first and always keeps its buttons, and the field appears only while searching, after it.
         row, rest = SIDEBAR.split("if isSearching {", 1)
         self.assertNotIn("MacSidebarSearchField", row)
         self.assertIn("MacSidebarSearchField", rest)
-        self.assertIn('OpenBotIconButton("magnifyingglass"', row,
+        self.assertIn('HermeyIconButton("magnifyingglass"', row,
                       "the button that opens search stays in the row while search is open")
         self.assertIn("sidebar.searchRow", SIDEBAR)
 
     def test_the_panels_toggle_lives_in_the_panel(self) -> None:
-        self.assertIn('OpenBotIconButton("sidebar.left"', SIDEBAR)
+        self.assertIn('HermeyIconButton("sidebar.left"', SIDEBAR)
         self.assertIn("store.toggleSidebar()", SIDEBAR)
         # The chat header keeps one only while the panel is hidden, so the door is never gone.
         self.assertIn("if store.isSidebarHidden {", HEADER)
@@ -95,7 +95,7 @@ class TheComposerIsQuiet(unittest.TestCase):
         self.assertIn("voice.isRecording", hint)
 
     def test_attach_is_a_ring_not_a_bare_glyph(self) -> None:
-        # Rakazo's plus is a circle with a border and a fill that brightens on hover; an unstroked
+        # the plus is a circle with a border and a fill that brightens on hover; an unstroked
         # glyph in a floating capsule read as punctuation rather than a button.
         self.assertIn("ComposerRingButton(glyph: \"plus\"", COMPOSER)
         self.assertIn("Circle().strokeBorder(isHovering ? Tokens.borderFocus : Tokens.borderStrong",

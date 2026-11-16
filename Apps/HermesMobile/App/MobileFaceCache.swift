@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import HermesKit
-import OpenBotUI
+import HermeyUI
 #if os(iOS)
 import UIKit
 

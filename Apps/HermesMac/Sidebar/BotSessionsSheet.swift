@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// **All sessions…** — every conversation the host holds for one bot, newest first, with the one
@@ -57,13 +57,13 @@ struct BotSessionsSheet: View {
 
             Spacer(minLength: 8)
 
-            OpenBotIconButton("arrow.clockwise", label: "Refresh", size: .small,
+            HermeyIconButton("arrow.clockwise", label: "Refresh", size: .small,
                               isBusy: model.sessionsLoading) {
                 Task { await model.loadSessions() }
             }
             .help("Ask the host for this bot's sessions again")
 
-            OpenBotIconButton("xmark", label: "Close", size: .small) { dismiss() }
+            HermeyIconButton("xmark", label: "Close", size: .small) { dismiss() }
                 .help("Close")
         }
     }

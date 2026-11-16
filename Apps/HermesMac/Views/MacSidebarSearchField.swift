@@ -1,7 +1,7 @@
 import SwiftUI
-import OpenBotUI
+import HermeyUI
 
-// TODO(design-system): the sidebar's search field is not in OpenBotUI yet. Replace this
+// TODO(design-system): the sidebar's search field is not in HermeyUI yet. Replace this
 // with the design system's own field as soon as it lands; the geometry here (32 pt tall,
 // 9 pt control radius, `Tokens.control`) is what the spec asks for.
 

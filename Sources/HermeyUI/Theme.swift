@@ -57,14 +57,14 @@ public struct ThemePalette: Identifiable, Equatable {
 public enum ThemeCatalog {
     /// The app's own palette, and the one a fresh install gets.
     ///
-    /// Rakazo's monochrome shell is the house look now: ink on near-black, one blue for unread and
-    /// working, one green for success. The earlier OpenBot palette stays in the catalogue, so a
+    /// Midnight is the house look: ink on near-black, one blue for unread and working, one green
+    /// for success. Graphite — the palette this app shipped before it — stays in the catalogue, so a
     /// restyle that does not land is one pick away from the old face.
-    public static let defaultID = "rakazo"
+    public static let defaultID = "midnight"
 
     public static let all: [ThemePalette] = [
-        rakazo,
-        openbot,
+        midnight,
+        graphite,
         gruvbox,
         tokyoNight,
         catppuccin,
@@ -72,21 +72,27 @@ public enum ThemeCatalog {
         nord,
     ]
 
+    /// Ids this catalogue published under earlier names. A stored choice has to keep working —
+    /// falling back to the default would silently repaint a user who picked one — so the old ids
+    /// are resolved forward. Nothing else in the app refers to them.
+    static let supersededIDs: [String: String] = ["rakazo": "midnight", "openbot": "graphite"]
+
     public static func theme(id: String) -> ThemePalette {
-        all.first { $0.id == id } ?? rakazo
+        let resolved = supersededIDs[id] ?? id
+        return all.first { $0.id == resolved } ?? midnight
     }
 
     // MARK: - Palettes
 
-    /// The shell's own palette, ported from Rakazo's `webDarkTokens`
-    /// (`packages/ui-tokens/src/index.ts`): `background #0A0A0A`, `muted #232323`, ink `#F5F5F5`,
-    /// `unread`/`statusWorking #4D9BFF`, `success #00BA69`, `warning #E28600`, `destructive #FF6463`.
+    /// The shell's own palette, taken from the reference dark token table this design follows:
+    /// canvas `#0A0A0A`, muted `#232323`, ink `#F5F5F5`, unread/working `#4D9BFF`, success
+    /// `#00BA69`, warning `#E28600`, destructive `#FF6463`.
     ///
     /// Text tones are the palette's alphas flattened onto this canvas, because a SwiftUI `Color` in
     /// a token table has to be one value: `mutedForeground #F5F5F5A8` → `#A5A5A5`,
     /// `faintForeground #F5F5F58A` → `#898989`, both composited over `#0A0A0A`.
-    public static let rakazo = ThemePalette.make(
-        id: "rakazo", name: "Rakazo",
+    public static let midnight = ThemePalette.make(
+        id: "midnight", name: "Midnight",
         canvas: 0x0A0A0A, frame: 0x0A0A0A, surface: 0x232323, surfaceHigh: 0x2B2B2B,
         sheet: 0x161616,
         text: 0xF5F5F5, textMuted: 0xA5A5A5, textDim: 0x898989,
@@ -94,9 +100,9 @@ public enum ThemeCatalog {
         success: 0x00BA69, warning: 0xE28600, danger: 0xFF6463,
         borderAlpha: 0.10)
 
-    /// The palette this app shipped before the Rakazo shell, kept for the way back.
-    public static let openbot = ThemePalette.make(
-        id: "openbot", name: "OpenBot",
+    /// The palette this app shipped before Midnight, kept for the way back.
+    public static let graphite = ThemePalette.make(
+        id: "graphite", name: "Graphite",
         canvas: 0x1A1A1A, frame: 0x0D0D0D, surface: 0x212121, surfaceHigh: 0x242424,
         sheet: 0x141414,
         text: 0xFFFFFF, textMuted: 0x979797, textDim: 0x6A6A6A,
@@ -172,18 +178,22 @@ public enum ThemeRuntime {
     @discardableResult
     public static func restoreFromDefaults() -> String {
         let stored = UserDefaults.standard.string(forKey: defaultsKey)
-        let migratedKey = "hermey.theme.migrated.rakazo"
+        let migratedKey = "hermey.theme.migrated.midnight"
         if UserDefaults.standard.bool(forKey: migratedKey) == false {
             UserDefaults.standard.set(true, forKey: migratedKey)
-            if stored == nil || stored == "openbot" {
+            if stored == nil || stored == "graphite" {
                 UserDefaults.standard.set(ThemeCatalog.defaultID, forKey: defaultsKey)
                 active = ThemeCatalog.theme(id: ThemeCatalog.defaultID)
                 return ThemeCatalog.defaultID
             }
         }
         let id = stored ?? ThemeCatalog.defaultID
-        active = ThemeCatalog.theme(id: id)
-        return id
+        let palette = ThemeCatalog.theme(id: id)
+        // A name from before the rename is written back as the id it now has, so the next read is
+        // not a lookup through the compatibility table.
+        if palette.id != id { UserDefaults.standard.set(palette.id, forKey: defaultsKey) }
+        active = palette
+        return palette.id
     }
 
     public static func apply(id: String) {

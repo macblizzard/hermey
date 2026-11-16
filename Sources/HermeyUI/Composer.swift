@@ -389,7 +389,7 @@ public struct Composer: View {
     /// The attach button. A **plus**, not a paperclip: it opens a menu of things to add, and a
     /// plus says "add" without promising that everything behind it is a file.
     ///
-    /// It wears a ring, the way Rakazo's does: an unstroked glyph in a floating capsule read as
+    /// It wears a ring, the way the shell's does: an unstroked glyph in a floating capsule read as
     /// loose punctuation rather than a button, and the ring is what says "this is pressable" before
     /// the cursor arrives. Hover fills it brighter; the ring stays.
     @ViewBuilder

@@ -1,6 +1,6 @@
 import AppKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 import UserNotifications
 

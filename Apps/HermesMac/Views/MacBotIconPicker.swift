@@ -1,6 +1,6 @@
 import Foundation
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The bridge consumes a fresh ticket for every HTTP request, including refreshes.
@@ -98,7 +98,7 @@ struct MacBotIconPicker: View {
                     .font(TypeScale.font(Tokens.textLG, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)
                 Spacer()
-                OpenBotButton("Cancel", kind: .secondary, size: .small) { dismiss() }
+                HermeyButton("Cancel", kind: .secondary, size: .small) { dismiss() }
                     .disabled(saving)
             }
             Text("Any shape, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")

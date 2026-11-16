@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Which model this bot thinks with — its own door, off the bot's pill panel.
@@ -81,7 +81,7 @@ struct MacModelSheet: View {
         HStack(spacing: 8) {
             SectionCaption("MODEL")
             Spacer(minLength: 8)
-            OpenBotButton("Done", kind: .secondary, size: .small) { dismiss() }
+            HermeyButton("Done", kind: .secondary, size: .small) { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
@@ -208,7 +208,7 @@ struct MacModelSheet: View {
             case .applied:
                 await refresh()
                 if bot.id == model.selectedBotID {
-                    await store.refreshOpenBotModelLabel()
+                    await store.refreshHermeyModelLabel()
                 }
             case .confirmationRequired(let message):
                 confirmation = message

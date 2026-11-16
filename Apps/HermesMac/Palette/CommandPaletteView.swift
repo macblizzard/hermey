@@ -1,5 +1,5 @@
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// ⌘K. A filter over the live command list, nothing more.

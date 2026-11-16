@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 // MARK: - Presentation
 
@@ -163,7 +163,7 @@ struct MobilePendingRequestCard: View {
 
 /// The non-approval request: a question with options, or a free-form prompt.
 ///
-/// TODO(design-system): replace with an OpenBotUI `QuestionCard` once one lands; this is
+/// TODO(design-system): replace with an HermeyUI `QuestionCard` once one lands; this is
 /// the same card shape as ApprovalCard without the warning tint.
 struct MobileQuestionCard: View {
     let presentation: PendingRequestPresentation
@@ -199,7 +199,7 @@ struct MobileQuestionCard: View {
             if !presentation.choices.isEmpty {
                 VStack(spacing: 8) {
                     ForEach(presentation.choices) { choice in
-                        OpenBotButton(choice.label, kind: .secondary) { onChoose(choice) }
+                        HermeyButton(choice.label, kind: .secondary) { onChoose(choice) }
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

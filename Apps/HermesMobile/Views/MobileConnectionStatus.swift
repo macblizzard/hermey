@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 extension AppModel.Connection {
     /// The chip and the banner both talk `TransportState`; the app's model has its own

@@ -1,7 +1,7 @@
 import Foundation
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// The Mac's Settings window — `⌘,`, a real `Settings` scene, not another sheet.

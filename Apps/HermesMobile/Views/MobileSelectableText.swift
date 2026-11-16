@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 
 /// Prose you can actually select.
 ///

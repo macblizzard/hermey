@@ -1,6 +1,6 @@
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// One name, asked for once: **New category…** and **Rename “Work”…**.
@@ -81,10 +81,10 @@ struct BotCategorySheet: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
 
-                OpenBotButton("Cancel", kind: .ghost, size: .small) { dismiss() }
+                HermeyButton("Cancel", kind: .ghost, size: .small) { dismiss() }
                     .disabled(isSaving)
 
-                OpenBotButton(isSaving ? "Saving…" : confirmTitle,
+                HermeyButton(isSaving ? "Saving…" : confirmTitle,
                               kind: .primary,
                               size: .small,
                               isDisabled: trimmed.isEmpty || isSaving,

@@ -1,6 +1,6 @@
 import HermesKit
 import HermesRender
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 #if os(macOS)
 import AppKit

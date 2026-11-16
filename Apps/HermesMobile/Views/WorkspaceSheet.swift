@@ -1,7 +1,7 @@
 import SwiftUI
 import PDFKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 
 /// The bot's workspace, as a place to read rather than a place to manage.
 ///

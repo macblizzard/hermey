@@ -9,7 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text(encoding="utf-8")
-ROW = (ROOT / "Sources/OpenBotUI/QuickReactionRow.swift").read_text(encoding="utf-8")
+ROW = (ROOT / "Sources/HermeyUI/QuickReactionRow.swift").read_text(encoding="utf-8")
 
 
 class ReactionPickerRegressionTests(unittest.TestCase):

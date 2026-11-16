@@ -157,9 +157,9 @@ public struct ApprovalCard: View {
     }
 
     private func answerButton(_ decision: Decision,
-                              kind: OpenBotButton.Kind,
+                              kind: HermeyButton.Kind,
                               title: String? = nil) -> some View {
-        OpenBotButton(title ?? decision.actionTitle,
+        HermeyButton(title ?? decision.actionTitle,
                       kind: kind,
                       isDisabled: answering != nil,
                       isBusy: answering == decision) {
@@ -256,7 +256,7 @@ public struct ApprovalCard: View {
                      status: .answered(.once),
                      answeredAt: Date().addingTimeInterval(-600))
         ApprovalCard(tool: "write_file",
-                     command: "Sources/OpenBotUI/ToolCard.swift",
+                     command: "Sources/HermeyUI/ToolCard.swift",
                      status: .answered(.denied),
                      answeredAt: Date().addingTimeInterval(-60))
         ApprovalCard(tool: "sudo",

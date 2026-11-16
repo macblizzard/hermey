@@ -1,7 +1,7 @@
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
-// TODO(design-system): no inline error strip exists in OpenBotUI yet (the connection
+// TODO(design-system): no inline error strip exists in HermeyUI yet (the connection
 // banner covers transport, not a failed send).
 
 /// A send that failed, above the composer — with the draft still in the field.
@@ -31,7 +31,7 @@ struct MacErrorStrip: View {
                 TextButton("Retry", tone: Tokens.accentText, action: onRetry)
             }
 
-            OpenBotIconButton("xmark", label: "Dismiss this error", size: .small) {
+            HermeyIconButton("xmark", label: "Dismiss this error", size: .small) {
                 onDismiss()
             }
         }

@@ -11,7 +11,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GROUPING = (ROOT / "Sources/HermesKit/TranscriptGrouping.swift").read_text()
-GROUP_VIEW = (ROOT / "Sources/OpenBotUI/ToolRunGroup.swift").read_text()
+GROUP_VIEW = (ROOT / "Sources/HermeyUI/ToolRunGroup.swift").read_text()
 MAC_SCROLL = (ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift").read_text()
 IOS_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text()
 IOS_ROW = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text()

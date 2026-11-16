@@ -83,8 +83,8 @@ class TheMacDelivers(unittest.TestCase):
         self.assertIn("NSApp.dockTile.badgeLabel = count > 0 ? \"\\(count)\" : nil", MAC_NOTIFIER)
 
     def test_a_tap_opens_that_bot(self) -> None:
-        self.assertIn("onOpenBot", MAC_NOTIFIER)
-        self.assertIn("ReplyNotifier.shared.onOpenBot = { botID in store.selectBot(botID) }", MAC_ROOT)
+        self.assertIn("onGraphite", MAC_NOTIFIER)
+        self.assertIn("ReplyNotifier.shared.onGraphite = { botID in store.selectBot(botID) }", MAC_ROOT)
 
     def test_the_shell_keeps_the_badge_current(self) -> None:
         self.assertIn(".onChange(of: store.model.badgeCount) { _, count in", MAC_ROOT)

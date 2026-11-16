@@ -17,7 +17,7 @@ Apply `.hermesSheetChrome()` where the sheet is **presented**, not inside the sh
 }
 ```
 
-It is defined once, in `Sources/OpenBotUI/SheetLanguage.swift`, and does exactly three things:
+It is defined once, in `Sources/HermeyUI/SheetLanguage.swift`, and does exactly three things:
 
 | What | Why |
 |---|---|

@@ -447,7 +447,7 @@ public struct RoomChatView: View {
     private var paneHeader: some View {
         HStack(spacing: 9) {
             if let onToggleSidebar {
-                OpenBotIconButton(sidebarHidden ? "sidebar.leading" : "sidebar.left",
+                HermeyIconButton(sidebarHidden ? "sidebar.leading" : "sidebar.left",
                                   label: sidebarHidden ? "Show the bot panel" : "Hide the bot panel",
                                   size: .small) {
                     onToggleSidebar()
@@ -480,7 +480,7 @@ public struct RoomChatView: View {
                 StatusChip("running", tone: .success, showsDot: true, size: .small)
             }
 
-            OpenBotIconButton(findOpen ? "xmark" : "magnifyingglass",
+            HermeyIconButton(findOpen ? "xmark" : "magnifyingglass",
                               label: findOpen ? "Close the find field" : "Find in this group chat",
                               size: .small) {
                 findOpen.toggle()

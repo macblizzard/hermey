@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import HermesAppKit
 import HermesKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// Everything the macOS shell owns that `AppModel` does not: the pairing, the palette, the
@@ -113,7 +113,7 @@ final class WorkspaceStore: ObservableObject {
     /// panel is a property of the window, not of the selected bot — switching bots keeps it open
     /// and the pane re-labels itself.
     @Published var isComputerPanelPresented = false
-    /// The bot's own panel on the right edge: the phone's drawer, as a pane. Rakazo's shape —
+    /// The bot's own panel on the right edge: the phone's drawer, as a pane. the house shape —
     /// the name in the header is the control, and every verb about this bot lives beside the chat
     /// rather than in a dropdown that closes after one click.
     @Published var isBotPanelPresented = false
@@ -211,7 +211,7 @@ final class WorkspaceStore: ObservableObject {
     ///
     /// Silent on failure: no chip is honest, a stale or gateway-wide model name is the bug this
     /// replaces. Called when the workspace appears, when the bot changes, and after a settings write.
-    func refreshOpenBotModelLabel() async {
+    func refreshHermeyModelLabel() async {
         guard let id = model.selectedBotID else {
             openBotModelLabel = nil
             return
@@ -275,8 +275,8 @@ final class WorkspaceStore: ObservableObject {
     /// Resume-or-create, then refresh the header's model chip.
     private func openConversation(for botID: String) async {
         _ = await model.endlessSession(for: botID)
-        await refreshOpenBotModelLabel()
-        rememberOpenBot()
+        await refreshHermeyModelLabel()
+        rememberGraphite()
     }
 
     /// After the socket opens: nothing is on screen yet, so open the selected bot's conversation.
@@ -291,7 +291,7 @@ final class WorkspaceStore: ObservableObject {
     /// whichever bot the other one was last looking at.
     private static func lastBotKey(_ host: String) -> String { "hermey.lastBot.\(host)" }
 
-    private func rememberOpenBot() {
+    private func rememberGraphite() {
         guard let id = model.selectedBotID else { return }
         UserDefaults.standard.set(id, forKey: Self.lastBotKey(hostKey))
     }

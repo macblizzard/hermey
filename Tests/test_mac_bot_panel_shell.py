@@ -1,4 +1,4 @@
-"""The Mac shell, Rakazo's way: no frame, and the name in the header is the control.
+"""The Mac shell, the house style: no frame, and the name in the header is the control.
 
 Three things are being pinned here, and each one is a shape rather than a pixel count:
 
@@ -27,7 +27,7 @@ LAYOUT = (ROOT / "Sources" / "HermesAppKit" / "WindowLayout.swift").read_text(en
 
 class TheWindowIsEdgeToEdge(unittest.TestCase):
     def test_the_shell_has_no_surround_and_no_drawn_border(self) -> None:
-        # Rakazo has no frame inside the window: the sidebar's fill runs out to the window's own
+        # Midnight has no frame inside the window: the sidebar's fill runs out to the window's own
         # rounded corners. A surround plus a stroked border reads as a window inside a window.
         self.assertNotIn(".padding(.horizontal, 8)", ROOTVIEW)
         self.assertNotIn(".padding(.bottom, 8)", ROOTVIEW)
@@ -130,7 +130,7 @@ class ThePanelIsAPane(unittest.TestCase):
         # The bot's face opened flush against the frame; the column now starts on its own inset
         # (asked for 2026-11-15). The value lives with the other header geometry, not inline.
         self.assertIn("Geometry.botPanelTopInset", PANEL)
-        tokens = (ROOT / "Sources" / "OpenBotUI" / "Tokens.swift").read_text(encoding="utf-8")
+        tokens = (ROOT / "Sources" / "HermeyUI" / "Tokens.swift").read_text(encoding="utf-8")
         self.assertIn("public static let botPanelTopInset: CGFloat = 30", tokens)
 
     def test_it_sits_in_the_trailing_slot(self) -> None:
@@ -158,7 +158,7 @@ class ThePanelIsAPane(unittest.TestCase):
     def test_escape_and_the_close_button_put_it_away(self) -> None:
         self.assertIn(".onExitCommand { close() }", PANEL)
         self.assertIn("keyboardShortcut(.escape, modifiers: [])", PANEL)
-        self.assertIn('OpenBotIconButton("xmark"', PANEL)
+        self.assertIn('HermeyIconButton("xmark"', PANEL)
 
     def test_it_is_not_modal(self) -> None:
         # A sheet would stop the transcript behind it; the whole point is watching a compaction

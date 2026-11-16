@@ -1,6 +1,6 @@
 import SwiftUI
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// A bot's own page, sliding up from the bottom, opened by tapping the pill.
 ///

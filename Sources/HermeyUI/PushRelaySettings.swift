@@ -51,13 +51,13 @@ public struct PushRelaySettings: View {
                 .accessibilityIdentifier("pushRelayURL")
 
             HStack(spacing: 8) {
-                OpenBotButton(isSaving ? "Saving…" : "Save",
+                HermeyButton(isSaving ? "Saving…" : "Save",
                               kind: .secondary,
                               size: .small,
                               isDisabled: isSaving || draft.trimmingCharacters(in: .whitespaces).isEmpty) {
                     Task { await save() }
                 }
-                OpenBotButton(isTesting ? "Sending…" : "Send a test",
+                HermeyButton(isTesting ? "Sending…" : "Send a test",
                               kind: .secondary,
                               size: .small,
                               isDisabled: isTesting || storedURL.isEmpty) {

@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBotUI
+import HermeyUI
 
 #if canImport(AVFoundation) && os(iOS)
 import AVFoundation

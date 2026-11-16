@@ -1,5 +1,5 @@
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 import SwiftUI
 
 /// macOS window: **bot panel on the left, chat on the right** — the phone's two-pane shape, with

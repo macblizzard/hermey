@@ -148,7 +148,7 @@ public struct ImageViewer: View {
             zoomControls
             Spacer(minLength: 4)
             exportControls
-            OpenBotButton("Done", kind: .primary, size: .small) { onClose() }
+            HermeyButton("Done", kind: .primary, size: .small) { onClose() }
                 .fixedSize()
                 .layoutPriority(2)
         }

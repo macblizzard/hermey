@@ -1,7 +1,7 @@
 import SwiftUI
 import HermesKit
 import HermesAppKit
-import OpenBotUI
+import HermeyUI
 
 /// The app's main screen: every bot this host serves.
 ///
@@ -15,7 +15,7 @@ import OpenBotUI
 struct BotListScreen: View {
     @ObservedObject var model: AppModel
     /// Called when a row is chosen, so the tab can push that bot's conversation.
-    var onOpenBot: (Bot) -> Void = { _ in }
+    var onGraphite: (Bot) -> Void = { _ in }
     /// How a room is opened. The bots tab supplies this so a group chat pushes onto the same
     /// navigation stack a bot's conversation pushes onto, instead of covering the app.
     var onOpenRoom: ((RoomSummary) -> Void)? = nil
@@ -344,7 +344,7 @@ struct BotListScreen: View {
         Button {
             Haptics.selection()
             recordOpened(bot)
-            onOpenBot(bot)
+            onGraphite(bot)
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
                 // A bot always has a face: its own if the host has one, otherwise the portrait its
@@ -365,7 +365,7 @@ struct BotListScreen: View {
                             .offset(x: 5, y: 4)
                     }
 
-                // Rakazo's row is two lines, not three: the name and when it last spoke on the
+                // the house row is two lines, not three: the name and when it last spoke on the
                 // first, what it said on the second. The count moved to the app badge — the row
                 // only has to say "there is something here", which the dot does.
                 VStack(alignment: .leading, spacing: 4) {
@@ -610,7 +610,7 @@ struct BotListScreen: View {
                         Haptics.selection()
                         guard let bot = model.bots.first(where: { $0.id == hit.profile }) else { return }
                         recordOpened(bot)
-                        onOpenBot(bot)
+                        onGraphite(bot)
                     } label: {
                         findingRow(hit)
                     }
@@ -785,7 +785,7 @@ struct BotListScreen: View {
         Task { @MainActor in
             recordOpened(bot)
             await model.openSession(session.id, for: bot.id)
-            onOpenBot(bot)
+            onGraphite(bot)
         }
     }
 
@@ -889,7 +889,7 @@ struct BotListScreen: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            OpenBotButton("Pair a device",
+            HermeyButton("Pair a device",
                           systemImage: "qrcode",
                           kind: .primary,
                           corners: .capsule) {
@@ -927,7 +927,7 @@ struct BotListScreen: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            OpenBotButton("Try again",
+            HermeyButton("Try again",
                           systemImage: "arrow.clockwise",
                           kind: .secondary,
                           corners: .capsule) {
@@ -954,7 +954,7 @@ struct BotListScreen: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            OpenBotButton("Check again",
+            HermeyButton("Check again",
                           systemImage: "arrow.clockwise",
                           kind: .secondary,
                           corners: .capsule) {

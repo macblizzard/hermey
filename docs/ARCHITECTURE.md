@@ -21,7 +21,7 @@ Two processes on the host, one in your pocket.
 | `Apps/HermesMac` | macOS 14 | three-pane desktop shell over the same packages |
 | `Sources/HermesKit` | SwiftPM | protocol, transport, pairing models, message refs |
 | `Sources/HermesRender` | SwiftPM | markdown → block model (tables, code, quotes) |
-| `Sources/OpenBotUI` | SwiftPM | the design system and shared screens |
+| `Sources/HermeyUI` | SwiftPM | the design system and shared screens |
 | `Sources/HermesAppKit` | SwiftPM | shared app state (`AppModel`, refresh, routing) |
 | `Bridge/` | Python 3.11 | host API: pairing, devices, tickets, rooms, attachments, voice |
 | `setup/install.sh` | shell | the one command that puts the bridge on a host |
