@@ -1,6 +1,7 @@
 import HermesAppKit
 import HermeyUI
 import SwiftUI
+import os
 
 #if canImport(Sparkle)
 import Sparkle
@@ -53,9 +54,20 @@ struct HermesMacApp: App {
     /// the moment a person expects to be told, so it asks. `checkForUpdatesInBackground` is the
     /// silent variant — Sparkle still draws its own dismissible prompt when it finds something, and
     /// nothing here installs, gates or blocks: the workspace is usable throughout.
+    /// Subsystem for the one thing about updates that has to be observable from outside the app.
+    ///
+    /// `SULastCheckTime` in the app's defaults says *that* a check happened; this says that the launch
+    /// path asked for one, which is the difference between "Sparkle's scheduler ran at some point" and
+    /// "opening the app asks". Read it with:
+    /// `log show --last 1h --predicate 'subsystem == "dev.hermey.app.mac" and category == "updates"'`.
+    private let updateLog = Logger(subsystem: "dev.hermey.app.mac", category: "updates")
+
     private func checkForUpdatesAtLaunch() {
         #if canImport(Sparkle)
+        updateLog.notice("launch check requested (running \(AppVersion.label, privacy: .public))")
         updater.updater.checkForUpdatesInBackground()
+        #else
+        updateLog.notice("launch check skipped: built without Sparkle")
         #endif
     }
 

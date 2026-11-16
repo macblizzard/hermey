@@ -94,19 +94,27 @@ public struct BotRoutinesSheet: View {
             .inlineSheetTitle()
             .sheetSizing()
             .toolbar {
-                // The + sits where the official app puts it — beside the title, before Done — because
-                // "what does this bot run" and "add one" are the same question asked twice.
-                ToolbarItemGroup(placement: .confirmationAction) {
-                    if let create {
-                        Button {
-                            showNewRoutine = true
-                        } label: {
-                            Image(systemName: "plus")
+                // The + sits beside the title, before Done — and both live in ONE toolbar item, as an
+                // HStack. A `ToolbarItemGroup` whose first member is conditional is not portable: on
+                // macOS the group collapsed to the member that existed, so the + replaced Done and the
+                // sheet had no way out (reported 2026-11-16, force-quit required). One item, two
+                // buttons, no placement left to the platform.
+                ToolbarItem(placement: .confirmationAction) {
+                    HStack(spacing: 12) {
+                        if let create {
+                            Button {
+                                showNewRoutine = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                            .accessibilityLabel("Add routine")
+                            .accessibilityIdentifier("routines.add")
                         }
-                        .accessibilityLabel("Add routine")
-                        .accessibilityIdentifier("routines.add")
+                        // Done is unconditional: this sheet is reached from a drawer row on the phone and
+                        // from a panel on the Mac, and neither has another way back.
+                        Button("Done") { dismiss() }
+                            .accessibilityIdentifier("routines.done")
                     }
-                    Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {

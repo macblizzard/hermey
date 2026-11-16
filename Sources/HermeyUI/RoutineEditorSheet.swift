@@ -116,6 +116,10 @@ public struct RoutineEditorSheet: View {
             .navigationTitle("New Routine")
             .inlineSheetTitle()
             .background(Tokens.canvas)
+            // A Mac sheet sizes itself to its content and a `List` has no intrinsic height, so without
+            // this the "New Routine" modal opened blank — the rows were all there, drawn into a sheet
+            // with no room. `sheetSizing` is the one place in this module that floor is set.
+            .sheetSizing(minWidth: 520, minHeight: 560)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

@@ -115,6 +115,40 @@ class TheSheetHasAPlus(unittest.TestCase):
         self.assertIn("if let create {", SHEET)
 
 
+class DoneAlwaysHasADoor(unittest.TestCase):
+    """Both known Mac failures of this sheet, pinned.
+
+    On macOS a `ToolbarItemGroup` whose first member was conditional collapsed to the member that
+    existed: the + replaced Done and the sheet could not be closed (force-quit was needed, 2026-11-16).
+    And a Mac sheet sizes to content while a `List` has no intrinsic height, so the New Routine modal
+    opened blank with every row drawn into a zero-height sheet.
+    """
+
+    def test_add_and_done_share_one_toolbar_item(self) -> None:
+        toolbar = block(SHEET, "ToolbarItem(placement: .confirmationAction) {", ".accessibilityIdentifier(\"routines.done\")")
+        self.assertIn('Image(systemName: "plus")', toolbar)
+        self.assertIn('Button("Done") { dismiss() }', toolbar)
+        self.assertNotIn("ToolbarItemGroup(placement: .confirmationAction)", SHEET,
+                         "a conditional first member can eat the Done button on macOS")
+
+    def test_done_is_not_conditional(self) -> None:
+        toolbar = block(SHEET, "ToolbarItem(placement: .confirmationAction) {", "ToolbarItem(placement: .cancellationAction)")
+        done_at = toolbar.index('Button("Done")')
+        create_at = toolbar.index("if let create {")
+        self.assertLess(create_at, done_at, "Done is inside no `if`, and comes after the +")
+        self.assertIn('accessibilityIdentifier("routines.done")', toolbar)
+
+    def test_the_editor_gets_a_mac_sheet_floor(self) -> None:
+        self.assertIn(".sheetSizing(minWidth: 520, minHeight: 560)", EDITOR,
+                      "without a floor a List in a Mac sheet collapses to its title bar")
+
+    def test_the_mac_launch_check_is_observable(self) -> None:
+        mac_app = (ROOT / "Apps" / "HermesMac" / "HermesMacApp.swift").read_text(encoding="utf-8")
+        self.assertIn("checkForUpdatesInBackground()", mac_app)
+        self.assertIn('Logger(subsystem: "dev.hermey.app.mac", category: "updates")', mac_app,
+                      "SULastCheckTime says a check happened; this says the launch path asked for one")
+
+
 class TheFormMatchesTheReference(unittest.TestCase):
     def test_the_fields_are_the_official_forms_fields(self) -> None:
         for anchor in ('TextField("Morning summary (optional)"',
