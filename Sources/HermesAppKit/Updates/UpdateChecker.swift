@@ -19,15 +19,20 @@ public struct AvailableUpdate: Identifiable, Equatable, Sendable {
     public let size: Int
     /// The publisher's digest, shown for the record. The app does not download, so it cannot verify it.
     public let sha256: String
+    /// What changed in this build — the publisher's release notes, shown in the card. Empty when the
+    /// feed carried none, which is a card without a list rather than a card without an update.
+    public let notes: String
 
     public var id: Int { build }
 
-    public init(version: String, build: Int, url: URL, size: Int, sha256: String) {
+    public init(version: String, build: Int, url: URL, size: Int, sha256: String,
+                notes: String = "") {
         self.version = version
         self.build = build
         self.url = url
         self.size = size
         self.sha256 = sha256
+        self.notes = notes
     }
 }
 
@@ -256,7 +261,8 @@ public final class UpdateChecker: ObservableObject {
                                        build: build,
                                        url: url,
                                        size: entry.size ?? 0,
-                                       sha256: entry.sha256 ?? "")
+                                       sha256: entry.sha256 ?? "",
+                                       notes: entry.localizedDescription ?? "")
             }
             if let newest = candidates.max(by: { $0.build < $1.build }) { return newest }
         }
@@ -269,7 +275,8 @@ public final class UpdateChecker: ObservableObject {
                                    build: build,
                                    url: url,
                                    size: document.size ?? 0,
-                                   sha256: document.sha256 ?? "")
+                                   sha256: document.sha256 ?? "",
+                                   notes: document.notes ?? "")
         }
 
         return nil
@@ -306,6 +313,8 @@ private struct AltStoreDocument: Decodable {
         let downloadURL: String?
         let size: Int?
         let sha256: String?
+        /// The publisher's release notes for this build — what changed, in the card.
+        let localizedDescription: String?
     }
 
     let apps: [App]?
@@ -318,6 +327,8 @@ private struct MacDocument: Decodable {
     let url: String?
     let size: Int?
     let sha256: String?
+    /// The same notes as the AltStore document carries, under the key this feed uses.
+    let notes: String?
 }
 
 /// A build number as either a JSON string or a number.

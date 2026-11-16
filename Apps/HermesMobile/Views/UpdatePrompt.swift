@@ -50,6 +50,23 @@ struct UpdatePrompt: View {
                         .foregroundStyle(Tokens.textMuted)
                         .monospacedDigit()
                 }
+
+                // What changed, as the publisher wrote it. Scrollable and capped: release notes can
+                // be long, and the card must never push its own buttons off the sheet.
+                if !update.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ScrollView {
+                        Text(update.notes)
+                            .font(TypeScale.font(TypeScale.sm))
+                            .foregroundStyle(Tokens.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 220)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                        .fill(Tokens.surface))
+                }
             }
 
             VStack(spacing: 10) {

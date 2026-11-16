@@ -168,7 +168,11 @@ def appcast_document(entry: dict, dmg_url: str, dmg_size: int, signature: str, n
         "version": entry["buildVersion"],
         "short": entry["version"],
         "minimum": MAC_MINIMUM_SYSTEM_VERSION,
-        "notes": html.escape(notes or f"Build {entry['version']} ({entry['buildVersion']})."),
+        # Sparkle renders the description as HTML, where a newline is only a space: release notes
+        # arrive one line per change, so the breaks are made explicit.
+        "notes": "<br/>".join(html.escape(line) for line in
+                              (notes or f"Build {entry['version']} ({entry['buildVersion']}).").splitlines())
+                 or "&nbsp;",
         "url": html.escape(dmg_url, quote=True),
         "size": dmg_size,
         "signature": signature,
