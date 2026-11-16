@@ -149,6 +149,59 @@ class DoneAlwaysHasADoor(unittest.TestCase):
                       "SULastCheckTime says a check happened; this says the launch path asked for one")
 
 
+class TheMacPanelMatchesTheOtherMacPanels(unittest.TestCase):
+    """Skills and MCP set the Mac's window language; routines has to speak it.
+
+    Reported 2026-11-16: "it doesnt match the other windows like mcp or skills … and the routines window
+    modal doesnt close with ESC". Escape is `onExitCommand` on the window, not a shortcut on one button,
+    so it works with the list or a text field focused.
+    """
+
+    def setUp(self) -> None:
+        self.sheet = (ROOT / "Apps" / "HermesMac" / "Workspace" / "MacBotRoutinesSheet.swift").read_text(encoding="utf-8")
+        self.editor = (ROOT / "Apps" / "HermesMac" / "Workspace" / "MacRoutineEditorSheet.swift").read_text(encoding="utf-8")
+        self.tools = (ROOT / "Apps" / "HermesMac" / "Workspace" / "MacBotToolsSheet.swift").read_text(encoding="utf-8")
+
+    def test_it_uses_the_same_window_shape_as_skills_and_mcp(self) -> None:
+        for side in (self.sheet, self.tools):
+            self.assertIn(".frame(width: 560, height:", side)
+            self.assertIn("Divider()", side)
+            self.assertIn(".background(Tokens.canvas)", side)
+            self.assertIn("frame(height: 52)", side, "the same header row height")
+            self.assertIn("ScrollView {", side)
+            self.assertIn("LazyVStack(spacing: 0)", side)
+
+    def test_it_is_not_the_phones_navigation_stack_sheet(self) -> None:
+        self.assertNotIn("NavigationStack {", self.sheet, "the Mac panel is not a nav stack")
+        self.assertNotIn("List {", self.sheet)
+        self.assertNotIn(".inlineSheetTitle()", self.sheet)
+
+    def test_escape_closes_it(self) -> None:
+        self.assertIn(".onExitCommand { dismiss() }", self.sheet)
+        self.assertIn(".onExitCommand { dismiss() }", self.editor)
+
+    def test_the_editor_cancels_and_creates(self) -> None:
+        self.assertIn('Button("Cancel") { dismiss() }', self.editor)
+        self.assertIn(".keyboardShortcut(.cancelAction)", self.editor)
+        self.assertIn('Button("Create Routine") { Task { await save() } }', self.editor)
+        self.assertIn(".disabled(!draft.isCreatable)", self.editor)
+
+    def test_the_mac_routes_to_the_panel_not_the_phone_sheet(self) -> None:
+        root = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
+        self.assertIn("MacBotRoutinesSheet(", root)
+        # `MacBotRoutinesSheet(` contains the phone sheet's name as a substring, so the check is a
+        # regex with a negative lookbehind rather than a substring test.
+        import re as _re
+        self.assertIsNone(_re.search(r"(?<!Mac)BotRoutinesSheet\(", root),
+                          "the Mac must not fall back to the phone's sheet")
+
+    def test_the_add_button_lives_in_the_header(self) -> None:
+        header = block(self.sheet, "private var header: some View", "private var empty")
+        self.assertIn('Image(systemName: "plus")', header)
+        self.assertIn('accessibilityIdentifier("routines.add")', header)
+        self.assertIn('Button("Done") { dismiss() }', header)
+
+
 class TheFormMatchesTheReference(unittest.TestCase):
     def test_the_fields_are_the_official_forms_fields(self) -> None:
         for anchor in ('TextField("Morning summary (optional)"',

@@ -161,8 +161,10 @@ struct WorkspaceRoot: View {
                               bot: bot,
                               conversationIsOpen: store.model.selectedBotID == bot.id)
             case .routines(let bot):
-                BotRoutinesSheet(
-                    botName: bot.displayName,
+                // The Mac's own panel, not the phone's sheet: same question, but this window has the
+                // header row and Escape-to-close every other menu item here already has.
+                MacBotRoutinesSheet(
+                    bot: bot,
                     load: { try await store.model.routines(for: bot.id) },
                     setPaused: { jobID, paused in
                         try await store.model.setRoutinePaused(jobID, paused: paused, for: bot.id)
