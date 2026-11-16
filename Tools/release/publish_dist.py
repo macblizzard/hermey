@@ -9,7 +9,7 @@ rebuild from artifacts already on disk:
 
     python3 Tools/release/publish_dist.py --ipa build/Hermey-0.1.484-b484.ipa \\
         --dmg build/Hermey-macOS-unsigned.dmg --directory /srv/hermes-apps-dist \\
-        --base-url https://hermes.corvus-vibes.ts.net:8444 --notes "..."
+        --base-url https://your-host.example.ts.net:8444 --notes "..."
 
 Why it is built this way, each rule paid for by a real failure:
 
@@ -496,12 +496,18 @@ def main() -> int:
     parser.add_argument("--from-disk", action="store_true",
                         help="publish the newest artifacts already in --directory (a manifest repair)")
     parser.add_argument("--directory", type=Path, default=Path("/srv/hermes-apps-dist"))
-    parser.add_argument("--base-url", default="https://hermes.corvus-vibes.ts.net:8444")
+    # No default host: this tree is public, and a tailnet name baked into a released tool is both a
+    # credential-shaped string for the secret scan and a URL that means nothing on anyone else's
+    # machine. The publish that knows its host passes it; the CLI demands one.
+    parser.add_argument("--base-url", default=os.environ.get("HERMEY_MIRROR_BASE_URL"))
     parser.add_argument("--notes", default="")
     parser.add_argument("--no-verify", action="store_true")
     parser.add_argument("--insecure", action="store_true",
                         help="skip TLS verification for the wire check (self-signed origins only)")
     args = parser.parse_args()
+
+    if not args.base_url:
+        parser.error("--base-url is required (or set HERMEY_MIRROR_BASE_URL)")
 
     if args.from_disk:
         ipa, dmg = latest_artifacts(args.directory)
