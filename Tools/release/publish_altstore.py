@@ -249,7 +249,9 @@ def main() -> int:
         source.update({
             "name": "Hermey",
             "identifier": SOURCE_ID,
-            "sourceURL": f"https://raw.githubusercontent.com/{args.repo}/main/altstore.json",
+            # The release asset, not `main`: the manifest is generated and no longer tracked there, so a
+            # raw URL would 404 and a sideloading app that follows `sourceURL` would stop updating.
+            "sourceURL": f"https://github.com/{args.repo}/releases/latest/download/altstore.json",
             "schemaVersion": source.get("schemaVersion", 1),
             "subtitle": "Hermes Agent",
             "description": "Unsigned builds of the Hermes native client, published automatically from CI.",
@@ -327,7 +329,7 @@ def main() -> int:
             args.downloads_repo, args.mac_dmg, f"{version} (build {build})", args.repo)
         print(f"\n  mac      {published_dmg}")
 
-    print(f"\n  source   https://raw.githubusercontent.com/{args.repo}/main/altstore.json")
+    print(f"\n  source   https://github.com/{args.repo}/releases/latest/download/altstore.json")
     print(f"  ipa      {download}  ({len(data)} bytes)")
     return 0
 
