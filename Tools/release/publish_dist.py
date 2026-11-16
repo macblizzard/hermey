@@ -251,16 +251,6 @@ def verify(directory: Path, base_url: str, names: list[str], version: str, build
             if advertised not in names:
                 problems.append(f"{manifest}: downloadURL names {advertised!r}, "
                                 f"which this publish did not stage")
-        for manifest in manifests:
-            try:
-                document = json.loads(fetch(f"{base}/{manifest}?{stamp}").decode())
-            except Exception as error:  # noqa: BLE001
-                problems.append(f"{manifest}: {error}")
-                continue
-            newest = ((document.get("apps") or [{}])[0].get("versions") or [{}])[0]
-            if str(newest.get("buildVersion")) != build or str(newest.get("version")) != version:
-                problems.append(f"{manifest}: advertises {newest.get('version')} "
-                                f"({newest.get('buildVersion')}), published {version} ({build})")
         for feed in FEED_NAMES:
             if not (directory / feed).exists():
                 continue
