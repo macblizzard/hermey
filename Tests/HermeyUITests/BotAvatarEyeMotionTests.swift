@@ -1,4 +1,5 @@
 import XCTest
+import HermesKit
 @testable import HermeyUI
 
 /// The eyes are the acting: each activity gets its own authored track, and every track blinks.
