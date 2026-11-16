@@ -289,13 +289,15 @@ def main() -> int:
         if icon.exists() and not (work / "icon-512.png").exists():
             shutil.copy2(icon, work / "icon-512.png")
 
-        staged = ["altstore.json"]
+        # `altstore.json` is deliberately *not* staged to `main`: it is generated, it names the
+        # mirror host, and it is published where the docs point — the release asset and gh-pages.
+        # Committing it here is what the tree's `.gitignore` forbids, and the secret scan refuses it.
+        staged: list[str] = []
         if (work / "icon-512.png").exists():
             staged.append("icon-512.png")
 
-        # The README carries the same marked build line as the landing page, stamped from this IPA
-        # and committed *with* the manifest, so "which build is current?" cannot answer differently
-        # in the two places a person looks.
+        # The README carries the same marked build line as the landing page, stamped from this IPA,
+        # so "which build is current?" cannot answer differently in the two places a person looks.
         readme_path = work / "README.md"
         if readme_path.is_file():
             original = readme_path.read_text()
@@ -309,7 +311,7 @@ def main() -> int:
 
         # Nothing to write is not a failure: re-running a publish to repair the mirror or the release
         # assets leaves the manifest byte-identical, and `git commit` then exits 1.
-        if not run(["git", "-C", str(work), "status", "--porcelain"]).strip():
+        if not staged or not run(["git", "-C", str(work), "status", "--porcelain"]).strip():
             print("  manifest already published — nothing to commit")
         else:
             run(["git", "-C", str(work), "add", *staged])
