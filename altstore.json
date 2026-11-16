@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.457",
+          "buildVersion": "457",
+          "date": "2026-11-16T01:09:36Z",
+          "localizedDescription": "Bot list top dissolve finishes above the content edge: rows are crisp at rest, only fading as they pass under the bar.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.457/Hermey-0.1.457-b457.ipa",
+          "size": 2860686,
+          "minOSVersion": "17.0",
+          "sha256": "79efd4b24d054787eda91fbebaf802789a0f6dbede6bbc6c4d0fead6e48241b4"
+        },
+        {
           "version": "0.1.455",
           "buildVersion": "455",
           "date": "2026-11-16T00:15:28Z",
@@ -62,16 +72,6 @@
           "size": 2813580,
           "minOSVersion": "17.0",
           "sha256": "12a1a14f645048be68e326890aac7b6908cff3abcbe7c55a6ef2b022c46353a5"
-        },
-        {
-          "version": "0.1.445",
-          "buildVersion": "445",
-          "date": "2026-11-15T20:57:02Z",
-          "localizedDescription": "Bot list hover, \u2318E menu, categories on desktop + host-owned sync, All sessions\u2026, log viewer parity and working sort, idle bot faces no longer animate.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.445/Hermey-0.1.445-b445.ipa",
-          "size": 2719174,
-          "minOSVersion": "17.0",
-          "sha256": "22248dcd9f308c2154ce14120e51b5c3a82ee4f4d2af83b9d734613655b58e9f"
         }
       ],
       "appPermissions": {
