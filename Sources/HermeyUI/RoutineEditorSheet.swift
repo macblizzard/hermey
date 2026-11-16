@@ -33,7 +33,7 @@ public struct RoutineEditorSheet: View {
                 Section("Name") {
                     TextField("Morning summary (optional)", text: $draft.name)
                         .font(TypeScale.font(TypeScale.md))
-                        .textInputAutocapitalization(.never)
+                        .literalTextEntry()
                         .accessibilityIdentifier("routine.name")
                 }
 
@@ -84,8 +84,7 @@ public struct RoutineEditorSheet: View {
                 Section("Advanced") {
                     TextField("Skills, comma separated", text: $skillsText)
                         .font(TypeScale.font(TypeScale.sm))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .literalTextEntry()
                         .onChange(of: skillsText) { _, text in
                             draft.skills = text.split(separator: ",").map(String.init)
                         }
@@ -93,8 +92,7 @@ public struct RoutineEditorSheet: View {
 
                     TextField("Script path on the host", text: $draft.script)
                         .font(TypeScale.font(TypeScale.sm))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .literalTextEntry()
                         .accessibilityIdentifier("routine.script")
                 }
 
@@ -177,8 +175,7 @@ public struct RoutineEditorSheet: View {
         case .custom:
             TextField("0 9 * * * · every 2h · 2026-11-18T09:00:00", text: $draft.schedule.custom)
                 .font(.system(size: TypeScale.sm, design: .monospaced))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+                .literalTextEntry()
                 .accessibilityIdentifier("routine.custom")
         }
     }
@@ -219,3 +216,20 @@ public struct RoutineEditorSheet: View {
         isSaving = false
     }
 }
+
+// MARK: - Platform spellings
+
+private extension View {
+    /// Routine text is host data — a skill name, a script path, a cron expression — so it gets no
+    /// autocapitalisation and no autocorrection. Both spellings are iOS-only, and a `#if` inside a
+    /// modifier chain is the compile risk this file otherwise avoids; one helper, two platforms.
+    @ViewBuilder
+    func literalTextEntry() -> some View {
+        #if os(iOS)
+        self.autocorrectionDisabled().textInputAutocapitalization(.never)
+        #else
+        self
+        #endif
+    }
+}
+
