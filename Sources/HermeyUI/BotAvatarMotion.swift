@@ -402,22 +402,6 @@ public enum BotAvatarMotion {
         }
         return bezier((low + high) / 2, y1, y2)
     }
-}
-
-extension BotAvatarPose {
-    /// Interpolate towards another pose. Translation, rotation, scale and brightness all travel
-    /// linearly once the timing function has been applied, which is what the CSS keyframes do
-    /// between two stops of the same kind.
-    func lerp(_ other: BotAvatarPose, _ t: Double) -> BotAvatarPose {
-        BotAvatarPose(translateX: translateX + (other.translateX - translateX) * t,
-                      translateY: translateY + (other.translateY - translateY) * t,
-                      rotate: rotate + (other.rotate - rotate) * t,
-                      scaleX: scaleX + (other.scaleX - scaleX) * t,
-                      scaleY: scaleY + (other.scaleY - scaleY) * t,
-                      brightness: brightness + (other.brightness - brightness) * t)
-    }
-
-
     // MARK: - The reference's own motion model
 
     /// Where each activity's clock lives, in seconds (`traits.periods`).
@@ -580,5 +564,20 @@ extension BotAvatarPose {
                                      traits: BotAvatarMotionTraits,
                                      at time: Double) -> BotAvatarPose {
         frame(activity: activity, traits: traits, at: time).body
+    }
+}
+
+
+extension BotAvatarPose {
+    /// Interpolate towards another pose. Translation, rotation, scale and brightness all travel
+    /// linearly once the timing function has been applied, which is what the CSS keyframes do
+    /// between two stops of the same kind.
+    func lerp(_ other: BotAvatarPose, _ t: Double) -> BotAvatarPose {
+        BotAvatarPose(translateX: translateX + (other.translateX - translateX) * t,
+                      translateY: translateY + (other.translateY - translateY) * t,
+                      rotate: rotate + (other.rotate - rotate) * t,
+                      scaleX: scaleX + (other.scaleX - scaleX) * t,
+                      scaleY: scaleY + (other.scaleY - scaleY) * t,
+                      brightness: brightness + (other.brightness - brightness) * t)
     }
 }
