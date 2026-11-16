@@ -137,10 +137,10 @@ struct TranscriptRowView: View {
             .buttonStyle(.plain)
             .disabled(label.senderProfile == nil)
             .help("Show the conversation between these two bots")
-            Text(label.body)
-                .font(TypeScale.font(TypeScale.chatBody))
+            // The same rendering an assistant reply gets: a bot's message to another bot is prose
+            // written in the same editor, so its lists, bold and code blocks belong as markup.
+            MarkdownTextView(text: label.body, metrics: .macOSScaled)
                 .foregroundStyle(Tokens.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)

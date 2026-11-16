@@ -207,8 +207,10 @@ struct MobileTranscriptRow: View {
             .disabled(label.senderProfile == nil)
             .accessibilityLabel("\(label.incomingTitle). Show the conversation between these two bots.")
 
-            Text(label.body)
-                .font(TypeScale.font(TypeScale.chatBody))
+            // Markdown, not a plain `Text`: a bot writes to another bot exactly as it writes to the
+            // owner — lists, bold, code fences — and the recipient's side used to show the source
+            // (`**bold**`, `- item`) instead of the rendering. Reported 2026-11-16.
+            MobileMarkdownText(blocks: IncrementalMarkdown.parse(label.body))
                 .foregroundStyle(Tokens.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
