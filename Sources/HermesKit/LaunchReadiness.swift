@@ -125,13 +125,26 @@ public struct LaunchReadiness: Equatable, Sendable {
     /// evaluation rather than on a later one.
     public let deadline: TimeInterval
 
+    /// The shortest the launch screen stays up, in seconds, even when every signal is already true.
+    ///
+    /// A warm launch satisfies the gate in a single frame, and a splash that appears for one frame
+    /// is indistinguishable from a flash of the app — the report was "the boot screen does not show
+    /// up anymore", not "it is too slow". Half a second is long enough to be seen and short enough
+    /// that nobody waits for it: it only ever *extends* the wait, and the deadline still outranks it.
+    public let minimumVisible: TimeInterval
+
     public private(set) var phase: Phase = .waiting
 
     /// When `begin(at:)` was first called, on the caller's clock.
     public private(set) var startedAt: TimeInterval?
 
-    public init(deadline: TimeInterval = LaunchReadiness.defaultDeadline) {
+    /// Half a second, measured against the same uptime clock as the deadline.
+    public static let defaultMinimumVisible: TimeInterval = 0.5
+
+    public init(deadline: TimeInterval = LaunchReadiness.defaultDeadline,
+                minimumVisible: TimeInterval = LaunchReadiness.defaultMinimumVisible) {
         self.deadline = max(deadline, 0)
+        self.minimumVisible = max(minimumVisible, 0)
     }
 
     /// Nothing more will change: `ready` and `failed` are both final.
@@ -161,7 +174,7 @@ public struct LaunchReadiness: Equatable, Sendable {
     /// 2. `!isPaired` → `failed(.notPaired)` (immediate, on the first evaluation);
     /// 3. `connectionFailed` → `failed(.connection)`;
     /// 4. `elapsed >= deadline` → `failed(.deadline)`;
-    /// 5. all five signals → `ready`;
+    /// 5. all five signals *and* `minimumVisible` elapsed → `ready`;
     /// 6. otherwise `.waiting`.
     ///
     /// The deadline outranks readiness on purpose: a host that answers at the stroke of the deadline
@@ -185,7 +198,8 @@ public struct LaunchReadiness: Equatable, Sendable {
             phase = .failed(.deadline)
             return phase
         }
-        if signals.isConnected, signals.rosterAnswered, signals.sessionsAnswered {
+        if signals.isConnected, signals.rosterAnswered, signals.sessionsAnswered,
+           elapsed >= minimumVisible {
             phase = .ready
             return phase
         }

@@ -197,7 +197,7 @@ final class LaunchReadinessTests: XCTestCase {
 
         var ready = LaunchReadiness()
         ready.begin(at: t0)
-        ready.advance(.usable, at: t0)
+        ready.advance(.usable, at: t0 + LaunchReadiness.defaultMinimumVisible)
         XCTAssertFalse(ready.showsBootScreen)
 
         for failure in [LaunchReadiness.Failure.notPaired, .connection, .deadline] {
@@ -218,5 +218,36 @@ final class LaunchReadinessTests: XCTestCase {
             XCTAssertEqual(failed.phase, .failed(failure))
             XCTAssertFalse(failed.showsBootScreen, "\(failure) must uncover the app")
         }
+    }
+
+    // MARK: - The floor
+
+    func testAWarmLaunchStillShowsTheSplashForTheFloor() {
+        // Every signal is already true on the first frame, which is the warm-launch case: the gate
+        // would otherwise uncover the app before the splash had been seen once.
+        var readiness = LaunchReadiness()
+        XCTAssertEqual(readiness.advance(.usable, at: t0), .waiting)
+        XCTAssertTrue(readiness.showsBootScreen)
+        XCTAssertEqual(readiness.advance(.usable, at: t0 + 0.49), .waiting)
+        XCTAssertEqual(readiness.advance(.usable, at: t0 + LaunchReadiness.defaultMinimumVisible),
+                       .ready)
+        XCTAssertFalse(readiness.showsBootScreen)
+    }
+
+    func testTheFloorIsHalfASecond() {
+        XCTAssertEqual(LaunchReadiness.defaultMinimumVisible, 0.5)
+        XCTAssertEqual(LaunchReadiness().minimumVisible, 0.5)
+    }
+
+    func testANegativeFloorIsTreatedAsZero() {
+        XCTAssertEqual(LaunchReadiness(minimumVisible: -2).minimumVisible, 0)
+    }
+
+    func testTheDeadlineOutranksTheFloor() {
+        // A host that never answers must not be held for the floor's sake: the person is owed the
+        // app's own screen, not a longer splash.
+        var readiness = LaunchReadiness(deadline: 0.2, minimumVisible: 5)
+        readiness.begin(at: t0)
+        XCTAssertEqual(readiness.advance(.usable, at: t0 + 0.2), .failed(.deadline))
     }
 }

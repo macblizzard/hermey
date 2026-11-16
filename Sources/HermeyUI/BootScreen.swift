@@ -92,7 +92,11 @@ public struct BootScreen: View {
             // The app's own mark — the black-and-white face the icon is made of — not a bot's
             // identity-derived body: at launch there is no bot, and a coloured face would claim
             // there were. Transparent background, so it sits on whatever canvas the theme is.
-            Image("HermeyMark", bundle: .module)
+            //
+            // Read from the *app's* asset catalog: a SwiftPM resource bundle name is not a thing the
+            // image loader sees on iOS, and a name that does not resolve draws nothing at all — a
+            // splash with no mark reads as "no splash", which is how this shipped once (`0.1.482`).
+            Image("HermeyMark")
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(BootScreen.markAspect, contentMode: .fit)
