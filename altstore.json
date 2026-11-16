@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.520",
-          "buildVersion": "520",
-          "date": "2026-11-16T20:56:52Z",
-          "localizedDescription": "Both apps check for updates at launch: a cold start asks immediately, and on iOS the card appears as soon as the launch screen has gone rather than when the pane is next opened. The bot list menu now opens with the actions that add and closes with Hidden bots then Mark all as read; Settings has its own button left of the +.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.520/Hermey-0.1.520-b520.ipa",
-          "size": 3149142,
+          "version": "0.1.521",
+          "buildVersion": "521",
+          "date": "2026-11-16T21:22:07Z",
+          "localizedDescription": "Routines can be created from the app: a + on the routines sheet opens the New Routine form (name, when, what it should do, where it goes, and skills/script behind Advanced), and the bridge creates the job on the host. Both apps check for updates at launch.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.521/Hermey-0.1.521-b521.ipa",
+          "size": 3191574,
           "minOSVersion": "17.0",
-          "sha256": "5c7a33bc72cbcff245fc3e3001b106545c5cb5b82ae449a42e2b9acf424c631c"
+          "sha256": "8d3a50cea869a9732fc566f0b75cf09623ef32e63fc7e75e7c0062f0f30e41b8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.520 (520)",
-      "identifier": "hermes-0.1.520-520",
-      "caption": "Both apps check for updates at launch: a cold start asks immediately, and on iOS the card appears as soon as the launch screen has gone rather than when the pane is next opened. The bot list menu now opens with the actions that add and closes with Hidden bots then Mark all as read; Settings has its own button left of the +.",
-      "date": "2026-11-16T20:56:52Z",
+      "title": "Hermes 0.1.521 (521)",
+      "identifier": "hermes-0.1.521-521",
+      "caption": "Routines can be created from the app: a + on the routines sheet opens the New Routine form (name, when, what it should do, where it goes, and skills/script behind Advanced), and the bridge creates the job on the host. Both apps check for updates at launch.",
+      "date": "2026-11-16T21:22:07Z",
       "tintColor": "#9A9AA0"
     }
   ],
