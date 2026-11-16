@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import socket
+import time
 
 import pytest
 import websockets
@@ -210,6 +211,119 @@ def test_a_gateway_error_is_logged_by_kind_and_never_by_text(bridge, fake_gatewa
     logged = json.dumps(bridge.audit.records)
     assert secret not in logged
     assert set(record).issubset(ALLOWED_AUDIT_KEYS)
+
+
+def test_a_reaped_session_is_reattached_and_the_prompt_is_sent_again(bridge, fake_gateway):
+    """The host forgets an idle session's runtime; the stored session is still there.
+
+    Live shape this was written for: `prompt.submit` answered 4001 in 2 ms — "session ... not in memory
+    (detached/reaped runtime; client should resume the stored session)" — and every bot in the app said
+    "session not found" even though each pointer resolved to a row on disk. The bridge now resumes and
+    asks again, so the client never sees a fact about the host's memory.
+    """
+    session_id = "20261103_160851_77da50"
+    bridge.registry.set_bot_session(profile="tinker", stored_session_id=session_id)
+    fake_gateway.auto_respond = False
+    ticket = bridge.pair()["ticket"]
+
+    async def scenario():
+        async with open_ws(bridge.ws_url(ticket)) as ws:
+            await recv_frame(ws)  # ready
+            await ws.send(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 21,
+                        "method": "prompt.submit",
+                        "params": {"session_id": session_id, "text": "hello"},
+                    }
+                )
+                + "\n"
+            )
+            first = fake_gateway.wait_for(lambda f: f.get("method") == "prompt.submit")
+            fake_gateway.push(
+                {
+                    "jsonrpc": "2.0",
+                    "id": first["id"],
+                    "error": {
+                        "code": 4001,
+                        "message": "session_id not in memory (detached/reaped runtime)",
+                    },
+                }
+            )
+
+            resume = fake_gateway.wait_for(lambda f: f.get("method") == "session.resume")
+            # A multiplexed gateway resolves a stored id only inside its bot, so the bridge has to
+            # name the profile it looked up rather than hoping the client sent one.
+            assert resume["params"]["session_id"] == session_id
+            assert resume["params"]["profile"] == "tinker"
+            fake_gateway.push({"jsonrpc": "2.0", "id": resume["id"], "result": {"session": {}}})
+
+            # The retry is the *same* request, id and all, so the second occurrence is the one to
+            # answer — a predicate on the id alone would match the first.
+            deadline = time.time() + 5
+            second = None
+            while time.time() < deadline and second is None:
+                submissions = [f for f in list(fake_gateway.received)
+                               if f.get("method") == "prompt.submit"]
+                if len(submissions) >= 2:
+                    second = submissions[1]
+                else:
+                    time.sleep(0.01)
+            assert second is not None, "the prompt was never resent"
+            assert second["params"]["text"] == "hello"  # the same request, not a rewrite
+            fake_gateway.push(
+                {"jsonrpc": "2.0", "id": second["id"], "result": {"status": "streaming", "turn_id": "t1"}}
+            )
+
+            answer = await recv_frame(ws)
+            assert answer["id"] == 21
+            assert answer["result"]["status"] == "streaming"
+
+    asyncio.run(scenario())
+
+    assert bridge.audit.last("session_autoresume")["outcome"] == "resumed"
+    # The client asked once; it was refused once; it is told nothing about either.
+    failures = [r for r in bridge.audit.records if r.get("event") == "client_response"
+                and r.get("method") == "prompt.submit" and r.get("outcome") == "error"]
+    assert failures == []
+
+
+def test_a_session_that_really_is_gone_still_answers_the_client(bridge, fake_gateway):
+    """Resuming is a repair, not a promise: when the host refuses the resume too, the client is told."""
+    session_id = "20261103_160851_77da50"
+    fake_gateway.auto_respond = False
+    ticket = bridge.pair()["ticket"]
+
+    async def scenario():
+        async with open_ws(bridge.ws_url(ticket)) as ws:
+            await recv_frame(ws)
+            await ws.send(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 33,
+                        "method": "prompt.submit",
+                        "params": {"session_id": session_id, "text": "hello"},
+                    }
+                )
+                + "\n"
+            )
+            first = fake_gateway.wait_for(lambda f: f.get("method") == "prompt.submit")
+            fake_gateway.push(
+                {"jsonrpc": "2.0", "id": first["id"], "error": {"code": 4001, "message": "not in memory"}}
+            )
+            resume = fake_gateway.wait_for(lambda f: f.get("method") == "session.resume")
+            fake_gateway.push(
+                {"jsonrpc": "2.0", "id": resume["id"], "error": {"code": 4007, "message": "session not found"}}
+            )
+
+            answer = await recv_frame(ws)
+            assert answer["error"]["code"] == 4001  # the refusal the client would have had
+
+    asyncio.run(scenario())
+
+    assert bridge.audit.last("session_autoresume")["outcome"] == "failed"
 
 
 def test_approval_server_request_round_trips(bridge, fake_gateway):

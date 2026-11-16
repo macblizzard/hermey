@@ -142,6 +142,11 @@ def paging_key(params: object) -> "tuple[Optional[str], str]":
 class _Pending:
     method: str
     started: float
+    #: The client's own request frame. Kept so a refusal that means "the host forgot this session"
+    #: can be repaired by resuming and asking again, without the client knowing it happened.
+    frame: Optional[dict] = None
+    #: True once this request has already been resent, so a second 4001 reaches the client.
+    retried: bool = False
     # The resume's own addressing, kept so its answer can be paged by (session, bot) later.
     session_id: Optional[str] = None
     profile: str = ""
@@ -265,6 +270,7 @@ class GatewayProxy:
         config: BridgeConfig,
         audit: AuditLog,
         on_prompt: Optional[Callable[[str], None]] = None,
+        profile_for_session: Optional[Callable[[str], Optional[str]]] = None,
     ) -> None:
         self._ws = websocket
         self._device_id = device_id
@@ -280,6 +286,11 @@ class GatewayProxy:
         self._page_bytes = config.history_page_bytes
         self._upstream = None
         self._pending: dict[tuple[str, object], _Pending] = {}
+        #: session id -> bot, so an automatic resume can name the profile the gateway requires.
+        self._profile_for_session = profile_for_session
+        #: Requests parked while their session is being reattached: our resume id -> (pending, refusal).
+        self._autoresume: dict[tuple[str, object], tuple[_Pending, dict]] = {}
+        self._autoresume_seq = 0
         self._server_requests: dict[tuple[str, object], _ServerRequest] = {}
         self._server_seq = 0
         self._caps_sent = False
@@ -537,6 +548,7 @@ class GatewayProxy:
         self._pending[key] = _Pending(
             method=method,
             started=time.monotonic(),
+            frame=frame,
             session_id=session_id,
             profile=profile,
         )
@@ -784,7 +796,13 @@ class GatewayProxy:
         key = id_key(frame.get("id"))
         if key == id_key(BRIDGE_CAPABILITIES_ID):
             return  # the bridge's own handshake answer
+        if key is not None and key in self._autoresume:
+            await self._finish_autoresume(key, frame, raw)
+            return
         pending = self._pending.pop(key, None) if key is not None else None
+        if pending is not None and self._should_autoresume(pending, frame):
+            await self._start_autoresume(pending, frame)
+            return
         if pending is not None:
             self._audit.emit(
                 "client_response",
@@ -824,6 +842,79 @@ class GatewayProxy:
                 else:
                     frame["result"] = result
         await self._send_to_client(self._encode(frame))
+
+    # -- session reattachment ----------------------------------------------
+
+    #: The host keeps a session's runtime in memory and reaps it when idle; a request that arrives
+    #: afterwards is refused with this code. The refusal is a *state* fact, not a client error: the
+    #: stored session is intact and resuming reattaches it.
+    SESSION_NOT_ATTACHED = 4001
+
+    def _should_autoresume(self, pending: _Pending, frame: dict) -> bool:
+        detail = frame.get("error")
+        if not isinstance(detail, dict) or detail.get("code") != self.SESSION_NOT_ATTACHED:
+            return False
+        if pending.frame is None or pending.retried or not pending.session_id:
+            return False
+        # A failed resume is its own answer; there is nothing to repair by resuming again.
+        return pending.method != "session.resume"
+
+    async def _start_autoresume(self, pending: _Pending, refusal: dict) -> None:
+        """Resume the session the host forgot, then send the client's request again.
+
+        Observed live: `prompt.submit` answered `4001 ... not in memory (detached/reaped runtime;
+        client should resume the stored session)` in 2 ms. The stored session was fine — every bot's
+        pointer resolves to a row on disk — so the app's message was refused for a fact about the
+        host's memory, and the app only learned about it as "session not found".
+        """
+        profile = pending.profile
+        if not profile and self._profile_for_session is not None:
+            profile = self._profile_for_session(pending.session_id) or ""
+        params: dict = {"session_id": pending.session_id}
+        if profile:
+            # A multiplexed gateway resolves a stored id only inside its bot.
+            params["profile"] = profile
+        self._autoresume_seq += 1
+        token = f"__hermes_bridge_resume__{self._autoresume_seq}"
+        self._autoresume[id_key(token)] = (pending, refusal)
+        self._audit.emit(
+            "session_autoresume",
+            device_id=self._device_id,
+            method=pending.method,
+            profile=profile or None,
+            outcome="resuming",
+            direction="gateway_to_client",
+        )
+        await self._send_upstream(
+            self._encode({"jsonrpc": "2.0", "id": token, "method": "session.resume", "params": params})
+        )
+
+    async def _finish_autoresume(self, key: tuple, frame: dict, raw: bytes) -> None:
+        pending, refusal = self._autoresume.pop(key)
+        if frame.get("error"):
+            # The session really is gone: the client gets the refusal it would have had anyway.
+            self._audit.emit(
+                "session_autoresume",
+                device_id=self._device_id,
+                method=pending.method,
+                outcome="failed",
+                direction="gateway_to_client",
+                error_code=(frame.get("error") or {}).get("code"),
+                error_kind=error_kind(frame),
+            )
+            await self._send_to_client(self._encode(refusal))
+            return
+        pending.retried = True
+        pending.started = time.monotonic()
+        self._pending[id_key(pending.frame.get("id"))] = pending
+        self._audit.emit(
+            "session_autoresume",
+            device_id=self._device_id,
+            method=pending.method,
+            outcome="resumed",
+            direction="gateway_to_client",
+        )
+        await self._send_upstream(self._encode(pending.frame))
 
     # -- transport helpers -------------------------------------------------
 

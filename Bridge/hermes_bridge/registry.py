@@ -216,6 +216,17 @@ class DeviceRegistry:
                          (profile, last_at))
             conn.commit()
 
+    def profile_for_session(self, session_id: str) -> Optional[str]:
+        """Which bot owns this stored session.
+
+        A multiplexed gateway resolves a stored id only inside an explicit profile, so an automatic
+        resume has to name it. The pointer table is the only place that mapping exists on this side.
+        """
+        with self._connect() as conn:
+            row = conn.execute("SELECT profile FROM bot_sessions WHERE stored_session_id = ?",
+                               (session_id,)).fetchone()
+        return str(row["profile"]) if row else None
+
     def stored_session(self, profile: str) -> Optional[str]:
         with self._connect() as conn:
             row = conn.execute("SELECT stored_session_id FROM bot_sessions WHERE profile = ?",
