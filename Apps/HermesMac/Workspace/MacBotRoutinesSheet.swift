@@ -1,5 +1,6 @@
 import SwiftUI
 import HermesKit
+import HermeyUI
 
 /// A bot's schedule, on the Mac: the same panel language as Skills and MCP.
 ///
