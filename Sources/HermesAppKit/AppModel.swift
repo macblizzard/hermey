@@ -929,9 +929,11 @@ public final class AppModel: ObservableObject {
                                                        contextUsed: contextUsed,
                                                        contextMax: contextMax)
         conversationCacheStamp[botID] = Date()
-        // What the host had written when this snapshot was taken, so a later sweep can say whether
-        // the snapshot is still the newest thing there is (see `endlessSession`).
-        conversationCacheHostStamp[botID] = latestHostStamp(for: botID)
+        // What this snapshot *contains*, not what the list happens to know: `transcriptHostStamp` is
+        // the host stamp the rows on screen were read at, so a sweep that landed while the
+        // conversation was open cannot make a stale snapshot look current. Unknown is `.distantPast`
+        // — the eager direction, one resume at worst, never a reply shown as missing.
+        conversationCacheHostStamp[botID] = transcriptHostStamp[botID] ?? .distantPast
         ClientLog.note("cached \(transcript.count) rows for \(botID) before switching away",
                        level: .info, category: "cache")
         conversationCacheOrder.removeAll { $0 == botID }

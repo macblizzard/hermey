@@ -160,6 +160,34 @@ final class StaleConversationTests: XCTestCase {
         await model.stop()
     }
 
+    func testASnapshotDoesNotClaimWhatItDoesNotContain() async {
+        // The trap under the fix: a sweep can land while the conversation is open and be told to stand
+        // down (`isStreaming`), leaving the list knowing about a message the transcript does not have.
+        // If leaving the bot then recorded *the list's* stamp as the snapshot's, the return visit
+        // would look current and serve the snapshot without its reply — the original bug, one layer
+        // down. The snapshot records the stamp its own rows were read at.
+        let cody = bot("stale-stream-cody"), atlas = bot("stale-stream-atlas")
+        defer { forget([cody, atlas]) }
+        let (model, client) = await opened("stream", entries: [line("one")], bots: [cody, atlas])
+
+        await model.endlessSession(for: cody)
+        let session = model.selectedSessionID
+        client.emit(.messageDelta(session: session ?? "", text: "working on it"))
+        try? await Task.sleep(for: .milliseconds(120))
+        XCTAssertTrue(model.isStreaming, "a turn is in flight, so the sweep must not re-read")
+
+        client.entries = [line("one"), line("the reply")]
+        client.previewFeed = BotPreviewFeed(previews: [cody: preview("the reply")], unread: [cody: 1])
+        await model.loadBotPreviews(force: true)
+        XCTAssertEqual(model.transcript.count, 1, "the live turn owns the pane while it runs")
+
+        await model.endlessSession(for: atlas)
+        await model.endlessSession(for: cody)
+        XCTAssertEqual(model.transcript.count, 2,
+                       "a snapshot is what it contains, not what the list knew when it was taken")
+        await model.stop()
+    }
+
     // MARK: - What must not change
 
     func testNothingNewStillComesFromTheCache() async {
