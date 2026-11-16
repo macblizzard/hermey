@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.523",
-          "buildVersion": "523",
-          "date": "2026-11-16T22:02:37Z",
-          "localizedDescription": "Mac: the routines sheet keeps its Done button and the New Routine modal has a size; the Mac launch update check is now logged and verifiable. iOS: Send to lists every bot.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.523/Hermey-0.1.523-b523.ipa",
-          "size": 3194725,
+          "version": "0.1.524",
+          "buildVersion": "524",
+          "date": "2026-11-16T22:13:21Z",
+          "localizedDescription": "Mac: the routines window is now the same panel as Skills and MCP, with Escape to close, and stays open with its Done button. Routine editor is a Mac panel too.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.524/Hermey-0.1.524-b524.ipa",
+          "size": 3194727,
           "minOSVersion": "17.0",
-          "sha256": "a702138d166e7b7d2ff6f6558f9b1f8dd38b3a1971ee579686937223707b357b"
+          "sha256": "6ec25bb2245cbe7074215d8daafca9515d0d0113c775326bffbb5a68070d1080"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.523 (523)",
-      "identifier": "hermes-0.1.523-523",
-      "caption": "Mac: the routines sheet keeps its Done button and the New Routine modal has a size; the Mac launch update check is now logged and verifiable. iOS: Send to lists every bot.",
-      "date": "2026-11-16T22:02:37Z",
+      "title": "Hermes 0.1.524 (524)",
+      "identifier": "hermes-0.1.524-524",
+      "caption": "Mac: the routines window is now the same panel as Skills and MCP, with Escape to close, and stays open with its Done button. Routine editor is a Mac panel too.",
+      "date": "2026-11-16T22:13:21Z",
       "tintColor": "#9A9AA0"
     }
   ],
