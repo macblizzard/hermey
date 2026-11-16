@@ -159,9 +159,9 @@ class TheTransitions(unittest.TestCase):
 
 class OneTrackerOneAccessor(unittest.TestCase):
     def test_the_model_owns_the_tracker(self) -> None:
-        self.assertIn("@Published public private(set) var botActivity = BotActivityTracker()", APP_MODEL)
+        self.assertIn("@Published public private(set) var botActivityTracker = BotActivityTracker()", APP_MODEL)
         self.assertIn("public func activity(forBot botID: BotID) -> BotAvatarActivity", APP_MODEL)
-        self.assertIn("botActivity.activity(for: botID)", APP_MODEL)
+        self.assertIn("botActivityTracker.activity(for: botID)", APP_MODEL)
 
     def test_events_are_reduced_before_the_open_conversation_guards(self) -> None:
         # Every branch of `apply` returns early for a session that is not on screen. The tracker is

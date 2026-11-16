@@ -110,7 +110,9 @@ public final class AppModel: ObservableObject {
     /// One tracker for the whole app: the roster, the chat header, the bot panel and every
     /// transcript row read the same answer through `activity(forBot:)`, so no two of them can
     /// disagree — and none of them re-derives the precedence from `isStreaming` and a tool name.
-    @Published public private(set) var botActivity = BotActivityTracker()
+    /// Live per-bot activity for the avatar. Kept apart from `botActivity` below, which is the
+    /// ordering clock (last message per bot) and has nothing to do with what a bot is doing now.
+    @Published public private(set) var botActivityTracker = BotActivityTracker()
 
     /// Which bot a session belongs to, as far as this launch has seen.
     ///
@@ -121,7 +123,7 @@ public final class AppModel: ObservableObject {
 
     /// What this bot is doing, for `BotAvatarView`. The one accessor both shells call.
     public func activity(forBot botID: BotID) -> BotAvatarActivity {
-        botActivity.activity(for: botID)
+        botActivityTracker.activity(for: botID)
     }
 
     /// The model's reasoning for the turn in flight, accumulated **separately** from the reply.
@@ -3216,13 +3218,13 @@ public final class AppModel: ObservableObject {
              .interimMessage(let session, _, _, _),
              .messageComplete(let session, _):
             guard let bot = sessionBots[session] ?? (session == selectedSessionID ? selectedBotID : nil) else { return }
-            botActivity.apply(event, bot: bot)
+            botActivityTracker.apply(event, bot: bot)
         case .request(let request):
             // Waiting is a run paused on the user. A request that names no session still blocks the
             // run the app is showing, so it is the open bot's.
             let session = Self.sessionID(of: request)
             guard let bot = session.flatMap({ sessionBots[$0] }) ?? selectedBotID else { return }
-            botActivity.apply(event, bot: bot)
+            botActivityTracker.apply(event, bot: bot)
         case .ready, .state, .requestCancelled, .contextUsage, .sessionUpdated, .error, .unknown:
             // A transport state is not a bot's state, and `error` is the gateway's error, not a
             // failed run: a run's failure has no event of its own.
@@ -3239,9 +3241,10 @@ public final class AppModel: ObservableObject {
     private func syncActivityWithRunState() {
         guard let bot = selectedBotID else { return }
         if let session = selectedSessionID { sessionBots[session] = bot }
-        botActivity.setStreaming(isStreaming || isCompressing || runningSessions.contains(selectedSessionID ?? ""),
-                                 for: bot)
-        botActivity.setWaitingOnUser(!pendingRequests.isEmpty, for: bot)
+        botActivityTracker.setStreaming(
+            isStreaming || isCompressing || runningSessions.contains(selectedSessionID ?? ""),
+            for: bot)
+        botActivityTracker.setWaitingOnUser(!pendingRequests.isEmpty, for: bot)
     }
 
     /// A new turn is starting: the previous turn's tool cards described a turn whose answer has
