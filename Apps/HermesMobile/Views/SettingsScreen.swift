@@ -186,6 +186,7 @@ struct SettingsScreen: View {
             chatSection
             devicesSection
             diagnosticsSection
+            updateSection
             aboutSection
         }
         .listStyle(.insetGrouped)
@@ -477,6 +478,22 @@ struct SettingsScreen: View {
 
     // MARK: About
 
+    /// The one row that asks the feed on demand.
+    ///
+    /// A manual check is never throttled and never suppressed by an earlier "not now", which is the
+    /// whole point of the row: the user asking is the user overriding what the app decided for them.
+    private var updateSection: some View {
+        Section {
+            CheckForUpdatesRow(updates: app.updates)
+                .listRowBackground(Tokens.surface)
+        } header: {
+            sectionHeader("Updates")
+        } footer: {
+            Text("Download opens the install link in Safari; AltStore, if it is installed, can take it from there. This app never installs anything by itself.")
+                .font(TypeScale.font(TypeScale.label))
+        }
+    }
+
     private var aboutSection: some View {
         Section {
             LabeledContent {
@@ -529,6 +546,52 @@ struct SettingsScreen: View {
             .font(TypeScale.font(TypeScale.label))
             .foregroundStyle(Tokens.textGroupedSecondary)
             .textCase(nil)
+    }
+}
+
+// MARK: - Check for Updates
+
+/// The Settings row: the build this phone is running, and a way to ask the feed right now.
+///
+/// It observes the checker itself rather than the app environment, so a feed answer redraws one row
+/// instead of the whole settings list.
+struct CheckForUpdatesRow: View {
+    @ObservedObject var updates: UpdateChecker
+
+    var body: some View {
+        Button {
+            Haptics.impact()
+            Task { await updates.check(manual: true) }
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Check for Updates")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Text(detail)
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textGroupedSecondary)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 8)
+                if updates.isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Tokens.textMuted)
+                }
+            }
+        }
+        .accessibilityIdentifier("checkForUpdates")
+    }
+
+    /// The build is always named: a person deciding about an update wants to know which one they
+    /// have, and "up to date" alone never says that.
+    private var detail: String {
+        if updates.isChecking { return "Checking…" }
+        if let available = updates.available {
+            return "\(available.version) available · build \(updates.currentBuild)"
+        }
+        return "Build \(updates.currentBuild)"
     }
 }
 

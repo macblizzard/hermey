@@ -128,7 +128,8 @@ which stalls mid-transfer on some networks. The site links these files directly.
 """
 
 
-def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo: str) -> dict:
+def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo: str,
+                           entry: dict, notes: str, info: dict) -> dict:
     """Force-push a fresh single commit carrying the image, so the repo never accumulates blobs.
 
     This is the only public URL that is not GitHub's release CDN or the tailnet, and `docs/APPS.md`
@@ -141,16 +142,49 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
     if not token:
         raise SystemExit("--downloads-repo needs GITHUB_TOKEN in the environment")
     versioned = f"Hermey-macOS-{safe_component(version)}.dmg"
+    owner, name = slug.split("/")
+    pages_base = f"https://{owner}.github.io/{name}"
+    size, digest = publish_dist.digest_of(dmg)
+    dmg_url = f"{pages_base}/{versioned}"
+    release_page = f"https://github.com/{repo}/releases/tag/v{version}"
     work = Path(tempfile.mkdtemp(prefix="hermey-downloads-"))
     try:
         run(["git", "init", "-q", "-b", "gh-pages"], cwd=work)
         shutil.copy2(dmg, work / versioned)
         shutil.copy2(dmg, work / publish_dist.STABLE_DMG_ALIAS)
+        # The two feeds the apps read. Generated here from the same measured artifact that the
+        # tailnet copy is generated from — the Pages channel is the one Mo installs from, so a page
+        # that lists a build the apps cannot be told about is the failure this prevents.
+        (work / "appcast.xml").write_text(
+            publish_dist.appcast_document(entry, dmg_url, size,
+                                          publish_dist.sparkle_signature(dmg), notes, release_page),
+            encoding="utf-8")
+        (work / "mac.json").write_text(
+            publish_dist.mac_feed_document(entry, dmg_url, size, digest, notes), encoding="utf-8")
+        # The iOS notifier reads `altstore.json` first and only falls back to `mac.json`, and it is
+        # told to read it from Pages. Publishing the DMG without this file answered 404 exactly where
+        # a phone looks first.
+        (work / "altstore.json").write_text(
+            json.dumps(publish_dist.source_document(
+                info, entry,
+                publish_dist.Destination(
+                    name="pages",
+                    base_url=f"https://github.com/{repo}/releases/download/v{version}",
+                    tint=publish_dist.TINT_GITHUB,
+                    icon_url=f"https://raw.githubusercontent.com/{repo}/main/icon-512.png",
+                    header_url=f"https://raw.githubusercontent.com/{repo}/main/icon-512.png",
+                    source_url=f"https://github.com/{repo}/releases/latest/download/altstore.json",
+                ),
+                notes), indent=2) + "\n", encoding="utf-8")
         (work / "index.html").write_text(
             DOWNLOADS_PAGE.format(name=versioned, alias=publish_dist.STABLE_DMG_ALIAS,
                                   version=f"{version} (build {build})", repo=repo),
             encoding="utf-8")
         (work / ".nojekyll").write_text("", encoding="utf-8")
+        # Read back before the temporary tree is removed: the verification below runs after the push
+        # and must not depend on files that no longer exist.
+        feed_bytes = {feed: (work / feed).read_bytes()
+                      for feed in (*publish_dist.FEED_NAMES, "altstore.json")}
         run(["git", "add", "-A"], cwd=work)
         run(["git", "-c", "user.name=Hermey release", "-c", "user.email=release@hermey.local",
              "commit", "-q", "-m", f"downloads: {versioned} for {version} ({build})"], cwd=work)
@@ -159,11 +193,20 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
-    size, digest = publish_dist.digest_of(dmg)
     # The commit is what this publish can prove: GitHub's Pages build for the served URL takes tens
     # of seconds to minutes, so the served copy is verified on the API layer here and stated as
     # eventual in the docs, not claimed as wire-verified.
     sync_store.verify_pages_file(slug, versioned, size, sync_store.git_blob_sha(dmg.read_bytes()))
+    for feed, payload in feed_bytes.items():
+        sync_store.verify_pages_file(slug, feed, len(payload), sync_store.git_blob_sha(payload))
+    # ...and then the served URLs themselves, which is what an app actually fetches. Pages lags the
+    # commit by tens of seconds to minutes, so this retries rather than passing on a stale 200.
+    publish_dist.verify_public_feeds(
+        pages_base, version, build, [versioned, publish_dist.STABLE_DMG_ALIAS],
+        manifests=("altstore.json",),
+        attempts=int(os.environ.get("HERMEY_PAGES_ATTEMPTS", "6")),
+        interval=float(os.environ.get("HERMEY_PAGES_RETRY_SECONDS", "30")),
+    )
     return {
         "versioned": f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/{versioned}",
         "stable": f"https://{slug.split('/')[0]}.github.io/{slug.split('/')[1]}/"
@@ -343,7 +386,7 @@ def main() -> int:
 
     if args.downloads_repo and args.mac_dmg and args.mac_dmg.exists():
         published = push_to_downloads_repo(args.downloads_repo, args.mac_dmg, version, build,
-                                           args.repo)
+                                           args.repo, entry, args.notes, info)
         print(f"\n  mac      {published['versioned']}  ({published['bytes']} bytes)")
         print(f"  mac      {published['stable']}")
 

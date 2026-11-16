@@ -40,6 +40,10 @@ enum AppVersion {
 /// which is the first question after a fix "did not take".
 struct AboutSettingsTab: View {
     @ObservedObject var store: WorkspaceStore
+    /// The app's updater action, handed down from `HermesMacApp` — the same one the menu item
+    /// calls. The version text is where a person goes to ask "am I current", so asking is a press
+    /// on the line right under it rather than a trip to the menu bar.
+    let checkForUpdates: () -> Void
 
     @State private var copied = false
     /// The log is read in a sheet: the About tab is a page of facts, and a log is a tool that
@@ -70,6 +74,15 @@ struct AboutSettingsTab: View {
                     .foregroundStyle(Tokens.textMuted)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("aboutVersion")
+
+                // The manual check, beside the number it answers for. Sparkle's panel is the only
+                // UI: a build that is current gets its "up to date" notice, a newer one its notes
+                // and Install, and either can be dismissed without touching the workspace.
+                Button("Check for Updates…") {
+                    checkForUpdates()
+                }
+                .controlSize(.small)
+                .accessibilityIdentifier("aboutCheckForUpdates")
             }
             .padding(.top, 26)
             .padding(.bottom, 18)
@@ -96,7 +109,7 @@ struct AboutSettingsTab: View {
 
                 Spacer()
 
-                Text("Updates arrive through the same source you installed from.")
+                Text("Updates are verified and installed in place by Sparkle.")
                     .font(TypeScale.font(TypeScale.micro))
                     .foregroundStyle(Tokens.textDim)
                     .lineLimit(1)

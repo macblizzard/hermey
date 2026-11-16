@@ -10,6 +10,13 @@ options:
 packages:
   HermesApps:
     path: .
+  # In-app updates. Sparkle downloads the DMG named by the Pages appcast, verifies its EdDSA
+  # signature and swaps the bundle — the app only has to own a controller and offer the verb.
+  # Pinned to a minor floor rather than a branch: the feed's shape is Sparkle 2's, and 2.6 is the
+  # first release that understands every key the publish already writes.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.0
 
 settings:
   base:
@@ -46,6 +53,10 @@ targets:
         product: HermesRender
       - package: HermesApps
         product: HermesAppKit
+      # macOS only: iOS cannot replace its own bundle, so the phone's notifier opens a URL instead
+      # (HermesAppKit/Updates). Nothing here reaches the HermesMobile target.
+      - package: Sparkle
+        product: Sparkle
     info:
       path: Apps/HermesMac/Info.plist
       properties:
@@ -58,6 +69,18 @@ targets:
         # show an *update* instead of re-installing the same version forever.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Sparkle 2 reads all five keys from the bundle at launch — the app itself carries no feed
+        # URL and no version constant. The feed is the Pages appcast the publish writes; its
+        # `sparkle:edSignature` is verified against the public key below, which is the only half of
+        # the keypair that belongs in this repo. Rotating it breaks update trust for every older
+        # build, so it is a breaking change rather than a tweak.
+        SUFeedURL: https://macblizzard.github.io/hermey-downloads/appcast.xml
+        SUPublicEDKey: ezxgxj3MqbAIuclhB15SoXkIuZzYTkUtKlSB9SeCEGk=
+        # Check on Sparkle's own schedule (once a day) and *ask* — never install behind the user's
+        # back, and never gate the app on it. A probe of a dead feed is silent, by Sparkle's design.
+        SUEnableAutomaticChecks: true
+        SUAutomaticallyUpdate: false
+        SUScheduledCheckInterval: 86400
         LSMinimumSystemVersion: "14.0"
         NSHighResolutionCapable: true
         # The AppIcon.appiconset is compiled into Assets.car by actool; this key is
@@ -149,6 +172,12 @@ targets:
           - CFBundleURLName: dev.hermey.app.mobile
             CFBundleURLSchemes:
               - hermey
+        # `canOpenURL("altstore://install?url=…")` answers false for a scheme the app has not
+        # declared — that is iOS's rule for "is this app installed" — which would hide the AltStore
+        # button on every phone, including the ones that have it. Only the query needs the entry;
+        # nothing is opened unless the query already answered true.
+        LSApplicationQueriesSchemes:
+          - altstore
         # A phone tears the socket down the moment the app leaves the foreground, so the only way a
         # suspended app can learn that a bot replied is one of iOS's own background refreshes —
         # which needs the fetch mode plus the exact identifier the app registers. iOS refuses a

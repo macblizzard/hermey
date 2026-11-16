@@ -2,6 +2,10 @@ import HermesAppKit
 import HermeyUI
 import SwiftUI
 
+#if canImport(Sparkle)
+import Sparkle
+#endif
+
 /// macOS window: **bot panel on the left, chat on the right** — the phone's two-pane shape, with
 /// no session list and no inspector column. The bot panel defaults to 280 pt and drags between
 /// 200 and 400; the conversation takes the rest on a 640 pt measure (`Geometry`).
@@ -16,6 +20,31 @@ struct HermesMacApp: App {
     /// reachable through the two launch arguments it checks (see that file). The store and the
     /// one `.task` below are the entire hook; nothing else about the window changes.
     @StateObject private var store = UITestFixture.storeForLaunch()
+
+    /// Sparkle's controller, owned by the app for its whole lifetime: one that falls out of scope
+    /// stops its scheduled cycle, and the menu's verb then does nothing. `startingUpdater: true`
+    /// begins the daily check declared by `SUFeedURL`/`SUScheduledCheckInterval` in Info.plist.
+    ///
+    /// Its prompt is Sparkle's own and it is dismissible, so an available build never blocks or
+    /// gates the workspace — nothing here disables a feature behind "update first". A tampered DMG
+    /// fails the EdDSA check against `SUPublicEDKey` and Sparkle aborts with a visible error; there
+    /// is no installer of ours to get that wrong.
+    #if canImport(Sparkle)
+    private let updater = SPUStandardUpdaterController(startingUpdater: true,
+                                                       updaterDelegate: nil,
+                                                       userDriverDelegate: nil)
+    #endif
+
+    /// The one action the menu and Settings → About share. It is a closure rather than the
+    /// controller so both callers stay ignorant of Sparkle, and so a tree built without the package
+    /// still compiles — the item is simply inert there.
+    private var checkForUpdates: () -> Void {
+        #if canImport(Sparkle)
+        return { self.updater.checkForUpdates(nil) }
+        #else
+        return {}
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup("Hermey") {
@@ -50,13 +79,13 @@ struct HermesMacApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1240, height: 840)
         .commands {
-            WorkspaceCommands(store: store)
+            WorkspaceCommands(store: store, checkForUpdates: checkForUpdates)
         }
 
         // A real Settings scene: ⌘, opens it, and it stays open beside the workspace instead of
         // stacking a third modal sheet over the window the user is trying to read.
         Settings {
-            MacSettingsView(store: store)
+            MacSettingsView(store: store, checkForUpdates: checkForUpdates)
         }
 
         Window("Paired Devices", id: "paired-devices") {
@@ -72,6 +101,9 @@ struct HermesMacApp: App {
 /// they are chosen (the closure), which is the only moment that has to be right.
 struct WorkspaceCommands: Commands {
     let store: WorkspaceStore
+    /// The app's updater as an action: the controller itself is the `App`'s, and a second one in
+    /// here would start a second check cycle against the same feed.
+    let checkForUpdates: () -> Void
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -81,6 +113,15 @@ struct WorkspaceCommands: Commands {
         CommandGroup(replacing: .appInfo) {
             Button("About Hermes") {
                 AppVersion.showStandardPanel()
+            }
+        }
+
+        // Directly under About, where macOS apps have always put it: the manual half of the daily
+        // check. Sparkle draws the "you're up to date" / "new version" panel itself, and an
+        // in-flight download can be cancelled from it, so the app stays usable either way.
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") {
+                checkForUpdates()
             }
         }
 

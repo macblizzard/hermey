@@ -25,6 +25,11 @@ final class AppEnvironment: ObservableObject {
     let computer: BotComputerClient
     /// The bot's workspace: the list of documents and the bytes of one.
     let workspace: WorkspaceClient
+    /// The build on this phone against the published one. It is its own `ObservableObject` rather
+    /// than state on the environment, because the card and the Settings row both observe it directly
+    /// and neither should redraw this whole object when a feed answer arrives. Built in `init`, for
+    /// the same reason `HostStore` is: a property default would be evaluated outside the main actor.
+    let updates: UpdateChecker
 
     // MARK: Pairing
 
@@ -108,6 +113,7 @@ final class AppEnvironment: ObservableObject {
                                                              refreshToken: credentials.token)
             return (credentials.host.baseURL, ticket)
         })
+        self.updates = UpdateChecker()
     }
 
     // MARK: - Derived

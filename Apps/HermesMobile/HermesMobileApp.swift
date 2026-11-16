@@ -46,6 +46,10 @@ struct HermesMobileApp: App {
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()
                 }
+                // Its own task, not a step inside `start()`: the feed is a public URL and the app
+                // must be usable before it answers. An unreachable feed is a no-op (see
+                // `UpdateChecker`), so first paint never waits on it.
+                .task { await app.updates.check() }
         }
     }
 }
@@ -81,6 +85,10 @@ struct RootView: View {
                 // rather than waiting for the user to shake it. A host the user disconnected on
                 // purpose stays disconnected — that is a choice, not a dropped socket.
                 if phase == .background { app.appDidEnterBackground() }
+                // The update check is this build's business, not the host's: it runs on every
+                // foreground whether or not a phone is paired. `check` throttles itself to once a
+                // day, so a phone that is unlocked fifty times costs one request.
+                if phase == .active { Task { await app.updates.check() } }
                 guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
                 MobileReplyNotifier.shared.refreshAuthorization()
                 Task {
@@ -88,6 +96,8 @@ struct RootView: View {
                     else { await app.reconnect() }
                 }
             }
+            // The card is advisory and sits over the app; nothing below it is disabled or hidden.
+            .updatePrompt(app.updates)
     }
 }
 

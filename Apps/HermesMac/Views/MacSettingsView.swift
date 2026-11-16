@@ -12,6 +12,10 @@ import SwiftUI
 struct MacSettingsView: View {
     @ObservedObject var store: WorkspaceStore
 
+    /// The updater action from `HermesMacApp`, forwarded to the About tab. Explicit rather than a
+    /// default so a new caller has to decide what pressing "Check for Updates" does.
+    let checkForUpdates: () -> Void
+
     @Environment(\.openWindow) private var openWindow
 
     /// The bot whose settings sheet is open *from this window*. Kept local rather than reusing
@@ -46,7 +50,7 @@ struct MacSettingsView: View {
 
             // Last: a version number is something a user goes looking for, and it reports the
             // build CI stamped rather than anything this file could guess.
-            AboutSettingsTab(store: store)
+            AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
         // Seven tabs now (Chat, Bots, Connection, Appearance, Notifications, Caching, About): at the
@@ -333,7 +337,9 @@ private struct MacSettingsPreview: View {
     @StateObject private var store = PreviewWorkspace.store()
 
     var body: some View {
-        MacSettingsView(store: store)
+        // A preview must never start a real check against the live feed: the button is drawn, the
+        // press is a no-op.
+        MacSettingsView(store: store, checkForUpdates: {})
             .task { await store.attachPreviewHost() }
             .preferredColorScheme(.dark)
     }

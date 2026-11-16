@@ -39,6 +39,7 @@ import hashlib
 import html
 import json
 import os
+import re
 import shutil
 import ssl
 import sys
@@ -59,6 +60,15 @@ SOURCE_ID = "dev.hermey.app.source"
 #: can never be a different build from the versioned name beside it.
 STABLE_DMG_ALIAS = "Hermey-macOS-unsigned.dmg"
 MANIFEST_NAMES = ("altstore.json", "source.json")
+#: Sparkle's appcast and the notifier feed. Both name the macOS build, both are generated here, and
+#: both are verified back over HTTPS: a feed that disagrees with the artifact is an update path that
+#: either never offers a build or offers one that cannot be installed.
+FEED_NAMES = ("appcast.xml", "mac.json")
+MAC_MINIMUM_SYSTEM_VERSION = "14.0"
+#: The Ed25519 private key, in the 64-byte libsodium form Sparkle's own `sign_update` writes.
+#: Outside the repo and outside git: `publish` refuses to emit an appcast without it rather than
+#: publish an unsigned feed, because an unsigned item is an update Sparkle will not install.
+SPARKLE_KEY_FILE = Path(os.environ.get("HERMEY_SPARKLE_KEY_FILE", "/etc/hermey/sparkle-ed25519.key"))
 
 
 def stage(source: Path, directory: Path, name: str) -> Path:
@@ -111,6 +121,98 @@ def fetch(url: str, timeout: float = 60, insecure: bool = False) -> bytes:
         return response.read()
 
 
+def sparkle_signature(path: Path) -> str:
+    """The `sparkle:edSignature` for a file: Ed25519 over its bytes, base64.
+
+    Sparkle's `sign_update` signs the file's contents with the private key from the Keychain; this
+    signs the same bytes with the same key from a file, so the public key shipped as `SUPublicEDKey`
+    verifies it. No hash in between — the signature is over the artifact itself.
+    """
+    try:
+        import base64 as b64
+
+        import nacl.signing
+    except ImportError as error:  # pragma: no cover - the host has it
+        raise SystemExit(f"publishing an appcast needs PyNaCl: {error}") from error
+    if not SPARKLE_KEY_FILE.is_file():
+        raise SystemExit(
+            f"no Sparkle key at {SPARKLE_KEY_FILE}: an unsigned appcast installs nothing, so the "
+            "publish stops here instead of shipping a feed Sparkle will refuse"
+        )
+    secret = b64.b64decode(SPARKLE_KEY_FILE.read_bytes())
+    if len(secret) != 64:
+        raise SystemExit(f"{SPARKLE_KEY_FILE}: expected a 64-byte Ed25519 secret key, got {len(secret)}")
+    signing = nacl.signing.SigningKey(secret[:32])
+    signature = signing.sign(path.read_bytes()).signature
+    return b64.b64encode(signature).decode()
+
+
+def sparkle_public_key() -> str:
+    """The `SUPublicEDKey` for the app's Info.plist, derived from the same private key."""
+    import base64 as b64
+
+    import nacl.signing
+
+    secret = b64.b64decode(SPARKLE_KEY_FILE.read_bytes())
+    return b64.b64encode(bytes(nacl.signing.SigningKey(secret[:32]).verify_key)).decode()
+
+
+def appcast_document(entry: dict, dmg_url: str, dmg_size: int, signature: str, notes: str,
+                     release_page: str) -> str:
+    """Sparkle 2's feed: one item, the build that was just staged."""
+    published = dt.datetime.strptime(entry["date"], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=dt.timezone.utc)
+    item = {
+        "title": f"Hermey {entry['version']}",
+        "pubDate": published.strftime("%a, %d %b %Y %H:%M:%S +0000"),
+        "version": entry["buildVersion"],
+        "short": entry["version"],
+        "minimum": MAC_MINIMUM_SYSTEM_VERSION,
+        "notes": html.escape(notes or f"Build {entry['version']} ({entry['buildVersion']})."),
+        "url": html.escape(dmg_url, quote=True),
+        "size": dmg_size,
+        "signature": signature,
+        "page": html.escape(release_page, quote=True),
+    }
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Hermey</title>
+    <link>{item['page']}</link>
+    <description>Hermey for macOS</description>
+    <language>en</language>
+    <item>
+      <title>{item['title']}</title>
+      <pubDate>{item['pubDate']}</pubDate>
+      <sparkle:version>{item['version']}</sparkle:version>
+      <sparkle:shortVersionString>{item['short']}</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>{item['minimum']}</sparkle:minimumSystemVersion>
+      <link>{item['page']}</link>
+      <description>{item['notes']}</description>
+      <enclosure url="{item['url']}" length="{item['size']}" type="application/octet-stream"
+                 sparkle:edSignature="{item['signature']}"/>
+    </item>
+  </channel>
+</rss>
+"""
+
+
+def mac_feed_document(entry: dict, dmg_url: str, dmg_size: int, dmg_sha: str, notes: str) -> str:
+    """The notifier's feed for macOS: everything the prompt needs, nothing it has to derive."""
+    return json.dumps({
+        "app": "hermey",
+        "platform": "macos",
+        "version": entry["version"],
+        "build": entry["buildVersion"],
+        "size": dmg_size,
+        "sha256": dmg_sha,
+        "url": dmg_url,
+        "publishedAt": entry["date"],
+        "notes": notes or f"Build {entry['version']} ({entry['buildVersion']}).",
+        "minimumSystemVersion": MAC_MINIMUM_SYSTEM_VERSION,
+    }, indent=2) + "\n"
+
+
 def verify(directory: Path, base_url: str, names: list[str], version: str, build: str,
            attempts: int = 6, insecure: bool = False) -> None:
     """Prove what was published: every advertised URL, then the manifests that advertise them.
@@ -149,6 +251,48 @@ def verify(directory: Path, base_url: str, names: list[str], version: str, build
             if advertised not in names:
                 problems.append(f"{manifest}: downloadURL names {advertised!r}, "
                                 f"which this publish did not stage")
+        for manifest in manifests:
+            try:
+                document = json.loads(fetch(f"{base}/{manifest}?{stamp}").decode())
+            except Exception as error:  # noqa: BLE001
+                problems.append(f"{manifest}: {error}")
+                continue
+            newest = ((document.get("apps") or [{}])[0].get("versions") or [{}])[0]
+            if str(newest.get("buildVersion")) != build or str(newest.get("version")) != version:
+                problems.append(f"{manifest}: advertises {newest.get('version')} "
+                                f"({newest.get('buildVersion')}), published {version} ({build})")
+        for feed in FEED_NAMES:
+            if not (directory / feed).exists():
+                continue
+            try:
+                text = fetch(f"{base}/{feed}?{stamp}", insecure=insecure).decode()
+            except Exception as error:  # noqa: BLE001
+                problems.append(f"{feed}: {error}")
+                continue
+            if feed == "appcast.xml":
+                found = re.search(r"<sparkle:version>([^<]+)</sparkle:version>", text)
+                named = re.findall(r'url="([^"]+)"', text)
+                feed_build = found.group(1).strip() if found else ""
+                feed_size = re.search(r'length="(\d+)"', text)
+                if feed_build != build:
+                    problems.append(f"appcast.xml: advertises build {feed_build!r}, published {build}")
+                enclosure_name = named[0].rsplit("/", 1)[-1] if named else ""
+                if enclosure_name not in names:
+                    problems.append("appcast.xml: enclosure names a file this publish did not stage")
+                elif not feed_size or int(feed_size.group(1)) != \
+                        (directory / enclosure_name).stat().st_size:
+                    problems.append("appcast.xml: enclosure length does not match the disk image")
+            else:
+                try:
+                    feed_doc = json.loads(text)
+                except json.JSONDecodeError:
+                    problems.append("mac.json: is not JSON")
+                    continue
+                if str(feed_doc.get("build")) != build or str(feed_doc.get("version")) != version:
+                    problems.append(f"mac.json: advertises {feed_doc.get('version')} "
+                                    f"({feed_doc.get('build')}), published {version} ({build})")
+                if (feed_doc.get("url") or "").rsplit("/", 1)[-1] not in names:
+                    problems.append("mac.json: names a file this publish did not stage")
         if not problems:
             print(f"  verified {len(names)} artifacts + {len(MANIFEST_NAMES)} manifests over the wire")
             return
@@ -293,7 +437,7 @@ def publish(directory: Path, base_url: str, ipa: Path, dmg: Path | None, notes: 
     if dmg and dmg.is_file():
         dmg_name = f"Hermey-macOS-{version}.dmg"
         staged_dmg = stage(dmg, directory, dmg_name)
-        dmg_size, _ = digest_of(staged_dmg)
+        dmg_size, dmg_sha = digest_of(staged_dmg)
         names.append(dmg_name)
         print(f"  staged  {dmg_name}  ({dmg_size} bytes)")
         if keep_dmg_alias:
@@ -314,9 +458,19 @@ def publish(directory: Path, base_url: str, ipa: Path, dmg: Path | None, notes: 
     payload = json.dumps(document, indent=2) + "\n"
     for manifest in MANIFEST_NAMES:
         write_atomic(directory / manifest, payload)
+    written = [*MANIFEST_NAMES, "index.html"]
+    if dmg_name:
+        base = base_url.rstrip("/")
+        dmg_url = f"{base}/{dmg_name}"
+        write_atomic(directory / "appcast.xml",
+                     appcast_document(entry, dmg_url, dmg_size, sparkle_signature(Path(staged_dmg)),
+                                      notes, f"{base}/"))
+        write_atomic(directory / "mac.json",
+                     mac_feed_document(entry, dmg_url, dmg_size, dmg_sha, notes))
+        written += list(FEED_NAMES)
     write_atomic(directory / "index.html",
                  landing_page(base_url, version, build, ipa_name, size, dmg_name, dmg_size))
-    print("  wrote   " + ", ".join([*MANIFEST_NAMES, "index.html"]))
+    print("  wrote   " + ", ".join(written))
 
     if verify_wire:
         verify(directory, base_url, names, version, build, insecure=insecure)
@@ -367,3 +521,71 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+def verify_public_feeds(base_url: str, version: str, build: str, artifact_names: list[str],
+                        manifests: tuple[str, ...] = (), attempts: int = 6,
+                        interval: float = 30.0) -> None:
+    """§3.3: fetch the public feeds back over HTTPS and fail the publish if they disagree.
+
+    Pages lags its commit by tens of seconds to minutes, so this retries — with the reason printed on
+    every attempt, because "it worked after a while" and "it never worked" must not look the same in
+    a log. Exhausted retries exit non-zero listing the refused URLs; there is no warn-and-continue.
+    """
+    base = base_url.rstrip("/")
+    problems: list[str] = []
+    for attempt in range(1, attempts + 1):
+        problems = []
+        stamp = f"cb={int(time.time())}{attempt}"
+        for name in artifact_names:
+            url = f"{base}/{name}?{stamp}"
+            try:
+                status, length = fetch_length(url)
+            except Exception as error:  # noqa: BLE001
+                problems.append(f"{name}: {error}")
+                continue
+            if status != 200:
+                problems.append(f"{name}: HTTP {status}")
+        for feed in FEED_NAMES:
+            try:
+                text = fetch(f"{base}/{feed}?{stamp}").decode()
+            except Exception as error:  # noqa: BLE001
+                problems.append(f"{feed}: {error}")
+                continue
+            if feed == "appcast.xml":
+                found = re.search(r"<sparkle:version>([^<]+)</sparkle:version>", text)
+                if (found.group(1).strip() if found else "") != build:
+                    problems.append(f"appcast.xml: build {(found.group(1).strip() if found else 'missing')}"
+                                    f" != {build}")
+                enclosure = re.search(r'url="([^"]+)"', text)
+                named = enclosure.group(1).rsplit("/", 1)[-1] if enclosure else ""
+                if named not in artifact_names:
+                    problems.append(f"appcast.xml: enclosure names {named!r}")
+                if 'sparkle:edSignature=""' in text or 'sparkle:edSignature=' not in text:
+                    problems.append("appcast.xml: item carries no signature")
+            else:
+                try:
+                    feed_doc = json.loads(text)
+                except json.JSONDecodeError:
+                    problems.append("mac.json: is not JSON")
+                    continue
+                if str(feed_doc.get("build")) != build or str(feed_doc.get("version")) != version:
+                    problems.append(f"mac.json: advertises {feed_doc.get('version')} "
+                                    f"({feed_doc.get('build')}), published {version} ({build})")
+                if (feed_doc.get("url") or "").rsplit("/", 1)[-1] not in artifact_names:
+                    problems.append("mac.json: names an artifact this publish did not stage")
+        if not problems:
+            print(f"  verified {len(artifact_names)} artifact(s) + {len(FEED_NAMES)} feeds on the "
+                  f"public origin (attempt {attempt})")
+            return
+        if attempt < attempts:
+            print(f"  waiting {interval:g}s for the public origin: {'; '.join(problems[:2])}")
+            time.sleep(interval)
+    raise SystemExit("public feed verification failed:\n  " + "\n  ".join(problems))
+
+
+def fetch_length(url: str, timeout: float = 60) -> tuple[int, int | None]:
+    """HEAD `url`: status and Content-Length, without downloading a 10 MB image again."""
+    request = urllib.request.Request(url, method="HEAD")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        length = response.headers.get("Content-Length")
+        return response.status, (int(length) if length is not None else None)
