@@ -362,7 +362,7 @@ public final class AppModel: ObservableObject {
     public static let defaultCacheFreshness: TimeInterval = 120
     /// The instance's window; a test sets it to zero to exercise the resume path, and a future
     /// setting could let a person choose it.
-    public var conversationCacheFreshness: TimeInterval = Self.defaultCacheFreshness
+    public var conversationCacheFreshness: TimeInterval = AppModel.defaultCacheFreshness
     /// Bots in the order they were last *left*, so the cache can shed the oldest instead of growing
     /// with every bot the user ever clicked. Eight transcripts of a few hundred rows is small;
     /// unbounded is not.
