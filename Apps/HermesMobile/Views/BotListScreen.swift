@@ -823,10 +823,11 @@ struct BotListScreen: View {
     ///
     /// A mask fixes both without choosing between them. It measures the one edge that matters — the
     /// bottom of the bar, from `safeAreaInsets` rather than a guessed constant — and finishes its
-    /// ramp `fadeRun` points *above* that edge, so a row is only dimmed while it is actually
-    /// passing under the bar and everything at rest below the bar is fully opaque. (An earlier
-    /// version ended the ramp at `bar + fadeRun`, which veiled the section heading and the top of
-    /// the first row at rest — a smudge over the list, not a dissolve.) A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
+    /// dissolve inside a short `fadeBand` that ends exactly on that edge, so a row is only dimmed
+    /// while it slides under the bar's buttons and everything at rest below them — the section
+    /// labels included — is fully opaque. (Earlier versions ramped across the whole bar, which
+    /// veiled the labels and the top of the first row at rest: a smudge over the list, not a
+    /// dissolve. The fade belongs to the buttons.) A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
     /// it masks nothing, so there is no band — which is why the empty case gets a plain opaque mask
     /// instead of a gradient across the hero block.
     private var topFadeMask: some View {
@@ -836,16 +837,18 @@ struct BotListScreen: View {
             let bar = max(proxy.safeAreaInsets.top, 0)
             if hasRowsToFade {
                 VStack(spacing: 0) {
+                    // Nothing to dissolve above the buttons: the bar covers it and the bar is
+                    // opaque, so that whole span is simply "hidden".
+                    Color.clear.frame(height: max(bar - Self.fadeBand, 0))
+                    // The dissolve itself: a short band ending exactly on the content edge, so
+                    // rows fade out under the buttons and the section labels below them are crisp.
+                    // (A ramp across the whole bar looked like a smudge reaching down onto the
+                    // labels — the fade belongs to the buttons, not to the list.)
                     LinearGradient(stops: [
                         .init(color: .clear, location: 0),
                         .init(color: .black, location: 1),
                     ], startPoint: .top, endPoint: .bottom)
-                    // The ramp FINISHES `fadeRun` above the content edge, not below it: ending at
-                    // `bar + fadeRun` left the section heading and the top of the first row 87 %
-                    // veiled at rest, which read as a smudge over the list rather than a dissolve
-                    // under the bar. Now everything a row sits at rest is fully opaque, and the
-                    // dissolve only happens to the pixels actually crossing under the bar.
-                    .frame(height: max(bar - Self.fadeRun, 0))
+                    .frame(height: Self.fadeBand)
                     Color.black
                 }
             } else {
@@ -859,10 +862,10 @@ struct BotListScreen: View {
     /// whatever is there.
     private var hasRowsToFade: Bool { !model.bots.isEmpty }
 
-    /// How far *above* the content edge the dissolve finishes. Short on purpose: the ramp is the
-    /// bar's own height, and every point of it that reached below the edge veiled the first row at
-    /// rest instead of dissolving a row that was scrolling under the bar.
-    private static let fadeRun: CGFloat = 14
+    /// The height of the dissolve band itself, ending on the content edge. It sits under the two
+    /// bar buttons and above the section labels, so what fades is a row sliding under the buttons —
+    /// never the labels, which used to sit under an 87 % veil when the ramp spanned the whole bar.
+    private static let fadeBand: CGFloat = 10
 
     private func listHeading(_ title: String) -> some View {
         Text(title)
