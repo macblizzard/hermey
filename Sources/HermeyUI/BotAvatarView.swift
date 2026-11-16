@@ -55,6 +55,12 @@ import SwiftUI
 /// (`logoAvatarFrame`), not an approximation of it: its shipped faces are near-still bodies with very
 /// active eyes, not spinning rings. Below 24 pt, under Reduce Motion, or when `animates` is false,
 /// the face holds still.
+///
+/// **On top of that acting, a busy face performs** (`BotAvatarPerformance`): a jump and a flip
+/// alternating every few seconds, saccades and the odd double take between them, and a squint on its
+/// own slower clock. That is a deliberate departure from the reference, asked for on 2026-11-16; the
+/// port itself is untouched, which is why the two live in separate functions and only this view
+/// composes them.
 public struct BotAvatarView: View {
     /// The bot's id. The colour and the shape are both derived from it when nothing is stored.
     public var identity: String
@@ -149,12 +155,13 @@ public struct BotAvatarView: View {
                          moves: Bool,
                          date: Date) -> some View {
         let time = date.timeIntervalSinceReferenceDate
-        // One frame, evaluated exactly as the reference's `logoAvatarFrame`: the body breathes (and
-        // bobs while writing), the eyes and lids follow the state's authored track, and a scheduled
-        // blink closes them. Nothing else moves — the reference's faces are still, patient things
-        // with very active eyes.
+        // One frame, evaluated exactly as the reference's `logoAvatarFrame`, with the state's stunts
+        // performed over it: the body breathes (and bobs while writing), the eyes and lids follow the
+        // state's authored track, a scheduled blink closes them, and — in every busy state — the face
+        // also jumps, flips, darts and squints between the acting (`BotAvatarPerformance`, asked for
+        // 2026-11-16). Idle, waiting and error keep the reference's own stillness.
         let frame = moves
-            ? BotAvatarMotion.frame(activity: activity, traits: traits, at: time, side: Double(size))
+            ? BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time, side: Double(size))
             : .rest
         let body = frame.body
         let eyes = frame.eyes

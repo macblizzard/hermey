@@ -83,18 +83,22 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         return resume()
     }
 
+    /// Two bots can be two sessions, for the tests that need an event aimed at the one nobody is
+    /// looking at. Empty by default: every existing fixture has one session for every profile.
+    var sessionByProfile: [String: SessionID] = [:]
+
     func resumeSession(_ id: SessionID, profile: String?) async throws -> SessionResume {
         resumed.append(id)
         if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
         if let resumeError { throw resumeError }
-        return resume()
+        return resume(sessionByProfile[profile ?? ""] ?? session)
     }
 
     /// The paging state a resume reports: nil `earlierCursor` means "this is the whole transcript".
     var earlierCursor: Int?
     var historyTotal = 0
-    private func resume() -> SessionResume {
-        SessionResume(id: session, entries: entries, inflight: nil, openRequests: [],
+    private func resume(_ id: SessionID? = nil) -> SessionResume {
+        SessionResume(id: id ?? session, entries: entries, inflight: nil, openRequests: [],
                       earlierCursor: earlierCursor, historyTotal: historyTotal)
     }
 
@@ -179,9 +183,12 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         return session
     }
 
+    /// A pointer per bot, for the same reason as `sessionByProfile`: two bots, two conversations.
+    var hostPointerByProfile: [String: SessionID] = [:]
+
     func sharedSessionID(forBot profile: String) async throws -> SessionID? {
         if let hostPointerError { throw hostPointerError }
-        return hostPointer
+        return hostPointerByProfile[profile] ?? hostPointer
     }
 
     func publishSharedSessionID(_ id: SessionID?, forBot profile: String) async throws {

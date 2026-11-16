@@ -5,6 +5,34 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A busy bot face performs now.** Between the acting it already had, every busy state — working,
+  thinking, reading, writing, using the computer — jumps and flips: a crouch and a leap with a
+  squash-and-stretch landing, then next beat a full 360° roll or an out-and-back 180° twist,
+  alternating direction, one stunt every ~2.6–3 s. The body is punctuation and the eyes are the
+  acting: saccades on their own faster clock (a glance every ~0.9 s, a two-step double take every
+  fifth), each dart a 60 ms move and a hold, and a squint on a slower one still. Idle keeps its
+  float, waiting holds its look at you, and error rests: a backflip there would be a lie. Stunts are
+  a pure function of the clock and the bot's own phase — two faces never jump in lockstep, a
+  backgrounded window stops them, Reduce Motion and the Appearance switch still stop everything, and
+  the leap is capped in points (2.6 pt at 16 pt, 4.8 pt at 96 pt) so a face in a row never draws
+  over the text beside it. No new layers, paths or effects: the same 30 Hz timeline, ~20 more numbers
+  per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
+
+### Fixed
+- **A reply the list and the notification announced is in the chat when it is opened.** The row, the
+  dot and the banner come from the sweep that reads every bot's newest message from the host; the
+  chat comes from a resume — and opening a bot you had left within the last two minutes skipped that
+  resume entirely, on the assumption that anything new would arrive on the live socket. It doesn't: a
+  reply for a bot that is not on screen is dropped by the model, not buffered, so the chat opened on
+  the strength of its own banner showed the moment before the reply and asked the host nothing. The
+  cache now yields when the socket has named a session that is not on screen, or when the host's
+  newest message for that bot is newer than the one the snapshot contains — both host-clock facts, so
+  a device with a fast clock cannot pin itself to its cache. An idle *open* conversation is also
+  re-read when a sweep sees the host has written, which covers the messages that produce no socket
+  event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing
+  new still comes from the cache, instantly (`StaleConversationTests`).
+
 ### Changed
 - **The bot list and the Mac sidebar no longer have a loading state of their own.** "Loading bots…",
   "Looking for bots…", "FINDING BOTS / Asking the host which bots it serves…" and their spinners are
