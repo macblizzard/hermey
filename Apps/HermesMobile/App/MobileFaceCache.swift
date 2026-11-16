@@ -17,11 +17,11 @@ enum MobileFaceCache {
     /// Rendering is main-actor work (`ImageRenderer`), so the cache is filled at launch and read from
     /// anywhere afterwards.
     @MainActor
-    static func refresh(faces: [String: BotFace]) async {
+    static func refresh(faces: [String: BotFaceChoice]) async {
         let directory = cacheDirectory()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for (botID, face) in faces {
-            guard let png = PushIcon.png(for: face) else { continue }
+            guard let png = PushIcon.png(for: botID, color: face.raw) else { continue }
             let url = directory.appendingPathComponent("\(botID).png")
             // Unchanged faces cost nothing: same bytes, no write.
             if let existing = try? Data(contentsOf: url), existing == png { continue }

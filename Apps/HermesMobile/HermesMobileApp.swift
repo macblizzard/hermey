@@ -111,8 +111,8 @@ struct BotsTab: View {
             return
         }
         await model.syncPushIcons { id in
-            let face: BotFace = faces[id] ?? BotFace.default(for: id)
-            return PushIcon.png(for: face)
+            // The stored face when there is one; otherwise the one this bot's id draws.
+            PushIcon.png(for: id, color: faces[id]?.raw)
         }
     }
 

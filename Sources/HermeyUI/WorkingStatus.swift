@@ -1,3 +1,4 @@
+import HermesKit
 import SwiftUI
 
 /// The line that stands in for the answer before the first token arrives.
@@ -7,10 +8,15 @@ import SwiftUI
 /// app look frozen. The phrase is presentation, not host state: it never claims to know what the
 /// host is doing, only that something is.
 public struct WorkingStatus: View {
-    /// Whose work this is. When a face is given, it turns in place of the wheel — a wheel says
-    /// something is happening, a face says *which bot* is happening. The caller that has no face
-    /// (a room, a host with no bots yet) still gets the wheel.
-    public var face: BotFace?
+    /// Whose work this is. With a bot the row wears that bot's face, turning in place of the wheel —
+    /// a wheel says something is happening, a face says *which bot* is happening. A caller with no
+    /// bot (a room, a host with no bots yet) still gets the wheel.
+    public var bot: String?
+    /// What that bot is doing, as `AppModel.activity(forBot:)` reports it. Defaulted to `working`
+    /// because that is what this row exists to say.
+    public var activity: BotAvatarActivity
+    /// The bot's stored face, so the row and the roster cannot disagree about which body it wears.
+    public var color: String?
 
     @State private var index: Int
 
@@ -29,19 +35,31 @@ public struct WorkingStatus: View {
         "(￣▽￣)ノ working…",
     ]
 
-    public init(face: BotFace? = nil) {
-        self.face = face
+    public init(bot: String? = nil,
+                activity: BotAvatarActivity = .working,
+                color: String? = nil) {
+        self.bot = bot
+        self.activity = activity
+        self.color = color
         // A different opening phrase each turn: a fixed one reads as a stuck label.
         _index = State(initialValue: Int(Date().timeIntervalSince1970) % WorkingStatus.phrases.count)
     }
 
     public var body: some View {
         HStack(spacing: 8) {
-            if let face {
-                BotFaceSpinner(face: face, size: 16)
+            if let bot {
+                BotAvatarView(identity: bot,
+                              color: color,
+                              activity: activity,
+                              size: 16,
+                              // The caller only draws this row while a turn is in flight. At 16 pt
+                              // the view keeps it still by its own rule (the size floor), so this
+                              // row never costs a timeline.
+                              animates: true)
             } else {
                 SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)
             }
+
 
             Text(WorkingStatus.phrases[index % WorkingStatus.phrases.count])
                 .font(TypeScale.font(Tokens.textMD))

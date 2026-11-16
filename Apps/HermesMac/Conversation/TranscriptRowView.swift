@@ -124,7 +124,7 @@ struct TranscriptRowView: View {
             } label: {
                 HStack(spacing: 6) {
                     if let profile = label.senderProfile {
-                        BotIconPortrait(BotFace.default(for: profile), size: Geometry.rosterAvatarCompact)
+                        BotAvatarView(identity: profile, size: Geometry.rosterAvatarCompact)
                     }
                     Text(label.incomingTitle)
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))

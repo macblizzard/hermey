@@ -39,7 +39,7 @@ final class BotMenuRouter: ObservableObject {
 /// store or model call whichever was used.
 struct BotMenu {
     let bot: Bot
-    let face: BotFace
+    let face: BotFaceChoice?
     let isPinned: Bool
     let isHidden: Bool
     let categories: [BotCategory]

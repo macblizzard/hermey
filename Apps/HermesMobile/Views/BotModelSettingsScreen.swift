@@ -13,7 +13,7 @@ struct BotModelSettingsScreen: View {
     let bot: Bot
     /// The portrait the host has for this bot, when it has one — the sheet shows the face the list
     /// shows, so it is recognisable before its title is read.
-    var icon: BotFace? = nil
+    var icon: BotFaceChoice? = nil
     let load: (String) async throws -> ModelCatalog
     /// True when this bot's conversation is the one currently open. A live conversation keeps the
     /// model it was created with — the gateway pins it per session and offers no way to change it —
@@ -29,7 +29,7 @@ struct BotModelSettingsScreen: View {
     var editSoul: (() -> Void)? = nil
     /// Writes this bot's portrait. `nil` hides the row, the same rule as the soul: the picker moved
     /// here from a long press on the list, where nobody found it (reported 2026-11-14).
-    var saveIcon: ((BotFace?) async throws -> Void)? = nil
+    var saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil
     /// Reads the two documents this bot carries into every turn. `nil` hides the row.
     var loadMemory: (() async throws -> BotMemory)? = nil
     /// Deletes this bot on the host. `nil` hides the row — the rule every verb here follows: a
@@ -57,14 +57,14 @@ struct BotModelSettingsScreen: View {
     @State private var iconError: String?
 
     init(bot: Bot,
-         icon: BotFace? = nil,
+         icon: BotFaceChoice? = nil,
          load: @escaping (String) async throws -> ModelCatalog,
          conversationIsOpen: Bool = false,
          resetConversation: (() async -> Void)? = nil,
          save: @escaping (String, ModelOption, Bool) async throws -> SaveResult,
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
-         saveIcon: ((BotFace?) async throws -> Void)? = nil,
+         saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil,
          loadMemory: (() async throws -> BotMemory)? = nil,
          deleteBot: (() async throws -> Void)? = nil) {
         self.bot = bot
@@ -140,7 +140,9 @@ struct BotModelSettingsScreen: View {
                 // is read.
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 8) {
-                        BotIconPortrait(icon ?? BotFace.default(for: bot.id), size: 24)
+                        // A settings sheet is not a live surface: the face is the stored one,
+                        // still, because nothing here is being asked to show a run.
+                        BotAvatarView(identity: bot.id, color: icon?.raw, size: 24, animates: false)
                         Text(bot.displayName)
                             .font(TypeScale.font(TypeScale.md, weight: .semibold))
                             .foregroundStyle(Tokens.textPrimary)
@@ -237,13 +239,11 @@ struct BotModelSettingsScreen: View {
                         HStack {
                             Label("Bot icon", systemImage: "person.crop.circle")
                             Spacer()
-                            if let icon {
-                                BotIconPortrait(icon, size: 22)
-                            }
+                            BotAvatarView(identity: bot.id, color: icon?.raw, size: 22, animates: false)
                         }
                     }
                     .sheet(isPresented: $showingIcon) {
-                        BotIconPicker(botName: bot.displayName, selected: icon) { face in
+                        BotIconPicker(botID: bot.id, botName: bot.displayName, selected: icon) { face in
                             iconError = nil
                             do { try await saveIcon(face) }
                             catch { iconError = error.localizedDescription }

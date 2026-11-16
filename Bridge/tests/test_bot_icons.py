@@ -41,20 +41,26 @@ def test_paired_devices_share_icons_and_revoked_or_replayed_tickets_fail(tmp_pat
         }
 
 
-def test_all_gallery_icons_round_trip_and_unknown_is_rejected(tmp_path):
+def test_every_shipped_face_round_trips_and_nonsense_is_rejected(tmp_path):
+    """The eight bodies in the eleven palette colours, as one stored string.
+
+    The values are read out of the design system's own sources rather than retyped here: a host that
+    accepted a face the app cannot draw would answer with a picture nobody can render, and one that
+    refused a face the app writes would lose a user's choice.
+    """
     from pathlib import Path
     import re
 
-    source = (Path(__file__).resolve().parents[2] / 'Sources/HermeyUI/BotIconGallery.swift').read_text()
-    # The enum's `case` lines, comments stripped: the doc comment above the first line moved the
-    # old single-regex parse into the colour enum next door.
-    block = re.search(r'public enum BotIcon:.*?\n\}', source, re.S).group(0)
-    cases = [line for line in block.splitlines() if line.strip().startswith('case ')]
-    icons = [name.strip() for line in cases for name in line.strip()[len('case '):].split(',')]
-    icons = [name for icon_part in icons for name in [icon_part.strip()] if name]
-    assert icons == ['ember', 'nova', 'cobalt', 'orbit', 'moss', 'dusk', 'beacon', 'pixel',
-                     'rover', 'prism', 'lump', 'mushroom', 'blob', 'capsule', 'droplet',
-                     'scallop'], icons
+    ui = Path(__file__).resolve().parents[2] / 'Sources/HermeyUI'
+    shapes = re.search(r'case (hex, wedge, squircle, tablet, pebble, blob, teardrop, cloud)',
+                       (ui / 'BotAvatarShape.swift').read_text()).group(1).split(', ')
+    palette_source = (ui / 'BotAvatarPalette.swift').read_text()
+    # Only the list: the reset/fallback entry repeats a hex below it.
+    palette_block = palette_source[palette_source.index('colors: [BotAvatarColorDef] = ['):]
+    palette = re.findall(r'hex: "(#[0-9A-F]{6})"', palette_block.split('\n    ]', 1)[0])
+    assert len(shapes) == 8, shapes
+    assert len(palette) == 11, palette
+
     app = create_app(BridgeConfig(db_path=tmp_path / 'bridge.db'))
     app.state.bridge.registry.add_device(device_id='paired', name='phone', platform='ios',
                                          public_key='x', refresh_token='secret')
@@ -62,14 +68,40 @@ def test_all_gallery_icons_round_trip_and_unknown_is_rejected(tmp_path):
         def auth():
             ticket = client.post('/v1/token', json={'device_id': 'paired', 'refresh_token': 'secret'}).json()['ws_ticket']
             return {'Authorization': 'Bearer ' + ticket}
-        for icon in icons:
-            response = client.put('/v1/bot-icons/' + icon, headers=auth(), json={'icon': icon})
-            assert response.status_code == 200, (icon, response.text)
+
+        for index, shape in enumerate(shapes):
+            for colour in palette:
+                bot = f'{shape}-{colour.lstrip("#").lower()}'
+                avatar = f'{colour}::shape_{index}'
+                response = client.put('/v1/bot-icons/' + bot, headers=auth(), json={'avatar': avatar})
+                assert response.status_code == 200, (bot, response.text)
+                assert response.json()['face'] == {'avatar': avatar}
+
         body = client.get('/v1/bot-icons', headers=auth()).json()
-        assert body['icons'] == {icon: icon for icon in icons}
-        # An icon-only write reads back as that icon's own colour, so no face moves on upgrade.
-        assert body['faces'] == {icon: {'shape': icon, 'color': LEGACY[icon]} for icon in icons}
-        assert client.put('/v1/bot-icons/a', headers=auth(), json={'icon': 'not-an-icon'}).status_code == 422
+        assert len(body['faces']) == len(shapes) * len(palette)
+        for index, shape in enumerate(shapes):
+            for colour in palette:
+                bot = f'{shape}-{colour.lstrip("#").lower()}'
+                avatar = f'{colour}::shape_{index}'
+                # The stored string is the answer; `shape`/`color` are the pair an older device
+                # still reads, and it must not fail its decode over a row it does not know.
+                assert body['faces'][bot] == {'avatar': avatar,
+                                              'shape': f'shape_{index}',
+                                              'color': colour}
+
+        # A colour with no body at all is legal: the body then comes from the bot's id.
+        assert client.put('/v1/bot-icons/colour-only', headers=auth(),
+                          json={'avatar': '#FF781C'}).status_code == 200
+        assert client.get('/v1/bot-icons', headers=auth()).json()['faces']['colour-only'] == {
+            'avatar': '#FF781C', 'shape': '', 'color': '#FF781C'}
+
+        # Anything else is refused rather than stored as a value nothing can draw.
+        for avatar in ('FF781C', '#FF781C::shape_', 'data:image/png;base64,AA', '#GGGGGG'):
+            assert client.put('/v1/bot-icons/colour-only', headers=auth(),
+                              json={'avatar': avatar}).status_code == 422, avatar
+        # A half pair is still a malformed request, not a silent clear.
+        assert client.put('/v1/bot-icons/colour-only', headers=auth(),
+                          json={'shape': 'ember'}).status_code == 422
 
 
 def test_a_face_is_a_shape_and_a_colour_and_half_a_pair_is_refused(tmp_path):

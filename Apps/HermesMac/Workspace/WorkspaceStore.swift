@@ -38,10 +38,17 @@ final class WorkspaceStore: ObservableObject {
     /// Conversation…", the bot panel's "Search this conversation" row, and the ⌘K palette's verb.
     ///
     /// `TranscriptScroll` owns the search field and its matches — they are a reading tool, not app
-    /// state — so this is a request counter, not a boolean: a second press has to re-open and
-    /// re-focus a search that is already up, which a Bool could not express. The panel's own field is
-    /// a different question with a different answer: it asks the host to scan *every* bot's
-    /// conversation and lists the snippets, and clicking one lands here through `openSearchHit`.
+    /// state — so this is a request counter, not a boolean: the bar's open state lives in the pane,
+    /// and a counter is what lets a *second* press express something a Bool could not. What it
+    /// expresses is **toggle**: the bar is not hiding anywhere else, so ⌘F has to be the way out of
+    /// it as well as the way in (reported 2026-11-16: "a second ⌘F does nothing").
+    @Published private(set) var findToggleRequest = 0
+
+    /// Bumped by a *seeded* open only — a bot-list message hit, which opens the bar already filled.
+    ///
+    /// Kept apart from `findToggleRequest` on purpose: a finding must open the bar every time it is
+    /// clicked, never close it because it happened to be open. `findSeedRequest` names the request
+    /// the seed belongs to, so a later plain press cannot replay the phrase.
     @Published private(set) var findRequest = 0
     /// The phrase the next find opened with, when it was opened *for* a finding rather than by ⌘F.
     ///
@@ -54,9 +61,18 @@ final class WorkspaceStore: ObservableObject {
     /// conversation's menu and the Settings window's Bots tab all set this, so there is one
     /// sheet and one owner.
     @Published var botSettingsBot: Bot? = nil
-    @Published private(set) var botFaces: [String: BotFace] = [:]
+    @Published private(set) var botFaces: [String: BotFaceChoice] = [:]
     @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
+
+    /// What this bot is doing, for `BotAvatarView`.
+    ///
+    /// Forwarded from the model's tracker rather than re-derived here: the Mac and the phone share
+    /// one reducer, and a second copy in the window would be the first place they disagreed.
+    func activity(for botID: BotID) -> BotAvatarActivity {
+        model.activity(forBot: botID)
+    }
+
     /// The open bot's own profile default, for the header chip.
     ///
     /// `AppModel.modelLabel` is read once per connect and per endless-session open; this asks the
@@ -437,7 +453,7 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
-    func saveBotFace(botID: String, face: BotFace?) async throws {
+    func saveBotFace(botID: String, face: BotFaceChoice?) async throws {
         guard let address = pairing, !address.isTicketOnly else {
             throw MacBotIconService.Failure.devicePairingRequired
         }
@@ -621,7 +637,8 @@ final class WorkspaceStore: ObservableObject {
 
     /// Ask the transcript for its search field. The same door ⌘F opens, reachable with the mouse
     /// from the header's magnifier — which used to raise the palette instead.
-    func openFindInChat() { findRequest += 1 }
+    /// ⌘F, the menu item, the palette verb and the panel row all come through here.
+    func openFindInChat() { findToggleRequest += 1 }
 
     /// Open a finding from the bot panel's search: that bot's conversation, then the phrase in it.
     ///

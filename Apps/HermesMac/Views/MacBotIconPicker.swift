@@ -21,28 +21,27 @@ struct MacBotIconService {
         }
     }
 
-    /// `faces` is what this build writes and reads; `icons` is the pre-shape-pair payload, read so
-    /// a host that has not been upgraded yet still shows every bot's own face.
+    /// `faces` carries the stored `#RRGGBB::shape_N`; `shape`/`color` are what a host that has not
+    /// been upgraded answers, and `icons` is the pre-pair payload. All three are read, so no bot
+    /// loses its face to an older bridge.
     private struct Payload: Decodable {
-        struct Face: Decodable { let shape: String; let color: String }
+        struct Face: Decodable {
+            let avatar: String?
+            let shape: String?
+            let color: String?
+        }
         let faces: [String: Face]?
         let icons: [String: String]?
     }
     private struct Change: Encodable {
-        let shape: String?
-        let color: String?
+        /// The stored `#RRGGBB::shape_N`. `nil` clears the face on the host.
+        let avatar: String?
+        enum CodingKeys: String, CodingKey { case avatar }
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
-            if let shape, let color {
-                try container.encode(shape, forKey: .shape)
-                try container.encode(color, forKey: .color)
-            } else {
-                // Nothing of either: the host reads that as "clear the face".
-                try container.encodeNil(forKey: .shape)
-                try container.encodeNil(forKey: .color)
-            }
+            // Always present: the host reads an explicit null as "clear the face".
+            try container.encode(avatar, forKey: .avatar)
         }
-        enum CodingKeys: String, CodingKey { case shape, color }
     }
 
     private func request(url: URL, method: String, body: Data? = nil) async throws -> Data {
@@ -58,29 +57,32 @@ struct MacBotIconService {
         return data
     }
 
-    func load() async throws -> [String: BotFace] {
+    func load() async throws -> [String: BotFaceChoice] {
         let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
         let data = try await request(url: url, method: "GET")
         let payload = try JSONDecoder().decode(Payload.self, from: data)
-        var faces: [String: BotFace] = [:]
+        var faces: [String: BotFaceChoice] = [:]
         // An icon-only row (a host before the pair) maps to the colour that icon was drawn in, so
         // no bot's face changes across the upgrade.
         for (botID, icon) in payload.icons ?? [:] {
-            if let shape = BotIcon(rawValue: icon) { faces[botID] = .legacy(shape) }
+            if let choice = BotFaceChoice.migrated(legacyIcon: icon) { faces[botID] = choice }
         }
         for (botID, face) in payload.faces ?? [:] {
-            if let shape = BotIcon(rawValue: face.shape), let color = BotColor(rawValue: face.color) {
-                faces[botID] = BotFace(shape: shape, color: color)
+            // The stored string wins; a pair without one is a choice made before this build, and
+            // it is migrated rather than dropped.
+            if let avatar = face.avatar, let choice = BotFaceChoice(rawValue: avatar) {
+                faces[botID] = choice
+            } else if let choice = BotFaceChoice.migrated(legacyShape: face.shape, legacyColor: face.color) {
+                faces[botID] = choice
             }
         }
         return faces
     }
 
-    func save(botID: String, face: BotFace?) async throws {
+    func save(botID: String, face: BotFaceChoice?) async throws {
         let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
             .appendingPathComponent(BotIconPath.component(for: botID))
-        let change = Change(shape: face?.shape.rawValue, color: face?.color.rawValue)
-        _ = try await request(url: url, method: "PUT", body: JSONEncoder().encode(change))
+        _ = try await request(url: url, method: "PUT", body: JSONEncoder().encode(Change(avatar: face?.raw)))
     }
 }
 
@@ -101,11 +103,11 @@ struct MacBotIconPicker: View {
                 HermeyButton("Cancel", kind: .secondary, size: .small) { dismiss() }
                     .disabled(saving)
             }
-            Text("Any shape, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
+            Text("Any body, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
                 .font(TypeScale.font(Tokens.textSM))
                 .foregroundStyle(Tokens.textMuted)
             ScrollView {
-                BotFacePicker(face: store.botFaces[bot.id]) { face in
+                BotFacePicker(identity: bot.id, value: store.botFaces[bot.id]) { face in
                     guard !saving else { return }
                     saving = true
                     error = nil

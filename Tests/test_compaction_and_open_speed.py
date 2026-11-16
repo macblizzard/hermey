@@ -21,9 +21,51 @@ def between(start: str, end: str) -> str:
     return APP[head:APP.index(end, head)]
 
 
+class CompactionIsTheHostsJob(unittest.TestCase):
+    """There is no client-side auto-compact: the host already does it, at its own threshold.
+
+    A threshold here was a second opinion — it could compact a thread the host was about to, and it
+    shipped a setting nobody asked for. "Compact now" is the only path the app owns.
+    """
+
+    def test_the_threshold_and_its_trigger_are_gone(self) -> None:
+        for gone in ("autoCompactTokens", "defaultAutoCompactTokens", "autoCompactIfNeeded",
+                     "hermes.autoCompactTokens", "reactToContextUsage"):
+            self.assertNotIn(gone, APP, gone)
+        self.assertNotIn("autoCompact", CLIENT)
+
+    def test_manual_compaction_is_still_here(self) -> None:
+        # The verb, the retry on an unknown session, and the notice are untouched.
+        self.assertIn("public func compressNow() async", APP)
+        self.assertIn("client.compress(session: sid)", APP)
+        self.assertIn('compactionNotice = "conversation compacted"', APP)
+        self.assertIn("private func finishCompaction()", APP)
+
+    def test_neither_settings_screen_offers_a_threshold(self) -> None:
+        phone = (ROOT / "Apps" / "HermesMobile" / "Views" / "SettingsScreen.swift").read_text(encoding="utf-8")
+        mac = (ROOT / "Apps" / "HermesMac" / "Views" / "MacSettingsView.swift").read_text(encoding="utf-8")
+        for source, name in ((phone, "phone"), (mac, "mac")):
+            self.assertNotIn("autoCompact", source, name)
+            self.assertNotIn("Auto-compact", source, name)
+            self.assertNotIn("syncThreshold", source, name)
+        # And the rest of both screens is still there.
+        self.assertIn("Devices", phone)
+        self.assertIn("Show reasoning", phone)
+        self.assertIn("BotsSettingsTab", mac)
+        self.assertIn("Show reasoning", mac)
+
+    def test_the_doc_describes_the_host_as_the_compactor(self) -> None:
+        doc = (ROOT / "docs" / "ENDLESS-CHAT.md").read_text(encoding="utf-8")
+        # The doc may name the key it says goodbye to; it may not present it as a setting.
+        self.assertNotIn("default 200_000", doc)
+        self.assertIn("compression.threshold", doc)
+        self.assertIn("no client-side threshold", doc)
+        self.assertIn("Compact now", doc)
+
+
 class CompactionOpensTheSessionFirst(unittest.TestCase):
     def test_an_unknown_session_is_opened_and_the_call_retried(self) -> None:
-        body = between("public func compressNow()", "private func autoCompactIfNeeded()")
+        body = between("public func compressNow()", "private func finishCompaction()")
         self.assertIn("isUnknownSession", body)
         # It resumes — but through `refreshTranscript`, because a compaction is not a re-open: `select`
         # empties the transcript first, which would blank the chat while the host is rewriting it.
@@ -37,7 +79,7 @@ class CompactionOpensTheSessionFirst(unittest.TestCase):
         self.assertIn("4007", body)
 
     def test_a_failure_is_visible_in_the_header(self) -> None:
-        body = between("public func compressNow()", "private func autoCompactIfNeeded()")
+        body = between("public func compressNow()", "private func finishCompaction()")
         self.assertIn('compactionNotice = "could not compact', body,
                       "`lastSendError` is rendered nowhere; the notice is")
 
@@ -90,13 +132,15 @@ class ACompactionSaysItIsRunning(unittest.TestCase):
     """
 
     def test_the_mac_says_it_on_the_bots_face_at_every_width(self) -> None:
-        # The chip became a zip on the portrait: the state is still visible at any width, because
-        # the face is inside the pill and the pill is never dropped.
-        block = MAC_HEADER.split("private var portraitStatus", 1)[1].split("\n    }", 1)[0]
-        self.assertIn("model.isCompressing", block)
-        self.assertIn("return .compacting", block)
-        self.assertNotIn("width >=", block, "a breakpoint would hide the only feedback the verb has")
+        # The face is inside the pill and the pill is never dropped, so a compaction shows at any
+        # width — as `working`, which is what a compaction is: a turn the host is running.
+        self.assertIn("store.activity(for: bot.id)", MAC_HEADER)
         self.assertNotIn('StatusChip("compacting', MAC_HEADER)
+        # The one place that turns `isCompressing` into a face: the model's own resync, so both
+        # shells get it and neither re-derives it.
+        sync = APP.split("private func syncActivityWithRunState", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("isCompressing", sync)
+        self.assertIn("setStreaming(", sync)
 
     def test_the_outcome_is_not_hidden_behind_a_breakpoint(self) -> None:
         self.assertNotIn("width >= ChipBreakpoint.notice", MAC_HEADER,

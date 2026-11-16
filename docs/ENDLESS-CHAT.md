@@ -59,20 +59,24 @@ conversation straight back; the tombstone is retired as soon as a replacement is
 create that finds the tombstoned row holding the name retires it and mints (bounded once, so two
 devices resetting at each other cannot ping-pong).
 
-## 3. Auto-compaction
+## 3. Compaction
 
-`message.complete` carries real usage:
-`usage.context_used`, `usage.context_max`, `usage.context_percent`.
+**The host owns it.** Hermes compacts at the *start* of a turn when the context crosses
+`compression.threshold` (a fraction of the model's own window), so a conversation arrives here
+already summarised. The app does not second-guess that: there is no client-side threshold, no
+`hermes.autoCompactTokens` default, and no trigger after a turn. A second threshold was an opinion
+nobody asked for, and it could compact a thread the host was about to.
 
-After every completed turn, if `context_used >= threshold` and no compression is in flight:
+What the app still owns is the manual verb — "Compact now" — because a user who wants the context
+summarised *before* the host gets to it should not have to wait for the next turn:
 
 1. call `session.compress` (params `{"session_id": <runtime id>}`),
 2. re-`session.resume` to refresh the transcript,
 3. surface a one-line notice ("conversation compacted"), never a blocking spinner.
 
-Threshold: `UserDefaults` key `hermes.autoCompactTokens`, **default 200_000**. `0` disables
-compaction. The conversation header always shows `context_used / context_max` so the user can see
-it approaching the limit.
+`message.complete` still carries real usage (`usage.context_used`, `usage.context_max`,
+`usage.context_percent`), and the conversation header always shows `context_used / context_max` so
+the reader can see it approaching the limit.
 
 ## 4. Settings holds settings, not a device dump
 
@@ -81,7 +85,7 @@ Sections, in order:
 | Section | Contents |
 |---|---|
 | Connection | host, state (`direct`/`reconnecting`), latency, *Disconnect*, *Re-pair* |
-| Chat | auto-compact threshold (numeric field + "off"), show reasoning toggle, show tool output toggle |
+| Chat | show reasoning toggle, expand-reasoning toggle, show tool output toggle |
 | Devices | one row per device, `this phone` badge, revoke — its own sub-screen |
 | About | app version + build (from `Bundle`), protocol version |
 

@@ -105,7 +105,8 @@ struct MacBotSettingsSheet: View {
         HStack(spacing: 10) {
             // The face this bot wears everywhere else, so the sheet is recognisable before its name
             // is read.
-            BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 26)
+            BotAvatarView(identity: bot.id, color: store.botFaces[bot.id]?.raw, size: 26,
+                          animates: false)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(bot.displayName)

@@ -347,14 +347,18 @@ struct BotListScreen: View {
             onGraphite(bot)
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
-                // A bot always has a face: its own if the host has one, otherwise the portrait its
+                // A bot always has a face: the one stored for it, otherwise the body and colour its
                 // id picks. Initials are what made the first second of every launch look empty.
-                BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: metrics.avatar,
-                                isWorking: model.isStreaming && model.selectedBotID == bot.id,
-                                // Same rule as the Mac: idle rows must not animate.
-                                animates: (model.isStreaming && model.selectedBotID == bot.id)
-                                    || bot.id == model.selectedBotID)
+                //
+                // The pose is the tracker's answer, not a guess from `isStreaming`: the row you are
+                // not reading still says `reading` or `computer` while that bot works.
+                BotAvatarView(identity: bot.id,
+                              color: app.botFaces[bot.id]?.raw,
+                              activity: model.activity(forBot: bot.id),
+                              size: metrics.avatar,
+                              // Same rule as the Mac: idle rows must not animate.
+                              animates: (model.isStreaming && model.selectedBotID == bot.id)
+                                  || bot.id == model.selectedBotID)
                     // The count sits on the face, bottom-right, nudged out so it reads as a badge on
                     // the avatar rather than a chip inside it. It was dropped in the roster restyle
                     // (2026-11-13) on the theory that the app badge was enough — it is not: the app
@@ -628,8 +632,11 @@ struct BotListScreen: View {
     /// One finding: which bot, what was said around the match, and when.
     private func findingRow(_ hit: BotSearchHit) -> some View {
         HStack(alignment: .top, spacing: metrics.gap) {
-            BotIconPortrait(app.botFaces[hit.profile] ?? BotFace.default(for: hit.profile),
-                            size: metrics.avatarCompact)
+            BotAvatarView(identity: hit.profile,
+                          color: app.botFaces[hit.profile]?.raw,
+                          activity: model.activity(forBot: hit.profile),
+                          size: metrics.avatarCompact,
+                          animates: false)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile)

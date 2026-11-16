@@ -188,8 +188,10 @@ struct MobileTranscriptRow: View {
             } label: {
                 HStack(spacing: 6) {
                     if let profile = label.senderProfile {
-                        BotIconPortrait(app.botFaces[profile] ?? BotFace.default(for: profile),
-                                        size: Geometry.rosterAvatarCompact)
+                        BotAvatarView(identity: profile,
+                                      color: app.botFaces[profile]?.raw,
+                                      activity: app.model.activity(forBot: profile),
+                                      size: Geometry.rosterAvatarCompact)
                     }
                     Text(label.incomingTitle)
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))

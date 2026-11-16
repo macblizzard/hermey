@@ -123,15 +123,6 @@ struct ConversationHeader: View {
         .frame(width: width, height: Geometry.chatHeaderPill + 2)
     }
 
-    /// What the face says. A request outranks a running turn, and both outrank a compaction: the
-    /// one state that needs a person wins the face.
-    private var portraitStatus: PortraitStatus? {
-        if model.hasPendingRequests { return .needsYou }
-        if model.isCompressing { return .compacting }
-        if model.isStreaming { return .working }
-        return nil
-    }
-
     /// The pill: portrait, name, and the ⋯ that opens the bot's panel. The whole capsule is the
     /// target, so a click anywhere on the name does what the dots do.
     private func pill(width: CGFloat) -> some View {
@@ -140,9 +131,11 @@ struct ConversationHeader: View {
         } label: {
             HStack(spacing: 7) {
                 if let bot = model.selectedBot {
-                    BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                    size: Geometry.chatHeaderAvatar,
-                                    status: portraitStatus)
+                    BotAvatarView(identity: bot.id,
+                                  color: store.botFaces[bot.id]?.raw,
+                                  activity: store.activity(for: bot.id),
+                                  size: Geometry.chatHeaderAvatar,
+                                  animates: store.activity(for: bot.id) != .idle)
                 } else {
                     Avatar(title, size: .small, presence: presence)
                 }

@@ -1,0 +1,305 @@
+import HermesKit
+import SwiftUI
+
+/// A bot's face: one of the eight shipped bodies, the same two bar eyes on every one, and the
+/// activity the bot is in drawn as motion.
+///
+/// ## Adopting it
+///
+/// Every surface that draws a bot's face uses this view, and every one of them hands over the same
+/// three things: the bot's id, what it is doing, and the size it draws at.
+///
+/// ```swift
+/// BotAvatarView(identity: bot.id,
+///               color: faces[bot.id]?.raw,          // the stored `#RRGGBB::shape_N`, or nil
+///               activity: model.activity(forBot: bot.id),
+///               size: metrics.avatar,
+///               animates: model.activity(forBot: bot.id) != .idle)
+/// ```
+///
+/// The activity is never derived in a view. `BotActivityTracker` (in `HermesKit`) reduces the
+/// gateway's own events to one per bot, and `AppModel.activity(forBot:)` is the single accessor both
+/// shells read; a view that re-derived it from `isStreaming` and a tool name would be a second copy
+/// of the precedence rules, which is how the roster and the chat header start disagreeing.
+///
+/// Both compile against `HermeyUI` alone for everything but the activity value, which lives in
+/// `HermesKit` — the one vocabulary the wire layer and the design system share.
+///
+/// **A face changes when a surface adopts this.** The shape and colour derive from the reference's
+/// palette (eleven colours) with the reference's hash. A surface that must keep a stored face passes
+/// `color:` with the stored value (the reference's `#RRGGBB` or `#RRGGBB::shape_N`) and leaves the id
+/// to pick the shape — or passes both, and nothing is derived. That is what `BotFaceChoice` stores.
+///
+/// One case needs a second line: a stored `data:image/…` value resolves to `isImage == true`, and its
+/// picture stays the caller's to draw —
+///
+/// ```swift
+/// let face = BotAvatarIdentity.resolve(identity: bot.id, explicitColor: bot.color)
+/// if face.isImage {
+///     PhotoAvatar(...)                       // the existing renderer
+///         .overlay(BotAvatarRing(size: 32, tint: face.color.color,
+///                                active: activity.showsWorkingRing))
+/// } else {
+///     BotAvatarView(identity: bot.id, color: bot.color, activity: activity, size: 32)
+/// }
+/// ```
+///
+/// — which is why the ring is public on its own.
+///
+/// ## What it draws
+///
+/// The body is filled with the bot's palette colour, the eyes are cut out in the page colour unless
+/// the body is nearly white or black (`BotAvatarPalette.eyeTone`), and a bot at work wears the
+/// reference's spinning ring — a 45-of-138-unit arc with a comet head, in its own colour, 1.2 s a
+/// turn. Below 24 pt, under Reduce Motion, or when `animates` is false, everything holds still.
+public struct BotAvatarView: View {
+    /// The bot's id. The colour and the shape are both derived from it when nothing is stored.
+    public var identity: String
+    /// The stored `bots.color` value: `#RRGGBB`, `#RRGGBB::shape_N`, a palette id or name, or a
+    /// `data:image/…` URL. `nil` means "derive it from the id".
+    public var color: String?
+    /// What the bot is doing. See `BotAvatarActivity.from(status:toolNames:composing:thinking:background:)`.
+    public var activity: BotAvatarActivity
+    /// The avatar's side, in points. Any size; the artwork is vector.
+    public var size: CGFloat
+    /// Static, as the system's Reduce Motion asks. The environment value also stops the motion.
+    public var reduceMotion: Bool
+    /// Whether this avatar may move at all, separate from Reduce Motion. A long bot list passes
+    /// `false` for its idle rows, which is the difference between one face rebuilding per frame and
+    /// twenty.
+    public var animates: Bool
+    /// Spoken label, e.g. the bot's name. Without one the avatar is hidden from the accessibility
+    /// tree — it is decoration beside a name that is already read out.
+    public var label: String?
+    /// The colour the eyes are cut out in. Defaults to the page (`Tokens.canvas`).
+    public var pageBackground: Color?
+
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// The app's own motion switch (Settings → Appearance). Read here rather than sampled in a
+    /// helper so flipping it redraws the faces that are on screen.
+    @AppStorage(BotAvatarMotion.defaultsKey) private var appAllowsMotion = true
+
+    public init(identity: String,
+                color: String? = nil,
+                activity: BotAvatarActivity = .idle,
+                size: CGFloat = 36,
+                reduceMotion: Bool = false,
+                animates: Bool = true,
+                label: String? = nil,
+                pageBackground: Color? = nil) {
+        self.identity = identity
+        self.color = color
+        self.activity = activity
+        self.size = size
+        self.reduceMotion = reduceMotion
+        self.animates = animates
+        self.label = label
+        self.pageBackground = pageBackground
+    }
+
+    /// The fixed inks for the two bodies that are too pale or too dark for a cut-out. The reference
+    /// picks whichever of the page's own two colours contrasts with the body; the app's page colours
+    /// are dynamic, so the bars are pinned to the two ends of the same scale instead — which is what
+    /// the reference resolves to on a light page, and the right answer on a dark one.
+    static let darkEyeInk = Color(red: 0.04, green: 0.04, blue: 0.05)
+    static let lightEyeInk = Color.white
+
+    public var body: some View {
+        let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: color)
+        let moves = BotAvatarMotion.allows(activity: activity,
+                                           reduceMotion: reduceMotion || systemReduceMotion,
+                                           animates: animates && appAllowsMotion,
+                                           size: size)
+        let traits = BotAvatarMotionTraits(identity: resolved.identity)
+
+        TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !moves)) { context in
+            content(resolved: resolved, traits: traits, moves: moves, date: context.date)
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(resolved: resolved))
+        .accessibilityHidden(label == nil)
+    }
+
+    // MARK: - Layers
+
+    @ViewBuilder
+    private func content(resolved: BotAvatarIdentity,
+                         traits: BotAvatarMotionTraits,
+                         moves: Bool,
+                         date: Date) -> some View {
+        let time = date.timeIntervalSinceReferenceDate
+        let body = moves ? BotAvatarMotion.bodyPose(activity: activity, at: time, traits: traits) : .rest
+        // The reference animates its eyes only while the bot is working; at rest and in error the
+        // face is still, which is also what makes "asleep" readable.
+        let eyes = moves && activity.showsWorkingRing
+            ? BotAvatarMotion.eyePose(traits: traits, at: time)
+            : .rest
+
+        ZStack {
+            // The ring sits outside the body's motion, as in the reference, where it is a sibling of
+            // the scaling artwork: a ring that breathes with the body reads as part of it.
+            BotAvatarRing(size: size,
+                          tint: resolved.color.color,
+                          active: activity.showsWorkingRing,
+                          spinning: moves)
+
+            if resolved.isImage {
+                // A photo avatar is the caller's to draw; the ring above is the part of this view
+                // that still applies. An empty face is the honest placeholder for a shape module.
+                Color.clear
+            } else {
+                ZStack {
+                    resolved.shape.path(inSide: size)
+                        .fill(resolved.color.color)
+                        .brightness(body.brightness)
+                    eyesLayer(resolved: resolved, pose: eyes)
+                }
+                .frame(width: size, height: size)
+                .scaleEffect(x: body.scaleX, y: body.scaleY)
+                .rotationEffect(.degrees(body.rotate))
+                .offset(x: body.translateX * size, y: body.translateY * size)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func eyesLayer(resolved: BotAvatarIdentity, pose: BotAvatarEyePose) -> some View {
+        let geometry = BotAvatarGeometry.shipped
+        let scale = CGFloat(geometry.scale(forSide: Double(size)))
+        let box = geometry.eyes.bounds
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(geometry.eyes.bars) { bar in
+                RoundedRectangle(cornerRadius: CGFloat(bar.cornerRadius) * scale, style: .continuous)
+                    .fill(eyeInk(bodyHex: resolved.color.hex))
+                    .frame(width: CGFloat(bar.width) * scale, height: CGFloat(bar.height) * scale)
+                    .offset(x: CGFloat(bar.x - geometry.viewBox.minX) * scale,
+                            y: CGFloat(bar.y - geometry.viewBox.minY) * scale)
+            }
+        }
+        .frame(width: size, height: size, alignment: .topLeading)
+        // The reference transforms the eyes about their own centre; the frame's centre is the view
+        // box's (114.5, 114.5), eight units below the eyes' (114.2705, 106.2705). At the sizes this
+        // draws, that is under a third of a point, and pinning the anchor to the frame keeps the
+        // layer's transforms independent of the body's.
+        .scaleEffect(x: pose.scaleX, y: pose.scaleY, anchor: .center)
+        .offset(x: pose.offsetX * box.width * scale, y: pose.offsetY * box.height * scale)
+    }
+
+    private func eyeInk(bodyHex: String) -> Color {
+        switch BotAvatarPalette.eyeTone(forBody: bodyHex) {
+        case .page: return pageBackground ?? Tokens.canvas
+        case .dark: return Self.darkEyeInk
+        case .light: return Self.lightEyeInk
+        }
+    }
+
+    private func accessibilityText(resolved: BotAvatarIdentity) -> String {
+        let name = label ?? ""
+        let state = activity.accessibilityDescription
+        return name.isEmpty ? state : "\(name), \(state)"
+    }
+}
+
+/// The ring a bot wears while it is doing something, on its own.
+///
+/// Public because a photo avatar needs it too: the reference draws the same ring around a picture,
+/// and a caller that renders an image itself can lay this over it. The geometry is the reference's —
+/// a 48-unit box, radius 22, stroke 3.2, a 45-unit arc and a comet head at the tip — inset four
+/// points around the avatar.
+public struct BotAvatarRing: View {
+    public var size: CGFloat
+    public var tint: Color
+    /// Whether the ring is drawn at all. The reference fades it over 180 ms, which this matches.
+    public var active: Bool
+    /// Whether it turns. Its turn is 1.2 s, the reference's `rakazo-avatar-spin`.
+    public var spinning: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    public init(size: CGFloat, tint: Color, active: Bool, spinning: Bool = true) {
+        self.size = size
+        self.tint = tint
+        self.active = active
+        self.spinning = spinning
+    }
+
+    public var body: some View {
+        let ringSide = size + 8
+        let unit = ringSide / 48
+        let turns = spinning && !reduceMotion
+        // A 45-unit arc of a radius-22 circle: 45 / (2π · 22).
+        let arc = 45.0 / (2 * Double.pi * 22)
+
+        TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !turns)) { context in
+            let angle = turns ? angle(at: context.date) : 0
+            ZStack {
+                Circle()
+                    .trim(from: 0, to: arc)
+                    .stroke(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white, location: 0),
+                                .init(color: tint.opacity(0.9), location: 0.6),
+                                .init(color: tint.opacity(0), location: 1),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        style: StrokeStyle(lineWidth: 3.2 * unit, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    // Inset 2 of the 48 units: the reference's circle is r=22 in a 48-unit box.
+                    .padding(2 * unit)
+
+                Circle()
+                    .fill(.white)
+                    .frame(width: 5.6 * unit, height: 5.6 * unit)
+                    .offset(x: 19 * unit)
+            }
+            .frame(width: ringSide, height: ringSide)
+            .rotationEffect(.degrees(angle))
+        }
+        .opacity(active ? 1 : 0)
+        .animation(.easeInOut(duration: 0.18), value: active)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Where in the 1.2 s turn this instant is.
+    ///
+    /// The cycle is the reference's (`rakazo-avatar-spin`, 1.2 s infinite). Its timing function is
+    /// `cubic-bezier(0.4, 0, 0.2, 1)`, which eases *within* every turn; this port turns linearly
+    /// instead, because a ring that slows to a stop and starts again once a second reads as a stutter
+    /// rather than as work in progress. Same cycle, one deliberate difference in the curve.
+    private func angle(at date: Date) -> Double {
+        let turns = date.timeIntervalSinceReferenceDate / BotAvatarMotion.workingRingDuration
+        return (turns - turns.rounded(.down)) * 360
+    }
+}
+
+#if DEBUG
+#Preview("Bot avatar · shapes") {
+    VStack(spacing: 20) {
+        HStack(spacing: 14) {
+            ForEach(BotAvatarShape.shipped) { shape in
+                BotAvatarView(identity: shape.id, color: "#A97EFE::shape_\(BotAvatarShape.index(of: shape.kind))", size: 44)
+            }
+        }
+        HStack(spacing: 14) {
+            ForEach([BotAvatarActivity.idle, .reading, .writing, .thinking, .computer, .working, .waiting, .error], id: \.self) { activity in
+                BotAvatarView(identity: "research", activity: activity, size: 40)
+            }
+        }
+        HStack(spacing: 14) {
+            ForEach([16.0, 24.0, 32.0, 56.0, 96.0], id: \.self) { side in
+                BotAvatarView(identity: "nightly-build", activity: .working, size: side)
+            }
+        }
+    }
+    .padding(24)
+    .background(Tokens.canvas)
+    .preferredColorScheme(.dark)
+}
+#endif

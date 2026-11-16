@@ -17,11 +17,6 @@ struct SettingsScreen: View {
     /// rather than what the app wishes it had said.
     @ObservedObject private var notifier = MobileReplyNotifier.shared
 
-    /// The threshold is edited as text and committed on Enter or focus loss: writing every
-    /// keystroke to `autoCompactTokens` would compact the thread mid-typing and would make
-    /// a half-typed "20000" behave like "2".
-    @FocusState private var thresholdFocused: Bool
-    @State private var thresholdText: String = MobileTokens.digits(AppModel.defaultAutoCompactTokens)
     @State private var showUnpairConfirm = false
     /// Whether the log sheet is up. The log is a tool, not a setting, so it opens from a row and
     /// closes with nothing remembered.
@@ -197,14 +192,6 @@ struct SettingsScreen: View {
         .scrollContentBackground(.hidden)
         .background(Tokens.canvas)
         .navigationTitle("Settings")
-        .toolbar {
-            // A number pad has no Return key, so the field needs an explicit way out —
-            // leaving it is what commits the threshold.
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { thresholdFocused = false }
-            }
-        }
         .task { await app.loadDevices() }
         .task { await model.loadBotDefaults() }
         .task { await model.loadCacheState() }
@@ -225,11 +212,6 @@ struct SettingsScreen: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The refresh token is deleted from this phone. The device stays in the host's list until you revoke it there.")
-        }
-        .onAppear { syncThreshold() }
-        .onChange(of: model.autoCompactTokens) { _ in syncThreshold() }
-        .onChange(of: thresholdFocused) { focused in
-            if !focused { commitThreshold() }
         }
     }
 
@@ -341,50 +323,6 @@ struct SettingsScreen: View {
 
     private var chatSection: some View {
         Section {
-            HStack(spacing: 8) {
-                Text("Auto-compact after")
-                    .font(TypeScale.font(TypeScale.md))
-                    .foregroundStyle(Tokens.textPrimary)
-
-                Spacer(minLength: 8)
-
-                TextField("Off", text: $thresholdText)
-                    .keyboardType(.numberPad)
-                    .multilineTextAlignment(.trailing)
-                    .font(.system(size: 15, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(Tokens.textPrimary)
-                    .focused($thresholdFocused)
-                    .frame(maxWidth: 116)
-                    .submitLabel(.done)
-                    .onSubmit { commitThreshold() }
-                    .accessibilityLabel("Auto-compact threshold, in tokens")
-
-                Text("tokens")
-                    .font(TypeScale.font(TypeScale.label))
-                    .foregroundStyle(Tokens.textGroupedSecondary)
-            }
-
-            if model.autoCompactTokens > 0 {
-                Button {
-                    Haptics.selection()
-                    setThreshold(0)
-                } label: {
-                    Text("Turn off")
-                        .font(TypeScale.font(TypeScale.md))
-                        .foregroundStyle(Tokens.accentText)
-                }
-            } else {
-                Button {
-                    Haptics.selection()
-                    setThreshold(AppModel.defaultAutoCompactTokens)
-                } label: {
-                    Text("Turn on (\(MobileTokens.short(AppModel.defaultAutoCompactTokens)) tokens)")
-                        .font(TypeScale.font(TypeScale.md))
-                        .foregroundStyle(Tokens.accentText)
-                }
-            }
-
             Toggle(isOn: $model.showReasoning) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show reasoning")
@@ -423,33 +361,12 @@ struct SettingsScreen: View {
         } header: {
             sectionHeader("Chat")
         } footer: {
-            Text(model.autoCompactTokens > 0
-                 ? "After a turn leaves \(MobileTokens.short(model.autoCompactTokens)) tokens in the context, this thread is compacted in place. A blank field or 0 turns it off."
-                 : "Auto-compaction is off. The conversation grows until the host refuses a turn; the header still shows how full the context is.")
+            // Compaction is the host's job, at its own `compression.threshold` — it compacts at the
+            // start of a turn when the context crosses it. An app-side threshold was a second
+            // opinion nobody asked for, and it could compact a thread the host was about to.
+            Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is.")
                 .font(TypeScale.font(TypeScale.label))
         }
-    }
-
-    /// The field is the source of truth while focused, the model's value otherwise. Off is
-    /// drawn as an empty field with the "Off" placeholder, not as a literal `0`: the number
-    /// and the word mean the same thing, and the word is the one that reads as a state.
-    private func syncThreshold() {
-        let text = model.autoCompactTokens > 0 ? MobileTokens.digits(model.autoCompactTokens) : ""
-        if text != thresholdText { thresholdText = text }
-    }
-
-    /// Blank means off: a user who cleared the field is saying "stop doing this", not
-    /// "compact at zero tokens".
-    private func commitThreshold() {
-        let digits = thresholdText.filter(\.isNumber)
-        setThreshold(Int(digits) ?? 0)
-    }
-
-    private func setThreshold(_ value: Int) {
-        let tokens = max(0, value)
-        model.autoCompactTokens = tokens
-        thresholdText = tokens > 0 ? MobileTokens.digits(tokens) : ""
-        thresholdFocused = false
     }
 
     // MARK: Devices

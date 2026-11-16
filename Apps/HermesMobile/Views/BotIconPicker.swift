@@ -10,10 +10,15 @@ struct BotIconService {
     let freshTicket: () async throws -> String
     var session: URLSession = .shared
 
-    /// `faces` is what this build writes; `icons` is the pre-pair payload, read so an older host
-    /// still shows every bot its own face.
+    /// `faces` carries the stored `#RRGGBB::shape_N`; `shape`/`color` are what a host that has not
+    /// been upgraded answers, and `icons` is the pre-pair payload. All three are read so no bot
+    /// loses its face to an older bridge.
     private struct Payload: Decodable {
-        struct Face: Decodable { let shape: String; let color: String }
+        struct Face: Decodable {
+            let avatar: String?
+            let shape: String?
+            let color: String?
+        }
         let faces: [String: Face]?
         let icons: [String: String]?
     }
@@ -40,18 +45,12 @@ struct BotIconService {
         return try JSONDecoder().decode(TokenResponse.self, from: data).ws_ticket
     }
     private struct Change: Encodable {
-        let shape: String?
-        let color: String?
-        enum CodingKeys: String, CodingKey { case shape, color }
+        /// The stored `#RRGGBB::shape_N`. `nil` clears the face on the host.
+        let avatar: String?
+        enum CodingKeys: String, CodingKey { case avatar }
         func encode(to encoder: Encoder) throws {
             var c = encoder.container(keyedBy: CodingKeys.self)
-            if let shape, let color {
-                try c.encode(shape, forKey: .shape)
-                try c.encode(color, forKey: .color)
-            } else {
-                try c.encodeNil(forKey: .shape)
-                try c.encodeNil(forKey: .color)
-            }
+            try c.encode(avatar, forKey: .avatar)
         }
     }
     private func request(_ url: URL, method: String, body: Data? = nil) async throws -> Data {
@@ -65,32 +64,40 @@ struct BotIconService {
         guard (200..<300).contains(http.statusCode) else { throw HTTPFailure(operation: "Bot icon request", status: http.statusCode) }
         return data
     }
-    func load() async throws -> [String: BotFace] {
+    func load() async throws -> [String: BotFaceChoice] {
         let data = try await request(baseURL.appendingPathComponent("v1/bot-icons"), method: "GET")
         let payload = try JSONDecoder().decode(Payload.self, from: data)
-        var faces: [String: BotFace] = [:]
+        var faces: [String: BotFaceChoice] = [:]
+        // The pre-pair ids first: a host that only knows them still gets a face, and a pair written
+        // later on the same row overwrites it.
         for (botID, icon) in payload.icons ?? [:] {
-            if let shape = BotIcon(rawValue: icon) { faces[botID] = .legacy(shape) }
+            if let choice = BotFaceChoice.migrated(legacyIcon: icon) { faces[botID] = choice }
         }
         for (botID, face) in payload.faces ?? [:] {
-            if let shape = BotIcon(rawValue: face.shape), let color = BotColor(rawValue: face.color) {
-                faces[botID] = BotFace(shape: shape, color: color)
+            // The stored string wins; a pair without one is a choice made before this build, and
+            // it is migrated rather than dropped.
+            if let avatar = face.avatar, let choice = BotFaceChoice(rawValue: avatar) {
+                faces[botID] = choice
+            } else if let choice = BotFaceChoice.migrated(legacyShape: face.shape, legacyColor: face.color) {
+                faces[botID] = choice
             }
         }
         return faces
     }
-    func save(botID: String, face: BotFace?) async throws {
+
+    func save(botID: String, face: BotFaceChoice?) async throws {
         let url = baseURL.appendingPathComponent("v1/bot-icons").appendingPathComponent(try BotIconPath.component(for: botID))
-        let change = Change(shape: face?.shape.rawValue, color: face?.color.rawValue)
-        _ = try await request(url, method: "PUT", body: JSONEncoder().encode(change))
+        _ = try await request(url, method: "PUT", body: JSONEncoder().encode(Change(avatar: face?.raw)))
     }
 }
 
 /// Caller refreshes its shared dictionary after saving; errors stay visible.
 struct BotIconPicker: View {
+    /// The bot whose face is being chosen: its id decides the body and the preview.
+    let botID: String
     let botName: String
-    let selected: BotFace?
-    let save: (BotFace?) async throws -> Void
+    let selected: BotFaceChoice?
+    let save: (BotFaceChoice?) async throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var saving = false
     @State private var error: String?
@@ -99,12 +106,12 @@ struct BotIconPicker: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Any shape, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
+                    Text("Any body, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
                         .font(TypeScale.font(TypeScale.sm))
                         .foregroundStyle(Tokens.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    BotFacePicker(face: selected) { face in
+                    BotFacePicker(identity: botID, value: selected) { face in
                         guard !saving else { return }
                         saving = true
                         error = nil

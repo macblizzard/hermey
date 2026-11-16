@@ -26,28 +26,38 @@ ROSTER = (ROOT / "Apps" / "HermesMac" / "Sidebar" / "SidebarBotList.swift").read
 
 
 class TheFaceSaysWhatItIsDoing(unittest.TestCase):
-    def test_three_states_and_three_animations(self) -> None:
-        self.assertIn("public enum PortraitStatus", GALLERY)
-        for case in ("case needsYou", "case working", "case compacting"):
-            self.assertIn(case, GALLERY)
+    """The eight activity states are the reference's, and no surface keeps its own copy."""
 
-    def test_each_state_draws_something_that_moves(self) -> None:
-        # A flashing mark, sparks that travel, a seam that closes. Each is a view of its own so a
-        # caller cannot get a static badge by forgetting a flag.
-        self.assertIn("NeedsYouFlash", GALLERY)
-        self.assertIn("CompactingZip", GALLERY)
-        self.assertIn("BotWorkingSparks(size: size, color: tint, isWorking: true)", GALLERY)
-        # Reduce Motion gets the mark without the movement, never nothing.
-        self.assertIn("accessibilityReduceMotion", GALLERY)
-        flash = GALLERY.split("public struct NeedsYouFlash", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("reduceMotion ? 1.0", flash)
-        zip_view = GALLERY.split("public struct CompactingZip", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("guard !reduceMotion else", zip_view)
+    ACTIVITY = (ROOT / "Sources" / "HermesKit" / "BotAvatarActivity.swift").read_text(encoding="utf-8")
+    AVATAR_VIEW = (ROOT / "Sources" / "HermeyUI" / "BotAvatarView.swift").read_text(encoding="utf-8")
 
-    def test_a_request_outranks_a_turn_and_both_outrank_a_compaction(self) -> None:
-        block = HEADER.split("private var portraitStatus", 1)[1].split("\n    }", 1)[0]
-        order = [block.index(".needsYou"), block.index(".compacting"), block.index(".working")]
+    def test_eight_states_and_their_precedence(self) -> None:
+        self.assertIn("public enum BotAvatarActivity", self.ACTIVITY)
+        for case in ("case idle", "case reading", "case writing", "case thinking",
+                     "case computer", "case working", "case waiting", "case error"):
+            self.assertIn(case, self.ACTIVITY)
+        # A request is waiting; a failure outranks it; neither is a working run.
+        order = [
+            self.ACTIVITY.index("if background"),
+            self.ACTIVITY.index('if status == "failed"'),
+            self.ACTIVITY.index("if isWaitingOnUser"),
+        ]
         self.assertEqual(order, sorted(order), "the state that needs a person wins the face")
+
+    def test_the_face_is_what_moves_and_it_rests_on_error(self) -> None:
+        # A body that breathes, sways, turns or pulses — and an error that holds still, which is
+        # what makes "asleep" readable at a glance.
+        motion = (ROOT / "Sources" / "HermeyUI" / "BotAvatarMotion.swift").read_text(encoding="utf-8")
+        self.assertIn("public enum BotAvatarMotion", motion)
+        self.assertIn("self != .error", self.ACTIVITY)
+        # Reduce Motion, the app's switch and the size floor all stop it.
+        self.assertIn("accessibilityReduceMotion", self.AVATAR_VIEW)
+        self.assertIn("animates && appAllowsMotion", self.AVATAR_VIEW)
+        self.assertIn("return size >= minimumAnimatingSize", motion)
+
+    def test_the_header_asks_the_tracker_instead_of_deriving(self) -> None:
+        self.assertIn("store.activity(for: bot.id)", HEADER)
+        self.assertNotIn("portraitStatus", HEADER)
 
 
 class TheSidebarRowIsOneCluster(unittest.TestCase):

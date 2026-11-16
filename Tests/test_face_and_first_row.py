@@ -1,8 +1,9 @@
-"""The face is a blob now, and the first row is on the traffic lights' line.
+"""The face is one of eight shipped bodies, and the first row is on the traffic lights' line.
 
 Both are appearance rules that a compiler cannot see and a screenshot review keeps having to
-re-check, so they are pinned here: the silhouette is filled and carries exactly two eyes, the
-sixteen shapes exist on both sides of the wire, and the chrome's top line is arithmetic that adds up.
+re-check, so they are pinned here: the body is filled and carries exactly two eyes, the eight shapes
+are the reference's own path data, the picker offers them, and the chrome's top line is arithmetic
+that adds up.
 """
 from __future__ import annotations
 
@@ -18,7 +19,8 @@ def source(*parts: str) -> str:
 
 
 GALLERY = source("Sources", "HermeyUI", "BotIconGallery.swift")
-SILHOUETTE = source("Sources", "HermeyUI", "BotSilhouette.swift")
+SHAPES = source("Sources", "HermeyUI", "BotAvatarShape.swift")
+AVATAR = source("Sources", "HermeyUI", "BotAvatarView.swift")
 HEADER = source("Apps", "HermesMac", "Conversation", "ConversationHeader.swift")
 SIDEBAR = source("Apps", "HermesMac", "Sidebar", "BotSidebarView.swift")
 ROOTVIEW = source("Apps", "HermesMac", "Workspace", "WorkspaceRoot.swift")
@@ -26,45 +28,50 @@ PANEL = source("Apps", "HermesMac", "Workspace", "MacBotPanel.swift")
 BRIDGE = source("Bridge", "hermes_bridge", "bot_icons.py")
 
 
-class TheFaceIsASilhouette(unittest.TestCase):
-    def test_the_portrait_draws_a_filled_shape_and_two_eyes(self) -> None:
-        portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
-        body = portrait.split("public var body: some View", 1)[1]
-        self.assertIn("BotSilhouette(icon)", body)
-        self.assertIn(".fill(tint)", body)
-        self.assertIn("BotEyes(size: size,", body)
-        self.assertIn("tilt: icon.eyeTilt", body)
+class TheFaceIsAShippedBody(unittest.TestCase):
+    def test_the_body_is_filled_and_carries_two_eyes(self) -> None:
+        # One solid mass with the two bars cut out of it — the same drawing the reference ships.
+        self.assertIn("resolved.shape.path(inSide: size)", AVATAR)
+        self.assertIn(".fill(resolved.color.color)", AVATAR)
+        self.assertIn("geometry.eyes.bars", AVATAR)
+        self.assertIn("BotAvatarPalette.eyeTone(forBody: bodyHex)", AVATAR)
 
-    def test_the_ring_and_the_line_art_are_gone(self) -> None:
-        # A ring around a ring around a body was the old drawing; the mass is the whole mark now.
-        portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
-        body = portrait.split("public var body: some View", 1)[1].split("/// Shared working", 1)[0]
-        self.assertNotIn("Circle().strokeBorder", body)
-        self.assertNotIn("newPortrait", GALLERY)
+    def test_the_line_art_and_the_old_portrait_are_gone(self) -> None:
+        # A ring around a ring around a body was the old drawing; the mass is the whole mark now, and
+        # there is exactly one face system in the tree.
+        self.assertNotIn("BotIconPortrait", GALLERY)
+        self.assertNotIn("BotSilhouette", AVATAR)
+        self.assertNotIn("public enum BotIcon", GALLERY)
 
-    def test_the_state_badge_still_sits_on_the_face(self) -> None:
-        portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
-        body = portrait.split("public var body: some View", 1)[1]
-        for badge in ("NeedsYouFlash", "BotWorkingSparks", "CompactingZip"):
-            self.assertIn(badge, body, f"{badge} no longer drawn on the portrait")
+    def test_the_eight_shapes_are_the_reference_paths(self) -> None:
+        order = re.search(r"case hex, wedge, squircle, tablet, pebble, blob, teardrop, cloud", SHAPES)
+        self.assertIsNotNone(order, "the shipped order is the index order a shape_N refers to")
+        for kind in ("case .hex", "case .wedge", "case .squircle", "case .tablet",
+                     "case .pebble", "case .blob", "case .teardrop", "case .cloud"):
+            self.assertIn(kind, SHAPES, f"{kind} has no path")
 
-    def test_sixteen_shapes_and_four_new_silhouettes_draw_paths(self) -> None:
-        cases = re.search(r"public enum BotIcon:.*?\n\}", GALLERY, re.S).group(0)
-        self.assertIn("lump, mushroom, blob, capsule, droplet, scallop", cases)
-        for kind in ("case .mushroom", "case .capsule", "case .scallop", "case .droplet"):
-            self.assertIn(kind, SILHOUETTE, f"{kind} has no path")
+    def test_the_host_accepts_a_face_the_apps_draw(self) -> None:
+        # One string, `#RRGGBB::shape_N`, and the host validates it rather than a pair of names.
+        self.assertIn("AVATAR = re.compile", BRIDGE)
+        self.assertIn("avatar: Optional[str] = None", BRIDGE)
+        # And the pair an older app writes is still accepted, so nobody's face is lost on upgrade.
+        self.assertIn("def face(self) -> tuple[Icon | None, Color | None]:", BRIDGE)
 
-    def test_the_host_accepts_every_shape_the_apps_draw(self) -> None:
-        for kind in ("lump", "mushroom", "blob", "capsule", "droplet", "scallop"):
-            self.assertIn(f"'{kind}'", BRIDGE, f"the host would reject {kind}")
-        # And the ten that were there before are still accepted, because stored faces use them.
-        for kind in ("ember", "nova", "cobalt", "orbit", "moss", "dusk", "beacon", "pixel",
-                     "rover", "prism"):
-            self.assertIn(f"'{kind}'", BRIDGE, f"the host dropped {kind}")
-
-    def test_the_picker_holds_eight_per_row(self) -> None:
+    def test_the_picker_offers_eight_bodies_and_the_palette(self) -> None:
         picker = GALLERY.split("public struct BotFacePicker", 1)[1]
         self.assertIn("count: 8", picker)
+        self.assertIn("ForEach(BotAvatarShape.shipped.indices, id: \\.self)", picker)
+        self.assertIn("BotAvatarPalette.colors", picker)
+        # A live preview, drawn by the same view every other surface uses.
+        self.assertIn("BotAvatarView(identity: identity, color: draft.raw, activity: .idle, size: 76)",
+                      picker)
+
+    def test_a_choice_round_trips_as_the_reference_string(self) -> None:
+        # `#RRGGBB::shape_N`, built in one place and read back through the module's own parser.
+        self.assertIn("public static func make(colorHex: String, shapeIndex: Int) -> BotFaceChoice", GALLERY)
+        self.assertIn("normalisedHex(colorHex)", GALLERY)
+        self.assertIn("::shape_", GALLERY)
+        self.assertIn("public var stored: BotAvatarStoredValue { BotAvatarIdentity.parse(raw) }", GALLERY)
 
 
 class TheFirstRowIsOnTheLightsLine(unittest.TestCase):
@@ -136,7 +143,7 @@ class ThePanelIsOnlyVerbs(unittest.TestCase):
         # It used to be a lone ✕ on the argument that the pill already says the name. True — and the
         # panel still looked like a settings column rather than the page the phone opens from the
         # same pill, so the face and the name are back, with Edit beside them (2026-11-14).
-        self.assertIn("BotIconPortrait(store.botFaces[bot.id]", self.PANEL)
+        self.assertIn("BotAvatarView(identity: bot.id", self.PANEL)
         self.assertIn("size: 56", self.PANEL)
         self.assertIn('Text(bot?.displayName ?? "No bot")', self.PANEL)
         self.assertIn('Text("Edit")', self.PANEL)

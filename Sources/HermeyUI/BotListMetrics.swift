@@ -53,7 +53,7 @@ public struct BotListScalePreview: View {
 
     public var body: some View {
         HStack(spacing: metrics.gap) {
-            BotIconPortrait(BotFace.default(for: "preview"), size: metrics.avatar)
+            BotAvatarView(identity: "preview", size: metrics.avatar, animates: false)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Aria")
                     .font(TypeScale.font(metrics.nameSize, weight: .semibold))

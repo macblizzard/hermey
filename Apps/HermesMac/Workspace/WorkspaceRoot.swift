@@ -114,7 +114,7 @@ struct WorkspaceRoot: View {
             ThemeRuntime.restoreFromDefaults()
             TypeScale.restoreScale()
             // The faces' answer too: taken from the system once, then the app's own switch owns it.
-            BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
+            BotAvatarMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
             auditLaunchSurfaces()
             // Nothing starts focused. macOS puts the focus ring on the first focusable control of a
             // new window, which made the bot list's "+" look selected at launch until a click moved
@@ -250,7 +250,7 @@ struct WorkspaceRoot: View {
         let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey) ?? ""
         guard !relay.isEmpty else { return }
         await store.model.syncPushIcons { id in
-            PushIcon.png(for: store.botFaces[id] ?? BotFace.default(for: id))
+            PushIcon.png(for: id, color: store.botFaces[id]?.raw)
         }
     }
 

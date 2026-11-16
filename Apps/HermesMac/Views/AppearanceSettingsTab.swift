@@ -12,7 +12,7 @@ struct AppearanceSettingsTab: View {
     @AppStorage(WindowAppearance.opacityKey) private var opacity: Double = 1
     /// The faces' own switch. Unset follows the system's Reduce Motion; either way an explicit
     /// answer here wins, because a person who opens this page and flips it means it.
-    @AppStorage(BotFaceMotion.defaultsKey) private var animateFaces = true
+    @AppStorage(BotAvatarMotion.defaultsKey) private var animateFaces = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
     /// The bot list's size, dragged here. Stored under the same key the phone uses.

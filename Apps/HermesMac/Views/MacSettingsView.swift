@@ -8,8 +8,7 @@ import SwiftUI
 ///
 /// Three tabs, in the order the contract fixes (`docs/ENDLESS-CHAT.md` §4): how the chat behaves,
 /// which bots exist, and the connection this Mac holds. The phone's Settings screen is the same
-/// list of facts at a different size; the copy about the threshold is deliberately identical in
-/// meaning, because it is one setting shared by both apps through `AppModel`.
+/// list of facts at a different size.
 struct MacSettingsView: View {
     @ObservedObject var store: WorkspaceStore
 
@@ -76,33 +75,11 @@ struct MacSettingsView: View {
 // MARK: - Chat
 
 /// The three preferences `AppModel` persists, written straight back to it.
-///
-/// The threshold is edited as text and committed on Return or focus loss: writing every
-/// keystroke to `autoCompactTokens` would compact the thread mid-typing and would make a
-/// half-typed "20000" behave like "2".
 private struct ChatSettingsTab: View {
     @ObservedObject var store: WorkspaceStore
 
-    @FocusState private var thresholdFocused: Bool
-    @State private var thresholdText: String = ""
-
-    private var threshold: Int { store.model.autoCompactTokens }
-
     var body: some View {
         Form {
-            Section {
-                thresholdRow
-            } header: {
-                Text("Auto-compaction")
-            } footer: {
-                Text(threshold > 0
-                     ? "After a turn leaves \(TokenCount.short(threshold)) tokens in the conversation, Hermes summarises it in place so the chat can continue. The full transcript on the host is rewritten; the conversation itself is kept."
-                     : "Off. The conversation grows until the host refuses a turn. 200,000 tokens is the default — the point where a long conversation starts refusing turns, and early enough that the summary still fits behind the reply.")
-                    .font(TypeScale.font(TypeScale.caption))
-                    .foregroundStyle(Tokens.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             Section {
                 Toggle("Show reasoning", isOn: reasoningBinding)
                     .tint(Tokens.success)
@@ -123,62 +100,20 @@ private struct ChatSettingsTab: View {
                     .foregroundStyle(Tokens.textMuted)
             } header: {
                 Text("What the chat draws")
+            } footer: {
+                // Compaction is the host's job, at its own `compression.threshold`: it compacts at
+                // the start of a turn when the context crosses it. A second threshold here was an
+                // opinion the app is not entitled to — and it could compact a thread the host was
+                // about to.
+                Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .background(Tokens.canvas)
-        .onAppear { syncThreshold() }
-        .onChange(of: store.model.autoCompactTokens) { _ in syncThreshold() }
-        .onChange(of: thresholdFocused) { focused in
-            if !focused { commitThreshold() }
-        }
-    }
-
-    // MARK: Threshold
-
-    private var thresholdRow: some View {
-        HStack(spacing: 8) {
-            Text("Compact after")
-                .foregroundStyle(Tokens.textPrimary)
-
-            Spacer(minLength: 8)
-
-            TextField("Off", text: $thresholdText)
-                .textFieldStyle(.plain)
-                .multilineTextAlignment(.trailing)
-                .font(Tokens.mono)
-                .foregroundStyle(Tokens.textPrimary)
-                .tint(Tokens.accent)
-                .monospacedDigit()
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
-                        .fill(Tokens.control)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
-                        .strokeBorder(Tokens.borderStrong, lineWidth: 1)
-                )
-                .frame(width: 116)
-                .focused($thresholdFocused)
-                .onSubmit { commitThreshold() }
-                .accessibilityLabel("Auto-compact threshold, in tokens")
-
-            Text("tokens")
-                .foregroundStyle(Tokens.textMuted)
-
-            if threshold > 0 {
-                TextButton("Turn off", tone: Tokens.accentText) { setThreshold(0) }
-            } else {
-                TextButton("Use \(TokenCount.short(AppModel.defaultAutoCompactTokens))",
-                           tone: Tokens.accentText) {
-                    setThreshold(AppModel.defaultAutoCompactTokens)
-                }
-            }
-        }
-        .font(TypeScale.font(Tokens.textMD))
     }
 
     private var reasoningBinding: Binding<Bool> {
@@ -196,38 +131,6 @@ private struct ChatSettingsTab: View {
                 set: { store.model.showToolCalls = $0 })
     }
 
-    /// The field is the source of truth while focused, the model's value otherwise. Off is drawn
-    /// as an empty field with the "Off" placeholder, not as a literal `0`: the number and the word
-    /// mean the same thing, and the word is the one that reads as a state.
-    private func syncThreshold() {
-        let text = threshold > 0 ? Self.grouped(threshold) : ""
-        if text != thresholdText { thresholdText = text }
-    }
-
-    /// Blank means off: a user who cleared the field is saying "stop doing this", not
-    /// "compact at zero tokens".
-    private func commitThreshold() {
-        let digits = thresholdText.filter(\.isNumber)
-        setThreshold(Int(digits) ?? 0)
-    }
-
-    private func setThreshold(_ value: Int) {
-        let tokens = max(0, value)
-        store.model.autoCompactTokens = tokens
-        thresholdText = tokens > 0 ? Self.grouped(tokens) : ""
-        thresholdFocused = false
-    }
-
-    // MARK: Formatting
-
-    static func grouped(_ value: Int) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.groupingSeparator = ","
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
-    }
-
-    /// `200 000` reads as "two hundred thousand"; `200k` fits in a sentence and in a chip.
 }
 
 // MARK: - Bots
@@ -287,11 +190,9 @@ private struct BotsSettingsTab: View {
 
     private func row(_ bot: Bot) -> some View {
         HStack(spacing: 10) {
-            if let icon = store.botFaces[bot.id] {
-                BotIconPortrait(icon, size: 24, isWorking: false)
-            } else {
-                Avatar(bot.displayName, size: .small, initials: bot.avatarInitials)
-            }
+            // A bot always has a face — the one stored for it, or the body its id draws — so this
+            // row never falls back to initials.
+            BotAvatarView(identity: bot.id, color: store.botFaces[bot.id]?.raw, size: 24, animates: false)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(bot.displayName)

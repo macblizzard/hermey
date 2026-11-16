@@ -41,7 +41,7 @@ struct SidebarBotList: View {
     /// would open. `nil` while the pointer is the only thing choosing.
     var highlighted: SidebarSearchRow? = nil
 
-    private var icons: [String: BotFace] { store.botFaces }
+    private var icons: [String: BotFaceChoice] { store.botFaces }
 
     /// The row under the pointer, or whose overflow menu is open. One value for the whole list, so
     /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
@@ -309,8 +309,11 @@ struct SidebarBotList: View {
     /// One search finding on the Mac: which bot, the snippet, when.
     private func findingRow(_ hit: BotSearchHit) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            BotIconPortrait(store.botFaces[hit.profile] ?? BotFace.default(for: hit.profile),
-                            size: Geometry.rosterAvatarCompact)
+            BotAvatarView(identity: hit.profile,
+                          color: store.botFaces[hit.profile]?.raw,
+                          activity: store.activity(for: hit.profile),
+                          size: Geometry.rosterAvatarCompact,
+                          animates: false)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile)
@@ -550,19 +553,18 @@ struct SidebarBotList: View {
             store.selectBot(bot.id)
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
-                // Same rule as the phone: the host's icon if there is one, otherwise the portrait
-                // the bot's id picks — never a bare initial. Midnight draws the working state as a
-                // ring around the face, which is where this app already puts it.
+                // Same rule as the phone: the stored face if there is one, otherwise the body the
+                // bot's id picks — never a bare initial. The working state is the reference's ring
+                // around the face, which is where this app already puts it.
                 //
-                // Live state is passed only for the bot whose turn is actually moving. An idle row
-                // hands the portrait no status at all, so nothing on this screen is being asked to
-                // animate on its behalf (see `BotIconPortrait` for the movement that remains).
-                BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: metrics.avatar,
-                                status: portraitStatus(for: bot),
-                                // Only a moving bot animates. Everything else in the roster is a
-                                // legend, and a 20 fps timeline per idle row is pure heat.
-                                animates: portraitStatus(for: bot) != nil)
+                // The pose is the tracker's, so a row that is *not* the open conversation still says
+                // `reading` or `computer` while that bot works. Only a moving bot animates: an idle
+                // row is a legend, and a 20 fps timeline per row is pure heat.
+                BotAvatarView(identity: bot.id,
+                              color: store.botFaces[bot.id]?.raw,
+                              activity: store.activity(for: bot.id),
+                              size: metrics.avatar,
+                              animates: store.activity(for: bot.id) != .idle)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
@@ -831,7 +833,7 @@ struct SidebarBotList: View {
     /// One description of the menu, read by the native context menu and by the popover ⌘E opens.
     private func rowMenu(for bot: Bot) -> BotMenu {
         BotMenu(bot: bot,
-                face: store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
+                face: store.botFaces[bot.id],
                 isPinned: model.isPinned(botID: bot.id),
                 isHidden: model.isHidden(botID: bot.id),
                 categories: model.botCategories,
@@ -942,17 +944,6 @@ struct SidebarBotList: View {
     }
 
     // MARK: Facts
-
-    /// The face's state, and only for the bot whose turn is live. Everything else is `nil`, the
-    /// portrait's own idle case: no sparks, no pulse, nothing asked of the renderer by a row that
-    /// is not doing anything.
-    private func portraitStatus(for bot: Bot) -> PortraitStatus? {
-        guard bot.id == model.selectedBotID else { return nil }
-        if model.hasPendingRequests { return .needsYou }
-        if model.isCompressing { return .compacting }
-        if model.isStreaming { return .working }
-        return nil
-    }
 
     private func categoryName(for bot: Bot) -> String? {
         guard let id = model.categoryID(for: bot.id) else { return nil }

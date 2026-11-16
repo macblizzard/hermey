@@ -156,11 +156,11 @@ struct MacBotPanel: View {
             ZStack(alignment: .topTrailing) {
                 VStack(spacing: 8) {
                     if let bot {
-                        BotIconPortrait(store.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                        size: 56,
-                                        isWorking: model.isStreaming,
-                                        status: model.hasPendingRequests ? .needsYou
-                                              : (model.isCompressing ? .compacting : nil))
+                        BotAvatarView(identity: bot.id,
+                                      color: store.botFaces[bot.id]?.raw,
+                                      activity: store.activity(for: bot.id),
+                                      size: 56,
+                                      animates: store.activity(for: bot.id) != .idle)
                     } else {
                         Avatar("No bot", size: .small, presence: .idle)
                     }

@@ -105,6 +105,25 @@ public final class AppModel: ObservableObject {
     private var sealedInterimKeys = Set<String>()
     @Published public private(set) var isStreaming = false
 
+    /// What each bot is doing, reduced from the events this client already receives.
+    ///
+    /// One tracker for the whole app: the roster, the chat header, the bot panel and every
+    /// transcript row read the same answer through `activity(forBot:)`, so no two of them can
+    /// disagree — and none of them re-derives the precedence from `isStreaming` and a tool name.
+    @Published public private(set) var botActivity = BotActivityTracker()
+
+    /// Which bot a session belongs to, as far as this launch has seen.
+    ///
+    /// `apply(_:)` maps an event's session back to its bot with this, so a turn on a bot the user is
+    /// *not* looking at still moves that bot's face in the list instead of being dropped by the
+    /// "is this the open conversation" guard every branch below applies.
+    private var sessionBots: [SessionID: BotID] = [:]
+
+    /// What this bot is doing, for `BotAvatarView`. The one accessor both shells call.
+    public func activity(forBot botID: BotID) -> BotAvatarActivity {
+        botActivity.activity(for: botID)
+    }
+
     /// The model's reasoning for the turn in flight, accumulated **separately** from the reply.
     ///
     /// `thinking.delta` is its own stream on the wire (`{"text"}` — plus an empty `{"text":""}`
@@ -233,20 +252,10 @@ public final class AppModel: ObservableObject {
     @Published public var showToolCalls: Bool {
         didSet { Self.defaults.set(showToolCalls, forKey: Keys.showToolCalls) }
     }
-    /// Tokens at which a completed turn compacts the conversation. `0` disables it.
-    @Published public var autoCompactTokens: Int {
-        didSet { Self.defaults.set(autoCompactTokens, forKey: Keys.autoCompactTokens) }
-    }
-
-    /// 200k tokens: the point where a long conversation starts refusing turns, and early enough
-    /// that the summary still fits comfortably behind the reply.
-    public static let defaultAutoCompactTokens = 200_000
-
     enum Keys {
         static let showReasoning = "hermes.showReasoning"
         static let reasoningExpanded = "hermey.showReasoningExpanded"
         static let showToolCalls = "hermes.showToolOutput"
-        static let autoCompactTokens = "hermes.autoCompactTokens"
         /// One stored session id per bot — the endless-chat contract (`docs/ENDLESS-CHAT.md` §2).
         static let endlessSessionPrefix = "hermes.endlessSession."
         /// The id this device reset, until something newer is published. The bridge's PUT has no
@@ -412,8 +421,6 @@ public final class AppModel: ObservableObject {
         showReasoning = defaults.object(forKey: Keys.showReasoning) as? Bool ?? true
         reasoningExpandedByDefault = defaults.object(forKey: Keys.reasoningExpanded) as? Bool ?? false
         showToolCalls = defaults.object(forKey: Keys.showToolCalls) as? Bool ?? true
-        autoCompactTokens = defaults.object(forKey: Keys.autoCompactTokens) as? Int
-            ?? Self.defaultAutoCompactTokens
         // Read here, not on connect: Settings can be opened before a host answers, and a toggle
         // that shows "on" until the socket comes up would be a lie about a stored choice.
         loadNotificationSettings()
@@ -943,6 +950,7 @@ public final class AppModel: ObservableObject {
 
     public func select(_ id: SessionID) async {
         selectedSessionID = id
+        noteSessionOwner(id)
         // Paint what this process already knows before touching the network: a long chat costs the
         // host ~4 s to resume, and an empty pane for those seconds reads as "the app is broken".
         if let cached = recentTranscripts[id] {
@@ -1055,6 +1063,7 @@ public final class AppModel: ObservableObject {
     /// `inflight == nil` and `streaming: false` both mean nothing more is coming; a non-streaming
     /// inflight still carries its partial text, so the bubble keeps what the model already wrote.
     private func adopt(_ resumed: SessionResume, session: SessionID) {
+        noteSessionOwner(session)
         setStreamed(resumed.liveText)
         isStreaming = resumed.isStreaming
         reasoningText = ""
@@ -1938,18 +1947,6 @@ public final class AppModel: ObservableObject {
             compactionNotice = "compacting did not report back — open the chat again to see where it stands"
             finishCompaction()
         }
-    }
-
-    /// Compact once the host reports the context at (or past) the threshold.
-    ///
-    /// The threshold is in absolute tokens, from `usage.context_used` on `message.complete`; `0`
-    /// disables it. It is checked *after* a turn, never in a loop: a compaction cannot itself
-    /// complete a turn, and `isCompressing` refuses a second one while the first is running.
-    private func autoCompactIfNeeded() async {
-        guard autoCompactTokens > 0, !isCompressing,
-              let used = contextUsed, used >= autoCompactTokens
-        else { return }
-        await compressNow()
     }
 
     private static func endlessKey(_ botID: String) -> String {
@@ -3007,6 +3004,12 @@ public final class AppModel: ObservableObject {
     }
 
     private func apply(_ event: ClientEvent) async {
+        // Before any of the branches below: an event for a bot the user is not looking at is still
+        // *that bot's* activity, and those branches return early for exactly that reason.
+        trackActivity(event)
+        // And after every one of them, including the early returns: the model's own run flags are
+        // the authority for the open bot, whatever the event said.
+        defer { syncActivityWithRunState() }
         switch event {
         case .ready:
             connection = .connected
@@ -3114,9 +3117,6 @@ public final class AppModel: ObservableObject {
             // The turn is now part of what a re-open should show instantly.
             remember(session, entries: transcript, cursor: earlierCursor, total: historyTotal)
             cacheTranscriptSoon(session)
-            // Not awaited: compaction is a model turn that can take minutes, and parking this loop
-            // would hold back every later delta, approval and tool event behind it.
-            Task { await self.autoCompactIfNeeded() }
             // Move this row now, cheaply. A preview sweep here cost one `session.list` per bot
             // after *every* reply just to reorder one row; the host's own timestamps arrive on the
             // next list appearance or foreground, which is when the other device's turns matter.
@@ -3192,6 +3192,56 @@ public final class AppModel: ObservableObject {
         case .unknown:
             break
         }
+    }
+
+    // MARK: Activity
+
+    /// Remember which bot a session belongs to, so an event can be attributed to a face.
+    private func noteSessionOwner(_ id: SessionID) {
+        guard let bot = selectedBotID else { return }
+        sessionBots[id] = bot
+    }
+
+    /// Reduce one event into the tracker, for the bot the event's session belongs to.
+    ///
+    /// A session this launch has never seen has no face to move: attributing it to the open bot
+    /// because it happens to be open would light up the wrong row.
+    private func trackActivity(_ event: ClientEvent) {
+        switch event {
+        case .toolStart(let session, _, _, _),
+             .toolProgress(let session, _, _),
+             .toolComplete(let session, _, _, _, _, _),
+             .thinkingDelta(let session, _),
+             .messageDelta(let session, _),
+             .interimMessage(let session, _, _, _),
+             .messageComplete(let session, _):
+            guard let bot = sessionBots[session] ?? (session == selectedSessionID ? selectedBotID : nil) else { return }
+            botActivity.apply(event, bot: bot)
+        case .request(let request):
+            // Waiting is a run paused on the user. A request that names no session still blocks the
+            // run the app is showing, so it is the open bot's.
+            let session = Self.sessionID(of: request)
+            guard let bot = session.flatMap({ sessionBots[$0] }) ?? selectedBotID else { return }
+            botActivity.apply(event, bot: bot)
+        case .ready, .state, .requestCancelled, .contextUsage, .sessionUpdated, .error, .unknown:
+            // A transport state is not a bot's state, and `error` is the gateway's error, not a
+            // failed run: a run's failure has no event of its own.
+            break
+        }
+    }
+
+    /// Reconcile the open bot's face with the model's own run flags.
+    ///
+    /// The event stream is not the only authority: `isStreaming` is set by `select`, by a resume and
+    /// by `interrupt`, none of which sends a tool event — and a request answered by the user clears
+    /// `pendingRequests` without a `request.cancelled`. Both are read here, once, rather than by
+    /// each view.
+    private func syncActivityWithRunState() {
+        guard let bot = selectedBotID else { return }
+        if let session = selectedSessionID { sessionBots[session] = bot }
+        botActivity.setStreaming(isStreaming || isCompressing || runningSessions.contains(selectedSessionID ?? ""),
+                                 for: bot)
+        botActivity.setWaitingOnUser(!pendingRequests.isEmpty, for: bot)
     }
 
     /// A new turn is starting: the previous turn's tool cards described a turn whose answer has

@@ -11,6 +11,24 @@ All notable changes to Hermey are recorded here. The format follows
   `HermeyModelLabel` / `HermeyChatText`, and the two house palettes are **Midnight** (default) and
   **Graphite**. A stored theme id from before the rename resolves forward through
   `ThemeCatalog.supersededIDs`, so nobody is silently repainted; the palette is unchanged.
+- **One face for a bot, drawn the way the reference draws it.** The eight shipped bodies, the eleven
+  palette colours and the reference's hash replace the sixteen hand-drawn silhouettes and twelve
+  swatches: every surface that draws a face — the bot list, the chat header, the transcript's
+  working row, the drawer, the bot panel, the pair sheet, group chats and the banner icon — now uses
+  one `BotAvatarView`, and the old `BotFace` / `BotIcon` / `BotSilhouette` / `BotFaceSpinner` types
+  are gone. What a bot is *doing* is no longer guessed per view: `BotActivityTracker` reduces the
+  gateway's own tool and reasoning events to one of the reference's eight activities per bot, so a
+  row you are not reading still says `reading` or `computer` while that bot works.
+- **The icon override is the reference's own value, `#RRGGBB::shape_N`.** The picker offers the
+  eight bodies and the palette, previews the choice live, and stores one string in the same field;
+  a face chosen by the previous build migrates rather than vanishing.
+- **Compaction is the host's job, at its own `compression.threshold`.** Hermes already compacts at
+  the start of a turn when the context nears the model's window, so the app no longer second-guesses
+  it: the client-side auto-compact trigger and the `hermes.autoCompactTokens` threshold — and the
+  field in both Settings screens — are removed. "Compact now" stays the one path the app owns.
+- **⌘F toggles the in-conversation search bar.** It used to only open it, so a second press did
+  nothing; the same key now closes it, clears the field and hands the scroll position back. A search
+  opened from a bot-list finding still arrives pre-filled and is never a toggle.
 
 ### Added
 - **A bot's conversation is now the host's own Bot Chat, so the phone, the Mac and the official app

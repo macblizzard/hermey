@@ -1,3 +1,4 @@
+import HermesKit
 import SwiftUI
 import HermesAppKit
 import HermeyUI
@@ -15,7 +16,12 @@ import HermeyUI
 struct ConversationDrawer: View {
     let title: String
     let subtitle: String?
-    let face: BotFace
+    /// The stored `#RRGGBB::shape_N`, or nil for the face the bot's id derives.
+    let face: BotFaceChoice?
+    /// Whose page this is, so the face is the one the roster shows.
+    let botID: String
+    /// What that bot is doing.
+    let activity: BotAvatarActivity
     let isCompressing: Bool
     let hasAnyUnread: Bool
     let canSpeak: Bool
@@ -97,7 +103,8 @@ struct ConversationDrawer: View {
     /// itself rather than its contents.
     private var header: some View {
         VStack(spacing: 12) {
-            BotIconPortrait(face, size: 72)
+            BotAvatarView(identity: botID, color: face?.raw, activity: activity, size: 72,
+                          animates: activity != .idle)
 
             Text(title)
                 .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))
@@ -174,8 +181,9 @@ struct ConversationDrawer: View {
             }
 
             // Compaction, the unread sweep and spoken replies are gone from this page: the first
-            // two happen on their own (auto-compaction and the host's own sweep), and the third
-            // belongs beside the microphone that records, not in a list of things a page can do.
+            // two happen on their own (the host compacts at its own threshold; its sweep keeps the
+            // badges), and the third belongs beside the microphone that records, not in a list of
+            // things a page can do.
 
             panel {
                 row("Reset chat", systemImage: "arrow.counterclockwise",
@@ -244,7 +252,9 @@ extension ConversationDrawer {
     /// Preview-only fixture: `PreviewFixture` has no host, so every closure is a no-op.
     static func preview() -> ConversationDrawer {
         ConversationDrawer(title: "cody", subtitle: "lead developer",
-                           face: BotFace.default(for: "cody"),
+                           face: nil,
+                           botID: "cody",
+                           activity: .idle,
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,
                            onComputer: {}, onWorkspace: {}, onSkills: {}, onMCP: {},

@@ -35,7 +35,7 @@ class TheChatHasOneDoor(unittest.TestCase):
         self.assertNotIn("ToolbarItem(placement: .principal)", SCREEN)
         self.assertIn('.toolbar(.hidden, for: .navigationBar)', SCREEN)
         pill = SCREEN.split("private var pill: some View", 1)[1]
-        self.assertIn("BotIconPortrait(", pill)
+        self.assertIn("BotAvatarView(identity: bot.id", pill)
         self.assertIn("Text(title)", pill)
 
     def test_the_bot_list_keeps_its_own_menu(self) -> None:

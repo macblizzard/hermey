@@ -115,10 +115,12 @@ class TheNameIsTheControl(unittest.TestCase):
     def test_the_state_is_on_the_face_not_in_a_chip(self) -> None:
         self.assertIn("ZStack {", HEADER)
         self.assertNotIn("contextChipLabel", HEADER)
-        # A chip is a word you read; the face is a thing you notice. All three states live there.
-        self.assertIn("portraitStatus", HEADER)
-        for state in (".needsYou", ".working", ".compacting"):
-            self.assertIn(f"return {state}", HEADER)
+        # A chip is a word you read; the face is a thing you notice. The pill wears the activity the
+        # tracker reduced, so the header and the roster cannot say different things about one bot.
+        self.assertIn("store.activity(for: bot.id)", HEADER)
+        self.assertIn("BotAvatarView(identity: bot.id", HEADER)
+        # No per-view precedence left: the old `portraitStatus` ladder was a second copy of the rules.
+        self.assertNotIn("portraitStatus", HEADER)
         for chip in ('StatusChip("running"', 'StatusChip("needs you"', 'StatusChip("compacting'):
             self.assertNotIn(chip, HEADER)
         # The result of a compaction is still a sentence: it has no shape to take.

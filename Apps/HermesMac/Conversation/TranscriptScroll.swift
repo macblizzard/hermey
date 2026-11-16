@@ -15,16 +15,26 @@ struct TranscriptScroll: View {
 
     /// Bumped by any of the three doors to find-in-conversation (`WorkspaceStore.openFindInChat`):
     /// ⌘F and the Conversation menu's "Find in Conversation…", the bot panel's "Search this
-    /// conversation" row, and the ⌘K palette's verb. The search lives here, so this is a request to
-    /// open the field and take the caret — not shared state: the field, its query and its cursor are
-    /// local to the reading surface (`TranscriptSearchState`), which is what keeps the sidebar's
-    /// bot field and this one from ever being the same search.
+    /// conversation" row, and the ⌘K palette's verb. The search lives here, so this is a request,
+    /// not shared state: the field, its query and its cursor are local to the reading surface
+    /// (`TranscriptSearchState`), which is what keeps the sidebar's bot field and this one from
+    /// ever being the same search.
+    ///
+    /// It **toggles**: every press flips the bar, so ⌘F is the way out as well as the way in. A bar
+    /// you can only leave with the mouse reads as broken (reported 2026-11-16).
+    var findToggleRequest: Int = 0
+
+    /// Bumped by a *seeded* open only (a bot-list message hit): opens the bar pre-filled. Never a
+    /// toggle — a finding clicked twice must land on the same phrase twice.
     var findRequest: Int = 0
     /// The phrase to open the bar with, when the request came from a finding in the bot panel's
     /// search rather than from ⌘F. Only honoured while `findSeedRequest` names *this* request, so a
     /// later plain ⌘F starts on an empty field instead of replaying the last finding.
     var findSeed: String = ""
     var findSeedRequest: Int = 0
+    /// The seed request already applied. A seed is one shot: once the finding's phrase is in the
+    /// field, a later ⌘F opens on an empty field instead of replaying it.
+    @State private var appliedSeedRequest = -1
     /// The composer's measured height. The capsule floats over the transcript and grows upward, so
     /// the last rows have to clear it by exactly this much.
     var bottomInset: CGFloat = 0
@@ -32,7 +42,7 @@ struct TranscriptScroll: View {
     /// never leaves you guessing whose conversation you are typing into.
     var userBubbleTint: Color = Tokens.control
     /// The roster's faces, so the thinking row can turn the same face the sidebar shows.
-    var faces: [String: BotFace] = [:]
+    var faces: [String: BotFaceChoice] = [:]
 
     /// Grouping is memoised: `TranscriptRowCache` walks the transcript only when it changes, and a
     /// body pass happens on every published token.
@@ -156,12 +166,13 @@ struct TranscriptScroll: View {
         }
         // ⌘F and the magnifier land in the same place; a second press re-focuses a field that is
         // already open instead of doing nothing.
+        .onChange(of: findToggleRequest) { _, _ in toggleSearch() }
         .onChange(of: findRequest) { _, _ in openSearch() }
         // A seeded request that arrived while this pane was being built — the counter changed
         // before the transcript existed, so the change above never fired. One shot, for this
         // request only: the seed is matched by number, not by being non-empty.
         .onAppear {
-            if findSeedRequest == findRequest, !findSeed.isEmpty, !search.isOpen {
+            if pendingSeed != nil, !search.isOpen {
                 openSearch()
             }
         }
@@ -309,9 +320,8 @@ struct TranscriptScroll: View {
 
             if model.isStreaming {
                 StreamingAssistantBubble(text: model.visibleStreamingText,
-                                         face: model.selectedBot.map {
-                                             faces[$0.id] ?? BotFace.default(for: $0.id)
-                                         })
+                                         bot: model.selectedBot?.id,
+                                         color: model.selectedBot.flatMap { faces[$0.id]?.raw })
                     .id(streamingID)
                     .background(fill([streamingID], among: matched, selected: selected))
                     .transition(.opacity)
@@ -538,19 +548,42 @@ struct TranscriptScroll: View {
                 set: { if !$0 { selectionText = nil } })
     }
 
-    /// Done, Escape: the bar goes and the field goes with it, so the next ⌘F starts empty rather
-    /// than reopening on an answer the reader has already finished with.
+    /// Done, Escape, or a second ⌘F: the bar goes and the field goes with it, so the next open
+    /// starts empty rather than on an answer the reader has already finished with. Closing also
+    /// hands the scroll position back — `search.ownsScrollPosition` is what was holding
+    /// `follow()` off, and leaving it armed after the bar is gone stops the transcript following
+    /// the next turn for no visible reason.
     private func closeSearch() {
         search.close()
         searchFocused = false
+        followsBottom = true
+    }
+
+    /// ⌘F, the menu, the palette, the panel row: open the bar if it is closed, close it if it is
+    /// open. One verb, one key — the same press undoes itself.
+    private func toggleSearch() {
+        if search.isOpen {
+            closeSearch()
+        } else {
+            openSearch()
+        }
+    }
+
+    /// The phrase a finding asked for, if this request has not already used it.
+    ///
+    /// Matched by request number rather than by "is a seed set", and consumed when applied: the
+    /// same phrase is never replayed by a later plain press, and a finding clicked twice still
+    /// lands on its phrase twice (each click is a new request number).
+    private var pendingSeed: String? {
+        guard findSeedRequest == findRequest, findSeedRequest != appliedSeedRequest,
+              !findSeed.isEmpty else { return nil }
+        return findSeed
     }
 
     private func openSearch() {
-        // A finding opened it: the phrase arrives with the request, so the bar lands on the answer
-        // instead of asking the reader to type it again. Matched by request number, not by "is a
-        // seed set" — the same seed must not be replayed by the next ⌘F.
-        if findSeedRequest == findRequest, !findSeed.isEmpty, search.query != findSeed {
-            search.query = findSeed
+        if let seed = pendingSeed, search.query != seed {
+            search.query = seed
+            appliedSeedRequest = findSeedRequest
         }
         search.open()
         searchFocused = true
@@ -626,13 +659,15 @@ struct MacReasoningBlock: View {
 /// `MarkdownTextView` a finished message uses, so nothing jumps when the turn completes.
 struct StreamingAssistantBubble: View {
     let text: String
-    /// The bot's face while it works: the row that used to be a wheel with a phrase beside it.
-    var face: BotFace?
+    /// The bot whose work this row is standing in for, and its stored face — the row that used to
+    /// be a wheel with a phrase beside it.
+    var bot: String?
+    var color: String?
 
     var body: some View {
         Group {
             if text.isEmpty {
-                WorkingStatus(face: face)
+                WorkingStatus(bot: bot, color: color)
             } else {
                 MarkdownTextView(text: text, isStreaming: true)
             }

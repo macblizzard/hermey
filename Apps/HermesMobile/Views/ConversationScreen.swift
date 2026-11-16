@@ -51,7 +51,10 @@ struct ConversationScreen: View {
     /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
     /// place that says which bot you are talking to does not need a label.
     private var botTint: Color {
-        (app.botFaces[bot.id] ?? BotFace.default(for: bot.id)).color.swatch
+        // The stored face's colour when the user chose one, otherwise the colour this bot's id
+        // derives — the same rule the avatar draws, from the same resolver.
+        (app.botFaces[bot.id]?.identity(for: bot.id).color
+            ?? BotAvatarIdentity.resolve(identity: bot.id).color).color
     }
 
     /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).
@@ -176,7 +179,9 @@ struct ConversationScreen: View {
                 ConversationDrawer(
                     title: title,
                     subtitle: bot.description,
-                    face: app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
+                    face: app.botFaces[bot.id],
+                    botID: bot.id,
+                    activity: model.activity(forBot: bot.id),
                     isCompressing: model.isCompressing,
                     hasAnyUnread: model.hasAnyUnread,
                     canSpeak: lastAssistantReply != nil,
@@ -480,9 +485,11 @@ struct ConversationScreen: View {
             withAnimation(.easeOut(duration: 0.2)) { showDrawer.toggle() }
         } label: {
             HStack(spacing: 7) {
-                BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id),
-                                size: 32,
-                                status: portraitStatus)
+                BotAvatarView(identity: bot.id,
+                              color: app.botFaces[bot.id]?.raw,
+                              activity: model.activity(forBot: bot.id),
+                              size: 32,
+                              animates: model.activity(forBot: bot.id) != .idle)
                 Text(title)
                     .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)
@@ -499,14 +506,6 @@ struct ConversationScreen: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(title), chat actions")
         .accessibilityIdentifier("chatDrawerButton")
-    }
-
-    /// What the face says, the same precedence the desktop uses.
-    private var portraitStatus: PortraitStatus? {
-        if model.hasPendingRequests { return .needsYou }
-        if model.isCompressing { return .compacting }
-        if model.isStreaming { return .working }
-        return nil
     }
 
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
@@ -868,7 +867,7 @@ struct ConversationScreen: View {
             }
 
             if let notice = model.compactionNotice {
-                // Auto-compaction rewrites the stored transcript; without a line the conversation
+                // A compaction rewrites the stored transcript; without a line the conversation
                 // would just get shorter with no explanation.
                 Label(notice, systemImage: "arrow.triangle.2.circlepath")
                     .font(TypeScale.font(TypeScale.sm))
@@ -886,9 +885,7 @@ struct ConversationScreen: View {
 
             if model.isStreaming || !model.visibleStreamingText.isEmpty {
                 MobileStreamingBubble(text: model.visibleStreamingText,
-                                      face: model.selectedBot.map {
-                                          app.botFaces[$0.id] ?? BotFace.default(for: $0.id)
-                                      })
+                                      bot: model.selectedBot?.id)
                     .overlay {
                         if selectedSearchID == Self.streamingSearchID {
                             RoundedRectangle(cornerRadius: 8)
@@ -947,7 +944,10 @@ struct ConversationScreen: View {
         VStack(spacing: 14) {
             Spacer(minLength: 0)
 
-            BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 72)
+            BotAvatarView(identity: bot.id,
+                          color: app.botFaces[bot.id]?.raw,
+                          activity: model.activity(forBot: bot.id),
+                          size: 72)
 
             Text(title)
                 .font(TypeScale.font(TypeScale.sessionTitle, weight: .semibold))

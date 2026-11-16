@@ -43,7 +43,7 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var devicesLoading = false
     @Published private(set) var devicesError: String?
     @Published private(set) var removingDevice = false
-    @Published private(set) var botFaces: [String: BotFace] = [:]
+    @Published private(set) var botFaces: [String: BotFaceChoice] = [:]
     @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
 
@@ -176,30 +176,30 @@ final class AppEnvironment: ObservableObject {
     /// Faces are tiny facts, so they live in `UserDefaults` per host: a re-pair with a different
     /// machine must not wear the old machine's faces.
     ///
-    /// Stored as `shape|color`. A cache written by the icon-only build holds a bare id, which is
-    /// read as that icon's legacy pair — so the first launch after the upgrade shows the faces the
-    /// user already knew, before the host has answered.
+    /// Stored as the reference's own value, `#RRGGBB::shape_N`. Three older shapes are read back
+    /// through the same migration the host's answer goes through — `shape|color` (the pair build)
+    /// and a bare icon id (the build before that) — so the first launch after an upgrade shows the
+    /// faces the user already knew, before the host has answered.
     private static func botFaceCacheKey(_ host: String) -> String { "hermey.botFaces.\(host)" }
 
-    private static func cachedBotFaces(host: PairedHost?) -> [String: BotFace] {
+    private static func cachedBotFaces(host: PairedHost?) -> [String: BotFaceChoice] {
         guard let host else { return [:] }
         guard let data = UserDefaults.standard.data(forKey: botFaceCacheKey(host.host)) else { return [:] }
         guard let raw = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        var faces: [String: BotFace] = [:]
+        var faces: [String: BotFaceChoice] = [:]
         for (botID, encoded) in raw {
-            let parts = encoded.split(separator: "|", maxSplits: 1).map(String.init)
-            if parts.count == 2,
-               let shape = BotIcon(rawValue: parts[0]), let color = BotColor(rawValue: parts[1]) {
-                faces[botID] = BotFace(shape: shape, color: color)
-            } else if let shape = BotIcon(rawValue: encoded) {
-                faces[botID] = .legacy(shape)
+            if let choice = BotFaceChoice(rawValue: encoded) {
+                faces[botID] = choice
+            } else if let migrated = BotFaceChoice.migrated(legacyToken: encoded)
+                        ?? BotFaceChoice.migrated(legacyIcon: encoded) {
+                faces[botID] = migrated
             }
         }
         return faces
     }
 
-    private func persistBotFaces(_ faces: [String: BotFace], host: PairedHost) {
-        let raw = faces.mapValues { "\($0.shape.rawValue)|\($0.color.rawValue)" }
+    private func persistBotFaces(_ faces: [String: BotFaceChoice], host: PairedHost) {
+        let raw = faces.mapValues(\.raw)
         guard let data = try? JSONEncoder().encode(raw) else { return }
         UserDefaults.standard.set(data, forKey: Self.botFaceCacheKey(host.host))
     }
@@ -220,7 +220,7 @@ final class AppEnvironment: ObservableObject {
         }
     }
 
-    func saveBotFace(botID: String, face: BotFace?) async throws {
+    func saveBotFace(botID: String, face: BotFaceChoice?) async throws {
         let (host, service) = try iconService()
         try await service.save(botID: botID, face: face)
         guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }

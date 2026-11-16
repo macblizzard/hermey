@@ -319,7 +319,7 @@ private struct MobileMarkdownTable: View {
 struct MobileStreamingBubble: View {
     let text: String
     /// The bot's face while it works, in place of the wheel.
-    var face: BotFace?
+    var bot: String?
 
     @State private var markdown = IncrementalMarkdown()
     @State private var caretOn = false
@@ -328,7 +328,7 @@ struct MobileStreamingBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if markdown.blocks.isEmpty {
-                WorkingStatus(face: face)
+                WorkingStatus(bot: bot)
             } else {
                 MobileMarkdownText(blocks: markdown.blocks)
                     .textSelection(.enabled)
@@ -370,12 +370,12 @@ struct MobileStreamingBubble: View {
 }
 
 /// Kept for the previews below and for a caller that wants the bare mark: the working row itself
-/// is `WorkingStatus(face:)`, which every shell already draws.
+/// is `WorkingStatus(bot:)`, which every shell already draws.
 struct MobileTypingIndicator: View {
-    var face: BotFace?
+    var bot: String?
 
     var body: some View {
-        WorkingStatus(face: face)
+        WorkingStatus(bot: bot)
             .accessibilityLabel("Hermes is thinking")
     }
 }

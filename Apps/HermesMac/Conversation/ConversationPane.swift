@@ -37,7 +37,8 @@ struct ConversationPane: View {
     /// are typing into: your own bubbles are drawn in the colour of the bot they go to.
     private var botTint: Color {
         guard let id = model.selectedBotID else { return Tokens.control }
-        return (store.botFaces[id] ?? BotFace.default(for: id)).color.swatch
+        return (store.botFaces[id]?.identity(for: id).color
+            ?? BotAvatarIdentity.resolve(identity: id).color).color
     }
 
     var body: some View {
@@ -60,6 +61,7 @@ struct ConversationPane: View {
                         ConversationEmptyState(model: model, store: store)
                     } else {
                         TranscriptScroll(model: model,
+                                         findToggleRequest: store.findToggleRequest,
                                          findRequest: store.findRequest,
                                          findSeed: store.findSeed,
                                          findSeedRequest: store.findSeedRequest,

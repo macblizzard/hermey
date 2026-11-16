@@ -124,12 +124,62 @@ class TheThreeDoorsOpenTheSameBar(unittest.TestCase):
         self.assertIn('title: "Find in Conversation…"', STORE)
         self.assertIn("run: { [weak self] in self?.openFindInChat() }))", STORE)
 
-    def test_the_request_is_a_counter_so_a_second_press_refocuses(self) -> None:
-        self.assertIn("@Published private(set) var findRequest = 0", STORE)
-        self.assertIn("func openFindInChat() { findRequest += 1 }", STORE)
-        self.assertIn(".onChange(of: findRequest) { _, _ in openSearch() }", SCROLL)
+    def test_the_request_is_a_counter_not_a_bool(self) -> None:
+        # The bar's open state lives in the pane, so the store can only answer "somebody asked" —
+        # and a counter is what lets the *second* press mean something a Bool could not.
+        self.assertIn("@Published private(set) var findToggleRequest = 0", STORE)
+        self.assertIn("func openFindInChat() { findToggleRequest += 1 }", STORE)
         # One owner of ⌘F: the menu item, not a hidden button in the transcript.
         self.assertNotIn(".keyboardShortcut(\"f\", modifiers: .command)", SCROLL)
+
+
+class FindToggles(unittest.TestCase):
+    """⌘F opens the bar, and the same press closes it (reported 2026-11-16)."""
+
+    def test_every_door_bumps_the_toggle_request(self) -> None:
+        # ⌘F / the menu item, the palette verb and the panel row all come through the one method,
+        # so they cannot disagree about what a press does.
+        menu = APP.split('CommandMenu("Conversation")', 1)[1]
+        self.assertIn("store.openFindInChat()", menu)
+        self.assertIn("run: { [weak self] in self?.openFindInChat() }))", STORE)
+        self.assertIn("store.openFindInChat()", PANEL)
+        self.assertEqual(without_comments(STORE).count("findToggleRequest += 1"), 1,
+                         "one method owns the bump")
+
+    def test_the_pane_toggles_on_the_request(self) -> None:
+        self.assertIn("var findToggleRequest: Int = 0", SCROLL)
+        self.assertIn(".onChange(of: findToggleRequest) { _, _ in toggleSearch() }", SCROLL)
+        # The toggle is a real branch on the bar's own state, not a second open.
+        toggle = SCROLL.split("private func toggleSearch()", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("if search.isOpen {", toggle)
+        self.assertIn("closeSearch()", toggle)
+        self.assertIn("openSearch()", toggle)
+
+    def test_closing_clears_the_field_and_hands_the_scroll_back(self) -> None:
+        # `search.ownsScrollPosition` is what held `follow()` off; leaving it armed after the bar
+        # is gone would stop the transcript following the next turn for no visible reason.
+        close = SCROLL.split("private func closeSearch()", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("search.close()", close)
+        self.assertIn("searchFocused = false", close)
+        self.assertIn("followsBottom = true", close)
+        # And `close()` itself is what empties the query.
+        self.assertIn("query = \"\"", STATE.split("public mutating func close()", 1)[1].split("}", 1)[0])
+
+    def test_a_seeded_open_is_never_a_toggle(self) -> None:
+        # A bot-list finding opens the bar pre-filled every time it is clicked; a second click must
+        # land on the same phrase, not close the thing the user just asked for.
+        self.assertIn("@Published private(set) var findSeedRequest = 0", STORE)
+        seeded = STORE.split("private func seedFind", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("findSeed = query", seeded)
+        self.assertIn("findSeedRequest = findRequest + 1", seeded)
+        self.assertIn("findRequest += 1", seeded)
+        self.assertNotIn("findToggleRequest", seeded)
+        # The seeded request still opens, on its own counter.
+        self.assertIn(".onChange(of: findRequest) { _, _ in openSearch() }", SCROLL)
+        # And a seed is one shot: applied once, then retired, so a later plain ⌘F does not replay it.
+        self.assertIn("findSeedRequest == findRequest, findSeedRequest != appliedSeedRequest", SCROLL)
+        self.assertIn("appliedSeedRequest = findSeedRequest", SCROLL)
+        self.assertIn("@State private var appliedSeedRequest = -1", SCROLL)
 
 
 class EscapeClosesAndClearsIt(unittest.TestCase):

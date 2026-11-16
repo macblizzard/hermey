@@ -154,8 +154,9 @@ class TheMacPanelSearchesEveryConversation(unittest.TestCase):
         # The bar is opened *with* the phrase, tied to the request it belongs to.
         self.assertIn("findSeedRequest = findRequest + 1", store)
         scroll = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
-        self.assertIn("if findSeedRequest == findRequest", scroll)
-        self.assertIn("search.query = findSeed", scroll)
+        # The phrase is applied once, by `pendingSeed`, and retired so a later ⌘F does not replay it.
+        self.assertIn("guard findSeedRequest == findRequest, findSeedRequest != appliedSeedRequest", scroll)
+        self.assertIn("search.query = seed", scroll)
 
 
 class ABotMessageReadsAsAPerson(unittest.TestCase):
@@ -194,7 +195,8 @@ class TheAttributionOpensTheExchange(unittest.TestCase):
     def test_the_sheet_draws_both_directions_with_faces(self) -> None:
         self.assertIn("public struct BotPairSheet", PAIR)
         self.assertIn("entry.fromProfile", PAIR)
-        self.assertIn("BotIconPortrait(faces[sender]", PAIR)
+        self.assertIn("BotAvatarView(identity: sender", PAIR)
+        self.assertIn("color: faces[sender]?.raw", PAIR)
         # An empty record says so rather than showing a blank page.
         self.assertIn("Nothing between these two yet", PAIR)
 

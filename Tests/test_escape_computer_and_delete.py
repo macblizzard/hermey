@@ -128,77 +128,49 @@ class AModelIsItsOwnDoor(unittest.TestCase):
         self.assertIn("confirm: confirmed", self.MODEL)
 
 
-class TheFacesHaveLightAndMotion(unittest.TestCase):
-    """#100, tiers one and two: shading inside the silhouette, then breathing and blinking."""
+class TheFaceMovesLikeTheReference(unittest.TestCase):
+    """The port's motion vocabulary, and the one switch that decides whether faces move."""
 
-    SHADING = (ROOT / "Sources/HermeyUI/BotFaceShading.swift").read_text(encoding="utf-8")
-    SILHOUETTE = (ROOT / "Sources/HermeyUI/BotSilhouette.swift").read_text(encoding="utf-8")
+    MOTION = (ROOT / "Sources/HermeyUI/BotAvatarMotion.swift").read_text(encoding="utf-8")
+    AVATAR = (ROOT / "Sources/HermeyUI/BotAvatarView.swift").read_text(encoding="utf-8")
+    ACTIVITY = (ROOT / "Sources/HermesKit/BotAvatarActivity.swift").read_text(encoding="utf-8")
 
-    def test_the_light_stays_inside_the_shape(self) -> None:
-        # Three layers, all masked by the silhouette: the outline that makes a face recognisable
-        # must not change, and an outer shadow at 22 pt is a smudge.
-        self.assertEqual(self.SHADING.count("mask(BotSilhouette(icon).fill(Color.black))"), 2)
-        self.assertIn("BotSilhouette(icon)\n                .stroke(Color.black.opacity(0.5)", self.SHADING)
-        self.assertIn("allowsHitTesting(false)", self.SHADING)
+    def test_each_activity_has_the_reference_cycle(self) -> None:
+        for activity, seconds in ((".idle", "1.8"), (".reading", "1.6"), (".writing", "1.35"),
+                                  (".thinking", "1.1"), (".computer", "2.4"), (".working", "1.35"),
+                                  (".waiting", "1.6")):
+            self.assertIn(f"case {activity}: return {seconds}", self.MOTION,
+                          f"{activity} lost its cycle length")
 
-    def test_small_faces_get_less_light(self) -> None:
-        self.assertIn("size >= 40 ? 0.30", self.SHADING)
-        self.assertIn("size >= 28 ? 0.26 : 0.20", self.SHADING)
+    def test_error_rests(self) -> None:
+        # The one state that holds still, which is what makes "asleep" readable.
+        self.assertIn("case .error:\n            return [BodyFrame(time: 0, pose: .rest)]", self.MOTION)
+        self.assertIn("self != .error", self.ACTIVITY)
 
-    def test_the_eyes_blink_squint_and_glance(self) -> None:
-        self.assertIn("public var blink: Double", self.SILHOUETTE)
-        self.assertIn("public var squint: Double", self.SILHOUETTE)
-        self.assertIn("public var gaze: Double", self.SILHOUETTE)
-        # Closed is a line, never a zero: two eyes have to survive the blink.
-        self.assertIn("max(size * 0.028, closed)", self.SILHOUETTE)
-        # The glance is a shift *and* a tilt: shifting alone slides the eyes off the face.
-        self.assertIn(".rotationEffect(.degrees(tilt + gaze * 4))", self.SILHOUETTE)
-        self.assertIn(".offset(x: gaze * size * 0.075, y: -size * 0.015)", self.SILHOUETTE)
-
-    def test_the_blink_is_long_enough_to_see(self) -> None:
-        # 0.14 s was two frames at thirty a second and passed for a dropped frame.
-        self.assertIn("return phase > period - 0.22 ? 1 : 0", GALLERY)
-        self.assertIn("let period = 2.4 + seed", GALLERY)
-        self.assertIn("TimelineView(.animation(minimumInterval: 0.05, paused: !motionIsOn))", GALLERY)
-
-    def test_each_state_moves_differently(self) -> None:
-        # A glance across the roster should say which bot is doing what without reading anything.
-        self.assertIn("var stateMotion: (x: Double, y: Double, duration: Double)", GALLERY)
-        for state in ("case .needsYou:", "case .working:", "case .compacting:", "case nil:"):
-            self.assertIn(state, GALLERY)
-        self.assertIn("func gaze(at date: Date) -> Double", GALLERY)
-
-    def test_motion_is_cheap_and_has_a_switch(self) -> None:
-        portrait = GALLERY.split("public struct BotIconPortrait", 1)[1]
-        body = portrait.split("public var body: some View", 1)[1].split("/// Shared working", 1)[0]
-        # Two mechanisms, neither of them ours to break: a system-driven `phaseAnimator` cycle for
-        # the breath, and the clock for the blink. A `@State` loop was tried twice and never moved
-        # on the Mac — once off the main actor, once for reasons never settled.
-        self.assertIn(".phaseAnimator(", body)
-        # Without `trigger:`: the trigger overload plays the phases once per trigger change, which is
-        # a still face with extra steps.
-        self.assertIn(".phaseAnimator(motionIsOn ? [0.0, 1.0] : [0.0])", body)
-        self.assertIn("TimelineView(.animation(minimumInterval: 0.05, paused:", body)
-        self.assertIn("blink: blink(at: context.date)", body)
-        self.assertNotIn("@State private var breathing", portrait)
-        # The app's own answer comes first; the system's Reduce Motion is the fallback.
-        self.assertIn("BotFaceMotion.allows(reduceMotion: reduceMotion, size: size)", portrait)
-        motion = (ROOT / "Sources/HermeyUI/BotFaceShading.swift").read_text(encoding="utf-8")
-        # An explicit answer in the app wins; without one, the system decides — and the answer is
-        # seeded on first launch so the switch and the faces can never disagree again.
-        self.assertIn("return choice ?? !reduceMotion", motion)
-        self.assertIn("public static func seedIfNeeded(reduceMotion: Bool)", motion)
-        self.assertIn("BotFaceMotion.seedIfNeeded(reduceMotion: systemReduceMotion)", WORKSPACE)
-        self.assertIn("guard size >= 18 else { return false }", motion)
-
-    def test_the_mac_has_the_switch(self) -> None:
-        appearance = (MAC / "Views" / "AppearanceSettingsTab.swift").read_text(encoding="utf-8")
-        self.assertIn("@AppStorage(BotFaceMotion.defaultsKey) private var animateFaces", appearance)
+    def test_the_app_switch_outranks_the_system_and_is_seeded_once(self) -> None:
+        # An answer in the app wins; without one the system decides — and the answer is written on
+        # first launch so the switch and the faces can never disagree.
+        self.assertIn('public static let defaultsKey = "animateBotFaces"', self.MOTION)
+        self.assertIn("guard appChoice == nil else { return }", self.MOTION)
+        self.assertIn("BotAvatarMotion.seedIfNeeded(reduceMotion: systemReduceMotion)", WORKSPACE)
+        appearance = (ROOT / "Apps" / "HermesMac" / "Views" / "AppearanceSettingsTab.swift").read_text(encoding="utf-8")
+        self.assertIn("@AppStorage(BotAvatarMotion.defaultsKey) private var animateFaces", appearance)
         self.assertIn('Toggle("Animate bot faces", isOn: $animateFaces)', appearance)
 
-    def test_a_list_does_not_blink_in_unison(self) -> None:
-        self.assertIn("let seed = Double(abs(icon.title.unicodeScalars.reduce(0)", GALLERY)
-        self.assertIn("let period = 2.4 + seed", GALLERY)
+    def test_the_switch_stops_the_motion_in_the_view(self) -> None:
+        self.assertIn("@AppStorage(BotAvatarMotion.defaultsKey)", self.AVATAR)
+        self.assertIn("animates: animates && appAllowsMotion", self.AVATAR)
+
+    def test_the_timeline_pauses_when_nothing_moves(self) -> None:
+        # Thirty frames a second, and only for a face that is allowed to move: a paused
+        # `TimelineView` costs nothing, which is what keeps a roster of twenty rows cheap.
+        self.assertIn("TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval, paused: !moves))",
+                      self.AVATAR)
+        self.assertIn("public static let frameInterval: Double = 1.0 / 30.0", self.MOTION)
+
+    def test_the_ring_is_drawn_only_while_the_bot_works(self) -> None:
+        self.assertIn("active: activity.showsWorkingRing", self.AVATAR)
+        self.assertIn("public static let workingRingDuration: Double = 1.2", self.MOTION)
 
 
 class TheAppIconIsOneOfTheFaces(unittest.TestCase):
@@ -230,32 +202,31 @@ class TheAppIconIsOneOfTheFaces(unittest.TestCase):
 
 
 class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
-    SPINNER = (ROOT / "Sources/HermeyUI/BotFaceSpinner.swift").read_text(encoding="utf-8")
+    """The wait before the first token wears the bot's face, not a wheel."""
+
     PHONE_CHAT = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
     MAC_SCROLL = (ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift").read_text(encoding="utf-8")
+    WORKING = (ROOT / "Sources/HermeyUI/WorkingStatus.swift").read_text(encoding="utf-8")
 
-    def test_it_turns_in_the_plane_of_the_screen(self) -> None:
-        # The z axis, as asked for after seeing the y-axis version: the face turns flat on the screen
-        # and stays legible through the whole turn, the way a spinner does.
-        self.assertIn("rotationEffect(.degrees(degrees))", self.SPINNER)
-        self.assertNotIn("rotation3DEffect", self.SPINNER)
+    def test_it_is_the_same_avatar_every_other_surface_draws(self) -> None:
+        self.assertIn("public var bot: String?", self.WORKING)
+        self.assertIn("public var activity: BotAvatarActivity", self.WORKING)
+        self.assertIn("BotAvatarView(identity: bot,", self.WORKING)
+        # A caller with no bot still gets the wheel: a room has no single face to draw.
+        self.assertIn("SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)", self.WORKING)
 
-    def test_it_costs_one_row_and_stops_when_the_turn_does(self) -> None:
-        self.assertIn("TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !spins))",
-                      self.SPINNER)
-        self.assertIn("isWorking && BotFaceMotion.allows", self.SPINNER)
+    def test_the_row_is_still_the_bots_at_16_pt(self) -> None:
+        # The old spinner turned at whatever size it was asked for; the avatar holds still below its
+        # own floor, so this row never buys a timeline.
+        self.assertIn("size: 16,", self.WORKING)
+        self.assertIn("WorkingStatus(bot: bot, color: color)", self.MAC_SCROLL)
 
-    def test_the_working_row_carries_the_face_not_the_wheel(self) -> None:
-        # One row, not two: the face goes *inside* the working row both shells already draw, and the
-        # separate "Thinking…" line that was added first is gone (reported 2026-11-14: it added a
-        # second line instead of replacing the original spinner).
-        working = (ROOT / "Sources/HermeyUI/WorkingStatus.swift").read_text(encoding="utf-8")
-        self.assertIn("public var face: BotFace?", working)
-        self.assertIn("BotFaceSpinner(face: face, size: 16)", working)
-        self.assertIn("WorkingStatus(face: face)", self.MAC_SCROLL)
-        self.assertIn("WorkingStatus(face: face)", (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8"))
+    def test_one_row_not_two(self) -> None:
+        # The face goes *inside* the working row both shells already draw; the separate "Thinking…"
+        # line that was added first is gone (reported 2026-11-14).
         self.assertNotIn('Text("Thinking…")', self.MAC_SCROLL)
         self.assertNotIn("MobileTypingIndicator(face:", self.PHONE_CHAT)
+        self.assertIn("WorkingStatus(bot: bot)", (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8"))
 
 
 class ABotHasItsOwnNotes(unittest.TestCase):
@@ -328,7 +299,7 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         exporter = (ROOT / "Sources/HermeyUI/PushIcon.swift").read_text(encoding="utf-8")
         # The app renders the real face (SwiftUI geometry, not a second drawing) and uploads bytes.
         self.assertIn("ImageRenderer", exporter)
-        self.assertIn("BotIconPortrait(face", exporter)
+        self.assertIn("BotAvatarView(identity: botID", exporter)
         self.assertIn("icon=icon", push)
         # No render means no image: a URL pointing at nothing inside a notification is worse. A host
         # that was never told its own public name has nothing to hand over either — the base used to
@@ -398,8 +369,8 @@ class TheEmptyChatIsAnInvitation(unittest.TestCase):
         self.assertIn("if isBlank, !isOpening {\n                        blankState", self.CHAT)
 
     def test_it_shows_the_bots_own_face_and_words(self) -> None:
-        self.assertIn("BotIconPortrait(app.botFaces[bot.id] ?? BotFace.default(for: bot.id), size: 72)",
-                      self.CHAT)
+        self.assertIn("BotAvatarView(identity: bot.id,", self.CHAT)
+        self.assertIn("size: 72)", self.CHAT)
         self.assertIn("private var subtitle: String", self.CHAT)
         self.assertIn("return description", self.CHAT)
 

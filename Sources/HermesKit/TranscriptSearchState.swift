@@ -59,8 +59,9 @@ public struct TranscriptSearchState: Equatable {
 
     // MARK: - The doors
 
-    /// ⌘F, the bot panel's "Search this conversation", the Conversation menu. Idempotent on
-    /// purpose: all three bump the same request, and the second press must only re-focus.
+    /// Open the bar. Idempotent here, because the *toggle* is the surface's: `TranscriptScroll`
+    /// decides whether a press opens or closes, and a seeded open (a bot-list finding) must land
+    /// open every time it is asked for.
     public mutating func open() { isOpen = true }
 
     /// Done, Escape, or a different bot's conversation. Everything goes, so the next open starts

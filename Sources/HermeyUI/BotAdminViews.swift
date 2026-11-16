@@ -15,16 +15,16 @@ import HermesKit
 /// The name is the profile name, which is also a directory name and a shell alias on the host, so
 /// it is normalised here rather than rejected later by the host: lowercase, dashes, no spaces.
 public struct AddBotSheet: View {
-    private let onCreate: (String, String, BotFace?) async throws -> Void
+    private let onCreate: (String, String, BotFaceChoice?) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var description = ""
-    @State private var face: BotFace?
+    @State private var face: BotFaceChoice?
     @State private var busy = false
     @State private var failure: String?
 
-    public init(onCreate: @escaping (String, String, BotFace?) async throws -> Void) {
+    public init(onCreate: @escaping (String, String, BotFaceChoice?) async throws -> Void) {
         self.onCreate = onCreate
     }
 
@@ -63,7 +63,7 @@ public struct AddBotSheet: View {
                     // recognises in the list afterwards. No SOUL.md here: who the bot *is* is a
                     // long-form thing that belongs in the bot's own settings, next to its name and
                     // description, not in the way of creating it.
-                    BotFacePicker(face: face) { face = $0 }
+                    BotFacePicker(identity: normalised, value: face) { face = $0 }
 
                     if let failure {
                         Text(failure)

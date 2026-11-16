@@ -11,7 +11,7 @@ import SwiftUI
 public struct BotPairSheet: View {
     private let current: String
     private let peer: String
-    private let faces: [String: BotFace]
+    private let faces: [String: BotFaceChoice]
     private let displayName: (String) -> String
     private let load: () async -> [BotTransfer]
 
@@ -22,7 +22,7 @@ public struct BotPairSheet: View {
 
     public init(current: String,
                 peer: String,
-                faces: [String: BotFace] = [:],
+                faces: [String: BotFaceChoice] = [:],
                 displayName: @escaping (String) -> String = { $0.capitalized },
                 load: @escaping () async -> [BotTransfer]) {
         self.current = current
@@ -103,8 +103,11 @@ public struct BotPairSheet: View {
         let sender = entry.fromProfile ?? current
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                BotIconPortrait(faces[sender] ?? BotFace.default(for: sender),
-                                size: Geometry.rosterAvatarCompact)
+                BotAvatarView(identity: sender,
+                              color: faces[sender]?.raw,
+                              activity: .idle,
+                              size: Geometry.rosterAvatarCompact,
+                              animates: false)
                 Text(displayName(sender))
                     .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)
