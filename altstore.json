@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.462",
+          "buildVersion": "462",
+          "date": "2026-11-16T05:52:42Z",
+          "localizedDescription": "Bot list dissolve is now a short band under the bar buttons; section labels stay crisp.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.462/Hermey-0.1.462-b462.ipa",
+          "size": 2861308,
+          "minOSVersion": "17.0",
+          "sha256": "e4c122a70d88a93845e3eb8dc8b7357f43f8bbe6d1beb5958335e546eee88fbb"
+        },
+        {
           "version": "0.1.457",
           "buildVersion": "457",
           "date": "2026-11-16T01:09:36Z",
@@ -62,16 +72,6 @@
           "size": 2830670,
           "minOSVersion": "17.0",
           "sha256": "72a67175f7afcf7f1f696de2271313a3be31e4b8c0e1468ed458b07e3f9bcfc7"
-        },
-        {
-          "version": "0.1.449",
-          "buildVersion": "449",
-          "date": "2026-11-15T22:06:42Z",
-          "localizedDescription": "Search fixed (one matcher, correct labels, findings survive a name miss), \u2318E opens the bot panel, disk cache + Caching settings on both apps.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.449/Hermey-0.1.449-b449.ipa",
-          "size": 2813580,
-          "minOSVersion": "17.0",
-          "sha256": "12a1a14f645048be68e326890aac7b6908cff3abcbe7c55a6ef2b022c46353a5"
         }
       ],
       "appPermissions": {
