@@ -54,10 +54,13 @@ rm -rf Payload && mkdir -p Payload
 cp -R "$IOS_APP" Payload/
 codesign --force --deep --sign - "Payload/$(basename "$IOS_APP")" || echo "ad-hoc signing skipped"
 
-cd dist
-rm -f "Hermey-$VERSION-b$BUILD.ipa"
-zip -qry "Hermey-$VERSION-b$BUILD.ipa" ../Payload
-cd ..
+# Zip from the repository root, NOT from `dist` with `../Payload`. Zipping a path that climbs out of the
+# working directory stores every entry as `../Payload/Hermey.app/…`, so the archive has no
+# `Payload/*.app/Info.plist` at its root: `sync_store.py --check` refuses it, and any strict extractor
+# would find nothing to install. Sideloaders happened to tolerate the `../`, which is exactly why this
+# shipped for ten builds without being noticed (found 2026-11-17 by the CI check on main).
+rm -f "dist/Hermey-$VERSION-b$BUILD.ipa"
+zip -qry "dist/Hermey-$VERSION-b$BUILD.ipa" Payload
 
 echo
 echo "artifacts:"
