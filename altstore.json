@@ -24,6 +24,16 @@
       "screenshots": [],
       "versions": [
         {
+          "version": "0.1.464",
+          "buildVersion": "464",
+          "date": "2026-11-16T06:09:11Z",
+          "localizedDescription": "Dissolve sits behind the bar buttons (no more mask over the rows), and category headings scroll away instead of pinning.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.464/Hermey-0.1.464-b464.ipa",
+          "size": 2861943,
+          "minOSVersion": "17.0",
+          "sha256": "ab5c13caeb77c1833bec3f285bb4c69048ca53a9309a805f8530846dcebdb2aa"
+        },
+        {
           "version": "0.1.462",
           "buildVersion": "462",
           "date": "2026-11-16T05:52:42Z",
@@ -62,16 +72,6 @@
           "size": 2834216,
           "minOSVersion": "17.0",
           "sha256": "f2c67012e1849dfec59b48965cad32f85703e3da4c74b5d9550cc5aec15c4dda"
-        },
-        {
-          "version": "0.1.451",
-          "buildVersion": "451",
-          "date": "2026-11-15T22:53:01Z",
-          "localizedDescription": "Desktop conversation search (\u2318F) and a cache limit of 25/100/500 that is actually enforced.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.451/Hermey-0.1.451-b451.ipa",
-          "size": 2830670,
-          "minOSVersion": "17.0",
-          "sha256": "72a67175f7afcf7f1f696de2271313a3be31e4b8c0e1468ed458b07e3f9bcfc7"
         }
       ],
       "appPermissions": {
