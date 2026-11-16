@@ -497,7 +497,10 @@ class TheModuleFitsTheRepo(unittest.TestCase):
         # The ring is gone from the face: the reference's shipped bots wear none, and the acting
         # happens in the eyes and body instead (asked for 2026-11-16).
         self.assertNotIn("BotAvatarRing(size:", view)
-        self.assertIn("BotAvatarMotion.frame(activity: activity", view)
+        # The drawing call composes the port with the performance: since 2026-11-16 the view asks for
+        # `performedFrame` (the reference's frame plus the jumps, flips and saccades composed over it),
+        # while `BotAvatarMotion.frame` itself stays the untouched port those parity tests pin.
+        self.assertIn("BotAvatarMotion.performedFrame(activity: activity", view)
 
 
 if __name__ == "__main__":

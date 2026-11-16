@@ -5,6 +5,20 @@ All notable changes to Hermey are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A busy bot face performs now.** Between the acting it already had, every busy state — working,
+  thinking, reading, writing, using the computer — jumps and flips: a crouch and a leap with a
+  squash-and-stretch landing, then next beat a full 360° roll or an out-and-back 180° twist,
+  alternating direction, one stunt every ~2.6–3 s. The body is punctuation and the eyes are the
+  acting: saccades on their own faster clock (a glance every ~0.9 s, a two-step double take every
+  fifth), each dart a 60 ms move and a hold, and a squint on a slower one still. Idle keeps its
+  float, waiting holds its look at you, and error rests: a backflip there would be a lie. Stunts are
+  a pure function of the clock and the bot's own phase — two faces never jump in lockstep, a
+  backgrounded window stops them, Reduce Motion and the Appearance switch still stop everything, and
+  the leap is capped in points (2.6 pt at 16 pt, 4.8 pt at 96 pt) so a face in a row never draws
+  over the text beside it. No new layers, paths or effects: the same 30 Hz timeline, ~20 more numbers
+  per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
+
 ### Changed
 - **The bot list and the Mac sidebar no longer have a loading state of their own.** "Loading bots…",
   "Looking for bots…", "FINDING BOTS / Asking the host which bots it serves…" and their spinners are
