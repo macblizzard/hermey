@@ -49,7 +49,7 @@ final class StaleConversationTests: XCTestCase {
                         entries: [TranscriptEntry],
                         bots: [String] = ["assistant"],
                         session: String = "20260101_000002_stale") async -> (AppModel, ScriptedHost) {
-        let client = ScriptedHost(session: session)
+        let client = ScriptedHost(session: session, entries: entries)
         client.hostPointer = session
         client.bots = bots.map { Bot(id: $0) }
         let model = AppModel(client: client, hostName: "stale-\(label)-\(UUID().uuidString)")
@@ -72,6 +72,10 @@ final class StaleConversationTests: XCTestCase {
 
         await model.endlessSession(for: cody)
         XCTAssertEqual(model.transcript.count, 1, "the conversation opened")
+        // Opening a chat marks it read at the device's clock; the host's stamp below is older than
+        // now by design (it is the host's own epoch), so the mark has to sit behind it for the dot
+        // assertion to mean "a reply arrived", not "1970 came round again".
+        model.markRead(cody, at: Date(timeIntervalSince1970: 1_000))
 
         // Looking at another bot when the reply lands: the socket keeps the *activity* but the
         // transcript branch drops the message, exactly as it does on a real device.
