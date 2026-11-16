@@ -169,7 +169,7 @@ class TheFaceMovesLikeTheReference(unittest.TestCase):
         self.assertIn("public static let frameInterval: Double = 1.0 / 30.0", self.MOTION)
 
     def test_the_ring_is_drawn_only_while_the_bot_works(self) -> None:
-        self.assertIn("active: activity.showsWorkingRing", self.AVATAR)
+        self.assertNotIn("BotAvatarRing(size:", self.AVATAR)
         self.assertIn("public static let workingRingDuration: Double = 1.2", self.MOTION)
 
 

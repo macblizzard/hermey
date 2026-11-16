@@ -494,7 +494,10 @@ class TheModuleFitsTheRepo(unittest.TestCase):
         self.assertIn("AppModel.activity(forBot:", view)
         # The example must point at real call sites, not invented ones.
         self.assertIn("BotFaceChoice", view)
-        self.assertIn("BotAvatarRing", view)
+        # The ring is gone from the face: the reference's shipped bots wear none, and the acting
+        # happens in the eyes and body instead (asked for 2026-11-16).
+        self.assertNotIn("BotAvatarRing(size:", view)
+        self.assertIn("BotAvatarMotion.eyePose(activity: activity", view)
 
 
 if __name__ == "__main__":

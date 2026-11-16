@@ -37,8 +37,7 @@ import SwiftUI
 /// let face = BotAvatarIdentity.resolve(identity: bot.id, explicitColor: bot.color)
 /// if face.isImage {
 ///     PhotoAvatar(...)                       // the existing renderer
-///         .overlay(BotAvatarRing(size: 32, tint: face.color.color,
-///                                active: activity.showsWorkingRing))
+///         .overlay(face)   // no ring: the face itself is the signal
 /// } else {
 ///     BotAvatarView(identity: bot.id, color: bot.color, activity: activity, size: 32)
 /// }
@@ -136,20 +135,14 @@ public struct BotAvatarView: View {
                          date: Date) -> some View {
         let time = date.timeIntervalSinceReferenceDate
         let body = moves ? BotAvatarMotion.bodyPose(activity: activity, at: time, traits: traits) : .rest
-        // The reference animates its eyes only while the bot is working; at rest and in error the
-        // face is still, which is also what makes "asleep" readable.
-        let eyes = moves && activity.showsWorkingRing
-            ? BotAvatarMotion.eyePose(traits: traits, at: time)
+        // The eyes act in every state, from that state's own track: a drift at rest, sweeps while
+        // reading, dips while writing, a look up while thinking. That acting is what the reference
+        // does instead of dressing the face in a progress ring.
+        let eyes = moves && activity != .error
+            ? BotAvatarMotion.eyePose(activity: activity, traits: traits, at: time)
             : .rest
 
         ZStack {
-            // The ring sits outside the body's motion, as in the reference, where it is a sibling of
-            // the scaling artwork: a ring that breathes with the body reads as part of it.
-            BotAvatarRing(size: size,
-                          tint: resolved.color.color,
-                          active: activity.showsWorkingRing,
-                          spinning: moves)
-
             if resolved.isImage {
                 // A photo avatar is the caller's to draw; the ring above is the part of this view
                 // that still applies. An empty face is the honest placeholder for a shape module.
@@ -208,7 +201,12 @@ public struct BotAvatarView: View {
     }
 }
 
-/// The ring a bot wears while it is doing something, on its own.
+/// The ring a bot used to wear while it was doing something.
+///
+/// **Nothing draws this any more.** The reference's shipped faces carry no ring at all — its bots
+/// act through eyes and body, one motion per state — and the half-circle turning around a working
+/// face was ours, not theirs. The type is kept only because it is public API; deleting it is a
+/// separate, deliberate break.
 ///
 /// Public because a photo avatar needs it too: the reference draws the same ring around a picture,
 /// and a caller that renders an image itself can lay this over it. The geometry is the reference's —

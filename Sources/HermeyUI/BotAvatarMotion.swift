@@ -387,4 +387,126 @@ extension BotAvatarPose {
                       scaleY: scaleY + (other.scaleY - scaleY) * t,
                       brightness: brightness + (other.brightness - brightness) * t)
     }
+
+    // MARK: - Per-activity eyes
+
+    /// One authored frame of the eyes: where they look, and how far the lids close.
+    ///
+    /// The reference's *shipped shapes* carry still eyes — its `bot-character-eyes` group has no
+    /// CSS animation at all. Its animated avatar (`logo-avatar-motion.ts`) is where the eye acting
+    /// lives, and it is authored **per activity**: a small drift at rest, three left-to-right sweeps
+    /// with a squint while reading, dips while writing, a look up while thinking, side glances while
+    /// on the computer. That model is what this table reproduces; offsets are the reference's
+    /// pixel units divided by the 60-unit gap between the eyes' outer edges, because
+    /// `BotAvatarEyePose` translates as a fraction of the eyes' own box.
+    struct EyeTrack {
+        var time: Double
+        var offsetX: Double
+        var offsetY: Double
+        var squint: Double
+    }
+
+    static func eyeTrack(for activity: BotAvatarActivity) -> (duration: Double, frames: [EyeTrack]) {
+        func f(_ time: Double, _ x: Double = 0, _ y: Double = 0, _ squint: Double = 1) -> EyeTrack {
+            EyeTrack(time: time, offsetX: x, offsetY: y, squint: squint)
+        }
+        switch activity {
+        case .idle:
+            // `idleX` / `idleY`: a glance away and back, once per cycle.
+            return (8.0, [f(0), f(0.66), f(0.70, 0.066, -0.033), f(0.78, 0.066, -0.033), f(0.82), f(1)])
+        case .reading:
+            // `readingX` / `readingY` / `readingLid`: three sweeps across the page, the gaze stepping
+            // down a line each time, lids held at 0.76 of their height — the "reading" that was asked
+            // for. The reference reaches 20px on a 259-unit box; 20/60 of the eye box is 0.33.
+            return (4.8, [
+                f(0, 0, 0, 0.76), f(0.06, 0, 0, 0.76),
+                f(0.24, 0.33, 0, 0.76), f(0.28, 0.33, 0, 0.76),
+                f(0.34, 0, 0.083, 0.76), f(0.38, 0, 0.083, 0.76),
+                f(0.54, 0.33, 0.083, 0.76), f(0.58, 0.33, 0.083, 0.76),
+                f(0.64, 0, 0.167, 0.76), f(0.68, 0, 0.167, 0.76),
+                f(0.84, 0.33, 0.167, 0.76), f(0.88, 0.33, 0.167, 0.76),
+                f(0.96, 0, 0, 0.76), f(1, 0, 0, 0.76),
+            ])
+        case .writing:
+            // `writingY`: the gaze dips twice per cycle, as if following a line being written.
+            return (3.6, [f(0), f(0.1), f(0.18, 0, 0.05), f(0.26), f(0.56), f(0.64, 0, 0.1), f(0.72), f(1)])
+        case .thinking:
+            // A look up and off to the side, held — the shape of "working something out".
+            return (3.2, [f(0), f(0.35, 0, -0.1), f(0.55, 0, -0.1), f(1)])
+        case .computer:
+            // Side glances, as if reading two windows: the largest horizontal moves in the table.
+            return (2.4, [f(0, -0.2), f(0.25, -0.2), f(0.35, 0.2), f(0.6, 0.2), f(0.7, -0.05), f(1, -0.2)])
+        case .working:
+            // Small, quick pans: busy, and deliberately smaller than `computer` so the two states do
+            // not read as the same face.
+            return (2.0, [f(0, -0.08), f(0.25, 0.08), f(0.5, -0.05, 0.05), f(0.75, 0.06, -0.03), f(1, -0.08)])
+        case .waiting:
+            // Looking down and in: the reference's "needs attention" posture, without moving much.
+            return (3.0, [f(0, 0, 0.05), f(0.5, 0, 0.08), f(1, 0, 0.05)])
+        case .error:
+            // The reference rests its error state; still eyes are the readable choice.
+            return (1, [f(0), f(1)])
+        }
+    }
+
+    /// Seconds between blinks, per activity: the busier the bot, the more often it closes its eyes.
+    static func blinkInterval(for activity: BotAvatarActivity) -> Double {
+        switch activity {
+        case .working: return 1.15
+        case .computer: return 1.6
+        case .writing: return 1.9
+        case .reading: return 2.4
+        case .idle: return 2.7
+        case .thinking: return 3.0
+        case .waiting: return 3.4
+        case .error: return 0
+        }
+    }
+
+    /// The blink curve: shut fast, hold a moment, open slower — 160 ms in total, as the reference's
+    /// `blink` track (1 → 0.06 at 50/160, hold to 70/160, back to 1).
+    static func blinkFactor(activity: BotAvatarActivity, traits: BotAvatarMotionTraits,
+                            at time: Double) -> Double {
+        let interval = blinkInterval(for: activity)
+        guard interval > 0 else { return 1 }
+        let window = 0.16
+        let phase = time / interval + traits.phase
+        let local = (phase - phase.rounded(.down)) * interval
+        guard local < window else { return 1 }
+        let u = local / window
+        if u < 0.31 { return 1 - (1 - 0.06) * (u / 0.31) }
+        if u < 0.44 { return 0.06 }
+        return 0.06 + (1 - 0.06) * ((u - 0.44) / (1 - 0.44))
+    }
+
+    /// The eyes for one instant of one activity: the authored track, squinted by its lid, closed by
+    /// the blink. This is what the face draws for **every** state — the reference animates the eyes
+    /// whether or not the bot is running something.
+    public static func eyePose(activity: BotAvatarActivity,
+                               traits: BotAvatarMotionTraits,
+                               at time: Double) -> BotAvatarEyePose {
+        let track = eyeTrack(for: activity)
+        let span = max(track.duration, 0.001)
+        var phase = time / span + traits.phase
+        phase -= phase.rounded(.down)
+        var pose = sampleTrack(track.frames, at: phase)
+        pose.scaleY *= blinkFactor(activity: activity, traits: traits, at: time)
+        return pose
+    }
+
+    static func sampleTrack(_ frames: [EyeTrack], at phase: Double) -> BotAvatarEyePose {
+        guard let first = frames.first, let last = frames.last else { return .rest }
+        if phase <= first.time { return BotAvatarEyePose(offsetX: first.offsetX, offsetY: first.offsetY, scaleY: first.squint) }
+        if phase >= last.time { return BotAvatarEyePose(offsetX: last.offsetX, offsetY: last.offsetY, scaleY: last.squint) }
+        for index in 1..<frames.count where frames[index].time >= phase {
+            let from = frames[index - 1]
+            let to = frames[index]
+            let span = max(to.time - from.time, 0.0001)
+            let u = easeInOut((phase - from.time) / span)
+            return BotAvatarEyePose(offsetX: from.offsetX + (to.offsetX - from.offsetX) * u,
+                                    offsetY: from.offsetY + (to.offsetY - from.offsetY) * u,
+                                    scaleY: from.squint + (to.squint - from.squint) * u)
+        }
+        return .rest
+    }
 }
