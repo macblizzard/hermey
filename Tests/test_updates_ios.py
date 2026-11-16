@@ -189,23 +189,46 @@ class TheOfferCannotGateTheApp(unittest.TestCase):
                       "the primary action is opening the IPA URL, not installing anything")
         self.assertNotIn("URLSession", self.source, "the card must not download anything")
 
-    def test_altstore_is_optional_and_asked_first(self):
-        self.assertIn('components.scheme = "altstore"', self.source)
+    def test_a_sideloader_button_only_exists_behind_the_installed_check(self):
         self.assertIn('components.host = "install"', self.source)
-        self.assertIn("UIApplication.shared.canOpenURL($0)", self.source)
-        # The button only exists behind the check.
-        guarded = block(self.source, "if canOpenInAltStore, let altStore", 'Text("Not now")')
-        self.assertIn("UIApplication.shared.open(altStore)", guarded)
+        self.assertIn("UIApplication.shared.canOpenURL", self.source)
+        # The buttons are drawn from the detected list, so an app the phone does not have is never
+        # offered — and sideStore's own docs warn that a `sidestore://` link without SideStore
+        # installed crashes it, which is the same reason the check has to come first.
+        self.assertIn("ForEach(installedApps)", self.source)
+        self.assertIn("installedApps = SideloadingApp.all.filter", self.source)
+        guarded = block(self.source, "ForEach(installedApps)", 'Text("Not now")')
+        self.assertIn("UIApplication.shared.open(link)", guarded)
+
+    def test_every_sideloader_uses_the_link_shape_its_app_documents(self):
+        table = block(self.source, "static let all: [SideloadingApp] = [", "]\n}")
+        # AltStore and SideStore: scheme://install?url=<ipa>
+        self.assertIn('SideloadingApp(name: "AltStore", scheme: "altstore")', table)
+        self.assertIn("UpdatePrompt.queryLink(scheme: \"altstore\", ipa: $0)", table)
+        self.assertIn('SideloadingApp(name: "SideStore", scheme: "sidestore")', table)
+        self.assertIn("UpdatePrompt.queryLink(scheme: \"sidestore\", ipa: $0)", table)
+        # Feather: scheme://install/<ipa> — a path, not a query item.
+        self.assertIn('SideloadingApp(name: "Feather", scheme: "feather")', table)
+        self.assertIn("UpdatePrompt.pathLink(scheme: \"feather\", ipa: $0)", table)
+        self.assertIn("static func queryLink(scheme: String, ipa: URL)", self.source)
+        self.assertIn("percentEncodedPath", self.source,
+                      "the nested URL must keep one layer of escaping, not two")
 
     def test_no_version_literal_is_baked_into_the_card(self):
         self.assertIsNone(re.search(r"\b0\.1\.\d{2,}\b", self.source))
 
-    def test_the_altstore_scheme_is_declared_for_can_open_url(self):
+    def test_every_offered_scheme_is_declared_for_can_open_url(self):
         # iOS answers `canOpenURL` false for an undeclared scheme, which would hide the button on the
-        # phones that do have AltStore.
+        # phones that do have the app. The declared list and the offered list must agree, so this
+        # reads the schemes out of the code and checks each one is in the Info.plist.
         project = read(ROOT / "project.yml")
         self.assertIn("LSApplicationQueriesSchemes:", project)
-        self.assertIn("- altstore", project)
+        table = block(self.source, "static let all: [SideloadingApp] = [", "]\n}")
+        schemes = re.findall(r'scheme: "([a-z]+)"', table)
+        self.assertGreaterEqual(len(schemes), 3)
+        for scheme in schemes:
+            self.assertIn(f"- {scheme}", project,
+                          f"{scheme} is offered by the card but not declared in project.yml")
 
 
 class TheEntryPointsAsk(unittest.TestCase):

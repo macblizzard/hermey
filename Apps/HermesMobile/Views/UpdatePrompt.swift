@@ -18,6 +18,39 @@ import HermeyUI
 /// iOS cannot replace its own bundle, so the most a sideloaded app can do is hand the IPA's URL to
 /// the system. Safari offers it to AltStore, which does the installing. Nothing is downloaded by
 /// this app, and nothing installs itself.
+/// A sideloading app that can take an IPA from a deep link.
+///
+/// Three are in use here and each invented its own URL: AltStore and SideStore share
+/// `scheme://install?url=<ipa>`, Feather uses `scheme://install/<ipa>` where the IPA is a path.
+/// The card offers only the apps the phone actually has: `canOpenURL` answers that, and every
+/// scheme must also be listed in the Info.plist's `LSApplicationQueriesSchemes` — iOS answers "no"
+/// silently for an undeclared one, so the two lists have to agree.
+///
+/// Adding a store is one entry here plus its scheme in `project.yml`. FlareStore is *not* in the
+/// list: its published material documents no install deep link, so a button for it would either be
+/// invisible or open nothing.
+struct SideloadingApp: Identifiable {
+    let name: String
+    /// The scheme, exactly as the app registers it.
+    let scheme: String
+    /// The deep link that asks this app to install `ipa`, or nil if the URL cannot be built.
+    let installURL: (URL) -> URL?
+
+    var id: String { scheme }
+
+    static let all: [SideloadingApp] = [
+        SideloadingApp(name: "AltStore", scheme: "altstore") {
+            UpdatePrompt.queryLink(scheme: "altstore", ipa: $0)
+        },
+        SideloadingApp(name: "SideStore", scheme: "sidestore") {
+            UpdatePrompt.queryLink(scheme: "sidestore", ipa: $0)
+        },
+        SideloadingApp(name: "Feather", scheme: "feather") {
+            UpdatePrompt.pathLink(scheme: "feather", ipa: $0)
+        },
+    ]
+}
+
 struct UpdatePrompt: View {
     let update: AvailableUpdate
     let currentVersion: String
@@ -28,9 +61,13 @@ struct UpdatePrompt: View {
     /// Reporting "not now" — the one path that remembers the build.
     let notNow: () -> Void
 
-    /// Whether AltStore is installed. Asked once, when the card appears: `canOpenURL` is a
-    /// synchronous query against the system's registered schemes and not something to call per draw.
-    @State private var canOpenInAltStore = false
+    /// The sideloading apps this phone has, in the order the card offers them.
+    ///
+    /// Probed once, when the card appears: `canOpenURL` is a synchronous query against the system's
+    /// registered schemes and not something to call per draw. Empty is the normal case for a phone
+    /// with no sideloader installed, and Download still works — Safari hands the IPA to whatever
+    /// can open it.
+    @State private var installedApps: [SideloadingApp] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -88,11 +125,16 @@ struct UpdatePrompt: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
 
-                if canOpenInAltStore, let altStore = Self.altStoreURL(for: update) {
+                // One button per sideloading app actually installed on this phone: AltStore,
+                // SideStore and Feather all accept an IPA by deep link but under different URLs,
+                // and a phone may well have more than one. Nothing here installs anything — each
+                // hands the IPA's URL to the app the user picks.
+                ForEach(installedApps) { app in
                     Button {
-                        UIApplication.shared.open(altStore)
+                        Haptics.impact()
+                        if let link = app.installURL(update.url) { UIApplication.shared.open(link) }
                     } label: {
-                        Text("Open in AltStore")
+                        Text("Open in \(app.name)")
                             .font(TypeScale.font(TypeScale.md))
                             .frame(maxWidth: .infinity)
                     }
@@ -117,7 +159,10 @@ struct UpdatePrompt: View {
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            canOpenInAltStore = Self.altStoreURL(for: update).map { UIApplication.shared.canOpenURL($0) } ?? false
+            installedApps = SideloadingApp.all.filter { app in
+                guard let link = app.installURL(update.url) else { return false }
+                return UIApplication.shared.canOpenURL(link)
+            }
         }
     }
 
@@ -126,10 +171,25 @@ struct UpdatePrompt: View {
     /// Built from `URLComponents` rather than string interpolation so the nested URL is escaped
     /// once, by the system, instead of by hand.
     static func altStoreURL(for update: AvailableUpdate) -> URL? {
+        queryLink(scheme: "altstore", ipa: update.url)
+    }
+
+    /// `scheme://install?url=<ipa>` — AltStore's shape, which SideStore copied.
+    static func queryLink(scheme: String, ipa: URL) -> URL? {
         var components = URLComponents()
-        components.scheme = "altstore"
+        components.scheme = scheme
         components.host = "install"
-        components.queryItems = [URLQueryItem(name: "url", value: update.url.absoluteString)]
+        components.queryItems = [URLQueryItem(name: "url", value: ipa.absoluteString)]
+        return components.url
+    }
+
+    /// `scheme://install/<ipa>` — Feather's shape: the IPA is a path, not a query item.
+    static func pathLink(scheme: String, ipa: URL) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = "install"
+        // `percentEncodedPath`, so the nested URL keeps one layer of escaping instead of two.
+        components.percentEncodedPath = "/" + ipa.absoluteString
         return components.url
     }
 
