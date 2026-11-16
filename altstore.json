@@ -7,12 +7,12 @@
   "headerURL": "https://raw.githubusercontent.com/macblizzard/hermey/main/icon-512.png",
   "tintColor": "#9A9AA0",
   "featuredApps": [
-    "hermey.HermeyUI.resources"
+    "dev.hermey.app.mobile"
   ],
   "apps": [
     {
       "name": "Hermey",
-      "bundleIdentifier": "hermey.HermeyUI.resources",
+      "bundleIdentifier": "dev.hermey.app.mobile",
       "developerName": "Hermey",
       "subtitle": "Your Hermes bots, on your phone",
       "localizedDescription": "Chats with every Hermes bot, streaming replies, tool cards, inline approvals and per-device pairing.",
@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.515",
-          "buildVersion": "515",
-          "date": "2026-11-16T19:36:41Z",
-          "localizedDescription": "A busy bot face performs now, and the chat stops lagging behind the list.\n\nBot face: every busy state jumps and flips between its acting \u2014 crouch, leap, squash-and-stretch landing, then a 360\u00b0 roll or an out-and-back 180\u00b0 twist, one stunt every ~2.6-3 s, direction alternating so no face spins one way forever. The eyes act faster than the body: a saccade every ~0.9 s, a two-step double take every fifth, a squint on a slower clock. Two faces never perform in lockstep, an instant always draws the same face, and idle, waiting and error stay exactly as they were. Reduce Motion and the Appearance switch still stop everything; the leap is capped in points so a 16 pt face never draws over the text beside it.\n\nChat wiring: a reply the bot list and the notification already announced is now in the chat when you open it. The app used to trust a two-minute-old cached conversation and skip the host read entirely, because it assumed anything new would arrive on the live socket \u2014 but a reply for a bot that is not on screen is dropped, not buffered. Now an unseen session, or a host message newer than the snapshot's, forces the read; and an idle open chat re-reads itself when the host has written, which also covers messages that produce no socket event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing new still comes from the cache, instantly.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.515/Hermey-0.1.515-b515.ipa",
-          "size": 3184403,
+          "version": "0.1.517",
+          "buildVersion": "517",
+          "date": "2026-11-16T20:34:59Z",
+          "localizedDescription": "Update card: \"Check for Updates\" now shows the card over the Settings sheet instead of only after it closes, and the Download button is never below the fold. The update source names the IPA again rather than the macOS disk image, the app refuses a link it cannot install on iOS, and the published source's bundle identifier is the app's own. Sideloader hand-off now offers AltStore, SideStore, Feather and FlareStore, each shown only when that app is installed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.517/Hermey-0.1.517-b517.ipa",
+          "size": 3147833,
           "minOSVersion": "17.0",
-          "sha256": "3f4916ba4988b9a3c54911cb531d6652d366f96c2c86fb9185fb71a4989f6be1"
+          "sha256": "825724eac402d9fedd4cb68dcdd300a506677c77380acba76a8f3baefe7bf587"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.515 (515)",
-      "identifier": "hermes-0.1.515-515",
-      "caption": "A busy bot face performs now, and the chat stops lagging behind the list.\n\nBot face: every busy state jumps and flips between its acting \u2014 crouch, leap, squash-and-stretch landing, then a 360\u00b0 roll or an out-and-back 180\u00b0 twist, one stunt every ~2.6-3 s, direction alternating so no face spins one way forever. The eyes act faster than the body: a saccade every ~0.9 s, a two-step double take every fifth, a squint on a slower clock. Two faces never perform in lockstep, an instant always draws the same face, and idle, waiting and error stay exactly as they were. Reduce Motion and the Appearance switch still stop everything; the leap is capped in points so a 16 pt face never draws over the text beside it.\n\nChat wiring: a reply the bot list and the notification already announced is now in the chat when you open it. The app used to trust a two-minute-old cached conversation and skip the host read entirely, because it assumed anything new would arrive on the live socket \u2014 but a reply for a bot that is not on screen is dropped, not buffered. Now an unseen session, or a host message newer than the snapshot's, forces the read; and an idle open chat re-reads itself when the host has written, which also covers messages that produce no socket event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing new still comes from the cache, instantly.",
-      "date": "2026-11-16T19:36:41Z",
+      "title": "Hermes 0.1.517 (517)",
+      "identifier": "hermes-0.1.517-517",
+      "caption": "Update card: \"Check for Updates\" now shows the card over the Settings sheet instead of only after it closes, and the Download button is never below the fold. The update source names the IPA again rather than the macOS disk image, the app refuses a link it cannot install on iOS, and the published source's bundle identifier is the app's own. Sideloader hand-off now offers AltStore, SideStore, Feather and FlareStore, each shown only when that app is installed.",
+      "date": "2026-11-16T20:34:59Z",
       "tintColor": "#9A9AA0"
     }
   ],
