@@ -24,14 +24,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.482",
-          "buildVersion": "482",
-          "date": "2026-11-16T11:22:41Z",
-          "localizedDescription": "Launch face is the Hermey mark; the working row wears the bot own face and colour; face writes fixed on the bridge.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.482/Hermey-0.1.482-b482.ipa",
-          "size": 3038737,
+          "version": "0.1.484",
+          "buildVersion": "484",
+          "date": "2026-11-16T11:46:32Z",
+          "localizedDescription": "Launch mark loads from the app catalogue; splash floor 0.5 s so it is actually seen.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.484/Hermey-0.1.484-b484.ipa",
+          "size": 3143094,
           "minOSVersion": "17.0",
-          "sha256": "8478b9a14f5e49f62bcfcef12fcfba6a5a1a61563c161ad6eb239800233b3cf2"
+          "sha256": "7011608f10a83e03f856e5b536d590ea270111055ad414a0556e0f601ff37ac3"
         }
       ],
       "appPermissions": {
