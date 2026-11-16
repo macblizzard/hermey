@@ -822,10 +822,11 @@ struct BotListScreen: View {
     ///   the tap alive under a strip nobody could read.
     ///
     /// A mask fixes both without choosing between them. It measures the one edge that matters — the
-    /// bottom of the bar, from `safeAreaInsets` rather than a guessed constant — and runs clear
-    /// exactly at that edge, so a row's pixels fade out over `fadeRun` points as they cross under
-    /// the bar and the first row (which starts below the bar) is only slightly veiled at its very
-    /// top. A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
+    /// bottom of the bar, from `safeAreaInsets` rather than a guessed constant — and finishes its
+    /// ramp `fadeRun` points *above* that edge, so a row is only dimmed while it is actually
+    /// passing under the bar and everything at rest below the bar is fully opaque. (An earlier
+    /// version ended the ramp at `bar + fadeRun`, which veiled the section heading and the top of
+    /// the first row at rest — a smudge over the list, not a dissolve.) A mask is not a view on top of anything: it cannot eat a touch, and over an empty list
     /// it masks nothing, so there is no band — which is why the empty case gets a plain opaque mask
     /// instead of a gradient across the hero block.
     private var topFadeMask: some View {
@@ -839,7 +840,12 @@ struct BotListScreen: View {
                         .init(color: .clear, location: 0),
                         .init(color: .black, location: 1),
                     ], startPoint: .top, endPoint: .bottom)
-                    .frame(height: bar + Self.fadeRun)
+                    // The ramp FINISHES `fadeRun` above the content edge, not below it: ending at
+                    // `bar + fadeRun` left the section heading and the top of the first row 87 %
+                    // veiled at rest, which read as a smudge over the list rather than a dissolve
+                    // under the bar. Now everything a row sits at rest is fully opaque, and the
+                    // dissolve only happens to the pixels actually crossing under the bar.
+                    .frame(height: max(bar - Self.fadeRun, 0))
                     Color.black
                 }
             } else {
@@ -853,8 +859,9 @@ struct BotListScreen: View {
     /// whatever is there.
     private var hasRowsToFade: Bool { !model.bots.isEmpty }
 
-    /// How far below the bar a row keeps dissolving. Short on purpose: every point of it is a point
-    /// of the first row that is veiled at rest, and the bar itself is already opaque.
+    /// How far *above* the content edge the dissolve finishes. Short on purpose: the ramp is the
+    /// bar's own height, and every point of it that reached below the edge veiled the first row at
+    /// rest instead of dissolving a row that was scrolling under the bar.
     private static let fadeRun: CGFloat = 14
 
     private func listHeading(_ title: String) -> some View {
