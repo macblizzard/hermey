@@ -50,14 +50,14 @@ final class BotAvatarRenderingTests: XCTestCase {
         XCTAssertEqual(corner.y, 100, accuracy: 1e-9)
 
         // The drawn path agrees: a 228.49-unit-wide body covers most of the 100 pt square.
-        let box = BotAvatarShape(kind: .tablet).path(inSide: 100).boundingRect
+        let box = BotAvatarShape(.tablet).path(inSide: 100).boundingRect
         XCTAssertEqual(box.minX, (0.27 + 15) / 259 * 100, accuracy: 0.01)
         XCTAssertEqual(box.width, 228.0 / 259 * 100, accuracy: 0.05)
     }
 
     func testTheGlyphIsCentredInAWiderFrame() {
         // A caller that hands a 200×100 frame gets a 100 pt avatar in the middle, not a stretched one.
-        let box = BotAvatarShape(kind: .tablet).path(in: CGRect(x: 0, y: 0, width: 200, height: 100)).boundingRect
+        let box = BotAvatarShape(.tablet).path(in: CGRect(x: 0, y: 0, width: 200, height: 100)).boundingRect
         XCTAssertGreaterThan(box.minX, 45)
         XCTAssertLessThan(box.maxX, 155)
         // tablet's ink is 228 × 148 units, scaled by 100/259 and never stretched.

@@ -61,7 +61,7 @@ final class BotFaceChoiceTests: XCTestCase {
     func testItEncodesAsOneString() throws {
         let choice = BotFaceChoice.make(colorHex: "#00C972", shapeIndex: 6)
         let data = try JSONEncoder().encode(["research": choice])
-        XCTAssertEqual(String(decoding: data, as: UTF8.self), #"{"research":"#00C972::shape_6"}"#)
+        XCTAssertEqual(String(decoding: data, as: UTF8.self), ##"{"research":"#00C972::shape_6"}"##)
         let back = try JSONDecoder().decode([String: BotFaceChoice].self, from: data)
         XCTAssertEqual(back["research"], choice)
     }
