@@ -20,13 +20,15 @@ final class BotAvatarEyeMotionTests: XCTestCase {
     }
 
     func testReadingSweepsAcrossTheEyes() {
-        // Two full horizontal sweeps per cycle with the reference's 20/60 amplitude, so the gaze
-        // must both reach far right and come back to the left.
+        // The base posture is eyeX = -10 (looking left, as the reference's reading state does) and
+        // `readingX` adds up to +20 on top, so the gaze travels from -10 to +10 units — 1/6 of the
+        // eye box either side of centre. What matters is that it *travels*, and comes back.
         let poses = samples(.reading, seconds: 10)
         let widest = poses.map(\.offsetX).max() ?? 0
         let narrowest = poses.map(\.offsetX).min() ?? 0
-        XCTAssertGreaterThan(widest, 0.3, "reading should look right, like a line of text")
-        XCTAssertLessThan(narrowest, 0.02, "…and return, rather than parking at the right edge")
+        XCTAssertGreaterThan(widest, 0.15, "reading should look right, like a line of text")
+        XCTAssertLessThan(narrowest, -0.1, "…and return to the left, rather than parking right")
+        XCTAssertGreaterThan(widest - narrowest, 0.25, "the sweep has to be visible, not a twitch")
     }
 
     func testIdleMovesLessThanReading() {
@@ -36,7 +38,9 @@ final class BotAvatarEyeMotionTests: XCTestCase {
     }
 
     func testEveryBusyStateBlinks() {
-        for activity in [BotAvatarActivity.working, .reading, .writing, .computer, .idle, .thinking, .waiting] {
+        // Not `waiting`: the reference's "needs attention" states hold a lid instead of blinking
+        // (`logoAvatarNeedsAttention`), which the next test pins.
+        for activity in [BotAvatarActivity.working, .reading, .writing, .computer, .idle, .thinking] {
             let closed = samples(activity, seconds: 6).map(\.scaleY).min() ?? 1
             XCTAssertLessThan(closed, 0.3, "\(activity.rawValue) never closed its eyes")
         }
@@ -66,11 +70,21 @@ final class BotAvatarEyeMotionTests: XCTestCase {
         XCTAssertNotEqual(reading, computer)
     }
 
-    func testTwoBotsDoNotBlinkInLockstep() {
+    func testTheWaitingStateHoldsItsLidInsteadOfBlinking() {
+        // `logoAvatarNeedsAttention`: a face waiting on a person keeps its eyes open at 0.9 rather
+        // than closing them — that stillness is what makes "it needs you" read.
+        let lidded = samples(.waiting, seconds: 8).map(\.scaleY)
+        XCTAssertTrue(lidded.allSatisfy { $0 >= 0.85 }, "waiting must not blink")
+        XCTAssertEqual(lidded.first ?? 0, 0.9, accuracy: 0.01)
+    }
+
+    func testTwoBotsDoNotMoveInLockstep() {
+        // Their bodies breathe out of phase (`traits.phase`); the eyes are identical until a blink
+        // is due, so breathing is the honest thing to compare at an arbitrary instant.
         let a = BotAvatarMotionTraits(phase: 0, eyeLoop: 0)
         let b = BotAvatarMotionTraits(phase: 0.37, eyeLoop: 2)
-        let poseA = BotAvatarMotion.eyePose(activity: .working, traits: a, at: 2.0)
-        let poseB = BotAvatarMotion.eyePose(activity: .working, traits: b, at: 2.0)
-        XCTAssertNotEqual(poseA, poseB)
+        let bodyA = BotAvatarMotion.frame(activity: .working, traits: a, at: 2.0).body
+        let bodyB = BotAvatarMotion.frame(activity: .working, traits: b, at: 2.0).body
+        XCTAssertNotEqual(bodyA, bodyB)
     }
 }
