@@ -55,7 +55,12 @@ class TypingSlashShowsTheList(unittest.TestCase):
         self.assertIn('!text.contains(" ")', COMPOSER)
         self.assertIn('HermesCommandCatalogue.all.matching(query)', COMPOSER)
         self.assertIn('ScrollView(.vertical, showsIndicators: true)', COMPOSER)
-        self.assertIn('min(28 + CGFloat(commandMatches.count) * 44, 360)', COMPOSER)
+        self.assertIn('min(CGFloat(commandMatches.count) * 44, 332)', COMPOSER)
+        self.assertIn('.frame(height: commandRowHeight)', COMPOSER)
+        self.assertIn('LazyVStack', COMPOSER)
+        # The height must be on the ScrollView, never on the enclosing VStack: that squashed every
+        # row onto one baseline in 546.
+        self.assertNotIn(".frame(height: commandPopupHeight)", COMPOSER)
 
     def test_picking_completes_the_command_and_calls_the_owner(self) -> None:
         self.assertIn("text = command.invocation", COMPOSER)

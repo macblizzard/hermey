@@ -180,8 +180,12 @@ public struct Composer: View {
 
     /// The popup grows with its matches up to a ceiling, then scrolls. A fixed six-row list meant an
     /// unfiltered `/` silently cut off 62 commands with no way to reach them.
+    private var commandRowHeight: CGFloat {
+        min(CGFloat(commandMatches.count) * 44, 332)
+    }
+
     private var commandPopupHeight: CGFloat {
-        min(28 + CGFloat(commandMatches.count) * 44, 360)
+        28 + commandRowHeight
     }
 
     private var canSend: Bool {
@@ -346,45 +350,17 @@ public struct Composer: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
 
+            // The height belongs to the scroll view, NOT to the outer VStack. A frame on the VStack
+            // squeezed the scroll view below its intrinsic size and every row landed on the same
+            // baseline — the list looked painted over itself with a large empty card underneath.
             ScrollView(.vertical, showsIndicators: true) {
-                ForEach(commandMatches) { command in
-                    Button { choose(command) } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: command.systemImage)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Tokens.accentText)
-                            .frame(width: 18)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 5) {
-                                Text("/" + command.name)
-                                    .font(TypeScale.font(TypeScale.sm, weight: .medium))
-                                    .foregroundStyle(Tokens.textPrimary)
-                                if command.isHostCommand {
-                                    Text("host")
-                                        .font(TypeScale.font(TypeScale.caption))
-                                        .foregroundStyle(Tokens.textDim)
-                                }
-                            }
-                            Text(command.detail)
-                                .font(TypeScale.font(TypeScale.caption))
-                                .foregroundStyle(Tokens.textMuted)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 4)
-                        if let argument = command.argument {
-                            Text(argument)
-                                .font(TypeScale.font(TypeScale.caption))
-                                .foregroundStyle(Tokens.textDim)
-                        }
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(commandMatches) { command in
+                        commandRow(command)
                     }
-                    .frame(height: 44)
-                    .padding(.horizontal, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
                 }
             }
-            .frame(height: commandPopupHeight)
+            .frame(height: commandRowHeight)
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -392,6 +368,43 @@ public struct Composer: View {
                 .shadow(color: .black.opacity(0.22), radius: 12, y: 4)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func commandRow(_ command: HermesCommand) -> some View {
+        Button { choose(command) } label: {
+            HStack(spacing: 9) {
+                Image(systemName: command.systemImage)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Tokens.accentText)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text("/" + command.name)
+                            .font(TypeScale.font(TypeScale.sm, weight: .medium))
+                            .foregroundStyle(Tokens.textPrimary)
+                        if command.isHostCommand {
+                            Text("host")
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textDim)
+                        }
+                    }
+                    Text(command.detail)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if let argument = command.argument {
+                    Text(argument)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textDim)
+                }
+            }
+            .frame(height: 44)
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Complete the command in the field first: a caller that owns a native panel can clear it when
