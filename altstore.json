@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.550",
-          "buildVersion": "550",
-          "date": "2026-11-17T17:07:27Z",
-          "localizedDescription": "Bot-to-bot relay stamps ('Message from/to \ud83e\udd16 name (@handle):') now draw as a header above the bubble, with the name and handle parsed cleanly.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.550/Hermey-0.1.550-b550.ipa",
-          "size": 3317175,
+          "version": "0.1.551",
+          "buildVersion": "551",
+          "date": "2026-11-17T17:20:05Z",
+          "localizedDescription": "Long messages no longer freeze scrolling: UIKit's redundant link detector is off and URL extraction is cached per message.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.551/Hermey-0.1.551-b551.ipa",
+          "size": 3319585,
           "minOSVersion": "17.0",
-          "sha256": "a3192a119c8d4272ac68906db17ccde2ea82dec8e245ae6222cc3f10c5824f9f"
+          "sha256": "91beb543631037a6fc41dfc7d7fca03c0348b21726944bff51f05234fe8110d4"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.550 (550)",
-      "identifier": "hermes-0.1.550-550",
-      "caption": "Bot-to-bot relay stamps ('Message from/to \ud83e\udd16 name (@handle):') now draw as a header above the bubble, with the name and handle parsed cleanly.",
-      "date": "2026-11-17T17:07:27Z",
+      "title": "Hermes 0.1.551 (551)",
+      "identifier": "hermes-0.1.551-551",
+      "caption": "Long messages no longer freeze scrolling: UIKit's redundant link detector is off and URL extraction is cached per message.",
+      "date": "2026-11-17T17:20:05Z",
       "tintColor": "#9A9AA0"
     }
   ],
