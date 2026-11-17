@@ -28,7 +28,7 @@ struct ComputerWindow: Codable, Sendable {
 /// leak, and honours Screen Recording permission. ScreenCaptureKit-style window metadata comes from
 /// CGWindowList, matched to the frontmost app. The image is downsampled and JPEG-encoded so a bot can
 /// actually receive it over the socket without a multi-megabyte transfer.
-private final class ComputerObserver {
+final class ComputerObserver {
     static let shared = ComputerObserver()
     private let maxDimension: CGFloat = 1600
     private let compression: CFTimeInterval = 0.7
@@ -39,8 +39,8 @@ private final class ComputerObserver {
             throw ComputerPermissionError.missing(.screenRecording)
         }
         let scaled = downsample(raw)
-        guard let bitmap = NSBitmapImageRep(cgImage: scaled),
-              let jpeg = bitmap.representation(using: .jpeg,
+        let bitmap = NSBitmapImageRep(cgImage: scaled)
+        guard let jpeg = bitmap.representation(using: .jpeg,
                                                properties: [.compressionFactor: compression]) else {
             throw ObservationError.encodeFailed
         }
