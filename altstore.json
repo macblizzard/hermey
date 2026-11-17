@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.553",
-          "buildVersion": "553",
-          "date": "2026-11-17T17:41:46Z",
-          "localizedDescription": "Bare download links are tappable again without UIKit's slow detector; host background-process notices are hidden from transcripts.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.553/Hermey-0.1.553-b553.ipa",
-          "size": 3319970,
+          "version": "0.1.554",
+          "buildVersion": "554",
+          "date": "2026-11-17T17:55:56Z",
+          "localizedDescription": "File cards now download the file before sharing on iOS, so Save to Files appears in the share sheet.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.554/Hermey-0.1.554-b554.ipa",
+          "size": 3327174,
           "minOSVersion": "17.0",
-          "sha256": "63aa14e76bca631999772c6269b3764e08e7833a2347bcc668f0165fa20b85bc"
+          "sha256": "89093f42e8f522fc68675d82fd7238e80f5ad61f1306b5ca02622aa7d7927c97"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.553 (553)",
-      "identifier": "hermes-0.1.553-553",
-      "caption": "Bare download links are tappable again without UIKit's slow detector; host background-process notices are hidden from transcripts.",
-      "date": "2026-11-17T17:41:46Z",
+      "title": "Hermes 0.1.554 (554)",
+      "identifier": "hermes-0.1.554-554",
+      "caption": "File cards now download the file before sharing on iOS, so Save to Files appears in the share sheet.",
+      "date": "2026-11-17T17:55:56Z",
       "tintColor": "#9A9AA0"
     }
   ],
