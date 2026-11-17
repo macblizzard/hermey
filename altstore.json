@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.558",
-          "buildVersion": "558",
-          "date": "2026-11-17T18:59:20Z",
-          "localizedDescription": "Approvals: writes now answer with the full fleet state, so the selection and footer update immediately; no focus ring on the first row.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.558/Hermey-0.1.558-b558.ipa",
-          "size": 3344582,
+          "version": "0.1.559",
+          "buildVersion": "559",
+          "date": "2026-11-17T19:25:21Z",
+          "localizedDescription": "Crisper typography: one system face with real weights, half-point sizes, and full-contrast message text.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.559/Hermey-0.1.559-b559.ipa",
+          "size": 3343615,
           "minOSVersion": "17.0",
-          "sha256": "81c11846fb78b6a3821beee39e7690f78717ac136a2b9366592f6fc66b23f900"
+          "sha256": "4b4b5bdb405ebe582b6b05f9f860928a06d7e1edd3a5ab677770eb9955a416f8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.558 (558)",
-      "identifier": "hermes-0.1.558-558",
-      "caption": "Approvals: writes now answer with the full fleet state, so the selection and footer update immediately; no focus ring on the first row.",
-      "date": "2026-11-17T18:59:20Z",
+      "title": "Hermes 0.1.559 (559)",
+      "identifier": "hermes-0.1.559-559",
+      "caption": "Crisper typography: one system face with real weights, half-point sizes, and full-contrast message text.",
+      "date": "2026-11-17T19:25:21Z",
       "tintColor": "#9A9AA0"
     }
   ],
