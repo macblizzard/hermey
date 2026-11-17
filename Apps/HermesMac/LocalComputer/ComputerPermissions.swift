@@ -68,7 +68,9 @@ final class ComputerPermissions: ObservableObject {
     @Published private(set) var states: [ComputerPermission: ComputerPermissionState] = [:]
 
     init() {
-        refreshSafe()
+        // Deliberately no API call at all. Even the "safe" AXIsProcessTrusted() query has produced a
+        // system prompt after an ad-hoc signature change, so the panel starts completely passive.
+        states[.accessibility] = ComputerPermissionState(granted: nil, note: nil)
         states[.screenRecording] = ComputerPermissionState(granted: nil, note: nil)
         states[.inputMonitoring] = ComputerPermissionState(granted: nil, note: nil)
         states[.automation] = ComputerPermissionState(granted: nil, note: "On first use")

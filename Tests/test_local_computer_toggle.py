@@ -92,7 +92,8 @@ class LocalComputerPrototype(unittest.TestCase):
 
     def test_permission_probes_require_an_explicit_button(self) -> None:
         perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()
-        self.assertIn("init() {\n        refreshSafe()", perms)
+        self.assertNotIn("init() {\n        refreshSafe()", perms)
+        self.assertIn("starts completely passive", perms)
         self.assertNotIn("Task { await checkScreenRecording() }\n    }", perms)
         self.assertIn("func check(_ permission: ComputerPermission)", perms)
         self.assertIn("case .screenRecording:\n            states[.screenRecording]", perms)
