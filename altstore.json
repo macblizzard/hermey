@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.543",
-          "buildVersion": "543",
-          "date": "2026-11-17T12:33:14Z",
-          "localizedDescription": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.543/Hermey-0.1.543-b543.ipa",
-          "size": 3271026,
+          "version": "0.1.544",
+          "buildVersion": "544",
+          "date": "2026-11-17T13:05:29Z",
+          "localizedDescription": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. /help opens the searchable catalogue.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.544/Hermey-0.1.544-b544.ipa",
+          "size": 3301489,
           "minOSVersion": "17.0",
-          "sha256": "32434bf0990cc57351c26601c6cbb2077b8c8c9136e7f14277669f42ca7df530"
+          "sha256": "6a8d2279d76df4e5c01f51f46c180f5b0e0159b0fddd55a2b6a8b0aeba20148c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.543 (543)",
-      "identifier": "hermes-0.1.543-543",
-      "caption": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
-      "date": "2026-11-17T12:33:14Z",
+      "title": "Hermes 0.1.544 (544)",
+      "identifier": "hermes-0.1.544-544",
+      "caption": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. /help opens the searchable catalogue.",
+      "date": "2026-11-17T13:05:29Z",
       "tintColor": "#9A9AA0"
     }
   ],
