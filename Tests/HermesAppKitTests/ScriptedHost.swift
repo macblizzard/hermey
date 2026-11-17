@@ -114,8 +114,19 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
                       earlierCursor: earlierCursor, historyTotal: historyTotal)
     }
 
-    func createSession(model: String?, provider: String?) async throws -> SessionID { session }
-    func createSession(model: String?, provider: String?, profile: String?) async throws -> SessionID { session }
+    /// Every `session.create` this host was asked for, so a test can prove no blank conversation was
+    /// minted behind the person's back.
+    private(set) var createdSessions: [String?] = []
+
+    func createSession(model: String?, provider: String?) async throws -> SessionID {
+        createdSessions.append(nil)
+        return session
+    }
+
+    func createSession(model: String?, provider: String?, profile: String?) async throws -> SessionID {
+        createdSessions.append(profile)
+        return session
+    }
 
     func createSession(model: String?, provider: String?, profile: String?,
                        idempotencyKey: String?) async throws -> SessionID {

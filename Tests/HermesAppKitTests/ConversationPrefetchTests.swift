@@ -149,8 +149,12 @@ final class ConversationPrefetchTests: XCTestCase {
 
         await model.endlessSession(for: cody)
 
-        XCTAssertEqual(model.selectedSessionID, "20260101_000009_older",
-                       "the newest existing conversation is adopted, not a blank one")
+        // The scripted host answers any id with its single session, so the assertion is on what the
+        // model asked for: the conversation that exists, and no minted replacement.
+        XCTAssertEqual(client.resumed, [Self.sessionID, "20260101_000009_older"],
+                       "the refused id is retried as the bot's newest existing conversation")
+        XCTAssertTrue(client.createdSessions.isEmpty,
+                      "a stale pointer must not mint a blank conversation")
         XCTAssertNil(model.lastSendError)
     }
 }
