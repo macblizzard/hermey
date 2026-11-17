@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.531",
-          "buildVersion": "531",
-          "date": "2026-11-17T01:07:48Z",
-          "localizedDescription": "The bridge no longer rewrites a resume, so bot chats that exist actually open (atlas, anika, crony). The Mac pane also paints its warmed conversation before the round trip instead of showing Opening... over it.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.531/Hermey-0.1.531-b531.ipa",
-          "size": 3207897,
+          "version": "0.1.532",
+          "buildVersion": "532",
+          "date": "2026-11-17T02:03:07Z",
+          "localizedDescription": "Built on a GitHub macOS runner (the Mac was asleep). Coming back to a bot shows that bot chat, not the one you just left; a preloaded conversation no longer reloads when you open it.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.532/Hermey-0.1.532-b532.ipa",
+          "size": 3248848,
           "minOSVersion": "17.0",
-          "sha256": "a5cd9488e0cd03d35d186f7d4148e2589569931420a757c5275cb35ffd37ad43"
+          "sha256": "d445990d4363b560b41f936896a0feae42cd5bc7c32f60439d6e5ee86a96340c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.531 (531)",
-      "identifier": "hermes-0.1.531-531",
-      "caption": "The bridge no longer rewrites a resume, so bot chats that exist actually open (atlas, anika, crony). The Mac pane also paints its warmed conversation before the round trip instead of showing Opening... over it.",
-      "date": "2026-11-17T01:07:48Z",
+      "title": "Hermes 0.1.532 (532)",
+      "identifier": "hermes-0.1.532-532",
+      "caption": "Built on a GitHub macOS runner (the Mac was asleep). Coming back to a bot shows that bot chat, not the one you just left; a preloaded conversation no longer reloads when you open it.",
+      "date": "2026-11-17T02:03:07Z",
       "tintColor": "#9A9AA0"
     }
   ],
