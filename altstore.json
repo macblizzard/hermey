@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.567",
-          "buildVersion": "567",
-          "date": "2026-11-17T23:08:02Z",
-          "localizedDescription": "Phase 2: computer.observe \u2014 Mac screenshots with window metadata, JPEG transport and a bot CLI endpoint.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.567/Hermey-0.1.567-b567.ipa",
-          "size": 3343613,
+          "version": "0.1.568",
+          "buildVersion": "568",
+          "date": "2026-11-17T23:32:37Z",
+          "localizedDescription": "Build A: GUI actions (click/type/key/scroll/focus), app launch, and serialized driver with cancellation.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.568/Hermey-0.1.568-b568.ipa",
+          "size": 3343611,
           "minOSVersion": "17.0",
-          "sha256": "167d43e95e31ca1a8c87fbcd1caad174288b71ca933e423f9b4be124ca51193f"
+          "sha256": "962504e3fef14b0c447f32680b3848121d9f71f6f90073a1f5edbb2cdbc05404"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.567 (567)",
-      "identifier": "hermes-0.1.567-567",
-      "caption": "Phase 2: computer.observe \u2014 Mac screenshots with window metadata, JPEG transport and a bot CLI endpoint.",
-      "date": "2026-11-17T23:08:02Z",
+      "title": "Hermes 0.1.568 (568)",
+      "identifier": "hermes-0.1.568-568",
+      "caption": "Build A: GUI actions (click/type/key/scroll/focus), app launch, and serialized driver with cancellation.",
+      "date": "2026-11-17T23:32:37Z",
       "tintColor": "#9A9AA0"
     }
   ],
