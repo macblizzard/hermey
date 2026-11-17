@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.556",
-          "buildVersion": "556",
-          "date": "2026-11-17T18:32:40Z",
-          "localizedDescription": "Fleet-wide approval mode in both apps' settings: Ask always, Auto (host smart mode) or Never ask, applied to every bot.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.556/Hermey-0.1.556-b556.ipa",
-          "size": 3344559,
+          "version": "0.1.557",
+          "buildVersion": "557",
+          "date": "2026-11-17T18:46:57Z",
+          "localizedDescription": "Approvals: no more routine error on first load, grouped form alignment, Auto as the recommended default and Allow always label.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.557/Hermey-0.1.557-b557.ipa",
+          "size": 3344568,
           "minOSVersion": "17.0",
-          "sha256": "01581e93772d41a5f84bb16d773112d965f64edb8d1714e729f57598a91e6ba8"
+          "sha256": "084b1573ea7a5eaad9245460a7f88be32ff64940ea7d7918561575245a0119a0"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.556 (556)",
-      "identifier": "hermes-0.1.556-556",
-      "caption": "Fleet-wide approval mode in both apps' settings: Ask always, Auto (host smart mode) or Never ask, applied to every bot.",
-      "date": "2026-11-17T18:32:40Z",
+      "title": "Hermes 0.1.557 (557)",
+      "identifier": "hermes-0.1.557-557",
+      "caption": "Approvals: no more routine error on first load, grouped form alignment, Auto as the recommended default and Allow always label.",
+      "date": "2026-11-17T18:46:57Z",
       "tintColor": "#9A9AA0"
     }
   ],
