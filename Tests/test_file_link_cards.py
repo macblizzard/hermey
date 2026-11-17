@@ -87,3 +87,15 @@ class ProcessNoticesAreHidden(unittest.TestCase):
         self.assertIn("if Self.isProcessNotice(text) { return nil }", decoder)
         self.assertIn("compactMap { index, message in", decoder)
 
+
+class SaveToFilesNeedsAFile(unittest.TestCase):
+    def test_ios_shares_a_downloaded_file_not_a_url(self) -> None:
+        share = (ROOT / "Sources/HermeyUI/HermesFileShareSheet.swift").read_text(encoding="utf-8")
+        self.assertIn("UIActivityViewController(activityItems: [url]", share)
+        self.assertIn("Save to Files", share)
+        card = (ROOT / "Sources/HermeyUI/HermesFileLinkCard.swift").read_text(encoding="utf-8")
+        self.assertIn("URLSession.shared.download(from: downloadURL())", card)
+        self.assertIn("HermesFileShareSheet(url: file.url)", card)
+        self.assertIn("appendingPathComponent(link.filename)", card)
+        self.assertIn("components.host = \"hermes.corvus-vibes.ts.net\"", card)
+

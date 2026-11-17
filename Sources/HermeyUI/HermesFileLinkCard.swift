@@ -91,6 +91,11 @@ public struct HermesFileLinkCard: View {
 
     @Environment(\.openURL) private var openURL
     @State private var copied = false
+    @State private var preparing = false
+    @State private var shareError: String?
+    #if os(iOS)
+    @State private var sharedFile: HermesSharedFile?
+    #endif
 
     public init(link: HermesFileLink) {
         self.link = link
@@ -129,12 +134,33 @@ public struct HermesFileLinkCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Copy the download link")
 
+            #if os(macOS)
             ShareLink(item: link.url) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Tokens.textSecondary)
                     .frame(width: 26, height: 26)
             }
+            #else
+            // A URL on the pasteboard has no "Save to Files": iOS only offers that for a file on
+            // disk. Fetch the bytes first, hand the system a real file, and the option appears.
+            Button { Task { await prepareShare() } } label: {
+                Group {
+                    if preparing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                }
+                .foregroundStyle(Tokens.textSecondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(preparing)
+            .accessibilityLabel("Download and share this file")
+            #endif
         }
         .padding(10)
         .background(
@@ -149,7 +175,54 @@ public struct HermesFileLinkCard: View {
         .onTapGesture { openURL(link.url) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("File: \(link.filename). Tap to download.")
+        #if os(iOS)
+        .sheet(item: $sharedFile) { file in
+            HermesFileShareSheet(url: file.url)
+        }
+        #endif
+        .alert("Could not download the file", isPresented: Binding(
+            get: { shareError != nil },
+            set: { if !$0 { shareError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareError ?? "")
+        }
     }
+
+    #if os(iOS)
+    /// The DNS-free address is plain HTTP, which the app cannot fetch under ATS. The same store is
+    /// served over TLS on the tailnet name, so prefer that form for the app's own download.
+    private func downloadURL() -> URL {
+        var components = URLComponents(url: link.url, resolvingAgainstBaseURL: false) ?? link.url
+        if components.host == "100.86.19.1" {
+            components.host = "hermes.corvus-vibes.ts.net"
+            components.port = 9446
+            components.scheme = "https"
+        }
+        return components.url ?? link.url
+    }
+
+    private func prepareShare() async {
+        preparing = true
+        defer { preparing = false }
+        do {
+            let (temporary, response) = try await URLSession.shared.download(from: downloadURL())
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw FileShareError.badResponse
+            }
+            let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            let folder = caches.appendingPathComponent("hermey-shares", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let destination = folder.appendingPathComponent(link.filename)
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: temporary, to: destination)
+            sharedFile = HermesSharedFile(url: destination)
+        } catch {
+            shareError = error.localizedDescription
+        }
+    }
+    #endif
 
     private func copyLink() {
         #if os(iOS)
@@ -163,6 +236,16 @@ public struct HermesFileLinkCard: View {
         Task {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             copied = false
+        }
+    }
+}
+
+private enum FileShareError: LocalizedError {
+    case badResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .badResponse: return "The file store did not return the file."
         }
     }
 }
