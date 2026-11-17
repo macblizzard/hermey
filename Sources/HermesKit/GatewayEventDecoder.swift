@@ -296,8 +296,16 @@ enum GatewayPayloadDecoder {
     ///   id fall back to a positional one, and two pages of the same conversation would otherwise
     ///   both start at `user-0` — the same identity for two different messages, which makes a
     ///   prepended page fight the list it is joining.
+    /// Host notifications about background processes are operational noise in a bot conversation:
+    /// they carry command lines and hundreds of lines of poll output, hide the actual messages and
+    /// made scrolling expensive. Recognition is narrow — only the runtime's exact banner prefix —
+    /// so a person typing about a process still gets their message.
+    public static func isProcessNotice(_ text: String) -> Bool {
+        text.hasPrefix("[IMPORTANT: Background process ")
+    }
+
     static func transcript(_ messages: [JSONValue], baseOffset: Int = 0) -> [TranscriptEntry] {
-        messages.enumerated().map { index, message in
+        messages.enumerated().compactMap { index, message in
             let rowID = message["row_id"]?.intValue
             let role = TranscriptEntry.Role(rawValue: message["role"]?.stringValue ?? "") ?? .system
             // Row ids are the durable identity a rewind targets and the UI diffs against; without
@@ -311,6 +319,7 @@ enum GatewayPayloadDecoder {
                 id = "\(role.rawValue)-\(baseOffset + index)"
             }
             let text = GatewayJSON.text(message["text"]) ?? GatewayJSON.text(message["content"]) ?? ""
+            if Self.isProcessNotice(text) { return nil }
             return TranscriptEntry(id: id,
                                    rowID: rowID,
                                    role: role,

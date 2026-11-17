@@ -69,3 +69,21 @@ class LongMessagesDoNotFreezeScrolling(unittest.TestCase):
         self.assertIn("func sanitized(_ raw: String) -> String", IOS_MD)
         self.assertIn("if rawSource == raw { return cleanSource }", IOS_MD)
 
+
+class LinksStayTappableWithoutTheDetector(unittest.TestCase):
+    def test_markdown_links_are_linkified_into_text(self) -> None:
+        selector = (ROOT / "Apps/HermesMobile/Views/MobileSelectableText.swift").read_text(encoding="utf-8")
+        self.assertIn("InlineMarkdown.linkified(InlineMarkdown.spans(source))", selector)
+        self.assertIn("InlineMarkdown.bareLinkRanges(in: text)", selector)
+        render = (ROOT / "Sources/HermesRender/InlineMarkdown.swift").read_text(encoding="utf-8")
+        self.assertIn("public static func linkified", render)
+        self.assertIn("public static func bareLinkRanges", render)
+
+
+class ProcessNoticesAreHidden(unittest.TestCase):
+    def test_the_decoder_drops_the_runtimes_banner(self) -> None:
+        decoder = (ROOT / "Sources/HermesKit/GatewayEventDecoder.swift").read_text(encoding="utf-8")
+        self.assertIn('text.hasPrefix("[IMPORTANT: Background process ")', decoder)
+        self.assertIn("if Self.isProcessNotice(text) { return nil }", decoder)
+        self.assertIn("compactMap { index, message in", decoder)
+

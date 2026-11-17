@@ -128,11 +128,19 @@ enum MobileProse {
                       size: CGFloat = TypeScale.chatBody) -> NSAttributedString {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = TypeScale.chatLineSpacing
-        return NSAttributedString(string: text, attributes: [
+        let output = NSMutableAttributedString(string: text, attributes: [
             .font: font(size: size),
             .foregroundColor: UIColor(color),
             .paragraphStyle: style,
         ])
+        // The markdown path linkifies in `InlineMarkdown`, but a message the *owner* wrote is plain
+        // text. UIKit's data detector used to make those links tappable; it was turned off because it
+        // rescanned long messages during layout, so attach the same links here instead.
+        for range in InlineMarkdown.bareLinkRanges(in: text) {
+            guard let url = URL(string: (text as NSString).substring(with: range)) else { continue }
+            output.addAttribute(.link, value: url, range: range)
+        }
+        return output
     }
 
     // MARK: Blocks
@@ -191,7 +199,7 @@ enum MobileProse {
                                      color: Color = Tokens.textSecondary,
                                      to output: NSMutableAttributedString) {
         let base = UIColor(color)
-        for span in InlineMarkdown.spans(source) where !span.text.isEmpty {
+        for span in InlineMarkdown.linkified(InlineMarkdown.spans(source)) where !span.text.isEmpty {
             var attributes: [NSAttributedString.Key: Any] = [:]
             let isCode = span.styles.contains(.code)
             let isBold = span.styles.contains(.strong)

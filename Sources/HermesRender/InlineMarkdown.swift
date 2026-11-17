@@ -81,7 +81,7 @@ extension InlineMarkdown {
     /// markdown-only parser left them as characters — underlined on nobody's screen and clickable
     /// on nobody's click. Detection lives here so every renderer on every platform inherits it.
     /// Code is skipped: a URL inside a code span is text *about* a URL.
-    static func linkified(_ spans: [InlineSpan]) -> [InlineSpan] {
+    public static func linkified(_ spans: [InlineSpan]) -> [InlineSpan] {
         spans.flatMap { span -> [InlineSpan] in
             guard span.link == nil, !span.styles.contains(.code) else { return [span] }
             let text = span.text as NSString
@@ -112,6 +112,16 @@ extension InlineMarkdown {
     /// `https?://` followed by everything that is not whitespace or a delimiter — deliberately
     /// permissive, because the host prints its own addresses and a stricter pattern would drop the
     /// port, the query or the trailing path.
+    /// Bare-link ranges in plain text, for views that deliberately do not parse markdown (the
+    /// owner's own bubbles) but still need URLs tappable without UIKit's expensive data detector.
+    public static func bareLinkRanges(in text: String) -> [NSRange] {
+        let storage = text as NSString
+        return bareURLRegex.matches(in: text,
+                                    range: NSRange(location: 0, length: storage.length))
+            .compactMap { trimmed(range: $0.range, in: storage) }
+            .filter { $0.length > 0 }
+    }
+
     private static let bareURLRegex = try! NSRegularExpression(
         pattern: #"https?://[^\s<>\"`\u201c\u201d]+"#, options: [.caseInsensitive])
 
