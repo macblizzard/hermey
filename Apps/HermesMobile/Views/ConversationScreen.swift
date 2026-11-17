@@ -1191,7 +1191,13 @@ struct ConversationScreen: View {
     /// and the model does the attaching (bot switch, resume, transcript) in one place, so
     /// there is no second resume here.
     private func openConversation() async {
-        isOpening = true
+        // Paint the warmed conversation *now*, in the same run loop as this call, before the first
+        // await. The launch sweep has already filled the cache and `endlessSession` would restore it a
+        // millisecond later — but only after a `session.resume` round trip, and the pane showed
+        // "Opening …" over a conversation it already held. That is what made the background load look
+        // like it did nothing.
+        let warmed = model.restoreConversation(for: bot.id) && !model.transcript.isEmpty
+        isOpening = !warmed
 
         if let sid = await model.endlessSession(for: bot.id) {
             sessionID = sid

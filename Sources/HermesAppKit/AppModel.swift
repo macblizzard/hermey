@@ -1848,7 +1848,7 @@ public final class AppModel: ObservableObject {
     /// — one read, newest first — so the recovery adopts it instead of inventing a new one.
     private func newestExistingConversation(for botID: String) async -> SessionID? {
         do {
-            let sessions = try await listSessions(limit: 5, profile: botID, includeHidden: true)
+            let sessions = try await client.listSessions(limit: 5, profile: botID, includeHidden: true)
             return sessions.first?.id
         } catch {
             Self.noteSessionSync("could not list “\(botID)”'s conversations: \(error.localizedDescription)")
