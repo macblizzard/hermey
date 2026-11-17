@@ -1051,7 +1051,7 @@ public final class AppModel: ObservableObject {
     }
 
     /// Put a remembered conversation back on screen, before any network call is made.
-    @discardableResult
+    ///
     /// Paint a warmed conversation for `botID`, if the background sweep filled one.
     ///
     /// Public because the conversation pane restores *before* it awaits: a spinner over a cache the app
