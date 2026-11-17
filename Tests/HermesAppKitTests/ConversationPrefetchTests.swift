@@ -130,7 +130,6 @@ final class ConversationPrefetchTests: XCTestCase {
         await model.prefetchConversations()
         XCTAssertEqual(client.historyReads, readsBefore)
     }
-}
 
     func testAStaleIdDoesNotCostTheConversation() async {
         // The live failure this guards (2026-11-16 22:48, bot `aria`): resume answered 4007, the model

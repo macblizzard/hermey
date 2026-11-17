@@ -1052,7 +1052,12 @@ public final class AppModel: ObservableObject {
 
     /// Put a remembered conversation back on screen, before any network call is made.
     @discardableResult
-    func restoreConversation(for botID: String) -> Bool {
+    /// Paint a warmed conversation for `botID`, if the background sweep filled one.
+    ///
+    /// Public because the conversation pane restores *before* it awaits: a spinner over a cache the app
+    /// already holds is the difference between a warm launch and one that looks cold.
+    @discardableResult
+    public func restoreConversation(for botID: String) -> Bool {
         guard let snapshot = conversationCache[botID] else {
             ClientLog.note("no cached conversation for \(botID): the pane has to wait for a resume",
                            level: .info, category: "cache")
