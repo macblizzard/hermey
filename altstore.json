@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.554",
-          "buildVersion": "554",
-          "date": "2026-11-17T17:55:56Z",
-          "localizedDescription": "File cards now download the file before sharing on iOS, so Save to Files appears in the share sheet.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.554/Hermey-0.1.554-b554.ipa",
-          "size": 3327174,
+          "version": "0.1.555",
+          "buildVersion": "555",
+          "date": "2026-11-17T18:07:25Z",
+          "localizedDescription": "Swipe down closes the bot drawer again, even now that its content scrolls.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.555/Hermey-0.1.555-b555.ipa",
+          "size": 3329748,
           "minOSVersion": "17.0",
-          "sha256": "89093f42e8f522fc68675d82fd7238e80f5ad61f1306b5ca02622aa7d7927c97"
+          "sha256": "d31c128641e254807cb74b540faacd03a40ed7693f4b5312ed9bfadabd6782f5"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.554 (554)",
-      "identifier": "hermes-0.1.554-554",
-      "caption": "File cards now download the file before sharing on iOS, so Save to Files appears in the share sheet.",
-      "date": "2026-11-17T17:55:56Z",
+      "title": "Hermes 0.1.555 (555)",
+      "identifier": "hermes-0.1.555-555",
+      "caption": "Swipe down closes the bot drawer again, even now that its content scrolls.",
+      "date": "2026-11-17T18:07:25Z",
       "tintColor": "#9A9AA0"
     }
   ],
