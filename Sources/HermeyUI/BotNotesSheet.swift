@@ -39,9 +39,32 @@ public struct BotNotesSheet: View {
     private var isDirty: Bool { text != (loaded?.text ?? "") }
 
     public var body: some View {
+        // The Mac's sheet is a panel with its own title bar. The phone's sheets are all navigable
+        // screens with an inline title and a Done control in the navigation bar; this one used to use
+        // the Mac panel on iOS too, which is why it looked unlike every sheet beside it (reported
+        // 2026-11-17).
+        #if os(iOS)
+        NavigationStack {
+            sheetContent
+                .navigationTitle("Notes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+        #else
+        sheetContent
+        #endif
+    }
+
+    private var sheetContent: some View {
         VStack(alignment: .leading, spacing: 0) {
+            #if !os(iOS)
             titleBar
             Hairline()
+            #endif
 
             if isLoading {
                 HStack(spacing: 8) {
@@ -66,8 +89,10 @@ public struct BotNotesSheet: View {
 
             footer
         }
+        #if os(macOS)
         .frame(minWidth: 420, idealWidth: 520, maxWidth: .infinity,
                minHeight: 380, idealHeight: 520, maxHeight: .infinity)
+        #endif
         .background(Tokens.canvas)
         .task { await read() }
     }

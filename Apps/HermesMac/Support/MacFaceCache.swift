@@ -17,12 +17,19 @@ import UserNotifications
 @MainActor
 enum MacFaceCache {
 
+    /// The renderer's schema. Commit `60a2993` changed the face model and the app icon, but a cached PNG
+    /// from the old one kept being attached to banners — the file name only carried the bot and its
+    /// colour, so a renderer change was invisible to the cache (reported 2026-11-17: banners still wore
+    /// the old logo). Bump this when the picture's *shape* changes; the bytes are cheap to redraw, once
+    /// per face, and a stale banner is not.
+    private static let schema = "v2"
+
     /// The face for a bot, as a notification attachment.
     ///
     /// The cache file is keyed by the bot *and* the stored face: changing a bot's face from its
     /// settings must change the next banner, not wait for the caches folder to be cleared.
     static func attachment(for botID: String, color: String?) -> UNNotificationAttachment? {
-        let url = cacheDirectory().appendingPathComponent("\(slug(botID, color)).png")
+        let url = cacheDirectory().appendingPathComponent("\(schema)-\(slug(botID, color)).png")
         if !FileManager.default.fileExists(atPath: url.path) {
             guard let png = PushIcon.png(for: botID, color: color) else { return nil }
             try? FileManager.default.createDirectory(at: cacheDirectory(),
