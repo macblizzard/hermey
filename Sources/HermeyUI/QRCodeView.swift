@@ -35,7 +35,12 @@ public struct QRCodeView: View {
         let output = filter.outputImage ?? CIImage.empty()
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
         let context = CIContext()
-        return context.createCGImage(scaled, from: scaled.extent) ?? CGImage()
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else {
+            // Unreachable for a QR payload: the generator always produces an image. Fail loud rather
+            // than render a blank rectangle that scans as nothing.
+            preconditionFailure("CIQRCodeGenerator produced no image")
+        }
+        return cg
     }
 }
 
