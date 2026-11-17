@@ -418,7 +418,23 @@ def create_bot_admin_router(runtime) -> APIRouter:
         runtime.audit.emit("bots.approval_mode", device_id=caller,
                            method="bots.approval_mode", path="/v1/bots/approvals",
                            nbytes=0, outcome="written" if updated and not failed else "partial")
-        return {"mode": body.mode, "updated": updated, "failed": failed}
+        # Answer in the GET shape too. The settings page keeps this response as its new state: a
+        # summary-only reply used to leave it showing a stale "modes differ" footer after a successful
+        # write, which read as "the option did nothing" even though every config had changed.
+        states: dict[str, str] = {}
+        unset: list[str] = []
+        for profile in _served_profiles():
+            status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
+            states[profile] = _approval_mode_from(config) if status == 200 else "manual"
+            if status == 200 and _raw_approval_mode(config) is None:
+                unset.append(profile)
+        approx = set(states.values())
+        return {"mode": approx.pop() if len(approx) == 1 else "mixed",
+                "profiles": states,
+                "unset": unset,
+                "available": list(APPROVAL_MODES),
+                "updated": updated,
+                "failed": failed}
 
     @router.get("/disabled")
     def list_disabled(authorization: str | None = Header(default=None)) -> dict:

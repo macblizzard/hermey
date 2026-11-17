@@ -149,3 +149,15 @@ class ApprovalsDefaultAndLayout(unittest.TestCase):
         self.assertIn('RESERVED_PROFILE_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo"})',
                       admin)
 
+class ApprovalsWriteFeedback(unittest.TestCase):
+    def test_mac_rows_do_not_show_a_focus_ring_and_show_progress(self) -> None:
+        tab = (ROOT / "Apps/HermesMac/Views/ApprovalSettingsTab.swift").read_text(encoding="utf-8")
+        self.assertIn(".focusable(false)", tab)
+        self.assertIn('@State private var applying: ApprovalMode?', tab)
+        self.assertIn("Applying \\(applying.title) to every bot…", tab)
+
+    def test_the_write_answer_is_in_the_get_shape(self) -> None:
+        admin = (ROOT / "Bridge/hermes_bridge/bot_admin.py").read_text(encoding="utf-8")
+        self.assertIn('"profiles": states,', admin)
+        self.assertIn('"unset": unset,', admin)
+

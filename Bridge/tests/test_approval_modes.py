@@ -80,6 +80,10 @@ class TestFleetApprovalMode:
         assert response.status_code == 200, response.text
         assert set(response.json()["updated"]) == {"cody", "atlas"}
         assert response.json()["failed"] == {}
+        # The settings page adopts this response as its state: it must describe the whole fleet.
+        assert response.json()["mode"] == "smart"
+        assert response.json()["profiles"] == {"cody": "smart", "atlas": "smart"}
+        assert response.json()["unset"] == []
         assert {profile for profile, _ in dashboard.writes} == {"cody", "atlas"}
         assert all(patch["approvals"]["mode"] == "smart" for _, patch in dashboard.writes)
         assert _get(bridge, "/v1/bots/approvals").json()["mode"] == "smart"

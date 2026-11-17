@@ -12,6 +12,7 @@ struct ApprovalSettingsTab: View {
     @State private var settings: ApprovalSettings?
     @State private var pending: ApprovalMode?
     @State private var error: String?
+    @State private var applying: ApprovalMode?
 
     private var model: AppModel { store.model }
 
@@ -48,6 +49,9 @@ struct ApprovalSettingsTab: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    // The blue focus ring on the first row read as "this option is selected" even
+                    // when Auto was. These are radio-like choices, not keyboard targets.
+                    .focusable(false)
                 }
             } header: {
                 Text("Approvals · all bots")
@@ -84,6 +88,7 @@ struct ApprovalSettingsTab: View {
     }
 
     private var footer: String {
+        if let applying { return "Applying \(applying.title) to every bot…" }
         guard let settings else { return "Reading the host's approval setting…" }
         if !settings.failed.isEmpty {
             return "Could not update: \(settings.failed.keys.sorted().joined(separator: ", "))."
@@ -112,7 +117,11 @@ struct ApprovalSettingsTab: View {
     }
 
     private func apply(_ mode: ApprovalMode) async {
+        applying = mode
+        defer { applying = nil }
         do {
+            // The bridge answers in the GET shape now, so the checkmark and the footer below show
+            // what the host actually stored instead of a stale summary.
             settings = try await model.setApprovalMode(mode)
             error = nil
         } catch {

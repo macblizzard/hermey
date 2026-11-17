@@ -19,6 +19,14 @@ final class ApprovalModeTests: XCTestCase {
         XCTAssertEqual(settings?.profiles["atlas"], .off)
     }
 
+    func testAWriteAnswerDescribesTheWholeFleet() {
+        let payload = #"{"mode":"smart","profiles":{"cody":"smart","atlas":"smart"},"unset":[],"updated":["cody","atlas"],"failed":{}}"#
+        let settings = ApprovalSettings.decode(Data(payload.utf8))
+        XCTAssertEqual(settings?.mode, .smart)
+        XCTAssertEqual(settings?.profiles.count, 2)
+        XCTAssertTrue(settings?.unset.isEmpty ?? false)
+    }
+
     func testAWriteReportsWhichProfilesFailed() {
         let payload = #"{"mode":"smart","profiles":{"cody":"smart"},"updated":["cody"],"failed":{"atlas":"offline"}}"#
         let settings = ApprovalSettings.decode(Data(payload.utf8))
