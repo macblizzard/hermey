@@ -136,7 +136,7 @@ def test_two_toggles_do_not_lose_each_other(tmp_path, monkeypatch) -> None:
 
 def test_a_hostile_job_id_never_reaches_the_dashboard_url() -> None:
     """The paused ids come back off disk, so they are filtered before they are interpolated."""
-    entry = {"enabled": False, "paused_jobs": ["../../api/profiles/cody", "ok-1", 7, None]}
+    entry = {"enabled": False, "paused_jobs": ["../../api/profiles/assistant", "ok-1", 7, None]}
     assert bot_admin._known_job_ids(entry) == ["ok-1"]
     assert bot_admin._known_job_ids({"paused_jobs": "not-a-list"}) == []
 

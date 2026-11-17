@@ -4,7 +4,7 @@ import HermesKit
 
 /// The stunts a busy face performs between its authored acting.
 ///
-/// Mohammad's report of 2026-11-16: *"it now blinks and moves a bit, but it's not enough, I need more
+/// The maintainer's report of 2026-11-16: *"it now blinks and moves a bit, but it's not enough, I need more
 /// movements … more eye movements and some jumps and flips in between every few seconds while
 /// working"*. These tests pin the answers he chose — playful, in working plus every busy state — and
 /// the two rules that keep the result from looking broken: a stunt is a pure function of the clock,

@@ -1,6 +1,6 @@
 # Bot face: more movement — 2026-11-16
 
-Source: Mohammad, 2026-11-16, in chat:
+Source: the maintainer, 2026-11-16, in chat:
 
 > "for next build i need more update on the bot animation. it now blinks and moves a bit, but its not
 > enough, i need more movements specially for the bot icon besides thinking, more eye movements and

@@ -94,7 +94,7 @@ final class RoutineDraftTests: XCTestCase {
 
         // Any one of the three is enough, and each on its own.
         var scriptOnly = RoutineDraft()
-        scriptOnly.script = "/root/.hermes/profiles/cody/scripts/audit.sh"
+        scriptOnly.script = "/root/.hermes/profiles/assistant/scripts/audit.sh"
         XCTAssertNil(scriptOnly.problem)
 
         var skillOnly = RoutineDraft()

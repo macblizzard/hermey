@@ -31,7 +31,8 @@ app itself needs no account, no Apple service and no internet beyond your tailne
    The newest build is published there as `Hermey-macOS-<version>.dmg`, so the filename tells you
    which build you have; `Hermey-macOS-unsigned.dmg` on the same page is the *same bytes* under a
    name older links use, rewritten every publish.
-   (the same artifact is attached to the [latest release](../releases/latest), but GitHub's release
+   (the same artifact is attached to the
+   [latest release](https://github.com/macblizzard/hermey/releases/latest), but GitHub's release
    CDN stalls mid-transfer on some networks). Open the image and drag `Hermey` onto the
    `Applications` shortcut in the same window.
 

@@ -1,7 +1,7 @@
 """Switching bots repaints from memory, not from the wire.
 
 Reported: "when I'm changing between bot chats, for a second the chat shows empty then it loads —
-even going cody → atlas → back to cody". Nothing was cached: every switch cleared the pane and then
+even going one bot → another → back". Nothing was cached: every switch cleared the pane and then
 waited for `resumeSession`. The rules that must hold:
 """
 from __future__ import annotations
