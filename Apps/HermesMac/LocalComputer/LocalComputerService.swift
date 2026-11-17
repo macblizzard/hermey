@@ -181,13 +181,21 @@ private struct LocalProcessResult {
 }
 
 private enum LocalProcess {
-    static let maxOutput = 1_000_000
+    // Xcode builds are chatty; four megabytes still clips a runaway log without starving them.
+    static let maxOutput = 4_000_000
 
     static func run(argv: [String], cwd: String?, timeoutMS: Int) -> LocalProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
         if let cwd { process.currentDirectoryURL = URL(fileURLWithPath: cwd) }
+        // A GUI app does not inherit a login shell's PATH. Homebrew, Swift and Xcode toolchains
+        // would be invisible to a bot otherwise, so the common developer paths are prepended.
+        var environment = ProcessInfo.processInfo.environment
+        let inheritedPath = environment["PATH"] ?? ""
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:"
+            + inheritedPath
+        process.environment = environment
 
         let out = Pipe()
         let err = Pipe()

@@ -81,9 +81,13 @@ def test_local_computer_executor_lifecycle(bridge):
     assert observed
 
 
-def test_local_computer_rejects_unpaired_callers(bridge):
-    response = bridge.client().get("/v1/local-computers")
+def test_local_computer_rejects_proxied_callers(bridge):
+    # A bot on this host may call over loopback; the same request through tailscale serve may not.
+    response = bridge.client().get("/v1/local-computers",
+                                   headers={"X-Forwarded-For": "100.86.19.1"})
     assert response.status_code == 401
+    local = bridge.client().get("/v1/local-computers")
+    assert local.status_code == 200
     bridge_pair = bridge.pair(name="Mac", platform="macos")
     bad = bridge.client().post(
         f"/v1/local-computers/{bridge_pair['device_id']}/execute",

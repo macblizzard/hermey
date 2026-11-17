@@ -36,7 +36,8 @@ class LocalComputerPrototype(unittest.TestCase):
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
         self.assertIn('process.executableURL = URL(fileURLWithPath: "/usr/bin/env")', service)
         self.assertIn("process.arguments = argv", service)
-        self.assertIn("static let maxOutput = 1_000_000", service)
+        self.assertIn("static let maxOutput = 4_000_000", service)
+        self.assertIn('environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin', service)
 
     def test_settings_panel_has_the_computers_section(self) -> None:
         view = (ROOT / "Apps/HermesMac/Views/LocalComputerSettingsView.swift").read_text()
@@ -53,3 +54,10 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn('"revoked-local-computers.json"', module)
         self.assertIn("await websocket.accept()", module)
         self.assertIn('runtime.tickets.redeem(ticket)', module)
+
+    def test_bots_have_a_host_side_cli(self) -> None:
+        cli = (ROOT / "Tools/local_computer.py").read_text()
+        self.assertIn('http://127.0.0.1:8787', cli)
+        self.assertIn('"/v1/local-computers"', cli)
+        self.assertIn('args.command[1:] if args.command and args.command[0] == "--"', cli)
+        self.assertIn('base64.b64decode(result.get("stdout", ""))', cli)

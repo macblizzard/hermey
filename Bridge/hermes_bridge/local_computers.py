@@ -20,16 +20,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 from . import paths
-from .device_auth import require_device
+from .device_auth import is_local_host_request, require_device
 
 log = logging.getLogger("hermes_bridge.local_computers")
 
 DEFAULT_STATE_DIR = paths.STATE_DIR
-MAX_OUTPUT_BYTES = 1_000_000
-DEFAULT_TIMEOUT_MS = 60_000
+DEFAULT_TIMEOUT_MS = 900_000
+MAX_TIMEOUT_MS = 1_800_000
 
 
 @dataclass
@@ -151,23 +151,30 @@ class LocalComputers:
 def create_local_computers_router(runtime, computers: LocalComputers) -> APIRouter:
     router = APIRouter(prefix="/v1/local-computers", tags=["local-computers"])
 
+    def authorize(request: Request, authorization: str | None) -> str:
+        # Bots run on this host and reach the bridge over loopback. A tailnet-proxied call is refused
+        # even when its peer looks like loopback, so this never becomes a network API.
+        if is_local_host_request(request):
+            return "host"
+        return require_device(runtime, authorization)
+
     @router.get("")
-    def list_computers(authorization: str | None = Header(default=None)) -> dict:
-        require_device(runtime, authorization)
+    def list_computers(request: Request, authorization: str | None = Header(default=None)) -> dict:
+        authorize(request, authorization)
         return {"computers": computers.list()}
 
     @router.post("/{device_id}/execute")
-    async def execute(device_id: str, body: dict[str, Any],
+    async def execute(device_id: str, body: dict[str, Any], request: Request,
                       authorization: str | None = Header(default=None)) -> dict:
-        caller = require_device(runtime, authorization)
+        caller = authorize(request, authorization)
         if computers.is_revoked(device_id):
             raise HTTPException(status_code=403, detail="this computer was revoked")
         argv = body.get("argv")
         if not isinstance(argv, list) or not argv or not all(isinstance(x, str) for x in argv):
             raise HTTPException(status_code=422, detail="argv must be a non-empty list of strings")
         timeout = body.get("timeout_ms", DEFAULT_TIMEOUT_MS)
-        if not isinstance(timeout, int) or not (1_000 <= timeout <= 300_000):
-            raise HTTPException(status_code=422, detail="timeout_ms must be 1000..300000")
+        if not isinstance(timeout, int) or not (1_000 <= timeout <= MAX_TIMEOUT_MS):
+            raise HTTPException(status_code=422, detail=f"timeout_ms must be 1000..{MAX_TIMEOUT_MS}")
         request: dict[str, Any] = {"argv": argv, "timeout_ms": timeout}
         if isinstance(body.get("cwd"), str):
             request["cwd"] = body["cwd"]
@@ -182,8 +189,9 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
         return result
 
     @router.delete("/{device_id}")
-    async def revoke_computer(device_id: str, authorization: str | None = Header(default=None)) -> dict:
-        caller = require_device(runtime, authorization)
+    async def revoke_computer(device_id: str, request: Request,
+                              authorization: str | None = Header(default=None)) -> dict:
+        caller = authorize(request, authorization)
         was_connected = await computers.revoke(device_id)
         runtime.audit.emit("local_computer.revoke", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}", outcome="revoked")
