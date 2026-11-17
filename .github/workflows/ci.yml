@@ -41,7 +41,10 @@ on:
         type: string
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event name is part of the group on purpose. Sharing one group with a push meant that pushing any
+  # commit while a `workflow_dispatch` release build was running cancelled that build — mid-archive, on a
+  # starved macOS pool, after it had already spent the runner (2026-11-17). Pushes still cancel pushes.
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
