@@ -92,3 +92,34 @@ class TheAuditTableMatchesTheCode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheScrollableSheetsCanBeSwipedAway(unittest.TestCase):
+    """Skills, Library and MCP must close on a swipe down, like every other sheet.
+
+    Asked for twice (2026-11-16, then 2026-11-17 naming these three): their bodies are long `List`s, so
+    the system's sheet drag is spent scrolling and bouncing instead of dismissing. The strip from
+    `hermesSwipeToDismiss()` owns that gesture, and this pins that the two files that carry those three
+    sheets still apply it.
+    """
+
+    SHEETS = [
+        "Apps/HermesMobile/Views/WorkspaceSheet.swift",
+        "Apps/HermesMobile/Views/BotToolsSheet.swift",
+    ]
+
+    def testTheSheetsWithLongListsCarryTheStrip(self) -> None:
+        for name in self.SHEETS:
+            with self.subTest(sheet=name):
+                source = (ROOT / name).read_text(encoding="utf-8")
+                self.assertIn(".hermesSwipeToDismiss()", source,
+                              f"{name} presents a scrollable sheet that cannot be swiped away")
+
+    def testTheStripOnlyActsDownwards(self) -> None:
+        # An upward drag belongs to the body: closing on it would fight the list's own scroll.
+        self.assertIn("max(0, value.translation.height)", LANGUAGE)
+        self.assertIn("value.translation.height > 90", LANGUAGE)
+
+    def testMacSheetsAreUntouched(self) -> None:
+        # A Mac sheet is a window with a close control; the strip is iOS-only inside the modifier.
+        self.assertIn("#if os(iOS)", LANGUAGE.split("struct HermesSwipeToDismiss")[1])

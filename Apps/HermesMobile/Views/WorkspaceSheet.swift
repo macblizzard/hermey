@@ -70,6 +70,8 @@ struct WorkspaceSheet: View {
             }
         }
         .task { await load() }
+        // A long list owns the sheet's own drag gesture; this strip does not (see `hermesSwipeToDismiss`).
+        .hermesSwipeToDismiss()
     }
 
     private var fileList: some View {

@@ -213,6 +213,14 @@ final class AppEnvironment: ObservableObject {
     func loadBotFaces() async {
         iconGeneration += 1
         let generation = iconGeneration
+        // Pairing is restored asynchronously at launch, and the list refreshes icons on the same tick as
+        // it asks for the roster. That race printed "Could not refresh bot icons: No host is paired yet."
+        // in red over a list that then loaded perfectly (reported 2026-11-17, with a screenshot): the
+        // host was about to be there. Waiting is the whole fix — the paired/host-change observers call
+        // this again — and a real failure still reaches `botFacesError`.
+        guard store.isPaired, store.host != nil, store.refreshToken != nil, !isDisconnectedByUser else {
+            return
+        }
         do {
             let (host, service) = try iconService()
             let loaded = try await service.load()
@@ -222,6 +230,11 @@ final class AppEnvironment: ObservableObject {
             botFacesError = nil
         } catch {
             guard generation == iconGeneration, store.isPaired, !isDisconnectedByUser else { return }
+            // Losing the credentials between the guard and the call is the same race in a smaller window.
+            if case BridgeError.noHost = error {
+                botFacesError = nil
+                return
+            }
             botFacesError = message(for: error)
         }
     }

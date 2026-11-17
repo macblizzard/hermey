@@ -43,4 +43,53 @@ public extension View {
     func hermesSheetChrome() -> some View {
         modifier(HermesSheetChrome())
     }
+
+    /// Swipe down on the sheet's header to close it.
+    ///
+    /// The system's own sheet drag competes with a scrollable body: with a `List` under the finger, a
+    /// downward drag scrolls (and bounces back) instead of dismissing, so a sheet that is dismissible and
+    /// looks dismissible still refuses to go — reported 2026-11-16 and again 2026-11-17 for exactly the
+    /// three sheets whose bodies are long lists (Skills, Library, MCP). This puts a 44 pt strip along the
+    /// top, above the first row, that owns the gesture, so a drag there always closes the sheet.
+    ///
+    /// Applied *inside* the sheet, on its root: a strip thin enough that every row stays reachable, and
+    /// transparent so it changes nothing visually.
+    func hermesSwipeToDismiss() -> some View {
+        modifier(HermesSwipeToDismiss())
+    }
+}
+
+/// See `hermesSwipeToDismiss()`. iOS only: on macOS a sheet is a window with its own close control.
+public struct HermesSwipeToDismiss: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    @State private var offset: CGFloat = 0
+
+    public init() {}
+
+    public func body(content: Content) -> some View {
+        #if os(iOS)
+        content.overlay(alignment: .top) {
+            Color.clear
+                .frame(height: 44)
+                .contentShape(Rectangle())
+                .offset(y: offset)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            // Only downwards, and only from rest: a drag that starts upward is the body's.
+                            offset = max(0, value.translation.height)
+                        }
+                        .onEnded { value in
+                            let shouldClose = value.translation.height > 90
+                                || value.predictedEndTranslation.height > 160
+                            offset = 0
+                            if shouldClose { dismiss() }
+                        }
+                )
+                .allowsHitTesting(true)
+        }
+        #else
+        content
+        #endif
+    }
 }
