@@ -1191,13 +1191,13 @@ struct ConversationScreen: View {
     /// and the model does the attaching (bot switch, resume, transcript) in one place, so
     /// there is no second resume here.
     private func openConversation() async {
-        // Paint the warmed conversation *now*, in the same run loop as this call, before the first
-        // await. The launch sweep has already filled the cache and `endlessSession` would restore it a
-        // millisecond later — but only after a `session.resume` round trip, and the pane showed
-        // "Opening …" over a conversation it already held. That is what made the background load look
-        // like it did nothing.
-        let warmed = model.restoreConversation(for: bot.id) && !model.transcript.isEmpty
-        isOpening = !warmed
+        // Do NOT paint the cache here. `endlessSession` captures the bot being left, switches, and
+        // restores the target's snapshot — all synchronously, before its first await — and a restore
+        // done *before* the switch makes that capture store the incoming bot's rows under the outgoing
+        // bot's cache. That is how opening another bot and coming back showed the other bot's chat
+        // (reported 2026-11-17). `isBlank` is already computed from the transcript, so a warm restore
+        // means no spinner without any help here.
+        isOpening = true
 
         if let sid = await model.endlessSession(for: bot.id) {
             sessionID = sid

@@ -290,11 +290,9 @@ final class WorkspaceStore: ObservableObject {
 
     /// Resume-or-create, then refresh the header's model chip.
     private func openConversation(for botID: String) async {
-        // Paint the warmed conversation before the first await, exactly as the phone does. The launch
-        // sweep fills this cache and `endlessSession` only reads it *after* a `session.resume`, so the
-        // Mac sat on "Opening <bot>…" over a conversation it already held — reported 2026-11-17 as
-        // "opening atlas, and then it's blank".
-        model.restoreConversation(for: botID)
+        // No pre-paint here: `endlessSession` captures the outgoing bot, switches and restores the
+        // target's snapshot synchronously, and restoring before that switch files the incoming bot's
+        // rows under the outgoing bot's cache — the "come back to cody and see another bot's chat" bug.
         _ = await model.endlessSession(for: botID)
         await refreshHermeyModelLabel()
         rememberGraphite()

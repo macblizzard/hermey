@@ -204,5 +204,54 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.string(forKey: "hermes.endlessSession.\(cody)"), Self.sessionID,
                        "and it replaces the stale local memory")
     }
+
+    func testAFreshlySweptBotIsNotReadAgainOnOpen() async {
+        // "even though all chats now shows the preloaded chat history, it seems to load again once i'm
+        // inside the bot chat" — the sweep's snapshot was stamped `.distantPast`, so `latestHostStamp`
+        // beat it for every bot and the open resumed anyway. A sweep read seconds ago is the host's
+        // current state; opening it must paint and stop.
+        let client = ScriptedHost(session: Self.sessionID, entries: [line("warm one"), line("warm two")])
+        client.hostPointer = Self.sessionID
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+        let selected = bot("selected"), cody = bot("swept")
+        defer { forget([selected, cody]) }
+        client.bots = [Bot(id: selected), Bot(id: cody)]
+        await model.loadBots()
+
+        await model.prefetchConversations()
+        let resumesAfterSweep = client.resumed.count
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.count, resumesAfterSweep,
+                       "opening a bot the sweep just read must not resume it again")
+        XCTAssertEqual(model.transcript.count, 2, "and its conversation is on screen")
+    }
+
+    func testSwitchingBotsDoesNotShowTheOtherBotsChat() async {
+        // Reported as "come back to cody and it shows the other bot's chat": the pane restored the
+        // target's snapshot *before* the model had switched, so `captureConversation(for:)` filed those
+        // rows under the bot being left. The model owns the order now.
+        let client = ScriptedHost(session: Self.sessionID, entries: [line("cody's line")])
+        client.hostPointer = Self.sessionID
+        client.sessionByProfile = [:]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+        let cody = bot("cody"), atlas = bot("atlas")
+        defer { forget([cody, atlas]) }
+        client.bots = [Bot(id: cody), Bot(id: atlas)]
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+        let codyLines = model.transcript.map(\.text)
+
+        await model.endlessSession(for: atlas)
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(model.transcript.map(\.text), codyLines,
+                       "returning to a bot shows that bot's conversation, never the one just left")
+        XCTAssertEqual(model.selectedBotID, cody)
+    }
 }
 #endif
