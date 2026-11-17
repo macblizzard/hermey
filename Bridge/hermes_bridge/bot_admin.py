@@ -51,6 +51,10 @@ PROFILE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 #: The install's own home. Removing it would leave the host without the profile the gateway serves.
 PROTECTED = frozenset({"default"})
 
+#: The dashboard rejects these with 400 (mirrors hermes_cli.profiles._RESERVED_NAMES). A directory
+#: with one of these names on disk is not a served bot profile and must never be sent to /api/config.
+RESERVED_PROFILE_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo"})
+
 ARCHIVE_DIR = paths.ARCHIVE_DIR
 
 #: Where "this bot is off" is recorded: beside the bridge's database, not inside the bot's home.
@@ -196,8 +200,12 @@ def _dashboard(method: str, path: str, body: dict | None = None) -> tuple[int, A
         # went wrong.
         log.warning("dashboard refused %s %s: %s", method, path, error.code)
         if error.code in (400, 422):
-            raise HTTPException(status_code=422,
-                                detail="The scheduler rejected this routine's schedule.") from None
+            # Only the routine routes own the scheduler's validation message. Sending it for a config
+            # read wrote "bad routine schedule" across an approvals page that never touched routines.
+            detail = ("The scheduler rejected this routine's schedule."
+                      if "cron" in path or "routines" in path
+                      else "The host refused this configuration request.")
+            raise HTTPException(status_code=422, detail=detail) from None
         raise HTTPException(status_code=502, detail="dashboard refused the request") from None
     except (urllib.error.URLError, TimeoutError):
         raise HTTPException(status_code=503, detail="dashboard unreachable") from None
@@ -326,16 +334,21 @@ def _served_profiles() -> list[str]:
     """Every bot profile on this host, not just the ones currently paired with a device."""
     try:
         return sorted(path.name for path in _profiles_root().iterdir()
-                      if path.is_dir() and PROFILE_RE.match(path.name) and path.name not in PROTECTED)
+                      if path.is_dir() and PROFILE_RE.match(path.name)
+                      and path.name not in PROTECTED and path.name not in RESERVED_PROFILE_NAMES)
     except OSError:
         return []
 
 
-def _approval_mode_from(config: object) -> str:
+def _raw_approval_mode(config: object) -> object:
     if not isinstance(config, dict):
-        return "manual"
+        return None
     approvals = config.get("approvals")
-    raw = approvals.get("mode", "manual") if isinstance(approvals, dict) else "manual"
+    return approvals.get("mode") if isinstance(approvals, dict) else None
+
+
+def _approval_mode_from(config: object) -> str:
+    raw = _raw_approval_mode(config)
     return raw if isinstance(raw, str) and raw in APPROVAL_MODES else "manual"
 
 
@@ -367,12 +380,19 @@ def create_bot_admin_router(runtime) -> APIRouter:
         """The approval mode of every served bot, read from the configs the next turn will use."""
         authenticate(authorization)
         states: dict[str, str] = {}
+        unset: list[str] = []
         for profile in _served_profiles():
             status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
-            states[profile] = _approval_mode_from(config) if status == 200 else "manual"
+            if status == 200:
+                states[profile] = _approval_mode_from(config)
+                if _raw_approval_mode(config) is None:
+                    unset.append(profile)
+            else:
+                states[profile] = "manual"
         approx = set(states.values())
         return {"mode": approx.pop() if len(approx) == 1 else "mixed",
                 "profiles": states,
+                "unset": unset,
                 "available": list(APPROVAL_MODES)}
 
     @router.put("/approvals")

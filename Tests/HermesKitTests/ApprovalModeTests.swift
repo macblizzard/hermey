@@ -7,7 +7,8 @@ final class ApprovalModeTests: XCTestCase {
         XCTAssertEqual(Set(ApprovalMode.allCases.map(\.rawValue)), ["manual", "smart", "off"])
         XCTAssertEqual(ApprovalMode.manual.title, "Ask always")
         XCTAssertEqual(ApprovalMode.smart.title, "Auto")
-        XCTAssertEqual(ApprovalMode.off.title, "Never ask")
+        XCTAssertEqual(ApprovalMode.off.title, "Allow always")
+        XCTAssertEqual(ApprovalMode.recommended, .smart)
     }
 
     func testMixedIsRealAndDoesNotPretendToBeOneMode() {

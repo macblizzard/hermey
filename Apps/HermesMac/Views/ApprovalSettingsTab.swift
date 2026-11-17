@@ -15,19 +15,30 @@ struct ApprovalSettingsTab: View {
 
     private var model: AppModel { store.model }
 
+    /// While the host's answer is unknown or mixed, Auto is the highlighted default — it still asks
+    /// for the actions Hermes considers dangerous, unlike Allow always.
+    private var selectedMode: ApprovalMode { settings?.mode ?? .recommended }
+
     var body: some View {
         Form {
             Section {
                 ForEach(ApprovalMode.allCases, id: \.self) { mode in
                     Button { choose(mode) } label: {
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: settings?.mode == mode
+                            Image(systemName: selectedMode == mode
                                   ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(settings?.mode == mode ? Tokens.accent : Tokens.textDim)
+                                .foregroundStyle(selectedMode == mode ? Tokens.accent : Tokens.textDim)
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(mode.title)
-                                    .font(TypeScale.font(TypeScale.md, weight: .medium))
-                                    .foregroundStyle(Tokens.textPrimary)
+                                HStack(spacing: 6) {
+                                    Text(mode.title)
+                                        .font(TypeScale.font(TypeScale.md, weight: .medium))
+                                        .foregroundStyle(Tokens.textPrimary)
+                                    if mode == .smart {
+                                        Text("Recommended")
+                                            .font(TypeScale.font(TypeScale.caption))
+                                            .foregroundStyle(Tokens.accentText)
+                                    }
+                                }
                                 Text(mode.detail)
                                     .font(TypeScale.font(TypeScale.caption))
                                     .foregroundStyle(Tokens.textMuted)
@@ -54,18 +65,21 @@ struct ApprovalSettingsTab: View {
                 }
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Tokens.canvas)
         .task { await load() }
-        .confirmationDialog("Never ask for approval?", isPresented: Binding(
+        .confirmationDialog("Allow every guarded action?", isPresented: Binding(
             get: { pending != nil },
             set: { if !$0 { pending = nil } }
         ), titleVisibility: .visible) {
-            Button("Never ask", role: .destructive) {
+            Button("Allow always", role: .destructive) {
                 if let mode = pending { Task { await apply(mode) } }
                 pending = nil
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: {
-            Text("Every guarded action on every bot will run without asking. Auto is usually the safer default.")
+            Text("Allow always runs every guarded action on every bot without asking. Auto is the safer default.")
         }
     }
 
@@ -86,8 +100,15 @@ struct ApprovalSettingsTab: View {
     }
 
     private func load() async {
-        do { settings = try await model.approvalSettings() }
-        catch { self.error = (error as Error).localizedDescription }
+        do {
+            let answer = try await model.approvalSettings()
+            settings = answer
+            // Nothing configured anywhere yet: make Auto the real default on the host, not just a
+            // highlighted row in this view. A mode that has been set — by anyone — is never overwritten.
+            if !answer.profiles.isEmpty, answer.unset.count == answer.profiles.count {
+                settings = try await model.setApprovalMode(.recommended)
+            }
+        } catch { self.error = (error as Error).localizedDescription }
     }
 
     private func apply(_ mode: ApprovalMode) async {

@@ -57,7 +57,18 @@ class TestFleetApprovalMode:
 
         assert payload["mode"] == "manual"
         assert set(payload["profiles"]) == {"cody", "atlas"}
+        assert set(payload["unset"]) == {"cody", "atlas"}
         assert set(payload["available"]) == {"manual", "smart", "off"}
+
+    def test_reserved_profile_directories_are_not_bots(self, bridge, tmp_path, monkeypatch):
+        # The host reserves `hermes`; its config answer is a 400 that used to surface on the
+        # approvals page as a nonsense routine-schedule error.
+        _homes(tmp_path, monkeypatch, profiles=("cody", "hermes", "root"))
+        monkeypatch.setattr(bot_admin, "_dashboard", _Dashboard())
+
+        payload = _get(bridge, "/v1/bots/approvals").json()
+
+        assert set(payload["profiles"]) == {"cody"}
 
     def test_a_write_reaches_every_profile_and_is_re_read(self, bridge, tmp_path, monkeypatch):
         _homes(tmp_path, monkeypatch)

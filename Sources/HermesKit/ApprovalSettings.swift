@@ -14,15 +14,19 @@ public enum ApprovalMode: String, CaseIterable, Sendable, Equatable {
         switch self {
         case .manual: return "Ask always"
         case .smart: return "Auto"
-        case .off: return "Never ask"
+        case .off: return "Allow always"
         }
     }
+
+    /// The option we recommend when nothing has been chosen yet. Smart still asks for the actions the
+    /// host considers dangerous — it is the safe default, unlike `off`.
+    public static let recommended: ApprovalMode = .smart
 
     public var detail: String {
         switch self {
         case .manual: return "Ask for approval on every guarded action"
         case .smart: return "Hermes decides which actions really need approval"
-        case .off: return "Run guarded actions without asking (unsafe)"
+        case .off: return "Run every guarded action without asking (unsafe)"
         }
     }
 }
@@ -32,13 +36,17 @@ public enum ApprovalMode: String, CaseIterable, Sendable, Equatable {
 public struct ApprovalSettings: Equatable, Sendable {
     public let mode: ApprovalMode?
     public let profiles: [String: ApprovalMode]
+    /// Profiles with no explicit mode set on the host. The app uses this to apply the recommended
+    /// default once, rather than showing Auto while the host still enforces its fallback.
+    public let unset: [String]
     public let updated: [String]
     public let failed: [String: String]
 
-    public init(mode: ApprovalMode?, profiles: [String: ApprovalMode],
+    public init(mode: ApprovalMode?, profiles: [String: ApprovalMode], unset: [String] = [],
                 updated: [String] = [], failed: [String: String] = [:]) {
         self.mode = mode
         self.profiles = profiles
+        self.unset = unset
         self.updated = updated
         self.failed = failed
     }
@@ -59,6 +67,7 @@ public struct ApprovalSettings: Equatable, Sendable {
         if let raw = object["failed"] as? [String: String] { failed = raw }
         return ApprovalSettings(mode: mode,
                                 profiles: profiles,
+                                unset: object["unset"] as? [String] ?? [],
                                 updated: object["updated"] as? [String] ?? [],
                                 failed: failed)
     }

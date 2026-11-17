@@ -234,12 +234,21 @@ struct SettingsScreen: View {
                     }
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: approvalSettings?.mode == mode ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(approvalSettings?.mode == mode ? Tokens.accent : Tokens.textDim)
+                        Image(systemName: (approvalSettings?.mode ?? .recommended) == mode
+                              ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle((approvalSettings?.mode ?? .recommended) == mode
+                                             ? Tokens.accent : Tokens.textDim)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(mode.title)
-                                .font(TypeScale.font(TypeScale.md))
-                                .foregroundStyle(Tokens.textPrimary)
+                            HStack(spacing: 6) {
+                                Text(mode.title)
+                                    .font(TypeScale.font(TypeScale.md))
+                                    .foregroundStyle(Tokens.textPrimary)
+                                if mode == .smart {
+                                    Text("Recommended")
+                                        .font(TypeScale.font(TypeScale.caption))
+                                        .foregroundStyle(Tokens.accentText)
+                                }
+                            }
                             Text(mode.detail)
                                 .font(TypeScale.font(TypeScale.label))
                                 .foregroundStyle(Tokens.textMuted)
@@ -255,17 +264,17 @@ struct SettingsScreen: View {
             Text(approvalFooter)
                 .font(TypeScale.font(TypeScale.label))
         }
-        .confirmationDialog("Never ask for approval?", isPresented: Binding(
+        .confirmationDialog("Allow every guarded action?", isPresented: Binding(
             get: { pendingApprovalMode != nil },
             set: { if !$0 { pendingApprovalMode = nil } }
         ), titleVisibility: .visible) {
-            Button("Never ask", role: .destructive) {
+            Button("Allow always", role: .destructive) {
                 if let mode = pendingApprovalMode { Task { await applyApprovalMode(mode) } }
                 pendingApprovalMode = nil
             }
             Button("Cancel", role: .cancel) { pendingApprovalMode = nil }
         } message: {
-            Text("Every guarded action on every bot will run without asking. Auto is usually the safer default.")
+            Text("Allow always runs every guarded action on every bot without asking. Auto is the safer default.")
         }
     }
 
@@ -281,8 +290,15 @@ struct SettingsScreen: View {
     }
 
     private func loadApprovals() async {
-        do { approvalSettings = try await model.approvalSettings() }
-        catch { approvalSettings = nil }
+        do {
+            let answer = try await model.approvalSettings()
+            approvalSettings = answer
+            // First visit: write the recommended Auto mode to every bot once, so the highlighted
+            // default is what the host actually enforces. Existing choices are left alone.
+            if !answer.profiles.isEmpty, answer.unset.count == answer.profiles.count {
+                approvalSettings = try await model.setApprovalMode(.recommended)
+            }
+        } catch { approvalSettings = nil }
     }
 
     private func applyApprovalMode(_ mode: ApprovalMode) async {

@@ -107,7 +107,7 @@ class FleetApprovalSettings(unittest.TestCase):
             self.assertIn(f"case {mode}", kit)
         self.assertIn('case .manual: return "Ask always"', kit)
         self.assertIn('case .smart: return "Auto"', kit)
-        self.assertIn('case .off: return "Never ask"', kit)
+        self.assertIn('case .off: return "Allow always"', kit)
 
     def test_every_layer_forwards_the_setting(self) -> None:
         gateway = (ROOT / "Sources/HermesKit/GatewayClient.swift").read_text(encoding="utf-8")
@@ -127,4 +127,25 @@ class FleetApprovalSettings(unittest.TestCase):
         self.assertIn("ApprovalSettingsTab(store: store)", mac)
         self.assertIn("ApprovalMode.allCases", tab)
         self.assertIn("role: .destructive", tab)
+
+class ApprovalsDefaultAndLayout(unittest.TestCase):
+    def test_auto_is_the_recommended_default_on_both_platforms(self) -> None:
+        kit = (ROOT / "Sources/HermesKit/ApprovalSettings.swift").read_text(encoding="utf-8")
+        self.assertIn("public static let recommended: ApprovalMode = .smart", kit)
+        for name in ("Apps/HermesMac/Views/ApprovalSettingsTab.swift",
+                     "Apps/HermesMobile/Views/SettingsScreen.swift"):
+            view = (ROOT / name).read_text(encoding="utf-8")
+            self.assertIn("?? .recommended", view)
+            self.assertIn("answer.unset.count == answer.profiles.count", view)
+            self.assertIn('mode == .smart', view)
+
+    def test_mac_form_uses_the_house_grouped_style(self) -> None:
+        tab = (ROOT / "Apps/HermesMac/Views/ApprovalSettingsTab.swift").read_text(encoding="utf-8")
+        self.assertIn(".formStyle(.grouped)", tab)
+        self.assertIn(".scrollContentBackground(.hidden)", tab)
+
+    def test_bridge_skips_reserved_profile_names(self) -> None:
+        admin = (ROOT / "Bridge/hermes_bridge/bot_admin.py").read_text(encoding="utf-8")
+        self.assertIn('RESERVED_PROFILE_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo"})',
+                      admin)
 
