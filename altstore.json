@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.532",
-          "buildVersion": "532",
-          "date": "2026-11-17T02:03:07Z",
-          "localizedDescription": "Built on a GitHub macOS runner (the Mac was asleep). Coming back to a bot shows that bot chat, not the one you just left; a preloaded conversation no longer reloads when you open it.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.532/Hermey-0.1.532-b532.ipa",
-          "size": 3248848,
+          "version": "0.1.533",
+          "buildVersion": "533",
+          "date": "2026-11-17T07:29:27Z",
+          "localizedDescription": "No red not-paired banner at launch. Skills, Library and MCP sheets close on a swipe down like the rest.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.533/Hermey-0.1.533-b533.ipa",
+          "size": 3212466,
           "minOSVersion": "17.0",
-          "sha256": "d445990d4363b560b41f936896a0feae42cd5bc7c32f60439d6e5ee86a96340c"
+          "sha256": "f28b5ce440063ce02de9bff87cb1d863a8b328d4f6038bc388c3afc64d529446"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.532 (532)",
-      "identifier": "hermes-0.1.532-532",
-      "caption": "Built on a GitHub macOS runner (the Mac was asleep). Coming back to a bot shows that bot chat, not the one you just left; a preloaded conversation no longer reloads when you open it.",
-      "date": "2026-11-17T02:03:07Z",
+      "title": "Hermes 0.1.533 (533)",
+      "identifier": "hermes-0.1.533-533",
+      "caption": "No red not-paired banner at launch. Skills, Library and MCP sheets close on a swipe down like the rest.",
+      "date": "2026-11-17T07:29:27Z",
       "tintColor": "#9A9AA0"
     }
   ],
