@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.557",
-          "buildVersion": "557",
-          "date": "2026-11-17T18:46:57Z",
-          "localizedDescription": "Approvals: no more routine error on first load, grouped form alignment, Auto as the recommended default and Allow always label.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.557/Hermey-0.1.557-b557.ipa",
-          "size": 3344568,
+          "version": "0.1.558",
+          "buildVersion": "558",
+          "date": "2026-11-17T18:59:20Z",
+          "localizedDescription": "Approvals: writes now answer with the full fleet state, so the selection and footer update immediately; no focus ring on the first row.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.558/Hermey-0.1.558-b558.ipa",
+          "size": 3344582,
           "minOSVersion": "17.0",
-          "sha256": "084b1573ea7a5eaad9245460a7f88be32ff64940ea7d7918561575245a0119a0"
+          "sha256": "81c11846fb78b6a3821beee39e7690f78717ac136a2b9366592f6fc66b23f900"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.557 (557)",
-      "identifier": "hermes-0.1.557-557",
-      "caption": "Approvals: no more routine error on first load, grouped form alignment, Auto as the recommended default and Allow always label.",
-      "date": "2026-11-17T18:46:57Z",
+      "title": "Hermes 0.1.558 (558)",
+      "identifier": "hermes-0.1.558-558",
+      "caption": "Approvals: writes now answer with the full fleet state, so the selection and footer update immediately; no focus ring on the first row.",
+      "date": "2026-11-17T18:59:20Z",
       "tintColor": "#9A9AA0"
     }
   ],
