@@ -33,7 +33,10 @@ struct MobileSelectableText: UIViewRepresentable {
         view.textContainer.widthTracksTextView = false
         view.textContainer.maximumNumberOfLines = 0
         view.textContainer.lineBreakMode = .byWordWrapping
-        view.dataDetectorTypes = [.link]
+        // The markdown layer already attaches `.link` to every bare URL and markdown link.
+        // UIKit's data detector would scan the whole message again *during layout*: on a long
+        // background-process notice with dozens of URLs that cost seconds and froze scrolling.
+        view.dataDetectorTypes = []
         view.adjustsFontForContentSizeCategory = true
         view.tintColor = UIColor(Tokens.accent)
         view.linkTextAttributes = [

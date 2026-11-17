@@ -48,8 +48,23 @@ class BothAppsRenderIt(unittest.TestCase):
         self.assertIn("rawText: String? = nil", IOS_MD)
         self.assertIn("ForEach(fileLinks)", IOS_MD)
         self.assertIn("HermesFileLinkCard(link: link)", IOS_MD)
-        self.assertIn("HermesFileLinks.removingLinks(from: label.body)", IOS_ROW)
-        self.assertIn("HermesFileLinks.removingLinks(from: entry.text)", IOS_ROW)
+        self.assertIn("markdownCache.sanitized(label.body)", IOS_ROW)
+        self.assertIn("markdownCache.sanitized(entry.text)", IOS_ROW)
 
     def test_room_messages_get_cards_too(self) -> None:
         self.assertIn("IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: text))", IOS_MD)
+
+
+class LongMessagesDoNotFreezeScrolling(unittest.TestCase):
+    def test_uikits_own_link_detector_is_off(self) -> None:
+        # It rescans a multi-kilobyte message during layout, on top of our markdown link pass.
+        selector = (ROOT / "Apps/HermesMobile/Views/MobileSelectableText.swift").read_text(encoding="utf-8")
+        self.assertIn("view.dataDetectorTypes = []", selector)
+        self.assertNotIn("view.dataDetectorTypes = [.link]", selector)
+
+    def test_url_extraction_is_cached_per_message(self) -> None:
+        self.assertIn("@State private var cachedLinkSource: String?", IOS_MD)
+        self.assertIn("if cachedLinkSource == rawText { return cachedLinks }", IOS_MD)
+        self.assertIn("func sanitized(_ raw: String) -> String", IOS_MD)
+        self.assertIn("if rawSource == raw { return cleanSource }", IOS_MD)
+

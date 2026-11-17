@@ -24,9 +24,16 @@ struct MobileMarkdownText: View {
     /// are removed from the blocks. Callers that only hold blocks (previews) pass nil and get none.
     var rawText: String? = nil
 
+    @State private var cachedLinkSource: String?
+    @State private var cachedLinks: [HermesFileLink] = []
+
     private var fileLinks: [HermesFileLink] {
         guard let rawText else { return [] }
-        return HermesFileLinks.find(in: rawText)
+        if cachedLinkSource == rawText { return cachedLinks }
+        let found = HermesFileLinks.find(in: rawText)
+        cachedLinkSource = rawText
+        cachedLinks = found
+        return found
     }
 
     var body: some View {
@@ -452,6 +459,18 @@ struct MobileTypingIndicator: View {
 final class RowMarkdownCache {
     private var text: String?
     private var blocks: [Block] = []
+    private var rawSource: String?
+    private var cleanSource = ""
+
+    /// Strip file-store URLs once per distinct message. Called from a row's `body`, which is
+    /// re-evaluated while the transcript scrolls — a regex over a multi-kilobyte notice on every
+    /// pass was part of the scroll freeze on long messages.
+    func sanitized(_ raw: String) -> String {
+        if rawSource == raw { return cleanSource }
+        rawSource = raw
+        cleanSource = HermesFileLinks.removingLinks(from: raw)
+        return cleanSource
+    }
 
     func parse(_ source: String) -> [Block] {
         if text == source { return blocks }

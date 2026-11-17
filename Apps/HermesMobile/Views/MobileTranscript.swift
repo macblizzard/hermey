@@ -210,7 +210,7 @@ struct MobileTranscriptRow: View {
             // Markdown, not a plain `Text`: a bot writes to another bot exactly as it writes to the
             // owner — lists, bold, code fences — and the recipient's side used to show the source
             // (`**bold**`, `- item`) instead of the rendering. Reported 2026-11-16.
-            MobileMarkdownText(blocks: IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: label.body)), rawText: label.body)
+            MobileMarkdownText(blocks: IncrementalMarkdown.parse(markdownCache.sanitized(label.body)), rawText: label.body)
                 .foregroundStyle(Tokens.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
@@ -527,14 +527,14 @@ struct MobileTranscriptRow: View {
             if let boardID = GenUITag.boardID(in: entry.text) {
                 let prose = GenUITag.textWithoutTags(entry.text)
                 if !prose.isEmpty {
-                    MobileMarkdownText(blocks: markdownCache.parse(HermesFileLinks.removingLinks(from: prose)), rawText: prose)
+                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
                         .accessibilityLabel(prose)
                         .padding(.vertical, 4)
                 }
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MobileMarkdownText(blocks: markdownCache.parse(HermesFileLinks.removingLinks(from: entry.text)), rawText: entry.text)
+                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(entry.text)), rawText: entry.text)
                     .accessibilityLabel(entry.text)
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())

@@ -45,7 +45,7 @@ class TheRelayStampIsAHeader(unittest.TestCase):
         for name, row in (("iOS", IOS_ROW), ("macOS", MAC_ROW)):
             with self.subTest(platform=name):
                 self.assertIn("Text(label.headerTitle)", row)
-                self.assertLess(row.index("Text(label.headerTitle)"), row.index("MarkdownTextView(text: label.body") if "MarkdownTextView" in row else row.index("IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: label.body))"))
+                self.assertLess(row.index("Text(label.headerTitle)"), row.index("MarkdownTextView(text: label.body") if "MarkdownTextView" in row else row.index("IncrementalMarkdown.parse(markdownCache.sanitized(label.body))"))
 
 
 class TheHostSearchesTranscripts(unittest.TestCase):
