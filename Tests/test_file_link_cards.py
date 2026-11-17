@@ -43,6 +43,7 @@ class BothAppsRenderIt(unittest.TestCase):
         self.assertIn("ForEach(fileLinks)", MAC)
         self.assertIn("HermesFileLinkCard(link: link)", MAC)
         self.assertIn("synchronise(cleanText)", MAC)
+        self.assertIn("@State private var cachedSource: String?", MAC)
 
     def test_ios_renders_cards_and_takes_the_url_out_of_the_prose(self) -> None:
         self.assertIn("rawText: String? = nil", IOS_MD)

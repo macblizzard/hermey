@@ -26,8 +26,18 @@ struct MarkdownTextView: View {
     /// Files from the bots' shared store become cards; the bare URL is taken out of the prose so a
     /// message shows the card instead of the link underneath it. Every caller passes a raw message
     /// body, so this one place covers replies, bot-to-bot messages and room history alike.
-    private var cleanText: String { HermesFileLinks.removingLinks(from: text) }
-    private var fileLinks: [HermesFileLink] { HermesFileLinks.find(in: text) }
+    @State private var cachedSource: String?
+    @State private var cachedClean = ""
+    @State private var cachedLinks: [HermesFileLink] = []
+
+    private var cleanText: String {
+        if cachedSource == text { return cachedClean }
+        cachedSource = text
+        cachedClean = HermesFileLinks.removingLinks(from: text)
+        cachedLinks = HermesFileLinks.find(in: text)
+        return cachedClean
+    }
+    private var fileLinks: [HermesFileLink] { cleanText; return cachedLinks }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
