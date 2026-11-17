@@ -101,3 +101,10 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn('Button("Check") { permissions.check(permission) }', view)
         self.assertNotIn("onChange(of: scenePhase)", view)
         self.assertNotIn("permissions.refresh()", view)
+
+    def test_receive_loop_never_blocks_on_a_command(self) -> None:
+        service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
+        self.assertIn("Task { @MainActor [weak self] in", service)
+        self.assertIn("await self?.handleExecute(frame, on: task)", service)
+        self.assertNotIn("await handleExecute(frame, on: task)", service)
+        self.assertIn("ClientLog.shared.record", service)

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import HermesKit
 import SwiftUI
 
 /// The Mac half of local computer use: one outbound, authenticated socket to the bridge.
@@ -92,6 +93,8 @@ final class LocalComputerService: ObservableObject {
                 backoff = 1_000_000_000
             } catch {
                 if Task.isCancelled { break }
+                ClientLog.shared.record("local computer reconnecting: \(error.localizedDescription)",
+                                        level: .warning, category: "local-computer")
                 let code = (error as? URLSessionWebSocketTask.CloseCode)?.rawValue
                 status = code == 4403 ? .refused : .reconnecting
                 lastError = code == 4403
@@ -122,6 +125,7 @@ final class LocalComputerService: ObservableObject {
         status = .connected
         lastError = nil
         lastPong = Date()
+        ClientLog.shared.record("local computer socket connected", category: "local-computer")
 
         // One timer, one receive loop. An earlier task group let a heartbeat send error cancel the
         // receive loop (or vice versa) at ~45 s; the timer owns the ping and completion callbacks
@@ -163,7 +167,11 @@ final class LocalComputerService: ObservableObject {
                 continue
             }
             if kind == "execute" {
-                await handleExecute(frame, on: task)
+                // Never await a command inside the receive loop: doing that stopped us reading the
+                // bridge's pongs for the whole build, which made the link look dead and dropped it.
+                Task { @MainActor [weak self] in
+                    await self?.handleExecute(frame, on: task)
+                }
             }
         }
     }
@@ -172,6 +180,8 @@ final class LocalComputerService: ObservableObject {
     /// receive loop throw, which returns to `connectionLoop` and starts the backoff sequence.
     private func drop(_ task: URLSessionWebSocketTask?) {
         guard let task, socket === task else { return }
+        ClientLog.shared.record("local computer socket dropped", level: .warning,
+                                category: "local-computer")
         heartbeat?.invalidate()
         heartbeat = nil
         socket = nil
@@ -199,6 +209,8 @@ final class LocalComputerService: ObservableObject {
         guard !Task.isCancelled else { return }
         commandsRun += 1
         lastCommand = argv.joined(separator: " ")
+        ClientLog.shared.record("local command finished: \(argv.first ?? "") exit=\(result.exitCode)",
+                                category: "local-computer")
         let reply: [String: Any] = [
             "id": callID,
             "type": "result",
