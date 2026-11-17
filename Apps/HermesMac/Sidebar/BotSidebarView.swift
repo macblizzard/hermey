@@ -146,7 +146,12 @@ struct BotSidebarView: View {
                 // Every control in one cluster on the right, none on the left: the row is a row of
                 // verbs for the list below it, and a verb split across both edges reads as two
                 // groups when it is one.
-                Spacer(minLength: 0)
+                // The empty left half of this row is a title bar, not dead space: drag it to move the
+                // window and double-click it to zoom/restore. The system 6 pt strip above the row works,
+                // but that is a very small target — "I can't double click anywhere on the sidebar top"
+                // (reported 2026-11-17). Buttons stay on top and keep their own clicks.
+                TitlebarDragArea()
+                    .frame(maxWidth: .infinity)
 
                 HermeyIconButton("magnifyingglass",
                                   label: isSearching ? "Close search" : "Search bots and messages",
@@ -181,6 +186,12 @@ struct BotSidebarView: View {
             // same line as the chat header's pill.
             .padding(.top, WorkspaceShell.titlebarStrip)
             .frame(height: WorkspaceShell.titlebarStrip + 34)
+            // Gaps between the buttons belong to the title bar too — one 38 pt band across the whole
+            // sidebar top, with the controls still hit-tested above it.
+            .background(alignment: .top) {
+                TitlebarDragArea()
+                    .frame(height: WorkspaceShell.titlebarStrip + 34)
+            }
 
             if isSearching {
                 HStack(spacing: 6) {
