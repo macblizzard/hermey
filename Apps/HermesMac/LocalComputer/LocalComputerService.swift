@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SwiftUI
 
@@ -90,7 +91,7 @@ final class LocalComputerService: ObservableObject {
                 backoff = 1_000_000_000
             } catch {
                 if Task.isCancelled { break }
-                let code = (error as? WebSocketCloseCode)?.rawValue
+                let code = (error as? URLSessionWebSocketTask.CloseCode)?.rawValue
                 status = code == 4403 ? .refused : .reconnecting
                 lastError = code == 4403
                     ? "Access was revoked on the host. Turn this Mac off and on again to re-request it."
@@ -223,7 +224,7 @@ private enum LocalProcess {
         if process.isRunning {
             process.terminate()
             Thread.sleep(forTimeInterval: 0.1)
-            if process.isRunning { process.kill() }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
             lock.lock(); truncated = true; lock.unlock()
         }
         while process.isRunning { Thread.sleep(forTimeInterval: 0.01) }
