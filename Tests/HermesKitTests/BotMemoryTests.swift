@@ -61,8 +61,9 @@ final class BotMemoryTests: XCTestCase {
         XCTAssertEqual(BotMemoryDocument(name: "MEMORY.md", label: "", chars: 1).sizeText,
                        "1 character")
         // Grouped, because 2981 characters is a number a person reads at a glance.
-        XCTAssertTrue(BotMemoryDocument(name: "MEMORY.md", label: "", chars: 2981)
-            .sizeText.contains("2,981") || Locale.current.decimalSeparator == nil,
+        let grouping = Locale.current.groupingSeparator ?? ","
+        XCTAssertEqual(BotMemoryDocument(name: "MEMORY.md", label: "", chars: 2981)
+            .sizeText.contains("2\(grouping)981"), true,
                       "the thousands separator follows the reader's locale")
     }
 
