@@ -125,6 +125,10 @@ public protocol BotSessionPointerStore: Sendable {
     /// at pictures when the bot's own cannot (`auxiliary.vision`, where provider `auto` inherits the main
     /// model). Both live in the profile's config on the host, so they are read and written per bot.
     func modelSettings(_ profile: String) async throws -> BotModelSettings
+
+    /// `POST /v1/pair/start` — mint a pairing invite for another device, authenticated as this paired
+    /// device. Single-use, short-lived, the host's own code.
+    func makePairingInvite() async throws -> PairingInvite
     func setModelSettings(_ profile: String, effort: String?,
                           visionProvider: String?, visionModel: String?) async throws -> BotModelSettings
 
@@ -231,6 +235,7 @@ public extension BotSessionPointerStore {
     func disabledBots() async throws -> Set<String> { [] }
     func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
     func modelSettings(_ profile: String) async throws -> BotModelSettings { throw BotAdminUnavailable() }
+    func makePairingInvite() async throws -> PairingInvite { throw BotAdminUnavailable() }
     func setModelSettings(_ profile: String, effort: String?, visionProvider: String?,
                           visionModel: String?) async throws -> BotModelSettings {
         throw BotAdminUnavailable()
