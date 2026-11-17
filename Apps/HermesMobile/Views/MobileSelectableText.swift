@@ -148,7 +148,7 @@ enum MobileProse {
     private static func append(_ block: Block, to output: NSMutableAttributedString) {
         switch block {
         case .paragraph(let text):
-            appendInline(text, size: TypeScale.chatBody, color: Tokens.textSecondary, to: output)
+            appendInline(text, size: TypeScale.chatBody, color: Tokens.textPrimary, to: output)
 
         case .heading(let level, let text):
             appendInline(text,
@@ -238,34 +238,26 @@ enum MobileProse {
 
     // MARK: Fonts
 
-    /// `TypeScale.font` is Inter-relative-to-body with the system face as its
-    /// fallback; this mirrors it in UIKit. Dynamic Type is applied by the text view
-    /// (`adjustsFontForContentSizeCategory`), so these are base sizes.
+    /// The UIKit mirror of `TypeScale.font`: the same system face, weights and half-point grid.
+    /// Dynamic Type is applied by the text view (`adjustsFontForContentSizeCategory`), so these are
+    /// base sizes.
     static func font(size: CGFloat, weight: UIFont.Weight = .regular, italic: Bool = false) -> UIFont {
-        var base: UIFont
-        if let inter = UIFont(name: "Inter", size: size) {
-            base = inter.withWeight(weight)
-        } else {
-            base = UIFont.systemFont(ofSize: size, weight: weight)
-        }
+        // Real weight faces of the system family, at the same half-point grid SwiftUI uses. A bundled
+        // font was never shipped; asking for one by family and synthesizing weight only made some
+        // devices render a different, softer face.
+        let points = TypeScale.pointSize(size)
+        var base = UIFont.systemFont(ofSize: points, weight: weight)
         if italic, let descriptor = base.fontDescriptor.withSymbolicTraits(
             base.fontDescriptor.symbolicTraits.union(.traitItalic)
         ) {
-            base = UIFont(descriptor: descriptor, size: size)
+            base = UIFont(descriptor: descriptor, size: points)
         }
         return base
     }
 
     static func monospacedFont(size: CGFloat, weight: UIFont.Weight = .regular) -> UIFont {
-        UIFont.monospacedSystemFont(ofSize: size, weight: weight)
+        UIFont.monospacedSystemFont(ofSize: TypeScale.pointSize(size), weight: weight)
     }
 }
 
-private extension UIFont {
-    func withWeight(_ weight: UIFont.Weight) -> UIFont {
-        let descriptor = fontDescriptor.addingAttributes([
-            .traits: [UIFontDescriptor.TraitKey.weight: weight],
-        ])
-        return UIFont(descriptor: descriptor, size: pointSize)
-    }
-}
+

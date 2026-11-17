@@ -243,17 +243,11 @@ struct ComposerTextView: NSViewRepresentable {
         }
     }
 
-    /// The composer draws in the same face the rest of the app does: Inter when it is actually
-    /// available, the system font otherwise, at a hinted size. `NSFont(name:)` wants a PostScript
-    /// name, not a family, so it always answered nil for Inter and silently drew the system font at
-    /// an unrounded size.
+    /// The composer uses the same system face and hinted size as the rest of the app. An earlier
+    /// `NSFont(name: "Inter")` probe always failed — it wants a PostScript name — so it only added a
+    /// branch that never ran.
     static func nsFont(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
-        let points = TypeScale.pointSize(size)
-        if NSFontManager.shared.availableFontFamilies.contains("Inter"),
-           let inter = NSFont(name: "Inter", size: points) {
-            return inter
-        }
-        return NSFont.systemFont(ofSize: points, weight: weight)
+        NSFont.systemFont(ofSize: TypeScale.pointSize(size), weight: weight)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

@@ -19,7 +19,7 @@ struct MacMarkdownText: View {
     let attributed: AttributedString
     var size: CGFloat = TypeScale.chatBody
     var weight: Font.Weight = .regular
-    var color: Color = Tokens.textSecondary
+    var color: Color = Tokens.textPrimary
     var codeSize: CGFloat = ChatTextMetrics.macOS.codeSize
     var isCodeBlock: Bool = false
     var lineSpacing: CGFloat = TypeScale.chatLineSpacing
@@ -85,7 +85,7 @@ struct MacMarkdownText: View {
 
             let isMonospaced = isCodeBlock || isInlineCode || blockLanguage != nil
 
-            var font = Font.system(size: isMonospaced ? codeSize : size,
+            var font = Font.system(size: TypeScale.pointSize(isMonospaced ? codeSize : size),
                                     weight: isBold ? .semibold : weight,
                                     design: isMonospaced ? .monospaced : .default)
             if isItalic {
