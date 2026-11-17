@@ -87,7 +87,7 @@ struct ApprovalSettingsTab: View {
 
     private func load() async {
         do { settings = try await model.approvalSettings() }
-        catch { error = error.localizedDescription }
+        catch { self.error = (error as Error).localizedDescription }
     }
 
     private func apply(_ mode: ApprovalMode) async {
@@ -95,7 +95,7 @@ struct ApprovalSettingsTab: View {
             settings = try await model.setApprovalMode(mode)
             error = nil
         } catch {
-            self.error = error.localizedDescription
+            self.error = (error as Error).localizedDescription
         }
     }
 }
