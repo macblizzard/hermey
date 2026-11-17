@@ -18,7 +18,7 @@ public struct QRCodeView: View {
     }
 
     public var body: some View {
-        Image(platformImage(content: content))
+        Image(qrImage(content: content))
             .interpolation(.none)
             .resizable()
             .scaledToFit()
@@ -28,7 +28,7 @@ public struct QRCodeView: View {
     /// Black modules on white: a QR code's finder patterns assume contrast, and the app's dark canvas
     /// behind a translucent pane is exactly what a dark-on-dark code needs to be defended against.
     @MainActor
-    static func platformImage(content: String) -> CGImage {
+    static func qrImage(content: String) -> CGImage {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(content.utf8)
         filter.correctionLevel = "M"
@@ -55,7 +55,7 @@ typealias PlatformImage = NSImage
 private extension QRCodeView {
     /// `Image` takes the platform's image type; this is the one place the spelling differs.
     @MainActor
-    func platformImage(_ cg: CGImage) -> PlatformImage {
+    func qrImage(_ cg: CGImage) -> PlatformImage {
         #if os(iOS)
         return UIImage(cgImage: cg)
         #else
