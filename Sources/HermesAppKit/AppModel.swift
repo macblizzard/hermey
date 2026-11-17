@@ -3004,6 +3004,22 @@ public final class AppModel: ObservableObject {
 
     /// This bot's routines, read from the host's scheduler rather than from a copy kept here: a
     /// list the app cached could say "every day at 3am" about a job that was paused last Tuesday.
+    /// The bot's effort level and aux/vision model, read from its own config on the host.
+    public func modelSettings(for profile: String) async throws -> BotModelSettings {
+        try await client.modelSettings(profile)
+    }
+
+    /// Change one or both of them. Only the fields given travel, so a save of the effort level cannot
+    /// rewrite the vision model beside it.
+    @discardableResult
+    public func setModelSettings(for profile: String,
+                                 effort: String? = nil,
+                                 visionProvider: String? = nil,
+                                 visionModel: String? = nil) async throws -> BotModelSettings {
+        try await client.setModelSettings(profile, effort: effort,
+                                          visionProvider: visionProvider, visionModel: visionModel)
+    }
+
     public func routines(for profile: String) async throws -> [BotRoutine] {
         try await client.routines(profile)
     }

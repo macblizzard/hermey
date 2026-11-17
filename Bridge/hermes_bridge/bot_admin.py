@@ -33,7 +33,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -125,6 +125,36 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 _OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _model_settings_from(config: dict) -> dict:
+    """The four fields the model sheet draws, out of a dashboard config document.
+
+    `reasoning_effort` may be `False` in the host's own file, which means "thinking disabled" rather
+    than "unset" — so it is reported as `none`, the spelling `PUT` accepts back. A missing aux block
+    reports `auto` + an empty model, which is exactly what the host does with it: inherit the main
+    model.
+    """
+    agent_cfg = config.get("agent") if isinstance(config.get("agent"), dict) else {}
+    raw_effort = agent_cfg.get("reasoning_effort", "")
+    if raw_effort is False:
+        effort = "none"
+    elif isinstance(raw_effort, dict):
+        effort = "none" if raw_effort.get("enabled") is False else str(raw_effort.get("effort") or "")
+    else:
+        effort = str(raw_effort or "")
+
+    auxiliary = config.get("auxiliary") if isinstance(config.get("auxiliary"), dict) else {}
+    vision = auxiliary.get("vision") if isinstance(auxiliary.get("vision"), dict) else {}
+    return {
+        "profile": None,  # filled by the route, which knows it
+        "effort": effort,
+        "efforts": list(REASONING_EFFORTS),
+        "vision": {
+            "provider": str(vision.get("provider") or "auto"),
+            "model": str(vision.get("model") or ""),
+        },
+    }
 
 
 def _dashboard_url() -> str:
@@ -277,11 +307,34 @@ def _known_job_ids(entry: dict) -> list[str]:
     return [str(job_id) for job_id in raw if isinstance(job_id, str) and JOB_ID_RE.match(job_id)]
 
 
+#: The levels the host accepts for `agent.reasoning_effort` (`hermes_constants.VALID_REASONING_EFFORTS`),
+#: with the empty string first because "" means "whatever the provider does by default". `none` is the
+#: host's own spelling for thinking switched off entirely.
+REASONING_EFFORTS = ("", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "none")
+
+
+class ModelSettingsUpdate(BaseModel):
+    """What a bot's model sheet may change beyond the model itself.
+
+    Three independent knobs, all of them the *profile's own* config, which is why this route is
+    per-bot: `effort` is `agent.reasoning_effort`, and the aux pair is `auxiliary.vision.provider` /
+    `auxiliary.vision.model` — the model that looks at pictures when the main model cannot. An
+    unset field means "leave it alone"; `""` means "back to the host's default", which for the aux
+    provider is the literal string `auto` (inherit the main model).
+    """
+
+    effort: Optional[str] = None
+    vision_provider: Optional[str] = None
+    vision_model: Optional[str] = None
+
+
 def create_bot_admin_router(runtime) -> APIRouter:
     router = APIRouter(prefix="/v1/bots", tags=["bots-admin"])
 
     def authenticate(authorization) -> str:
         return require_device(runtime, authorization)
+
+
 
     @router.get("/disabled")
     def list_disabled(authorization: str | None = Header(default=None)) -> dict:
@@ -357,6 +410,65 @@ def create_bot_admin_router(runtime) -> APIRouter:
                            nbytes=0,
                            outcome="enabled" if body.enabled else "disabled")
         return outcome
+
+    @router.get("/{profile}/model-settings")
+    def read_model_settings(profile: str,
+                            authorization: str | None = Header(default=None)) -> dict:
+        """This bot's effort level and aux/vision model, read from the host's own config.
+
+        Read through the dashboard's `/api/config`, which is the same document `hermes config` edits
+        and the same one the next turn reads, so the sheet shows what will actually be used instead of
+        a copy kept here. Keys the host has not set answer as empty strings — "the provider decides",
+        not a guess at a default.
+        """
+        authenticate(authorization)
+        _profile_dir(profile)
+        status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
+        if status != 200 or not isinstance(config, dict):
+            raise HTTPException(status_code=502, detail="the dashboard did not answer with a config")
+        return {**_model_settings_from(config), "profile": profile}
+
+    @router.put("/{profile}/model-settings")
+    def write_model_settings(profile: str, body: ModelSettingsUpdate,
+                             authorization: str | None = Header(default=None)) -> dict:
+        """Change the effort level and/or the aux/vision model, in the profile's own config.
+
+        `PUT /api/config` deep-merges what it is sent over what is on disk, so the patch below carries
+        only the keys this route owns — a save from this sheet can never rewrite a section it did not
+        touch. The response is re-read after the write for the same reason the model sheet re-reads the
+        catalogue: what the host stored is the answer, not what was sent.
+        """
+        caller = authenticate(authorization)
+        _profile_dir(profile)
+        if body.effort is not None and body.effort not in REASONING_EFFORTS:
+            raise HTTPException(status_code=422, detail=f"unknown effort '{body.effort}'")
+
+        patch: dict[str, Any] = {}
+        if body.effort is not None:
+            patch.setdefault("agent", {})["reasoning_effort"] = (
+                False if body.effort == "none" else body.effort)
+        if body.vision_provider is not None or body.vision_model is not None:
+            vision: dict[str, Any] = {}
+            if body.vision_provider is not None:
+                vision["provider"] = body.vision_provider.strip() or "auto"
+            if body.vision_model is not None:
+                vision["model"] = body.vision_model.strip()
+            patch["auxiliary"] = {"vision": vision}
+
+        if patch:
+            status, _ = _dashboard("PUT", f"/api/config?profile={urllib.parse.quote(profile)}",
+                                   {"config": patch, "profile": profile})
+            if status != 200:
+                raise HTTPException(status_code=502, detail="the dashboard refused the config write")
+            runtime.audit.emit("bots.model_settings", device_id=caller,
+                               method="bots.model_settings",
+                               path=f"/v1/bots/{profile}/model-settings", nbytes=0,
+                               outcome="written")
+
+        status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
+        if status != 200 or not isinstance(config, dict):
+            raise HTTPException(status_code=502, detail="the dashboard did not answer with a config")
+        return {**_model_settings_from(config), "profile": profile}
 
     @router.get("/{profile}/routines")
     def list_routines(profile: str,

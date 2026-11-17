@@ -351,25 +351,10 @@ struct ConversationScreen: View {
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showBotSettings) {
-            BotModelSettingsScreen(
-                bot: bot,
-                icon: app.botFaces[bot.id],
-                load: { botID in try await model.modelCatalog(for: botID) },
-                conversationIsOpen: true,
-                resetConversation: { model.resetEndlessSession(for: bot.id) },
-                save: { botID, option, confirmed in
-                    switch try await model.configureModel(botID: botID, model: option.id,
-                                                          provider: option.provider,
-                                                          confirm: confirmed) {
-                    case .applied: return .saved
-                    case .confirmationRequired(let message): return .confirmationRequired(message)
-                    }
-                },
-                // Memberwise order matters: `save` precedes `saveDescription` in the declaration.
-                saveDescription: { botID, text in
-                    try await model.configureDescription(botID: botID, description: text)
-                },
-                deleteBot: { try await model.deleteBot(bot.id) })
+            // The same door the bot list's long press opens. It was a hand-built copy here, and it had
+            // lost the icon picker, the soul editor and the memory pane — "the edit button lacks some
+            // settings like bot image edit, soul, etc." (reported 2026-11-17).
+            BotSettingsDoor(bot: bot, model: model)
             .hermesSheetChrome()
         }
         // The choices live in the composer, anchored to the paperclip (`AttachmentMenu`); this

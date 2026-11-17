@@ -96,8 +96,14 @@ class ABotCanBeDeletedFromItsSettings(unittest.TestCase):
         self.assertIn("showingDelete", IOS_SETTINGS)
         self.assertIn('Button("Delete bot", role: .destructive)', IOS_SETTINGS)
         # It has to be reachable from both doors into the sheet.
-        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) })", IOS_LIST)
-        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) })", IOS_CHAT)
+        # Both iOS doors — the list's long press and a conversation's Edit — build the sheet through
+        # `BotSettingsDoor`, so the delete writer lives there once and cannot be missing from one of them.
+        door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
+        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) })", door)
+        self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_LIST)
+        self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_CHAT)
+        self.assertNotIn("BotModelSettingsScreen(", IOS_CHAT,
+                         "the conversation's door must not be a second copy of the sheet")
 
     def test_the_mac_offers_it_and_confirms(self) -> None:
         self.assertIn("private var dangerSection", MAC_SETTINGS)

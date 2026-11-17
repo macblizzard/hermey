@@ -32,7 +32,7 @@ struct BotListScreen: View {
     /// Long-press → Bot Settings. Presented from this screen so the settings flow needs no
     /// plumbing from the tab, and so a long-press can never accidentally open the chat.
     @State private var settingsBot: Bot?
-    @State private var soulBot: Bot?
+
     /// The bot whose **All sessions…** sheet is open. Presented from this screen so a long-press
     /// can list every conversation the host keeps without leaving the list first.
     @State private var sessionsBot: Bot?
@@ -100,34 +100,10 @@ struct BotListScreen: View {
         }
     }
 
-    /// Bot settings, lifted out of the sheet chain: with rooms, headers and the rest, the chain had
-    /// grown past what the type checker will type in one expression.
+    /// Bot settings: the shared door, so this list and a conversation's Edit button cannot drift
+    /// apart again. It used to be built here inline, and the conversation's copy was a second one.
     private func settingsSheet(for bot: Bot) -> some View {
-
-            BotModelSettingsScreen(
-                bot: bot,
-                icon: app.botFaces[bot.id],
-                load: { botID in try await model.modelCatalog(for: botID) },
-                conversationIsOpen: model.selectedBotID == bot.id,
-                resetConversation: { model.resetEndlessSession(for: bot.id) },
-                save: { botID, option, confirmed in
-                    switch try await model.configureModel(botID: botID,
-                                                          model: option.id,
-                                                          provider: option.provider,
-                                                          confirm: confirmed) {
-                    case .applied:
-                        return .saved
-                    case .confirmationRequired(let message):
-                        return .confirmationRequired(message)
-                    }
-                },
-                saveDescription: { botID, text in
-                    try await model.configureDescription(botID: botID, description: text)
-                },
-                editSoul: { soulBot = bot },
-                saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) },
-                loadMemory: { try await model.memory(for: bot.id) },
-                deleteBot: { try await model.deleteBot(bot.id) })
+        BotSettingsDoor(bot: bot, model: model)
     }
 
     var body: some View {
@@ -327,13 +303,6 @@ struct BotListScreen: View {
                 onSetCategory: { profile, category in
                     try await model.setBotCategory(profile, to: category)
                 })
-            .hermesSheetChrome()
-        }
-        .sheet(item: $soulBot) { bot in
-            SoulEditorSheet(
-                botName: bot.displayName,
-                load: { try await model.describeBot(bot.id).soul },
-                save: { try await model.saveSoul($0, for: bot.id) })
             .hermesSheetChrome()
         }
         .mobileConnectionBanner(connection: app.visibleConnection,

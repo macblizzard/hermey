@@ -118,6 +118,16 @@ public protocol BotSessionPointerStore: Sendable {
     /// once per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// `GET`/`PUT /v1/bots/{profile}/model-settings` — the effort level and the aux/vision model.
+    ///
+    /// Two facts the catalogue cannot answer: how hard the model is asked to think (`agent.reasoning_effort`,
+    /// where `""` is the provider's own default and `none` is thinking switched off), and which model looks
+    /// at pictures when the bot's own cannot (`auxiliary.vision`, where provider `auto` inherits the main
+    /// model). Both live in the profile's config on the host, so they are read and written per bot.
+    func modelSettings(_ profile: String) async throws -> BotModelSettings
+    func setModelSettings(_ profile: String, effort: String?,
+                          visionProvider: String?, visionModel: String?) async throws -> BotModelSettings
+
     /// `GET /v1/bots/{profile}/routines` — this bot's schedules, soonest first.
     ///
     /// Defaulted to a refusal: a store that predates the route must say so, not draw "no routines"
@@ -220,6 +230,11 @@ public extension BotSessionPointerStore {
     func setBotEnabled(_ profile: String, enabled: Bool) async throws { throw BotAdminUnavailable() }
     func disabledBots() async throws -> Set<String> { [] }
     func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
+    func modelSettings(_ profile: String) async throws -> BotModelSettings { throw BotAdminUnavailable() }
+    func setModelSettings(_ profile: String, effort: String?, visionProvider: String?,
+                          visionModel: String?) async throws -> BotModelSettings {
+        throw BotAdminUnavailable()
+    }
     func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine {
         throw BotAdminUnavailable()
     }
@@ -497,6 +512,28 @@ enum Failure: Error, Equatable, LocalizedError {
               let names = object["disabled"] as? [String]
         else { return [] }
         return Set(names)
+    }
+
+    /// `GET /v1/bots/{profile}/model-settings`.
+    public func modelSettings(_ profile: String) async throws -> BotModelSettings {
+        let name = try Self.pathComponent(profile)
+        let data = try await bridgeGET("v1/bots/\(name)/model-settings")
+        guard let settings = BotModelSettings.decode(data) else { throw BotAdminUnavailable() }
+        return settings
+    }
+
+    /// `PUT /v1/bots/{profile}/model-settings` — only the fields given are sent, so one save cannot
+    /// rewrite the knob beside it.
+    public func setModelSettings(_ profile: String, effort: String?, visionProvider: String?,
+                                 visionModel: String?) async throws -> BotModelSettings {
+        let name = try Self.pathComponent(profile)
+        var body: [String: Any] = [:]
+        if let effort { body["effort"] = effort }
+        if let visionProvider { body["vision_provider"] = visionProvider }
+        if let visionModel { body["vision_model"] = visionModel }
+        let data = try await bridgePUT("v1/bots/\(name)/model-settings", body: body)
+        guard let settings = BotModelSettings.decode(data) else { throw BotAdminUnavailable() }
+        return settings
     }
 
     /// `GET /v1/bots/{profile}/routines`.

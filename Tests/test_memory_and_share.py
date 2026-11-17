@@ -67,9 +67,12 @@ class TheBotKnowsItself(unittest.TestCase):
 
     def test_the_list_hands_both_writers_to_the_settings_sheet(self) -> None:
         listing = read(LIST)
-        self.assertIn("saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) }",
-                      listing)
-        self.assertIn("loadMemory: { try await model.memory(for: bot.id) }", listing)
+        # The icon and memory writers moved into the shared door when the list's copy became one; the
+        # list still has to reach that door rather than build its own sheet.
+        door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
+        self.assertIn("saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) }", door)
+        self.assertIn("loadMemory: { try await model.memory(for: bot.id) }", door)
+        self.assertIn("BotSettingsDoor(bot: bot, model: model)", listing)
 
 
 class TheHostServesMemory(unittest.TestCase):
