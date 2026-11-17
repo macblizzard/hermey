@@ -640,7 +640,12 @@ final class WorkspaceStore: ObservableObject {
 
     /// Show or hide the bot panel, and remember the choice.
     func toggleSidebar() {
-        isSidebarHidden.toggle()
+        // The view's `.transition` only runs when the state changes inside an animation. Every door
+        // here — the pill, ⌘E and the View menu — goes through this one method, so none of them can
+        // snap the panel out of existence while another animates it.
+        withAnimation(WorkspaceMotion.sidebar) {
+            isSidebarHidden.toggle()
+        }
         UserDefaults.standard.set(isSidebarHidden, forKey: Self.sidebarHiddenKey)
     }
     /// ⌘K, ⌘K again: the palette is an overlay now, so the same key both raises and drops it.
@@ -1072,7 +1077,7 @@ final class WorkspaceStore: ObservableObject {
         }
         // The panel is what ⌘E and the pill mean: when the computer has borrowed the slot, the
         // toggle takes it back rather than writing state nobody can see.
-        withAnimation(.easeOut(duration: 0.16)) {
+        withAnimation(WorkspaceMotion.panel) {
             isComputerFullScreen = false
             isComputerPanelPresented = false
             isBotPanelPresented = true
@@ -1085,13 +1090,13 @@ final class WorkspaceStore: ObservableObject {
     func dismissBotPanelFromOutsideClick() {
         guard isBotPanelPresented else { return }
         botPanelDismissedAt = Date()
-        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
     }
 
     /// Closed from a control that belongs to the panel — Escape, the ✕, the reset flow. No stamp:
     /// nothing here competes with the pill's own toggle.
     func closeBotPanel() {
-        withAnimation(.easeOut(duration: 0.16)) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
     }
 
     func toggleComputerPanel() {

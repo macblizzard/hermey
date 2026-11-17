@@ -129,7 +129,11 @@ struct WorkspaceRoot: View {
         }
         // One animation owner for the palette's whole lifecycle: the backdrop fades, the panel
         // rises a few points, and closing is the same motion in reverse.
-        .animation(.easeOut(duration: 0.14), value: store.isPalettePresented)
+        // One animation owner for the shell: the palette, and the sidebar's insertion/removal. Both are
+        // opacity + a few points of translation, which the compositor can run without re-laying out the
+        // transcript on every frame.
+        .animation(WorkspaceMotion.sheet, value: store.isPalettePresented)
+        .animation(WorkspaceMotion.sidebar, value: store.isSidebarHidden)
         // **One** sheet modifier, two routes.
         //
         // SwiftUI attaches a sheet per modifier: two `.sheet` modifiers on the same view means the
@@ -186,6 +190,9 @@ struct WorkspaceRoot: View {
                 }
             }
             .hermesSheetChrome()
+            // AppKit animates the sheet itself; this animates its *contents*, so switching routes or
+            // filling a spinner does not jump inside an already-moving sheet.
+            .transition(.opacity.animation(WorkspaceMotion.sheet))
         }
     }
 
@@ -413,6 +420,11 @@ struct WorkspaceShell: View {
             if !store.isSidebarHidden {
                 BotSidebarView(model: model, store: store)
                     .frame(width: store.sidebarWidth)
+                    // Animate the pane out to the leading edge and back, rather than deleting it from the
+                    // HStack on one frame (reported 2026-11-17: "sidebar opening and closing is janky").
+                    // The store wraps the toggle in `withAnimation`, which is what makes the removal
+                    // a transition instead of a snap.
+                    .transition(.move(edge: .leading).combined(with: .opacity))
 
                 PaneDivider(width: sidebarBinding,
                             range: WorkspaceStore.sidebarFloor...Geometry.sidebarMax,
@@ -422,6 +434,7 @@ struct WorkspaceShell: View {
                 // is this one hairline, so the shell adds paneDivider + 1 to the conversation's
                 // minimum — the same sum `HermesMacApp`'s window minimum is built from.
                 Hairline(.vertical)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
 
             // One pane, two kinds of conversation: a bot's endless chat, or a room. A room is not a
