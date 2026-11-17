@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from pathlib import Path
 import os
 import secrets
 import time
@@ -56,6 +57,7 @@ from .bot_sessions import create_bot_sessions_router
 from .config import BridgeConfig, is_loopback_host
 from .device_auth import require_device
 from .display import create_display_router
+from .local_computers import LocalComputers, create_local_computers_router, local_computer_socket
 from .pairing import InvalidPublicKey, normalize_public_key
 from .proxy import GatewayProxy, LiveSessions
 from .registry import DeviceRegistry
@@ -218,6 +220,8 @@ def create_app(
         if registry is None:  # only close what this app created
             reg.close()
 
+    local_computers = LocalComputers(runtime, state_dir=Path(config.db_path).parent)
+
     app = FastAPI(title="hermes-bridge", version="0.2.0", lifespan=lifespan)
 
     @app.middleware("http")
@@ -264,6 +268,7 @@ def create_app(
     app.include_router(create_rooms_router(runtime))
     # The shared Bot Computer: status/lease/thumbnail over HTTP, raw RFB over its own WebSocket.
     # The two hooks exist for tests: production dials the configured gateway.
+    app.include_router(create_local_computers_router(runtime, local_computers))
     app.include_router(create_display_router(runtime, gateway_call=display_gateway_call,
                                              display_ws_url=display_ws_url))
     # Keys are read from the bridge EnvironmentFile at construction, never from a
@@ -419,6 +424,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="unknown device")
         runtime.tickets.revoke_device(device_id)
         return {"deleted": device_id}
+
+    @app.websocket("/v1/local-computers/ws")
+    async def ws_local_computer(websocket: WebSocket) -> None:
+        await local_computer_socket(websocket, runtime, local_computers)
 
     @app.websocket("/v1/ws")
     async def ws_proxy(websocket: WebSocket) -> None:

@@ -36,6 +36,11 @@ struct MacSettingsView: View {
             ApprovalSettingsTab(store: store)
                 .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
 
+            // The Mac as a local computer. Same pattern as the other native clients: a toggle in
+            // settings, no inbound port and no SSH.
+            LocalComputerSettingsView(store: store)
+                .tabItem { Label("Computer", systemImage: "desktopcomputer") }
+
             ConnectionSettingsTab(store: store,
                                   openDevices: { openWindow(id: "paired-devices") })
                 .tabItem { Label("Connection", systemImage: "bolt.horizontal") }
@@ -58,10 +63,9 @@ struct MacSettingsView: View {
             AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Eight tabs now (Chat, Bots, Approvals, Connection, Appearance, Notifications, Caching,
-        // About): the bar pushes the last tab behind a chevron when the window is too narrow, so the
-        // window grew with the tab rather than hiding one.
-        .frame(width: 760, height: 500)
+        // Nine tabs now (Chat, Bots, Approvals, Computer, Connection, Appearance, Notifications,
+        // Caching, About): the bar pushes the last tab behind a chevron when the window is too narrow.
+        .frame(width: 820, height: 500)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
         // Escape and a click outside both close this window, the way every other surface in the

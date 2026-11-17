@@ -64,6 +64,24 @@ struct PairingAddress: Equatable, Sendable, Codable {
         return url
     }
 
+    /// The local-computer executor socket. This is an *outbound* connection from the Mac to the
+    /// bridge: no inbound port, no SSH, no Remote Login. The ticket is minted per connection.
+    func localComputerSocketURL(ticket: String) throws -> URL {
+        guard var components = URLComponents(string: baseURL) else { throw PairingError.malformedURL }
+        let scheme = (components.scheme ?? "").lowercased()
+        guard scheme == "wss" || scheme == "ws", components.host?.isEmpty == false else {
+            throw PairingError.malformedURL
+        }
+        components.path = "/v1/local-computers/ws"
+        components.query = nil
+        components.fragment = nil
+        if !ticket.isEmpty {
+            components.queryItems = [URLQueryItem(name: "ticket", value: ticket)]
+        }
+        guard let url = components.url else { throw PairingError.malformedURL }
+        return url
+    }
+
     /// A ticket good for one upgrade: reused when we only have one, minted when we have a
     /// refresh token.
     func mintedTicket() async throws -> String {

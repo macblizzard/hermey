@@ -42,7 +42,7 @@ EVENTS = frozenset(
         "session_pointer",
         "session_autoresume",
         "session_rekeyed",
-        "bot_message", "bots.purge", "bots.model_settings", "bots.approval_mode", "pair.invite", "bots.routine_create", "bots.routine_state", "rooms.list", "rooms.create", "rooms.send", "rooms.disband", "rooms.rename", "bots.state",
+        "bot_message", "bots.purge", "bots.model_settings", "bots.approval_mode", "local_computer.connected", "local_computer.disconnected", "local_computer.execute", "local_computer.revoke", "pair.invite", "bots.routine_create", "bots.routine_state", "rooms.list", "rooms.create", "rooms.send", "rooms.disband", "rooms.rename", "bots.state",
         "display_open", "display_close",
         "history_page", "history_page_miss", "history_paged",
         "http",
