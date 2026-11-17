@@ -274,7 +274,8 @@ enum GatewayPayloadDecoder {
                                    inflight: inflight(result["inflight"]),
                                    openRequests: (result["open_requests"]?.arrayValue ?? []).compactMap(serverRequest),
                                    earlierCursor: cursor,
-                                   historyTotal: Int(total))
+                                   historyTotal: Int(total),
+                                   storedSessionID: storedID)
         return Resume(resume: resume, storedID: storedID, runtimeID: runtimeID)
     }
 

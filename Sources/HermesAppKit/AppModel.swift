@@ -1751,8 +1751,19 @@ public final class AppModel: ObservableObject {
             switch await openStoredConversation(stored, botID: botID, publish: plan.publishCache) {
             case .opened(let opened): return opened
             case .failed: return nil
-            // The host forgot it: mint the replacement the user is owed.
-            case .forgotten: return await mintCanonicalChat(for: botID)
+            // The host forgot that id. Before minting a blank conversation, adopt the newest one this
+            // bot actually has — a stale id is not the same thing as an empty bot, and treating it as
+            // one is what made an existing conversation look deleted.
+            case .forgotten:
+                if let recovered = await newestExistingConversation(for: botID),
+                   recovered != stored,
+                   case .opened(let opened) = await openStoredConversation(recovered, botID: botID,
+                                                                          publish: plan.publishCache) {
+                    ClientLog.note("recovered \(botID)'s conversation as \(recovered) after \(stored) "
+                                   + "was refused", level: .info, category: "session")
+                    return opened
+                }
+                return await mintCanonicalChat(for: botID)
             }
         case .adopt(let stored):
             switch await openStoredConversation(stored, botID: botID, publish: plan.publishCache) {
@@ -1800,8 +1811,11 @@ public final class AppModel: ObservableObject {
             captureConversation(for: botID)
             cacheTranscriptSoon(stored)
             // Whatever actually opened is the best cache this device can keep — including a host id
-            // that replaced a different local one.
-            Self.defaults.set(stored, forKey: Self.endlessKey(botID))
+            // that replaced a different local one. The DURABLE key is what gets stored: the runtime id
+            // is minted per attach and stops resolving when the host's runtime goes away, which is how
+            // a device ends up being told "session not found" about its own conversation and opening a
+            // blank one instead (seen live 2026-11-16 22:48 for `aria`).
+            Self.defaults.set(resumed.storedSessionID ?? stored, forKey: Self.endlessKey(botID))
             if publish {
                 await publishSharedSession(stored, for: botID)
             }
@@ -1823,6 +1837,22 @@ public final class AppModel: ObservableObject {
             Self.defaults.removeObject(forKey: Self.endlessKey(botID))
             await diskCache.discard(stored)
             return .forgotten
+        }
+    }
+
+    /// The newest conversation this bot already has, or nil when it genuinely has none.
+    ///
+    /// A stored id that no longer resolves used to send the app straight to `.create`, which is how a
+    /// conversation that still existed on the host appeared to be gone: the person opened the bot, got a
+    /// blank chat, and their history was only reachable through All Sessions. The roster can answer this
+    /// — one read, newest first — so the recovery adopts it instead of inventing a new one.
+    private func newestExistingConversation(for botID: String) async -> SessionID? {
+        do {
+            let sessions = try await listSessions(limit: 5, profile: botID, includeHidden: true)
+            return sessions.first?.id
+        } catch {
+            Self.noteSessionSync("could not list “\(botID)”'s conversations: \(error.localizedDescription)")
+            return nil
         }
     }
 

@@ -131,4 +131,28 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(client.historyReads, readsBefore)
     }
 }
+
+    func testAStaleIdDoesNotCostTheConversation() async {
+        // The live failure this guards (2026-11-16 22:48, bot `aria`): resume answered 4007, the model
+        // went straight to `.create`, and the person got a blank chat while their conversation was still
+        // on the host. The roster is asked first now.
+        let client = ScriptedHost(session: Self.sessionID, entries: [line("old")])
+        client.hostPointer = Self.sessionID
+        client.resumeError = GatewayError.rpc(RPCError(code: 4007, message: "session not found"))
+        client.profileSessions = [SessionSummary(id: "20260101_000009_older", title: "Bot Chat"),
+                                  SessionSummary(id: "20260101_000008_newer", title: "Bot Chat")]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+        let cody = bot("stale")
+        defer { forget([cody]) }
+        client.bots = [Bot(id: cody)]
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(model.selectedSessionID, "20260101_000009_older",
+                       "the newest existing conversation is adopted, not a blank one")
+        XCTAssertNil(model.lastSendError)
+    }
+}
 #endif

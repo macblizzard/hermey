@@ -663,7 +663,14 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
 }
 
 public struct SessionResume: Sendable {
+    /// The runtime id every session-scoped call needs.
     public let id: SessionID
+    /// The durable key — the only value a later resume accepts.
+    ///
+    /// The runtime id is minted per attach and dies when the host's runtime goes away, so a device that
+    /// remembered *it* asked the host about a session it no longer knew and was told "not found", then
+    /// opened a blank conversation. `stored_session_id` is what the host keeps.
+    public let storedSessionID: SessionID?
     public let entries: [TranscriptEntry]
     /// The turn still running that history does not hold yet.
     public let inflight: InflightTurn?
@@ -678,8 +685,9 @@ public struct SessionResume: Sendable {
     public let historyTotal: Int
 
     public init(id: SessionID, entries: [TranscriptEntry], inflight: InflightTurn?, openRequests: [ServerRequest],
-                earlierCursor: Int? = nil, historyTotal: Int = 0) {
+                earlierCursor: Int? = nil, historyTotal: Int = 0, storedSessionID: SessionID? = nil) {
         self.id = id
+        self.storedSessionID = storedSessionID
         self.entries = entries
         self.inflight = inflight
         self.openRequests = openRequests

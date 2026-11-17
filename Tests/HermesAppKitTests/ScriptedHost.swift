@@ -66,7 +66,13 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
 
     func ping() async throws {}
     func listSessions(limit: Int) async throws -> [SessionSummary] { [summary] }
-    func listSessions(limit: Int, profile: String?, includeHidden: Bool) async throws -> [SessionSummary] { [summary] }
+    /// What the profile-scoped listing answers. Defaults to the one scripted session; a test that needs
+    /// "this bot already has conversations" sets it.
+    var profileSessions: [SessionSummary]?
+
+    func listSessions(limit: Int, profile: String?, includeHidden: Bool) async throws -> [SessionSummary] {
+        profileSessions ?? [summary]
+    }
 
     private var summary: SessionSummary {
         SessionSummary(id: session, title: "test thread")
