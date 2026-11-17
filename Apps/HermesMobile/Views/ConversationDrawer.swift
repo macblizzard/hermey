@@ -45,6 +45,11 @@ struct ConversationDrawer: View {
     let onReset: () -> Void
     let onClose: () -> Void
 
+    /// The drawer's content outgrew one screen when the Model row arrived, so its ScrollView now owns
+    /// the pan gesture. A plain `.gesture` on the page stopped firing; the dismiss drag has to live
+    /// alongside the scroll and only close from the top of the content.
+    @State private var scrollOffset: CGFloat = 0
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
@@ -58,22 +63,31 @@ struct ConversationDrawer: View {
                 .padding(.horizontal, Geometry.chatGutter)
                 .padding(.top, 6)
                 .padding(.bottom, 40)
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: DrawerScrollOffsetKey.self,
+                        value: geometry.frame(in: .named("hermey-drawer-scroll")).minY)
+                })
             }
+            .coordinateSpace(name: "hermey-drawer-scroll")
+            .onPreferenceChange(DrawerScrollOffsetKey.self) { scrollOffset = $0 }
             .scrollBounceBehavior(.basedOnSize)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Tokens.canvas)
         .transition(.move(edge: .bottom))
         .accessibilityAddTraits(.isModal)
-        .gesture(
-            // Swipe down to put it away, with the same drift guard the row list needs: a horizontal
-            // flick is not a dismissal.
+        .simultaneousGesture(
+            // Swipe down from the top of the drawer to put it away. `simultaneous` matters: the
+            // drawer scrolls now, and a regular `.gesture` loses to the ScrollView's pan entirely.
+            // The offset guard keeps a downward drag in the middle of the list as a scroll, not a
+            // dismissal — only a finger at the top of the content closes the page.
             DragGesture(minimumDistance: 24)
                 .onEnded { value in
-                    if value.translation.height > 80,
-                       abs(value.translation.height) > abs(value.translation.width) {
-                        onClose()
-                    }
+                    guard scrollOffset >= -2,
+                          value.translation.height > 80,
+                          abs(value.translation.height) > abs(value.translation.width) else { return }
+                    onClose()
                 }
         )
     }
@@ -270,3 +284,13 @@ extension ConversationDrawer {
     }
 }
 #endif
+
+/// The drawer content's offset inside its own coordinate space. Zero at rest, negative once the
+/// verbs have been scrolled up — the signal that a downward drag belongs to the list, not the door.
+private enum DrawerScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}

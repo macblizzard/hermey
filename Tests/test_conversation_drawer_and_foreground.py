@@ -83,6 +83,12 @@ class TheChatHasOneDoor(unittest.TestCase):
         # The back button is always in the corner; a downward swipe does the same thing.
         self.assertIn('accessibilityLabel("Close the bot page")', DRAWER)
         self.assertIn("value.translation.height > 80", DRAWER, "and a swipe down does")
+        # The Model row made the page scrollable; a plain `.gesture` then lost to the ScrollView pan,
+        # so the dismiss drag must be simultaneous and only fire from the top of the content.
+        self.assertIn(".simultaneousGesture(", DRAWER)
+        self.assertIn("scrollOffset >= -2", DRAWER)
+        self.assertIn(".coordinateSpace(name: \"hermey-drawer-scroll\")", DRAWER)
+        self.assertIn("DrawerScrollOffsetKey", DRAWER)
 
 
 class AnEdgeSwipeOpensIt(unittest.TestCase):
