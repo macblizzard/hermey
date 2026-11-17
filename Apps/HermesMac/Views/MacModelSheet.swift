@@ -347,7 +347,7 @@ struct MacModelSheet: View {
 
     private func auxChoice(label: String, provider: String, model: String, chosen: Bool) -> some View {
         Button {
-            Task { await setVision(provider: provider, model: model) }
+            Task { await setVision(provider: provider, visionModel: model) }
         } label: {
             HStack(spacing: 6) {
                 Text(label)
@@ -378,7 +378,7 @@ struct MacModelSheet: View {
             && settings?.visionModel == option.id
             && settings?.visionInherits == false
         return Button {
-            Task { await setVision(provider: option.provider, model: option.id) }
+            Task { await setVision(provider: option.provider, visionModel: option.id) }
         } label: {
             HStack(spacing: 6) {
                 Text(option.label)
@@ -513,13 +513,16 @@ struct MacModelSheet: View {
         }
     }
 
-    private func setVision(provider: String, model: String) async {
+    /// `visionModel`, not `model`: the property of that name is the app model this sheet writes through,
+    /// and a parameter called `model` shadows it into a String (which has no setModelSettings, and the
+    /// compiler says so in a way that reads like a library bug).
+    private func setVision(provider: String, visionModel: String) async {
         busy = true
         defer { busy = false }
         do {
             settings = try await model.setModelSettings(for: bot.id,
                                                        visionProvider: provider,
-                                                       visionModel: model)
+                                                       visionModel: visionModel)
             error = nil
         } catch {
             self.error = error.localizedDescription
