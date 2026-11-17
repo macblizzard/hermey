@@ -562,6 +562,16 @@ public struct Composer: View {
 
     private func send() {
         guard canSend else { return }
+        // Typing an exact native verb and pressing Return must run it, not send the word to the
+        // host. Prefixes still send as typed — that is not a completed command, it is a message.
+        let typed = String(text.dropFirst()).lowercased()
+        if text.hasPrefix("/"),
+           let exact = commandMatches.first(where: { $0.name == typed }),
+           exact.action != .insertOnly {
+            Haptics.selection()
+            choose(exact)
+            return
+        }
         Haptics.impact()
         onSend()
     }

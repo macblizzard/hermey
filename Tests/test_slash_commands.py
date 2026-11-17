@@ -64,6 +64,10 @@ class TypingSlashShowsTheList(unittest.TestCase):
         self.assertIn('filter { $0.name.hasPrefix(needle) }', COMMAND)
         self.assertIn("prefixed.isEmpty", COMMAND)
 
+    def test_return_on_an_exact_native_verb_runs_it(self) -> None:
+        self.assertIn('exact.action != .insertOnly', COMPOSER)
+        self.assertIn('choose(exact)', COMPOSER)
+
     def test_both_apps_pass_a_handler(self) -> None:
         self.assertIn("onCommand: runCommand", IOS)
         self.assertIn("onCommand: runCommand", MAC)
