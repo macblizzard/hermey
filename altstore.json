@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.529",
-          "buildVersion": "529",
-          "date": "2026-11-17T00:33:40Z",
-          "localizedDescription": "The endless chat now comes from the host itself: opening a bot resolves its Bot Chat by name, and a send refused as unknown is re-resolved and re-sent instead of failing. No remembered session id is authoritative any more.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.529/Hermey-0.1.529-b529.ipa",
-          "size": 3205879,
+          "version": "0.1.530",
+          "buildVersion": "530",
+          "date": "2026-11-17T00:57:35Z",
+          "localizedDescription": "Blank bots (crony, atlas, anika) fixed: a refused session now recovers the Bot Chat by name instead of the newest empty draft. Switching is faster: the whole roster is warmed (24 snapshots) and a bot you just left is not re-read.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.530/Hermey-0.1.530-b530.ipa",
+          "size": 3207896,
           "minOSVersion": "17.0",
-          "sha256": "865d4abaee1b6f12808adb0c5db537fcfd0eff3d913915b9b184f663b41a48b1"
+          "sha256": "63495e702e48c92631a8416dcf3319700263362a9e7dad15d755a08424e9a12b"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.529 (529)",
-      "identifier": "hermes-0.1.529-529",
-      "caption": "The endless chat now comes from the host itself: opening a bot resolves its Bot Chat by name, and a send refused as unknown is re-resolved and re-sent instead of failing. No remembered session id is authoritative any more.",
-      "date": "2026-11-17T00:33:40Z",
+      "title": "Hermes 0.1.530 (530)",
+      "identifier": "hermes-0.1.530-530",
+      "caption": "Blank bots (crony, atlas, anika) fixed: a refused session now recovers the Bot Chat by name instead of the newest empty draft. Switching is faster: the whole roster is warmed (24 snapshots) and a bot you just left is not re-read.",
+      "date": "2026-11-17T00:57:35Z",
       "tintColor": "#9A9AA0"
     }
   ],
