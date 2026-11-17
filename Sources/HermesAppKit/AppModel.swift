@@ -1505,6 +1505,32 @@ public final class AppModel: ObservableObject {
             // session resumes like any other.
             draftSessionIDs.remove(sid)
         } catch {
+            // **A refused id is not a lost message.** The host's runtime turns over (a restart, a
+            // rotation), and the id this pane is holding can be one the host no longer knows: the
+            // bridge answers `4007 unknown_session` and the person sees "session not found" over a
+            // chat that exists 80 messages deep. Ask the host where that bot's Bot Chat is now, adopt
+            // it, and send once more — the transcript is the same conversation either way.
+            if let gateway = error as? GatewayError, Self.isForgottenSession(gateway),
+               let botID = selectedBotID,
+               let canonical = await canonicalChatIdentity(for: botID) {
+                ClientLog.note("\(sid) was refused (code \(gateway.rpcError?.code ?? 0)); "
+                               + "re-sending to \(botID)'s Bot Chat \(canonical)",
+                               level: .info, category: "session")
+                if case .opened(let reopened) = await openStoredConversation(canonical, botID: botID,
+                                                                             publish: true) {
+                    Self.defaults.set(reopened, forKey: Self.endlessKey(botID))
+                    do {
+                        let delivery = try await client.submit(session: reopened, text: outgoing)
+                        if isMidTurn { announce(delivery) }
+                        draftSessionIDs.remove(reopened)
+                        sending = false
+                        return
+                    } catch {
+                        ClientLog.note("re-send after re-resolving the Bot Chat failed too: "
+                                       + error.localizedDescription, level: .error, category: "send")
+                    }
+                }
+            }
             if !isMidTurn { isStreaming = false }
             lastSendError = error.localizedDescription
             ClientLog.note("prompt.submit failed: \(error.localizedDescription)",
@@ -1747,6 +1773,21 @@ public final class AppModel: ObservableObject {
             return selectedSessionID
         }
         await loadModelLabel()
+        // **One authority: the host's own canonical chat, found by identity.** The host keeps exactly
+        // one endless conversation per bot as a row titled "Bot Chat" in that bot's own store, and its
+        // id is durable (aria's, for instance, survived a `ws_orphan_reap` with its 80 messages). The
+        // hero client never stores an id at all — it looks the identity up — which is why it has no
+        // session problems to have. Anything this device remembered is a hint at best: a runtime id
+        // stops resolving the moment the host's runtime turns over, and the ladder below then used to
+        // mint a blank conversation over one that still existed.
+        if let canonical = await canonicalChatIdentity(for: botID) {
+            if case .opened(let opened) = await openStoredConversation(canonical, botID: botID, publish: true) {
+                Self.defaults.set(opened, forKey: Self.endlessKey(botID))
+                return opened
+            }
+            ClientLog.note("the host's own Bot Chat for \(botID) (\(canonical)) would not open; "
+                           + "falling back to the remembered ids", level: .info, category: "session")
+        }
         let key = Self.endlessKey(botID)
         let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: botID),
                                         legacy: await bridgePointerID(for: botID),
@@ -1842,6 +1883,25 @@ public final class AppModel: ObservableObject {
             Self.defaults.removeObject(forKey: Self.endlessKey(botID))
             await diskCache.discard(stored)
             return .forgotten
+        }
+    }
+
+    /// The id of the host's canonical chat for this bot, or nil when it has none yet.
+    ///
+    /// The host's own rule: one endless conversation per bot, titled `Bot Chat`, living in that bot's
+    /// store. `aria`'s carries `ws_orphan_reap` as its end reason and still holds its 80 messages,
+    /// because the host exempts that row from reaping and un-archives it after an accident (#92687) —
+    /// lifetime rules a client cannot invent, only use. Hidden rows are preferred; a row filed by hand
+    /// under the same name is only taken when no hidden one exists.
+    func canonicalChatIdentity(for botID: String) async -> SessionID? {
+        guard connection.isLive else { return nil }
+        do {
+            let sessions = try await client.listSessions(limit: 20, profile: botID, includeHidden: true)
+            return sessions.first { $0.title == CanonicalBotChat.title }?.id
+        } catch {
+            ClientLog.note("could not look up \(botID)'s Bot Chat: \(error.localizedDescription)",
+                           level: .info, category: "session")
+            return nil
         }
     }
 

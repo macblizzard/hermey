@@ -161,5 +161,30 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(recovered, "20260101_000009_older",
                        "the roster's first row is newest; taking any other row would jump backwards")
     }
+
+    func testTheHostsBotChatWinsOverARememberedId() async {
+        // The host names the endless chat ("Bot Chat", at most one per bot) and reports it as
+        // canonical; the host's own client resolves that name on every open instead of remembering an
+        // id. This device had a different idea — a runtime id in UserDefaults — and resuming it is how
+        // a conversation became "not found".
+        let client = ScriptedHost(session: "20260101_000003_stale", entries: [line("from cache")])
+        client.hostPointer = "20260101_000003_stale"
+        client.profileSessions = [SessionSummary(id: "20260101_000007_other", title: "Something else"),
+                                  SessionSummary(id: Self.sessionID, title: CanonicalBotChat.title)]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+        let cody = bot("canonical")
+        defer { forget([cody]) }
+        UserDefaults.standard.set("20260101_000003_stale", forKey: "hermes.endlessSession.\(cody)")
+        client.bots = [Bot(id: cody)]
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.last, Self.sessionID,
+                       "the id the host calls the Bot Chat is the one that must be resumed")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "hermes.endlessSession.\(cody)"), Self.sessionID,
+                       "and it replaces the stale local memory")
+    }
 }
 #endif
