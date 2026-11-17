@@ -1,87 +1,95 @@
-# Hermey → Rakazo local-computer parity tasklist
+# Hermey → Rakazo local-computer parity tasklist (revised)
 
 Baseline shipped in 0.1.561: outbound authenticated socket, host + paired-device auth, **no approval
-gate** (owner decision), argv shell with cwd / 30-min timeout / 4 MB output cap, host-side bot CLI,
-remote revoke, bridge audit. Remote Login is off on the Mac.
+gate** (owner decision), argv shell with cwd / 30-min timeout / 4 MB cap, host-side bot CLI, remote
+revoke, bridge audit. Remote Login is off on the Mac.
 
-Goal: match Rakazo's desktop-computer capability set — native shell (done), screen observe, GUI act,
-file tools, app launching, browser tools, secret-safe output, takeover, activity feed, per-bot
-workspaces, and resilient lifecycle. Explicitly **out of scope**: per-action approval prompts.
+Owner decisions that shape this plan:
+- **No LaunchAgent.** Only act while the Mac is online and Hermey is running; "not connected" is a
+  normal 503, not a failure to recover.
+- **No per-bot permission system.** A small set of bots will be used; no grants UI.
+- **No Apple Developer certificate.** Ad-hoc signing stays; TCC grants may need re-granting after an
+  app update. Permission status cards make that obvious rather than silently failing.
+- **One shared workspace** for all bots, not per-bot directories. Path confinement applies to file
+  tools; shell commands remain full-access as today.
 
-## Phase 0 — Done (baseline)
-- [x] Native shell on the Mac, no SSH
-- [x] Bot CLI: `python3 Tools/local_computer.py -- <argv>`
-- [x] 20 s heartbeat, 1→30 s reconnect, remote revoke
+Goal: match Rakazo's desktop-computer capability set: screen observe, GUI act, app launch, file tools,
+browser tools, secret-safe output, takeover, activity feed, serialization, resilient reconnect.
 
-## Phase 1 — Permissions and onboarding (prerequisite)
-- [ ] Stable code-signing identity / entitlements so macOS TCC grants survive app updates
-- [ ] Settings → Computer: live status cards for Screen Recording, Accessibility, Input Monitoring, Automation; buttons to open the right System Settings pane
-- [ ] Graceful degradation: every tool returns an actionable permission error instead of crashing
-- [ ] Acceptance: after granting all four permissions once, they remain granted across a 0.1.x update
+## Phase 0 — Done
+- [x] Native shell, outbound socket, heartbeat/backoff, revoke, audit, bot CLI
 
-## Phase 2 — Screen observation
-- [ ] `computer.observe` in the Mac app via ScreenCaptureKit: image + frame id + size + active window title/bundle
-- [ ] Transport: downsample/encode (JPEG), rate limit, drop duplicate frames
-- [ ] Bridge + CLI endpoint `computer observe`; result includes image reference for the bot
-- [ ] Acceptance: screenshot returns in < 1 s at 1440×900; permission failure explains what to enable
+## Phase 1 — Permission onboarding (no stable signing)
+- [ ] Settings → Computer shows live status for Screen Recording, Accessibility, Input Monitoring and Automation, each with a button opening the right System Settings pane
+- [ ] Detect with `AXIsProcessTrusted`, ScreenCaptureKit status and a harmless `osascript` probe; Automation failures name the app that needs consent
+- [ ] Every tool returns an actionable "enable X" error; no crashes
+- [ ] Accepted trade-off: ad-hoc signing can invalidate TCC grants on update; re-prompt cleanly
+- [ ] Acceptance: after granting, observe/act work; after a simulated update the UI says which grant is missing
 
-## Phase 3 — GUI input
-- [ ] `computer.act` via CGEvent: `click`, `move`, `down`, `up`, `type`, `key`, `scroll`, `wait`, `focus`
-- [ ] Batches up to 24 ordered actions; coordinate bounds check; stop on first failure; returns a fresh observation
-- [ ] Safety: pause input when the physical user moves the mouse, refuse when display is locked/screensaver, per-action audit
-- [ ] Bridge + CLI endpoint `computer act`
-- [ ] Acceptance: bot can focus TextEdit, type a sentence, click a menu and verify with a screenshot; no runaway input
+## Phase 2 — `computer.observe`
+- [ ] ScreenCaptureKit full-display capture + active window title/bundle from CGWindowList
+- [ ] JPEG q≈0.7, max 1600 px, ≤1 fps by default, duplicate-frame suppression, 4 MB cap
+- [ ] `computer observe` CLI subcommand; result carries image plus frame metadata
+- [ ] Acceptance: screenshot in < 1 s; locked display returns a clear refusal
+
+## Phase 3 — `computer.act`
+- [ ] CGEvent actions: `click`, `move`, `down`, `up`, `type`, `key`, `scroll`, `wait`, `focus`; batches up to 24; stop on first failure; return a fresh observation
+- [ ] Mark our own events with `eventSourceUserData` so a listen-only tap can distinguish physical input
+- [ ] Coordinate actions require an observation in the last 30 s; refuse when display is locked
+- [ ] Physical mouse/keyboard activity pauses the batch immediately (takeover primitive)
+- [ ] `computer act` CLI subcommand; per-action audit
+- [ ] Acceptance: focus TextEdit, type, click a menu, verify by screenshot; no runaway input
 
 ## Phase 4 — App and window control
-- [ ] `launch_app` (bundle id or name), `open_path` (file/URL), `focus` via NSWorkspace
-- [ ] Return frontmost app/window metadata after the action
-- [ ] Acceptance: launching Calculator and focusing it works without a shell `open`
+- [ ] `launch_app` / `open_path` / `focus` via NSWorkspace; return frontmost app/window metadata
+- [ ] `computer launch` CLI subcommand
+- [ ] Acceptance: launch and focus an app by name/bundle id without a shell `open`
 
-## Phase 5 — File tools and per-bot workspaces
-- [ ] Per-bot workspace directories under `~/Library/Application Support/Hermey/Computer/<bot>/`
-- [ ] `read_file`, `write_file`, `list_files`, `attach_file`; path confinement to workspace + explicitly allowed roots
-- [ ] Binary-safe base64, atomic writes, size caps; upload/download through the hermes file store
-- [ ] Acceptance: bot writes, edits, lists and transfers a file; `../` escape is refused and audited
+## Phase 5 — File tools, shared workspace
+- [ ] One workspace at `~/Library/Application Support/Hermey/Computer/Workspace/`
+- [ ] `read_file`, `write_file`, `list_files`, `attach_file`; confine file tools to that workspace (plus roots explicitly added in Settings)
+- [ ] Binary-safe base64, atomic writes, size caps; upload/download through the existing hermes file store
+- [ ] `computer files ...` CLI subcommand
+- [ ] Acceptance: write/edit/list/transfer a file; `../` escape refused and audited; two bots see the same workspace
 
 ## Phase 6 — Browser tools
-- [ ] `browser_navigate`, `browser_snapshot`, `browser_act` (click/fill/type/upload) on the Mac's browser or a WebKit surface
-- [ ] Downloads land in the bot workspace and are listed with paths; fallback to `computer_act` for unresolved pages
-- [ ] Acceptance: navigate, snapshot, fill a field, upload a file, download a file, all verified
+- [ ] Embedded WKWebView surface with `browser_navigate`, `browser_snapshot`, `browser_act` (click/fill/type/upload)
+- [ ] Downloads saved into the shared workspace and listed with paths; unresolved pages fall back to `computer_act`
+- [ ] `computer browser ...` CLI subcommand
+- [ ] Acceptance: navigate, snapshot, fill, upload, download — verified by snapshot and saved file
 
 ## Phase 7 — Secret-safe output
-- [ ] Reuse the bot's existing Hermes secret store for fills; never echo secrets into command results or logs
-- [ ] Redact known secret values from stdout/stderr before returning to the bot
-- [ ] Acceptance: a command that prints a known secret returns `[redacted]`
+- [ ] Reuse the bot's existing Hermes secret store; no new vault UI
+- [ ] Redact known secret values from command stdout/stderr before returning them; redact from logs
+- [ ] Accepted limit: screenshots are not content-redacted
+- [ ] Acceptance: a command printing a known secret returns `[redacted]`
 
-## Phase 8 — Takeover and user intervention
-- [ ] Human takeover: pause all bot GUI input on physical mouse/keyboard activity; menu-bar indicator; explicit resume
-- [ ] `ask_user` sends a question into the bot conversation and waits for the owner's reply (no modal approvals)
-- [ ] Acceptance: takeover pauses input in < 100 ms; bot resumes only after explicit release
+## Phase 8 — Takeover and ask_user
+- [ ] Menu-bar "Bot control active" indicator; physical input pauses bot GUI actions, explicit resume required
+- [ ] `ask_user` posts a question into the bot's conversation via the existing bot-message route and waits for the owner's reply
+- [ ] No modal approvals or per-action gate
+- [ ] Acceptance: takeover pauses in < 100 ms; bot resumes only on explicit release
 
-## Phase 9 — Activity feed and progress
-- [ ] `computer.command` events for shell and GUI actions, shown in Mac Settings → Computer → Activity with bot id, command, outcome
-- [ ] Stream progress/live output for long builds instead of only a final result
-- [ ] Acceptance: a 2-minute xcodebuild shows live log lines and a final exit code in the feed
+## Phase 9 — Activity feed and live progress
+- [ ] `computer.command` events for shell and GUI actions in Settings → Computer → Activity (bot label, action, outcome)
+- [ ] Stream NDJSON progress for long commands so Xcode builds show live log lines
+- [ ] Acceptance: a 2-minute xcodebuild shows live output and final exit code
 
-## Phase 10 — Concurrency and safety
-- [ ] Global GUI driver lock + command queue; one bot drives the screen at a time
-- [ ] Per-bot workspaces isolate files; visible "who is driving" indicator
-- [ ] Cancellation: kill running process / stop action batch on request or disconnect
-- [ ] Acceptance: two bots submitting GUI batches at once are serialized, not interleaved
+## Phase 10 — Concurrency and cancellation
+- [ ] Global GUI driver lock + FIFO queue; one bot drives the screen at a time; shell commands may queue behind GUI actions
+- [ ] Cancel kills the running process or stops an action batch; disconnect releases the lock
+- [ ] Audit records which bot label drove each action
+- [ ] Acceptance: two simultaneous batches are serialized, not interleaved; cancel leaves no orphan process
 
-## Phase 11 — Lifecycle
-- [ ] LaunchAgent so Hermey starts at login; sleep/wake handled by existing heartbeat/backoff
-- [ ] Verify TCC grants and pairing after macOS/app updates; re-prompt only when needed
-- [ ] Acceptance: reboot the Mac, app returns and computer-use reconnects without SSH
+## Phase 11 — Connectivity discipline (no LaunchAgent)
+- [ ] CLI/bridge return 503 "computer not connected" when the Mac is offline or Hermey is closed
+- [ ] Existing 20 s heartbeat / 1→30 s reconnect handles sleep, wake and network changes
+- [ ] Acceptance: closing Hermey immediately disables computer use; reopening reconnects without restart
 
-## Phase 12 — Bot-facing surface and documentation
-- [ ] Extend `Tools/local_computer.py` with `observe`, `act`, `files`, `browser` subcommands
-- [ ] Update the shared Hermey skill with every new command and its permission requirements
-- [ ] Release notes and regression tests for each phase
+## Phase 12 — Bot surface, verification
+- [ ] Extend the shared Hermey skill with every new subcommand and permission requirement
+- [ ] SLOs: observe < 1 s, act < 500 ms, shell start < 200 ms, reconnect < 30 s
+- [ ] 1-hour soak, two-bot stress, permission-revoke and offline/reconnect tests
+- [ ] Acceptance: SLOs met, no leaked processes or stale locks
 
-## Phase 13 — Verification and performance
-- [ ] SLOs: observe < 1 s, GUI action < 500 ms, shell start < 200 ms, reconnect < 30 s
-- [ ] 1-hour soak test (heartbeat, memory, screenshot throughput), two-bot stress test, permission-revoke test
-- [ ] Acceptance: SLOs met with no leaked processes or stale locks
-
-Ordering: 1 → 2 → 3 → 4 → 9/10 → 12 → 13; phases 5, 6, 7, 8 can run in parallel after phase 3; phase 11 can run independently.
+Ordering: 1 → 2 → 3 → 4 → 9/10 → 12; phases 5, 6, 7, 8, 11 can proceed in parallel after phase 3.
