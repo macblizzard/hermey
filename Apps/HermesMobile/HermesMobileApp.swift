@@ -162,8 +162,8 @@ struct BotsTab: View {
         // A pairing invite QR scanned with the *system* camera lands here: open the pairing sheet with
         // the link loaded, and the sheet's own host-confirmation dialog takes over from there.
         if url.scheme == "hermes", url.host == "pair" {
-            pendingPairingLink = url.absoluteString
-            isPairingPresented = true
+            app.pendingPairingLink = url.absoluteString
+            app.isPairingPresented = true
             return
         }
         guard url.scheme == "hermey", url.host == "bot" else { return }
