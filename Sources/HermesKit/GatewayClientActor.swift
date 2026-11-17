@@ -477,6 +477,17 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.disabledBots()
     }
 
+    /// The fleet-wide approval mode lives on the bridge, like the other admin reads.
+    public func approvalSettings() async throws -> ApprovalSettings {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.approvalSettings()
+    }
+
+    public func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.setApprovalMode(mode)
+    }
+
     /// A paired device may invite another one (asked for 2026-11-17). No store means an older host,
     /// which must say so rather than show a sheet that cannot produce a code.
     public func makePairingInvite() async throws -> PairingInvite {

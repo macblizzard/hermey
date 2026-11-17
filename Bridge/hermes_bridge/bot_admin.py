@@ -312,6 +312,32 @@ def _known_job_ids(entry: dict) -> list[str]:
 #: host's own spelling for thinking switched off entirely.
 REASONING_EFFORTS = ("", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "none")
 
+#: The host's own approval modes (`hermes_cli.approval_mode.VALID_APPROVAL_MODES`). The app's labels
+#: are "always ask" / "auto" / "never ask", but the wire keeps the host's spelling so a client cannot
+#: invent a mode the terminal guard would ignore.
+APPROVAL_MODES = ("manual", "smart", "off")
+
+
+class ApprovalModeUpdate(BaseModel):
+    mode: str
+
+
+def _served_profiles() -> list[str]:
+    """Every bot profile on this host, not just the ones currently paired with a device."""
+    try:
+        return sorted(path.name for path in _profiles_root().iterdir()
+                      if path.is_dir() and PROFILE_RE.match(path.name) and path.name not in PROTECTED)
+    except OSError:
+        return []
+
+
+def _approval_mode_from(config: object) -> str:
+    if not isinstance(config, dict):
+        return "manual"
+    approvals = config.get("approvals")
+    raw = approvals.get("mode", "manual") if isinstance(approvals, dict) else "manual"
+    return raw if isinstance(raw, str) and raw in APPROVAL_MODES else "manual"
+
 
 class ModelSettingsUpdate(BaseModel):
     """What a bot's model sheet may change beyond the model itself.
@@ -335,6 +361,44 @@ def create_bot_admin_router(runtime) -> APIRouter:
         return require_device(runtime, authorization)
 
 
+
+    @router.get("/approvals")
+    def read_approvals(authorization: str | None = Header(default=None)) -> dict:
+        """The approval mode of every served bot, read from the configs the next turn will use."""
+        authenticate(authorization)
+        states: dict[str, str] = {}
+        for profile in _served_profiles():
+            status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
+            states[profile] = _approval_mode_from(config) if status == 200 else "manual"
+        approx = set(states.values())
+        return {"mode": approx.pop() if len(approx) == 1 else "mixed",
+                "profiles": states,
+                "available": list(APPROVAL_MODES)}
+
+    @router.put("/approvals")
+    def write_approvals(body: ApprovalModeUpdate,
+                        authorization: str | None = Header(default=None)) -> dict:
+        """Set one approval mode for every bot. A failed profile is reported, never papered over."""
+        caller = authenticate(authorization)
+        if body.mode not in APPROVAL_MODES:
+            raise HTTPException(status_code=422, detail=f"unknown approval mode '{body.mode}'")
+        updated: list[str] = []
+        failed: dict[str, str] = {}
+        for profile in _served_profiles():
+            status, _ = _dashboard("PUT", f"/api/config?profile={urllib.parse.quote(profile)}",
+                                   {"config": {"approvals": {"mode": body.mode}}, "profile": profile})
+            if status != 200:
+                failed[profile] = "the dashboard refused the config write"
+                continue
+            status, config = _dashboard("GET", f"/api/config?profile={urllib.parse.quote(profile)}")
+            if status != 200 or _approval_mode_from(config) != body.mode:
+                failed[profile] = "the config did not retain the mode"
+                continue
+            updated.append(profile)
+        runtime.audit.emit("bots.approval_mode", device_id=caller,
+                           method="bots.approval_mode", path="/v1/bots/approvals",
+                           nbytes=0, outcome="written" if updated and not failed else "partial")
+        return {"mode": body.mode, "updated": updated, "failed": failed}
 
     @router.get("/disabled")
     def list_disabled(authorization: str | None = Header(default=None)) -> dict:

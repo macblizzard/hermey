@@ -3004,6 +3004,16 @@ public final class AppModel: ObservableObject {
 
     /// This bot's routines, read from the host's scheduler rather than from a copy kept here: a
     /// list the app cached could say "every day at 3am" about a job that was paused last Tuesday.
+    /// The approval mode in force on every bot profile. A fleet setting, not a per-bot one: the host
+    /// stores it in each profile's config, and the bridge keeps the two ends in step.
+    public func approvalSettings() async throws -> ApprovalSettings {
+        try await client.approvalSettings()
+    }
+
+    public func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings {
+        try await client.setApprovalMode(mode)
+    }
+
     /// A pairing invite this device mints for another one. Single-use and short-lived; the sheet shows
     /// it as a QR and a URL.
     public func makePairingInvite() async throws -> PairingInvite {

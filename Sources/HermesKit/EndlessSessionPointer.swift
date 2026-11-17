@@ -126,6 +126,10 @@ public protocol BotSessionPointerStore: Sendable {
     /// model). Both live in the profile's config on the host, so they are read and written per bot.
     func modelSettings(_ profile: String) async throws -> BotModelSettings
 
+    /// `GET`/`PUT /v1/bots/approvals` — the approval mode applied to every bot profile.
+    func approvalSettings() async throws -> ApprovalSettings
+    func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings
+
     /// `POST /v1/pair/start` — mint a pairing invite for another device, authenticated as this paired
     /// device. Single-use, short-lived, the host's own code.
     func makePairingInvite() async throws -> PairingInvite
@@ -236,6 +240,10 @@ public extension BotSessionPointerStore {
     func routines(_ profile: String) async throws -> [BotRoutine] { throw BotAdminUnavailable() }
     func modelSettings(_ profile: String) async throws -> BotModelSettings { throw BotAdminUnavailable() }
     func makePairingInvite() async throws -> PairingInvite { throw BotAdminUnavailable() }
+    func approvalSettings() async throws -> ApprovalSettings { throw BotAdminUnavailable() }
+    func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings {
+        throw BotAdminUnavailable()
+    }
     func setModelSettings(_ profile: String, effort: String?, visionProvider: String?,
                           visionModel: String?) async throws -> BotModelSettings {
         throw BotAdminUnavailable()
@@ -517,6 +525,18 @@ enum Failure: Error, Equatable, LocalizedError {
               let names = object["disabled"] as? [String]
         else { return [] }
         return Set(names)
+    }
+
+    public func approvalSettings() async throws -> ApprovalSettings {
+        let data = try await bridgeGET("v1/bots/approvals", timeout: 20)
+        guard let settings = ApprovalSettings.decode(data) else { throw BotAdminUnavailable() }
+        return settings
+    }
+
+    public func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings {
+        let data = try await bridgePUT("v1/bots/approvals", body: ["mode": mode.rawValue], timeout: 60)
+        guard let settings = ApprovalSettings.decode(data) else { throw BotAdminUnavailable() }
+        return settings
     }
 
     /// `POST /v1/pair/start`, authenticated as this paired device. The mint is the host's own; the

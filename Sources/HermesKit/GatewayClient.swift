@@ -131,6 +131,12 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Which bots are off, so the list marks them without one request per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// The approval mode across every bot profile, read from the host's own configs.
+    func approvalSettings() async throws -> ApprovalSettings
+
+    /// Set one approval mode for every bot profile.
+    func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings
+
     /// Mint a pairing invite for another device (`POST /v1/pair/start` on the bridge, authenticated
     /// as this paired device). Defaulted to a refusal: a host without the relaxed route must say so,
     /// not pretend to show a code.
@@ -616,6 +622,14 @@ public extension GatewayClientProtocol {
     func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState {
         _ = profile
         return .unavailable
+    }
+
+    func approvalSettings() async throws -> ApprovalSettings {
+        throw BotAdminUnavailable()
+    }
+
+    func setApprovalMode(_ mode: ApprovalMode) async throws -> ApprovalSettings {
+        throw BotAdminUnavailable()
     }
 
     func makePairingInvite() async throws -> PairingInvite {

@@ -179,6 +179,7 @@ struct SettingsScreen: View {
     var body: some View {
         List {
             connectionSection
+            approvalsSection
             appearanceSection
             storageSection
             rosterSection
@@ -196,6 +197,7 @@ struct SettingsScreen: View {
         .task { await app.loadDevices() }
         .task { await model.loadBotDefaults() }
         .task { await model.loadCacheState() }
+        .task { await loadApprovals() }
         .sheet(isPresented: $showLog) {
             ClientLogView(title: "Log", header: logHeader)
             .hermesSheetChrome()
@@ -213,6 +215,81 @@ struct SettingsScreen: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The refresh token is deleted from this phone. The device stays in the host's list until you revoke it there.")
+        }
+    }
+
+    // MARK: Approvals
+
+    @State private var approvalSettings: ApprovalSettings?
+    @State private var pendingApprovalMode: ApprovalMode?
+
+    private var approvalsSection: some View {
+        Section {
+            ForEach(ApprovalMode.allCases, id: \.self) { mode in
+                Button {
+                    if mode == .off {
+                        pendingApprovalMode = mode
+                    } else {
+                        Task { await applyApprovalMode(mode) }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: approvalSettings?.mode == mode ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(approvalSettings?.mode == mode ? Tokens.accent : Tokens.textDim)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(mode.title)
+                                .font(TypeScale.font(TypeScale.md))
+                                .foregroundStyle(Tokens.textPrimary)
+                            Text(mode.detail)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        } header: {
+            Text("Approvals · all bots")
+        } footer: {
+            Text(approvalFooter)
+                .font(TypeScale.font(TypeScale.label))
+        }
+        .confirmationDialog("Never ask for approval?", isPresented: Binding(
+            get: { pendingApprovalMode != nil },
+            set: { if !$0 { pendingApprovalMode = nil } }
+        ), titleVisibility: .visible) {
+            Button("Never ask", role: .destructive) {
+                if let mode = pendingApprovalMode { Task { await applyApprovalMode(mode) } }
+                pendingApprovalMode = nil
+            }
+            Button("Cancel", role: .cancel) { pendingApprovalMode = nil }
+        } message: {
+            Text("Every guarded action on every bot will run without asking. Auto is usually the safer default.")
+        }
+    }
+
+    private var approvalFooter: String {
+        guard let approvalSettings else { return "Reading the host's approval setting…" }
+        if !approvalSettings.failed.isEmpty {
+            return "\(approvalSettings.failed.count) bot(s) could not be updated."
+        }
+        if approvalSettings.mode == nil {
+            return "Bots have different modes on the host; choose one to make them match."
+        }
+        return "Applies to \(approvalSettings.profiles.count) bots on this host."
+    }
+
+    private func loadApprovals() async {
+        do { approvalSettings = try await model.approvalSettings() }
+        catch { approvalSettings = nil }
+    }
+
+    private func applyApprovalMode(_ mode: ApprovalMode) async {
+        do {
+            approvalSettings = try await model.setApprovalMode(mode)
+        } catch {
+            approvalSettings = nil
         }
     }
 

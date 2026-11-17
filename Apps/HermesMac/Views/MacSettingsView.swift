@@ -31,6 +31,11 @@ struct MacSettingsView: View {
             BotsSettingsTab(store: store, botForSettings: $botForSettings)
                 .tabItem { Label("Bots", systemImage: "person.2") }
 
+            // One switch for every bot's approval policy. Next to Bots because it is about what the
+            // bots may *do*, not about who they are.
+            ApprovalSettingsTab(store: store)
+                .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
+
             ConnectionSettingsTab(store: store,
                                   openDevices: { openWindow(id: "paired-devices") })
                 .tabItem { Label("Connection", systemImage: "bolt.horizontal") }
@@ -53,10 +58,10 @@ struct MacSettingsView: View {
             AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Seven tabs now (Chat, Bots, Connection, Appearance, Notifications, Caching, About): at the
-        // previous 620 the bar already pushed the last tab behind a chevron, so the window grew with
-        // the tab rather than hiding one.
-        .frame(width: 700, height: 500)
+        // Eight tabs now (Chat, Bots, Approvals, Connection, Appearance, Notifications, Caching,
+        // About): the bar pushes the last tab behind a chevron when the window is too narrow, so the
+        // window grew with the tab rather than hiding one.
+        .frame(width: 760, height: 500)
         .background(Tokens.canvas)
         .preferredColorScheme(.dark)
         // Escape and a click outside both close this window, the way every other surface in the

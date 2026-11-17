@@ -99,3 +99,32 @@ class SaveToFilesNeedsAFile(unittest.TestCase):
         self.assertIn("appendingPathComponent(link.filename)", card)
         self.assertIn("components.host = \"hermes.corvus-vibes.ts.net\"", card)
 
+
+class FleetApprovalSettings(unittest.TestCase):
+    def test_host_modes_keep_their_spelling(self) -> None:
+        kit = (ROOT / "Sources/HermesKit/ApprovalSettings.swift").read_text(encoding="utf-8")
+        for mode in ("manual", "smart", "off"):
+            self.assertIn(f"case {mode}", kit)
+        self.assertIn('case .manual: return "Ask always"', kit)
+        self.assertIn('case .smart: return "Auto"', kit)
+        self.assertIn('case .off: return "Never ask"', kit)
+
+    def test_every_layer_forwards_the_setting(self) -> None:
+        gateway = (ROOT / "Sources/HermesKit/GatewayClient.swift").read_text(encoding="utf-8")
+        pointer = (ROOT / "Sources/HermesKit/EndlessSessionPointer.swift").read_text(encoding="utf-8")
+        actor = (ROOT / "Sources/HermesKit/GatewayClientActor.swift").read_text(encoding="utf-8")
+        model = (ROOT / "Sources/HermesAppKit/AppModel.swift").read_text(encoding="utf-8")
+        for layer in (gateway, pointer, actor, model):
+            self.assertIn("func approvalSettings()", layer)
+            self.assertIn("func setApprovalMode(", layer)
+        self.assertIn('bridgePUT("v1/bots/approvals", body: ["mode": mode.rawValue]', pointer)
+
+    def test_both_settings_surfaces_exist(self) -> None:
+        ios = (ROOT / "Apps/HermesMobile/Views/SettingsScreen.swift").read_text(encoding="utf-8")
+        mac = (ROOT / "Apps/HermesMac/Views/MacSettingsView.swift").read_text(encoding="utf-8")
+        tab = (ROOT / "Apps/HermesMac/Views/ApprovalSettingsTab.swift").read_text(encoding="utf-8")
+        self.assertIn("approvalsSection", ios)
+        self.assertIn("ApprovalSettingsTab(store: store)", mac)
+        self.assertIn("ApprovalMode.allCases", tab)
+        self.assertIn("role: .destructive", tab)
+
