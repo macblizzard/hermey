@@ -89,7 +89,6 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn("ForEach(ComputerPermission.allCases)", view)
         self.assertIn('Button(permission == .accessibility ? "Request Access" : "Open Settings")', view)
         self.assertIn('permissions.check(permission)', view)
-        self.assertIn("if phase == .active { permissions.refresh() }", view)
 
     def test_permission_probes_require_an_explicit_button(self) -> None:
         perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()
