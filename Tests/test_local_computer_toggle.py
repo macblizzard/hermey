@@ -69,9 +69,9 @@ class LocalComputerPrototype(unittest.TestCase):
             self.assertIn(pane, perms)
         self.assertIn("x-apple.systempreferences:com.apple.preference.security?", perms)
         self.assertIn("AXIsProcessTrustedWithOptions", perms)
-        self.assertIn("kAXTrustedCheckOptionPrompt: true", perms)
+        self.assertIn("kAXTrustedCheckOptionPrompt.takeUnretainedValue()", perms)
         self.assertIn("SCShareableContent.getWithCompletionHandler", perms)
-        self.assertIn("CGEventTapCreate", perms)
+        self.assertIn("CGEvent.tapCreate", perms)
 
     def test_permission_errors_name_the_missing_grant(self) -> None:
         perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()

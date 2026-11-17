@@ -87,8 +87,10 @@ final class ComputerPermissions: ObservableObject {
     /// the Settings pane; the other three must be switched on by the user in System Settings.
     func request(_ permission: ComputerPermission) {
         if permission == .accessibility {
-            let prompted = AXIsProcessTrustedWithOptions(
-                [kAXTrustedCheckOptionPrompt: true] as CFDictionary)
+            // In modern Swift the AX prompt key arrives as Unmanaged<CFString>; unwrap it before
+            // building the CFDictionary or the compiler rejects it as a non-Hashable dictionary key.
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+            let prompted = AXIsProcessTrustedWithOptions(options)
             states[.accessibility] = ComputerPermissionState(granted: prompted, note: nil)
             if prompted { return }
         }
@@ -132,9 +134,13 @@ final class ComputerPermissions: ObservableObject {
     /// refuses the tap, the permission is missing.
     private static func inputMonitoringAllowed() -> Bool {
         let mask: CGEventMask = 1 << CGEventType.keyDown.rawValue
-        guard let tap = CGEventTapCreate(.cghidEventTap, .headInsertEventTap, .listenOnly, mask,
-                                         { _, _, _, _ in nil }, nil) else { return false }
-        CGEventTapEnable(tap, false)
+        guard let tap = CGEvent.tapCreate(tap: .cghidEventTap,
+                                          place: .headInsertEventTap,
+                                          options: .listenOnly,
+                                          eventsOfInterest: mask,
+                                          callback: { _, _, _, _ in nil },
+                                          userInfo: nil) else { return false }
+        CGEvent.tapEnable(tap: tap, enable: false)
         return true
     }
 }
