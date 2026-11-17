@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.547",
-          "buildVersion": "547",
-          "date": "2026-11-17T13:44:20Z",
-          "localizedDescription": "Fixed the slash-command popup layout: rows no longer stack on one baseline; the scroll view owns the height.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.547/Hermey-0.1.547-b547.ipa",
-          "size": 3301775,
+          "version": "0.1.548",
+          "buildVersion": "548",
+          "date": "2026-11-17T15:12:44Z",
+          "localizedDescription": "Download links from the bots' shared file store now render as file cards with filenames, copy and share on both apps.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.548/Hermey-0.1.548-b548.ipa",
+          "size": 3314710,
           "minOSVersion": "17.0",
-          "sha256": "7af885ec7816329e0d777e2bb9d6c2e1e5380e3feec6b7965b8bb1abd380e7ba"
+          "sha256": "bc0be16cdfb7c038daa8fa548c08ed8f0394c26ef2795062f750667b89643c6a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.547 (547)",
-      "identifier": "hermes-0.1.547-547",
-      "caption": "Fixed the slash-command popup layout: rows no longer stack on one baseline; the scroll view owns the height.",
-      "date": "2026-11-17T13:44:20Z",
+      "title": "Hermes 0.1.548 (548)",
+      "identifier": "hermes-0.1.548-548",
+      "caption": "Download links from the bots' shared file store now render as file cards with filenames, copy and share on both apps.",
+      "date": "2026-11-17T15:12:44Z",
       "tintColor": "#9A9AA0"
     }
   ],
