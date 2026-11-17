@@ -180,3 +180,44 @@ def test_observe_returns_the_mac_screenshot(bridge):
             assert result.json()["activeWindow"]["title"] == "Finder"
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+
+def test_act_dispatches_an_action_batch(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+
+            async def fake_actor() -> None:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                assert frame["type"] == "act"
+                assert frame["actions"] == [{"kind": "move", "x": 10, "y": 20}]
+                assert frame["bot"] == "cody"
+                observation = {"frameID": "post", "width": 100, "height": 100, "format": "jpeg",
+                               "imageBase64": base64.b64encode(b"after").decode(),
+                               "activeWindow": None, "capturedAt": 2.0}
+                await ws.send(json.dumps({"id": frame["id"], "type": "result", "exit_code": 0,
+                                          "observation": observation}))
+
+            worker = asyncio.create_task(fake_actor())
+            result = await asyncio.to_thread(
+                bridge.client().post,
+                f"/v1/local-computers/{device_id}/act",
+                json={"actions": [{"kind": "move", "x": 10, "y": 20}], "bot": "cody"},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            await asyncio.wait_for(worker, timeout=5)
+            assert result.status_code == 200, result.text
+            assert base64.b64decode(result.json()["imageBase64"]) == b"after"
+            too_many = bridge.client().post(
+                f"/v1/local-computers/{device_id}/act",
+                json={"actions": [{"kind": "wait"}] * 25},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            assert too_many.status_code == 422
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))

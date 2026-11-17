@@ -22,6 +22,7 @@ final class LocalComputerService: ObservableObject {
     @Published private(set) var status: Status = .off
     @Published private(set) var lastError: String?
     @Published private(set) var commandsRun = 0
+    @Published private(set) var computerActions = 0
     @Published private(set) var lastCommand: String?
 
     private let defaults = UserDefaults.standard
@@ -176,6 +177,10 @@ final class LocalComputerService: ObservableObject {
                 Task { @MainActor [weak self] in
                     await self?.handleObserve(frame, on: task)
                 }
+            } else if kind == "act" {
+                Task { @MainActor [weak self] in
+                    await self?.handleAct(frame, on: task)
+                }
             }
         }
     }
@@ -226,6 +231,29 @@ final class LocalComputerService: ObservableObject {
         sendReply(reply, on: task)
     }
 
+    private func handleAct(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
+        guard let id = frame["id"] as? String,
+              let actions = frame["actions"] as? [[String: Any]] else { return }
+        let bot = frame["bot"] as? String ?? "unknown"
+        do {
+            let observation = try await ComputerActions.shared.perform(actions, bot: bot)
+            computerActions += actions.count
+            lastCommand = "act(\(actions.count)) by \(bot)"
+            ClientLog.shared.record("computer act by \(bot): \(actions.count) action(s)",
+                                    category: "local-computer")
+            guard let data = try? JSONEncoder().encode(observation),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                sendReply(["id": id, "type": "result", "error": "observation encoding failed"], on: task)
+                return
+            }
+            sendReply(["id": id, "type": "result", "exit_code": 0,
+                       "observation": object, "stderr": "", "truncated": false], on: task)
+        } catch {
+            sendReply(["id": id, "type": "result", "exit_code": 1,
+                       "error": error.localizedDescription], on: task)
+        }
+    }
+
     private func handleObserve(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
         guard let id = frame["id"] as? String else { return }
         let result = await Task.detached(priority: .userInitiated) {
@@ -233,6 +261,7 @@ final class LocalComputerService: ObservableObject {
         }.value
         switch result {
         case .success(let observation):
+            ComputerActions.shared.noteObservation()
             guard let data = try? JSONEncoder().encode(observation),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 sendReply(["id": id, "type": "result", "error": "observation encoding failed"], on: task)

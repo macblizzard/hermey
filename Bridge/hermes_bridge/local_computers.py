@@ -190,6 +190,35 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
                            path=f"/v1/local-computers/{device_id}/execute", outcome="finished")
         return result
 
+    @router.post("/{device_id}/act")
+    async def act(device_id: str, body: dict[str, Any], request: Request,
+                  authorization: str | None = Header(default=None)) -> dict:
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        actions = body.get("actions")
+        if not isinstance(actions, list) or not (1 <= len(actions) <= 24) or not all(
+                isinstance(action, dict) for action in actions):
+            raise HTTPException(status_code=422, detail="actions must be a list of 1..24 objects")
+        bot = str(body.get("bot", "unknown"))[:40]
+        try:
+            result = await computers.dispatch(
+                device_id, {"type": "act", "actions": actions, "bot": bot}, timeout_ms=60_000)
+        except LookupError:
+            raise HTTPException(status_code=503, detail="that computer is not connected") from None
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
+        if result.get("error") or result.get("exit_code", 0) != 0:
+            raise HTTPException(status_code=409,
+                                detail=str(result.get("error") or "the action failed"))
+        observation = result.get("observation")
+        if not isinstance(observation, dict) or not (
+                observation.get("image_base64") or observation.get("imageBase64")):
+            raise HTTPException(status_code=502, detail="the Mac returned no screenshot")
+        runtime.audit.emit("local_computer.act", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/act", outcome="finished")
+        return observation
+
     @router.post("/{device_id}/observe")
     async def observe(device_id: str, request: Request,
                       authorization: str | None = Header(default=None)) -> dict:

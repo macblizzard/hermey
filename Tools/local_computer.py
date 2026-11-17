@@ -51,9 +51,7 @@ def pick_computer(name: str | None = None) -> dict:
     return next((c for c in computers if "mac" in c["name"].lower()), computers[0])
 
 
-def do_observe(computer_name: str | None, save: str | None) -> int:
-    device = pick_computer(computer_name)
-    observation = request(f"/v1/local-computers/{device['device_id']}/observe", {})
+def save_observation(observation: dict, save: str | None) -> dict:
     # Swift's JSONEncoder emits camelCase; accept both spellings so older and newer Macs work.
     image_b64 = observation.get("image_base64") or observation.get("imageBase64")
     if not image_b64:
@@ -74,11 +72,41 @@ def do_observe(computer_name: str | None, save: str | None) -> int:
         "captured_at": observation.get("capturedAt") or observation.get("captured_at"),
     }
     print(json.dumps(metadata, ensure_ascii=False))
+    return metadata
+
+
+def do_observe(computer_name: str | None, save: str | None) -> int:
+    device = pick_computer(computer_name)
+    save_observation(request(f"/v1/local-computers/{device['device_id']}/observe", {}), save)
+    return 0
+
+
+def do_act(computer_name: str | None, actions_json: str, bot: str, save: str | None) -> int:
+    device = pick_computer(computer_name)
+    actions = json.loads(actions_json)
+    if not isinstance(actions, list) or not (1 <= len(actions) <= 24):
+        raise RuntimeError("actions must be a JSON list of 1..24 objects")
+    result = request(f"/v1/local-computers/{device['device_id']}/act",
+                     {"actions": actions, "bot": bot})
+    save_observation(result, save)
     return 0
 
 
 def main() -> int:
     raw = sys.argv[1:]
+    if raw and raw[0] == "act":
+        act = argparse.ArgumentParser(description="Run a batch of desktop actions on the Mac")
+        act.add_argument("actions", help='JSON array of 1..24 action objects')
+        act.add_argument("--bot", default="cody")
+        act.add_argument("--computer")
+        act.add_argument("--save")
+        args = act.parse_args(raw[1:])
+        try:
+            return do_act(args.computer, args.actions, args.bot, args.save)
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+            print(f"Act failed: {exc}", file=sys.stderr)
+            return 4
+
     if raw and raw[0] == "observe":
         obs = argparse.ArgumentParser(description="Capture the Mac's screen")
         obs.add_argument("--computer", help="device id or a substring of the Mac's name")
