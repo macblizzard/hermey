@@ -95,3 +95,32 @@ def test_local_computer_rejects_proxied_callers(bridge):
         headers={"Authorization": "Bearer " + bridge.mint_ticket(bridge_pair["device_id"])},
     )
     assert bad.status_code == 422
+
+
+
+def test_disconnect_during_a_call_is_a_503_not_a_500(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+            await ws.close()
+
+            for _ in range(50):
+                listed = bridge.client().get(
+                    "/v1/local-computers",
+                    headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+                if not listed.json()["computers"]:
+                    break
+                time.sleep(0.02)
+            response = bridge.client().post(
+                f"/v1/local-computers/{device_id}/execute",
+                json={"argv": ["/bin/echo", "no"]},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            assert response.status_code == 503, response.text
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))

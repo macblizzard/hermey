@@ -111,7 +111,9 @@ class LocalComputers:
             self.computers.pop(device_id, None)
             for future in computer.pending.values():
                 if not future.done():
-                    future.set_exception(RuntimeError("local computer disconnected"))
+                    # A dropped socket is an ordinary "computer not connected", not a server bug:
+                    # dispatch catches LookupError and the route answers 503 instead of a 500 traceback.
+                    future.set_exception(LookupError("local computer disconnected"))
 
     def on_message(self, device_id: str, message: dict[str, Any]) -> None:
         computer = self.computers.get(device_id)
