@@ -18,7 +18,7 @@ public struct QRCodeView: View {
     }
 
     public var body: some View {
-        Image(qrImage(content: content))
+        Image(QRCodeView.qrImage(content: content))
             .interpolation(.none)
             .resizable()
             .scaledToFit()
