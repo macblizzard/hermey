@@ -124,3 +124,21 @@ def test_disconnect_during_a_call_is_a_503_not_a_500(bridge):
             assert response.status_code == 503, response.text
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+
+def test_heartbeat_gets_a_pong(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+            await ws.send(json.dumps({"type": "ping"}))
+            reply = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+            assert reply == {"type": "pong"}
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=10))

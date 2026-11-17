@@ -227,6 +227,15 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
             message = await websocket.receive_json()
             if not isinstance(message, dict):
                 continue
+            if message.get("type") == "ping":
+                # URLSessionWebSocketTask has a request timeout: an idle socket can die after ~60 s
+                # even while a build is running. Answer the Mac's heartbeat so inbound traffic keeps
+                # the task alive. The send lock is shared with command dispatch.
+                current = computers.computers.get(device_id)
+                if current:
+                    async with current.send_lock:
+                        await websocket.send_json({"type": "pong"})
+                continue
             computers.on_message(device_id, message)
     except (WebSocketDisconnect, ValueError, TimeoutError, asyncio.TimeoutError):
         pass
