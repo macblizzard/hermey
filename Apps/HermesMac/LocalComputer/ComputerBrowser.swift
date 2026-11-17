@@ -107,28 +107,13 @@ final class ComputerBrowser: NSObject, WKNavigationDelegate, WKDownloadDelegate 
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation?, withError error: Error) {}
 
-    nonisolated func webView(_ webView: WKWebView,
-                             decidePolicyFor navigationAction: WKNavigationAction,
-                             preferences: WKWebpagePreferences,
-                             decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
-        decisionHandler(.allow, preferences)
-    }
-
-    nonisolated func webView(_ webView: WKWebView,
-                             decidePolicyFor navigationResponse: WKNavigationResponse,
-                             decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-        decisionHandler(.allow)
-    }
-
-    nonisolated func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation?) {}
-
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction,
-                 didBecomeDownload download: WKDownload) {
+                 didBecome download: WKDownload) {
         download.delegate = self
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse,
-                 didBecomeDownload download: WKDownload) {
+                 didBecome download: WKDownload) {
         download.delegate = self
     }
 
