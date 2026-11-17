@@ -208,7 +208,7 @@ final class ComputerActions {
         }
         if app == nil {
             let found = name.contains("/") ? URL(fileURLWithPath: name) : URL(fileURLWithPath: "/Applications/\(name).app")
-            if workspace.launchApplication(at: found, options: [], configuration: [:]) == nil {
+            if try workspace.launchApplication(at: found, options: [], configuration: [:]) == nil {
                 throw ActError.failed("could not launch \(name)")
             }
             app = workspace.runningApplications.first { $0.localizedName == name || $0.bundleIdentifier == name }
