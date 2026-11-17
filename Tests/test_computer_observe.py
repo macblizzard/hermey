@@ -19,7 +19,7 @@ class ComputerObserve(unittest.TestCase):
         cli = (ROOT / "Tools/local_computer.py").read_text()
         self.assertIn('if raw and raw[0] == "observe":', cli)
         self.assertIn('/observe", {})', cli)
-        self.assertIn('base64.b64decode(observation["image_base64"])', cli)
+        self.assertIn('observation.get("image_base64") or observation.get("imageBase64")', cli)
         self.assertIn('"active_window": observation.get("activeWindow")', cli)
         self.assertIn("hermey-observe-", cli)
 

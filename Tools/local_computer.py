@@ -54,19 +54,24 @@ def pick_computer(name: str | None = None) -> dict:
 def do_observe(computer_name: str | None, save: str | None) -> int:
     device = pick_computer(computer_name)
     observation = request(f"/v1/local-computers/{device['device_id']}/observe", {})
-    image = base64.b64decode(observation["image_base64"])
-    path = save or f"/tmp/hermey-observe-{observation['frameID']}.jpg"
+    # Swift's JSONEncoder emits camelCase; accept both spellings so older and newer Macs work.
+    image_b64 = observation.get("image_base64") or observation.get("imageBase64")
+    if not image_b64:
+        raise RuntimeError("the Mac returned no image")
+    frame_id = observation.get("frameID") or observation.get("frame_id") or "screen"
+    image = base64.b64decode(image_b64)
+    path = save or f"/tmp/hermey-observe-{frame_id}.jpg"
     with open(path, "wb") as handle:
         handle.write(image)
     metadata = {
         "path": path,
-        "frame_id": observation["frameID"],
+        "frame_id": frame_id,
         "width": observation["width"],
         "height": observation["height"],
-        "format": observation["format"],
+        "format": observation.get("format", "jpeg"),
         "bytes": len(image),
-        "active_window": observation.get("activeWindow"),
-        "captured_at": observation["capturedAt"],
+        "active_window": observation.get("activeWindow") or observation.get("active_window"),
+        "captured_at": observation.get("capturedAt") or observation.get("captured_at"),
     }
     print(json.dumps(metadata, ensure_ascii=False))
     return 0
