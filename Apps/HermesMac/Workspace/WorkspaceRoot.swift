@@ -223,6 +223,7 @@ struct WorkspaceRoot: View {
             case .model(let bot): return "model:\(bot.id)"
             case .notes(let bot): return "notes:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
+            case .logs: return "logs"
             }
         }
     }
