@@ -28,12 +28,12 @@ public struct QRCodeView: View {
     /// The finished picture. `Image` takes the platform's image type, and this is the one place the
     /// spelling differs — kept out of `body` so the switch is invisible to it.
     @MainActor
-    private var qrImage: PlatformImage {
+    private var qrImage: Image {
         let cg = Self.qrCGImage(content: content)
         #if os(iOS)
-        return UIImage(cgImage: cg)
+        return Image(uiImage: UIImage(cgImage: cg))
         #else
-        return NSImage(cgImage: cg, size: NSSize(width: side, height: side))
+        return Image(nsImage: NSImage(cgImage: cg, size: NSSize(width: side, height: side)))
         #endif
     }
 
@@ -58,8 +58,6 @@ public struct QRCodeView: View {
 
 #if os(iOS)
 import UIKit
-private typealias PlatformImage = UIImage
 #else
 import AppKit
-private typealias PlatformImage = NSImage
 #endif
