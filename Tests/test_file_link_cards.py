@@ -1,0 +1,55 @@
+"""Shared-store download links become cards in both apps' transcripts."""
+
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+CARD = (ROOT / "Sources/HermeyUI/HermesFileLinkCard.swift").read_text(encoding="utf-8")
+MAC = (ROOT / "Apps/HermesMac/Conversation/MarkdownTextView.swift").read_text(encoding="utf-8")
+IOS_MD = (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encoding="utf-8")
+IOS_ROW = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text(encoding="utf-8")
+
+
+class BothFileStoreHostsAreRecognised(unittest.TestCase):
+    def test_the_card_knows_the_tailnet_and_dns_free_origins(self) -> None:
+        self.assertIn("hermes.corvus-vibes.ts.net", CARD)
+        self.assertIn("100.86.19.1", CARD)
+        self.assertIn(":9446", CARD)
+        self.assertIn(":8099", CARD)
+
+    def test_it_does_not_turn_every_link_into_a_card(self) -> None:
+        self.assertIn('host == "hermes.corvus-vibes.ts.net" || host == "100.86.19.1"', CARD)
+        self.assertIn("parts.count >= 2", CARD)
+
+    def test_names_and_owner_come_from_the_path(self) -> None:
+        self.assertIn("removingPercentEncoding", CARD)
+        self.assertIn("Text(link.filename)", CARD)
+        self.assertIn("From \\(link.owner)", CARD)
+
+    def test_markdown_wrappers_are_stripped_too(self) -> None:
+        self.assertIn(r'\[[^\]\n]*\]\(', CARD)
+
+    def test_the_card_offers_open_copy_and_share(self) -> None:
+        for token in ("openURL(link.url)", "ShareLink(item: link.url)", "UIPasteboard", "NSPasteboard"):
+            with self.subTest(token=token):
+                self.assertIn(token, CARD)
+
+
+class BothAppsRenderIt(unittest.TestCase):
+    def test_mac_renders_cards_from_the_raw_message(self) -> None:
+        self.assertIn("HermesFileLinks.removingLinks(from: text)", MAC)
+        self.assertIn("ForEach(fileLinks)", MAC)
+        self.assertIn("HermesFileLinkCard(link: link)", MAC)
+        self.assertIn("synchronise(cleanText)", MAC)
+
+    def test_ios_renders_cards_and_takes_the_url_out_of_the_prose(self) -> None:
+        self.assertIn("rawText: String? = nil", IOS_MD)
+        self.assertIn("ForEach(fileLinks)", IOS_MD)
+        self.assertIn("HermesFileLinkCard(link: link)", IOS_MD)
+        self.assertIn("HermesFileLinks.removingLinks(from: label.body)", IOS_ROW)
+        self.assertIn("HermesFileLinks.removingLinks(from: entry.text)", IOS_ROW)
+
+    def test_room_messages_get_cards_too(self) -> None:
+        self.assertIn("IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: text))", IOS_MD)

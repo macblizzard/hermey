@@ -14,11 +14,20 @@ import HermeyUI
 /// A raw message body drawn as markdown: for screens that hold a string rather than a
 /// `TranscriptEntry` — a room's transcript, where the message came from the host's room log.
 func markdownMessage(_ text: String) -> AnyView {
-    AnyView(MobileMarkdownText(blocks: IncrementalMarkdown.parse(text)))
+    AnyView(MobileMarkdownText(blocks: IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: text)),
+                               rawText: text))
 }
 
 struct MobileMarkdownText: View {
     let blocks: [Block]
+    /// The unparsed message, when the caller has it: file cards are derived from it, and its file URLs
+    /// are removed from the blocks. Callers that only hold blocks (previews) pass nil and get none.
+    var rawText: String? = nil
+
+    private var fileLinks: [HermesFileLink] {
+        guard let rawText else { return [] }
+        return HermesFileLinks.find(in: rawText)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -32,6 +41,10 @@ struct MobileMarkdownText: View {
                 case .block(let block):
                     MobileMarkdownBlock(block: block)
                 }
+            }
+
+            ForEach(fileLinks) { link in
+                HermesFileLinkCard(link: link)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

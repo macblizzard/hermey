@@ -23,6 +23,12 @@ struct MarkdownTextView: View {
     @State private var renderer = TranscriptRenderer()
     @State private var renderedSource = ""
 
+    /// Files from the bots' shared store become cards; the bare URL is taken out of the prose so a
+    /// message shows the card instead of the link underneath it. Every caller passes a raw message
+    /// body, so this one place covers replies, bot-to-bot messages and room history alike.
+    private var cleanText: String { HermesFileLinks.removingLinks(from: text) }
+    private var fileLinks: [HermesFileLink] { HermesFileLinks.find(in: text) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(renderer.blocks.indices), id: \.self) { index in
@@ -31,14 +37,18 @@ struct MarkdownTextView: View {
                              metrics: metrics)
             }
 
+            ForEach(fileLinks) { link in
+                HermesFileLinkCard(link: link)
+            }
+
             if isStreaming {
                 StreamingCaret()
                     .padding(.top, 1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { synchronise(text) }
-        .onChange(of: text) { _, newValue in synchronise(newValue) }
+        .onAppear { synchronise(cleanText) }
+        .onChange(of: cleanText) { _, newValue in synchronise(newValue) }
     }
 
     /// Feed only what is new to the block layer.

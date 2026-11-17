@@ -15,7 +15,7 @@ MAC = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptRowView.swift")
 
 class BothShellsRenderBotMessages(unittest.TestCase):
     def test_the_mobile_row_parses_markdown(self) -> None:
-        self.assertIn("MobileMarkdownText(blocks: IncrementalMarkdown.parse(label.body))", MOBILE)
+        self.assertIn("MobileMarkdownText(blocks: IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: label.body)), rawText: label.body)", MOBILE)
 
     def test_the_mac_row_renders_markdown(self) -> None:
         self.assertIn("MarkdownTextView(text: label.body", MAC)
