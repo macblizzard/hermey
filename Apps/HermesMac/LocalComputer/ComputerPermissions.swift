@@ -54,10 +54,11 @@ struct ComputerPermissionState {
     let note: String?
 
     var label: String {
-        switch granted {
-        case .some(true): return "Granted"
-        case .some(false): return "Needs access"
-        case .none: return "On first use"
+        switch (granted, note) {
+        case (.some(true), _): return "Granted"
+        case (.some(false), _): return "Needs access"
+        case (.none, "On first use"): return "On first use"
+        default: return "Not checked"
         }
     }
 }
@@ -67,20 +68,34 @@ final class ComputerPermissions: ObservableObject {
     @Published private(set) var states: [ComputerPermission: ComputerPermissionState] = [:]
 
     init() {
-        refresh()
+        refreshSafe()
+        states[.screenRecording] = ComputerPermissionState(granted: nil, note: nil)
+        states[.inputMonitoring] = ComputerPermissionState(granted: nil, note: nil)
+        states[.automation] = ComputerPermissionState(granted: nil, note: "On first use")
     }
 
-    func refresh() {
+    /// Only the non-prompting check. `AXIsProcessTrusted()` does not show a TCC dialog; the
+    /// ScreenCaptureKit and event-tap probes do, so they must wait for an explicit button press.
+    func refreshSafe() {
         states[.accessibility] = ComputerPermissionState(
             granted: AXIsProcessTrusted(), note: nil)
-        states[.screenRecording] = ComputerPermissionState(
-            granted: nil, note: "Checking…")
-        states[.inputMonitoring] = ComputerPermissionState(
-            granted: Self.inputMonitoringAllowed(), note: nil)
-        if states[.automation] == nil {
-            states[.automation] = ComputerPermissionState(granted: nil, note: nil)
+    }
+
+    /// Called only from a button in the settings panel. Never from `init`, `onAppear` or scene-phase
+    /// changes — macOS treats a probe as a permission request and the owner decides when that happens.
+    func check(_ permission: ComputerPermission) {
+        switch permission {
+        case .accessibility:
+            refreshSafe()
+        case .screenRecording:
+            states[.screenRecording] = ComputerPermissionState(granted: nil, note: "Checking…")
+            Task { await checkScreenRecording() }
+        case .inputMonitoring:
+            states[.inputMonitoring] = ComputerPermissionState(
+                granted: Self.inputMonitoringAllowed(), note: nil)
+        case .automation:
+            testAutomation()
         }
-        Task { await checkScreenRecording() }
     }
 
     /// Accessibility is the one grant with a public system prompt API. Use it before falling back to

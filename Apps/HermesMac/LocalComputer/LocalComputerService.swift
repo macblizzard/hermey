@@ -28,6 +28,9 @@ final class LocalComputerService: ObservableObject {
     private var enabled = false
     private var loop: Task<Void, Never>?
     private var socket: URLSessionWebSocketTask?
+    private var session: URLSession?
+    private var heartbeat: Timer?
+    private var lastPong = Date()
 
     /// The machine name shown on the host's Computers list.
     private let machineName = Host.current().localizedName ?? "Mac"
@@ -55,9 +58,7 @@ final class LocalComputerService: ObservableObject {
         } else {
             loop?.cancel()
             loop = nil
-            let closing = socket
-            socket = nil
-            closing?.cancel(with: .goingAway, reason: nil)
+            drop(socket)
             status = .off
         }
     }
@@ -106,39 +107,80 @@ final class LocalComputerService: ObservableObject {
     private func connectOnce(address: PairingAddress) async throws {
         let ticket = try await address.mintedTicket()
         let url = try address.localComputerSocketURL(ticket: ticket)
-        let task = URLSession.shared.webSocketTask(with: url)
+        // The default URLSession request timeout is 60 s. A socket that only waits for a command can
+        // hit it while a two-minute Xcode build is running, which used to kill an in-flight call.
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 3_600
+        config.timeoutIntervalForResource = 86_400
+        config.waitsForConnectivity = true
+        let session = URLSession(configuration: config)
+        self.session = session
+        let task = session.webSocketTask(with: url)
         task.resume()
         socket = task
         try await task.send(.string(#"{"type":"hello","name":"\#(machineName)"}"#))
         status = .connected
         lastError = nil
+        lastPong = Date()
 
-        // Two child tasks: receive frames and send a heartbeat. Whichever ends ends the connection;
-        // the group cancellation closes the other. No polling and no per-frame layout work.
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                while !Task.isCancelled {
-                    let message = try await task.receive()
-                    guard case .string(let text) = message,
-                          let data = text.data(using: .utf8),
-                          let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let kind = frame["type"] as? String else { continue }
-                    if kind == "pong" { continue }
-                    if kind == "execute" {
-                        await self.handleExecute(frame, on: task)
+        // One timer, one receive loop. An earlier task group let a heartbeat send error cancel the
+        // receive loop (or vice versa) at ~45 s; the timer owns the ping and completion callbacks
+        // keep every send off the async path that can throw through the group.
+        let timer = Timer(timeInterval: 15, repeats: true) { _ in
+            Task { @MainActor [weak self, weak task] in
+                guard let self, let task, self.socket === task else { return }
+                if Date().timeIntervalSince(self.lastPong) > 60 {
+                    self.drop(task)
+                    return
+                }
+                task.send(.string(#"{"type":"ping"}"#)) { error in
+                    if error != nil {
+                        Task { @MainActor in self.drop(task) }
                     }
                 }
             }
-            group.addTask {
-                while !Task.isCancelled {
-                    try await Task.sleep(nanoseconds: 20_000_000_000)
-                    try await task.send(.string(#"{"type":"ping"}"#))
-                }
-            }
-            try await group.next()
-            group.cancelAll()
         }
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
+        do {
+            try await receiveFrames(on: task)
+        } catch {
+            finish(task, timer: timer)
+            throw error
+        }
+        finish(task, timer: timer)
+    }
+
+    private func receiveFrames(on task: URLSessionWebSocketTask) async throws {
+        while !Task.isCancelled {
+            let message = try await task.receive()
+            guard case .string(let text) = message,
+                  let data = text.data(using: .utf8),
+                  let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let kind = frame["type"] as? String else { continue }
+            if kind == "pong" {
+                lastPong = Date()
+                continue
+            }
+            if kind == "execute" {
+                await handleExecute(frame, on: task)
+            }
+        }
+    }
+
+    /// End one connection without touching the outer reconnect loop. Cancelling the task makes the
+    /// receive loop throw, which returns to `connectionLoop` and starts the backoff sequence.
+    private func drop(_ task: URLSessionWebSocketTask?) {
+        guard let task, socket === task else { return }
+        heartbeat?.invalidate()
+        heartbeat = nil
+        socket = nil
         task.cancel(with: .goingAway, reason: nil)
+    }
+
+    private func finish(_ task: URLSessionWebSocketTask, timer: Timer) {
+        timer.invalidate()
+        if heartbeat === timer { heartbeat = nil }
         if socket === task { socket = nil }
         if status == .connected { status = .reconnecting }
     }
@@ -167,7 +209,11 @@ final class LocalComputerService: ObservableObject {
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: reply),
               let text = String(data: data, encoding: .utf8) else { return }
-        try? await task.send(.string(text))
+        task.send(.string(text)) { [weak self] error in
+            if error != nil {
+                Task { @MainActor in self?.drop(task) }
+            }
+        }
     }
 }
 

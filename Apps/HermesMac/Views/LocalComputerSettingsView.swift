@@ -9,7 +9,6 @@ struct LocalComputerSettingsView: View {
     @StateObject private var service = LocalComputerService()
     @StateObject private var permissions = ComputerPermissions()
     @State private var confirmingRevoke = false
-    @Environment(\.scenePhase) private var scenePhase
 
     private var pairedAddress: PairingAddress? { store.pairing }
 
@@ -69,6 +68,10 @@ struct LocalComputerSettingsView: View {
                                                  : state?.granted == false ? Tokens.danger
                                                  : Tokens.textMuted)
                             Spacer(minLength: 6)
+                            if permission != .accessibility {
+                                Button("Check") { permissions.check(permission) }
+                                    .controlSize(.small)
+                            }
                             Button(permission == .accessibility ? "Request Access" : "Open Settings") {
                                 permissions.request(permission)
                             }
@@ -81,10 +84,6 @@ struct LocalComputerSettingsView: View {
                             Text(note)
                                 .font(TypeScale.font(TypeScale.caption))
                                 .foregroundStyle(Tokens.textMuted)
-                        }
-                        if permission == .automation {
-                            Button("Test Automation Access") { permissions.testAutomation() }
-                                .controlSize(.small)
                         }
                     }
                     .padding(.vertical, 2)
@@ -117,10 +116,6 @@ struct LocalComputerSettingsView: View {
             if service.isEnabled { service.setEnabled(true, address: pairedAddress) }
         }
         .onChange(of: store.pairing) { _, address in service.pairingChanged(address: address) }
-        .onChange(of: scenePhase) { _, phase in
-            // The user grants access in System Settings, then returns here; re-check on activation.
-            if phase == .active { permissions.refresh() }
-        }
         .confirmationDialog("Revoke this Mac?", isPresented: $confirmingRevoke, titleVisibility: .visible) {
             Button("Revoke", role: .destructive) {
                 Task { await service.revoke(address: pairedAddress) }

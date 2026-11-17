@@ -19,7 +19,7 @@ class LocalComputerPrototype(unittest.TestCase):
         address = (ROOT / "Apps/HermesMac/Pairing/PairingAddress.swift").read_text()
         self.assertIn('components.path = "/v1/local-computers/ws"', address)
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
-        self.assertIn("URLSession.shared.webSocketTask(with: url)", service)
+        self.assertIn("session.webSocketTask(with: url)", service)
         code = "\n".join(line for line in service.splitlines()
                           if not line.lstrip().startswith("//"))
         self.assertNotIn("NWListener", code)
@@ -27,8 +27,11 @@ class LocalComputerPrototype(unittest.TestCase):
 
     def test_stays_up_by_itself(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
-        self.assertIn('try await Task.sleep(nanoseconds: 20_000_000_000)', service)  # heartbeat
-        self.assertIn('try await task.send(.string(#"{"type":"ping"}"#))', service)
+        self.assertIn("config.timeoutIntervalForRequest = 3_600", service)
+        self.assertIn("Timer(timeInterval: 15, repeats: true)", service)
+        self.assertIn("lastPong = Date()", service)
+        self.assertIn("Date().timeIntervalSince(self.lastPong) > 60", service)
+        self.assertNotIn("withThrowingTaskGroup", service)
         self.assertIn("backoff = min(backoff * 2, 30_000_000_000)", service)
         self.assertIn("code == 4403 ? .refused : .reconnecting", service)
 
@@ -85,5 +88,16 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn('Text("Permissions")', view)
         self.assertIn("ForEach(ComputerPermission.allCases)", view)
         self.assertIn('Button(permission == .accessibility ? "Request Access" : "Open Settings")', view)
-        self.assertIn('Button("Test Automation Access")', view)
+        self.assertIn('permissions.check(permission)', view)
         self.assertIn("if phase == .active { permissions.refresh() }", view)
+
+    def test_permission_probes_require_an_explicit_button(self) -> None:
+        perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()
+        self.assertIn("init() {\n        refreshSafe()", perms)
+        self.assertNotIn("Task { await checkScreenRecording() }\n    }", perms)
+        self.assertIn("func check(_ permission: ComputerPermission)", perms)
+        self.assertIn("case .screenRecording:\n            states[.screenRecording]", perms)
+        view = (ROOT / "Apps/HermesMac/Views/LocalComputerSettingsView.swift").read_text()
+        self.assertIn('Button("Check") { permissions.check(permission) }', view)
+        self.assertNotIn("onChange(of: scenePhase)", view)
+        self.assertNotIn("permissions.refresh()", view)
