@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.564",
-          "buildVersion": "564",
-          "date": "2026-11-17T22:04:55Z",
-          "localizedDescription": "Fix: Settings \u2192 Computer opens with zero permission queries; every TCC prompt now requires an explicit user action.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.564/Hermey-0.1.564-b564.ipa",
-          "size": 3343609,
+          "version": "0.1.565",
+          "buildVersion": "565",
+          "date": "2026-11-17T22:18:27Z",
+          "localizedDescription": "Fix: the local-computer receive loop stays responsive while a long command runs; added socket diagnostics to the client log.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.565/Hermey-0.1.565-b565.ipa",
+          "size": 3343613,
           "minOSVersion": "17.0",
-          "sha256": "4d098c31194abd062a09fde949e9a5597a40ad85c74d45759e0d665bcc8e6492"
+          "sha256": "2914e84496992885f42838c797981ca579bdcaaf4f6eb294848374b05e3132df"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.564 (564)",
-      "identifier": "hermes-0.1.564-564",
-      "caption": "Fix: Settings \u2192 Computer opens with zero permission queries; every TCC prompt now requires an explicit user action.",
-      "date": "2026-11-17T22:04:55Z",
+      "title": "Hermes 0.1.565 (565)",
+      "identifier": "hermes-0.1.565-565",
+      "caption": "Fix: the local-computer receive loop stays responsive while a long command runs; added socket diagnostics to the client log.",
+      "date": "2026-11-17T22:18:27Z",
       "tintColor": "#9A9AA0"
     }
   ],
