@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.552",
-          "buildVersion": "552",
-          "date": "2026-11-17T17:26:11Z",
-          "localizedDescription": "Mac: cache file-link parsing per message so long transcripts scroll smoothly too.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.552/Hermey-0.1.552-b552.ipa",
-          "size": 3319587,
+          "version": "0.1.553",
+          "buildVersion": "553",
+          "date": "2026-11-17T17:41:46Z",
+          "localizedDescription": "Bare download links are tappable again without UIKit's slow detector; host background-process notices are hidden from transcripts.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.553/Hermey-0.1.553-b553.ipa",
+          "size": 3319970,
           "minOSVersion": "17.0",
-          "sha256": "182edc292f83663114bfaa8aec63b29448a419c136599e7d84e1b1d76b49c1d2"
+          "sha256": "63aa14e76bca631999772c6269b3764e08e7833a2347bcc668f0165fa20b85bc"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.552 (552)",
-      "identifier": "hermes-0.1.552-552",
-      "caption": "Mac: cache file-link parsing per message so long transcripts scroll smoothly too.",
-      "date": "2026-11-17T17:26:11Z",
+      "title": "Hermes 0.1.553 (553)",
+      "identifier": "hermes-0.1.553-553",
+      "caption": "Bare download links are tappable again without UIKit's slow detector; host background-process notices are hidden from transcripts.",
+      "date": "2026-11-17T17:41:46Z",
       "tintColor": "#9A9AA0"
     }
   ],
