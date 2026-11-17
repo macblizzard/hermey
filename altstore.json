@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.535",
-          "buildVersion": "535",
-          "date": "2026-11-17T07:57:03Z",
-          "localizedDescription": "The command palette now carries the settings: check for updates, view logs, show/hide reasoning, show/hide tool calls, and one verb each for notes, skills, MCP, routines, library and model.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.535/Hermey-0.1.535-b535.ipa",
-          "size": 3220024,
+          "version": "0.1.536",
+          "buildVersion": "536",
+          "date": "2026-11-17T08:30:06Z",
+          "localizedDescription": "Desktop: the model sheet is provider, then model, then effort, with an aux/vision model underneath. Mobile: the Edit button on a bot opens the same settings sheet as the long press, icon and soul included.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.536/Hermey-0.1.536-b536.ipa",
+          "size": 3223007,
           "minOSVersion": "17.0",
-          "sha256": "18accf6ef941373859efecc243df76f57bf143b73a011d299bb80d6f87026d0c"
+          "sha256": "983b0bb27bbc8f8bcafec69dff75acdd82b43e2186bea98702fe4a093df4478f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.535 (535)",
-      "identifier": "hermes-0.1.535-535",
-      "caption": "The command palette now carries the settings: check for updates, view logs, show/hide reasoning, show/hide tool calls, and one verb each for notes, skills, MCP, routines, library and model.",
-      "date": "2026-11-17T07:57:03Z",
+      "title": "Hermes 0.1.536 (536)",
+      "identifier": "hermes-0.1.536-536",
+      "caption": "Desktop: the model sheet is provider, then model, then effort, with an aux/vision model underneath. Mobile: the Edit button on a bot opens the same settings sheet as the long press, icon and soul included.",
+      "date": "2026-11-17T08:30:06Z",
       "tintColor": "#9A9AA0"
     }
   ],
