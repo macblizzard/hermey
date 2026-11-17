@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.560",
-          "buildVersion": "560",
-          "date": "2026-11-17T20:04:44Z",
-          "localizedDescription": "Prototype: local computer use for the Mac. Off by default; a Computers toggle in Settings opens one authenticated outbound socket (no SSH or Remote Login), with reconnect/backoff, heartbeat, argv-only commands, output cap, and remote revoke.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.560/Hermey-0.1.560-b560.ipa",
-          "size": 3343609,
+          "version": "0.1.561",
+          "buildVersion": "561",
+          "date": "2026-11-17T20:15:44Z",
+          "localizedDescription": "Local computer use: bots on the host can now run commands on the paired Mac with no approval gate; longer timeout, developer PATH and a host-side CLI for Xcode/build tasks.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.561/Hermey-0.1.561-b561.ipa",
+          "size": 3343614,
           "minOSVersion": "17.0",
-          "sha256": "71ab2705cffcabb3996d2a4d5ab409d2bd7156f3576ad40fe930daa7c4280e15"
+          "sha256": "91eedacd8a72f1ffbe2ae07278915d7d27101ea436d4e59934df925793179ea3"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.560 (560)",
-      "identifier": "hermes-0.1.560-560",
-      "caption": "Prototype: local computer use for the Mac. Off by default; a Computers toggle in Settings opens one authenticated outbound socket (no SSH or Remote Login), with reconnect/backoff, heartbeat, argv-only commands, output cap, and remote revoke.",
-      "date": "2026-11-17T20:04:44Z",
+      "title": "Hermes 0.1.561 (561)",
+      "identifier": "hermes-0.1.561-561",
+      "caption": "Local computer use: bots on the host can now run commands on the paired Mac with no approval gate; longer timeout, developer PATH and a host-side CLI for Xcode/build tasks.",
+      "date": "2026-11-17T20:15:44Z",
       "tintColor": "#9A9AA0"
     }
   ],
