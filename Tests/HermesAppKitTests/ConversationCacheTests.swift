@@ -109,13 +109,17 @@ final class ConversationCacheTests: XCTestCase {
     }
 
     func testOnlyTheMostRecentBotsAreKept() async {
+        // Bounded, not a leak — and bounded by the cache's OWN limit, not by a number copied into the
+        // test. The hardcoded nine stopped failing to evict the day the limit went from 8 to 24, which
+        // is exactly the kind of pin that reports a false regression.
         let (model, _) = await opened("limit", entries: [line("x")])
-        let bots = (1 ... 9).map { bot("limit-\($0)") }
+        let overshoot = AppModel.conversationCacheLimitForTesting + 1
+        let bots = (1 ... overshoot).map { bot("limit-\($0)") }
         defer { forget(bots) }
         for id in bots { await model.endlessSession(for: id) }
-        // Nine bots were visited; the first is gone, the last is here. Bounded, not a leak.
-        XCTAssertFalse(model.restoreConversation(for: bots[0]))
-        XCTAssertTrue(model.restoreConversation(for: bots[8]))
+        XCTAssertFalse(model.restoreConversation(for: bots[0]),
+                       "the oldest was visited \(overshoot) bots ago and must be evicted")
+        XCTAssertTrue(model.restoreConversation(for: bots[overshoot - 1]))
         await model.stop()
     }
 }

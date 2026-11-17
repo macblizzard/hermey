@@ -382,6 +382,10 @@ public final class AppModel: ObservableObject {
     /// switching to one of them still cost a full load.
     private static let conversationCacheLimit = 24
 
+    /// The cache's bound, for the test that proves it is enforced — read from here so a change to the
+    /// limit cannot silently stop the test from exercising eviction.
+    static var conversationCacheLimitForTesting: Int { conversationCacheLimit }
+
     /// The host's newest-message stamp each snapshot already contained, per bot.
     ///
     /// Two clocks are compared all over this model — the device's and the host's — and comparing
