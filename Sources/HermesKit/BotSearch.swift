@@ -182,7 +182,10 @@ public struct BotMessageLabel: Hashable, Sendable {
         var name = header
         var handle: String?
         if let open = header.lastIndex(of: "("), let close = header.lastIndex(of: ")"), open < close {
-            let inside = String(header[header.index(after: open)..<close])
+            // The stamp spells the handle `(@atlas)`: the `@` is routing punctuation, not part of
+            // the profile id. Keeping it made every live stamp fall through as an opaque header.
+            let raw = String(header[header.index(after: open)..<close])
+            let inside = raw.hasPrefix("@") ? String(raw.dropFirst()) : raw
             if !inside.isEmpty, inside.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) {
                 handle = inside
                 name = String(header[..<open]).trimmingCharacters(in: .whitespaces)
