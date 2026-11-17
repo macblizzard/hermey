@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.566",
-          "buildVersion": "566",
-          "date": "2026-11-17T22:40:11Z",
-          "localizedDescription": "Real fix: rebuilt from the current commit \u2014 passive permission panel and socket that keeps reading during long commands.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.566/Hermey-0.1.566-b566.ipa",
-          "size": 3343618,
+          "version": "0.1.567",
+          "buildVersion": "567",
+          "date": "2026-11-17T23:08:02Z",
+          "localizedDescription": "Phase 2: computer.observe \u2014 Mac screenshots with window metadata, JPEG transport and a bot CLI endpoint.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.567/Hermey-0.1.567-b567.ipa",
+          "size": 3343613,
           "minOSVersion": "17.0",
-          "sha256": "51c2ccf8613a253452dddaf0e2305b83c6bc4c1c51d3b9689e769ecd595a4839"
+          "sha256": "167d43e95e31ca1a8c87fbcd1caad174288b71ca933e423f9b4be124ca51193f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.566 (566)",
-      "identifier": "hermes-0.1.566-566",
-      "caption": "Real fix: rebuilt from the current commit \u2014 passive permission panel and socket that keeps reading during long commands.",
-      "date": "2026-11-17T22:40:11Z",
+      "title": "Hermes 0.1.567 (567)",
+      "identifier": "hermes-0.1.567-567",
+      "caption": "Phase 2: computer.observe \u2014 Mac screenshots with window metadata, JPEG transport and a bot CLI endpoint.",
+      "date": "2026-11-17T23:08:02Z",
       "tintColor": "#9A9AA0"
     }
   ],
