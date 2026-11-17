@@ -190,6 +190,30 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
                            path=f"/v1/local-computers/{device_id}/execute", outcome="finished")
         return result
 
+    @router.post("/{device_id}/observe")
+    async def observe(device_id: str, request: Request,
+                      authorization: str | None = Header(default=None)) -> dict:
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        try:
+            result = await computers.dispatch(device_id, {"type": "observe"}, timeout_ms=30_000)
+        except LookupError:
+            raise HTTPException(status_code=503, detail="that computer is not connected") from None
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
+        if result.get("error") or result.get("exit_code", 0) != 0:
+            raise HTTPException(status_code=409,
+                                detail=str(result.get("error") or "screen capture failed"))
+        observation = result.get("observation")
+        # Swift's JSONEncoder keeps camelCase; older frames used snake_case.
+        image = observation.get("image_base64") or observation.get("imageBase64") if isinstance(observation, dict) else None
+        if not isinstance(observation, dict) or not image:
+            raise HTTPException(status_code=502, detail="the Mac returned no image")
+        runtime.audit.emit("local_computer.observe", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/observe", outcome="finished")
+        return observation
+
     @router.delete("/{device_id}")
     async def revoke_computer(device_id: str, request: Request,
                               authorization: str | None = Header(default=None)) -> dict:

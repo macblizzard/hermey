@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Run a command on the paired Mac through Hermey's local-computer executor.
+"""Run commands or take a screenshot on the paired Mac through Hermey's local-computer executor.
 
 Bots run on the hermes host, so they reach the bridge over loopback (no device ticket needed). The
 bridge refuses the same call through tailscale serve. Examples:
 
     python3 Tools/local_computer.py -- sw_vers
-    python3 Tools/local_computer.py --cwd ~/hermey-build -- Tools/release/build_on_mac.sh 0.1.561 561
-    python3 Tools/local_computer.py --computer "MacBook Air" -- ls -la
+    python3 Tools/local_computer.py --cwd ~/hermey-build -- Tools/release/build_on_mac.sh 0.1.567 567
+    python3 Tools/local_computer.py observe
+    python3 Tools/local_computer.py observe --save /tmp/screen.jpg
 
-The Mac must be paired and the "Let bots use this computer" switch on. Output is base64 on the wire;
-this script prints it and exits with the Mac command's exit code.
+The Mac must be paired and the "Let bots use this computer" switch on. Command output is base64 on
+the wire; this script prints it and exits with the Mac command's exit code. `observe` saves the JPEG
+and prints JSON metadata including the path, so a bot can feed it straight to vision.
 """
 from __future__ import annotations
 
@@ -36,40 +38,72 @@ def request(path: str, payload: dict | None = None, method: str | None = None) -
         return json.loads(response.read().decode())
 
 
+def pick_computer(name: str | None = None) -> dict:
+    computers = request("/v1/local-computers")["computers"]
+    if not computers:
+        raise RuntimeError("no local computer is connected; pair the Mac and turn on Computer use")
+    if name:
+        matches = [c for c in computers
+                   if name == c["device_id"] or name.lower() in c["name"].lower()]
+        if not matches:
+            raise RuntimeError(f"no connected computer matches {name!r}")
+        return matches[0]
+    return next((c for c in computers if "mac" in c["name"].lower()), computers[0])
+
+
+def do_observe(computer_name: str | None, save: str | None) -> int:
+    device = pick_computer(computer_name)
+    observation = request(f"/v1/local-computers/{device['device_id']}/observe", {})
+    image = base64.b64decode(observation["image_base64"])
+    path = save or f"/tmp/hermey-observe-{observation['frameID']}.jpg"
+    with open(path, "wb") as handle:
+        handle.write(image)
+    metadata = {
+        "path": path,
+        "frame_id": observation["frameID"],
+        "width": observation["width"],
+        "height": observation["height"],
+        "format": observation["format"],
+        "bytes": len(image),
+        "active_window": observation.get("activeWindow"),
+        "captured_at": observation["capturedAt"],
+    }
+    print(json.dumps(metadata, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
+    raw = sys.argv[1:]
+    if raw and raw[0] == "observe":
+        obs = argparse.ArgumentParser(description="Capture the Mac's screen")
+        obs.add_argument("--computer", help="device id or a substring of the Mac's name")
+        obs.add_argument("--save", help="where to write the JPEG")
+        args = obs.parse_args(raw[1:])
+        try:
+            return do_observe(args.computer, args.save)
+        except (RuntimeError, urllib.error.HTTPError, KeyError, ValueError) as exc:
+            print(f"Observe failed: {exc}", file=sys.stderr)
+            return 4
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--computer", help="device id or a substring of the Mac's name")
     parser.add_argument("--cwd", help="working directory on the Mac")
     parser.add_argument("--timeout-ms", type=int, default=900_000,
                         help="deadline in milliseconds (default 15 min, max 30 min)")
     parser.add_argument("command", nargs=argparse.REMAINDER)
-    args = parser.parse_args()
+    args = parser.parse_args(raw)
     argv = args.command[1:] if args.command and args.command[0] == "--" else args.command
     if not argv:
         parser.error("give a command after --")
 
-    computers = request("/v1/local-computers")["computers"]
-    if not computers:
-        print("No local computer is connected. Pair the Mac and turn on its Computer toggle.",
-              file=sys.stderr)
-        return 3
-    if args.computer:
-        matches = [c for c in computers
-                   if args.computer == c["device_id"] or args.computer.lower() in c["name"].lower()]
-        if not matches:
-            print(f"No connected computer matches {args.computer!r}.", file=sys.stderr)
-            return 3
-        computer = matches[0]
-    else:
-        computer = next((c for c in computers if "mac" in c["name"].lower()), computers[0])
-
-    payload = {"argv": argv, "timeout_ms": args.timeout_ms}
+    payload: dict = {"argv": argv, "timeout_ms": args.timeout_ms}
     if args.cwd:
         payload["cwd"] = os.path.expanduser(args.cwd)
     try:
-        result = request(f"/v1/local-computers/{computer['device_id']}/execute", payload)
-    except urllib.error.HTTPError as exc:
-        print(f"Local computer call failed: {exc.code} {exc.read().decode()}", file=sys.stderr)
+        device = pick_computer(args.computer)
+        result = request(f"/v1/local-computers/{device['device_id']}/execute", payload)
+    except (RuntimeError, urllib.error.HTTPError) as exc:
+        print(f"Local computer call failed: {exc}", file=sys.stderr)
         return 4
 
     sys.stdout.write(base64.b64decode(result.get("stdout", "")).decode("utf-8", "replace"))

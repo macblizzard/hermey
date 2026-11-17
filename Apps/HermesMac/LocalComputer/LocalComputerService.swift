@@ -172,6 +172,10 @@ final class LocalComputerService: ObservableObject {
                 Task { @MainActor [weak self] in
                     await self?.handleExecute(frame, on: task)
                 }
+            } else if kind == "observe" {
+                Task { @MainActor [weak self] in
+                    await self?.handleObserve(frame, on: task)
+                }
             }
         }
     }
@@ -219,6 +223,30 @@ final class LocalComputerService: ObservableObject {
             "stderr": result.stderr.base64EncodedString(),
             "truncated": result.truncated,
         ]
+        sendReply(reply, on: task)
+    }
+
+    private func handleObserve(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
+        guard let id = frame["id"] as? String else { return }
+        let result = await Task.detached(priority: .userInitiated) {
+            Result<ComputerObservation, Error> { try ComputerObserver.shared.observe() }
+        }.value
+        switch result {
+        case .success(let observation):
+            guard let data = try? JSONEncoder().encode(observation),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                sendReply(["id": id, "type": "result", "error": "observation encoding failed"], on: task)
+                return
+            }
+            sendReply(["id": id, "type": "result", "exit_code": 0,
+                       "observation": object, "stderr": "", "truncated": false], on: task)
+        case .failure(let error):
+            sendReply(["id": id, "type": "result", "exit_code": 1,
+                       "error": error.localizedDescription], on: task)
+        }
+    }
+
+    private func sendReply(_ reply: [String: Any], on task: URLSessionWebSocketTask) {
         guard let data = try? JSONSerialization.data(withJSONObject: reply),
               let text = String(data: data, encoding: .utf8) else { return }
         task.send(.string(text)) { [weak self] error in
