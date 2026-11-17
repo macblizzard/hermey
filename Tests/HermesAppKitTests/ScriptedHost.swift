@@ -82,10 +82,15 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     /// screen *while* the host is still thinking sets it.
     var resumeDelay: Duration?
 
+    /// Ids this host has forgotten, while it still knows the others. `resumeError` fails every resume;
+    /// this fails only the ids named, which is what a stale pointer actually looks like.
+    var staleIDs: Set<SessionID> = []
+
     func resumeSession(_ id: SessionID) async throws -> SessionResume {
         resumed.append(id)
         if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
         if let resumeError { throw resumeError }
+        if staleIDs.contains(id) { throw GatewayError.rpc(RPCError(code: 4007, message: "session not found")) }
         return resume()
     }
 
@@ -97,6 +102,7 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         resumed.append(id)
         if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
         if let resumeError { throw resumeError }
+        if staleIDs.contains(id) { throw GatewayError.rpc(RPCError(code: 4007, message: "session not found")) }
         return resume(sessionByProfile[profile ?? ""] ?? session)
     }
 

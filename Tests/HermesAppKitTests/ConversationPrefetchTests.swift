@@ -137,7 +137,7 @@ final class ConversationPrefetchTests: XCTestCase {
         // on the host. The roster is asked first now.
         let client = ScriptedHost(session: Self.sessionID, entries: [line("old")])
         client.hostPointer = Self.sessionID
-        client.resumeError = GatewayError.rpc(RPCError(code: 4007, message: "session not found"))
+        client.staleIDs = [Self.sessionID]
         client.profileSessions = [SessionSummary(id: "20260101_000009_older", title: "Bot Chat"),
                                   SessionSummary(id: "20260101_000008_newer", title: "Bot Chat")]
         let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
