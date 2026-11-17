@@ -28,6 +28,7 @@ class BuildAGUI(unittest.TestCase):
         for verb in ("click", "move", "down", "up", "type", "key", "scroll", "wait", "focus", "open_path"):
             self.assertIn(f'case "{verb}":', actions)
         self.assertIn("guard raw.count <= 24", actions)
+        self.assertIn("guard AXIsProcessTrusted() else { throw ActError.permission }", actions)
         self.assertIn('"CGSSessionScreenIsLocked"', actions)
         self.assertIn("eventSourceUserData", actions)
         self.assertIn("lastObservationAt", actions)

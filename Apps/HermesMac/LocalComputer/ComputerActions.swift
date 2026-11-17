@@ -97,6 +97,7 @@ final class ComputerActions {
     func perform(_ raw: [[String: Any]], bot: String) async throws -> ComputerObservation {
         guard !raw.isEmpty else { throw ActError.unknown("empty batch") }
         guard raw.count <= 24 else { throw ActError.tooMany }
+        guard AXIsProcessTrusted() else { throw ActError.permission }
         try Self.requireUnlocked()
         await Self.gate.acquire()
         defer { Task { await Self.gate.release() } }
