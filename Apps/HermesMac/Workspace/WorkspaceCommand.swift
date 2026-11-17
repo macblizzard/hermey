@@ -8,8 +8,10 @@ import Foundation
 struct WorkspaceCommand: Identifiable {
     enum Group: String, CaseIterable {
         case chat = "Chat"
+        case bot = "Bot"
         case host = "Host"
         case bots = "Bots"
+        case view = "View"
         case appearance = "Appearance"
     }
 

@@ -97,6 +97,9 @@ struct HermesMacApp: App {
                 // of asking to be connected to one it already knows. `attachFixtureHostIfNeeded`
                 // is a no-op unless the fixture launch argument was given.
                 .task {
+                    // The palette's "Check for updates…" runs the same closure the menu bar and
+                    // Settings → About run; the store never learns what Sparkle is.
+                    store.checkForUpdates = checkForUpdates
                     await store.attachFixtureHostIfNeeded()
                     await store.connectOnLaunchIfPaired()
                     // Last, so dialling the host is not delayed by the feed.

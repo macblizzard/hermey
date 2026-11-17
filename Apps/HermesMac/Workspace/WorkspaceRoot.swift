@@ -174,6 +174,10 @@ struct WorkspaceRoot: View {
                     },
                     deliveries: RoutineDelivery.options(
                         bots: store.model.bots.map { (profile: $0.id, name: $0.displayName) }))
+            case .logs:
+                // The same view Settings → About embeds, presented as the window's modal so Escape and
+                // the backdrop close it like every other route here.
+                ClientLogView(title: "Log", header: logHeader)
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,
@@ -183,6 +187,15 @@ struct WorkspaceRoot: View {
             }
             .hermesSheetChrome()
         }
+    }
+
+    /// What the log is *about*: build, OS, host, connection — the same header the phone and
+    /// Settings → About put above the same lines.
+    private var logHeader: String {
+        let host = store.isPaired ? store.model.hostName : "not paired"
+        return "Hermey \(AppVersion.marketing) (build \(AppVersion.build))\nmacOS "
+            + "\(ProcessInfo.processInfo.operatingSystemVersionString) · host: \(host) · "
+            + "\(store.model.connection.label)"
     }
 
     // MARK: - Sheets
@@ -198,6 +211,7 @@ struct WorkspaceRoot: View {
         case model(Bot)
         case notes(Bot)
         case botSettings(Bot)
+        case logs
 
         var id: String {
             switch self {
@@ -220,6 +234,7 @@ struct WorkspaceRoot: View {
         Binding(
             get: {
                 if store.isPairSheetPresented { return .pair }
+                if store.isLogsPresented { return .logs }
                 if let bot = store.workspaceBot { return .workspace(bot) }
                 if let bot = store.skillsBot { return .skills(bot) }
                 if let bot = store.mcpBot { return .mcp(bot) }
@@ -232,6 +247,7 @@ struct WorkspaceRoot: View {
             set: { route in
                 guard route == nil else { return }
                 store.isPairSheetPresented = false
+                store.isLogsPresented = false
                 store.workspaceBot = nil
                 store.skillsBot = nil
                 store.mcpBot = nil

@@ -143,6 +143,13 @@ final class WorkspaceStore: ObservableObject {
     @Published var modelBot: Bot?
     /// The owner's note for one bot, off the panel's Notes row.
     @Published var notesBot: Bot?
+    /// The client log, from the palette. Settings → About has the same view; this reaches it without
+    /// leaving the keyboard.
+    @Published var isLogsPresented = false
+    /// Sparkle's check, handed in by the app so the store knows nothing about the updater — the same
+    /// closure the menu bar item and Settings → About use. Nil in a tree built without the package,
+    /// which is why the palette row disables itself rather than lying.
+    var checkForUpdates: (() -> Void)?
 
     /// Open one of them, closing any other: the window's one modal is shared.
     func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
@@ -151,6 +158,9 @@ final class WorkspaceStore: ObservableObject {
     func openRoutines(_ bot: Bot) { closePanels(); routinesBot = bot }
     func openModel(_ bot: Bot) { closePanels(); modelBot = bot }
     func openNotes(_ bot: Bot) { closePanels(); notesBot = bot }
+
+    /// The log sheet, closed on Escape like every other modal in this window.
+    func openLogs() { isLogsPresented = true }
 
     private func closePanels() {
         workspaceBot = nil
@@ -865,6 +875,65 @@ final class WorkspaceStore: ObservableObject {
             isEnabled: isPaired,
             run: { [weak self] in self?.isGroupChatsPresented = true }))
 
+        // ---- View: the switches a reader flips mid-conversation, plus the two doors that used to
+        // need Settings. Titles state the state they will move to, not the state now.
+        items.append(WorkspaceCommand(
+            id: "view.reasoning",
+            title: model.showReasoning ? "Hide reasoning" : "Show reasoning",
+            subtitle: "The model's thinking above each answer in this conversation",
+            systemImage: model.showReasoning ? "brain" : "brain.head.profile",
+            shortcut: nil,
+            group: .view,
+            isEnabled: true,
+            run: { [weak self] in self?.model.showReasoning.toggle() }))
+
+        items.append(WorkspaceCommand(
+            id: "view.toolCalls",
+            title: model.showToolCalls ? "Hide tool calls" : "Show tool calls",
+            subtitle: "The cards for what the bot ran, folded when they are hidden",
+            systemImage: model.showToolCalls ? "wrench.and.screwdriver" : "wrench.and.screwdriver.fill",
+            shortcut: nil,
+            group: .view,
+            isEnabled: true,
+            run: { [weak self] in self?.model.showToolCalls.toggle() }))
+
+        items.append(WorkspaceCommand(
+            id: "view.logs",
+            title: "View logs…",
+            subtitle: "What this app has been doing — the same log as Settings → About",
+            systemImage: "text.alignleft",
+            shortcut: nil,
+            group: .view,
+            isEnabled: true,
+            run: { [weak self] in self?.openLogs() }))
+
+        items.append(WorkspaceCommand(
+            id: "app.updates",
+            title: "Check for updates…",
+            subtitle: upToDateSubtitle,
+            systemImage: "arrow.down.circle",
+            shortcut: nil,
+            group: .view,
+            isEnabled: checkForUpdates != nil,
+            run: { [weak self] in self?.checkForUpdates?() }))
+
+        // ---- Bot: one verb per row of the bot panel, so a keyboard user never has to open the
+        // panel to reach the bot's own things.
+        for (id, title, subtitle, symbol, open) in botDoors {
+            items.append(WorkspaceCommand(
+                id: "bot.\\(id)",
+                title: title,
+                subtitle: subtitle,
+                systemImage: symbol,
+                shortcut: nil,
+                group: .bot,
+                isEnabled: selectedBot != nil,
+                run: { [weak self] in
+                    guard let self, let bot = self.selectedBot else { return }
+                    open(bot)
+                }))
+        }
+
         for room in model.rooms {
             items.append(WorkspaceCommand(
                 id: "room.\(room.id)",
@@ -895,6 +964,29 @@ final class WorkspaceStore: ObservableObject {
         }
 
         return items
+    }
+
+    /// The bot panel's rows, as palette verbs: (id, title, subtitle, symbol, opener).
+    private var botDoors: [(String, String, String, String, (Bot) -> Void)] {
+        [
+            ("notes", "Bot notes…", "The owner's note for this bot, kept on the host", "note.text",
+             { [weak self] bot in self?.openNotes(bot) }),
+            ("skills", "Bot skills…", "What this bot can follow, and which of it is on", "book.closed",
+             { [weak self] bot in self?.openSkills(bot) }),
+            ("mcp", "Bot MCP…", "The MCP servers this bot may start", "puzzlepiece.extension",
+             { [weak self] bot in self?.openMCP(bot) }),
+            ("routines", "Bot routines…", "What this bot runs on a schedule", "clock.arrow.circlepath",
+             { [weak self] bot in self?.openRoutines(bot) }),
+            ("library", "Bot library…", "Files this bot wrote, and files you sent it", "folder",
+             { [weak self] bot in self?.openWorkspace(bot) }),
+            ("model", "Bot model…", "Which model and provider answer for this bot", "cpu",
+             { [weak self] bot in self?.openModel(bot) }),
+        ]
+    }
+
+    private var upToDateSubtitle: String {
+        guard checkForUpdates != nil else { return "This build has no updater" }
+        return "Ask Sparkle now — it also checks by itself at launch"
     }
 
     private var botSettingsSubtitle: String {
