@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Hermey</title>
+    <link>https://hermes.example.ts.net:8444/</link>
+    <description>Hermey for macOS</description>
+    <language>en</language>
+    <item>
+      <title>Hermey 0.1.543</title>
+      <pubDate>Tue, 17 Nov 2026 12:33:14 +0000</pubDate>
+      <sparkle:version>543</sparkle:version>
+      <sparkle:shortVersionString>0.1.543</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <link>https://hermes.example.ts.net:8444/</link>
+      <description>Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K &#x27;Pair another device...&#x27;. Phone: Settings -&gt; Devices.</description>
+      <enclosure url="https://hermes.example.ts.net:8444/Hermey-macOS-0.1.543.dmg" length="11433106" type="application/octet-stream"
+                 sparkle:edSignature="oDOHSv8M86QtUq7wAWOLdemBD/pBaIrAosLgapP22aDuGkWvdYpqZE+BL9OMDwUYpLa1rt7Hx1w+ijfQDY3SCg=="/>
+    </item>
+  </channel>
+</rss>

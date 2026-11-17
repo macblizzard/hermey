@@ -36,6 +36,9 @@ public struct Composer: View {
     /// optional so the phone, which pushes a sheet, passes neither.
     private let attachPopoverPresented: Binding<Bool>?
     private let attachPopoverContent: AnyView?
+    /// A picked slash command. Callers that own a native panel for a command handle it here; without
+    /// one, the composer completes the command into the field and lets the user send it.
+    private let onCommand: ((HermesCommand) -> Void)?
 
     /// The microphone's own presentation, supplied by the caller because only the recording
     /// controller knows whether it is idle, listening or transcribing. It is drawn immediately
@@ -80,7 +83,8 @@ public struct Composer: View {
                 onInterrupt: (() -> Void)? = nil,
                 onAttachItems: (([ComposerAttachment]) -> Void)? = nil,
                 attachPopoverPresented: Binding<Bool>? = nil,
-                attachPopoverContent: AnyView? = nil) {
+                attachPopoverContent: AnyView? = nil,
+                onCommand: ((HermesCommand) -> Void)? = nil) {
         _text = text
         self.floats = floats
         self.placeholder = placeholder
@@ -102,6 +106,7 @@ public struct Composer: View {
         self.onAttachItems = onAttachItems
         self.attachPopoverPresented = attachPopoverPresented
         self.attachPopoverContent = attachPopoverContent
+        self.onCommand = onCommand
     }
 
     /// No hint line by default, on either platform.
@@ -158,6 +163,19 @@ public struct Composer: View {
 
     /// A pending attachment is sendable on its own: a file with no comment is a complete message,
     /// and disabling the arrow there made the attach feature look broken.
+    /// A command is being typed when the draft is a single leading `/word` with no argument yet.
+    /// Once a space appears the user is writing the argument, and the list gets out of the way.
+    private var commandQuery: String? {
+        guard !isDisabled, text.hasPrefix("/"),
+              !text.contains(" "), !text.contains("\n") else { return nil }
+        return String(text.dropFirst())
+    }
+
+    private var commandMatches: [HermesCommand] {
+        guard let query = commandQuery else { return [] }
+        return Array(HermesCommandCatalogue.all.matching(query).prefix(6))
+    }
+
     private var canSend: Bool {
         // Sendable mid-turn on purpose: the host's busy policy steers, redirects or queues it, and
         // refusing here made "steer or queue" impossible while the bot was working.
@@ -270,6 +288,15 @@ public struct Composer: View {
                                   lineWidth: 1)
             }
         }
+        .overlay(alignment: .top, content: {
+            // The Hermes command list, above the field rather than in it: the card must not grow
+            // while the list opens or the text being typed would move under the caret.
+            if !commandMatches.isEmpty {
+                commandList
+                    .offset(y: -(CGFloat(commandMatches.count) * 44 + 38))
+                    .zIndex(50)
+            }
+        })
         .opacity(isDisabled ? 0.6 : 1)
         // The empty parts of the card are the field too — the padding above the first line, the
         // margins beside the paperclip. A *background* tap-catcher rather than a gesture on the whole
@@ -286,6 +313,75 @@ public struct Composer: View {
                     .onTapGesture { requestFocus() }
             }
         }
+    }
+
+    private var commandList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "slash.circle")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("HERMES COMMANDS")
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                Spacer(minLength: 8)
+                Text(commandMatches.count == 6 ? "6 of \(HermesCommandCatalogue.all.count)" : "\(commandMatches.count) match")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textDim)
+            }
+            .foregroundStyle(Tokens.textMuted)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+
+            ForEach(commandMatches) { command in
+                Button { choose(command) } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: command.systemImage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Tokens.accentText)
+                            .frame(width: 18)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 5) {
+                                Text("/" + command.name)
+                                    .font(TypeScale.font(TypeScale.sm, weight: .medium))
+                                    .foregroundStyle(Tokens.textPrimary)
+                                if command.isHostCommand {
+                                    Text("host")
+                                        .font(TypeScale.font(TypeScale.caption))
+                                        .foregroundStyle(Tokens.textDim)
+                                }
+                            }
+                            Text(command.detail)
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        if let argument = command.argument {
+                            Text(argument)
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textDim)
+                        }
+                    }
+                    .frame(height: 44)
+                    .padding(.horizontal, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Tokens.control)
+                .shadow(color: .black.opacity(0.22), radius: 12, y: 4)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// Complete the command in the field first: a caller that owns a native panel can clear it when
+    /// it acts, but a caller that does not can simply send the filled-in command as typed.
+    private func choose(_ command: HermesCommand) {
+        text = command.invocation
+        onCommand?(command)
+        Task { @MainActor in focusField() }
     }
 
     /// Ask for the caret from a tap on the card's padding.

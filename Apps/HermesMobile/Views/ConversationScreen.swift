@@ -96,6 +96,8 @@ struct ConversationScreen: View {
     /// frame lands near the top of the history instead of its end.
     @State private var openScrollSignal = 0
     @State private var showAttachmentMenu = false
+    /// The `/help` command opens the full catalogue rather than sending a help request to the host.
+    @State private var showingCommandHelp = false
     @State private var attachmentSource: AttachmentSource?
 
     /// One voice controller per conversation screen: recording, transcription and
@@ -1096,7 +1098,8 @@ struct ConversationScreen: View {
                          }
                      },
                      onMic: { toggleRecording() },
-                     onInterrupt: { Task { await model.interrupt() } })
+                     onInterrupt: { Task { await model.interrupt() } },
+                     onCommand: runCommand)
                 // The same gutter the bubbles stop at: a composer 4 pt wider on each side is what
                 // made a chat look tilted against its own text.
                 .padding(.horizontal, Geometry.chatGutter)
@@ -1113,9 +1116,39 @@ struct ConversationScreen: View {
                                 .combined(with: .opacity))
                     }
                 }
+                .sheet(isPresented: $showingCommandHelp) {
+                    HermesCommandsHelpSheet { command in
+                        runCommand(command)
+                    }
+                    .hermesSheetChrome()
+                }
         }
         // No canvas band behind the composer. It was opaque, so the glass had a black wall to
         // sample and every material — OS or built — could only ever arrive as flat charcoal.
+    }
+
+    /// A slash command picked from the composer. The composer has already filled the field with
+    /// `/name `; native actions clear it after acting, and everything else stays there for the user to
+    /// finish and send. A command that needs a panel this screen does not own is a host command here.
+    private func runCommand(_ command: HermesCommand) {
+        switch command.action {
+        case .help:
+            model.draft = ""
+            showingCommandHelp = true
+        case .newSession:
+            model.draft = ""
+            Task { await model.newSession() }
+        case .resetConversation:
+            model.draft = ""
+            Task { await model.resetConversation() }
+        case .compact:
+            model.draft = ""
+            Task { await model.compressNow() }
+        case .model, .reasoning, .memory, .status, .insertOnly:
+            // The phone has no model/settings sheet route to drive from here; the host's own
+            // `/model`, `/reasoning` and `/status` answers arrive in this same conversation.
+            break
+        }
     }
 
     /// Picked attachments wait here until the user sends, so cancelling the composer uploads nothing.

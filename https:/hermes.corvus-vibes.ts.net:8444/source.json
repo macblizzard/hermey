@@ -1,0 +1,53 @@
+{
+  "name": "Hermey",
+  "identifier": "dev.hermey.app.source",
+  "subtitle": "Your Hermes bots, on your phone",
+  "description": "Native client for a self-hosted Hermes Agent. Every bot (Hermes profile) is reachable through one gateway; approvals, streaming replies and tool output appear in the conversation. Builds are unsigned and must be re-signed by your sideloading app.",
+  "iconURL": "https://hermes.example.ts.net:8444/icon-512.png",
+  "headerURL": "https://hermes.example.ts.net:8444/app-icon-1024.png",
+  "tintColor": "#007CF7",
+  "featuredApps": [
+    "dev.hermey.app.mobile"
+  ],
+  "apps": [
+    {
+      "name": "Hermey",
+      "bundleIdentifier": "dev.hermey.app.mobile",
+      "developerName": "Hermey",
+      "subtitle": "Your Hermes bots, on your phone",
+      "localizedDescription": "Chats with every Hermes bot, streaming replies, tool cards, inline approvals and per-device pairing.",
+      "iconURL": "https://hermes.example.ts.net:8444/icon-512.png",
+      "tintColor": "#007CF7",
+      "category": "utilities",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "0.1.543",
+          "buildVersion": "543",
+          "date": "2026-11-17T12:33:14Z",
+          "localizedDescription": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
+          "downloadURL": "https://hermes.example.ts.net:8444/Hermey-0.1.543-b543.ipa",
+          "size": 3271026,
+          "minOSVersion": "17.0",
+          "sha256": "32434bf0990cc57351c26601c6cbb2077b8c8c9136e7f14277669f42ca7df530"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSCameraUsageDescription": "Scan the pairing code shown by your Hermes host to connect this device.",
+          "NSLocalNetworkUsageDescription": "Hermes connects to your own Hermes host over your private network."
+        }
+      }
+    }
+  ],
+  "news": [
+    {
+      "title": "Hermes 0.1.543 (543)",
+      "identifier": "hermes-0.1.543-543",
+      "caption": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
+      "date": "2026-11-17T12:33:14Z",
+      "tintColor": "#007CF7"
+    }
+  ]
+}

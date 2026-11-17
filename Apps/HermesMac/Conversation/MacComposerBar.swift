@@ -16,6 +16,7 @@ struct MacComposerBar: View {
     /// The paperclip opens a popover with two items, never a page: the phone's action menu, at
     /// desktop density.
     @State private var showsAttachmentMenu = false
+    @State private var showingCommandHelp = false
 
     /// One capture per composer: the transcript lands in the draft that was on screen when the
     /// microphone was pressed, and nothing outlives this bar.
@@ -167,7 +168,8 @@ struct MacComposerBar: View {
                      attachPopoverPresented: $showsAttachmentMenu,
                      attachPopoverContent: AnyView(
                         MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
-                     ))
+                     ),
+                     onCommand: runCommand)
                 // The card is its content: one row of text and controls, the hint under it. A
                 // fixed resting height used to hand the slack to the field, which left the
                 // paperclip and the send arrow hanging below the line of text they act on.
@@ -188,6 +190,12 @@ struct MacComposerBar: View {
         // drops the capture instead of typing into somebody else's message.
         .onChange(of: model.selectedSessionID) { _, _ in voice.cancel() }
         .onDisappear { voice.cancel() }
+        .sheet(isPresented: $showingCommandHelp) {
+            HermesCommandsHelpSheet { command in
+                runCommand(command)
+            }
+            .hermesSheetChrome()
+        }
     }
 
     // MARK: Voice
@@ -261,6 +269,32 @@ struct MacComposerBar: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+    /// Native actions for the commands this window can perform itself; the rest stay in the field
+    /// with their argument hint, for the host to run on send.
+    private func runCommand(_ command: HermesCommand) {
+        switch command.action {
+        case .help:
+            model.draft = ""
+            showingCommandHelp = true
+        case .newSession:
+            model.draft = ""
+            Task { await model.newSession() }
+        case .resetConversation:
+            model.draft = ""
+            Task { await model.resetConversation() }
+        case .compact:
+            model.draft = ""
+            Task { await model.compressNow() }
+        case .model, .reasoning:
+            model.draft = ""
+            if let bot = model.selectedBot {
+                store.openModel(bot)
+            }
+        case .memory, .status, .insertOnly:
+            break
+        }
+    }
+
 }
 
 // MARK: - Previews
