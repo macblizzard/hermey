@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.548",
-          "buildVersion": "548",
-          "date": "2026-11-17T15:12:44Z",
-          "localizedDescription": "Download links from the bots' shared file store now render as file cards with filenames, copy and share on both apps.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.548/Hermey-0.1.548-b548.ipa",
-          "size": 3314710,
+          "version": "0.1.550",
+          "buildVersion": "550",
+          "date": "2026-11-17T17:07:27Z",
+          "localizedDescription": "Bot-to-bot relay stamps ('Message from/to \ud83e\udd16 name (@handle):') now draw as a header above the bubble, with the name and handle parsed cleanly.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.550/Hermey-0.1.550-b550.ipa",
+          "size": 3317175,
           "minOSVersion": "17.0",
-          "sha256": "bc0be16cdfb7c038daa8fa548c08ed8f0394c26ef2795062f750667b89643c6a"
+          "sha256": "a3192a119c8d4272ac68906db17ccde2ea82dec8e245ae6222cc3f10c5824f9f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.548 (548)",
-      "identifier": "hermes-0.1.548-548",
-      "caption": "Download links from the bots' shared file store now render as file cards with filenames, copy and share on both apps.",
-      "date": "2026-11-17T15:12:44Z",
+      "title": "Hermes 0.1.550 (550)",
+      "identifier": "hermes-0.1.550-550",
+      "caption": "Bot-to-bot relay stamps ('Message from/to \ud83e\udd16 name (@handle):') now draw as a header above the bubble, with the name and handle parsed cleanly.",
+      "date": "2026-11-17T17:07:27Z",
       "tintColor": "#9A9AA0"
     }
   ],
