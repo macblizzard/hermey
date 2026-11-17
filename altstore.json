@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.555",
-          "buildVersion": "555",
-          "date": "2026-11-17T18:07:25Z",
-          "localizedDescription": "Swipe down closes the bot drawer again, even now that its content scrolls.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.555/Hermey-0.1.555-b555.ipa",
-          "size": 3329748,
+          "version": "0.1.556",
+          "buildVersion": "556",
+          "date": "2026-11-17T18:32:40Z",
+          "localizedDescription": "Fleet-wide approval mode in both apps' settings: Ask always, Auto (host smart mode) or Never ask, applied to every bot.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.556/Hermey-0.1.556-b556.ipa",
+          "size": 3344559,
           "minOSVersion": "17.0",
-          "sha256": "d31c128641e254807cb74b540faacd03a40ed7693f4b5312ed9bfadabd6782f5"
+          "sha256": "01581e93772d41a5f84bb16d773112d965f64edb8d1714e729f57598a91e6ba8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.555 (555)",
-      "identifier": "hermes-0.1.555-555",
-      "caption": "Swipe down closes the bot drawer again, even now that its content scrolls.",
-      "date": "2026-11-17T18:07:25Z",
+      "title": "Hermes 0.1.556 (556)",
+      "identifier": "hermes-0.1.556-556",
+      "caption": "Fleet-wide approval mode in both apps' settings: Ask always, Auto (host smart mode) or Never ask, applied to every bot.",
+      "date": "2026-11-17T18:32:40Z",
       "tintColor": "#9A9AA0"
     }
   ],
