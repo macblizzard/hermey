@@ -116,7 +116,7 @@ struct PairAnotherDeviceSheet: View {
         }
         let minutes = countdown / 60
         let seconds = countdown % 60
-        return "Expires in \\(minutes):\\(String(format: "%02d", seconds))."
+        return "Expires in \(minutes):\(seconds < 10 ? "0\(seconds)" : "\(seconds)")."
     }
 
     /// The host answers `expires_at` as an epoch; the countdown is against this device's clock, which is

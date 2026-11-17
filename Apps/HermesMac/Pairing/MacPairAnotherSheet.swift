@@ -119,7 +119,8 @@ struct MacPairAnotherSheet: View {
         if countdown <= 0 {
             return "This code has expired — generate a new one."
         }
-        return "Expires in \\(countdown / 60):\\(String(format: "%02d", countdown % 60))."
+        let seconds = countdown % 60
+        return "Expires in \(countdown / 60):\(seconds < 10 ? "0\(seconds)" : "\(seconds)")."
     }
 
     private func mint() async {
