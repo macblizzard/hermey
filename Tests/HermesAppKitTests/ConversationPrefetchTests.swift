@@ -149,6 +149,8 @@ final class ConversationPrefetchTests: XCTestCase {
 
         await model.endlessSession(for: cody)
 
+        print("DIAG resumed=\(client.resumed) created=\(client.createdSessions) "
+              + "err=\(String(describing: model.lastSendError)) sel=\(String(describing: model.selectedSessionID))")
         // The scripted host answers any id with its single session, so the assertion is on what the
         // model asked for: the conversation that exists, and no minted replacement.
         XCTAssertEqual(client.resumed, [Self.sessionID, "20260101_000009_older"],
