@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.561",
-          "buildVersion": "561",
-          "date": "2026-11-17T20:15:44Z",
-          "localizedDescription": "Local computer use: bots on the host can now run commands on the paired Mac with no approval gate; longer timeout, developer PATH and a host-side CLI for Xcode/build tasks.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.561/Hermey-0.1.561-b561.ipa",
-          "size": 3343614,
+          "version": "0.1.562",
+          "buildVersion": "562",
+          "date": "2026-11-17T21:41:51Z",
+          "localizedDescription": "Phase 1: local computer permission status cards with correct System Settings panes for Accessibility, Screen Recording, Input Monitoring and Automation.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.562/Hermey-0.1.562-b562.ipa",
+          "size": 3343611,
           "minOSVersion": "17.0",
-          "sha256": "91eedacd8a72f1ffbe2ae07278915d7d27101ea436d4e59934df925793179ea3"
+          "sha256": "9daa64c8c088ad08a640477cf8111a22b167ea855a1acadbc00346d5012504cf"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.561 (561)",
-      "identifier": "hermes-0.1.561-561",
-      "caption": "Local computer use: bots on the host can now run commands on the paired Mac with no approval gate; longer timeout, developer PATH and a host-side CLI for Xcode/build tasks.",
-      "date": "2026-11-17T20:15:44Z",
+      "title": "Hermes 0.1.562 (562)",
+      "identifier": "hermes-0.1.562-562",
+      "caption": "Phase 1: local computer permission status cards with correct System Settings panes for Accessibility, Screen Recording, Input Monitoring and Automation.",
+      "date": "2026-11-17T21:41:51Z",
       "tintColor": "#9A9AA0"
     }
   ],
