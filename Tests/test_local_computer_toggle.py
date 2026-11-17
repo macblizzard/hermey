@@ -61,3 +61,29 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn('"/v1/local-computers"', cli)
         self.assertIn('args.command[1:] if args.command and args.command[0] == "--"', cli)
         self.assertIn('base64.b64decode(result.get("stdout", ""))', cli)
+
+    def test_permission_panes_and_prompt_are_real(self) -> None:
+        perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()
+        for pane in ("Privacy_Accessibility", "Privacy_ScreenCapture",
+                     "Privacy_ListenEvent", "Privacy_Automation"):
+            self.assertIn(pane, perms)
+        self.assertIn("x-apple.systempreferences:com.apple.preference.security?", perms)
+        self.assertIn("AXIsProcessTrustedWithOptions", perms)
+        self.assertIn("kAXTrustedCheckOptionPrompt: true", perms)
+        self.assertIn("SCShareableContent.getWithCompletionHandler", perms)
+        self.assertIn("CGEventTapCreate", perms)
+
+    def test_permission_errors_name_the_missing_grant(self) -> None:
+        perms = (ROOT / "Apps/HermesMac/LocalComputer/ComputerPermissions.swift").read_text()
+        self.assertIn("enum ComputerPermissionError: LocalizedError", perms)
+        self.assertIn('case missing(ComputerPermission)', perms)
+        self.assertIn('Enable it in Settings → Computer', perms)
+
+    def test_settings_panel_shows_every_grant(self) -> None:
+        view = (ROOT / "Apps/HermesMac/Views/LocalComputerSettingsView.swift").read_text()
+        self.assertIn("@StateObject private var permissions = ComputerPermissions()", view)
+        self.assertIn('Text("Permissions")', view)
+        self.assertIn("ForEach(ComputerPermission.allCases)", view)
+        self.assertIn('Button(permission == .accessibility ? "Request Access" : "Open Settings")', view)
+        self.assertIn('Button("Test Automation Access")', view)
+        self.assertIn("if phase == .active { permissions.refresh() }", view)

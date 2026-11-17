@@ -7,7 +7,9 @@ import SwiftUI
 struct LocalComputerSettingsView: View {
     @ObservedObject var store: WorkspaceStore
     @StateObject private var service = LocalComputerService()
+    @StateObject private var permissions = ComputerPermissions()
     @State private var confirmingRevoke = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private var pairedAddress: PairingAddress? { store.pairing }
 
@@ -53,6 +55,48 @@ struct LocalComputerSettingsView: View {
                     .foregroundStyle(Tokens.textMuted)
             }
 
+            Section {
+                ForEach(ComputerPermission.allCases) { permission in
+                    let state = permissions.states[permission]
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            Text(permission.title)
+                                .font(TypeScale.font(TypeScale.sm))
+                                .foregroundStyle(Tokens.textPrimary)
+                            Text(state?.label ?? "Checking…")
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(state?.granted == true ? Tokens.success
+                                                 : state?.granted == false ? Tokens.danger
+                                                 : Tokens.textMuted)
+                            Spacer(minLength: 6)
+                            Button(permission == .accessibility ? "Request Access" : "Open Settings") {
+                                permissions.request(permission)
+                            }
+                            .controlSize(.small)
+                        }
+                        Text(permission.detail)
+                            .font(TypeScale.font(TypeScale.caption))
+                            .foregroundStyle(Tokens.textMuted)
+                        if let note = state?.note, !note.isEmpty {
+                            Text(note)
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textMuted)
+                        }
+                        if permission == .automation {
+                            Button("Test Automation Access") { permissions.testAutomation() }
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            } header: {
+                Text("Permissions")
+            } footer: {
+                Text("Hermey is ad-hoc signed, so macOS may ask again after an app update. Accessibility has a system prompt; the other three are switches in System Settings › Privacy & Security.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+            }
+
             if service.commandsRun > 0 {
                 Section("Activity") {
                     Text("\\(service.commandsRun) command(s) run this session")
@@ -73,6 +117,10 @@ struct LocalComputerSettingsView: View {
             if service.isEnabled { service.setEnabled(true, address: pairedAddress) }
         }
         .onChange(of: store.pairing) { _, address in service.pairingChanged(address: address) }
+        .onChange(of: scenePhase) { _, phase in
+            // The user grants access in System Settings, then returns here; re-check on activation.
+            if phase == .active { permissions.refresh() }
+        }
         .confirmationDialog("Revoke this Mac?", isPresented: $confirmingRevoke, titleVisibility: .visible) {
             Button("Revoke", role: .destructive) {
                 Task { await service.revoke(address: pairedAddress) }
