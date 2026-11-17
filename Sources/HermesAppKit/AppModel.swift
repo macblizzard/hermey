@@ -3004,6 +3004,12 @@ public final class AppModel: ObservableObject {
 
     /// This bot's routines, read from the host's scheduler rather than from a copy kept here: a
     /// list the app cached could say "every day at 3am" about a job that was paused last Tuesday.
+    /// A pairing invite this device mints for another one. Single-use and short-lived; the sheet shows
+    /// it as a QR and a URL.
+    public func makePairingInvite() async throws -> PairingInvite {
+        try await client.makePairingInvite()
+    }
+
     /// The bot's effort level and aux/vision model, read from its own config on the host.
     public func modelSettings(for profile: String) async throws -> BotModelSettings {
         try await client.modelSettings(profile)

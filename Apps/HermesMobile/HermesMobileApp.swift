@@ -159,6 +159,13 @@ struct BotsTab: View {
     /// The relay app (Bark) cannot deep-link into a view it knows nothing about, so the URL is the
     /// whole contract. An unknown or stale bot is ignored rather than pushed as an empty thread.
     private func openBannerURL(_ url: URL) {
+        // A pairing invite QR scanned with the *system* camera lands here: open the pairing sheet with
+        // the link loaded, and the sheet's own host-confirmation dialog takes over from there.
+        if url.scheme == "hermes", url.host == "pair" {
+            pendingPairingLink = url.absoluteString
+            isPairingPresented = true
+            return
+        }
         guard url.scheme == "hermey", url.host == "bot" else { return }
         let id = url.lastPathComponent
         guard !id.isEmpty, let bot = model.bots.first(where: { $0.id == id }) else { return }

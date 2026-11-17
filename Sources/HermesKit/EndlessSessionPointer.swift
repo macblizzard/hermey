@@ -514,6 +514,14 @@ enum Failure: Error, Equatable, LocalizedError {
         return Set(names)
     }
 
+    /// `POST /v1/pair/start`, authenticated as this paired device. The mint is the host's own; the
+    /// device's ticket is only the authorisation to ask for one on its behalf.
+    public func makePairingInvite() async throws -> PairingInvite {
+        let data = try await bridgePOST("v1/pair/start", body: [:], timeout: 15)
+        guard let invite = PairingInvite.decode(data) else { throw BotAdminUnavailable() }
+        return invite
+    }
+
     /// `GET /v1/bots/{profile}/model-settings`.
     public func modelSettings(_ profile: String) async throws -> BotModelSettings {
         let name = try Self.pathComponent(profile)

@@ -114,6 +114,32 @@ def test_revoked_device_disappears_from_active_list(app_bridge):
     assert "refresh_token" not in devices[0]
 
 
+def test_a_paired_device_can_mint_an_invite(app_bridge):
+    """A paired device holds full authority over the host already, so letting it invite another grants
+    nothing new — but the mint must be audited against the *device*, and stay single-use."""
+    app_bridge.state.bridge.registry.add_device(
+        device_id="inviter", name="Inviter", platform="ios",
+        public_key=TEST_PUBLIC_KEY, refresh_token="inviter-refresh")
+    # From a *remote* address: this is the device path, not the local-host one.
+    remote = client(app_bridge, host="10.0.0.9")
+    code = remote.post("/v1/pair/start",
+                       headers=auth_headers(remote, "inviter", "inviter-refresh")).json()
+    assert code["code"]
+    assert code["host"]
+    # The mint is redeemable exactly like the host's own: one claim, then gone.
+    claim = remote.post(
+        "/v1/pair/claim",
+        json={"code": code["code"], "device_name": "Invited", "platform": "macos",
+              "public_key": TEST_PUBLIC_KEY},
+    )
+    assert claim.status_code == 200
+    assert remote.post(
+        "/v1/pair/claim",
+        json={"code": code["code"], "device_name": "Replay", "platform": "macos",
+              "public_key": TEST_PUBLIC_KEY},
+    ).status_code == 401
+
+
 def test_pairing_code_is_host_only(app_bridge):
     assert client(app_bridge, host="10.0.0.9").post("/v1/pair/start").status_code == 403
 

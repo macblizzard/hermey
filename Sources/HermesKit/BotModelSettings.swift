@@ -74,3 +74,42 @@ public struct BotModelSettings: Equatable, Sendable {
             visionModel: vision?["model"] as? String ?? "")
     }
 }
+
+
+/// A pairing invite one device hands another: what `POST /v1/pair/start` answers.
+///
+/// The URL is what a QR code carries and what the other device pastes — the same `hermes://pair?…`
+/// shape `hermey pair` prints, which both apps already parse.
+public struct PairingInvite: Equatable, Sendable {
+    public let host: String
+    public let code: String
+    /// Seconds until the code stops being redeemable. Single-use, so a code shown once and scanned
+    /// once is the expected life; showing it again mints a new one.
+    public let expiresIn: Int
+
+    public init(host: String, code: String, expiresIn: Int) {
+        self.host = host
+        self.code = code
+        self.expiresIn = expiresIn
+    }
+
+    /// The link the other device accepts: `hermes://pair?host=<host>&code=<code>`.
+    public var url: String {
+        var parts = URLComponents(string: "hermes://pair")!
+        parts.queryItems = [
+            URLQueryItem(name: "host", value: host),
+            URLQueryItem(name: "code", value: code),
+        ]
+        return parts.string ?? "hermes://pair?host=\(host)&code=\(code)"
+    }
+
+    static func decode(_ data: Data) -> PairingInvite? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let code = object["code"] as? String, !code.isEmpty else { return nil }
+        // `expires_at` is an epoch in seconds; JSON floats decode as NSNumber/Double, never Int.
+        let expiresIn = (object["expires_at"] as? Double).map(Int.init) ?? 0
+        return PairingInvite(host: object["host"] as? String ?? "",
+                             code: code,
+                             expiresIn: expiresIn)
+    }
+}

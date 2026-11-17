@@ -304,13 +304,25 @@ def create_app(
         }
 
     @app.post("/v1/pair/start", response_model=PairStartResponse)
-    def pair_start(request: Request) -> PairStartResponse:
+    def pair_start(request: Request, authorization: str | None = Header(default=None)) -> PairStartResponse:
+        # Two mints, one route. On the host (`hermey pair`, the dashboard) the old rule holds. From a
+        # *paired* device the rule is relaxed deliberately (asked for 2026-11-17: generate a code on the
+        # desktop to pair the phone, and on the phone to pair the desktop): a paired device already
+        # holds full authority over this host — its refresh token reaches the gateway — so letting it
+        # invite another device grants nothing it did not have. What it buys is the audit line below,
+        # which says which device invited whom, and the same single-use ten-minute code the host mints.
+        minter = "host"
         if not _is_local_host_request(request):
-            raise HTTPException(
-                status_code=403,
-                detail="pairing codes are minted on the host only",
-            )
+            try:
+                minter = require_device(runtime, authorization)
+            except HTTPException:
+                raise HTTPException(
+                    status_code=403,
+                    detail="pairing codes are minted on the host or by a paired device",
+                )
         code, _expires = runtime.pairing.mint()
+        runtime.audit.emit("pair.invite", device_id=minter, method="pair.start",
+                           path="/v1/pair/start", nbytes=0, outcome="minted")
         return PairStartResponse(
             code=code,
             expires_at=time.time() + PAIRING_CODE_TTL_SECONDS,

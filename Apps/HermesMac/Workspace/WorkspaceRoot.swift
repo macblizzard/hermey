@@ -178,6 +178,8 @@ struct WorkspaceRoot: View {
                     },
                     deliveries: RoutineDelivery.options(
                         bots: store.model.bots.map { (profile: $0.id, name: $0.displayName) }))
+            case .pairInvite:
+                MacPairAnotherSheet(model: store.model)
             case .logs:
                 // The same view Settings → About embeds, presented as the window's modal so Escape and
                 // the backdrop close it like every other route here.
@@ -219,6 +221,7 @@ struct WorkspaceRoot: View {
         case notes(Bot)
         case botSettings(Bot)
         case logs
+        case pairInvite
 
         var id: String {
             switch self {
@@ -231,6 +234,7 @@ struct WorkspaceRoot: View {
             case .notes(let bot): return "notes:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             case .logs: return "logs"
+            case .pairInvite: return "pair-invite"
             }
         }
     }
@@ -243,6 +247,7 @@ struct WorkspaceRoot: View {
             get: {
                 if store.isPairSheetPresented { return .pair }
                 if store.isLogsPresented { return .logs }
+                if store.isPairInvitePresented { return .pairInvite }
                 if let bot = store.workspaceBot { return .workspace(bot) }
                 if let bot = store.skillsBot { return .skills(bot) }
                 if let bot = store.mcpBot { return .mcp(bot) }
@@ -256,6 +261,7 @@ struct WorkspaceRoot: View {
                 guard route == nil else { return }
                 store.isPairSheetPresented = false
                 store.isLogsPresented = false
+                store.isPairInvitePresented = false
                 store.workspaceBot = nil
                 store.skillsBot = nil
                 store.mcpBot = nil

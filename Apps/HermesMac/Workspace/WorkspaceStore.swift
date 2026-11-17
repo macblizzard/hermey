@@ -146,6 +146,8 @@ final class WorkspaceStore: ObservableObject {
     /// The client log, from the palette. Settings → About has the same view; this reaches it without
     /// leaving the keyboard.
     @Published var isLogsPresented = false
+    /// The pairing invite: a QR and link this device mints for another one.
+    @Published var isPairInvitePresented = false
     /// Sparkle's check, handed in by the app so the store knows nothing about the updater — the same
     /// closure the menu bar item and Settings → About use. Nil in a tree built without the package,
     /// which is why the palette row disables itself rather than lying.
@@ -811,6 +813,16 @@ final class WorkspaceStore: ObservableObject {
                 guard let self else { return }
                 Task { await self.disconnect() }
             }))
+
+        items.append(WorkspaceCommand(
+            id: "host.invite",
+            title: "Pair another device…",
+            subtitle: "A QR and link this Mac mints for a phone or another Mac to scan or paste",
+            systemImage: "qrcode",
+            shortcut: nil,
+            group: .host,
+            isEnabled: isPaired,
+            run: { [weak self] in self?.isPairInvitePresented = true }))
 
         items.append(WorkspaceCommand(
             id: "host.pair",

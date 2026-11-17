@@ -34,6 +34,9 @@ final class AppEnvironment: ObservableObject {
     // MARK: Pairing
 
     @Published var isPairingPresented = false
+    /// A `hermes://pair?…` link waiting for the pairing sheet: set by a system-camera scan of an
+    /// invite QR, absorbed (with its host-confirmation dialog) the next time the sheet is built.
+    @Published var pendingPairingLink: String?
     @Published private(set) var isPairing = false
     @Published private(set) var pairingError: String?
 

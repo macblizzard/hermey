@@ -477,6 +477,13 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.disabledBots()
     }
 
+    /// A paired device may invite another one (asked for 2026-11-17). No store means an older host,
+    /// which must say so rather than show a sheet that cannot produce a code.
+    public func makePairingInvite() async throws -> PairingInvite {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.makePairingInvite()
+    }
+
     /// The effort level and aux/vision model are the bridge's: they live in the profile's config, which
     /// `profiles.describe` does not report and `profiles.configure` does not write. No store means an
     /// older host, which must say so rather than draw every bot on "provider default".

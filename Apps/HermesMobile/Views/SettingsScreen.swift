@@ -649,6 +649,7 @@ struct SettingsSheet: View {
 /// the other one-way verb, `Remove`, which deletes its record from the host.
 struct DevicesScreen: View {
     @EnvironmentObject private var app: AppEnvironment
+    @State private var showingInvite = false
 
     /// The one confirmation this screen can be waiting on.
     ///
@@ -700,6 +701,35 @@ struct DevicesScreen: View {
 
     var body: some View {
         List {
+            // Invite another device from this one: the host mints the code on this device's
+            // say-so, and the other side scans or pastes it (asked for 2026-11-17).
+            Section {
+                Button {
+                    showingInvite = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "qrcode")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(Tokens.accentText)
+                            .frame(width: 26, height: 26)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Pair another device…")
+                                .font(TypeScale.font(TypeScale.md))
+                                .foregroundStyle(Tokens.accentText)
+                            Text("Generate a code and link to pair it")
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textGroupedSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .disabled(!app.isPaired)
+            } footer: {
+                Text("A code is single-use and expires in minutes.")
+                    .font(TypeScale.font(TypeScale.label))
+            }
             Section {
                 if let error = app.devicesError {
                     Label(error, systemImage: "exclamationmark.triangle")
@@ -757,6 +787,10 @@ struct DevicesScreen: View {
             Button(prompt.cancelTitle, role: .cancel) { self.prompt = nil }
         } message: { prompt in
             Text(prompt.message)
+        }
+        .sheet(isPresented: $showingInvite) {
+            PairAnotherDeviceSheet(model: app.model)
+                .hermesSheetChrome()
         }
     }
 

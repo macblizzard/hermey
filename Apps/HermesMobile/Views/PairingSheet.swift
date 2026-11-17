@@ -53,6 +53,14 @@ struct PairingSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        // An invite QR scanned with the *system* camera opens this sheet with the link attached:
+        // absorb it here, where the host-confirmation dialog already lives, rather than letting the
+        // app reach into a view it does not own.
+        .task {
+            guard let link = app.pendingPairingLink else { return }
+            app.pendingPairingLink = nil
+            absorb(link)
+        }
         // A scanned host is confirmed before a code is sent anywhere.
         .confirmationDialog(
             "Pair with \(pendingScannedHost ?? "")?",
