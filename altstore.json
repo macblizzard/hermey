@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.540",
-          "buildVersion": "540",
-          "date": "2026-11-17T11:47:12Z",
-          "localizedDescription": "Desktop: sheets, panels and the sidebar now share one short motion language; the sidebar slides and fades instead of snapping, and Reduce Motion is honoured.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.540/Hermey-0.1.540-b540.ipa",
+          "version": "0.1.542",
+          "buildVersion": "542",
+          "date": "2026-11-17T12:02:19Z",
+          "localizedDescription": "Desktop: double-clicking the bot-list sidebar top now zooms/restores the window, like a real title bar.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.542/Hermey-0.1.542-b542.ipa",
           "size": 3243584,
           "minOSVersion": "17.0",
-          "sha256": "73d578f9bebadb5db6bea8fa3c2bc4cfd3656a4ac6d9dbcaeceb509a1c9617b0"
+          "sha256": "eca43ff167b57e3a99c1db7508fc616a90e637c4fc8b717bd6595a30dce00b7b"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.540 (540)",
-      "identifier": "hermes-0.1.540-540",
-      "caption": "Desktop: sheets, panels and the sidebar now share one short motion language; the sidebar slides and fades instead of snapping, and Reduce Motion is honoured.",
-      "date": "2026-11-17T11:47:12Z",
+      "title": "Hermes 0.1.542 (542)",
+      "identifier": "hermes-0.1.542-542",
+      "caption": "Desktop: double-clicking the bot-list sidebar top now zooms/restores the window, like a real title bar.",
+      "date": "2026-11-17T12:02:19Z",
       "tintColor": "#9A9AA0"
     }
   ],
