@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.536",
-          "buildVersion": "536",
-          "date": "2026-11-17T08:30:06Z",
-          "localizedDescription": "Desktop: the model sheet is provider, then model, then effort, with an aux/vision model underneath. Mobile: the Edit button on a bot opens the same settings sheet as the long press, icon and soul included.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.536/Hermey-0.1.536-b536.ipa",
-          "size": 3223007,
+          "version": "0.1.537",
+          "buildVersion": "537",
+          "date": "2026-11-17T08:43:54Z",
+          "localizedDescription": "Vision model and effort level can be changed now: the app forwards to the bridge route (it was reporting \"bridge does not support managing bots\" because the client never forwarded). No effort level is ticked until the config has actually been read.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.537/Hermey-0.1.537-b537.ipa",
+          "size": 3223315,
           "minOSVersion": "17.0",
-          "sha256": "983b0bb27bbc8f8bcafec69dff75acdd82b43e2186bea98702fe4a093df4478f"
+          "sha256": "7db231ff755c4593c6818f275d3eb5db6e520381fdb49e6833d3b4b41ed20585"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.536 (536)",
-      "identifier": "hermes-0.1.536-536",
-      "caption": "Desktop: the model sheet is provider, then model, then effort, with an aux/vision model underneath. Mobile: the Edit button on a bot opens the same settings sheet as the long press, icon and soul included.",
-      "date": "2026-11-17T08:30:06Z",
+      "title": "Hermes 0.1.537 (537)",
+      "identifier": "hermes-0.1.537-537",
+      "caption": "Vision model and effort level can be changed now: the app forwards to the bridge route (it was reporting \"bridge does not support managing bots\" because the client never forwarded). No effort level is ticked until the config has actually been read.",
+      "date": "2026-11-17T08:43:54Z",
       "tintColor": "#9A9AA0"
     }
   ],
