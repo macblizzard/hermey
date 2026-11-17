@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.562",
-          "buildVersion": "562",
-          "date": "2026-11-17T21:41:51Z",
-          "localizedDescription": "Phase 1: local computer permission status cards with correct System Settings panes for Accessibility, Screen Recording, Input Monitoring and Automation.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.562/Hermey-0.1.562-b562.ipa",
-          "size": 3343611,
+          "version": "0.1.563",
+          "buildVersion": "563",
+          "date": "2026-11-17T21:53:16Z",
+          "localizedDescription": "Fix: permission probes now require an explicit button press; local-computer socket uses a long-lived URLSession with timer heartbeat and pong tracking.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.563/Hermey-0.1.563-b563.ipa",
+          "size": 3343612,
           "minOSVersion": "17.0",
-          "sha256": "9daa64c8c088ad08a640477cf8111a22b167ea855a1acadbc00346d5012504cf"
+          "sha256": "c46eb445e7d0568a19beefb886f60e8f1329d3fb84bbb12583bc8a8242028cf1"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.562 (562)",
-      "identifier": "hermes-0.1.562-562",
-      "caption": "Phase 1: local computer permission status cards with correct System Settings panes for Accessibility, Screen Recording, Input Monitoring and Automation.",
-      "date": "2026-11-17T21:41:51Z",
+      "title": "Hermes 0.1.563 (563)",
+      "identifier": "hermes-0.1.563-563",
+      "caption": "Fix: permission probes now require an explicit button press; local-computer socket uses a long-lived URLSession with timer heartbeat and pong tracking.",
+      "date": "2026-11-17T21:53:16Z",
       "tintColor": "#9A9AA0"
     }
   ],
