@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.551",
-          "buildVersion": "551",
-          "date": "2026-11-17T17:20:05Z",
-          "localizedDescription": "Long messages no longer freeze scrolling: UIKit's redundant link detector is off and URL extraction is cached per message.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.551/Hermey-0.1.551-b551.ipa",
-          "size": 3319585,
+          "version": "0.1.552",
+          "buildVersion": "552",
+          "date": "2026-11-17T17:26:11Z",
+          "localizedDescription": "Mac: cache file-link parsing per message so long transcripts scroll smoothly too.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.552/Hermey-0.1.552-b552.ipa",
+          "size": 3319587,
           "minOSVersion": "17.0",
-          "sha256": "91beb543631037a6fc41dfc7d7fca03c0348b21726944bff51f05234fe8110d4"
+          "sha256": "182edc292f83663114bfaa8aec63b29448a419c136599e7d84e1b1d76b49c1d2"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.551 (551)",
-      "identifier": "hermes-0.1.551-551",
-      "caption": "Long messages no longer freeze scrolling: UIKit's redundant link detector is off and URL extraction is cached per message.",
-      "date": "2026-11-17T17:20:05Z",
+      "title": "Hermes 0.1.552 (552)",
+      "identifier": "hermes-0.1.552-552",
+      "caption": "Mac: cache file-link parsing per message so long transcripts scroll smoothly too.",
+      "date": "2026-11-17T17:26:11Z",
       "tintColor": "#9A9AA0"
     }
   ],
