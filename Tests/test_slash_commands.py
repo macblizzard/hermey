@@ -53,7 +53,9 @@ class TypingSlashShowsTheList(unittest.TestCase):
     def test_only_a_single_leading_word_opens_the_popup(self) -> None:
         self.assertIn('text.hasPrefix("/")', COMPOSER)
         self.assertIn('!text.contains(" ")', COMPOSER)
-        self.assertIn('matching(query).prefix(6)', COMPOSER)
+        self.assertIn('HermesCommandCatalogue.all.matching(query)', COMPOSER)
+        self.assertIn('ScrollView(.vertical, showsIndicators: true)', COMPOSER)
+        self.assertIn('min(28 + CGFloat(commandMatches.count) * 44, 360)', COMPOSER)
 
     def test_picking_completes_the_command_and_calls_the_owner(self) -> None:
         self.assertIn("text = command.invocation", COMPOSER)

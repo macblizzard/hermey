@@ -173,7 +173,15 @@ public struct Composer: View {
 
     private var commandMatches: [HermesCommand] {
         guard let query = commandQuery else { return [] }
-        return Array(HermesCommandCatalogue.all.matching(query).prefix(6))
+        // Every match, not a fixed first page: the list scrolls, so `/` reaches all 68 commands and a
+        // fragment like `/re` shows the whole family instead of whichever six happened to sort first.
+        return HermesCommandCatalogue.all.matching(query)
+    }
+
+    /// The popup grows with its matches up to a ceiling, then scrolls. A fixed six-row list meant an
+    /// unfiltered `/` silently cut off 62 commands with no way to reach them.
+    private var commandPopupHeight: CGFloat {
+        min(28 + CGFloat(commandMatches.count) * 44, 360)
     }
 
     private var canSend: Bool {
@@ -288,13 +296,18 @@ public struct Composer: View {
                                   lineWidth: 1)
             }
         }
-        .overlay(alignment: .top, content: {
+        .overlay(alignment: .topLeading, content: {
             // The Hermes command list, above the field rather than in it: the card must not grow
-            // while the list opens or the text being typed would move under the caret.
-            if !commandMatches.isEmpty {
-                commandList
-                    .offset(y: -(CGFloat(commandMatches.count) * 44 + 38))
-                    .zIndex(50)
+            // while the list opens or the text being typed would move under the caret. Measured in a
+            // GeometryReader so the popup fits the phone and stays a readable column on the Mac.
+            GeometryReader { space in
+                if !commandMatches.isEmpty {
+                    commandList
+                        .frame(width: min(460, space.size.width - 16))
+                        .offset(x: showsAttach ? controlSide + 16 : 8,
+                                y: -(commandPopupHeight + 8))
+                        .zIndex(50)
+                }
             }
         })
         .opacity(isDisabled ? 0.6 : 1)
@@ -323,7 +336,9 @@ public struct Composer: View {
                 Text("HERMES COMMANDS")
                     .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                 Spacer(minLength: 8)
-                Text(commandMatches.count == 6 ? "6 of \(HermesCommandCatalogue.all.count)" : "\(commandMatches.count) match")
+                Text(commandMatches.count == HermesCommandCatalogue.all.count
+                     ? "\(commandMatches.count) commands · scroll for more"
+                     : "\(commandMatches.count) of \(HermesCommandCatalogue.all.count)")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textDim)
             }
@@ -331,8 +346,9 @@ public struct Composer: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
 
-            ForEach(commandMatches) { command in
-                Button { choose(command) } label: {
+            ScrollView(.vertical, showsIndicators: true) {
+                ForEach(commandMatches) { command in
+                    Button { choose(command) } label: {
                     HStack(spacing: 9) {
                         Image(systemName: command.systemImage)
                             .font(.system(size: 12, weight: .medium))
@@ -366,7 +382,9 @@ public struct Composer: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                }
             }
+            .frame(height: commandPopupHeight)
         }
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
