@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.538",
-          "buildVersion": "538",
-          "date": "2026-11-17T09:13:58Z",
-          "localizedDescription": "Mobile: the bot menu has a Model row of its own \u2014 provider, model, effort and aux/vision model, like the desktop. The Edit sheet is back to the bot itself: portrait, description, soul, memory, delete.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.538/Hermey-0.1.538-b538.ipa",
-          "size": 3243481,
+          "version": "0.1.539",
+          "buildVersion": "539",
+          "date": "2026-11-17T09:25:42Z",
+          "localizedDescription": "Mobile: the notes sheet now uses the same navigation chrome as the other sheets. Desktop: cached banner faces are versioned, so a renderer change no longer leaves the old logo in notifications.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.539/Hermey-0.1.539-b539.ipa",
+          "size": 3243586,
           "minOSVersion": "17.0",
-          "sha256": "edc0d3f8822735d13fc08ff91060e04848081b622be488ad3a3217e9c7c084e4"
+          "sha256": "4953ca8bc63b49eecf9540a4770c5b0d653a4f18d0cf912ba6252d01dffe661b"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.538 (538)",
-      "identifier": "hermes-0.1.538-538",
-      "caption": "Mobile: the bot menu has a Model row of its own \u2014 provider, model, effort and aux/vision model, like the desktop. The Edit sheet is back to the bot itself: portrait, description, soul, memory, delete.",
-      "date": "2026-11-17T09:13:58Z",
+      "title": "Hermes 0.1.539 (539)",
+      "identifier": "hermes-0.1.539-539",
+      "caption": "Mobile: the notes sheet now uses the same navigation chrome as the other sheets. Desktop: cached banner faces are versioned, so a renderer change no longer leaves the old logo in notifications.",
+      "date": "2026-11-17T09:25:42Z",
       "tintColor": "#9A9AA0"
     }
   ],
