@@ -18,42 +18,43 @@ public struct QRCodeView: View {
     }
 
     public var body: some View {
-        #if os(iOS)
-        Image(uiImage: QRCodeView.image(content: content))
+        Image(platformImage(content: content))
             .interpolation(.none)
             .resizable()
             .scaledToFit()
             .frame(width: side, height: side)
-        #else
-        Image(nsImage: QRCodeView.image(content: content))
-            .interpolation(.none)
-            .resizable()
-            .scaledToFit()
-            .frame(width: side, height: side)
-        #endif
     }
 
     /// Black modules on white: a QR code's finder patterns assume contrast, and the app's dark canvas
     /// behind a translucent pane is exactly what a dark-on-dark code needs to be defended against.
     @MainActor
-    static func image(content: String) -> PlatformImage {
+    static func platformImage(content: String) -> CGImage {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(content.utf8)
         filter.correctionLevel = "M"
         let output = filter.outputImage ?? CIImage.empty()
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
         let context = CIContext()
-        guard let cg = context.createCGImage(scaled, from: scaled.extent) else {
-            return PlatformImage()
-        }
-        return PlatformImage(cgImage: cg)
+        return context.createCGImage(scaled, from: scaled.extent) ?? CGImage()
     }
 }
 
 #if os(iOS)
 import UIKit
-private typealias PlatformImage = UIImage
+typealias PlatformImage = UIImage
 #else
 import AppKit
-private typealias PlatformImage = NSImage
+typealias PlatformImage = NSImage
 #endif
+
+private extension QRCodeView {
+    /// `Image` takes the platform's image type; this is the one place the spelling differs.
+    @MainActor
+    func platformImage(_ cg: CGImage) -> PlatformImage {
+        #if os(iOS)
+        return UIImage(cgImage: cg)
+        #else
+        return NSImage(cgImage: cg, size: NSSize(width: side, height: side))
+        #endif
+    }
+}
