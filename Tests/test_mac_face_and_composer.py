@@ -64,11 +64,12 @@ class TheFaceSaysWhatItIsDoing(unittest.TestCase):
 class TheSidebarRowIsOneCluster(unittest.TestCase):
     def test_every_control_is_on_the_right(self) -> None:
         row = SIDEBAR.split("private var header: some View", 1)[1].split("private var closeSearch", 1)[0]
-        # The spacer comes first: nothing is drawn on the leading edge at all.
-        self.assertLess(row.index("Spacer(minLength: 0)"),
-                        row.index('HermeyIconButton("magnifyingglass"'))
+        # The leading filler used to be a bare Spacer. It is now a TitlebarDragArea — the whole sidebar
+        # top is the stand-in title bar — so the assertion is against the filler, not its old spelling.
+        filler = "TitlebarDragArea()"
+        self.assertLess(row.index(filler), row.index('HermeyIconButton("magnifyingglass"'))
         for glyph in ("magnifyingglass", "sidebar.left", "gearshape"):
-            self.assertGreater(row.index(glyph), row.index("Spacer(minLength: 0)"))
+            self.assertGreater(row.index(glyph), row.index(filler))
 
     def test_no_captions_over_the_lists(self) -> None:
         # "CHATS" over a list of chats cost a line above the first row and said nothing.
