@@ -181,6 +181,14 @@ final class LocalComputerService: ObservableObject {
                 Task { @MainActor [weak self] in
                     await self?.handleAct(frame, on: task)
                 }
+            } else if kind == "file" {
+                Task { @MainActor [weak self] in
+                    await self?.handleFile(frame, on: task)
+                }
+            } else if kind == "browser" {
+                Task { @MainActor [weak self] in
+                    await self?.handleBrowser(frame, on: task)
+                }
             }
         }
     }
@@ -229,6 +237,48 @@ final class LocalComputerService: ObservableObject {
             "truncated": result.truncated,
         ]
         sendReply(reply, on: task)
+    }
+
+    private func handleBrowser(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
+        guard let id = frame["id"] as? String,
+              let op = frame["op"] as? String else { return }
+        do {
+            let result: [String: Any]
+            switch op {
+            case "navigate":
+                guard let url = frame["url"] as? String else { throw BrowserError.badURL }
+                result = try await ComputerBrowser.shared.navigate(url)
+            case "snapshot":
+                result = try await ComputerBrowser.shared.snapshot()
+            case "act":
+                guard let actions = frame["actions"] as? [[String: Any]] else { throw BrowserError.badBatch }
+                result = try await ComputerBrowser.shared.act(actions)
+            case "downloads":
+                result = ["downloads": ComputerBrowser.shared.recentDownloads()]
+            default:
+                throw BrowserError.badBatch
+            }
+            ClientLog.shared.record("computer browser \(op)", category: "local-computer")
+            sendReply(["id": id, "type": "result", "exit_code": 0, "browser": result], on: task)
+        } catch {
+            sendReply(["id": id, "type": "result", "exit_code": 1,
+                       "error": error.localizedDescription], on: task)
+        }
+    }
+
+    private func handleFile(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
+        guard let id = frame["id"] as? String else { return }
+        do {
+            let result = try await Task.detached(priority: .utility) {
+                try ComputerFiles.shared.perform(frame)
+            }.value
+            ClientLog.shared.record("computer file \(frame["op"] as? String ?? "?")",
+                                    category: "local-computer")
+            sendReply(["id": id, "type": "result", "exit_code": 0, "file": result], on: task)
+        } catch {
+            sendReply(["id": id, "type": "result", "exit_code": 1,
+                       "error": error.localizedDescription], on: task)
+        }
     }
 
     private func handleAct(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {

@@ -81,6 +81,39 @@ def do_observe(computer_name: str | None, save: str | None) -> int:
     return 0
 
 
+def do_browser(computer_name: str | None, op: str, value: str | None) -> int:
+    device = pick_computer(computer_name)
+    payload: dict = {"op": op}
+    if op == "navigate":
+        payload["url"] = value
+    elif op == "act":
+        payload["actions"] = json.loads(value or "[]")
+    result = request(f"/v1/local-computers/{device['device_id']}/browser", payload)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def do_files(computer_name: str | None, op: str, path: str, local: str | None,
+             save: str | None) -> int:
+    device = pick_computer(computer_name)
+    payload: dict = {"op": op, "path": path}
+    if op == "write":
+        if not local:
+            raise RuntimeError("files write needs a local file to send")
+        with open(local, "rb") as handle:
+            payload["content_base64"] = base64.b64encode(handle.read()).decode()
+    result = request(f"/v1/local-computers/{device['device_id']}/file", payload)
+    if op == "read":
+        data = base64.b64decode(result["content_base64"])
+        out = save or f"/tmp/hermey-file-{os.path.basename(path)}"
+        with open(out, "wb") as handle:
+            handle.write(data)
+        print(json.dumps({"path": out, "remote": path, "bytes": len(data)}))
+    else:
+        print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def do_act(computer_name: str | None, actions_json: str, bot: str, save: str | None) -> int:
     device = pick_computer(computer_name)
     actions = json.loads(actions_json)
@@ -94,6 +127,32 @@ def do_act(computer_name: str | None, actions_json: str, bot: str, save: str | N
 
 def main() -> int:
     raw = sys.argv[1:]
+    if raw and raw[0] == "browser":
+        browser = argparse.ArgumentParser(description="Drive the Mac's private browser surface")
+        browser.add_argument("op", choices=("navigate", "snapshot", "act", "downloads"))
+        browser.add_argument("value", nargs="?", help="URL for navigate, JSON array for act")
+        browser.add_argument("--computer")
+        args = browser.parse_args(raw[1:])
+        try:
+            return do_browser(args.computer, args.op, args.value)
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+            print(f"Browser failed: {exc}", file=sys.stderr)
+            return 4
+
+    if raw and raw[0] == "files":
+        files = argparse.ArgumentParser(description="Work in the Mac's shared Hermey workspace")
+        files.add_argument("op", choices=("list", "read", "write", "mkdir"))
+        files.add_argument("path", help="remote path inside the workspace")
+        files.add_argument("local", nargs="?", help="local file for `write`")
+        files.add_argument("--save", help="where `read` writes the file locally")
+        files.add_argument("--computer")
+        args = files.parse_args(raw[1:])
+        try:
+            return do_files(args.computer, args.op, args.path, args.local, args.save)
+        except (RuntimeError, urllib.error.HTTPError, OSError) as exc:
+            print(f"Files failed: {exc}", file=sys.stderr)
+            return 4
+
     if raw and raw[0] == "act":
         act = argparse.ArgumentParser(description="Run a batch of desktop actions on the Mac")
         act.add_argument("actions", help='JSON array of 1..24 action objects')

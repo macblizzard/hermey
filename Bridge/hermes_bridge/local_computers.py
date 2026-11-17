@@ -10,9 +10,11 @@ computer at a time, and there is no host path confinement yet — the Mac app ow
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -30,6 +32,35 @@ log = logging.getLogger("hermes_bridge.local_computers")
 DEFAULT_STATE_DIR = paths.STATE_DIR
 DEFAULT_TIMEOUT_MS = 900_000
 MAX_TIMEOUT_MS = 1_800_000
+SECRET_PATTERNS = (
+    re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._-]{16,}"),
+)
+
+
+def redact_text(text: str) -> str:
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub("[redacted]", text)
+    return text
+
+
+def redact_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Redact token-shaped strings from text streams without touching binary output."""
+    redacted = dict(result)
+    for key in ("stdout", "stderr"):
+        encoded = redacted.get(key)
+        if not isinstance(encoded, str):
+            continue
+        try:
+            raw = base64.b64decode(encoded, validate=True).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        clean = redact_text(raw)
+        if clean != raw:
+            redacted[key] = base64.b64encode(clean.encode()).decode()
+    return redacted
 
 
 @dataclass
@@ -188,7 +219,72 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
             raise HTTPException(status_code=504, detail="the computer did not answer in time") from None
         runtime.audit.emit("local_computer.execute", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/execute", outcome="finished")
-        return result
+        return redact_result(result)
+
+    @router.post("/{device_id}/browser")
+    async def browser(device_id: str, body: dict[str, Any], request: Request,
+                      authorization: str | None = Header(default=None)) -> dict:
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        op = body.get("op")
+        if op not in ("navigate", "snapshot", "act", "downloads"):
+            raise HTTPException(status_code=422, detail="unsupported browser operation")
+        if op == "navigate":
+            value = body.get("url")
+            if not isinstance(value, str) or not value.startswith(("http://", "https://")):
+                raise HTTPException(status_code=422, detail="url must be http or https")
+        if op == "act":
+            actions = body.get("actions")
+            if not isinstance(actions, list) or not (1 <= len(actions) <= 10):
+                raise HTTPException(status_code=422, detail="actions must be a list of 1..10 objects")
+        try:
+            result = await computers.dispatch(device_id, {"type": "browser", **body}, timeout_ms=60_000)
+        except LookupError:
+            raise HTTPException(status_code=503, detail="that computer is not connected") from None
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
+        if result.get("error") or result.get("exit_code", 0) != 0:
+            raise HTTPException(status_code=409,
+                                detail=str(result.get("error") or "the browser call failed"))
+        runtime.audit.emit("local_computer.browser", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/browser", outcome="finished")
+        return result["browser"]
+
+    @router.post("/{device_id}/file")
+    async def file_op(device_id: str, body: dict[str, Any], request: Request,
+                      authorization: str | None = Header(default=None)) -> dict:
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        op = body.get("op")
+        if op not in ("read", "write", "list", "mkdir"):
+            raise HTTPException(status_code=422, detail="op must be read, write, list or mkdir")
+        path = body.get("path")
+        if not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/"):
+            raise HTTPException(status_code=422, detail="path must be relative to the workspace")
+        if op == "write":
+            encoded = body.get("content_base64")
+            if not isinstance(encoded, str):
+                raise HTTPException(status_code=422, detail="content_base64 is required")
+            try:
+                size = len(base64.b64decode(encoded, validate=True))
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail="content_base64 is not base64") from None
+            if size > 4_000_000:
+                raise HTTPException(status_code=413, detail="file exceeds 4 MB")
+        try:
+            result = await computers.dispatch(device_id, {"type": "file", **body}, timeout_ms=60_000)
+        except LookupError:
+            raise HTTPException(status_code=503, detail="that computer is not connected") from None
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
+        if result.get("error") or result.get("exit_code", 0) != 0:
+            raise HTTPException(status_code=409,
+                                detail=str(result.get("error") or "the file operation failed"))
+        runtime.audit.emit("local_computer.file", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/file", outcome="finished")
+        return result["file"]
 
     @router.post("/{device_id}/act")
     async def act(device_id: str, body: dict[str, Any], request: Request,

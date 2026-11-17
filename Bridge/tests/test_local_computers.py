@@ -221,3 +221,27 @@ def test_act_dispatches_an_action_batch(bridge):
             assert too_many.status_code == 422
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+
+def test_file_route_confines_paths(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+    headers = {"Authorization": "Bearer " + bridge.mint_ticket(device_id)}
+    for payload in ({"op": "read", "path": "../secrets"},
+                    {"op": "read", "path": "/etc/passwd"},
+                    {"op": "write", "path": "x.txt", "content_base64": "not base64"}):
+        response = bridge.client().post(f"/v1/local-computers/{device_id}/file",
+                                        json=payload, headers=headers)
+        assert response.status_code == 422, response.text
+
+
+def test_secret_redaction_applies_to_text_streams():
+    from hermes_bridge.local_computers import redact_result
+    import base64 as b64
+    raw = "token sk-abcdefghijklmnopqrstuvwx and ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+    result = redact_result({"stdout": b64.b64encode(raw.encode()).decode()})
+    out = b64.b64decode(result["stdout"]).decode()
+    assert "sk-abcdefghijklmnopqrstuvwx" not in out
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in out
+    assert out.count("[redacted]") == 2
