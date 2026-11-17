@@ -363,6 +363,9 @@ public final class AppModel: ObservableObject {
     /// When each snapshot was taken, so a return visit inside `conversationCacheFreshness` can be
     /// answered from the cache without asking the host at all.
     private var conversationCacheStamp: [String: Date] = [:]
+    /// Snapshots the sweep filled but no resume has confirmed yet: painted on open, then refreshed
+    /// once. A bot the person opened and left needs neither — it is already what the host has.
+    private var conversationCacheNeedsResume: Set<String> = []
     /// How long a cached conversation is trusted without a round trip.
     ///
     /// Returning to a chat you left seconds ago should be instant, and the live socket already
@@ -377,7 +380,10 @@ public final class AppModel: ObservableObject {
     /// with every bot the user ever clicked. Eight transcripts of a few hundred rows is small;
     /// unbounded is not.
     private var conversationCacheOrder: [String] = []
-    private static let conversationCacheLimit = 8
+    /// A warmed snapshot costs one page of rows, so the cache covers a whole roster rather than the
+    /// first eight bots: with eight, half of a sixteen-bot roster cold-started on every launch and
+    /// switching to one of them still cost a full load.
+    private static let conversationCacheLimit = 24
 
     /// The host's newest-message stamp each snapshot already contained, per bot.
     ///
@@ -993,11 +999,15 @@ public final class AppModel: ObservableObject {
                     contextMax: nil)
                 conversationCacheStamp[bot.id] = Date()
                 conversationCacheHostStamp[bot.id] = .distantPast
+                // Painted on open, refreshed once: the sweep read the host's page, but not through a
+                // resume, so it cannot say the pane matches what the host holds right now.
+                conversationCacheNeedsResume.insert(bot.id)
                 conversationCacheOrder.removeAll { $0 == bot.id }
                 conversationCacheOrder.append(bot.id)
                 while conversationCacheOrder.count > Self.conversationCacheLimit {
                     let evicted = conversationCacheOrder.removeFirst()
                     conversationCache.removeValue(forKey: evicted)
+                    conversationCacheNeedsResume.remove(evicted)
                     conversationCacheStamp.removeValue(forKey: evicted)
                     conversationCacheHostStamp.removeValue(forKey: evicted)
                 }
@@ -1770,6 +1780,7 @@ public final class AppModel: ObservableObject {
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
            Date().timeIntervalSince(stamp) < conversationCacheFreshness,
+           !conversationCacheNeedsResume.contains(botID),
            !hostIsAhead, !socketSaidSo {
             ClientLog.note("returned to \(botID) from cache "
                            + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume",
@@ -1876,6 +1887,8 @@ public final class AppModel: ObservableObject {
             // a device ends up being told "session not found" about its own conversation and opening a
             // blank one instead (seen live 2026-11-16 22:48 for `aria`).
             Self.defaults.set(resumed.storedSessionID ?? stored, forKey: Self.endlessKey(botID))
+            // This snapshot is now what the host has, so a return visit paints it and asks for nothing.
+            conversationCacheNeedsResume.remove(botID)
             if publish {
                 await publishSharedSession(stored, for: botID)
             }
