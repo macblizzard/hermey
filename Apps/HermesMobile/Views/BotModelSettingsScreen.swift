@@ -2,25 +2,19 @@ import SwiftUI
 import HermesKit
 import HermeyUI
 
-/// A profile default is distinct from any live session override. The caller supplies
-/// profile-scoped gateway operations; this screen never creates or replaces a chat.
+/// Who this bot **is**: its portrait, its name, what it does, its prompt file, what it remembers, and the
+/// door that deletes it.
+///
+/// The model, the effort level and the aux/vision model are not here — they moved to `BotModelSheet`,
+/// reached from the drawer's Model row, which is where the desktop keeps them. A catalogue of hundreds of
+/// providers inside a sheet you open to change a description is a list in the wrong room, and it put the
+/// delete verb a long scroll away from the name you were about to delete (asked for 2026-11-17: "remove the
+/// model selection from edit menu on mobile and make it just like the desktop in the bot menu sidebar").
 struct BotModelSettingsScreen: View {
-    enum SaveResult {
-        case saved
-        case confirmationRequired(String)
-    }
-
     let bot: Bot
     /// The portrait the host has for this bot, when it has one — the sheet shows the face the list
     /// shows, so it is recognisable before its title is read.
     var icon: BotFaceChoice? = nil
-    let load: (String) async throws -> ModelCatalog
-    /// True when this bot's conversation is the one currently open. A live conversation keeps the
-    /// model it was created with — the gateway pins it per session and offers no way to change it —
-    /// so the only way to apply a new default to it is to start it over.
-    var conversationIsOpen: Bool = false
-    var resetConversation: (() async -> Void)? = nil
-    let save: (String, ModelOption, Bool) async throws -> SaveResult
     /// Writes the human-readable description on the host (`profiles.configure`, description
     /// section). `nil` hides the editor entirely — a client that cannot write it must not offer it.
     var saveDescription: ((String, String) async throws -> Void)? = nil
@@ -37,12 +31,6 @@ struct BotModelSettingsScreen: View {
     var deleteBot: (() async throws -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @State private var catalog: ModelCatalog?
-    @State private var error: String?
-    @State private var busy = false
-    @State private var pending: ModelOption?
-    @State private var confirmation = ""
-    @State private var modelQuery = ""
 
     @State private var descriptionText: String
     @State private var savedDescription: String
@@ -58,10 +46,6 @@ struct BotModelSettingsScreen: View {
 
     init(bot: Bot,
          icon: BotFaceChoice? = nil,
-         load: @escaping (String) async throws -> ModelCatalog,
-         conversationIsOpen: Bool = false,
-         resetConversation: (() async -> Void)? = nil,
-         save: @escaping (String, ModelOption, Bool) async throws -> SaveResult,
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
          saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil,
@@ -69,10 +53,6 @@ struct BotModelSettingsScreen: View {
          deleteBot: (() async throws -> Void)? = nil) {
         self.bot = bot
         self.icon = icon
-        self.load = load
-        self.conversationIsOpen = conversationIsOpen
-        self.resetConversation = resetConversation
-        self.save = save
         self.saveDescription = saveDescription
         self.editSoul = editSoul
         self.saveIcon = saveIcon
@@ -91,48 +71,7 @@ struct BotModelSettingsScreen: View {
                 identitySection
                 descriptionSection
                 dangerSection
-                if let catalog {
-                    if let current = catalog.current {
-                        Section("Profile default") {
-                            Text("\(current.label) · \(current.provider)")
-                        }
-                    }
-                    Section {
-                        ForEach(filteredOptions(catalog), id: \.self) { option in
-                            Button {
-                                Task { await select(option, confirmed: false) }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(option.label)
-                                        Text(option.provider).font(.caption).foregroundStyle(Tokens.textSecondary)
-                                    }
-                                    Spacer()
-                                    if option.id == catalog.current?.id && option.provider == catalog.current?.provider {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }.disabled(busy)
-                        }
-                    } header: {
-                        Text("Models")
-                    } footer: {
-                        Text(conversationIsOpen
-                             ? "This becomes the bot's default. The conversation you have open keeps the model it started with — reset it to use the new one."
-                             : "This becomes the bot's default for new conversations with this bot.")
-                    }
-                    if conversationIsOpen, let resetConversation {
-                        Section {
-                            Button("Reset this conversation to use it") {
-                                Task { await resetConversation(); dismiss() }
-                            }
-                        }
-                    }
-                } else if error == nil {
-                    ProgressView("Loading models…")
-                }
             }
-            .searchable(text: $modelQuery, prompt: "Search models")
             .navigationTitle("\(bot.displayName) Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -150,18 +89,6 @@ struct BotModelSettingsScreen: View {
                 }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .task { await refresh() }
-            .alert("Confirm model", isPresented: Binding(
-                get: { pending != nil },
-                set: { if !$0 { pending = nil } }
-            )) {
-                Button("Cancel", role: .cancel) { pending = nil }
-                Button("Confirm") {
-                    guard let option = pending else { return }
-                    pending = nil
-                    Task { await select(option, confirmed: true) }
-                }
-            } message: { Text(confirmation) }
         }
     }
 
@@ -332,36 +259,5 @@ struct BotModelSettingsScreen: View {
         } catch {
             descriptionError = error.localizedDescription
         }
-    }
-
-    // MARK: Models
-
-    /// The catalogue is long (dozens of entries across providers), so it is searchable.
-    private func filteredOptions(_ catalog: ModelCatalog) -> [ModelOption] {
-        let query = modelQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return catalog.options }
-        return catalog.options.filter {
-            $0.label.localizedCaseInsensitiveContains(query)
-                || $0.id.localizedCaseInsensitiveContains(query)
-                || $0.provider.localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    private func refresh() async {
-        do { catalog = try await load(bot.id); error = nil }
-        catch { self.error = error.localizedDescription }
-    }
-
-    private func select(_ option: ModelOption, confirmed: Bool) async {
-        busy = true
-        defer { busy = false }
-        do {
-            switch try await save(bot.id, option, confirmed) {
-            case .saved: await refresh()
-            case .confirmationRequired(let message):
-                confirmation = message
-                pending = option
-            }
-        } catch { self.error = error.localizedDescription }
     }
 }

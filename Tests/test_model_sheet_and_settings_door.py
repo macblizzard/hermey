@@ -116,3 +116,44 @@ class ThePhoneHasOneSettingsDoor(unittest.TestCase):
         # `settings == nil` used to satisfy `("" == "Provider default")`, so the column claimed a fact
         # the host had not given.
         self.assertIn("let isChosen = settings.map { $0.effort == level.id } ?? false", SHEET)
+
+
+class ThePhoneHasTheDesktopsModelSheet(unittest.TestCase):
+    """Asked for 2026-11-17: "remove the model selection from edit menu on mobile and make it just like
+    the desktop in the bot menu sidebar with all the same options like the desktop version"."""
+
+    SHEET = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotModelSheet.swift").read_text(encoding="utf-8")
+    DRAWER = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationDrawer.swift").read_text(encoding="utf-8")
+    EDIT = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotModelSettingsScreen.swift").read_text(encoding="utf-8")
+
+    def testTheDrawerHasAModelRow(self) -> None:
+        self.assertIn("let onModel: () -> Void", self.DRAWER)
+        self.assertIn('row("Model", systemImage: "cpu", run: onModel)', self.DRAWER)
+        # And the conversation wires it to its own sheet.
+        self.assertIn("onModel: { closeDrawer(); showModel = true }", CHAT)
+        self.assertIn("BotModelSheet(bot: bot, model: model)", CHAT)
+
+    def testTheSheetCarriesTheDesktopsFourAnswers(self) -> None:
+        for section in ('Section("Provider")', 'Section("Model")', 'Text("Effort")',
+                        'Text("Aux · Vision model")'):
+            with self.subTest(section=section):
+                self.assertIn(section, self.SHEET)
+
+    def testItUsesTheSameTwoReadsAsTheDesktop(self) -> None:
+        self.assertIn("model.modelCatalog(for: bot.id)", self.SHEET)
+        self.assertIn("model.modelSettings(for: bot.id)", self.SHEET)
+        self.assertIn("visionProvider: provider", self.SHEET)
+        self.assertIn("visionModel: visionModel", self.SHEET)
+
+    def testAnUnreadConfigClaimsNothing(self) -> None:
+        # Same rule as the Mac: no tick, and a sentence instead of "provider default".
+        self.assertIn("Reading the bot's config…", self.SHEET)
+
+    def testTheEditSheetNoLongerSellsModels(self) -> None:
+        self.assertNotIn("ModelCatalog", self.EDIT)
+        self.assertNotIn("filteredOptions", self.EDIT)
+        self.assertNotIn("Search models", self.EDIT)
+        self.assertNotIn("Reset this conversation to use it", self.EDIT)
+        # What it is for is still there.
+        for section in ("identitySection", "descriptionSection", "dangerSection"):
+            self.assertIn(section, self.EDIT)

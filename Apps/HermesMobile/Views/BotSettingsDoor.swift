@@ -24,21 +24,8 @@ struct BotSettingsDoor: View {
         BotModelSettingsScreen(
             bot: bot,
             icon: app.botFaces[bot.id],
-            load: { botID in try await model.modelCatalog(for: botID) },
-            conversationIsOpen: model.selectedBotID == bot.id,
-            resetConversation: { model.resetEndlessSession(for: bot.id) },
-            save: { botID, option, confirmed in
-                switch try await model.configureModel(botID: botID,
-                                                      model: option.id,
-                                                      provider: option.provider,
-                                                      confirm: confirmed) {
-                case .applied:
-                    return .saved
-                case .confirmationRequired(let message):
-                    return .confirmationRequired(message)
-                }
-            },
-            // Memberwise order matters: `save` precedes `saveDescription` in the declaration.
+            // The model, effort and aux/vision live in `BotModelSheet` now, reached from the drawer's
+            // Model row — the desktop's arrangement (asked for 2026-11-17).
             saveDescription: { botID, text in
                 try await model.configureDescription(botID: botID, description: text)
             },

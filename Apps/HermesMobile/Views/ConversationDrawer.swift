@@ -29,6 +29,8 @@ struct ConversationDrawer: View {
 
     let onComputer: () -> Void
     let onWorkspace: () -> Void
+    /// The model, the effort level and the aux/vision model: the desktop's Model row, ported.
+    let onModel: () -> Void
     let onSkills: () -> Void
     let onMCP: () -> Void
     let onRoutines: () -> Void
@@ -143,6 +145,10 @@ struct ConversationDrawer: View {
                 // desktop uses for the *agent's* own working folder is a developer's word for it.
                 // The row's own screen keeps saying where the files are.
                 row("Library", systemImage: "folder", run: onWorkspace)
+                rowDivider
+                // Where the model, effort and aux/vision model live now: they used to be buried in the
+                // Edit sheet, which is about who the bot *is* (asked for 2026-11-17).
+                row("Model", systemImage: "cpu", run: onModel)
             }
 
             panel {
@@ -257,7 +263,7 @@ extension ConversationDrawer {
                            activity: .idle,
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,
-                           onComputer: {}, onWorkspace: {}, onSkills: {}, onMCP: {},
+                           onComputer: {}, onWorkspace: {}, onModel: {}, onSkills: {}, onMCP: {},
                            onRoutines: {}, onNotes: {}, onSoul: {}, onMemory: {},
                            onSearch: {}, onSettings: {}, onCompact: {}, onMarkAllRead: {},
                            onSpeakChange: { _ in }, onReset: {}, onClose: {})

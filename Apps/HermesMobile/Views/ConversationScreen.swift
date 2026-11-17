@@ -28,6 +28,8 @@ struct ConversationScreen: View {
     @State private var showResetConfirm = false
     @State private var showComputer = false
     @State private var showWorkspace = false
+    /// The model sheet: provider, model, effort and the aux/vision model, from the drawer's Model row.
+    @State private var showModel = false
     @State private var showSkills = false
     @State private var showMCP = false
     @State private var showRoutines = false
@@ -188,6 +190,7 @@ struct ConversationScreen: View {
                     speakReplies: speakReplies,
                     onComputer: { closeDrawer(); showComputer = true },
                     onWorkspace: { closeDrawer(); showWorkspace = true },
+                    onModel: { closeDrawer(); showModel = true },
                     onSkills: { closeDrawer(); showSkills = true },
                     onMCP: { closeDrawer(); showMCP = true },
                     onRoutines: { closeDrawer(); showRoutines = true },
@@ -294,6 +297,10 @@ struct ConversationScreen: View {
         baseScreen
         .sheet(isPresented: $showWorkspace) {
             WorkspaceSheet(bot: bot, client: app.workspace)
+            .hermesSheetChrome()
+        }
+        .sheet(isPresented: $showModel) {
+            BotModelSheet(bot: bot, model: model)
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showSkills) {
