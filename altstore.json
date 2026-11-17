@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.528",
-          "buildVersion": "528",
-          "date": "2026-11-17T00:22:54Z",
-          "localizedDescription": "A warmed conversation now paints before the round trip instead of showing a spinner over it. Sessions: the app stores the durable session key (not the runtime id), and a refused conversation is recovered from the bot history instead of being replaced by a blank chat.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.528/Hermey-0.1.528-b528.ipa",
-          "size": 3201835,
+          "version": "0.1.529",
+          "buildVersion": "529",
+          "date": "2026-11-17T00:33:40Z",
+          "localizedDescription": "The endless chat now comes from the host itself: opening a bot resolves its Bot Chat by name, and a send refused as unknown is re-resolved and re-sent instead of failing. No remembered session id is authoritative any more.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.529/Hermey-0.1.529-b529.ipa",
+          "size": 3205879,
           "minOSVersion": "17.0",
-          "sha256": "d4ada97abb870b133e7fde600cffdc37e018977ac12c4c1e1da756720c664267"
+          "sha256": "865d4abaee1b6f12808adb0c5db537fcfd0eff3d913915b9b184f663b41a48b1"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.528 (528)",
-      "identifier": "hermes-0.1.528-528",
-      "caption": "A warmed conversation now paints before the round trip instead of showing a spinner over it. Sessions: the app stores the durable session key (not the runtime id), and a refused conversation is recovered from the bot history instead of being replaced by a blank chat.",
-      "date": "2026-11-17T00:22:54Z",
+      "title": "Hermes 0.1.529 (529)",
+      "identifier": "hermes-0.1.529-529",
+      "caption": "The endless chat now comes from the host itself: opening a bot resolves its Bot Chat by name, and a send refused as unknown is re-resolved and re-sent instead of failing. No remembered session id is authoritative any more.",
+      "date": "2026-11-17T00:33:40Z",
       "tintColor": "#9A9AA0"
     }
   ],
