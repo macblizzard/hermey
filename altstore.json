@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.545",
-          "buildVersion": "545",
-          "date": "2026-11-17T13:09:44Z",
-          "localizedDescription": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. Return on an exact verb runs it; /help opens the searchable catalogue.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.545/Hermey-0.1.545-b545.ipa",
-          "size": 3301611,
+          "version": "0.1.546",
+          "buildVersion": "546",
+          "date": "2026-11-17T13:35:58Z",
+          "localizedDescription": "The slash-command popup now scrolls through every match instead of stopping at six, and stays a readable column on both apps.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.546/Hermey-0.1.546-b546.ipa",
+          "size": 3301264,
           "minOSVersion": "17.0",
-          "sha256": "00bcfc12739d84a1ed223d0fb91d67105126911bb4af7bf262a793e5fcf6ff69"
+          "sha256": "059c505fe9284f4f778cde95f910b2e489e62df26f23a68a651f2b2a33891b4e"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.545 (545)",
-      "identifier": "hermes-0.1.545-545",
-      "caption": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. Return on an exact verb runs it; /help opens the searchable catalogue.",
-      "date": "2026-11-17T13:09:44Z",
+      "title": "Hermes 0.1.546 (546)",
+      "identifier": "hermes-0.1.546-546",
+      "caption": "The slash-command popup now scrolls through every match instead of stopping at six, and stays a readable column on both apps.",
+      "date": "2026-11-17T13:35:58Z",
       "tintColor": "#9A9AA0"
     }
   ],
