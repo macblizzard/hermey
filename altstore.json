@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.565",
-          "buildVersion": "565",
-          "date": "2026-11-17T22:18:27Z",
-          "localizedDescription": "Fix: the local-computer receive loop stays responsive while a long command runs; added socket diagnostics to the client log.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.565/Hermey-0.1.565-b565.ipa",
-          "size": 3343613,
+          "version": "0.1.566",
+          "buildVersion": "566",
+          "date": "2026-11-17T22:40:11Z",
+          "localizedDescription": "Real fix: rebuilt from the current commit \u2014 passive permission panel and socket that keeps reading during long commands.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.566/Hermey-0.1.566-b566.ipa",
+          "size": 3343618,
           "minOSVersion": "17.0",
-          "sha256": "2914e84496992885f42838c797981ca579bdcaaf4f6eb294848374b05e3132df"
+          "sha256": "51c2ccf8613a253452dddaf0e2305b83c6bc4c1c51d3b9689e769ecd595a4839"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.565 (565)",
-      "identifier": "hermes-0.1.565-565",
-      "caption": "Fix: the local-computer receive loop stays responsive while a long command runs; added socket diagnostics to the client log.",
-      "date": "2026-11-17T22:18:27Z",
+      "title": "Hermes 0.1.566 (566)",
+      "identifier": "hermes-0.1.566-566",
+      "caption": "Real fix: rebuilt from the current commit \u2014 passive permission panel and socket that keeps reading during long commands.",
+      "date": "2026-11-17T22:40:11Z",
       "tintColor": "#9A9AA0"
     }
   ],
