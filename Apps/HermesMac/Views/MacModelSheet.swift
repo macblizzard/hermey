@@ -233,7 +233,9 @@ struct MacModelSheet: View {
         VStack(alignment: .leading, spacing: 2) {
             let levels = settings?.efforts ?? BotModelSettings.standardEfforts
             ForEach(levels) { level in
-                let isChosen = (settings?.effort ?? "") == level.id
+                // Three states, not two: unknown (`nil`) ticks nothing, because "the host did not answer"
+                // and "the host says provider default" are different answers and only one is a fact.
+                let isChosen = settings.map { $0.effort == level.id } ?? false
                 Button {
                     Task { await setEffort(level.id) }
                 } label: {

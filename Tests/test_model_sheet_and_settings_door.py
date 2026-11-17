@@ -101,3 +101,18 @@ class ThePhoneHasOneSettingsDoor(unittest.TestCase):
         # two copies drifted in the first place.
         self.assertIn("SoulEditorSheet(", DOOR)
         self.assertNotIn("SoulEditorSheet(", LIST)
+
+    def testTheClientForwardsThroughTheActorTheAppHolds(self) -> None:
+        # The route existed and the sheet called it, but `GatewayClientActor` — what AppModel actually
+        # holds — never forwarded, so the protocol's refusal was what the sheet got: "This host's bridge
+        # does not support managing bots. Update the bridge on the host." (reported 2026-11-17, 536).
+        actor = (ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift").read_text(encoding="utf-8")
+        self.assertIn("public func modelSettings(_ profile: String) async throws -> BotModelSettings", actor)
+        self.assertIn("return try await sessionPointer.modelSettings(profile)", actor)
+        self.assertIn("public func setModelSettings(_ profile: String, effort: String?,", actor)
+        self.assertIn("return try await sessionPointer.setModelSettings(profile, effort: effort,", actor)
+
+    def testAnUnreadConfigTicksNoLevel(self) -> None:
+        # `settings == nil` used to satisfy `("" == "Provider default")`, so the column claimed a fact
+        # the host had not given.
+        self.assertIn("let isChosen = settings.map { $0.effort == level.id } ?? false", SHEET)

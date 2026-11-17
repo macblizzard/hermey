@@ -477,6 +477,22 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.disabledBots()
     }
 
+    /// The effort level and aux/vision model are the bridge's: they live in the profile's config, which
+    /// `profiles.describe` does not report and `profiles.configure` does not write. No store means an
+    /// older host, which must say so rather than draw every bot on "provider default".
+    public func modelSettings(_ profile: String) async throws -> BotModelSettings {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.modelSettings(profile)
+    }
+
+    public func setModelSettings(_ profile: String, effort: String?,
+                                 visionProvider: String?, visionModel: String?) async throws -> BotModelSettings {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.setModelSettings(profile, effort: effort,
+                                                         visionProvider: visionProvider,
+                                                         visionModel: visionModel)
+    }
+
     /// Schedules are the bridge's too: no store means an older host, which must say so rather than
     /// answer "this bot has no routines".
     public func routines(_ profile: String) async throws -> [BotRoutine] {
