@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.542",
-          "buildVersion": "542",
-          "date": "2026-11-17T12:02:19Z",
-          "localizedDescription": "Desktop: double-clicking the bot-list sidebar top now zooms/restores the window, like a real title bar.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.542/Hermey-0.1.542-b542.ipa",
-          "size": 3243584,
+          "version": "0.1.543",
+          "buildVersion": "543",
+          "date": "2026-11-17T12:33:14Z",
+          "localizedDescription": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.543/Hermey-0.1.543-b543.ipa",
+          "size": 3271026,
           "minOSVersion": "17.0",
-          "sha256": "eca43ff167b57e3a99c1db7508fc616a90e637c4fc8b717bd6595a30dce00b7b"
+          "sha256": "32434bf0990cc57351c26601c6cbb2077b8c8c9136e7f14277669f42ca7df530"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.542 (542)",
-      "identifier": "hermes-0.1.542-542",
-      "caption": "Desktop: double-clicking the bot-list sidebar top now zooms/restores the window, like a real title bar.",
-      "date": "2026-11-17T12:02:19Z",
+      "title": "Hermes 0.1.543 (543)",
+      "identifier": "hermes-0.1.543-543",
+      "caption": "Pair another device from either app: a QR and link minted for the phone or desktop to scan or paste. Desktop: Cmd-K 'Pair another device...'. Phone: Settings -> Devices.",
+      "date": "2026-11-17T12:33:14Z",
       "tintColor": "#9A9AA0"
     }
   ],
