@@ -132,7 +132,7 @@ struct TranscriptRowView: View {
                                       size: Geometry.rosterAvatarCompact,
                                       animates: false)
                     }
-                    Text(label.incomingTitle)
+                    Text(label.headerTitle)
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                         .foregroundStyle(Tokens.accentText)
                         .lineLimit(1)

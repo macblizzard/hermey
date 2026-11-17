@@ -121,9 +121,13 @@ public struct BotMessageLabel: Hashable, Sendable {
     public let senderProfile: String?
     public let targetLabel: String
     public let body: String
+    /// The host's own relay stamp is `Message from 🤖 name (@handle):` (and `Message to …` for the
+    /// other side). Those are headers, not prose — the apps draw them above the bubble.
+    public let isOutgoing: Bool
 
     /// Prefix → the parsed label, or `nil` when this row was not written by another bot.
     public static func parse(_ text: String) -> BotMessageLabel? {
+        if let stamp = parseRelayStamp(text) { return stamp }
         // "Assistant (cody) → Ops: body" / "Assistant → Ops: body"
         guard let arrow = text.range(of: " → ") else { return nil }
         let sender = String(text[text.startIndex..<arrow.lowerBound])
@@ -150,12 +154,59 @@ public struct BotMessageLabel: Hashable, Sendable {
         return BotMessageLabel(senderLabel: senderLabel,
                                senderProfile: senderProfile,
                                targetLabel: trimmedTarget,
-                               body: body)
+                               body: body,
+                               isOutgoing: false)
+    }
+
+    /// The live bot relay's stamp, e.g. `Message from 🤖 atlas (@atlas): body`. The handle is the
+    /// routing alias and the stable profile id; the friendly name is what belongs in the header.
+    private static func parseRelayStamp(_ text: String) -> BotMessageLabel? {
+        let outgoing: Bool
+        let prefix: String
+        if text.hasPrefix("Message from 🤖 ") {
+            outgoing = false
+            prefix = "Message from 🤖 "
+        } else if text.hasPrefix("Message to 🤖 ") {
+            outgoing = true
+            prefix = "Message to 🤖 "
+        } else {
+            return nil
+        }
+        let afterPrefix = text.dropFirst(prefix.count)
+        guard let colon = afterPrefix.range(of: ": ") else { return nil }
+        let header = String(afterPrefix[afterPrefix.startIndex..<colon.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = String(afterPrefix[colon.upperBound...])
+        guard !header.isEmpty, !body.isEmpty else { return nil }
+
+        var name = header
+        var handle: String?
+        if let open = header.lastIndex(of: "("), let close = header.lastIndex(of: ")"), open < close {
+            let inside = String(header[header.index(after: open)..<close])
+            if !inside.isEmpty, inside.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) {
+                handle = inside
+                name = String(header[..<open]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        guard !name.isEmpty else { return nil }
+        return BotMessageLabel(senderLabel: name,
+                               senderProfile: handle,
+                               targetLabel: handle ?? name,
+                               body: body,
+                               isOutgoing: outgoing)
     }
 
     /// What the recipient's chat says above the words: `Message from <face> Cody`.
     public var incomingTitle: String {
         "Message from \(senderProfile.map { $0.capitalized } ?? senderLabel)"
+    }
+
+    /// The header actually drawn above the bubble. A `Message to …` stamp is the sender's side of
+    /// the exchange and must not be relabelled as a message *from* that bot.
+    public var headerTitle: String {
+        isOutgoing
+            ? "Message to \(senderLabel)"
+            : incomingTitle
     }
 
     /// What the sender's chat says: `Messaged <face> Aria`. The profile id is the stable name to

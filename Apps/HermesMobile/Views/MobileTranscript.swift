@@ -193,7 +193,7 @@ struct MobileTranscriptRow: View {
                                       activity: app.model.activity(forBot: profile),
                                       size: Geometry.rosterAvatarCompact)
                     }
-                    Text(label.incomingTitle)
+                    Text(label.headerTitle)
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                         .foregroundStyle(Tokens.accentText)
                         .lineLimit(1)
@@ -205,7 +205,7 @@ struct MobileTranscriptRow: View {
             }
             .buttonStyle(.plain)
             .disabled(label.senderProfile == nil)
-            .accessibilityLabel("\(label.incomingTitle). Show the conversation between these two bots.")
+            .accessibilityLabel("\(label.headerTitle). Show the conversation between these two bots.")
 
             // Markdown, not a plain `Text`: a bot writes to another bot exactly as it writes to the
             // owner — lists, bold, code fences — and the recipient's side used to show the source

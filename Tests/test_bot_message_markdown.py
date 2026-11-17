@@ -30,6 +30,6 @@ class BothShellsRenderBotMessages(unittest.TestCase):
         # the exchange: those are the reason the row is not a plain bubble.
         for name, source in (("mobile", MOBILE), ("mac", MAC)):
             row = source.split("private func botMessageRow", 1)[1]
-            self.assertIn("label.incomingTitle", row, name)
+            self.assertIn("label.headerTitle", row, name)
             self.assertIn("BotAvatarView(", row, name)
             self.assertIn("senderProfile", row, name)

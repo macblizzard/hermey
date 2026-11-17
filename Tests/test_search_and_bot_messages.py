@@ -33,6 +33,21 @@ MAC_VIEW = (ROOT / "Apps" / "HermesMac" / "Sidebar" / "BotSidebarView.swift").re
 MAC_ROW = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptRowView.swift").read_text(encoding="utf-8")
 
 
+class TheRelayStampIsAHeader(unittest.TestCase):
+    def test_the_hosts_stamp_is_parsed(self) -> None:
+        self.assertIn('text.hasPrefix("Message from 🤖 ")', KIT_SEARCH)
+        self.assertIn('text.hasPrefix("Message to 🤖 ")', KIT_SEARCH)
+        self.assertIn("parseRelayStamp(text)", KIT_SEARCH)
+        self.assertIn("public let isOutgoing: Bool", KIT_SEARCH)
+        self.assertIn("public var headerTitle: String", KIT_SEARCH)
+
+    def test_both_apps_draw_the_header_above_the_body(self) -> None:
+        for name, row in (("iOS", IOS_ROW), ("macOS", MAC_ROW)):
+            with self.subTest(platform=name):
+                self.assertIn("Text(label.headerTitle)", row)
+                self.assertLess(row.index("Text(label.headerTitle)"), row.index("MarkdownTextView(text: label.body") if "MarkdownTextView" in row else row.index("IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: label.body))"))
+
+
 class TheHostSearchesTranscripts(unittest.TestCase):
     def test_the_route_exists_and_is_mounted(self) -> None:
         self.assertIn('@router.get("/search")', SEARCH)
@@ -187,8 +202,8 @@ class ABotMessageReadsAsAPerson(unittest.TestCase):
     def test_both_apps_draw_the_attribution(self) -> None:
         self.assertIn("BotMessageLabel.parse(entry.text)", IOS_ROW)
         self.assertIn("BotMessageLabel.parse(entry.text)", MAC_ROW)
-        self.assertIn('Text(label.incomingTitle)', IOS_ROW)
-        self.assertIn('Text(label.incomingTitle)', MAC_ROW)
+        self.assertIn('Text(label.headerTitle)', IOS_ROW)
+        self.assertIn('Text(label.headerTitle)', MAC_ROW)
 
 
 class TheAttributionOpensTheExchange(unittest.TestCase):
