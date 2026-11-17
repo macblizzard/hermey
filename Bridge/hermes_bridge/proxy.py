@@ -68,6 +68,11 @@ CLOSE_DEVICE_REVOKED = 4403
 #: Reserved id for the bridge's own client.capabilities call.
 BRIDGE_CAPABILITIES_ID = "__hermes_bridge_caps__"
 
+#: Methods whose `session_id` names the target and must never be rewritten to an attached runtime id.
+#: `session.resume` and `session.create` are the two that *establish* which session a connection is on;
+#: everything else is following it.
+_ALIAS_EXEMPT = frozenset({"session.resume", "session.create"})
+
 _ERROR_PARSE = -32700
 _ERROR_INVALID_REQUEST = -32600
 _ERROR_METHOD_NOT_FOUND = -32601
@@ -461,7 +466,16 @@ class GatewayProxy:
         Every session-scoped call the client makes carries its stored id. Once a resume has replaced
         that id, a frame still naming the old one is rewritten here — one place, before dispatch —
         rather than in each method, and the client never has to learn the new id to keep working.
+
+        **A resume is exempt.** It names the id it means — a stored key, or the canonical Bot Chat the
+        host just reported — and rewriting it hands the gateway the *previous attach's* runtime id:
+        the host answers `4007 unknown_session`, and the client is told its own conversation does not
+        exist. That was live on 2026-11-17 (the Mac's log: "the host's own Bot Chat for atlas
+        (20261103_160159_c329ba) would not open", 41 of 72 resumes refused), because every re-open
+        after another bot's resume went through the alias map.
         """
+        if frame.get("method") in _ALIAS_EXEMPT:
+            return
         if not self._session_alias:
             return
         params = frame.get("params")

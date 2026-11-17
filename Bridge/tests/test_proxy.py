@@ -326,6 +326,45 @@ def test_a_session_that_really_is_gone_still_answers_the_client(bridge, fake_gat
     assert bridge.audit.last("session_autoresume")["outcome"] == "failed"
 
 
+def test_a_resume_keeps_the_id_it_names(bridge, fake_gateway):
+    """A resume is never rewritten to the runtime id a previous attach minted.
+
+    Observed live 2026-11-17, in the Mac client's own log: "the host's own Bot Chat for atlas
+    (20261103_160159_c329ba) would not open" — 41 of 72 resumes refused with 4007. The id was the
+    canonical Bot Chat the host reports; the bridge had rewritten it to the aliased runtime id of an
+    earlier resume, which the host no longer knew. Once a resume has aliased `stored`, the client's
+    NEXT resume of that same stored id must arrive at the gateway unchanged.
+    """
+    stored = "20261103_160159_c329ba"
+    fresh = "20261103_1602_77aa01"
+    ticket = bridge.pair()["ticket"]
+
+    async def scenario():
+        async with open_ws(bridge.ws_url(ticket)) as ws:
+            await recv_frame(ws)
+            # First resume: the gateway attaches and answers with a new runtime id.
+            fake_gateway.auto_respond = False
+            await ws.send(json.dumps({"jsonrpc": "2.0", "id": 51, "method": "session.resume",
+                                      "params": {"session_id": stored, "profile": "atlas"}}) + "\n")
+            first = fake_gateway.wait_for(lambda f: f.get("method") == "session.resume")
+            fake_gateway.push({"jsonrpc": "2.0", "id": first["id"],
+                               "result": {"session_id": fresh, "stored_session_id": stored}})
+            await asyncio.sleep(0.2)
+
+            # Second resume of the SAME stored id — the shape of every bot switch.
+            fake_gateway.auto_respond = True
+            await ws.send(json.dumps({"jsonrpc": "2.0", "id": 52, "method": "session.resume",
+                                      "params": {"session_id": stored, "profile": "atlas"}}) + "\n")
+            second = fake_gateway.wait_for(
+                lambda f: f.get("method") == "session.resume" and f.get("id") != first["id"])
+
+            assert second["params"]["session_id"] == stored, (
+                "the resume was rewritten to %r; the host does not know that id"
+                % second["params"]["session_id"])
+
+    asyncio.run(scenario())
+
+
 def test_a_resume_rekeys_the_session_and_later_frames_follow(bridge, fake_gateway):
     """Resuming a stored session mints a NEW runtime id, and the old one stays refused.
 
