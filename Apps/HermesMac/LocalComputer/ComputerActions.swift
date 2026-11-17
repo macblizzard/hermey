@@ -110,7 +110,7 @@ final class ComputerActions {
 
     private static func requireUnlocked() throws {
         let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
-        if let locked = session[kCGSSessionScreenIsLocked as String] as? Bool, locked {
+        if let locked = session["CGSSessionScreenIsLocked"] as? Bool, locked {
             throw ActError.locked
         }
     }
@@ -162,13 +162,10 @@ final class ComputerActions {
                     post(keyEvent(36, down: false, modifiers: []))
                     continue
                 }
-                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true) else {
-                    throw ActError.failed("could not create a key event")
-                }
-                event.string = String(character)
-                tag(event)
-                event.post(tap: .cghidEventTap)
-                post(keyEvent(0, down: false, modifiers: []))
+                guard let pair = Self.virtualKey(for: character) else { continue }
+                var flags = pair.shift ? ["shift"] : []
+                post(keyEvent(pair.code, down: true, modifiers: flags))
+                post(keyEvent(pair.code, down: false, modifiers: flags))
             }
         case "key":
             guard let code = Self.virtualKey(action.key ?? "") else {
@@ -216,7 +213,8 @@ final class ComputerActions {
             }
             app = workspace.runningApplications.first { $0.localizedName == name || $0.bundleIdentifier == name }
         }
-        guard let app, app.activate(options: [.activateIgnoringOtherApps]) else {
+        guard let app else { throw ActError.failed("could not find \(name)") }
+        guard app.activate(options: [.activateIgnoringOtherApps]) else {
             throw ActError.failed("could not focus \(name)")
         }
     }
@@ -240,6 +238,25 @@ final class ComputerActions {
         if modifiers.contains("ctrl") { flags.insert(.maskControl) }
         event.flags = flags
         return event
+    }
+
+    private static func virtualKey(for character: Character) -> (code: CGKeyCode, shift: Bool)? {
+        let c = String(character)
+        let map: [String: CGKeyCode] = [
+            "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
+            "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+            "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "7": 26, "8": 28,
+            "9": 25, "0": 29, "-": 27, "=": 24, "[": 33, "]": 30, "\\": 42,
+            ";": 41, "'": 39, ",": 43, ".": 47, "/": 44, " ": 49, "\n": 36,
+        ]
+        if let code = map[c.lowercased()] { return (code, c != c.lowercased()) }
+        let shifted: [String: CGKeyCode] = [
+            "!": 18, "@": 19, "#": 20, "$": 21, "%": 23, "^": 22, "&": 26, "*": 28,
+            "(": 25, ")": 29, "_": 27, "+": 24, "{": 33, "}": 30, "|": 42,
+            ":": 41, "\"": 39, "<": 43, ">": 47, "?": 44, "~": 10,
+        ]
+        if let code = shifted[c] { return (code, true) }
+        return nil
     }
 
     private static func virtualKey(_ name: String) -> CGKeyCode? {
