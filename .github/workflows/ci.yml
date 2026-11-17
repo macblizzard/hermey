@@ -27,11 +27,28 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A dispatch may name the version, so a GitHub-runner build can stand in for the Mac one when the Mac
+  # is unavailable. Without inputs the run numbers are used, which is what every push gets.
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version, e.g. 0.1.532 (default: 0.1.<run number>)"
+        required: false
+        type: string
+      build:
+        description: "Build number, e.g. 532 (default: run number)"
+        required: false
+        type: string
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # Whatever the dispatch named, else the run number. Both are strings so `||` works on the empty
+  # inputs context that push and pull_request get.
+  APP_VERSION: ${{ inputs.version || format('0.1.{0}', github.run_number) }}
+  APP_BUILD: ${{ inputs.build || github.run_number }}
 
 jobs:
   # What changed, for the two macOS jobs. Deliberately dependency-free: a `git diff` against the
@@ -111,7 +128,7 @@ jobs:
           xcodebuild -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
             -destination 'platform=macOS' -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} build
+            MARKETING_VERSION=${{ env.APP_VERSION }} CURRENT_PROJECT_VERSION=${{ env.APP_BUILD }} build
       - name: Package the macOS app as a disk image
         run: |
           set -euo pipefail
@@ -163,7 +180,7 @@ jobs:
             -derivedDataPath build/ipa-dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CODE_SIGN_ENTITLEMENTS="" PROVISIONING_PROFILE_SPECIFIER="" \
-            MARKETING_VERSION=0.1.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} archive
+            MARKETING_VERSION=${{ env.APP_VERSION }} CURRENT_PROJECT_VERSION=${{ env.APP_BUILD }} archive
       - name: Package Payload into .ipa
         run: |
           set -euo pipefail
