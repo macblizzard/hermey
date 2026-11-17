@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.530",
-          "buildVersion": "530",
-          "date": "2026-11-17T00:57:35Z",
-          "localizedDescription": "Blank bots (crony, atlas, anika) fixed: a refused session now recovers the Bot Chat by name instead of the newest empty draft. Switching is faster: the whole roster is warmed (24 snapshots) and a bot you just left is not re-read.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.530/Hermey-0.1.530-b530.ipa",
-          "size": 3207896,
+          "version": "0.1.531",
+          "buildVersion": "531",
+          "date": "2026-11-17T01:07:48Z",
+          "localizedDescription": "The bridge no longer rewrites a resume, so bot chats that exist actually open (atlas, anika, crony). The Mac pane also paints its warmed conversation before the round trip instead of showing Opening... over it.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.531/Hermey-0.1.531-b531.ipa",
+          "size": 3207897,
           "minOSVersion": "17.0",
-          "sha256": "63495e702e48c92631a8416dcf3319700263362a9e7dad15d755a08424e9a12b"
+          "sha256": "a5cd9488e0cd03d35d186f7d4148e2589569931420a757c5275cb35ffd37ad43"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.530 (530)",
-      "identifier": "hermes-0.1.530-530",
-      "caption": "Blank bots (crony, atlas, anika) fixed: a refused session now recovers the Bot Chat by name instead of the newest empty draft. Switching is faster: the whole roster is warmed (24 snapshots) and a bot you just left is not re-read.",
-      "date": "2026-11-17T00:57:35Z",
+      "title": "Hermes 0.1.531 (531)",
+      "identifier": "hermes-0.1.531-531",
+      "caption": "The bridge no longer rewrites a resume, so bot chats that exist actually open (atlas, anika, crony). The Mac pane also paints its warmed conversation before the round trip instead of showing Opening... over it.",
+      "date": "2026-11-17T01:07:48Z",
       "tintColor": "#9A9AA0"
     }
   ],
