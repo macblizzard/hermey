@@ -131,6 +131,18 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Which bots are off, so the list marks them without one request per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// This bot's effort level and aux/vision model (`GET /v1/bots/{profile}/model-settings` on the
+    /// bridge). Two facts the model catalogue cannot answer, because they live in the profile's config.
+    ///
+    /// Defaulted to a refusal: a client that predates the route must say it cannot see them, rather than
+    /// draw every bot on "provider default" as though that were the answer.
+    func modelSettings(_ profile: String) async throws -> BotModelSettings
+
+    /// Change one or both of those (`PUT /v1/bots/{profile}/model-settings`). Only the arguments given
+    /// travel, so saving the effort level cannot rewrite the vision model beside it.
+    func setModelSettings(_ profile: String, effort: String?,
+                          visionProvider: String?, visionModel: String?) async throws -> BotModelSettings
+
     /// This bot's schedules (`GET /v1/bots/{profile}/routines` on the bridge), soonest first.
     func routines(_ profile: String) async throws -> [BotRoutine]
 
@@ -599,6 +611,17 @@ public extension GatewayClientProtocol {
     func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState {
         _ = profile
         return .unavailable
+    }
+
+    func modelSettings(_ profile: String) async throws -> BotModelSettings {
+        _ = profile
+        throw BotAdminUnavailable()
+    }
+
+    func setModelSettings(_ profile: String, effort: String?,
+                          visionProvider: String?, visionModel: String?) async throws -> BotModelSettings {
+        _ = (profile, effort, visionProvider, visionModel)
+        throw BotAdminUnavailable()
     }
 
     /// A client that cannot rename cannot adopt. Loud rather than silent: the caller still opens the
