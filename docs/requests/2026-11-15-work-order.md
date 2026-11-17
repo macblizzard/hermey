@@ -1,6 +1,6 @@
 # Work order — Hermey batch 0.1.410 →
 
-Owner: Cody. Requested 2026-11-15 by Mohammad. Full item spec:
+Owner: the build agent. Requested 2026-11-15 by the maintainer. Full item spec:
 `docs/requests/2026-11-15-batch-410.md`. This file is the *order of work*: phases, what ships in
 each, and what proves it. One release per phase, published from a green `main` CI run.
 

@@ -18,6 +18,7 @@ Port source of truth: `packages/core/src/bot-avatar-shapes.ts`, `bot-avatar-colo
 """
 from __future__ import annotations
 
+import os
 import re
 import unittest
 from pathlib import Path
@@ -38,7 +39,9 @@ PACKAGE = ROOT / "Package.swift"
 PARITY_TESTS = ROOT / "Tests" / "HermeyUITests" / "BotAvatarParityTests.swift"
 RENDERING_TESTS = ROOT / "Tests" / "HermeyUITests" / "BotAvatarRenderingTests.swift"
 
-REFERENCE = Path("/root/jobs/rakazo-ref")
+# The reference checkout sits beside this repo by default, or wherever `RAKAZO_REF` points: the
+# parity pass is optional, so no one machine's absolute layout is baked into the tree.
+REFERENCE = Path(os.environ.get("RAKAZO_REF") or ROOT.parent / "rakazo-ref").expanduser()
 REF_SHAPES = REFERENCE / "packages" / "core" / "src" / "bot-avatar-shapes.ts"
 REF_COLORS = REFERENCE / "packages" / "contracts" / "src" / "bot-avatar.ts"
 REF_ACTIVITY = REFERENCE / "packages" / "core" / "src" / "logo-avatar-activity.ts"

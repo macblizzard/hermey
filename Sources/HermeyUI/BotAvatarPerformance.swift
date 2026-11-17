@@ -7,7 +7,7 @@ import HermesKit
 /// ## Why this exists, and why it may disagree with the reference
 ///
 /// The shipped face is the reference's own model: the body breathes, the eyes run that state's
-/// authored track, and apart from the writing bob the body does not move at all. Mohammad's report
+/// authored track, and apart from the writing bob the body does not move at all. The maintainer's report
 /// of 2026-11-16 was that this is not enough — *"it now blinks and moves a bit, but it's not enough,
 /// I need more movements … more eye movements and some jumps and flips in between every few seconds
 /// while working"* — so the face performs. The reference is still the source of the **acting**
