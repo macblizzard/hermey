@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.546",
-          "buildVersion": "546",
-          "date": "2026-11-17T13:35:58Z",
-          "localizedDescription": "The slash-command popup now scrolls through every match instead of stopping at six, and stays a readable column on both apps.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.546/Hermey-0.1.546-b546.ipa",
-          "size": 3301264,
+          "version": "0.1.547",
+          "buildVersion": "547",
+          "date": "2026-11-17T13:44:20Z",
+          "localizedDescription": "Fixed the slash-command popup layout: rows no longer stack on one baseline; the scroll view owns the height.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.547/Hermey-0.1.547-b547.ipa",
+          "size": 3301775,
           "minOSVersion": "17.0",
-          "sha256": "059c505fe9284f4f778cde95f910b2e489e62df26f23a68a651f2b2a33891b4e"
+          "sha256": "7af885ec7816329e0d777e2bb9d6c2e1e5380e3feec6b7965b8bb1abd380e7ba"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.546 (546)",
-      "identifier": "hermes-0.1.546-546",
-      "caption": "The slash-command popup now scrolls through every match instead of stopping at six, and stays a readable column on both apps.",
-      "date": "2026-11-17T13:35:58Z",
+      "title": "Hermes 0.1.547 (547)",
+      "identifier": "hermes-0.1.547-547",
+      "caption": "Fixed the slash-command popup layout: rows no longer stack on one baseline; the scroll view owns the height.",
+      "date": "2026-11-17T13:44:20Z",
       "tintColor": "#9A9AA0"
     }
   ],
