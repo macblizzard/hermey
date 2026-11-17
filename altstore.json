@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.534",
-          "buildVersion": "534",
-          "date": "2026-11-17T07:43:59Z",
-          "localizedDescription": "The launch face blinks: two eyelids, 90 ms down and 140 ms up, now and then, and the first one early enough to see. Nothing else on the splash moves, and Reduce Motion keeps the eyes open.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.534/Hermey-0.1.534-b534.ipa",
-          "size": 3220020,
+          "version": "0.1.535",
+          "buildVersion": "535",
+          "date": "2026-11-17T07:57:03Z",
+          "localizedDescription": "The command palette now carries the settings: check for updates, view logs, show/hide reasoning, show/hide tool calls, and one verb each for notes, skills, MCP, routines, library and model.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.535/Hermey-0.1.535-b535.ipa",
+          "size": 3220024,
           "minOSVersion": "17.0",
-          "sha256": "d380b607cbdf496b01cf551ce2a0923a3e3639ae6ec70a1fc5ba843f59655889"
+          "sha256": "18accf6ef941373859efecc243df76f57bf143b73a011d299bb80d6f87026d0c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.534 (534)",
-      "identifier": "hermes-0.1.534-534",
-      "caption": "The launch face blinks: two eyelids, 90 ms down and 140 ms up, now and then, and the first one early enough to see. Nothing else on the splash moves, and Reduce Motion keeps the eyes open.",
-      "date": "2026-11-17T07:43:59Z",
+      "title": "Hermes 0.1.535 (535)",
+      "identifier": "hermes-0.1.535-535",
+      "caption": "The command palette now carries the settings: check for updates, view logs, show/hide reasoning, show/hide tool calls, and one verb each for notes, skills, MCP, routines, library and model.",
+      "date": "2026-11-17T07:57:03Z",
       "tintColor": "#9A9AA0"
     }
   ],
