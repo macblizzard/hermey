@@ -92,4 +92,24 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [ ] 1-hour soak, two-bot stress, permission-revoke and offline/reconnect tests
 - [ ] Acceptance: SLOs met, no leaked processes or stale locks
 
-Ordering: 1 → 2 → 3 → 4 → 9/10 → 12; phases 5, 6, 7, 8, 11 can proceed in parallel after phase 3.
+## Build batches (one release per batch)
+
+Phase 0–2 and the socket fix are already shipped (0.1.567). The remaining work is grouped into three
+builds so each release is a coherent, testable capability step:
+
+**Build A — GUI core:** phases 3 + 4 + 10
+`computer.act` (CGEvent batches), `launch_app`/`open_path`/`focus`, and the global GUI lock, FIFO queue,
+cancellation and bot-label audit. The lock ships with input, not after it, so two bots can never drive
+the mouse at once.
+
+**Build B — Productivity:** phases 5 + 6 + 7
+One shared workspace with read/write/list/attach and file-store transfer, embedded WKWebView browser
+tools with downloads into that workspace, and secret redaction across command output and logs.
+Browser downloads depend on the workspace; redaction covers both file and browser results.
+
+**Build C — Polish and proof:** phases 8 + 9 + 11 + 12
+Takeover plus `ask_user`, activity feed with live build progress, connectivity discipline (the 503 /
+reconnect behaviour is already mostly proven), then CLI/skill docs and the SLO/soak/stress suite.
+This batch validates the whole stack after the features exist.
+
+No separate release per phase; acceptance checks for every phase still apply within its batch.
