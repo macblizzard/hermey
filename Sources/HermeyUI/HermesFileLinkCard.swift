@@ -194,7 +194,9 @@ public struct HermesFileLinkCard: View {
     /// The DNS-free address is plain HTTP, which the app cannot fetch under ATS. The same store is
     /// served over TLS on the tailnet name, so prefer that form for the app's own download.
     private func downloadURL() -> URL {
-        var components = URLComponents(url: link.url, resolvingAgainstBaseURL: false) ?? link.url
+        guard var components = URLComponents(url: link.url, resolvingAgainstBaseURL: false) else {
+            return link.url
+        }
         if components.host == "100.86.19.1" {
             components.host = "hermes.corvus-vibes.ts.net"
             components.port = 9446
