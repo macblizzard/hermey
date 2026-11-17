@@ -65,9 +65,6 @@ struct BotModelSettingsScreen: View {
     var body: some View {
         NavigationStack {
             List {
-                if let error {
-                    Text(error).foregroundStyle(Tokens.danger)
-                }
                 identitySection
                 descriptionSection
                 dangerSection
