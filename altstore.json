@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.559",
-          "buildVersion": "559",
-          "date": "2026-11-17T19:25:21Z",
-          "localizedDescription": "Crisper typography: one system face with real weights, half-point sizes, and full-contrast message text.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.559/Hermey-0.1.559-b559.ipa",
-          "size": 3343615,
+          "version": "0.1.560",
+          "buildVersion": "560",
+          "date": "2026-11-17T20:04:44Z",
+          "localizedDescription": "Prototype: local computer use for the Mac. Off by default; a Computers toggle in Settings opens one authenticated outbound socket (no SSH or Remote Login), with reconnect/backoff, heartbeat, argv-only commands, output cap, and remote revoke.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.560/Hermey-0.1.560-b560.ipa",
+          "size": 3343609,
           "minOSVersion": "17.0",
-          "sha256": "4b4b5bdb405ebe582b6b05f9f860928a06d7e1edd3a5ab677770eb9955a416f8"
+          "sha256": "71ab2705cffcabb3996d2a4d5ab409d2bd7156f3576ad40fe930daa7c4280e15"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.559 (559)",
-      "identifier": "hermes-0.1.559-559",
-      "caption": "Crisper typography: one system face with real weights, half-point sizes, and full-contrast message text.",
-      "date": "2026-11-17T19:25:21Z",
+      "title": "Hermes 0.1.560 (560)",
+      "identifier": "hermes-0.1.560-560",
+      "caption": "Prototype: local computer use for the Mac. Off by default; a Computers toggle in Settings opens one authenticated outbound socket (no SSH or Remote Login), with reconnect/backoff, heartbeat, argv-only commands, output cap, and remote revoke.",
+      "date": "2026-11-17T20:04:44Z",
       "tintColor": "#9A9AA0"
     }
   ],
