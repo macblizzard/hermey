@@ -16,14 +16,17 @@ import SwiftUI
 /// }
 /// ```
 ///
-/// ## It does not move
+/// ## It blinks, and does nothing else
 ///
-/// Deliberately, and unconditionally: no keyframes, no `TimelineView`, no Reduce Motion branch,
-/// because there is nothing to reduce. A launch screen is on screen for a moment and is gone; the
-/// face's life belongs to the bot rows, where `BotAvatarView` already animates it under the person's
-/// own switch. The face here is drawn with `animates: false`, so `BotAvatarMotion.allows` refuses
-/// every frame and the artwork is the resting pose at every size — the same shape, colour and eyes
-/// the roster draws, standing still.
+/// The face is the app's own mark, so it holds still: no keyframes, no `TimelineView`, no continuous
+/// animation — the face's life belongs to the bot rows, where `BotAvatarView` animates it under the
+/// person's own switch. It does blink, because a still face at launch reads as a picture of a face
+/// (asked for 2026-11-17: "would it be possible to add an eye blink on app boot screen during bootup").
+///
+/// A blink is two eyelids coming down over the mark's own ink for 90 ms and going back up in 140 ms,
+/// roughly every four seconds, with one early enough that a fast launch still shows it. That is two
+/// short Core Animation transitions per blink and nothing in between — no work per frame, no timer on
+/// the render path, and nothing at all under Reduce Motion, where the face stays open.
 ///
 /// ## What it is made of
 ///
@@ -56,6 +59,33 @@ public struct BootScreen: View {
     /// showed a white window first.
     public static let fadeOutDuration: Double = 0.18
 
+    /// Where the mark's eyes are, as fractions of the artwork, and what the eyelid is painted in.
+    ///
+    /// Measured from `Resources/HermeyMark.png` rather than guessed: the two dark bars are 790 × 770
+    /// artwork at x 215–329 and 460–574, y 266–455 and 283–472. A lid covers one bar from its top down,
+    /// in the face's own vertical shading — the mark is white at the crown (250) and grey at the chin
+    /// (169), so a flat lid colour would read as a painted rectangle for the 90 ms it is up.
+    static let eyelids: [CGRect] = [
+        CGRect(x: 215.0 / 790, y: 266.0 / 770, width: 115.0 / 790, height: 190.0 / 770),
+        CGRect(x: 460.0 / 790, y: 283.0 / 770, width: 115.0 / 790, height: 190.0 / 770),
+    ]
+
+    /// The face's own shading where the lids land, sampled from the artwork rather than guessed: `250`
+    /// where the bars begin and `206` where they end. Rendering the lids over the bars with these two
+    /// stops leaves no eye ink visible at full closure (measured: the darkest pixel left is 206 against
+    /// ink at 54–66), and the seam above each lid differs from the face by 3–5/255.
+    static let lidTop = Color(white: 250.0 / 255)
+    static let lidBottom = Color(white: 206.0 / 255)
+    /// The bar's corner radius, as a fraction of its own height (the artwork's bars are rounded ends).
+    static let lidCorner: CGFloat = 0.42
+
+    /// How long the lid takes to come down, how long to go back up, and the gap between blinks.
+    static let lidCloseDuration: Double = 0.09
+    static let lidOpenDuration: Double = 0.14
+    static let blinkInterval: ClosedRange<Double> = 3.4 ... 5.6
+    /// The first blink, early enough that a launch which is over in a second still shows it.
+    static let firstBlinkDelay: Double = 0.55
+
     /// The identity the house face is drawn from, so the app's own mark is a fixed one rather than
     /// whatever an id happens to hash to. Any id works; this one is the app's name.
     public static let houseIdentity = "hermey"
@@ -85,6 +115,10 @@ public struct BootScreen: View {
         self.background = background
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 0 = eyes open, 1 = shut. One value for both eyes: a face that winks is a different expression.
+    @State private var lid: CGFloat = 0
+
     public var body: some View {
         let fill = background ?? Tokens.canvas
         ZStack {
@@ -101,6 +135,7 @@ public struct BootScreen: View {
                 .interpolation(.high)
                 .aspectRatio(BootScreen.markAspect, contentMode: .fit)
                 .frame(width: side, height: side / BootScreen.markAspect)
+                .overlay { eyelids }
                 .accessibilityHidden(true)
         }
         // The fill reaches the window's edges: on iOS that is under the status bar and the home
@@ -110,6 +145,48 @@ public struct BootScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(label))
+        .task { await blink() }
+    }
+
+    /// Two bars of the face's own shading, coming down over the mark's ink.
+    ///
+    /// The lid is anchored at the top of each bar and grows downwards, which is the direction eyelids
+    /// move; the height is a fraction of the bar, so it scales with the mark at any size.
+    private var eyelids: some View {
+        GeometryReader { geometry in
+            ForEach(Array(BootScreen.eyelids.enumerated()), id: \.offset) { _, bar in
+                let height = bar.height * geometry.size.height * lid
+                let width = bar.width * geometry.size.width
+                LinearGradient(colors: [BootScreen.lidTop, BootScreen.lidBottom],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(width: width, height: height)
+                    .clipShape(RoundedRectangle(cornerRadius: width * BootScreen.lidCorner,
+                                                style: .continuous))
+                    .position(x: (bar.minX + bar.width / 2) * geometry.size.width,
+                              y: bar.minY * geometry.size.height + height / 2)
+                    .opacity(lid > 0.001 ? 1 : 0)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Blink now and then, for as long as the launch screen is up.
+    ///
+    /// Cancelled with the view: `Task.sleep` is the only thing this owns, so a launch that ends in half
+    /// a second leaves nothing running. Reduce Motion turns it off rather than shortening it — a face
+    /// that moves is exactly what that setting is asking not to see.
+    private func blink() async {
+        guard !reduceMotion else { return }
+        try? await Task.sleep(for: .seconds(BootScreen.firstBlinkDelay))
+        while !Task.isCancelled {
+            withAnimation(.easeIn(duration: BootScreen.lidCloseDuration)) { lid = 1 }
+            try? await Task.sleep(for: .seconds(BootScreen.lidCloseDuration))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: BootScreen.lidOpenDuration)) { lid = 0 }
+            let rest = Double.random(in: BootScreen.blinkInterval)
+            try? await Task.sleep(for: .seconds(rest))
+        }
     }
 }
 

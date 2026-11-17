@@ -114,16 +114,30 @@ class ReadinessIsTheOnlyDecider(unittest.TestCase):
         self.assertIn(".accessibilityHidden(readiness.showsBootScreen)", source)
 
 
-class TheLaunchScreenIsStill(unittest.TestCase):
-    def test_it_draws_a_face_and_never_animates(self) -> None:
+class TheLaunchScreenMovesOnlyToBlink(unittest.TestCase):
+    """The splash was still on purpose; the one exception is the blink (asked for 2026-11-17).
+
+    What this pins is the *scope*: a lid pair going down and up, and nothing else that animates. A
+    breathing face, a TimelineView or a repeating animation on the launch path is per-frame work on the
+    one screen that is supposed to cost nothing.
+    """
+
+    def test_it_draws_the_mark_and_not_a_bot_face(self) -> None:
         source = read(BOOT_SCREEN)
-        self.assertIn("animates: false", source,
-                      "the face's own switch is what makes it the resting pose at any size")
-        # Identifiers, not prose: the file explains at length what it deliberately does not do.
-        for forbidden in ("TimelineView(", "withAnimation(", ".animation(", "accessibilityReduceMotion",
-                          "reduceMotion", "BotAvatarMotion.bodyPose"):
+        self.assertIn('Image("HermeyMark")', source,
+                      "the launch face is the app's own mark, not an identity-derived bot body")
+        self.assertNotIn("BotAvatarView(", source,
+                         "a bot face here would claim there was a bot before the roster was read")
+        self.assertNotIn("BotAvatarMotion.bodyPose", source)
+
+    def test_the_only_animation_is_the_lid_pair(self) -> None:
+        source = read(BOOT_SCREEN)
+        # One close, one open. Anything more and the launch screen has grown a second animation.
+        self.assertEqual(source.count("withAnimation("), 2,
+                         "the blink is the only thing on the launch screen that animates")
+        for forbidden in ("TimelineView(", ".repeatForever", ".animation(", "PhaseAnimator"):
             self.assertNotIn(forbidden, source,
-                             f"a still launch screen has no business with {forbidden}")
+                             f"a launch screen that costs nothing per frame has no business with {forbidden}")
 
     def test_it_fills_with_the_active_theme(self) -> None:
         source = read(BOOT_SCREEN)
