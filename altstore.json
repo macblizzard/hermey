@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.544",
-          "buildVersion": "544",
-          "date": "2026-11-17T13:05:29Z",
-          "localizedDescription": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. /help opens the searchable catalogue.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.544/Hermey-0.1.544-b544.ipa",
-          "size": 3301489,
+          "version": "0.1.545",
+          "buildVersion": "545",
+          "date": "2026-11-17T13:09:44Z",
+          "localizedDescription": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. Return on an exact verb runs it; /help opens the searchable catalogue.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.545/Hermey-0.1.545-b545.ipa",
+          "size": 3301611,
           "minOSVersion": "17.0",
-          "sha256": "6a8d2279d76df4e5c01f51f46c180f5b0e0159b0fddd55a2b6a8b0aeba20148c"
+          "sha256": "00bcfc12739d84a1ed223d0fb91d67105126911bb4af7bf262a793e5fcf6ff69"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.544 (544)",
-      "identifier": "hermes-0.1.544-544",
-      "caption": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. /help opens the searchable catalogue.",
-      "date": "2026-11-17T13:05:29Z",
+      "title": "Hermes 0.1.545 (545)",
+      "identifier": "hermes-0.1.545-545",
+      "caption": "Slash commands in both composers: type / for the full Hermes command list, with native actions for new/reset/compact/help and model/reasoning on Mac. Return on an exact verb runs it; /help opens the searchable catalogue.",
+      "date": "2026-11-17T13:09:44Z",
       "tintColor": "#9A9AA0"
     }
   ],
