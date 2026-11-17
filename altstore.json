@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.568",
-          "buildVersion": "568",
-          "date": "2026-11-17T23:32:37Z",
-          "localizedDescription": "Build A: GUI actions (click/type/key/scroll/focus), app launch, and serialized driver with cancellation.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.568/Hermey-0.1.568-b568.ipa",
-          "size": 3343611,
+          "version": "0.1.569",
+          "buildVersion": "569",
+          "date": "2026-11-17T23:49:39Z",
+          "localizedDescription": "Build B: shared workspace file tools, private browser surface, downloads and secret redaction.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.569/Hermey-0.1.569-b569.ipa",
+          "size": 3343612,
           "minOSVersion": "17.0",
-          "sha256": "962504e3fef14b0c447f32680b3848121d9f71f6f90073a1f5edbb2cdbc05404"
+          "sha256": "3719123e273b4a32282e5eaed729e5f25769583b218c5e007256c24e6de8f49f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.568 (568)",
-      "identifier": "hermes-0.1.568-568",
-      "caption": "Build A: GUI actions (click/type/key/scroll/focus), app launch, and serialized driver with cancellation.",
-      "date": "2026-11-17T23:32:37Z",
+      "title": "Hermes 0.1.569 (569)",
+      "identifier": "hermes-0.1.569-569",
+      "caption": "Build B: shared workspace file tools, private browser surface, downloads and secret redaction.",
+      "date": "2026-11-17T23:49:39Z",
       "tintColor": "#9A9AA0"
     }
   ],
