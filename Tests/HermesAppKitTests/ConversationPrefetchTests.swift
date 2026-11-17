@@ -131,33 +131,35 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(client.historyReads, readsBefore)
     }
 
-    func testAStaleIdDoesNotCostTheConversation() async {
-        // The live failure this guards (2026-11-16 22:48, bot `aria`): resume answered 4007, the model
-        // went straight to `.create`, and the person got a blank chat while their conversation was still
-        // on the host. The roster is asked first now.
+    func testAStaleIdIsReportedAsForgotten() async {
+        // The live failure (2026-11-16 22:48, bot `aria`): resume answered 4007 and the model went
+        // straight to `.create`. `openStoredConversation` is where that decision is made, so that is
+        // what this pins.
         let client = ScriptedHost(session: Self.sessionID, entries: [line("old")])
-        client.hostPointer = Self.sessionID
         client.staleIDs = [Self.sessionID]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+
+        let outcome = await model.openStoredConversation(Self.sessionID, botID: bot("stale"), publish: false)
+
+        guard case .forgotten = outcome else {
+            return XCTFail("a 4007 must be reported as forgotten, got \(outcome)")
+        }
+        XCTAssertEqual(client.createdSessions.count, 0, "nothing may be minted by opening")
+    }
+
+    func testTheRecoveryIsTheBotsNewestConversation() async {
+        // What `.forgotten` adopts now, instead of a blank conversation.
+        let client = ScriptedHost(session: Self.sessionID, entries: [])
         client.profileSessions = [SessionSummary(id: "20260101_000009_older", title: "Bot Chat"),
                                   SessionSummary(id: "20260101_000008_newer", title: "Bot Chat")]
         let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
         await model.start()
-        let cody = bot("stale")
-        defer { forget([cody]) }
-        client.bots = [Bot(id: cody)]
-        await model.loadBots()
 
-        await model.endlessSession(for: cody)
+        let recovered = await model.newestExistingConversation(for: bot("any"))
 
-        print("DIAG resumed=\(client.resumed) created=\(client.createdSessions) "
-              + "err=\(String(describing: model.lastSendError)) sel=\(String(describing: model.selectedSessionID))")
-        // The scripted host answers any id with its single session, so the assertion is on what the
-        // model asked for: the conversation that exists, and no minted replacement.
-        XCTAssertEqual(client.resumed, [Self.sessionID, "20260101_000009_older"],
-                       "the refused id is retried as the bot's newest existing conversation")
-        XCTAssertTrue(client.createdSessions.isEmpty,
-                      "a stale pointer must not mint a blank conversation")
-        XCTAssertNil(model.lastSendError)
+        XCTAssertEqual(recovered, "20260101_000009_older",
+                       "the roster's first row is newest; taking any other row would jump backwards")
     }
 }
 #endif

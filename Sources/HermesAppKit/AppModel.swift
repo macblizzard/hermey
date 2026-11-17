@@ -1787,7 +1787,7 @@ public final class AppModel: ObservableObject {
     }
 
     /// What an attempt to open a stored conversation came to.
-    private enum OpenOutcome {
+    enum OpenOutcome {
         case opened(SessionID)
         /// The host answered `4001`/`4007`: this id no longer exists for this bot.
         case forgotten
@@ -1796,8 +1796,8 @@ public final class AppModel: ObservableObject {
     }
 
     /// Resume one stored id and put it on screen.
-    private func openStoredConversation(_ stored: SessionID, botID: String,
-                                        publish: Bool) async -> OpenOutcome {
+    func openStoredConversation(_ stored: SessionID, botID: String,
+                                publish: Bool) async -> OpenOutcome {
         // Offline, the resume will end in a failed call after however long the transport takes to
         // admit it. The device's copy can go up now, and a live host never sees this branch.
         if transcript.isEmpty, !connection.isLive {
@@ -1851,7 +1851,7 @@ public final class AppModel: ObservableObject {
     /// conversation that still existed on the host appeared to be gone: the person opened the bot, got a
     /// blank chat, and their history was only reachable through All Sessions. The roster can answer this
     /// — one read, newest first — so the recovery adopts it instead of inventing a new one.
-    private func newestExistingConversation(for botID: String) async -> SessionID? {
+    func newestExistingConversation(for botID: String) async -> SessionID? {
         do {
             let sessions = try await client.listSessions(limit: 5, profile: botID, includeHidden: true)
             return sessions.first?.id
