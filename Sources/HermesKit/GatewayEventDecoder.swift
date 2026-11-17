@@ -439,7 +439,8 @@ enum GatewayPayloadDecoder {
                                   title: row["title"]?.stringValue ?? "",
                                   updatedAt: GatewayJSON.date(row["started_at"]),
                                   preview: row["preview"]?.stringValue,
-                                  running: row["running"]?.boolValue ?? false)
+                                  running: row["running"]?.boolValue ?? false,
+                                  messageCount: row["message_count"]?.intValue.map(Int.init) ?? 0)
         }
     }
 

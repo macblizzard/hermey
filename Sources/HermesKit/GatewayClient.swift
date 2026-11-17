@@ -635,13 +635,21 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
     public let updatedAt: Date?
     public let preview: String?
     public let running: Bool
+    /// How many rows the host holds for this session.
+    ///
+    /// The difference that matters: a bot's store is full of untitled, zero-message sessions (stale
+    /// drafts and orphans), so "newest" is regularly an empty conversation. Picking one of those is how
+    /// a bot with 545 messages opened blank.
+    public let messageCount: Int
 
-    public init(id: SessionID, title: String, updatedAt: Date? = nil, preview: String? = nil, running: Bool = false) {
+    public init(id: SessionID, title: String, updatedAt: Date? = nil, preview: String? = nil,
+                running: Bool = false, messageCount: Int = 0) {
         self.id = id
         self.title = title
         self.updatedAt = updatedAt
         self.preview = preview
         self.running = running
+        self.messageCount = messageCount
     }
 
     /// What a row should render when the host has no title yet.

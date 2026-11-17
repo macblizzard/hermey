@@ -148,18 +148,36 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(client.createdSessions.count, 0, "nothing may be minted by opening")
     }
 
-    func testTheRecoveryIsTheBotsNewestConversation() async {
-        // What `.forgotten` adopts now, instead of a blank conversation.
+    func testTheRecoveryIsTheBotsBotChat() async {
+        // What `.forgotten` adopts: the Bot Chat by name, even when newer sessions outrank it. On this
+        // host crony's list starts with two untitled zero-message rows above its 545-message Bot Chat,
+        // and adopting the newest opened it blank.
         let client = ScriptedHost(session: Self.sessionID, entries: [])
-        client.profileSessions = [SessionSummary(id: "20260101_000009_older", title: "Bot Chat"),
-                                  SessionSummary(id: "20260101_000008_newer", title: "Bot Chat")]
+        client.profileSessions = [SessionSummary(id: "20260101_000009_empty", title: "", messageCount: 0),
+                                  SessionSummary(id: "20260101_000008_empty", title: "", messageCount: 0),
+                                  SessionSummary(id: "20260101_000007_chat", title: CanonicalBotChat.title,
+                                                 messageCount: 545)]
         let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
         await model.start()
 
         let recovered = await model.newestExistingConversation(for: bot("any"))
 
-        XCTAssertEqual(recovered, "20260101_000009_older",
-                       "the roster's first row is newest; taking any other row would jump backwards")
+        XCTAssertEqual(recovered, "20260101_000007_chat",
+                       "the Bot Chat outranks newer empty drafts")
+    }
+
+    func testWithoutABotChatTheRecoverySkipsEmptyDrafts() async {
+        let client = ScriptedHost(session: Self.sessionID, entries: [])
+        client.profileSessions = [SessionSummary(id: "20260101_000009_empty", title: "", messageCount: 0),
+                                  SessionSummary(id: "20260101_000008_real", title: "Planning",
+                                                 messageCount: 12)]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+
+        let recovered = await model.newestExistingConversation(for: bot("any"))
+
+        XCTAssertEqual(recovered, "20260101_000008_real",
+                       "a draft with no messages is not a conversation to recover")
     }
 
     func testTheHostsBotChatWinsOverARememberedId() async {

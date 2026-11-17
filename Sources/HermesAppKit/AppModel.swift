@@ -350,6 +350,13 @@ public final class AppModel: ObservableObject {
     }
 
     private var conversationCache: [String: ConversationSnapshot] = [:]
+    /// Which session the host calls each bot's Bot Chat, so a switch is a resume and not a lookup plus a
+    /// resume.
+    private var canonicalChatIDCache: [String: SessionID] = [:]
+    private var canonicalChatIDStamp: [String: Date] = [:]
+    /// Long enough for the taps in one sitting, short enough that a Bot Chat retired on another device
+    /// is picked up within the minute.
+    static let canonicalChatIdentityFreshness: TimeInterval = 60
     /// One sweep at a time: a second launch trigger while the first is still walking the roster would
     /// read every bot twice.
     private var isPrefetching = false
@@ -953,17 +960,24 @@ public final class AppModel: ObservableObject {
                 continue
             }
 
-            let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: bot.id),
-                                            legacy: await bridgePointerID(for: bot.id),
-                                            local: Self.defaults.string(forKey: Self.endlessKey(bot.id)))
+            // The host's own Bot Chat first — the identity that opening a bot uses — so the sweep
+            // fills both the transcript cache and the identity cache in one pass. Then the sweep's
+            // first switch already has the answer and costs a resume and nothing more.
             let stored: SessionID
-            switch plan.step {
-            case .resume(let id), .adopt(let id):
-                stored = id
-            case .create:
-                // Nothing to read yet, and minting one here would be the sweep inventing a
-                // conversation. It stays empty until the person opens it.
-                continue
+            if let canonical = await canonicalChatIdentity(for: bot.id) {
+                stored = canonical
+            } else {
+                let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: bot.id),
+                                                legacy: await bridgePointerID(for: bot.id),
+                                                local: Self.defaults.string(forKey: Self.endlessKey(bot.id)))
+                switch plan.step {
+                case .resume(let id), .adopt(let id):
+                    stored = id
+                case .create:
+                    // Nothing to read yet, and minting one here would be the sweep inventing a
+                    // conversation. It stays empty until the person opens it.
+                    continue
+                }
             }
 
             do {
@@ -1894,10 +1908,23 @@ public final class AppModel: ObservableObject {
     /// lifetime rules a client cannot invent, only use. Hidden rows are preferred; a row filed by hand
     /// under the same name is only taken when no hidden one exists.
     func canonicalChatIdentity(for botID: String) async -> SessionID? {
-        guard connection.isLive else { return nil }
+        // One lookup per bot per `canonicalChatIdentityFreshness`: the answer is the Bot Chat's name,
+        // which does not change between two taps, and asking again is a whole round trip in front of a
+        // conversation the person is waiting for.
+        if let cached = canonicalChatIDCache[botID],
+           let stamp = canonicalChatIDStamp[botID],
+           Date().timeIntervalSince(stamp) < Self.canonicalChatIdentityFreshness {
+            return cached
+        }
+        guard connection.isLive else { return canonicalChatIDCache[botID] }
         do {
             let sessions = try await client.listSessions(limit: 20, profile: botID, includeHidden: true)
-            return sessions.first { $0.title == CanonicalBotChat.title }?.id
+            guard let id = sessions.first(where: { $0.title == CanonicalBotChat.title })?.id else {
+                return nil
+            }
+            canonicalChatIDCache[botID] = id
+            canonicalChatIDStamp[botID] = Date()
+            return id
         } catch {
             ClientLog.note("could not look up \(botID)'s Bot Chat: \(error.localizedDescription)",
                            level: .info, category: "session")
@@ -1913,8 +1940,15 @@ public final class AppModel: ObservableObject {
     /// — one read, newest first — so the recovery adopts it instead of inventing a new one.
     func newestExistingConversation(for botID: String) async -> SessionID? {
         do {
-            let sessions = try await client.listSessions(limit: 5, profile: botID, includeHidden: true)
-            return sessions.first?.id
+            let sessions = try await client.listSessions(limit: 20, profile: botID, includeHidden: true)
+            // The Bot Chat by name first — that is the host's own identity for the endless chat. Then
+            // the newest conversation that actually holds messages: a bot's store is full of untitled
+            // zero-message sessions, and adopting one of those opened a 545-message bot blank (crony,
+            // atlas and anika, reported 2026-11-17).
+            if let named = sessions.first(where: { $0.title == CanonicalBotChat.title })?.id {
+                return named
+            }
+            return (sessions.first { $0.messageCount > 0 } ?? sessions.first)?.id
         } catch {
             Self.noteSessionSync("could not list “\(botID)”'s conversations: \(error.localizedDescription)")
             return nil
