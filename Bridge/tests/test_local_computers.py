@@ -12,7 +12,7 @@ from websockets.asyncio.client import connect
 
 
 def test_local_computer_executor_lifecycle(bridge):
-    pair = bridge.pair(name="Mo's MacBook Air", platform="macos")
+    pair = bridge.pair(name="Test MacBook Air", platform="macos")
     device_id = pair["device_id"]
     observed: list[dict] = []
 
@@ -21,7 +21,7 @@ def test_local_computer_executor_lifecycle(bridge):
         url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
             {"ticket": ticket})
         async with connect(url) as ws:
-            await ws.send(json.dumps({"type": "hello", "name": "Mo's MacBook Air"}))
+            await ws.send(json.dumps({"type": "hello", "name": "Test MacBook Air"}))
 
             # Give the registry a beat to register, then list from a normal authenticated caller.
             for _ in range(50):
@@ -33,7 +33,7 @@ def test_local_computer_executor_lifecycle(bridge):
                     break
                 time.sleep(0.02)
             assert listed.status_code == 200
-            assert listed.json()["computers"][0]["name"] == "Mo's MacBook Air"
+            assert listed.json()["computers"][0]["name"] == "Test MacBook Air"
 
             async def fake_computer() -> None:
                 frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))

@@ -36,7 +36,7 @@ through it.
 curl -s @@BRIDGE@@/v1/local-computers
 ```
 
-`{"computers":[{"device_id":"…","name":"Md's MacBook Air","connected":true}]}` — an empty list means
+`{"computers":[{"device_id":"…","name":"MacBook Air","connected":true}]}` — an empty list means
 no Mac right now. Ask the owner to open Hermey on the Mac, go to the Computer tab and turn on **Let
 bots use this computer**. Do not guess at SSH, and do not retry in a loop.
 
