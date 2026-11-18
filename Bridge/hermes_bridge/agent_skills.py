@@ -158,6 +158,59 @@ def fallback_skill_dirs() -> list[Path]:
     return unique
 
 
+def template_version() -> str:
+    """The ``version:`` line of the template's frontmatter, for the app to show next to the row."""
+    try:
+        text = TEMPLATE.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        if line.startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def status(cli: Path | None = None) -> dict[str, Any]:
+    """What Settings → Computer shows. Computed only — asking must never change the host.
+
+    ``present`` and ``up_to_date`` are separate because they answer different questions: a bot with
+    an older copy can still reach the Mac, it just has the previous instructions.
+
+    ``cli`` exists so a caller can ask about the same path ``install_cli`` would write; the rendered
+    text embeds it, and a copy rendered for a different path is by definition out of date.
+    """
+    cli = Path(cli) if cli is not None else STATE_DIR / "bin" / "local_computer.py"
+    body = render(cli)
+    current: list[str] = []
+    stale: list[str] = []
+    foreign: list[str] = []
+    for root in shared_skill_dirs() or fallback_skill_dirs():
+        path = Path(root) / SKILL_NAME / "SKILL.md"
+        if not path.is_file():
+            continue
+        try:
+            existing = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if existing == body:
+            current.append(str(root))
+        elif MANAGED_MARKER in existing:
+            stale.append(str(root))
+        else:
+            foreign.append(str(root))
+    return {
+        "name": SKILL_NAME,
+        "version": template_version(),
+        "installed": current,
+        "out_of_date": stale,
+        "owned_by_the_user": foreign,
+        "present": bool(current or stale),
+        "up_to_date": bool(current) and not stale,
+        "cli": str(cli),
+        "cli_present": cli.is_file(),
+    }
+
+
 def write_skill(root: Path, body: str) -> str:
     """Write one copy. Returns ``written`` / ``current`` / ``foreign`` / ``failed: …``.
 

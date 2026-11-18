@@ -37,6 +37,21 @@ struct ComputerActivityItem: Identifiable, Equatable {
     let durationMS: Int?
 }
 
+/// What the host reports about the instructions it writes for its agents.
+///
+/// One row in Settings → Computer comes from this: whether every agent on the host can already see
+/// how to reach this Mac, and whether what they have is the current set of instructions. Absent
+/// (`nil`) means the host did not answer — never "not installed", which the host states explicitly.
+struct ComputerSkillStatus: Equatable, Sendable {
+    var version: String
+    var present: Bool
+    var upToDate: Bool
+    /// The owner wrote a skill by that name, so the host leaves it alone and never overwrites it.
+    var ownedByTheUser: Bool
+    /// The command line the skill tells agents to run. Missing means the row is telling a lie.
+    var cliPresent: Bool
+}
+
 /// The Mac half of local computer use: one outbound, authenticated socket to the bridge.
 ///
 /// Nothing listens on this Mac — no SSH, no Remote Login, no inbound port. The socket is dialed from
@@ -65,6 +80,10 @@ final class LocalComputerService: ObservableObject {
     @Published private(set) var recentActivity: [ComputerActivityItem] = []
     @Published private(set) var liveOutput = ""
     @Published private(set) var isCommandRunning = false
+    /// The host's answer about the bot instructions, and whether one arrived at all.
+    @Published private(set) var skill: ComputerSkillStatus?
+    @Published private(set) var skillChecked = false
+    @Published private(set) var skillBusy = false
 
     private let defaults = UserDefaults.standard
     private let enabledKey = "hermey.localComputer.enabled"
@@ -158,6 +177,49 @@ final class LocalComputerService: ObservableObject {
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(ticket)", forHTTPHeaderField: "Authorization")
         _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// Ask the host where the bot instructions are. Read-only on the host by design: looking must
+    /// never install anything.
+    func refreshSkill(address: PairingAddress?) async {
+        defer { skillChecked = true }
+        guard let request = await skillRequest(method: "GET", address: address),
+              let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            // No answer is not "not installed": the row says unavailable and offers the button.
+            skill = nil
+            return
+        }
+        skill = ComputerSkillStatus(
+            version: object["version"] as? String ?? "",
+            present: object["present"] as? Bool ?? false,
+            upToDate: object["up_to_date"] as? Bool ?? false,
+            ownedByTheUser: (object["owned_by_the_user"] as? [Any])?.isEmpty == false,
+            cliPresent: object["cli_present"] as? Bool ?? false
+        )
+    }
+
+    /// Re-run the host's own installer — the same pass it makes on every start.
+    func installSkill(address: PairingAddress?) async {
+        guard !skillBusy else { return }
+        skillBusy = true
+        defer { skillBusy = false }
+        if let request = await skillRequest(method: "POST", address: address) {
+            _ = try? await URLSession.shared.data(for: request)
+        }
+        await refreshSkill(address: address)
+    }
+
+    /// Both skill routes take the same per-call ticket the revoke uses; there is no long-lived token.
+    private func skillRequest(method: String, address: PairingAddress?) async -> URLRequest? {
+        guard let address, !address.isTicketOnly,
+              let ticket = try? await address.mintedTicket(),
+              let origin = try? address.apiOrigin() else { return nil }
+        var request = URLRequest(url: origin.appendingPathComponent("v1/local-computers/skill"))
+        request.httpMethod = method
+        request.setValue("Bearer \(ticket)", forHTTPHeaderField: "Authorization")
+        return request
     }
 
     /// Called when the pairing changes: a live socket belongs to the old host's ticket.

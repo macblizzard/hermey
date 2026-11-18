@@ -27,6 +27,7 @@ from fastapi.responses import StreamingResponse
 
 from . import paths
 from .agent_skills import install as install_agent_skills
+from .agent_skills import status as skill_report
 from .device_auth import is_local_host_request, require_device
 
 log = logging.getLogger("hermes_bridge.local_computers")
@@ -468,6 +469,17 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
         runtime.audit.emit("local_computer.observe", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/observe", outcome="finished")
         return observation
+
+    @router.get("/skill")
+    async def skill_status(request: Request,
+                           authorization: str | None = Header(default=None)) -> dict:
+        """Where the bot instructions are, and whether they are current — read-only.
+
+        Settings → Computer shows one row from this. It is a separate route from the install because
+        asking must never write to the host.
+        """
+        authorize(request, authorization)
+        return skill_report()
 
     @router.post("/skill")
     async def install_skill(request: Request,

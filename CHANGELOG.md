@@ -6,6 +6,13 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Settings → Computer shows whether the agents can reach this Mac.** One row: *Installed*,
+  *Update available*, *Not installed*, *Yours* or *Unavailable*, with the skill version, a button that
+  re-runs the host's installer, and a red line when the command the skill points agents at is missing
+  from the host. *Yours* means the owner wrote a skill by that name, so the host leaves it alone;
+  *Unavailable* means the host did not answer, which is deliberately not the same claim as *Not
+  installed*. It reads a new read-only `GET /v1/local-computers/skill`; installing stays on `POST`, so
+  looking at the row can never write to the host.
 - **Every bot knows how to reach the owner's Mac, without being told.** The local-computer executor
   was only useful to a bot that already knew the CLI existed — the rest tried SSH and failed. The
   bridge now ships a `mac-local-computer` skill inside the package, writes the CLI to

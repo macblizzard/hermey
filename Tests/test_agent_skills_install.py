@@ -185,5 +185,81 @@ class ItIsSafeToRunAgain(Scratch):
         self.assertIn({"dir": str(owned.parent), "outcome": "foreign"}, result["attempted"])
 
 
+class TheComputerTabCanSeeIt(Scratch):
+    """Settings → Computer shows one row from `status()`; it has to be honest in every state."""
+
+    def status(self) -> dict:
+        return agent_skills.status(cli=self.state / "bin" / "local_computer.py")
+
+    def test_before_install_it_says_absent(self) -> None:
+        report = self.status()
+        self.assertFalse(report["present"])
+        self.assertFalse(report["up_to_date"])
+        self.assertEqual(report["version"], "1.0.0")
+
+    def test_after_install_it_says_current(self) -> None:
+        self.install()
+        report = self.status()
+        self.assertTrue(report["present"])
+        self.assertTrue(report["up_to_date"])
+        self.assertIn(str(self.home / "skills"), report["installed"])
+        self.assertEqual(report["out_of_date"], [])
+
+    def test_an_older_copy_reads_as_installed_but_out_of_date(self) -> None:
+        """Two different answers: can the bots reach the Mac, and are they reading today's rules."""
+        self.install()
+        path = self.home / "skills" / agent_skills.SKILL_NAME / "SKILL.md"
+        path.write_text(path.read_text(encoding="utf-8").replace("version: 1.0.0", "version: 0.9.0"),
+                        encoding="utf-8")
+        report = self.status()
+        self.assertTrue(report["present"])
+        self.assertFalse(report["up_to_date"])
+        self.assertIn(str(self.home / "skills"), report["out_of_date"])
+
+    def test_asking_never_installs_anything(self) -> None:
+        self.status()
+        self.assertEqual([p for p in self.home.rglob("*") if p.is_file()], [],
+                         "the row polls the host; polling must not write")
+
+    def test_the_owners_own_skill_reads_as_theirs(self) -> None:
+        owned = self.home / "skills" / agent_skills.SKILL_NAME
+        owned.mkdir(parents=True)
+        (owned / "SKILL.md").write_text("---\nname: mac-local-computer\n---\n\nmine\n", encoding="utf-8")
+        report = self.status()
+        self.assertFalse(report["present"])
+        self.assertEqual(report["owned_by_the_user"], [str(self.home / "skills")])
+
+
+class TheComputerTabShowsIt(unittest.TestCase):
+    """The row exists in the app, and it asks the host rather than assuming."""
+
+    VIEW = ROOT / "Apps/HermesMac/Views/LocalComputerSettingsView.swift"
+    SERVICE = ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift"
+    ROUTER = ROOT / "Bridge/hermes_bridge/local_computers.py"
+
+    def test_the_row_is_in_the_computer_tab(self) -> None:
+        view = self.VIEW.read_text(encoding="utf-8")
+        self.assertIn("Bot instructions", view)
+        self.assertIn("refreshSkill", view)
+        self.assertIn("installSkill", view)
+
+    def test_the_state_words_keep_unavailable_apart_from_not_installed(self) -> None:
+        view = self.VIEW.read_text(encoding="utf-8")
+        for word in ('"Installed"', '"Update available"', '"Not installed"', '"Unavailable"', '"Yours"'):
+            self.assertIn(word, view)
+
+    def test_status_is_a_read_and_install_is_a_write(self) -> None:
+        service = self.SERVICE.read_text(encoding="utf-8")
+        self.assertIn('skillRequest(method: "GET"', service)
+        self.assertIn('skillRequest(method: "POST"', service)
+        self.assertIn("v1/local-computers/skill", service)
+
+    def test_the_bridge_serves_both_verbs_on_that_path(self) -> None:
+        router = self.ROUTER.read_text(encoding="utf-8")
+        self.assertIn('@router.get("/skill")', router)
+        self.assertIn('@router.post("/skill")', router)
+        self.assertIn("def skill_status", router)
+
+
 if __name__ == "__main__":
     unittest.main()

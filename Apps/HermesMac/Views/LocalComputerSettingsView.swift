@@ -13,6 +13,23 @@ struct LocalComputerSettingsView: View {
 
     private var pairedAddress: PairingAddress? { store.pairing }
 
+    /// The row's state word. "Unavailable" is a separate answer from "not installed" on purpose: the
+    /// owner should be able to tell a host that disagrees from a host that did not reply.
+    private var skillLabel: String {
+        guard service.skillChecked else { return "Checking…" }
+        guard let skill = service.skill else { return "Unavailable" }
+        if skill.ownedByTheUser { return "Yours" }
+        if skill.upToDate { return "Installed" }
+        return skill.present ? "Update available" : "Not installed"
+    }
+
+    private var skillTint: Color {
+        guard let skill = service.skill else { return Tokens.textMuted }
+        if skill.ownedByTheUser { return Tokens.textMuted }
+        if skill.upToDate { return Tokens.success }
+        return skill.present ? Tokens.warning : Tokens.textMuted
+    }
+
     var body: some View {
         Form {
             Section {
@@ -97,6 +114,44 @@ struct LocalComputerSettingsView: View {
                     .foregroundStyle(Tokens.textMuted)
             }
 
+            Section {
+                HStack(spacing: 8) {
+                    Text("Bot instructions")
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Text(skillLabel)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(skillTint)
+                    Spacer(minLength: 6)
+                    Button(service.skill?.present == true ? "Reinstall" : "Install") {
+                        Task { await service.installSkill(address: pairedAddress) }
+                    }
+                    .controlSize(.small)
+                    .disabled(pairedAddress == nil || service.skillBusy)
+                    .help("Re-run the host's installer for the skill your agents read")
+                }
+
+                if let skill = service.skill, skill.present, !skill.version.isEmpty {
+                    Text("mac-local-computer \(skill.version)")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textMuted)
+                        .padding(.leading, 18)
+                }
+
+                if let skill = service.skill, skill.present, !skill.cliPresent {
+                    Text("The command line the skill points at is missing on the host.")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.danger)
+                        .padding(.leading, 18)
+                }
+            } header: {
+                Text("Agents")
+            } footer: {
+                Text("Every agent on the host gets a mac-local-computer skill, so it knows how to reach this Mac without being told. The host writes it on each start; this button only re-runs that.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+            }
+
             Section("Activity") {
                 if takeover.active {
                     HStack(spacing: 8) {
@@ -163,8 +218,12 @@ struct LocalComputerSettingsView: View {
         .background(Tokens.canvas)
         .task {
             if service.isEnabled { service.setEnabled(true, address: pairedAddress) }
+            await service.refreshSkill(address: pairedAddress)
         }
-        .onChange(of: store.pairing) { _, address in service.pairingChanged(address: address) }
+        .onChange(of: store.pairing) { _, address in
+            service.pairingChanged(address: address)
+            Task { await service.refreshSkill(address: address) }
+        }
         .confirmationDialog("Revoke this Mac?", isPresented: $confirmingRevoke, titleVisibility: .visible) {
             Button("Revoke", role: .destructive) {
                 Task { await service.revoke(address: pairedAddress) }
