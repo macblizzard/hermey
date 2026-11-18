@@ -126,11 +126,26 @@ final class ComputerActions {
             guard let x = action.x, let y = action.y else {
                 throw ActError.coordinates("missing x/y")
             }
-            let bounds = CGDisplayBounds(CGMainDisplayID())
-            guard x >= 0, y >= 0, x <= Double(bounds.width), y <= Double(bounds.height) else {
-                throw ActError.coordinates("(\(x), \(y)) is outside the display")
+            let bounds = Self.activeDisplayUnion()
+            guard bounds.contains(CGPoint(x: x, y: y)) else {
+                throw ActError.coordinates("(\(x), \(y)) is outside the displays")
             }
         }
+    }
+
+    /// The union of every online display, in the same global coordinates CGEvent uses.
+    ///
+    /// `CGMainDisplayID()` only describes the primary screen. A coordinate on a second monitor is
+    /// outside that rectangle, so a two-display setup used to reject perfectly good clicks. The
+    /// union keeps the same coordinate space the event system already writes to.
+    private static func activeDisplayUnion() -> CGRect {
+        var count: UInt32 = 0
+        CGGetOnlineDisplayList(0, nil, &count)
+        guard count > 0 else { return CGDisplayBounds(CGMainDisplayID()) }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        let result = CGGetOnlineDisplayList(count, &ids, nil)
+        guard result == .success else { return CGDisplayBounds(CGMainDisplayID()) }
+        return ids.reduce(CGRect.null) { $0.union(CGDisplayBounds($1)) }
     }
 
     @MainActor

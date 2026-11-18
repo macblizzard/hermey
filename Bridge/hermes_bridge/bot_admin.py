@@ -57,18 +57,33 @@ RESERVED_PROFILE_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", 
 
 ARCHIVE_DIR = paths.ARCHIVE_DIR
 
+#: How many deleted-bot archives to keep. They are mistake-catchers, not a backup service; without a
+#: cap every delete leaves another tarball on the state disk forever.
+ARCHIVE_KEEP = 20
+
 #: Where "this bot is off" is recorded: beside the bridge's database, not inside the bot's home.
 STATE_FILE = paths.DISABLED_STATE_FILE
 
 DASHBOARD_URL = os.environ.get("HERMES_BRIDGE_DASHBOARD_URL", "http://127.0.0.1:9120")
 
-REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = 10
 
 #: One lock for the disabled-bots file. Two devices toggling two bots read-modify-write the same
 #: document; without this the second save starts from the first request's read and drops its change
 #: — the same race the categories file has a lock for. Re-entrant because a mutation writes through
 #: ``_write_state``, which is called from inside it.
 _STATE_LOCK = threading.RLock()
+
+#: A *per-profile* operations lock. The state-file lock above protects one document; this one keeps
+#: two requests about the same bot from interleaving their dashboard calls. It is deliberately not
+#: the same lock, so a slow dashboard answer for one bot cannot stall every other bot's toggle.
+_PROFILE_OPERATION_LOCKS: dict[str, threading.Lock] = {}
+_PROFILE_OPERATION_LOCKS_GUARD = threading.Lock()
+
+
+def _profile_operation_lock(profile: str) -> threading.Lock:
+    with _PROFILE_OPERATION_LOCKS_GUARD:
+        return _PROFILE_OPERATION_LOCKS.setdefault(profile, threading.Lock())
 
 
 class EnabledChange(BaseModel):
@@ -285,6 +300,20 @@ def _write_state(state: dict) -> None:
     paths.atomic_write_text(STATE_FILE, json.dumps(state, indent=2, sort_keys=True))
 
 
+def _prune_archives() -> None:
+    """Keep the newest ``ARCHIVE_KEEP`` deleted-bot archives; the rest are stale copies."""
+    try:
+        archives = sorted((path for path in ARCHIVE_DIR.glob("*.tar.gz") if path.is_file()),
+                           key=lambda path: path.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    for stale in archives[ARCHIVE_KEEP:]:
+        try:
+            stale.unlink()
+        except OSError:
+            continue
+
+
 def disabled_profiles() -> set[str]:
     """Profiles the owner turned off — a peer's message must not be the way around that."""
     return {name for name, entry in _read_state().items() if entry.get("enabled") is False}
@@ -462,6 +491,8 @@ def create_bot_admin_router(runtime) -> APIRouter:
             # indistinguishable from no archive, and the delete that follows is irreversible.
             raise HTTPException(status_code=500, detail=f"archive failed: {error}") from error
 
+        _prune_archives()
+
         _dashboard("DELETE", f"/api/profiles/{profile}")
         if directory.exists():
             raise HTTPException(status_code=500,
@@ -478,37 +509,69 @@ def create_bot_admin_router(runtime) -> APIRouter:
     @router.post("/{profile}/state")
     def set_enabled(profile: str, body: EnabledChange,
                     authorization: str | None = Header(default=None)) -> dict:
-        """Disable = pause this bot's schedules; enable = resume the ones we paused."""
+        """Disable = pause this bot's schedules; enable = resume the ones we paused.
+
+        The dashboard calls happen outside the state-file lock, and a partial failure is recorded
+        rather than dropped: the jobs that *did* pause are written down, so a later enable still
+        resumes exactly those and the owner can see what is left.
+        """
         caller = authenticate(authorization)
         _profile_dir(profile)
 
-        def change(state: dict) -> dict:
-            entry = state.get(profile, {})
-
+        with _profile_operation_lock(profile):
             if body.enabled:
+                with _STATE_LOCK:
+                    entry = _read_state().get(profile, {})
+                    job_ids = _known_job_ids(entry)
                 resumed: list[str] = []
-                for job_id in _known_job_ids(entry):
-                    _dashboard("POST", f"/api/cron/jobs/{job_id}/resume?profile={profile}")
-                    resumed.append(job_id)
-                state.pop(profile, None)
-                return {"profile": profile, "enabled": True, "resumed_jobs": resumed}
+                failed: list[str] = []
+                for job_id in job_ids:
+                    try:
+                        _dashboard("POST", f"/api/cron/jobs/{job_id}/resume?profile={profile}")
+                        resumed.append(job_id)
+                    except HTTPException:
+                        failed.append(job_id)
+                with _STATE_LOCK:
+                    state = _read_state()
+                    if failed:
+                        state[profile] = {"enabled": False,
+                                          "disabled_at": time.time(),
+                                          "paused_jobs": failed}
+                    else:
+                        state.pop(profile, None)
+                    _write_state(state)
+                outcome = {"profile": profile, "enabled": True, "resumed_jobs": resumed}
+                if failed:
+                    outcome["partial"] = True
+                    outcome["failed_jobs"] = failed
+            else:
+                # Only the jobs that were running: resuming later must not wake a job the owner paused.
+                running = [str(job["id"]) for job in _cron_jobs(profile) if not job.get("paused")]
+                paused: list[str] = []
+                failed: list[str] = []
+                for job_id in running:
+                    try:
+                        _dashboard("POST", f"/api/cron/jobs/{job_id}/pause?profile={profile}")
+                        paused.append(job_id)
+                    except HTTPException:
+                        failed.append(job_id)
+                with _STATE_LOCK:
+                    state = _read_state()
+                    state[profile] = {"enabled": False,
+                                      "disabled_at": time.time(),
+                                      "paused_jobs": paused}
+                    _write_state(state)
+                outcome = {"profile": profile, "enabled": False, "paused_jobs": paused}
+                if failed:
+                    outcome["partial"] = True
+                    outcome["failed_jobs"] = failed
 
-            # Only the jobs that were running: resuming later must not wake a job the owner paused.
-            running = [str(job["id"]) for job in _cron_jobs(profile) if not job.get("paused")]
-            paused: list[str] = []
-            for job_id in running:
-                _dashboard("POST", f"/api/cron/jobs/{job_id}/pause?profile={profile}")
-                paused.append(job_id)
-            state[profile] = {"enabled": False, "disabled_at": time.time(), "paused_jobs": paused}
-            return {"profile": profile, "enabled": False, "paused_jobs": paused}
-
-        # One locked read-modify-write: two devices toggling two bots must both keep their change.
-        outcome = _mutate_state(change)
         runtime.audit.emit("bots.state", device_id=caller,
                            method="bots.state",
                            path=f"/v1/bots/{profile}/state",
                            nbytes=0,
-                           outcome="enabled" if body.enabled else "disabled")
+                           outcome=("enabled" if body.enabled else "disabled")
+                                   + (" (partial)" if outcome.get("partial") else ""))
         return outcome
 
     @router.get("/{profile}/model-settings")

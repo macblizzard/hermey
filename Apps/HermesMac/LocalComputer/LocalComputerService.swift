@@ -3,6 +3,28 @@ import Foundation
 import HermesKit
 import SwiftUI
 
+/// One local command at a time, across every frame type.
+///
+/// The GUI lock inside `ComputerActions` only serialises desktop gestures. Two `execute` frames, or
+/// an `observe` racing a `file` write, used to run concurrently because each frame got its own Task.
+/// This gate is the single queue every frame passes through, so the order the bridge sent is the
+/// order this Mac works.
+private actor CommandGate {
+    private var queue: [() async -> Void] = []
+    private var running = false
+
+    func run(_ operation: @escaping () async -> Void) async {
+        queue.append(operation)
+        guard !running else { return }
+        running = true
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            await next()
+        }
+        running = false
+    }
+}
+
 /// The Mac half of local computer use: one outbound, authenticated socket to the bridge.
 ///
 /// Nothing listens on this Mac — no SSH, no Remote Login, no inbound port. The socket is dialed from
@@ -37,6 +59,7 @@ final class LocalComputerService: ObservableObject {
     private var session: URLSession?
     private var heartbeat: Timer?
     private var lastPong = Date()
+    private let commandGate = CommandGate()
 
     /// The machine name shown on the host's Computers list.
     private let machineName = Host.current().localizedName ?? "Mac"
@@ -191,23 +214,43 @@ final class LocalComputerService: ObservableObject {
                 // Never await a command inside the receive loop: doing that stopped us reading the
                 // bridge's pongs for the whole build, which made the link look dead and dropped it.
                 Task { @MainActor [weak self] in
-                    await self?.handleExecute(frame, on: task)
+                    guard let self else { return }
+                    await self.commandGate.run { [weak self] in
+                        guard let self else { return }
+                        await self.handleExecute(frame, on: task)
+                    }
                 }
             } else if kind == "observe" {
                 Task { @MainActor [weak self] in
-                    await self?.handleObserve(frame, on: task)
+                    guard let self else { return }
+                    await self.commandGate.run { [weak self] in
+                        guard let self else { return }
+                        await self.handleObserve(frame, on: task)
+                    }
                 }
             } else if kind == "act" {
                 Task { @MainActor [weak self] in
-                    await self?.handleAct(frame, on: task)
+                    guard let self else { return }
+                    await self.commandGate.run { [weak self] in
+                        guard let self else { return }
+                        await self.handleAct(frame, on: task)
+                    }
                 }
             } else if kind == "file" {
                 Task { @MainActor [weak self] in
-                    await self?.handleFile(frame, on: task)
+                    guard let self else { return }
+                    await self.commandGate.run { [weak self] in
+                        guard let self else { return }
+                        await self.handleFile(frame, on: task)
+                    }
                 }
             } else if kind == "browser" {
                 Task { @MainActor [weak self] in
-                    await self?.handleBrowser(frame, on: task)
+                    guard let self else { return }
+                    await self.commandGate.run { [weak self] in
+                        guard let self else { return }
+                        await self.handleBrowser(frame, on: task)
+                    }
                 }
             }
         }

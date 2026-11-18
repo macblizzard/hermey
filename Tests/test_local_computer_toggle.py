@@ -106,6 +106,7 @@ class LocalComputerPrototype(unittest.TestCase):
     def test_receive_loop_never_blocks_on_a_command(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
         self.assertIn("Task { @MainActor [weak self] in", service)
-        self.assertIn("await self?.handleExecute(frame, on: task)", service)
+        self.assertIn("await self.commandGate.run", service)
+        self.assertIn("await self.handleExecute(frame, on: task)", service)
         self.assertNotIn("await handleExecute(frame, on: task)", service)
         self.assertIn("ClientLog.shared.record", service)

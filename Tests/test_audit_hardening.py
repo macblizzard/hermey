@@ -67,3 +67,58 @@ class AuditHardening(unittest.TestCase):
     def test_release_tools_are_compiled_in_ci(self) -> None:
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
         self.assertIn("python3 -m compileall -q Tools/release", ci)
+
+    def test_bot_admin_no_longer_stalls_the_state_lock_or_drops_partial_writes(self) -> None:
+        module = (ROOT / "Bridge" / "hermes_bridge" / "bot_admin.py").read_text()
+        self.assertIn("REQUEST_TIMEOUT = 10", module)
+        self.assertIn("_PROFILE_OPERATION_LOCKS", module)
+        self.assertIn("with _profile_operation_lock(profile):", module)
+        self.assertIn("outcome[\"partial\"] = True", module)
+        self.assertIn("ARCHIVE_KEEP = 20", module)
+        self.assertIn("def _prune_archives() -> None:", module)
+
+    def test_file_links_reject_path_traversal(self) -> None:
+        links = (ROOT / "Sources" / "HermeyUI" / "HermesFileLinkCard.swift").read_text()
+        self.assertIn("Self.isSafeFilename(raw)", links)
+        self.assertIn("guard !name.isEmpty, name != \".\", name != \"..\" else { return false }", links)
+        self.assertIn("!name.contains(\"/\")", links)
+
+    def test_compaction_guard_is_set_before_the_first_await(self) -> None:
+        app = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
+        start = app.index("public func compressNow() async")
+        end = app.index("private func finishCompaction()", start)
+        body = app[start:end]
+        self.assertIn("isCompressing = true", body)
+        self.assertIn("_ = await endlessSession(for: bot)", body)
+        self.assertLess(body.index("isCompressing = true"),
+                        body.index("_ = await endlessSession(for: bot)"))
+
+    def test_approval_answers_report_send_failures(self) -> None:
+        app = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
+        self.assertIn('lastSendError = "could not send the answer:', app)
+        self.assertIn('lastSendError = "could not send the answers:', app)
+        self.assertIn('lastSendError = "could not withdraw the request:', app)
+
+    def test_visible_transcript_is_cached_until_the_transcript_changes(self) -> None:
+        app = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
+        self.assertIn("private var visibleTranscriptCache:", app)
+        self.assertIn("didSet { visibleTranscriptCache = nil }", app)
+        self.assertIn("cached.showToolCalls == showToolCalls", app)
+
+    def test_act_validates_against_every_online_display(self) -> None:
+        actions = (ROOT / "Apps" / "HermesMac" / "LocalComputer" / "ComputerActions.swift").read_text()
+        self.assertIn("private static func activeDisplayUnion() -> CGRect", actions)
+        self.assertIn("CGGetOnlineDisplayList", actions)
+        self.assertIn("bounds.contains(CGPoint(x: x, y: y))", actions)
+
+    def test_every_local_frame_passes_through_one_serial_gate(self) -> None:
+        service = (ROOT / "Apps" / "HermesMac" / "LocalComputer" / "LocalComputerService.swift").read_text()
+        self.assertIn("private actor CommandGate", service)
+        self.assertIn("private let commandGate = CommandGate()", service)
+        self.assertIn("await self.commandGate.run", service)
+
+    def test_the_cli_reports_missing_observation_metadata_instead_of_crashing(self) -> None:
+        cli = (ROOT / "Tools" / "local_computer.py").read_text()
+        self.assertIn('width = observation.get("width")', cli)
+        self.assertIn('height = observation.get("height")', cli)
+        self.assertIn('json.JSONDecodeError, KeyError) as exc:', cli)

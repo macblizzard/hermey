@@ -61,11 +61,15 @@ def save_observation(observation: dict, save: str | None) -> dict:
     path = save or f"/tmp/hermey-observe-{frame_id}.jpg"
     with open(path, "wb") as handle:
         handle.write(image)
+    width = observation.get("width")
+    height = observation.get("height")
+    if width is None or height is None:
+        raise RuntimeError("the Mac returned no image metadata")
     metadata = {
         "path": path,
         "frame_id": frame_id,
-        "width": observation["width"],
-        "height": observation["height"],
+        "width": width,
+        "height": height,
         "format": observation.get("format", "jpeg"),
         "bytes": len(image),
         "active_window": observation.get("activeWindow") or observation.get("active_window"),
@@ -135,7 +139,7 @@ def main() -> int:
         args = browser.parse_args(raw[1:])
         try:
             return do_browser(args.computer, args.op, args.value)
-        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError, KeyError) as exc:
             print(f"Browser failed: {exc}", file=sys.stderr)
             return 4
 
@@ -162,7 +166,7 @@ def main() -> int:
         args = act.parse_args(raw[1:])
         try:
             return do_act(args.computer, args.actions, args.bot, args.save)
-        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError) as exc:
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError, KeyError) as exc:
             print(f"Act failed: {exc}", file=sys.stderr)
             return 4
 

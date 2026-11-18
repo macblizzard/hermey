@@ -88,7 +88,9 @@ public final class AppModel: ObservableObject {
     /// dead host. Drafts are adopted locally and leave this set once `prompt.submit` has persisted
     /// the row.
     @Published public private(set) var draftSessionIDs: Set<SessionID> = []
-    @Published public private(set) var transcript: [TranscriptEntry] = []
+    @Published public private(set) var transcript: [TranscriptEntry] = [] {
+        didSet { visibleTranscriptCache = nil }
+    }
     /// Where "load earlier" continues from, and how many rows the whole conversation holds.
     ///
     /// A long conversation is paged: the host ships only its newest page, because one 3.4 MB
@@ -240,6 +242,15 @@ public final class AppModel: ObservableObject {
     /// The rows are *replaced*, not cleared and refilled, so the scroll view keeps its offset — which
     /// is why a foreground left the reader somewhere in the middle of a chat instead of at its end.
     /// The shell watches this and lands at the newest message, the same rule as opening the thread.
+    /// Cached rows for `visibleTranscript`, invalidated whenever `transcript` changes.
+    ///
+    /// The transcript is read on every body pass — the list, the search field, the context gauge —
+    /// and re-filtering it each time showed up as avoidable work on long conversations. The cache is
+    /// keyed by the two visibility flags as well, so a switch that hides tool calls does not keep
+    /// serving the old rows.
+    private var visibleTranscriptCache: (showToolCalls: Bool, showReasoning: Bool,
+                                         rows: [TranscriptEntry])?
+
     @Published public private(set) var transcriptReloads = 0
 
     /// The last transcript this process saw for each session, painted the instant a chat is opened.
@@ -2277,13 +2288,16 @@ public final class AppModel: ObservableObject {
     /// transcript to whatever the host decided to keep.
     public func compressNow() async {
         guard !isCompressing else { return }
+        // Set the guard before the first await. The old order left a window where a second tap —
+        // a double-click, or a retry while the first was still opening the session — saw
+        // `isCompressing == false` again and started a second compaction on the same conversation.
+        isCompressing = true
         // A bot whose conversation has not been opened in this process has no session id yet.
         // Compacting is a verb on that conversation, so it opens it rather than staying greyed out.
         if selectedSessionID == nil, let bot = selectedBotID {
             _ = await endlessSession(for: bot)
         }
-        guard let sid = selectedSessionID else { return }
-        isCompressing = true
+        guard let sid = selectedSessionID else { return finishCompaction() }
         compactionWait = CompactionWait(session: sid, entriesBefore: transcript.count,
                                         totalBefore: historyTotal, startedAt: Date())
         do {
@@ -3400,14 +3414,22 @@ public final class AppModel: ObservableObject {
     // MARK: Approvals
 
     public func answer(_ request: ServerRequest, choice: String) async {
-        try? await client.answer(request.id, with: .object(["choice": .string(choice)]))
-        pendingRequests.removeAll { $0.id == request.id }
+        do {
+            try await client.answer(request.id, with: .object(["choice": .string(choice)]))
+            pendingRequests.removeAll { $0.id == request.id }
+        } catch {
+            lastSendError = "could not send the answer: \(error.localizedDescription)"
+        }
     }
 
     public func answers(_ request: ServerRequest, _ answers: [String: String]) async {
         let value = JSONValue.object(answers.mapValues { JSONValue.string($0) })
-        try? await client.answer(request.id, with: .object(["answers": value]))
-        pendingRequests.removeAll { $0.id == request.id }
+        do {
+            try await client.answer(request.id, with: .object(["answers": value]))
+            pendingRequests.removeAll { $0.id == request.id }
+        } catch {
+            lastSendError = "could not send the answers: \(error.localizedDescription)"
+        }
     }
 
     /// Refuse a request the client cannot render *at all*.
@@ -3416,8 +3438,12 @@ public final class AppModel: ObservableObject {
     /// answer this" — it *withdraws* the queued approval and tells the agent to update the app.
     /// It is NOT a denial: nothing was refused. Use `deny(_:)` when the user pressed Deny.
     public func decline(_ request: ServerRequest) async {
-        try? await client.decline(request.id, with: .methodNotFound)
-        pendingRequests.removeAll { $0.id == request.id }
+        do {
+            try await client.decline(request.id, with: .methodNotFound)
+            pendingRequests.removeAll { $0.id == request.id }
+        } catch {
+            lastSendError = "could not withdraw the request: \(error.localizedDescription)"
+        }
     }
 
     // MARK: Answering an approval
@@ -3451,8 +3477,12 @@ public final class AppModel: ObservableObject {
             "choice": .string(choice),
             "all": .bool(all),
         ])
-        try? await client.answer(request.id, with: params)
-        pendingRequests.removeAll { $0.id == request.id }
+        do {
+            try await client.answer(request.id, with: params)
+            pendingRequests.removeAll { $0.id == request.id }
+        } catch {
+            lastSendError = "could not send the answer: \(error.localizedDescription)"
+        }
     }
 
     /// Allow, in the strongest form the host offered (`once` by default).
@@ -3883,9 +3913,16 @@ public final class AppModel: ObservableObject {
     /// The rows the transcript draws. Every other reader (counts, search over history, the last
     /// reply) keeps `transcript`: hiding a card is a display choice, not a loss of history.
     public var visibleTranscript: [TranscriptEntry] {
-        TranscriptVisibility.rows(transcript,
-                                  showToolCalls: showToolCalls,
-                                  showReasoning: showReasoning)
+        if let cached = visibleTranscriptCache,
+           cached.showToolCalls == showToolCalls,
+           cached.showReasoning == showReasoning {
+            return cached.rows
+        }
+        let rows = TranscriptVisibility.rows(transcript,
+                                              showToolCalls: showToolCalls,
+                                              showReasoning: showReasoning)
+        visibleTranscriptCache = (showToolCalls, showReasoning, rows)
+        return rows
     }
 
     /// The running turn's cards, or nothing when the user turned tool calls off.

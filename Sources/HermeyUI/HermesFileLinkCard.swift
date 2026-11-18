@@ -22,12 +22,24 @@ public struct HermesFileLink: Identifiable, Equatable, Sendable {
             return nil
         }
         let parts = url.pathComponents.filter { $0 != "/" }
-        guard parts.count >= 2, let name = parts.last?.removingPercentEncoding, !name.isEmpty else {
+        guard parts.count >= 2,
+              let raw = parts.last?.removingPercentEncoding,
+              Self.isSafeFilename(raw) else {
             return nil
         }
         self.url = url
-        self.filename = name
+        self.filename = raw
         self.owner = parts[parts.count - 2]
+    }
+
+    /// A filename that cannot climb out of the folder the share sheet writes into.
+    ///
+    /// `URL.appendingPathComponent` does not normalise `..`, and a percent-encoded slash survives
+    /// `removingPercentEncoding` as a real separator — so the store's own path shape is not enough
+    /// to make the local copy safe. Reject separators and the two special names outright.
+    private static func isSafeFilename(_ name: String) -> Bool {
+        guard !name.isEmpty, name != ".", name != ".." else { return false }
+        return !name.contains("/") && !name.contains("\\") && !name.contains("\0")
     }
 
     /// The system glyph for this file's kind. Extension-only — a file name is all the store gives us,

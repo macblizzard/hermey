@@ -34,5 +34,6 @@ class ComputerObserve(unittest.TestCase):
     def test_receive_loop_dispatches_observe_off_the_loop(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
         self.assertIn('} else if kind == "observe" {', service)
-        self.assertIn("await self?.handleObserve(frame, on: task)", service)
+        self.assertIn("await self.commandGate.run", service)
+        self.assertIn("await self.handleObserve(frame, on: task)", service)
         self.assertIn("ComputerObserver.shared.observe()", service)
