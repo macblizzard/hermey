@@ -24,7 +24,7 @@
         {
           "version": "0.1.574",
           "buildVersion": "574",
-          "date": "2026-11-18T16:22:56Z",
+          "date": "2026-11-18T16:23:30Z",
           "localizedDescription": "The cache is read before the host: chats paint from the device copy at launch instead of waiting for a resume, and the chat list shows cached previews immediately.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.574/Hermey-0.1.574-b574.ipa",
           "size": 3347065,
@@ -46,7 +46,7 @@
       "title": "Hermes 0.1.574 (574)",
       "identifier": "hermes-0.1.574-574",
       "caption": "The cache is read before the host: chats paint from the device copy at launch instead of waiting for a resume, and the chat list shows cached previews immediately.",
-      "date": "2026-11-18T16:22:56Z",
+      "date": "2026-11-18T16:23:30Z",
       "tintColor": "#9A9AA0"
     }
   ],
