@@ -28,13 +28,25 @@ class LocalComputerPrototype(unittest.TestCase):
     def test_stays_up_by_itself(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
         self.assertIn("config.timeoutIntervalForRequest = 3_600", service)
-        self.assertIn("Timer(timeInterval: 15, repeats: true)", service)
+        # The heartbeat is an async task measuring a *sent* ping, not a run-loop Timer reading a pong
+        # clock. A backgrounded app has its timers throttled, so the old version saw a stale `lastPong`
+        # it had never asked for and tore down a healthy socket on wake.
+        self.assertIn(
+            "private func startHeartbeat(for task: URLSessionWebSocketTask) -> Task<Void, Never>", service)
+        self.assertIn("if let sent = self.pingSentAt, Date().timeIntervalSince(sent) > 45", service)
+        self.assertNotIn("Timer(timeInterval: 15", service)
         self.assertIn("lastPong = Date()", service)
-        self.assertIn("Date().timeIntervalSince(self.lastPong) > 60", service)
         self.assertNotIn("withThrowingTaskGroup", service)
         self.assertIn("backoff = min(backoff * 2, 30_000_000_000)", service)
         self.assertIn("let code = (error as? LocalComputerCloseError)?.code", service)
-        self.assertIn("if code == 4403 || code == 4401 {", service)
+        # Only a revoke ends the loop. A rejected single-use ticket (4401) mints another and retries;
+        # treating it as final is what left the owner flipping the switch.
+        self.assertIn("if code == 4403 {", service)
+        self.assertNotIn("if code == 4403 || code == 4401 {", service)
+        # A machine that slept comes back with a socket that answers nothing, so wake and activation
+        # both re-verify it.
+        self.assertIn("NSWorkspace.didWakeNotification", service)
+        self.assertIn("func recoverIfNeeded()", service)
 
     def test_commands_are_argv_not_shell_and_output_is_capped(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
