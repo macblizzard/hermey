@@ -24,7 +24,7 @@
         {
           "version": "0.1.573",
           "buildVersion": "573",
-          "date": "2026-11-18T16:03:04Z",
+          "date": "2026-11-18T16:04:37Z",
           "localizedDescription": "Local computer: a bot-instructions row in Settings > Computer. Every bot on the host now gets the Mac skill.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.573/Hermey-0.1.573-b573.ipa",
           "size": 3347235,
@@ -46,7 +46,7 @@
       "title": "Hermes 0.1.573 (573)",
       "identifier": "hermes-0.1.573-573",
       "caption": "Local computer: a bot-instructions row in Settings > Computer. Every bot on the host now gets the Mac skill.",
-      "date": "2026-11-18T16:03:04Z",
+      "date": "2026-11-18T16:04:37Z",
       "tintColor": "#9A9AA0"
     }
   ],
