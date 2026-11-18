@@ -33,7 +33,11 @@ def test_ask_returns_the_owner_reply_from_the_bot_chat(tmp_path, monkeypatch, br
 
     monkeypatch.setattr(bot_message, "profiles_root", lambda: root)
 
-    async def fake_deliver(runtime, stored, message, profile):
+    async def fake_deliver(runtime, stored, message, profile, queued=False):
+        # `queued` is part of the real signature: the ask path marks its delivery so a busy turn
+        # holds the question instead of steering it. A double that omits the keyword turns the
+        # route into a 500.
+        assert queued is True, "an ask must be queued, not steered into a running turn"
         return "s1", "the question was delivered"
 
     monkeypatch.setattr(bot_message, "_deliver", fake_deliver)

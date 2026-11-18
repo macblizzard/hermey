@@ -184,7 +184,7 @@ def create_bot_message_router(runtime) -> APIRouter:
             )
 
         message = _labelled(sender, profile, question.strip(), sender_profile)
-        session_id, _ = await _deliver(runtime, stored, message, profile)
+        session_id, _ = await _deliver(runtime, stored, message, profile, queued=True)
         asked_at = time.time()
         reply = await _wait_for_owner_reply(profile, session_id, asked_at, float(timeout))
 
@@ -281,7 +281,8 @@ def _read_frame(raw: object) -> dict:
     return frame
 
 
-async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[str, Optional[str]]:
+async def _deliver(runtime, stored: str, message: str, profile: str,
+                    queued: bool = False) -> tuple[str, Optional[str]]:
     """Resume the stored session *within its profile*, submit, and wait for that session's completion.
 
     The profile is not optional and not decoration: a multiplexed gateway resolves a stored id in
@@ -344,7 +345,8 @@ async def _deliver(runtime, stored: str, message: str, profile: str) -> tuple[st
 
         await upstream.send(json.dumps({
             "jsonrpc": "2.0", "id": 3, "method": "prompt.submit",
-            "params": {"session_id": runtime_id, "profile": profile, "text": message},
+            "params": {"session_id": runtime_id, "profile": profile, "text": message,
+                       "queued": queued},
         }))
 
         reply: Optional[str] = None
