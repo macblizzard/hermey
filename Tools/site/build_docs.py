@@ -16,6 +16,7 @@ the authority for the repo.
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import pathlib
@@ -963,7 +964,7 @@ def plain(fragment: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
-def page_html(index: int) -> str:
+def page_html(index: int, version: str = "") -> str:
     page = PAGES[index]
     slug = page["slug"]
     prev_page = PAGES[index - 1] if index > 0 else None
@@ -1006,7 +1007,7 @@ def page_html(index: int) -> str:
 <meta property="og:title" content="{html.escape(title)}">
 <meta property="og:description" content="{html.escape(plain(page["lede"]))}">
 <link rel="icon" href="../icon-512.png">
-<link rel="stylesheet" href="assets/docs.css">
+<link rel="stylesheet" href="assets/docs.css?v={version}">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -1051,7 +1052,7 @@ def page_html(index: int) -> str:
   </div>
 </footer>
 
-<script src="assets/docs.js"></script>
+<script src="assets/docs.js?v={version}"></script>
 </body>
 </html>
 """
@@ -1061,8 +1062,15 @@ def main() -> int:
     out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "docs")
     (out / "assets").mkdir(parents=True, exist_ok=True)
 
-    (out / "assets" / "docs.css").write_text(CSS.strip() + "\n", encoding="utf-8")
-    (out / "assets" / "docs.js").write_text(JS.strip() + "\n", encoding="utf-8")
+    css_text = CSS.strip() + "\n"
+    js_text = JS.strip() + "\n"
+    (out / "assets" / "docs.css").write_text(css_text, encoding="utf-8")
+    (out / "assets" / "docs.js").write_text(js_text, encoding="utf-8")
+
+    # GitHub Pages serves assets with a long cache lifetime and the URL never changes, so a stylesheet
+    # fix can sit invisible behind a stale browser cache. The query string is a content hash: it
+    # changes exactly when the bytes do.
+    version = hashlib.sha256((css_text + js_text).encode()).hexdigest()[:10]
 
     search = []
     for page in PAGES:
@@ -1077,7 +1085,7 @@ def main() -> int:
     (out / "assets" / "search.json").write_text(json.dumps(search, indent=0), encoding="utf-8")
 
     for i, page in enumerate(PAGES):
-        (out / f'{page["slug"]}.html').write_text(page_html(i), encoding="utf-8")
+        (out / f'{page["slug"]}.html').write_text(page_html(i, version), encoding="utf-8")
 
     print(f"wrote {len(PAGES)} pages + assets to {out}")
     return 0
