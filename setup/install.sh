@@ -316,8 +316,10 @@ ProtectSystem=strict
 ProtectHome=read-only
 # Bot files and the skills the bridge installs for them. The skill installer writes into the shared
 # skills dir when the host has one (one copy for every bot) and into the profile dirs otherwise, so
-# both must be writable or a bot gets a Mac with no instructions on how to reach it. Prefixed with
-# `-` because none of these has to exist yet on a fresh host.
+# both must be writable or a bot gets a Mac with no instructions on how to reach it.
+# A leading '-' marks a path that may not exist yet on a fresh host. Backticks are not usable in this
+# comment: the heredoc is unquoted so that $STATE expands, which also makes shellcheck parse any
+# backtick pair here as a command substitution.
 ReadWritePaths=$STATE $PROFILES_ROOT -${PROFILES_ROOT%/profiles}/skills -${PROFILES_ROOT%/profiles}/shared/skills
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
