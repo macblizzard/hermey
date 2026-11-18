@@ -94,6 +94,44 @@ final class ConversationCacheTests: XCTestCase {
         await model.stop()
     }
 
+    /// A relaunch must paint from the disk cache, not wait for the host.
+    ///
+    /// The failure this covers: with the socket live — the normal state at launch — both open paths
+    /// consulted the disk cache only *after* a resume failed, so an enabled Messages cache bought
+    /// nothing and every chat was still loaded the slow way, once per chat, every launch.
+    func testAColdLaunchPaintsTheDiskCacheBeforeTheHostAnswers() async {
+        let host = "cold-\(UUID().uuidString)"
+        // One id for both launches: the endless-session pointer is stored under the bot id, and a
+        // second random id would open a draft instead of the conversation the cache holds.
+        let cody = bot("cold")
+        defer { forget([cody]) }
+
+        let firstClient = ScriptedHost(session: Self.sessionID, entries: [line("one"), line("two")])
+        firstClient.hostPointer = Self.sessionID
+        let first = AppModel(client: firstClient, hostName: host)
+        await first.start()
+        await first.endlessSession(for: cody)
+        XCTAssertEqual(first.transcript.count, 2, "the first launch opened the conversation")
+        // The transcript is written after the fact, so give the cache actor its turn.
+        try? await Task.sleep(for: .milliseconds(600))
+        await first.stop()
+
+        // A second model on the same host name is what a relaunch looks like to the cache: same
+        // directory, same stored session id, empty in-memory snapshots.
+        let secondClient = ScriptedHost(session: Self.sessionID, entries: [line("one"), line("two")])
+        secondClient.hostPointer = Self.sessionID
+        secondClient.resumeDelay = .milliseconds(500)
+        let second = AppModel(client: secondClient, hostName: host)
+        await second.start()
+
+        let opening = Task { await second.endlessSession(for: cody) }
+        try? await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(second.transcript.count, 2,
+                       "a cold launch paints the cached conversation while the resume is in flight")
+        _ = await opening.value
+        await second.stop()
+    }
+
     func testAResetConversationDoesNotComeBackFromTheCache() async {
         let (model, _) = await opened("reset", entries: [line("kept")])
         let cody = bot("reset-cody")

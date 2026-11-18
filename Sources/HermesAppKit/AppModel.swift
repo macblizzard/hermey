@@ -793,6 +793,12 @@ public final class AppModel: ObservableObject {
         // feed's, so one dropped request emptied every badge on the list and the next sweep filled
         // them back in — "late" again, and a lie about what is waiting either way. `nil` here means
         // "could not ask", and the last answer stands.
+        // Cache-first, like the conversation pane. The list is the first thing drawn at launch and
+        // one row's preview costs a request per bot on a host without the bridge route, so last
+        // launch's copy goes up now and the host's answer overwrites it a moment later.
+        // `applyCachedPreviews` fills only rows still empty, so it cannot win a race.
+        if let cached = await diskCache.chatList() { applyCachedPreviews(cached) }
+
         var feed: BotPreviewFeed?
         do {
             feed = try await client.botPreviews(since: marks)
@@ -1222,11 +1228,12 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    /// Put the last cached copy of a chat on screen after the host failed to answer.
+    /// Put the last cached copy of a chat on screen before the host answers.
     ///
-    /// Shared by both open paths — a plain `select` and the endless-chat opener — so an offline
-    /// launch shows the conversation the user was reading instead of an empty pane. The error the
-    /// caller raised stays on screen: cached rows are context, not a claim that the host answered.
+    /// Shared by both open paths — a plain `select` and the endless-chat opener — so a cold launch
+    /// shows the conversation immediately instead of an empty pane for however long the resume
+    /// takes. It is also what an offline launch falls back to. When the host answers, `adoptResume`
+    /// merges its rows over these, keeping the cached earlier pages.
     @discardableResult
     private func paintCachedConversation(_ id: SessionID) async -> Bool {
         guard transcript.isEmpty, let cached = await diskCache.messages(for: id) else { return false }
@@ -1237,7 +1244,7 @@ public final class AppModel: ObservableObject {
         earlierCursor = cached.cursor
         historyTotal = cached.total
         turnRowStart = transcript.count
-        ClientLog.note("painted \(cached.entries.count) cached rows after a failed resume",
+        ClientLog.note("painted \(cached.entries.count) cached rows before the resume",
                        level: .info, category: "cache")
         return true
     }
@@ -1288,10 +1295,11 @@ public final class AppModel: ObservableObject {
         // used to be painted as an unreachable host. Its pane is empty by definition, so adopt it
         // locally and let the first prompt persist the row — the next select is a real resume.
         if draftSessionIDs.contains(id) { return }
-        // No socket means no host to ask, so the device's only copy is the right thing to draw now
-        // rather than after the resume fails. Connected is deliberately excluded: a live host's
-        // answer must never be preceded by older rows on screen.
-        if transcript.isEmpty, !connection.isLive {
+        // Cache-first, online or not: the device's own copy goes up immediately, and the host's
+        // answer replaces it when it lands. Waiting for the resume painted an empty pane for the
+        // ~4 s a long chat takes to come back, so an enabled Messages cache bought nothing while
+        // the socket was live — which is the only state a launch is normally in.
+        if transcript.isEmpty {
             await paintCachedConversation(id)
         }
         // A resume that is still in flight when the bot (or the session) changes must not land:
@@ -1895,9 +1903,9 @@ public final class AppModel: ObservableObject {
     /// Resume one stored id and put it on screen.
     func openStoredConversation(_ stored: SessionID, botID: String,
                                 publish: Bool) async -> OpenOutcome {
-        // Offline, the resume will end in a failed call after however long the transport takes to
-        // admit it. The device's copy can go up now, and a live host never sees this branch.
-        if transcript.isEmpty, !connection.isLive {
+        // Cache-first here too: the stored id is resumed the slow way, so the copy this device
+        // already has belongs on screen now rather than after the call returns.
+        if transcript.isEmpty {
             await paintCachedConversation(stored)
         }
         do {
