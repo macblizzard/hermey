@@ -24,7 +24,7 @@
         {
           "version": "0.1.576",
           "buildVersion": "576",
-          "date": "2026-11-18T18:12:20Z",
+          "date": "2026-11-18T18:14:28Z",
           "localizedDescription": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.576/Hermey-0.1.576-b576.ipa",
           "size": 3346874,
@@ -46,7 +46,7 @@
       "title": "Hermes 0.1.576 (576)",
       "identifier": "hermes-0.1.576-576",
       "caption": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
-      "date": "2026-11-18T18:12:20Z",
+      "date": "2026-11-18T18:14:28Z",
       "tintColor": "#9A9AA0"
     }
   ],
