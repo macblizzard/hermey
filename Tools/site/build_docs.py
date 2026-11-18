@@ -593,6 +593,8 @@ PAGES.append(dict(
   ["<code>GET /v1/health</code>", "<code>{{\"status\":\"ok\"}}</code> on loopback or through the tailnet front door"],
   ["<code>/v1/ws</code>", "the device websocket (single-use 30 s ticket, then a session)"],
   ["<code>/v1/pair/start</code>", "begins a pairing exchange"],
+  ["<code>GET /v1/devices</code>", "the devices paired to this host, for revocation in the app"],
+  ["<code>/v1/local-computers/ws</code>", "the Mac's own outbound socket for computer use — the bridge pings it and drops a silent one"],
 ])}
 
 <h2 id="downloads">Download URLs</h2>
