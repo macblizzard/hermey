@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.574",
-          "buildVersion": "574",
-          "date": "2026-11-18T16:23:30Z",
-          "localizedDescription": "The cache is read before the host: chats paint from the device copy at launch instead of waiting for a resume, and the chat list shows cached previews immediately.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.574/Hermey-0.1.574-b574.ipa",
-          "size": 3347065,
+          "version": "0.1.575",
+          "buildVersion": "575",
+          "date": "2026-11-18T16:46:24Z",
+          "localizedDescription": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.575/Hermey-0.1.575-b575.ipa",
+          "size": 3346871,
           "minOSVersion": "17.0",
-          "sha256": "ecb015fbd82ce6f87b9b616695a142b566221940e0d1b3e067a36c4a9dcae6cc"
+          "sha256": "6052777aa5b17a6a80b4c91bd310304001cddf1949db99480b184e8eda3817e4"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.574 (574)",
-      "identifier": "hermes-0.1.574-574",
-      "caption": "The cache is read before the host: chats paint from the device copy at launch instead of waiting for a resume, and the chat list shows cached previews immediately.",
-      "date": "2026-11-18T16:23:30Z",
+      "title": "Hermes 0.1.575 (575)",
+      "identifier": "hermes-0.1.575-575",
+      "caption": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
+      "date": "2026-11-18T16:46:24Z",
       "tintColor": "#9A9AA0"
     }
   ],
