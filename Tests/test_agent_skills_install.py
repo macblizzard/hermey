@@ -163,6 +163,17 @@ class ItIsSafeToRunAgain(Scratch):
         self.install()
         self.assertIn("version: 1.0.0", path.read_text(encoding="utf-8"))
 
+    def test_a_hand_edit_to_our_file_survives_beside_it(self) -> None:
+        """A bot that edited the installed skill must not lose its words to the next restart."""
+        self.install()
+        path = self.home / "skills" / agent_skills.SKILL_NAME / "SKILL.md"
+        theirs = path.read_text(encoding="utf-8") + "\nNOTE FROM A BOT: the Mac is on Wi-Fi only.\n"
+        path.write_text(theirs, encoding="utf-8")
+        self.install()
+        self.assertIn("NOTE FROM A BOT", (path.parent / "SKILL.md.previous").read_text(encoding="utf-8"))
+        self.assertNotIn("NOTE FROM A BOT", path.read_text(encoding="utf-8"),
+                         "the generated file stays the template; the edit lives beside it")
+
     def test_the_owners_own_skill_of_that_name_is_never_overwritten(self) -> None:
         owned = self.profiles / "cody" / "skills" / agent_skills.SKILL_NAME
         owned.mkdir(parents=True)

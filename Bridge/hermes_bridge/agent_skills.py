@@ -173,6 +173,12 @@ def write_skill(root: Path, body: str) -> str:
                 return "current"
             if MANAGED_MARKER not in existing:
                 return "foreign"
+            # Ours, but no longer what the template says: either this bridge shipped new
+            # instructions, or a bot hand-edited the file. A bot's edit is never silently
+            # destroyed — the text it wrote stays beside the file it was edited in.
+            previous = path.parent / (path.name + ".previous")
+            atomic_write_text(previous, existing)
+            relax_mode(previous)
         atomic_write_text(path, body)
         relax_mode(path)
         return "written"

@@ -18,7 +18,10 @@ All notable changes to Hermey are recorded here. The format follows
   needs, not a man page: check the Mac is connected first, argv-not-shell, `observe` before any
   `click`, the 30-second observation rule, the single global GUI gate, and a failure table that maps
   every bridge error to what to do about it. `ReadWritePaths` in `setup/install.sh` grows to include
-  the skills dirs, because a sandboxed bridge cannot write a skill it is not allowed to write.
+  the skills dirs, because a sandboxed bridge cannot write a skill it is not allowed to write. The
+  file is only rewritten when its content actually differs from the template (an identical one is
+  untouched), and a bot that hand-edited it keeps its words: the superseded text is left beside it as
+  `SKILL.md.previous` rather than being silently replaced on the next start.
 - **A busy bot face performs now.** Between the acting it already had, every busy state — working,
   thinking, reading, writing, using the computer — jumps and flips: a crouch and a leap with a
   squash-and-stretch landing, then next beat a full 360° roll or an out-and-back 180° twist,
