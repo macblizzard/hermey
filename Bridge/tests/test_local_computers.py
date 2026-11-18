@@ -470,3 +470,55 @@ def test_offline_then_reconnect(bridge):
             assert result.status_code == 200
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=20))
+
+
+def test_a_silent_mac_is_unregistered(bridge, monkeypatch):
+    """A Mac that stops answering is dropped, so callers never wait on a machine that is asleep.
+
+    The bridge used to only *answer* the Mac's pings, so a Mac that slept mid-connection left a socket
+    that accepted writes and answered nothing: it stayed registered, and every caller hung until its
+    own 30-minute timeout (the 504s after a sleep). The watchdog pings and unregisters.
+    """
+    from hermes_bridge import local_computers as lc
+
+    # Minutes of real time would be a useless test: shrink the clock, keep the logic.
+    monkeypatch.setattr(lc, "PING_INTERVAL_SECONDS", 0.05)
+    monkeypatch.setattr(lc, "STALE_AFTER_SECONDS", 0.15)
+
+    pair = bridge.pair(name="Quiet Mac", platform="macos")
+    device_id = pair["device_id"]
+    closed_code = None
+    frames: list[str] = []
+
+    async def scenario() -> None:
+        nonlocal closed_code
+        ticket = bridge.mint_ticket(device_id)
+        url = "ws://127.0.0.1:%d/v1/local-computers/ws?%s" % (
+            bridge.port, urllib.parse.urlencode({"ticket": ticket}))
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Quiet Mac"}))
+            # Say nothing at all — not even a pong — and let the watchdog decide.
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                try:
+                    got = await asyncio.wait_for(ws.recv(), timeout=0.2)
+                    frames.append(str(got)[:40])
+                except asyncio.TimeoutError:
+                    continue
+                except Exception as exc:  # websockets raises its own close exception
+                    closed_code = getattr(exc, "code", None)
+                    return
+            closed_code = "still open"
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=20))
+    # Either close code is a pass: the contract is that the link ends and the Mac stops being listed.
+    # uvicorn commonly reports 1006 here because the receive side is torn down with the close frame.
+    assert closed_code not in (None, "still open"), (
+        f"the bridge must drop a silent Mac, it stayed open; frames seen: {frames[:5]}")
+
+    listed = bridge.client().get(
+        "/v1/local-computers",
+        headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)},
+    )
+    assert listed.status_code == 200
+    assert listed.json()["computers"] == [], "a silent Mac must not stay listed as connected"

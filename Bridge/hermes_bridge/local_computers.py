@@ -32,6 +32,13 @@ from .device_auth import is_local_host_request, require_device
 
 log = logging.getLogger("hermes_bridge.local_computers")
 
+# Liveness of the Mac's socket, checked from this side. The interval has to be well under the stale
+# window so a single lost frame is not read as a dead machine, and the stale window has to be short
+# enough that a caller waiting on a shoved-asleep Mac fails fast instead of hanging on a 30-minute
+# timeout.
+PING_INTERVAL_SECONDS = 20
+STALE_AFTER_SECONDS = 55
+
 DEFAULT_STATE_DIR = paths.STATE_DIR
 DEFAULT_TIMEOUT_MS = 900_000
 MAX_TIMEOUT_MS = 1_800_000
@@ -521,6 +528,7 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
 
     await websocket.accept()
     name = ""
+    reader: asyncio.Task | None = None
     try:
         hello = await asyncio.wait_for(websocket.receive_json(), timeout=10)
         if hello.get("type") != "hello":
@@ -529,8 +537,53 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
         computer = await computers.register(device_id, name, websocket)
         runtime.audit.emit("local_computer.connected", device_id=device_id, method="socket",
                            path="/v1/local-computers/ws", outcome="connected")
+        last_seen = time.monotonic()
+        inbox: asyncio.Queue = asyncio.Queue()
+
+        async def read_frames() -> None:
+            """Read continuously, so the main loop can time out without cancelling a receive.
+
+            Nothing here closes the socket: closing belongs to the loop that owns the receive side,
+            which is the only place Starlette allows it.
+            """
+            try:
+                while True:
+                    inbox.put_nowait(await websocket.receive_json())
+            except Exception:  # noqa: BLE001 - a dead peer is a message, not a crash
+                inbox.put_nowait(None)
+
+        reader = asyncio.create_task(read_frames())
         while True:
-            message = await websocket.receive_json()
+            try:
+                message = await asyncio.wait_for(inbox.get(), timeout=PING_INTERVAL_SECONDS)
+            except asyncio.TimeoutError:
+                # Idle: either the Mac has gone away, or it is simply quiet. Only unanswered pings
+                # decide that. The bridge used to answer the Mac's pings and never send one, so a Mac
+                # that slept mid-connection stayed registered and every caller hung on a socket that
+                # could not answer — the 504s after a sleep.
+                if time.monotonic() - last_seen > STALE_AFTER_SECONDS:
+                    runtime.audit.emit("local_computer.timeout", device_id=device_id,
+                                       method="socket", path="/v1/local-computers/ws",
+                                       outcome="stale")
+                    # Stop reading first: a parked `receive` would be cancelled by the close anyway,
+                    # and cancelling it here is the difference between a leaked task and a clean exit.
+                    # The client may still observe 1006 rather than 1001 — uvicorn aborts the handshake
+                    # when the receive side is being torn down — which is why the test asserts that the
+                    # link ends and the Mac is unregistered, not the exact close code.
+                    if reader is not None:
+                        reader.cancel()
+                        reader = None
+                    await websocket.close(code=1001)
+                    return
+                current = computers.computers.get(device_id)
+                if current is None:
+                    return
+                async with current.send_lock:
+                    await websocket.send_json({"type": "ping"})
+                continue
+            if message is None:
+                return
+            last_seen = time.monotonic()
             if not isinstance(message, dict):
                 continue
             if message.get("type") == "ping":
@@ -542,12 +595,17 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
                     async with current.send_lock:
                         await websocket.send_json({"type": "pong"})
                 continue
+            if message.get("type") == "pong":
+                # Liveness only: `last_seen` already moved, which is all the stale check reads.
+                continue
             computers.on_message(device_id, message)
     except (WebSocketDisconnect, ValueError, TimeoutError, asyncio.TimeoutError):
         pass
     except Exception:  # noqa: BLE001 (one bad frame must not take the bridge down)
         log.exception("local computer socket failed for %s", device_id)
     finally:
+        if reader is not None:
+            reader.cancel()
         computers.unregister(device_id, websocket)
         if name:
             runtime.audit.emit("local_computer.disconnected", device_id=device_id,

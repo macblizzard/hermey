@@ -1,6 +1,7 @@
 import Combine
 import Darwin
 import Foundation
+import AppKit
 import HermesKit
 import SwiftUI
 
@@ -89,10 +90,20 @@ final class LocalComputerService: ObservableObject {
     private let enabledKey = "hermey.localComputer.enabled"
     private var enabled = false
     private var loop: Task<Void, Never>?
+    private var loopRunning = false
+    private var loopGeneration = 0
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
-    private var heartbeat: Timer?
+    private var heartbeat: Task<Void, Never>?
     private var lastPong = Date()
+    /// When the ping still waiting for a pong was sent; `nil` means nothing is outstanding.
+    ///
+    /// This is what stops a suspended app from reading its own silence as a dead socket: walk-away
+    /// silence between pings says nothing about the link, while a ping that goes unanswered does.
+    private var pingSentAt: Date?
+    /// Kept so a wake or an app activation can restart a loop that has already finished.
+    private var address: PairingAddress?
+    private var wakeObservers: [NSObjectProtocol] = []
     private let commandGate = CommandGate()
     private var takeoverCancellable: AnyCancellable?
 
@@ -113,6 +124,30 @@ final class LocalComputerService: ObservableObject {
                                           outcome: "paused")
                 }
             }
+        // Waking is the moment a socket most often comes back dead: the Mac slept, the transport is
+        // gone, and nothing tells us. Verify on wake and on becoming active rather than waiting for
+        // the owner to notice the switch is on and the host cannot reach the machine.
+        wakeObservers.append(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.recoverIfNeeded() }
+            }
+        )
+        wakeObservers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.recoverIfNeeded() }
+            }
+        )
+    }
+
+    deinit {
+        for observer in wakeObservers {
+            NotificationCenter.default.removeObserver(observer)
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
     }
 
     var isEnabled: Bool { enabled }
@@ -144,10 +179,12 @@ final class LocalComputerService: ObservableObject {
     func setEnabled(_ value: Bool, address: PairingAddress?) {
         enabled = value
         defaults.set(value, forKey: enabledKey)
+        self.address = address
         if value {
             guard let address else {
                 loop?.cancel()
                 loop = nil
+                loopRunning = false
                 drop(socket)
                 status = .refused
                 lastError = "Pair this Mac with a host before enabling local computer use."
@@ -156,14 +193,43 @@ final class LocalComputerService: ObservableObject {
             lastError = nil
             status = .connecting
             loop?.cancel()
-            loop = Task { await connectionLoop(address: address) }
+            loopGeneration += 1
+            let generation = loopGeneration
+            loopRunning = true
+            loop = Task { await connectionLoop(address: address, generation: generation) }
         } else {
             loop?.cancel()
             loop = nil
+            loopRunning = false
             drop(socket)
             ComputerTakeover.shared.stop()
             status = .off
         }
+    }
+
+    /// Re-verify the link after the machine wakes or the app comes forward.
+    ///
+    /// A suspended socket returns looking connected and answers nothing, and the app used to sit in
+    /// that state until the owner flipped the switch. Now the wake either gets a pong or the socket is
+    /// dropped and reconnected by the loop. A genuine revoke is left alone: that needs the owner.
+    func recoverIfNeeded() {
+        guard enabled, status != .refused else { return }
+        guard let socket else {
+            ensureConnected()
+            return
+        }
+        sendPing(on: socket)
+    }
+
+    /// Restart the connection loop when it is not running (it exits on a revoked pairing).
+    private func ensureConnected() {
+        guard enabled, status != .refused, !loopRunning, let address else { return }
+        ClientLog.shared.record("local computer reconnecting after wake", category: "local-computer")
+        status = .connecting
+        loopGeneration += 1
+        let generation = loopGeneration
+        loopRunning = true
+        loop = Task { await connectionLoop(address: address, generation: generation) }
     }
 
     /// Revoke this Mac on the host, not just locally. The bridge closes the live socket and refuses
@@ -243,8 +309,11 @@ final class LocalComputerService: ObservableObject {
 
     // MARK: - Connection
 
-    private func connectionLoop(address: PairingAddress) async {
+    private func connectionLoop(address: PairingAddress, generation: Int) async {
         var backoff: UInt64 = 1_000_000_000
+        // Only the newest loop owns the flag: `setEnabled` cancels and starts one, and the cancelled
+        // loop's exit must not mark the new one as not running.
+        defer { if loopGeneration == generation { loopRunning = false } }
         while !Task.isCancelled, enabled {
             do {
                 try await connectOnce(address: address)
@@ -254,15 +323,19 @@ final class LocalComputerService: ObservableObject {
                 let code = (error as? LocalComputerCloseError)?.code
                 ClientLog.shared.record("local computer reconnecting: code=\(code ?? -1) \(error.localizedDescription)",
                                         level: .warning, category: "local-computer")
-                if code == 4403 || code == 4401 {
+                if code == 4403 {
+                    // A revoke is the owner's decision. Stop and say so instead of hammering the host.
                     status = .refused
-                    lastError = code == 4403
-                        ? "Access was revoked on the host. Turn this Mac off and on again to re-request it."
-                        : "The pairing ticket was single-use. Pair again to reconnect."
+                    lastError = "Access was revoked on the host. Turn this Mac off and on again to re-request it."
                     break
                 }
+                // 4401 is a rejected *ticket*, not a verdict on this Mac: it was consumed, it expired,
+                // or it was minted for a device the host no longer knows. Breaking the loop here is
+                // what left the owner flipping the switch — every attempt mints a fresh ticket.
                 status = .reconnecting
-                lastError = error.localizedDescription
+                lastError = code == 4401
+                    ? "The host refused the pairing ticket; reconnecting."
+                    : error.localizedDescription
             }
             guard enabled, !Task.isCancelled else { break }
             try? await Task.sleep(nanoseconds: backoff)
@@ -288,37 +361,57 @@ final class LocalComputerService: ObservableObject {
         status = .connected
         lastError = nil
         lastPong = Date()
+        pingSentAt = nil
         ComputerTakeover.shared.start()
         ClientLog.shared.record("local computer socket connected", category: "local-computer")
 
-        // One timer, one receive loop. An earlier task group let a heartbeat send error cancel the
-        // receive loop (or vice versa) at ~45 s; the timer owns the ping and completion callbacks
-        // keep every send off the async path that can throw through the group.
-        let timer = Timer(timeInterval: 15, repeats: true) { _ in
-            Task { @MainActor [weak self, weak task] in
-                guard let self, let task, self.socket === task else { return }
-                if Date().timeIntervalSince(self.lastPong) > 60 {
-                    self.drop(task)
-                    return
-                }
-                task.send(.string(#"{"type":"ping"}"#)) { error in
-                    if error != nil {
-                        Task { @MainActor in self.drop(task) }
-                    }
-                }
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        heartbeat = timer
+        // One heartbeat, one receive loop. This used to be a `Timer` that dropped the socket whenever
+        // `lastPong` was older than 60 s — but a backgrounded macOS app has its timers throttled, so
+        // that clock aged while nothing was being sent and the app tore down a healthy socket on wake.
+        // That is the churn in the bridge's audit log (disconnect and reconnect in the same second).
+        // Silence only counts now if a ping was actually sent and went unanswered.
+        let beat = startHeartbeat(for: task)
         do {
             try await receiveFrames(on: task)
-            finish(task, timer: timer)
+            finish(task)
         } catch {
             // URLSession never throws the peer's close code. It is on the task after the failure,
             // so read it before cancel() clears the transport.
             let code = task.closeCode.rawValue
-            finish(task, timer: timer)
+            finish(task)
             throw LocalComputerCloseError(code: code, underlying: error)
+        }
+        _ = beat
+    }
+
+    /// Ping every 15 s and drop the link only when a *sent* ping goes unanswered for 45 s.
+    private func startHeartbeat(for task: URLSessionWebSocketTask) -> Task<Void, Never> {
+        heartbeat?.cancel()
+        let beat = Task { @MainActor [weak self, weak task] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                guard let self, let task, self.socket === task else { return }
+                if let sent = self.pingSentAt, Date().timeIntervalSince(sent) > 45 {
+                    self.drop(task)
+                    return
+                }
+                self.sendPing(on: task)
+            }
+        }
+        heartbeat = beat
+        return beat
+    }
+
+    /// One ping, with one outstanding at a time: `pingSentAt` is the deadline the heartbeat measures.
+    private func sendPing(on task: URLSessionWebSocketTask) {
+        guard socket === task else { return }
+        if pingSentAt == nil { pingSentAt = Date() }
+        task.send(.string(#"{"type":"ping"}"#)) { [weak self, weak task] error in
+            guard error != nil, let self, let task else { return }
+            Task { @MainActor [weak self, weak task] in
+                guard let self, let task else { return }
+                self.drop(task)
+            }
         }
     }
 
@@ -331,6 +424,13 @@ final class LocalComputerService: ObservableObject {
                   let kind = frame["type"] as? String else { continue }
             if kind == "pong" {
                 lastPong = Date()
+                pingSentAt = nil
+                continue
+            }
+            if kind == "ping" {
+                // The bridge pings too now, so it can tell a live Mac from a socket that outlived its
+                // machine. Answer it the same way it answers ours.
+                task.send(.string(#"{"type":"pong"}"#)) { _ in }
                 continue
             }
             if kind == "execute" {
@@ -390,16 +490,18 @@ final class LocalComputerService: ObservableObject {
         guard let task, socket === task else { return }
         ClientLog.shared.record("local computer socket dropped", level: .warning,
                                 category: "local-computer")
-        heartbeat?.invalidate()
+        heartbeat?.cancel()
         heartbeat = nil
+        pingSentAt = nil
         socket = nil
         ComputerTakeover.shared.stop()
         task.cancel(with: .goingAway, reason: nil)
     }
 
-    private func finish(_ task: URLSessionWebSocketTask, timer: Timer) {
-        timer.invalidate()
-        if heartbeat === timer { heartbeat = nil }
+    private func finish(_ task: URLSessionWebSocketTask) {
+        heartbeat?.cancel()
+        heartbeat = nil
+        pingSentAt = nil
         if socket === task { socket = nil }
         task.cancel(with: .goingAway, reason: nil)
         if status == .connected { status = .reconnecting }
