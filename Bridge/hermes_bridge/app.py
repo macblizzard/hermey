@@ -220,7 +220,7 @@ def create_app(
         if registry is None:  # only close what this app created
             reg.close()
 
-    local_computers = LocalComputers(runtime, state_dir=Path(config.db_path).parent)
+    local_computers = LocalComputers(runtime, state_dir=Path(cfg.db_path).parent)
 
     app = FastAPI(title="hermes-bridge", version="0.2.0", lifespan=lifespan)
 

@@ -50,7 +50,7 @@ def _upload(device, profile="cody", sha=None):
 
 class TestWhereTheBytesLive:
     def test_the_directory_is_one_the_unit_may_write(self):
-        # `ReadWritePaths=/var/lib/hermey /root/.hermes/profiles`: anywhere else and every upload is
+        # `ReadWritePaths=/var/lib/hermey ~/.hermes/profiles`: anywhere else and every upload is
         # EROFS on the deployed host while the tests happily write into tmp_path.
         # Read from the module's source, not the attribute: the fixture above patches ICON_DIR.
         from pathlib import Path

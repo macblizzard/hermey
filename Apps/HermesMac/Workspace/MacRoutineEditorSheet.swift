@@ -207,7 +207,7 @@ struct MacRoutineEditorSheet: View {
                         }
                 }
                 field("Script path on the host") {
-                    TextField("/root/.hermes/profiles/<bot>/scripts/audit.sh", text: $draft.script)
+                    TextField("~/.hermes/profiles/<bot>/scripts/audit.sh", text: $draft.script)
                         .textFieldStyle(.roundedBorder)
                 }
             }

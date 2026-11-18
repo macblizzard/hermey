@@ -84,7 +84,7 @@ def test_local_computer_executor_lifecycle(bridge):
 def test_local_computer_rejects_proxied_callers(bridge):
     # A bot on this host may call over loopback; the same request through tailscale serve may not.
     response = bridge.client().get("/v1/local-computers",
-                                   headers={"X-Forwarded-For": "100.86.19.1"})
+                                   headers={"X-Forwarded-For": "100.64.0.1"})
     assert response.status_code == 401
     local = bridge.client().get("/v1/local-computers")
     assert local.status_code == 200
@@ -239,9 +239,9 @@ def test_file_route_confines_paths(bridge):
 def test_secret_redaction_applies_to_text_streams():
     from hermes_bridge.local_computers import redact_result
     import base64 as b64
-    raw = "token sk-abcdefghijklmnopqrstuvwx and ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+    raw = "token sk-canarycanarycanary1 and ghp_canarycanarycanary12"
     result = redact_result({"stdout": b64.b64encode(raw.encode()).decode()})
     out = b64.b64decode(result["stdout"]).decode()
-    assert "sk-abcdefghijklmnopqrstuvwx" not in out
-    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in out
+    assert "sk-canarycanarycanary1" not in out
+    assert "ghp_canarycanarycanary12" not in out
     assert out.count("[redacted]") == 2
