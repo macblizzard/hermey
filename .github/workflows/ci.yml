@@ -130,8 +130,19 @@ jobs:
           set -o pipefail
           xcodebuild -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
             -destination 'platform=macOS' -derivedDataPath build/dd \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION=${{ env.APP_VERSION }} CURRENT_PROJECT_VERSION=${{ env.APP_BUILD }} build
+      - name: Refuse a thin macOS binary
+        run: |
+          # 0.1.575 shipped arm64-only because nothing pinned the architecture; an Intel Mac cannot
+          # run that. Fail the job instead of publishing a half artifact.
+          ARCHS=$(lipo -archs build/dd/Build/Products/Release/Hermey.app/Contents/MacOS/Hermey)
+          echo "architectures: $ARCHS"
+          case "$ARCHS" in
+            *arm64*x86_64*|*x86_64*arm64*) ;;
+            *) echo "::error::Hermey.app is $ARCHS, expected arm64 and x86_64"; exit 1 ;;
+          esac
       - name: Package the macOS app as a disk image
         run: |
           set -euo pipefail

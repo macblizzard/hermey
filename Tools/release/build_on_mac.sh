@@ -19,13 +19,24 @@ command -v xcodegen >/dev/null || brew install xcodegen
 xcodegen generate
 
 echo "== macOS app =="
+# Universal, explicitly. With nothing pinning the architecture, a build on Apple silicon resolved to
+# the active arch alone and shipped 0.1.575 as arm64-only (half the size, and an Intel Mac cannot run
+# it), while earlier builds happened to come out fat. `ARCHS_STANDARD` is Xcode's default but is not
+# reliable when a concrete `-destination` is given, so both settings are stated.
 xcodebuild -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
   -destination 'platform=macOS' -derivedDataPath build/dd \
+  ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" build
 
 APP="build/dd/Build/Products/Release/Hermey.app"
 test -d "$APP" || { echo "no app at $APP"; exit 1; }
+# A thin binary is a broken artifact, not a smaller download: say so here rather than in a bug report.
+ARCHS_FOUND=$(lipo -archs "$APP/Contents/MacOS/Hermey")
+case "$ARCHS_FOUND" in
+  *arm64*x86_64*|*x86_64*arm64*) : ;;
+  *) echo "refusing to package: $APP is $ARCHS_FOUND, expected arm64 and x86_64"; exit 1 ;;
+esac
 # Ad-hoc signature: an unsigned arm64 binary does not just look untrusted, the kernel refuses to
 # execute it and macOS calls the app damaged — which `xattr` cannot repair.
 codesign --force --sign - --timestamp=none "$APP"
