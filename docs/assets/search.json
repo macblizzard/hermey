@@ -285,7 +285,7 @@
 "h": "Endpoints",
 "p": "Reference",
 "u": "reference.html#health",
-"b": "Endpoints URL Answers GET /v1/health {{\"status\":\"ok\"}} on loopback or through the tailnet front door /v1/ws the device websocket (single-use 30 s ticket, then a session) /v1/pair/start begins a pairing exchange"
+"b": "Endpoints URL Answers GET /v1/health {{\"status\":\"ok\"}} on loopback or through the tailnet front door /v1/ws the device websocket (single-use 30 s ticket, then a session) /v1/pair/start begins a pairing exchange GET /v1/devices the devices paired to this host, for revocation in the app /v1/local-computers/ws the Mac's o"
 },
 {
 "h": "Download URLs",
