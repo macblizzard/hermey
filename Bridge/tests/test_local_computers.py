@@ -333,3 +333,140 @@ def test_caller_cannot_override_protected_frame_keys(bridge):
             assert result.json()["path"] == "ok.txt"
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+def test_execute_stream_yields_progress_then_a_final_line(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+
+            async def fake_computer() -> None:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                assert frame["type"] == "execute"
+                await ws.send(json.dumps({
+                    "id": frame["id"], "type": "progress", "sequence": 1,
+                    "stdout": base64.b64encode(b"half a line\n").decode(),
+                    "stderr": "",
+                }))
+                await ws.send(json.dumps({
+                    "id": frame["id"], "type": "result", "exit_code": 0,
+                    "stdout": base64.b64encode(b"half a line\nand the rest\n").decode(),
+                    "stderr": "", "truncated": False,
+                }))
+
+            worker = asyncio.create_task(fake_computer())
+            result = await asyncio.to_thread(
+                bridge.client().post,
+                f"/v1/local-computers/{device_id}/execute-stream",
+                json={"argv": ["/usr/bin/true"]},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)},
+            )
+            await asyncio.wait_for(worker, timeout=5)
+            assert result.status_code == 200, result.text
+            lines = [json.loads(line) for line in result.text.splitlines() if line.strip()]
+            assert lines[0]["type"] == "progress"
+            assert base64.b64decode(lines[0]["stdout"]) == b"half a line\n"
+            assert lines[-1]["type"] == "result"
+            assert "stdout" not in lines[-1], "the final frame must not repeat the stream"
+            assert lines[-1]["exit_code"] == 0
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+def test_resume_hands_control_back_to_the_bot(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+
+            async def fake_computer() -> None:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                assert frame["type"] == "resume"
+                await ws.send(json.dumps({"id": frame["id"], "type": "result", "exit_code": 0}))
+
+            worker = asyncio.create_task(fake_computer())
+            result = await asyncio.to_thread(
+                bridge.client().post,
+                f"/v1/local-computers/{device_id}/resume",
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)},
+            )
+            await asyncio.wait_for(worker, timeout=5)
+            assert result.status_code == 200, result.text
+            assert result.json() == {"resumed": True}
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+def test_offline_then_reconnect(bridge):
+    """Closing Hermey is a 503; reopening reconnects without a restart."""
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        def ws_url() -> str:
+            return f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+                {"ticket": bridge.mint_ticket(device_id)})
+
+        async with connect(ws_url()) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            for _ in range(50):
+                listed = bridge.client().get(
+                    "/v1/local-computers",
+                    headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+                if listed.json()["computers"]:
+                    break
+                time.sleep(0.02)
+            assert listed.json()["computers"]
+
+            await ws.close()
+            for _ in range(50):
+                listed = bridge.client().get(
+                    "/v1/local-computers",
+                    headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+                if not listed.json()["computers"]:
+                    break
+                time.sleep(0.02)
+            offline = bridge.client().post(
+                f"/v1/local-computers/{device_id}/execute",
+                json={"argv": ["/usr/bin/true"]},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            assert offline.status_code == 503
+
+        async with connect(ws_url()) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            for _ in range(50):
+                listed = bridge.client().get(
+                    "/v1/local-computers",
+                    headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+                if listed.json()["computers"]:
+                    break
+                time.sleep(0.02)
+
+            async def fake_computer() -> None:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                await ws.send(json.dumps({"id": frame["id"], "type": "result",
+                                          "exit_code": 0, "stdout": "", "stderr": "",
+                                          "truncated": False}))
+
+            worker = asyncio.create_task(fake_computer())
+            result = await asyncio.to_thread(
+                bridge.client().post,
+                f"/v1/local-computers/{device_id}/execute",
+                json={"argv": ["/usr/bin/true"]},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)},
+            )
+            await asyncio.wait_for(worker, timeout=5)
+            assert result.status_code == 200
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=20))

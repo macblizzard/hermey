@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from . import paths
 from .device_auth import is_local_host_request, require_device
@@ -71,6 +72,7 @@ class _Computer:
     connected_at: float
     last_seen: float
     pending: dict[str, asyncio.Future] = field(default_factory=dict)
+    progress: dict[str, asyncio.Queue] = field(default_factory=dict)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def public(self) -> dict[str, Any]:
@@ -179,16 +181,25 @@ class LocalComputers:
             if future and not future.done():
                 future.set_result(message)
             return
+        if kind == "progress":
+            call_id = message.get("id")
+            queue = computer.progress.get(call_id) if isinstance(call_id, str) else None
+            if queue is not None:
+                queue.put_nowait(message)
+            return
         log.warning("local computer %s sent unknown frame %s", device_id, kind)
 
     async def dispatch(self, device_id: str, request: dict[str, Any],
-                       timeout_ms: int = DEFAULT_TIMEOUT_MS) -> dict[str, Any]:
+                       timeout_ms: int = DEFAULT_TIMEOUT_MS,
+                       progress_queue: asyncio.Queue | None = None) -> dict[str, Any]:
         computer = self.computers.get(device_id)
         if not computer:
             raise LookupError("that computer is not connected")
         call_id = uuid.uuid4().hex
         future = asyncio.get_running_loop().create_future()
         computer.pending[call_id] = future
+        if progress_queue is not None:
+            computer.progress[call_id] = progress_queue
         try:
             async with computer.send_lock:
                 try:
@@ -201,6 +212,7 @@ class LocalComputers:
             raise TimeoutError("the computer did not answer in time") from None
         finally:
             computer.pending.pop(call_id, None)
+            computer.progress.pop(call_id, None)
 
 
 def create_local_computers_router(runtime, computers: LocalComputers) -> APIRouter:
@@ -242,6 +254,82 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
         runtime.audit.emit("local_computer.execute", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/execute", outcome="finished")
         return redact_result(result)
+
+    @router.post("/{device_id}/execute-stream")
+    async def execute_stream(device_id: str, body: dict[str, Any], request: Request,
+                             authorization: str | None = Header(default=None)):
+        """One command, answered as NDJSON: progress lines as they arrive, then the final result.
+
+        The Mac coalesces its own output, so the socket is never the bottleneck; this route only
+        has to keep up with the queue it is handed. A caller that does not read still gets its
+        answer, because the queue is bounded by the command's own output cap.
+        """
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        argv = body.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(x, str) for x in argv):
+            raise HTTPException(status_code=422, detail="argv must be a non-empty list of strings")
+        timeout = body.get("timeout_ms", DEFAULT_TIMEOUT_MS)
+        if not isinstance(timeout, int) or not (1_000 <= timeout <= MAX_TIMEOUT_MS):
+            raise HTTPException(status_code=422, detail=f"timeout_ms must be 1000..{MAX_TIMEOUT_MS}")
+        payload: dict[str, Any] = {"argv": argv, "timeout_ms": timeout}
+        if isinstance(body.get("cwd"), str):
+            payload["cwd"] = body["cwd"]
+
+        queue: asyncio.Queue = asyncio.Queue()
+        task = asyncio.create_task(
+            computers.dispatch(device_id, payload, timeout_ms=timeout + 5_000,
+                               progress_queue=queue))
+
+        async def lines():
+            saw_progress = False
+            while not task.done() or not queue.empty():
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=0.2)
+                except (TimeoutError, asyncio.TimeoutError):
+                    continue
+                saw_progress = True
+                yield json.dumps(item) + "\n"
+            result = await task
+            if saw_progress:
+                # The caller already saw every byte through the progress lines; repeating the whole
+                # stream in the final frame would print the build twice.
+                final = {key: value for key, value in redact_result(result).items()
+                         if key not in ("stdout", "stderr")}
+            else:
+                # An older Mac app sends no progress frames; the whole answer is the final frame.
+                final = redact_result(result)
+            yield json.dumps(final) + "\n"
+
+        runtime.audit.emit("local_computer.execute", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/execute-stream",
+                           outcome="streaming")
+        return StreamingResponse(lines(), media_type="application/x-ndjson")
+
+    @router.post("/{device_id}/resume")
+    async def resume(device_id: str, request: Request,
+                     authorization: str | None = Header(default=None)) -> dict:
+        """Hand control back to the bot after a takeover.
+
+        The Mac pauses on physical input and waits; this is the explicit release the parity plan
+        calls for. It is deliberately not an approval — the owner is already looking at the machine.
+        """
+        caller = authorize(request, authorization)
+        if computers.is_revoked(device_id):
+            raise HTTPException(status_code=403, detail="this computer was revoked")
+        try:
+            result = await computers.dispatch(device_id, {"type": "resume"}, timeout_ms=10_000)
+        except LookupError:
+            raise HTTPException(status_code=503, detail="that computer is not connected") from None
+        except TimeoutError:
+            raise HTTPException(status_code=504, detail="the computer did not answer in time") from None
+        if result.get("error") or result.get("exit_code", 0) != 0:
+            raise HTTPException(status_code=409,
+                                detail=str(result.get("error") or "the computer refused to resume"))
+        runtime.audit.emit("local_computer.resume", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/resume", outcome="resumed")
+        return {"resumed": True}
 
     @router.post("/{device_id}/browser")
     async def browser(device_id: str, body: dict[str, Any], request: Request,

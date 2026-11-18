@@ -1,3 +1,4 @@
+import Combine
 import Darwin
 import Foundation
 import HermesKit
@@ -25,6 +26,17 @@ private actor CommandGate {
     }
 }
 
+/// One row of Settings → Computer → Activity: what ran, who asked, and how it ended.
+struct ComputerActivityItem: Identifiable, Equatable {
+    let id: UUID
+    let at: Date
+    let bot: String
+    let kind: String
+    let summary: String
+    let outcome: String
+    let durationMS: Int?
+}
+
 /// The Mac half of local computer use: one outbound, authenticated socket to the bridge.
 ///
 /// Nothing listens on this Mac — no SSH, no Remote Login, no inbound port. The socket is dialed from
@@ -50,6 +62,9 @@ final class LocalComputerService: ObservableObject {
     @Published private(set) var commandsRun = 0
     @Published private(set) var computerActions = 0
     @Published private(set) var lastCommand: String?
+    @Published private(set) var recentActivity: [ComputerActivityItem] = []
+    @Published private(set) var liveOutput = ""
+    @Published private(set) var isCommandRunning = false
 
     private let defaults = UserDefaults.standard
     private let enabledKey = "hermey.localComputer.enabled"
@@ -60,6 +75,7 @@ final class LocalComputerService: ObservableObject {
     private var heartbeat: Timer?
     private var lastPong = Date()
     private let commandGate = CommandGate()
+    private var takeoverCancellable: AnyCancellable?
 
     /// The machine name shown on the host's Computers list.
     private let machineName = Host.current().localizedName ?? "Mac"
@@ -67,9 +83,44 @@ final class LocalComputerService: ObservableObject {
     init() {
         enabled = defaults.bool(forKey: enabledKey)
         if enabled { status = .connecting }
+        // The tap lives in `ComputerTakeover`; this is only the feed's observer, so the row appears
+        // the moment a human touches the machine rather than when the next action checks the gate.
+        takeoverCancellable = ComputerTakeover.shared.$active
+            .removeDuplicates()
+            .sink { [weak self] active in
+                if active {
+                    self?.recordActivity(bot: "owner", kind: "takeover",
+                                          summary: "Physical input detected",
+                                          outcome: "paused")
+                }
+            }
     }
 
     var isEnabled: Bool { enabled }
+
+    /// Append one row to the activity feed, keeping the newest hundred.
+    private func recordActivity(bot: String, kind: String, summary: String,
+                                outcome: String, durationMS: Int? = nil) {
+        let item = ComputerActivityItem(id: UUID(), at: Date(), bot: bot, kind: kind,
+                                        summary: summary, outcome: outcome,
+                                        durationMS: durationMS)
+        recentActivity.append(item)
+        if recentActivity.count > 100 {
+            recentActivity.removeFirst(recentActivity.count - 100)
+        }
+    }
+
+    /// Keep the tail of a running command's output for the Activity pane.
+    private func appendLiveOutput(stdout: String, stderr: String) {
+        var piece = ""
+        if !stdout.isEmpty { piece += stdout }
+        if !stderr.isEmpty { piece += stderr }
+        guard !piece.isEmpty else { return }
+        liveOutput += piece
+        if liveOutput.count > 4_000 {
+            liveOutput = String(liveOutput.suffix(4_000))
+        }
+    }
 
     func setEnabled(_ value: Bool, address: PairingAddress?) {
         enabled = value
@@ -91,6 +142,7 @@ final class LocalComputerService: ObservableObject {
             loop?.cancel()
             loop = nil
             drop(socket)
+            ComputerTakeover.shared.stop()
             status = .off
         }
     }
@@ -112,6 +164,14 @@ final class LocalComputerService: ObservableObject {
     func pairingChanged(address: PairingAddress?) {
         guard enabled else { return }
         setEnabled(true, address: address)
+    }
+
+    /// The owner pressed Resume after a takeover. The bridge frame and the menu-bar button both
+    /// land here, so the feed records the hand-back once, from one place.
+    func resumeAfterTakeover() {
+        ComputerTakeover.shared.resume()
+        recordActivity(bot: "owner", kind: "resume",
+                        summary: "Control handed back", outcome: "resumed")
     }
 
     private struct LocalComputerCloseError: Error {
@@ -166,6 +226,7 @@ final class LocalComputerService: ObservableObject {
         status = .connected
         lastError = nil
         lastPong = Date()
+        ComputerTakeover.shared.start()
         ClientLog.shared.record("local computer socket connected", category: "local-computer")
 
         // One timer, one receive loop. An earlier task group let a heartbeat send error cancel the
@@ -252,6 +313,11 @@ final class LocalComputerService: ObservableObject {
                         await self.handleBrowser(frame, on: task)
                     }
                 }
+            } else if kind == "resume" {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.handleResume(frame, on: task)
+                }
             }
         }
     }
@@ -265,6 +331,7 @@ final class LocalComputerService: ObservableObject {
         heartbeat?.invalidate()
         heartbeat = nil
         socket = nil
+        ComputerTakeover.shared.stop()
         task.cancel(with: .goingAway, reason: nil)
     }
 
@@ -284,12 +351,32 @@ final class LocalComputerService: ObservableObject {
         let cwd = frame["cwd"] as? String
         let timeout = frame["timeout_ms"] as? Int ?? 60_000
         let callID = id
+        let started = Date()
+        isCommandRunning = true
+        liveOutput = ""
+        defer { isCommandRunning = false }
+        // Progress goes to two places at once: the bridge (for a streaming caller on the host) and
+        // this app's own Activity pane (for the owner watching the Mac). The socket send is
+        // thread-safe, so the reporter can be driven straight from the pipe's reader threads.
+        let reporter = ProgressReporter(task: task, id: callID) { [weak self] stdout, stderr in
+            Task { @MainActor [weak self] in
+                self?.appendLiveOutput(stdout: stdout, stderr: stderr)
+            }
+        }
         let result = await Task.detached(priority: .userInitiated) {
-            LocalProcess.run(argv: argv, cwd: cwd, timeoutMS: timeout)
+            LocalProcess.run(argv: argv, cwd: cwd, timeoutMS: timeout) { stdout, stderr in
+                reporter.append(stdout: stdout, stderr: stderr)
+            }
         }.value
+        reporter.finish()
         guard !Task.isCancelled else { return }
         commandsRun += 1
         lastCommand = argv.joined(separator: " ")
+        let durationMS = Int(Date().timeIntervalSince(started) * 1_000)
+        let outcome = result.exitCode == 0 ? "ok" : "exit \(result.exitCode)"
+        recordActivity(bot: "host", kind: "execute",
+                      summary: argv.joined(separator: " "),
+                      outcome: outcome, durationMS: durationMS)
         ClientLog.shared.record("local command finished: \(argv.first ?? "") exit=\(result.exitCode)",
                                 category: "local-computer")
         let reply: [String: Any] = [
@@ -306,6 +393,7 @@ final class LocalComputerService: ObservableObject {
     private func handleBrowser(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
         guard let id = frame["id"] as? String,
               let op = frame["op"] as? String else { return }
+        let started = Date()
         do {
             let result: [String: Any]
             switch op {
@@ -322,9 +410,14 @@ final class LocalComputerService: ObservableObject {
             default:
                 throw BrowserError.badBatch
             }
+            let durationMS = Int(Date().timeIntervalSince(started) * 1_000)
+            recordActivity(bot: "host", kind: "browser", summary: op,
+                           outcome: "ok", durationMS: durationMS)
             ClientLog.shared.record("computer browser \(op)", category: "local-computer")
             sendReply(["id": id, "type": "result", "exit_code": 0, "browser": result], on: task)
         } catch {
+            recordActivity(bot: "host", kind: "browser", summary: op,
+                           outcome: "failed")
             sendReply(["id": id, "type": "result", "exit_code": 1,
                        "error": error.localizedDescription], on: task)
         }
@@ -332,14 +425,22 @@ final class LocalComputerService: ObservableObject {
 
     private func handleFile(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
         guard let id = frame["id"] as? String else { return }
+        let op = frame["op"] as? String ?? "?"
+        let path = frame["path"] as? String ?? ""
+        let started = Date()
         do {
             let result = try await Task.detached(priority: .utility) {
                 try ComputerFiles.shared.perform(frame)
             }.value
-            ClientLog.shared.record("computer file \(frame["op"] as? String ?? "?")",
+            let durationMS = Int(Date().timeIntervalSince(started) * 1_000)
+            recordActivity(bot: "host", kind: "file", summary: "\(op) \(path)",
+                           outcome: "ok", durationMS: durationMS)
+            ClientLog.shared.record("computer file \(op)",
                                     category: "local-computer")
             sendReply(["id": id, "type": "result", "exit_code": 0, "file": result], on: task)
         } catch {
+            recordActivity(bot: "host", kind: "file", summary: "\(op) \(path)",
+                           outcome: "failed")
             sendReply(["id": id, "type": "result", "exit_code": 1,
                        "error": error.localizedDescription], on: task)
         }
@@ -349,10 +450,15 @@ final class LocalComputerService: ObservableObject {
         guard let id = frame["id"] as? String,
               let actions = frame["actions"] as? [[String: Any]] else { return }
         let bot = frame["bot"] as? String ?? "unknown"
+        let started = Date()
         do {
             let observation = try await ComputerActions.shared.perform(actions, bot: bot)
             computerActions += actions.count
             lastCommand = "act(\(actions.count)) by \(bot)"
+            let durationMS = Int(Date().timeIntervalSince(started) * 1_000)
+            recordActivity(bot: bot, kind: "act",
+                            summary: "\(actions.count) action(s)",
+                            outcome: "ok", durationMS: durationMS)
             ClientLog.shared.record("computer act by \(bot): \(actions.count) action(s)",
                                     category: "local-computer")
             guard let data = try? JSONEncoder().encode(observation),
@@ -363,6 +469,9 @@ final class LocalComputerService: ObservableObject {
             sendReply(["id": id, "type": "result", "exit_code": 0,
                        "observation": object, "stderr": "", "truncated": false], on: task)
         } catch {
+            recordActivity(bot: bot, kind: "act",
+                            summary: "\(actions.count) action(s)",
+                            outcome: "failed")
             sendReply(["id": id, "type": "result", "exit_code": 1,
                        "error": error.localizedDescription], on: task)
         }
@@ -370,12 +479,16 @@ final class LocalComputerService: ObservableObject {
 
     private func handleObserve(_ frame: [String: Any], on task: URLSessionWebSocketTask) async {
         guard let id = frame["id"] as? String else { return }
+        let started = Date()
         let result = await Task.detached(priority: .userInitiated) {
             Result<ComputerObservation, Error> { try ComputerObserver.shared.observe() }
         }.value
         switch result {
         case .success(let observation):
             ComputerActions.shared.noteObservation()
+            let durationMS = Int(Date().timeIntervalSince(started) * 1_000)
+            recordActivity(bot: "host", kind: "observe", summary: "screen captured",
+                           outcome: "ok", durationMS: durationMS)
             guard let data = try? JSONEncoder().encode(observation),
                   let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 sendReply(["id": id, "type": "result", "error": "observation encoding failed"], on: task)
@@ -384,9 +497,18 @@ final class LocalComputerService: ObservableObject {
             sendReply(["id": id, "type": "result", "exit_code": 0,
                        "observation": object, "stderr": "", "truncated": false], on: task)
         case .failure(let error):
+            recordActivity(bot: "host", kind: "observe", summary: "screen capture",
+                           outcome: "failed")
             sendReply(["id": id, "type": "result", "exit_code": 1,
                        "error": error.localizedDescription], on: task)
         }
+    }
+
+    /// The owner handed control back after a takeover. Nothing else in the batch moves until this.
+    private func handleResume(_ frame: [String: Any], on task: URLSessionWebSocketTask) {
+        guard let id = frame["id"] as? String else { return }
+        resumeAfterTakeover()
+        sendReply(["id": id, "type": "result", "exit_code": 0], on: task)
     }
 
     private func sendReply(_ reply: [String: Any], on task: URLSessionWebSocketTask) {
@@ -413,7 +535,8 @@ private enum LocalProcess {
     // Xcode builds are chatty; four megabytes still clips a runaway log without starving them.
     static let maxOutput = 4_000_000
 
-    static func run(argv: [String], cwd: String?, timeoutMS: Int) -> LocalProcessResult {
+    static func run(argv: [String], cwd: String?, timeoutMS: Int,
+                    onChunk: ((Data, Data) -> Void)? = nil) -> LocalProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
@@ -439,14 +562,18 @@ private enum LocalProcess {
         out.fileHandleForReading.readabilityHandler = { source in
             let piece = source.availableData
             guard !piece.isEmpty else { return }
-            lock.lock(); defer { lock.unlock() }
+            lock.lock()
             if outData.count + piece.count <= maxOutput { outData.append(piece) } else { truncated = true }
+            lock.unlock()
+            onChunk?(piece, Data())
         }
         err.fileHandleForReading.readabilityHandler = { source in
             let piece = source.availableData
             guard !piece.isEmpty else { return }
-            lock.lock(); defer { lock.unlock() }
+            lock.lock()
             if errData.count + piece.count <= maxOutput { errData.append(piece) } else { truncated = true }
+            lock.unlock()
+            onChunk?(Data(), piece)
         }
         do {
             try process.run()

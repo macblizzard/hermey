@@ -6,8 +6,11 @@ bridge refuses the same call through tailscale serve. Examples:
 
     python3 Tools/local_computer.py -- sw_vers
     python3 Tools/local_computer.py --cwd ~/hermey-build -- Tools/release/build_on_mac.sh 0.1.567 567
+    python3 Tools/local_computer.py --stream -- xcodebuild -project Hermey.xcodeproj -scheme Hermey
     python3 Tools/local_computer.py observe
     python3 Tools/local_computer.py observe --save /tmp/screen.jpg
+    python3 Tools/local_computer.py ask cody "Should I keep going?"
+    python3 Tools/local_computer.py resume
 
 The Mac must be paired and the "Let bots use this computer" switch on. Command output is base64 on
 the wire; this script prints it and exits with the Mac command's exit code. `observe` saves the JPEG
@@ -36,6 +39,18 @@ def request(path: str, payload: dict | None = None, method: str | None = None) -
     )
     with urllib.request.urlopen(req, timeout=1800) as response:
         return json.loads(response.read().decode())
+
+
+def request_stream(path: str, payload: dict | None = None, timeout: float = 1800):
+    """Open an NDJSON response and hand back the raw HTTP object, line by line."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        BRIDGE + path,
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/json", "Accept": "application/x-ndjson"},
+    )
+    return urllib.request.urlopen(req, timeout=timeout)
 
 
 def pick_computer(name: str | None = None) -> dict:
@@ -118,6 +133,59 @@ def do_files(computer_name: str | None, op: str, path: str, local: str | None,
     return 0
 
 
+def do_ask(profile: str, question: str, sender: str, timeout: float) -> int:
+    result = request(f"/v1/bots/{profile}/ask",
+                     {"question": question, "from": sender, "timeout": timeout})
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result.get("answered") else 5
+
+
+def do_resume(computer_name: str | None) -> int:
+    device = pick_computer(computer_name)
+    result = request(f"/v1/local-computers/{device['device_id']}/resume", {})
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def do_execute_stream(computer_name: str | None, argv: list[str], cwd: str | None,
+                      timeout_ms: int) -> int:
+    device = pick_computer(computer_name)
+    payload: dict = {"argv": argv, "timeout_ms": timeout_ms}
+    if cwd:
+        payload["cwd"] = os.path.expanduser(cwd)
+    response = request_stream(
+        f"/v1/local-computers/{device['device_id']}/execute-stream", payload,
+        timeout=timeout_ms / 1000 + 30)
+    exit_code = 1
+    with response:
+        for raw in response:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line:
+                continue
+            frame = json.loads(line)
+            if frame.get("type") == "progress":
+                stdout = base64.b64decode(frame.get("stdout", ""))
+                stderr = base64.b64decode(frame.get("stderr", ""))
+                if stdout:
+                    sys.stdout.write(stdout.decode("utf-8", "replace"))
+                    sys.stdout.flush()
+                if stderr:
+                    sys.stderr.write(stderr.decode("utf-8", "replace"))
+                    sys.stderr.flush()
+            elif frame.get("type") == "result":
+                exit_code = int(frame.get("exit_code", 1))
+                # An older Mac app sends no progress frames; the whole answer rides in this line.
+                if frame.get("stdout"):
+                    sys.stdout.write(base64.b64decode(frame["stdout"]).decode("utf-8", "replace"))
+                    sys.stdout.flush()
+                if frame.get("stderr"):
+                    sys.stderr.write(base64.b64decode(frame["stderr"]).decode("utf-8", "replace"))
+                    sys.stderr.flush()
+                if frame.get("truncated"):
+                    print("[local computer output truncated]", file=sys.stderr)
+    return exit_code
+
+
 def do_act(computer_name: str | None, actions_json: str, bot: str, save: str | None) -> int:
     device = pick_computer(computer_name)
     actions = json.loads(actions_json)
@@ -170,6 +238,29 @@ def main() -> int:
             print(f"Act failed: {exc}", file=sys.stderr)
             return 4
 
+    if raw and raw[0] == "ask":
+        ask = argparse.ArgumentParser(description="Ask the owner a question in a bot's chat")
+        ask.add_argument("profile", help="the bot whose conversation the owner is reading")
+        ask.add_argument("question")
+        ask.add_argument("--from", default="cody", help="the bot doing the asking")
+        ask.add_argument("--timeout", type=float, default=300.0)
+        args = ask.parse_args(raw[1:])
+        try:
+            return do_ask(args.profile, args.question, getattr(args, "from"), args.timeout)
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError, KeyError) as exc:
+            print(f"Ask failed: {exc}", file=sys.stderr)
+            return 4
+
+    if raw and raw[0] == "resume":
+        resume = argparse.ArgumentParser(description="Hand control back to the bot after a takeover")
+        resume.add_argument("--computer", help="device id or a substring of the Mac's name")
+        args = resume.parse_args(raw[1:])
+        try:
+            return do_resume(args.computer)
+        except (RuntimeError, urllib.error.HTTPError, KeyError) as exc:
+            print(f"Resume failed: {exc}", file=sys.stderr)
+            return 4
+
     if raw and raw[0] == "observe":
         obs = argparse.ArgumentParser(description="Capture the Mac's screen")
         obs.add_argument("--computer", help="device id or a substring of the Mac's name")
@@ -186,11 +277,20 @@ def main() -> int:
     parser.add_argument("--cwd", help="working directory on the Mac")
     parser.add_argument("--timeout-ms", type=int, default=900_000,
                         help="deadline in milliseconds (default 15 min, max 30 min)")
+    parser.add_argument("--stream", action="store_true",
+                        help="print the command's output live, line by line")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args(raw)
     argv = args.command[1:] if args.command and args.command[0] == "--" else args.command
     if not argv:
         parser.error("give a command after --")
+
+    if args.stream:
+        try:
+            return do_execute_stream(args.computer, argv, args.cwd, args.timeout_ms)
+        except (RuntimeError, urllib.error.HTTPError, json.JSONDecodeError, KeyError) as exc:
+            print(f"Local computer call failed: {exc}", file=sys.stderr)
+            return 4
 
     payload: dict = {"argv": argv, "timeout_ms": args.timeout_ms}
     if args.cwd:

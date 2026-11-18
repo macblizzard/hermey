@@ -121,6 +121,14 @@ struct HermesMacApp: App {
             MacSettingsView(store: store, checkForUpdates: checkForUpdates)
         }
 
+        // The takeover indicator: always present, because "a bot may drive this Mac" is a fact about
+        // the machine rather than a fact about the window that happens to be open.
+        MenuBarExtra {
+            ComputerControlMenu()
+        } label: {
+            ComputerControlMenuBarLabel()
+        }
+
         Window("Paired Devices", id: "paired-devices") {
             MacDevicesView(store: store)
         }

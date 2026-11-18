@@ -87,7 +87,7 @@ actor ComputerGate {
 final class ComputerActions {
     static let shared = ComputerActions()
     static let gate = ComputerGate()
-    private let eventTag: Int64 = 0x4845524D  // HERM — lets a future event tap ignore our own events.
+    private let eventTag: Int64 = ComputerEventTag.herm  // lets the takeover tap ignore our own events.
 
     /// The last observation timestamp is set by the observe command, not by a timer. Coordinate
     /// actions are refused without one, which prevents blind clicks on a stale layout.
@@ -104,7 +104,9 @@ final class ComputerActions {
         let actions = raw.map(ComputerAction.init)
         for action in actions { try validate(action) }
         for action in actions {
+            await ComputerTakeover.shared.waitWhilePaused()
             try await apply(action)
+            await ComputerTakeover.shared.waitWhilePaused()
         }
         let observation = try await Task.detached(priority: .userInitiated) {
             try ComputerObserver.shared.observe()

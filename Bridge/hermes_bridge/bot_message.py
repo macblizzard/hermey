@@ -31,6 +31,7 @@ import asyncio
 import json
 import logging
 import re
+import sqlite3
 import time
 from typing import Optional
 
@@ -39,6 +40,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from .bot_transfers import record as record_transfer
 from .device_auth import is_local_host_request
+from .paths import profiles_root
 
 logger = logging.getLogger("hermes_bridge.bot_message")
 
@@ -53,6 +55,9 @@ MAX_TEXT = 32_000  # a cron report can be long (the daily changelog is ~16k); cl
 #: How long to wait for the target bot's turn to finish. A bot answering with tools can take a
 #: while; past this the caller is told it was delivered without an answer.
 REPLY_TIMEOUT_S = 150.0
+
+#: How long an `ask_user` waits for the owner to answer before giving up.
+ASK_TIMEOUT_S = 300.0
 
 
 def _is_loopback(request: Request) -> bool:
@@ -138,7 +143,117 @@ def create_bot_message_router(runtime) -> APIRouter:
             'delivered': True,
         }
 
+    @router.post('/{profile}/ask')
+    async def ask(profile: str, body: dict, request: Request) -> dict:
+        """Post a question into a bot's conversation and wait for the owner's answer.
+
+        The question is a bot-to-bot row on purpose: it is labelled, it is visible in the app, and
+        the answer is whatever the owner types next in that same conversation. There is no modal
+        and no approval queue — the owner is already the one looking at the chat.
+        """
+        if not _is_loopback(request):
+            raise HTTPException(status_code=404, detail='not found')
+        if not _PROFILE.match(profile):
+            raise HTTPException(status_code=422, detail='invalid profile')
+        if _disabled(profile):
+            raise HTTPException(status_code=409, detail=f'{profile} is disabled')
+
+        question = body.get('question')
+        sender = body.get('from', 'assistant')
+        if not isinstance(question, str) or not question.strip():
+            raise HTTPException(status_code=422, detail='question is required')
+        if len(question) > MAX_TEXT:
+            raise HTTPException(status_code=413, detail=f'question longer than {MAX_TEXT} characters')
+        if not isinstance(sender, str) or not _FROM.match(sender):
+            raise HTTPException(status_code=422, detail='invalid from')
+
+        sender_profile = body.get('from_profile')
+        if sender_profile is not None:
+            if not isinstance(sender_profile, str) or not _PROFILE.match(sender_profile):
+                raise HTTPException(status_code=422, detail='invalid from_profile')
+
+        timeout = body.get('timeout', ASK_TIMEOUT_S)
+        if not isinstance(timeout, (int, float)) or not (1 <= float(timeout) <= ASK_TIMEOUT_S):
+            raise HTTPException(status_code=422, detail=f'timeout must be 1..{ASK_TIMEOUT_S:.0f} seconds')
+
+        stored = runtime.registry.get_bot_session(profile)
+        if not stored:
+            raise HTTPException(
+                status_code=409,
+                detail=f'{profile} has no conversation yet: open it in the app once, then ask',
+            )
+
+        message = _labelled(sender, profile, question.strip(), sender_profile)
+        session_id, _ = await _deliver(runtime, stored, message, profile)
+        asked_at = time.time()
+        reply = await _wait_for_owner_reply(profile, session_id, asked_at, float(timeout))
+
+        record_transfer(runtime,
+                         from_profile=sender_profile,
+                         from_label=sender,
+                         to_profile=profile,
+                         session_id=session_id,
+                         text=question.strip())
+        runtime.audit.emit(
+            'bot_ask',
+            profile=profile,
+            method=sender,
+            path=f'/v1/bots/{profile}/ask',
+            nbytes=len(message.encode('utf-8')),
+            outcome='answered' if reply is not None else 'timeout',
+        )
+        return {
+            'profile': profile,
+            'from': sender,
+            'session_id': session_id,
+            'question': message,
+            'reply': reply,
+            'answered': reply is not None,
+        }
+
     return router
+
+
+def _owner_reply(profile: str, session_id: str, after: float) -> Optional[str]:
+    """The first user row in one bot's conversation after a moment in time.
+
+    An `ask_user` writes its question as a user row (that is what the owner reads); the answer is
+    the *next* user row, which is the owner typing back. Only the stored session is read, because
+    that is the conversation the app opens.
+    """
+    db_path = profiles_root() / profile / 'state.db'
+    if not db_path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT content FROM messages "
+            "WHERE session_id = ? AND role = 'user' "
+            "AND content IS NOT NULL AND TRIM(content) <> '' "
+            "AND timestamp > ? "
+            "ORDER BY timestamp ASC, id ASC LIMIT 1",
+            (session_id, after),
+        ).fetchone()
+        return str(row[0]) if row else None
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
+async def _wait_for_owner_reply(profile: str, session_id: str,
+                                after: float, timeout: float) -> Optional[str]:
+    """Poll the bot's own conversation until the owner answers, or the timeout expires."""
+    deadline = time.monotonic() + max(1.0, min(timeout, ASK_TIMEOUT_S))
+    while time.monotonic() < deadline:
+        reply = await asyncio.to_thread(_owner_reply, profile, session_id, after)
+        if reply:
+            return reply
+        await asyncio.sleep(0.5)
+    return None
 
 
 def _disabled(profile: str) -> bool:

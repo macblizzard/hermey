@@ -64,16 +64,16 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [ ] Accepted limit: screenshots are not content-redacted
 - [ ] Acceptance: a command printing a known secret returns `[redacted]`
 
-## Phase 8 — Takeover and ask_user
-- [ ] Menu-bar "Bot control active" indicator; physical input pauses bot GUI actions, explicit resume required
-- [ ] `ask_user` posts a question into the bot's conversation via the existing bot-message route and waits for the owner's reply
-- [ ] No modal approvals or per-action gate
-- [ ] Acceptance: takeover pauses in < 100 ms; bot resumes only on explicit release
+## Phase 8 — Takeover and ask_user — done
+- [x] Menu-bar "Bot control active" indicator; physical input pauses bot GUI actions, explicit resume required
+- [x] `ask_user` posts a question into the bot's conversation via the existing bot-message route and waits for the owner's reply
+- [x] No modal approvals or per-action gate
+- [x] Acceptance: takeover pauses in < 100 ms; bot resumes only on explicit release
 
-## Phase 9 — Activity feed and live progress
-- [ ] `computer.command` events for shell and GUI actions in Settings → Computer → Activity (bot label, action, outcome)
-- [ ] Stream NDJSON progress for long commands so Xcode builds show live log lines
-- [ ] Acceptance: a 2-minute xcodebuild shows live output and final exit code
+## Phase 9 — Activity feed and live progress — done
+- [x] `computer.command` events for shell and GUI actions in Settings → Computer → Activity (bot label, action, outcome)
+- [x] Stream NDJSON progress for long commands so Xcode builds show live log lines
+- [x] Acceptance: a 2-minute xcodebuild shows live output and final exit code
 
 ## Phase 10 — Concurrency and cancellation
 - [ ] Global GUI driver lock + FIFO queue; one bot drives the screen at a time; shell commands may queue behind GUI actions
@@ -81,10 +81,10 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [ ] Audit records which bot label drove each action
 - [ ] Acceptance: two simultaneous batches are serialized, not interleaved; cancel leaves no orphan process
 
-## Phase 11 — Connectivity discipline (no LaunchAgent)
-- [ ] CLI/bridge return 503 "computer not connected" when the Mac is offline or Hermey is closed
-- [ ] Existing 20 s heartbeat / 1→30 s reconnect handles sleep, wake and network changes
-- [ ] Acceptance: closing Hermey immediately disables computer use; reopening reconnects without restart
+## Phase 11 — Connectivity discipline (no LaunchAgent) — done
+- [x] CLI/bridge return 503 "computer not connected" when the Mac is offline or Hermey is closed
+- [x] Existing 20 s heartbeat / 1→30 s reconnect handles sleep, wake and network changes
+- [x] Acceptance: closing Hermey immediately disables computer use; reopening reconnects without restart
 
 ## Phase 12 — Bot surface, verification
 - [ ] Extend the shared Hermey skill with every new subcommand and permission requirement
@@ -111,5 +111,8 @@ Browser downloads depend on the workspace; redaction covers both file and browse
 Takeover plus `ask_user`, activity feed with live build progress, connectivity discipline (the 503 /
 reconnect behaviour is already mostly proven), then CLI/skill docs and the SLO/soak/stress suite.
 This batch validates the whole stack after the features exist.
+
+Status: phases 8, 9 and 11 are implemented and tested. Phase 12 is the remaining work: the CLI/skill
+docs and the long soak / two-bot stress runs.
 
 No separate release per phase; acceptance checks for every phase still apply within its batch.

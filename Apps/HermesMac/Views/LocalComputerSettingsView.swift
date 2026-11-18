@@ -7,6 +7,7 @@ import SwiftUI
 struct LocalComputerSettingsView: View {
     @ObservedObject var store: WorkspaceStore
     @ObservedObject private var service = LocalComputerService.shared
+    @ObservedObject private var takeover = ComputerTakeover.shared
     @StateObject private var permissions = ComputerPermissions()
     @State private var confirmingRevoke = false
 
@@ -96,15 +97,63 @@ struct LocalComputerSettingsView: View {
                     .foregroundStyle(Tokens.textMuted)
             }
 
-            if service.commandsRun > 0 {
-                Section("Activity") {
-                    Text("\\(service.commandsRun) command(s) run this session")
-                        .font(TypeScale.font(TypeScale.caption))
-                    if let command = service.lastCommand {
-                        Text(command)
+            Section("Activity") {
+                if takeover.active {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.raised")
+                            .foregroundStyle(Tokens.warning)
+                        Text("Bot control paused by your input")
+                            .font(TypeScale.font(TypeScale.sm))
+                            .foregroundStyle(Tokens.textPrimary)
+                        Spacer(minLength: 6)
+                        Button("Resume") {
+                            service.resumeAfterTakeover()
+                        }
+                        .controlSize(.small)
+                    }
+                }
+
+                if service.isCommandRunning {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Running")
                             .font(TypeScale.font(TypeScale.caption))
                             .foregroundStyle(Tokens.textMuted)
-                            .lineLimit(2)
+                        Text(service.liveOutput.isEmpty ? "…" : service.liveOutput)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundStyle(Tokens.textSecondary)
+                            .lineLimit(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+
+                if service.recentActivity.isEmpty {
+                    Text("No commands yet this session")
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textMuted)
+                } else {
+                    ForEach(service.recentActivity.suffix(12).reversed()) { item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(item.kind)
+                                    .font(TypeScale.font(TypeScale.caption))
+                                    .foregroundStyle(Tokens.textPrimary)
+                                Text(item.outcome)
+                                    .font(TypeScale.font(TypeScale.caption))
+                                    .foregroundStyle(item.outcome == "ok" || item.outcome == "resumed"
+                                                     ? Tokens.success : Tokens.danger)
+                                Spacer(minLength: 6)
+                                if let duration = item.durationMS {
+                                    Text("\(duration) ms")
+                                        .font(TypeScale.font(TypeScale.caption))
+                                        .foregroundStyle(Tokens.textMuted)
+                                }
+                            }
+                            Text(item.summary)
+                                .font(TypeScale.font(TypeScale.caption))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineLimit(2)
+                        }
+                        .padding(.vertical, 1)
                     }
                 }
             }
