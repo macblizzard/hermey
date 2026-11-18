@@ -167,6 +167,13 @@
   .build code { font-family: var(--mono); font-size: .95em; color: var(--faint); }
 
   .hero-shot { margin: 0; justify-self: center; width: min(100%, 330px); }
+  /* On a phone the screenshot sits in the same left gutter as the copy above it, rather than
+     floating at its own centre and breaking the column edge. */
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-shot { justify-self: start; width: min(100%, 300px); }
+    .hero-shot figcaption { text-align: left; }
+  }
   .hero-shot figcaption {
     margin-top: 1.1rem; font-size: .78rem; letter-spacing: .1em;
     text-transform: uppercase; color: var(--faint); text-align: center;
@@ -220,10 +227,16 @@
   @media (max-width: 860px) { .block-head { grid-template-columns: 1fr; gap: 1.1rem; } }
 
   /* gallery */
+  /* Every grid/flex child that holds unbreakable content (a command line, a URL) needs
+     `min-width: 0`, or its automatic minimum size wins and the column grows past the page
+     gutter — which is what pushed the install snippets and the dark-band lists off a phone. */
+  .dark-grid > *, .steps > *, .platforms > *, .feature > *, .gallery > * { min-width: 0; }
+  .snippet code, .cmd { min-width: 0; max-width: 100%; }
+
   .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 2.75rem); margin-top: 3rem; }
   @media (max-width: 860px) {
-    .gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 74%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 1rem; }
-    .gallery figure { scroll-snap-align: center; }
+    .gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 74%; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 0; padding-bottom: 1rem; }
+    .gallery figure { scroll-snap-align: start; }
   }
   .gallery figure { margin: 0; }
   .gallery .phone-frame { border-width: 7px; border-radius: 32px; }
