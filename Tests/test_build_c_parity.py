@@ -71,4 +71,7 @@ class BuildCParity(unittest.TestCase):
         self.assertIn("## Phase 8 — Takeover and ask_user — done", plan)
         self.assertIn("## Phase 9 — Activity feed and live progress — done", plan)
         self.assertIn("## Phase 11 — Connectivity discipline (no LaunchAgent) — done", plan)
-        self.assertIn("phases 8, 9 and 11 are implemented and tested", plan)
+        # The plan's closing status moved when bc01c04 marked every phase shipped; the old sentence
+        # ("phases 8, 9 and 11 are implemented and tested") no longer exists and left CI red.
+        self.assertIn("Status: all three builds are shipped and verified", plan)
+        self.assertIn("Every phase is implemented, tested and verified", plan)
