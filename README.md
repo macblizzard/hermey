@@ -58,6 +58,17 @@ detection, the install command, two hard verification gates, the pairing handoff
 a host intact, and a symptom→cause→fix table for the failures that actually happen. [`llms.txt`](llms.txt)
 has the same facts in the flat format documentation ingesters look for.
 
+### Documentation site
+
+The same material, laid out for reading: **<https://macblizzard.github.io/hermey/docs/>** — install,
+the apps, computer use, the agent runbook, troubleshooting, the threat model and a reference page, with
+search. It is generated from this directory by `Tools/site/build_docs.py`, so the files here remain the
+authority; rebuild it with:
+
+```bash
+python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
+```
+
 ## Screenshots
 
 <p align="center">
