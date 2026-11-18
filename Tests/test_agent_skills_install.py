@@ -14,7 +14,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "Bridge"))
 
-from hermes_bridge import agent_skills  # noqa: E402
+try:
+    from hermes_bridge import agent_skills  # noqa: E402
+except ImportError as error:  # noqa: BLE001 - the bridge imports fastapi at module import time
+    # The hygiene job runs this suite on a bare interpreter, and a module that cannot import its own
+    # dependency must skip rather than error: an ImportError here reads as a broken test, not as a
+    # missing environment, and it took the whole CI job down.
+    raise unittest.SkipTest(f"bridge runtime dependencies are not installed: {error}") from error
 
 
 class Scratch(unittest.TestCase):
