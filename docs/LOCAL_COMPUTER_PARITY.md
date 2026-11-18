@@ -90,8 +90,8 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [x] Extend the shared Hermey skill with every new subcommand and permission requirement
 - [x] SLOs: observe < 1 s, act < 500 ms, shell start < 200 ms, reconnect < 30 s
 - [x] Two-bot stress, permission-revoke and offline/reconnect tests
-- [ ] 1-hour soak (running)
-- [ ] Acceptance: SLOs met, no leaked processes or stale locks
+- [x] 1-hour soak (clean: 0 failures)
+- [x] Acceptance: SLOs met, no leaked processes or stale locks
 
 ## Build batches (one release per batch)
 
@@ -113,7 +113,7 @@ Takeover plus `ask_user`, activity feed with live build progress, connectivity d
 reconnect behaviour is already mostly proven), then CLI/skill docs and the SLO/soak/stress suite.
 This batch validates the whole stack after the features exist.
 
-Status: phases 8, 9 and 11 are implemented and tested. Phase 12 is the remaining work: the CLI/skill
-docs and the long soak / two-bot stress runs.
+Status: Build C is complete. Every phase is implemented, tested and verified live; the 1-hour soak
+finished with zero failures.
 
 No separate release per phase; acceptance checks for every phase still apply within its batch.
