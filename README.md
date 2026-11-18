@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/banner.svg" alt="Hermey" width="720">
+  <img src="docs/media/shots/mac-chat.webp" alt="Hermey for macOS: the bot sidebar beside a conversation" width="1000">
 </p>
 
 <p align="center">
@@ -57,6 +57,21 @@ Paste this into whatever agent has a root shell on your Hermes host:
 detection, the install command, two hard verification gates, the pairing handoff, the rules that keep
 a host intact, and a symptom→cause→fix table for the failures that actually happen. [`llms.txt`](llms.txt)
 has the same facts in the flat format documentation ingesters look for.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/media/shots/bots-list.webp" alt="The bot list on iPhone, with one bot pinned" width="196">
+  <img src="docs/media/shots/chat-table.webp" alt="A reply rendered as a markdown table" width="196">
+  <img src="docs/media/shots/chat-tools.webp" alt="Folded tool runs with an open reasoning section" width="196">
+  <img src="docs/media/shots/bot-settings.webp" alt="Per-bot settings: computer, model, skills, routines, memory" width="196">
+</p>
+<p align="center"><sub>Bot list · a markdown answer · folded tool runs · per-bot settings — iPhone</sub></p>
+
+<p align="center">
+  <img src="docs/media/shots/mac-table.webp" alt="Hermey for macOS showing a wide table of node versions across the fleet" width="900">
+</p>
+<p align="center"><sub>The Mac window gives a wide answer the room it needs.</sub></p>
 
 ## What it does
 
