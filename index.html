@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Hermey — the native client for your own Hermes agent</title>
-<meta name="description" content="Hermey is a native iOS and macOS client for the Hermes agent you run yourself. One endless conversation per bot, streamed live over your own Tailscale network. No cloud, no account, no web wrapper.">
+<meta name="description" content="Hermey is a native iOS and macOS client for your own Hermes agent. Endless bot chats over Tailscale, plus opt-in local computer use on the Mac — no SSH, no Remote Login, no account.">
 <meta name="theme-color" content="#08090b">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Hermey — the native client for your own Hermes agent">
-<meta property="og:description" content="Your bots, your machine, your network. A real iOS and macOS app for the agent you host yourself.">
+<meta property="og:description" content="Your bots, your machine, your network. Real iOS and macOS apps, with opt-in local computer use on the Mac.">
 <meta property="og:url" content="https://macblizzard.github.io/hermey/">
 <meta property="og:image" content="https://macblizzard.github.io/hermey/icon-512.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -200,6 +200,33 @@
   .stat span { color: var(--text-2); font-size: 12.5px; }
   @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
 
+  /* ---------- local computer ---------- */
+  .local-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; }
+  @media (max-width: 860px) { .local-grid { grid-template-columns: 1fr; } }
+  .local-panel {
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--canvas-2);
+    padding: 24px 26px;
+  }
+  .local-panel.accent { border-color: rgba(139, 233, 192, .28); background: linear-gradient(180deg, var(--surface), var(--canvas-2)); }
+  .local-panel h3 { font-size: 18px; margin: 0 0 14px; font-weight: 650; }
+  .local-panel ul { list-style: none; margin: 0; padding: 0; }
+  .local-panel li {
+    position: relative; padding: 0 0 12px 22px; color: var(--text-2); font-size: 14.5px;
+    line-height: 1.55;
+  }
+  .local-panel li:last-child { padding-bottom: 0; }
+  .local-panel li::before {
+    content: ""; position: absolute; left: 2px; top: .5em; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--mint-dim);
+  }
+  .local-panel.accent li::before { background: var(--mint); }
+  .local-note {
+    margin: 18px 0 0; padding: 12px 14px; border: 1px solid var(--line);
+    border-radius: 10px; background: #0a0c0f; color: var(--text-2);
+    font: 12.5px/1.6 var(--mono);
+  }
+  .step.wide { grid-column: 1 / -1; }
+
   /* ---------- sections ---------- */
   section.block { padding: 84px 0 0; }
   .block-head { max-width: 46em; margin: 0 0 34px; }
@@ -352,6 +379,7 @@
         </svg><span>Hermey</span></a>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#local">Local computer</a>
       <a href="#install">Install</a>
       <a href="#platforms">Platforms</a>
       <a href="#faq">FAQ</a>
@@ -369,8 +397,8 @@
         <h1>Your agent,<br>in a <em>real app</em>.</h1>
         <p class="lede">
           Hermey is a native iOS and macOS app for the Hermes agent you run yourself. One endless
-          conversation per bot, streamed live over your own Tailscale network — no cloud in the middle,
-          no account to create, no web page pretending to be an app.
+          conversation per bot, streamed live over your own Tailscale network. On the Mac, bots can also
+          use the desktop you explicitly allow — no SSH, no Remote Login, no cloud in the middle.
         </p>
         <div class="cta-row">
           <a class="btn btn-primary" href="#install">
@@ -400,7 +428,7 @@
               <div class="code"><i>swift</i>&nbsp; window.minWidth = WindowLayout.minimum(…)</div>
             </div>
             <div class="bubble me">Ship it and send me the link.</div>
-            <div class="bubble bot">Done. Build 137 is live on your tailnet. <span class="tick">✓</span></div>
+            <div class="bubble bot">Done. The fix is live on your tailnet. <span class="tick">✓</span></div>
             <div class="reactions" aria-hidden="true"><span>👍 1</span><span>🎉 1</span></div>
             <div class="typing" aria-hidden="true"><i></i><i></i><i></i></div>
           </div>
@@ -413,7 +441,7 @@
 
     <div class="wrap">
       <div class="stats">
-        <div class="stat"><b>Native SwiftUI</b><span>one codebase, two real apps</span></div>
+        <div class="stat"><b>Local computer use</b><span>opt-in on the Mac, revocable, no SSH</span></div>
         <div class="stat"><b>iOS 17+ · macOS 14+</b><span>no web wrapper anywhere</span></div>
         <div class="stat"><b>Zero telemetry</b><span>no analytics, no accounts</span></div>
         <div class="stat"><b>MIT licensed</b><span>read it, fork it, host it</span></div>
@@ -472,6 +500,61 @@
           <p>Pair once with a device token, then talk. No login, no sync service, no analytics — the app
              knows your host and nothing else.</p>
         </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="8" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5 13h6M8 11v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>Your Mac as a computer</h3>
+          <p>Turn on Computer use in Settings and bots can observe the screen, click and type, open apps,
+             and work in a shared workspace — over the app's own authenticated link.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.2" y="2.4" width="11.6" height="11.2" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6.2h6M5 9h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>Pair from either device</h3>
+          <p>Generate a QR code and pairing URL on the Mac or on the phone. Scan it or copy the link;
+             both apps accept the same short-lived invite.</p>
+        </article>
+
+        <article class="card">
+          <div class="glyph"><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2.2" y="2.6" width="11.6" height="10.8" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 5.6h6M5 8h6M5 10.4h3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></div>
+          <h3>Fast by keyboard</h3>
+          <p>⌘K opens a command palette with ten verbs; typing <code>/</code> in the composer shows the
+             gateway's slash commands with autocomplete.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="local">
+    <div class="wrap">
+      <div class="block-head">
+        <p class="eyebrow">Local computer use</p>
+        <h2>Your Mac, without Remote Login.</h2>
+        <p>Hermey's Mac app is the executor. The host sends a command; the app performs it under your
+           account and returns the result. Nothing listens for SSH, and no port is opened on your Mac.</p>
+      </div>
+
+      <div class="local-grid">
+        <div class="local-panel accent">
+          <h3>What bots can do</h3>
+          <ul>
+            <li>Run one-shot commands on the Mac — including local builds — with a custom working directory.</li>
+            <li>Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an app.</li>
+            <li>Read, write and list files in one shared workspace, with downloads from the private browser surface.</li>
+            <li>Open URLs and inspect a page snapshot without leaving the conversation.</li>
+          </ul>
+          <p class="local-note">python3 Tools/local_computer.py observe<br>python3 Tools/local_computer.py act '[{"kind":"click","x":120,"y":80}]'</p>
+        </div>
+        <div class="local-panel">
+          <h3>How it stays contained</h3>
+          <ul>
+            <li>Computer use starts switched off. Nothing is queried until you choose to enable it.</li>
+            <li>macOS permissions are explicit: Accessibility, Screen Recording, Input Monitoring and Automation each have their own status and Settings link.</li>
+            <li>A single sorted queue drives the desktop, so two bots cannot interleave actions. Revoking the Mac closes its link immediately.</li>
+            <li>The app must be running. When it closes, computer use simply reports that the Mac is offline.</li>
+          </ul>
+          <p class="local-note">Settings → Computer → Let bots use this computer</p>
+        </div>
       </div>
     </div>
   </section>
@@ -480,7 +563,7 @@
     <div class="wrap">
       <div class="block-head">
         <p class="eyebrow">Install</p>
-        <h2>Three steps, one of which is a scan.</h2>
+        <h2>Three steps to chat. One more if you want the Mac.</h2>
         <p>The host runs where Hermes already runs. The apps are unsigned, so they are sideloaded or
            opened from the command line — that is the price of not having an account.</p>
       </div>
@@ -512,6 +595,18 @@
           <div class="step-code">
             <div class="bar">bots on the host</div>
             <pre>cody · atlas · crony · sage</pre>
+          </div>
+        </article>
+
+        <article class="step wide">
+          <div class="n"></div>
+          <h3>Enable local computer use <span style="color:var(--text-3);font-weight:400">· optional</span></h3>
+          <p>Open <strong>Settings → Computer</strong> on the Mac and switch it on. Grant the macOS
+             permissions you want from the buttons in that panel — nothing is requested just by opening
+             Settings. Keep Remote Login off; the app does the work.</p>
+          <div class="step-code">
+            <div class="bar">what the switch controls</div>
+            <pre>Settings → Computer → Let bots use this computer</pre>
           </div>
         </article>
       </div>
@@ -548,7 +643,8 @@
           <ul>
             <li>Add the source to your sideloading app once, then install from it</li>
             <li>Resigns with your own certificate — no developer account needed</li>
-            <li>Works over any network your tailnet reaches</li>
+            <li>Generate a QR invite from the phone or the Mac to pair either device</li>
+            <li>Voice input, file cards and approval settings live where you expect them</li>
           </ul>
           <p style="margin:0 0 8px;color:var(--text-2);font-size:12.5px">AltStore / SideStore source</p>
           <div class="copy-line">
@@ -572,7 +668,8 @@
           <ul>
             <li>Open the disk image, drag Hermey onto the Applications shortcut</li>
             <li>Sidebar, chat and the bot's computer in one window</li>
-            <li>⌘K for the command palette, ⌘↩ to send, ⌘. to interrupt a run</li>
+            <li>⌘K for the command palette, <code>/</code> for slash commands, ⌘↩ to send</li>
+            <li>Settings → Computer for local execution, permissions and revoke</li>
           </ul>
           <p style="margin:0 0 8px;color:var(--text-2);font-size:12.5px">
             Unsigned, so macOS quarantines the first launch. Authorise it once — right-click →
@@ -626,6 +723,26 @@
           <p>No analytics, no crash reporting, no account. The app stores a host address and a token,
              and talks to that host. Anything that leaves your machine leaves because your agent chose
              to send it.</p>
+        </details>
+
+        <details>
+          <summary>Do I need Remote Login or SSH turned on?</summary>
+          <p>No. With Computer use enabled, the Mac app itself connects out to your host and runs
+             commands there. Remote Login can stay off, and no inbound port is opened on the Mac.</p>
+        </details>
+
+        <details>
+          <summary>What macOS permissions does computer use need?</summary>
+          <p>Accessibility for clicks and keys, Screen Recording for screenshots, Input Monitoring for
+             taking control back, and Automation when an app is driven with AppleScript. Each has its
+             own status in Settings → Computer and its own link to System Settings. Nothing is asked
+             for until you choose to enable or check it.</p>
+        </details>
+
+        <details>
+          <summary>Can more than one bot drive my Mac?</summary>
+          <p>Yes, but not at the same time. A single queue serialises desktop actions and every action
+             is attributed to the bot that requested it. All bots share one workspace folder.</p>
         </details>
 
         <details>
