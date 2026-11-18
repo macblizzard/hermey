@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local computer use · Hermey docs</title>
+<meta name="description" content="Let bots use the Mac you are sitting at — screen, mouse, keyboard, files — over the app&#x27;s own outbound link. No SSH, no Remote Login, no inbound port.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/computer-use.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Local computer use · Hermey docs">
+<meta property="og:description" content="Let bots use the Mac you are sitting at — screen, mouse, keyboard, files — over the app&#x27;s own outbound link. No SSH, no Remote Login, no inbound port.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html" aria-current="page">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Local computer use</p>
+    <h1>Local computer use</h1>
+    <p class="lede">Let bots use the Mac you are sitting at — screen, mouse, keyboard, files — over the app's own outbound link. No SSH, no Remote Login, no inbound port.</p>
+    
+<h2 id="how-it-works">How it works</h2>
+<p>The Mac app is the <strong>executor</strong>. Your host sends a command; the app performs it under
+your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on
+it and Remote Login stays off.</p>
+<div class="note tip"><p><strong>It starts switched off.</strong> Nothing is queried until you turn on <strong>Settings → Computer → Let bots use this computer</strong>.</p></div>
+
+<h2 id="capabilities">What bots can do</h2>
+<ul>
+  <li>Run one-shot commands — including local builds — with a working directory you choose.</li>
+  <li>Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an
+    app.</li>
+  <li>Read, write and list files in one shared workspace, including downloads from the private browser
+    surface.</li>
+  <li>Open URLs and inspect a page snapshot without leaving the conversation.</li>
+</ul>
+
+<h2 id="permissions">macOS permissions</h2>
+<p>Each grant has its own status row and its own link into System Settings. Nothing is requested just
+by opening Settings — the probes run only when you press a button.</p>
+<div class="table-wrap "><table><thead><tr><th>Grant</th><th>What it is for</th></tr></thead><tbody><tr><td>Accessibility</td><td>clicks and keystrokes</td></tr><tr><td>Screen Recording</td><td>captures</td></tr><tr><td>Input Monitoring</td><td>detecting physical input so a bot can be taken over</td></tr><tr><td>Automation</td><td>driving an app through AppleScript</td></tr></tbody></table></div>
+
+<h2 id="containment">How it stays contained</h2>
+<ul>
+  <li>Computer use starts switched off, and revoking the Mac closes its link immediately.</li>
+  <li>One sorted queue drives the desktop, so two bots cannot interleave actions — and every action is
+    attributed to the bot that asked.</li>
+  <li>Physical input pauses the batch: touching the machine takes control back, and the bot resumes
+    only when you hand it back.</li>
+  <li>The app must be running. When it closes, computer use reports the Mac as offline.</li>
+  <li>The host pings the Mac and drops a socket that stops answering, so a slept machine reads as
+    absent instead of hanging a caller.</li>
+</ul>
+
+<h2 id="workspace">The workspace</h2>
+<p>File tools are confined to one shared folder under
+<code>~/Library/Application Support/Hermey/Computer/Workspace/</code>. Every bot sees the same folder;
+paths that climb out of it are refused and audited.</p>
+
+<h2 id="cli">From a bot's shell</h2>
+<div class="code"><pre><code>hermey computer observe
+hermey computer act &#x27;[{&quot;kind&quot;:&quot;click&quot;,&quot;x&quot;:120,&quot;y&quot;:80}]&#x27;</code></pre><button class="copy" type="button" aria-label="Copy the computer CLI">Copy</button></div>
+<p>The same commands are documented for agents in the shared <code>mac-local-computer</code> skill that
+the bridge installs for every bot on the host.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="apps.html"><span>Previous</span><strong>The apps</strong></a><a class="next" href="agents.html"><span>Next</span><strong>For agents</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#how-it-works">How it works</a></li><li><a href="#capabilities">What bots can do</a></li><li><a href="#permissions">macOS permissions</a></li><li><a href="#containment">How it stays contained</a></li><li><a href="#workspace">The workspace</a></li><li><a href="#cli">From a bot's shell</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

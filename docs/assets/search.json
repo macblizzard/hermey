@@ -1,0 +1,302 @@
+[
+{
+"h": "Quick start",
+"p": "Overview",
+"u": "index.html#quick-start",
+"b": "Quick start Three steps. The first needs root on the Hermes host; the others happen on the device. Install the host. One command, safe to re-run as an upgrade. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash Copy Mint a pairing code on that host, with the phone in your h"
+},
+{
+"h": "Start here",
+"p": "Overview",
+"u": "index.html#start-here",
+"b": "Start here Host Install the host The command, what it writes, the flags, and how to undo it. Devices The apps Sideloading, first launch, quarantine, notifications, revocation. Capability Local computer use Let bots drive the Mac you are sitting at \u2014 without SSH. Automation For agents The install runbook written for an "
+},
+{
+"h": "Requirements",
+"p": "Overview",
+"u": "index.html#requirements",
+"b": "Requirements Piece Needs Host Linux with systemd, Python 3.11+, a working hermes install, and Tailscale (or your own TLS proxy in front of loopback) iPhone / iPad iOS 17 or later, plus AltStore, SideStore or another signer Mac macOS 14 or later"
+},
+{
+"h": "The two halves",
+"p": "Overview",
+"u": "index.html#two-halves",
+"b": "The two halves Where it runs What it is Bridge Your Hermes host, bound to 127.0.0.1:8787 FastAPI service that adapts the Hermes dashboard to the apps' protocol. It holds the device registry, mints single-use tickets and audits every call. Apps iPhone, iPad, Mac SwiftUI clients. They hold a device key, never a host secr"
+},
+{
+"h": "The one command",
+"p": "Install the host",
+"u": "install.html#one-command",
+"b": "The one command curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash Copy Re-running it is an upgrade : same units, same state, package reinstalled and the services restarted."
+},
+{
+"h": "What it does, in order",
+"p": "Install the host",
+"u": "install.html#what-it-does",
+"b": "What it does, in order Preflight. Python 3.11+, systemd, and a hermes binary it can find. It stops with a clear message rather than half-installing. Service account. The bridge runs as the owner of the Hermes home \u2014 the account that can already read your bots' profiles. HERMEY_USER names a different one if you prefer; "
+},
+{
+"h": "Pairing",
+"p": "Install the host",
+"u": "install.html#pairing",
+"b": "Pairing hermey pair Copy It prints a code, a hermes://pair?host=\u2026&code=\u2026 link and \u2014 when the qrcode package could be installed \u2014 a QR. The link carries the address , so it is the one to paste on a Mac that has never paired. The eight digits work on their own only once the app already knows the host. Codes are single-us"
+},
+{
+"h": "Options",
+"p": "Install the host",
+"u": "install.html#options",
+"b": "Options Every flag is also readable as an environment variable, which matters when you pipe the script into a shell. Flag Env Default Meaning --port N HERMEY_PORT 8787 bridge port (loopback) --https-port N HERMEY_HTTPS_PORT 8443 tailnet port for tailscale serve --ref R HERMEY_REF main git ref to install; a release tag "
+},
+{
+"h": "What is on disk",
+"p": "Install the host",
+"u": "install.html#on-disk",
+"b": "What is on disk Path What /opt/hermey/venv the installed bridge /var/lib/hermey/bridge.db devices, tickets, room attachment index /var/lib/hermey/room-attachments/ uploaded files /etc/hermey/gateway.env the loopback gateway token, 0600 , read as an EnvironmentFile so the token never sits in a world-readable unit file /"
+},
+{
+"h": "Without Tailscale",
+"p": "Install the host",
+"u": "install.html#without-tailscale",
+"b": "Without Tailscale The bridge refuses to listen on anything but loopback \u2014 that is a design invariant, not a default. If the host has no tailnet, put your own TLS proxy in front of 127.0.0.1:8787 (Caddy with a real certificate is the least work) and pass --no-serve . sudo bash install.sh --no-serve Copy A self-signed ce"
+},
+{
+"h": "Uninstall",
+"p": "Install the host",
+"u": "install.html#uninstall",
+"b": "Uninstall curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash -s -- --uninstall Copy Stops and removes the units, turns the tailscale serve mapping off, and keeps your state and paired devices. Add --purge to delete /opt/hermey , /var/lib/hermey and /etc/hermey as well."
+},
+{
+"h": "iOS and iPadOS",
+"p": "The apps",
+"u": "apps.html#ios",
+"b": "iOS and iPadOS Install AltStore or SideStore following their setup for your device. Add this source in the app: https://github.com/macblizzard/hermey/releases/latest/download/altstore.json Copy It is a release asset on purpose: the latest release always serves the newest build, with no host of our own in the loop. Inst"
+},
+{
+"h": "macOS",
+"p": "The apps",
+"u": "apps.html#macos",
+"b": "macOS Download the disk image from macblizzard.github.io/hermey-downloads \u2014 a direct link, with no release-CDN redirect in front of it. The newest build is published as Hermey-macOS-<version>.dmg , so the filename tells you which build you have. Open the image and drag Hermey onto the Applications shortcut. The build i"
+},
+{
+"h": "First run",
+"p": "The apps",
+"u": "apps.html#first-run",
+"b": "First run Add a server: paste https://<host>.<tailnet>.ts.net:8443 or scan the QR. Enter the code from hermey pair . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
+},
+{
+"h": "Notifications and badges",
+"p": "The apps",
+"u": "apps.html#notifications",
+"b": "Notifications and badges A bot's reply earns a notification when that bot is not the one on screen \u2014 a chat you are reading has already told you. Both apps put the total waiting on the Dock tile or the app icon. Platform How it behaves macOS Delivers a banner as soon as the host reports the reply, even in the backgroun"
+},
+{
+"h": "Unpairing and revocation",
+"p": "The apps",
+"u": "apps.html#revocation",
+"b": "Unpairing and revocation Removing a device in the app deletes its key. Revoking from the host closes that device's link immediately and refuses the next connection \u2014 the token it held is spent. Neither touches your bots, your profiles or anything else on the host."
+},
+{
+"h": "How it works",
+"p": "Local computer use",
+"u": "computer-use.html#how-it-works",
+"b": "How it works The Mac app is the executor . Your host sends a command; the app performs it under your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on it and Remote Login stays off. It starts switched off. Nothing is queried until you turn on Settings \u2192 Computer \u2192 Let bo"
+},
+{
+"h": "What bots can do",
+"p": "Local computer use",
+"u": "computer-use.html#capabilities",
+"b": "What bots can do Run one-shot commands \u2014 including local builds \u2014 with a working directory you choose. Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an app. Read, write and list files in one shared workspace, including downloads from the private browser surface. Open URLs a"
+},
+{
+"h": "macOS permissions",
+"p": "Local computer use",
+"u": "computer-use.html#permissions",
+"b": "macOS permissions Each grant has its own status row and its own link into System Settings. Nothing is requested just by opening Settings \u2014 the probes run only when you press a button. Grant What it is for Accessibility clicks and keystrokes Screen Recording captures Input Monitoring detecting physical input so a bot ca"
+},
+{
+"h": "How it stays contained",
+"p": "Local computer use",
+"u": "computer-use.html#containment",
+"b": "How it stays contained Computer use starts switched off, and revoking the Mac closes its link immediately. One sorted queue drives the desktop, so two bots cannot interleave actions \u2014 and every action is attributed to the bot that asked. Physical input pauses the batch: touching the machine takes control back, and the "
+},
+{
+"h": "The workspace",
+"p": "Local computer use",
+"u": "computer-use.html#workspace",
+"b": "The workspace File tools are confined to one shared folder under ~/Library/Application Support/Hermey/Computer/Workspace/ . Every bot sees the same folder; paths that climb out of it are refused and audited."
+},
+{
+"h": "From a bot's shell",
+"p": "Local computer use",
+"u": "computer-use.html#cli",
+"b": "From a bot's shell hermey computer observe hermey computer act '[{\"kind\":\"click\",\"x\":120,\"y\":80}]' Copy The same commands are documented for agents in the shared mac-local-computer skill that the bridge installs for every bot on the host."
+},
+{
+"h": "Who does what",
+"p": "For agents",
+"u": "agents.html#who-does-what",
+"b": "Who does what Actor Owns You (agent) Preflight, install, verification, pairing code, handover of both app links. The human The phone or Mac, and the decision to pair it. Never you Their profiles, their bots, their other services, their tailnet configuration."
+},
+{
+"h": "Runbook",
+"p": "For agents",
+"u": "agents.html#runbook",
+"b": "Runbook Confirm this is the right host. Hermes must already run here and have profiles the human talks to. Install. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash Copy Verify before you say it works. Both gates must pass: hermey doctor curl -fsS https://<host>.<tailnet>"
+},
+{
+"h": "Hard rules",
+"p": "For agents",
+"u": "agents.html#hard-rules",
+"b": "Hard rules Never bind the bridge to anything but 127.0.0.1 . tailscale serve is the only front door. Never create a unit named hermes-gateway.service . That is Hermes' messaging gateway. Never add App Transport Security exceptions to the apps. The certificate must be real. Never stop or reconfigure an existing tailnet "
+},
+{
+"h": "Failure playbook",
+"p": "For agents",
+"u": "agents.html#failure-playbook",
+"b": "Failure playbook Symptom Cause Fix the bridge did not answer on 127.0.0.1:8787 port taken, venv broken, or a crash on start hermey logs 80 ; sudo ss -ltnp | grep 8787 ; reinstall with --port 8788 reusing this host's dashboard: pid \u2026 a dashboard exists; Hermes allows one expected \u2014 let it reuse; hermes dashboard --statu"
+},
+{
+"h": "Definition of done",
+"p": "For agents",
+"u": "agents.html#done",
+"b": "Definition of done hermey doctor \u2014 unit active, health ok, HTTPS ok curl against /v1/health answers ok The human has a pairing code or link The human has both app links and knows the iOS re-sign caveat You changed nothing else on the host"
+},
+{
+"h": "Facts you can rely on",
+"p": "For agents",
+"u": "agents.html#facts",
+"b": "Facts you can rely on Units hermey-bridge.service always; hermey-gateway.service only if the host had no dashboard Ports bridge 127.0.0.1:8787 (loopback only), tailnet 8443 Paths /opt/hermey/venv , /var/lib/hermey , /etc/hermey/*.env (0600) CLI hermey status | pair | logs [n] | doctor | update | uninstall"
+},
+{
+"h": "No tailnet",
+"p": "For agents",
+"u": "agents.html#no-tailnet",
+"b": "No tailnet Install with --no-serve , terminate TLS in front of 127.0.0.1:8787 with a real certificate, and give the apps that URL. Self-signed certificates are refused \u2014 do not work around that in the app."
+},
+{
+"h": "Start here",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#start-here",
+"b": "Start here hermey doctor Copy It reports the unit state, loopback health, the gateway URL the bridge relays to, Tailscale's state, and whether the HTTPS endpoint answers through the certificate."
+},
+{
+"h": "Doctor says health FAIL",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#health-fail",
+"b": "Doctor says health FAIL The bridge is not answering on 127.0.0.1:8787 . Read its log; the first line usually names the cause. hermey logs 80 Copy Log line Meaning address already in use something else holds the port \u2014 sudo ss -ltnp | grep 8787 , then reinstall with --port 8788 \"event\": \"upstream_error\" with \"reason\": \""
+},
+{
+"h": "\"Reusing this host's dashboard: pid \u2026\"",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#dashboard-exists",
+"b": "\"Reusing this host's dashboard: pid \u2026\" Expected. Hermes allows one dashboard per host and the installer reuses it. For a second isolated one while testing, use HERMEY_UNIT_PREFIX and a separate HERMEY_CONF , and point the second bridge at a dashboard you started with --isolated ."
+},
+{
+"h": "tailscale serve refused",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#serve-refused",
+"b": "tailscale serve refused tailscale status tailscale serve status Copy If another service owns 8443 , re-run the installer with --https-port 8444 . Do not stop the other service to make room."
+},
+{
+"h": "HTTPS fails but the bridge is healthy",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#https-fails",
+"b": "HTTPS fails but the bridge is healthy Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists: tailscale cert <host>.<tailnet>.ts.net curl -v https://<host>.<tailnet>.ts.net:8443/v1/health Copy"
+},
+{
+"h": "The app cannot reach the host",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#app-cannot-reach",
+"b": "The app cannot reach the host Is the device on the tailnet, logged into the same one? Does the URL in the app exactly match hermey pair 's output, including the port? curl https://<host>.<tailnet>.ts.net:8443/v1/health from another tailnet device \u2014 if that fails, the problem is the host, not the app."
+},
+{
+"h": "A pairing code is rejected",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#code-rejected",
+"b": "A pairing code is rejected Codes are single-use and expire in minutes. Mint a fresh one with hermey pair . Repeated failures are rate limited per client, so wait a moment after a handful of attempts."
+},
+{
+"h": "The iOS app stops launching after a week",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#ios-week",
+"b": "The iOS app stops launching after a week That is free-Apple-ID signing, not a bug. Re-sign through AltStore or SideStore, or use a paid developer account for a one-year profile."
+},
+{
+"h": "macOS says the app is damaged",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#mac-damaged",
+"b": "macOS says the app is damaged The build is unsigned. Right-click \u2192 Open the first time, or once: xattr -dr com.apple.quarantine /Applications/Hermey.app Copy"
+},
+{
+"h": "Computer use keeps dropping",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#computer-down",
+"b": "Computer use keeps dropping The Mac app must be running to hold the link. A machine that sleeps loses its socket; the app re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of hanging. If it stays down, open Settings \u2192 Computer on the Mac and read the status row, then check "
+},
+{
+"h": "Trust boundaries",
+"p": "Security",
+"u": "security.html#boundaries",
+"b": "Trust boundaries Boundary Crossing it requires What is on the other side Public internet \u2192 tailnet Tailscale identity + ACL nothing: no public ingress exists Tailnet \u2192 bridge TLS to tailscale serve , then a single-use 30 s ticket pairing, tokens, /v1/ws Bridge \u2192 gateway loopback plus the gateway token, which is never s"
+},
+{
+"h": "Invariants",
+"p": "Security",
+"u": "security.html#invariants",
+"b": "Invariants The bridge listens on loopback only; tailscale serve is the only front door. Tickets are single-use and expire in 30 seconds; a device is identified by its own Ed25519 key. The device never receives the gateway token \u2014 it cannot talk to the agent directly. Approvals are the agent's to ask and the human's to "
+},
+{
+"h": "Deliberately absent",
+"p": "Security",
+"u": "security.html#absent",
+"b": "Deliberately absent No account, no analytics, no crash reporting, no relay of ours in the request path. No public ingress: if the tailnet is up but the device is not on it, nothing is reachable. No per-bot permission system on the Mac. Computer use is one owner-level switch \u2014 a small number of trusted bots is the state"
+},
+{
+"h": "Where the apps keep secrets",
+"p": "Security",
+"u": "security.html#storage",
+"b": "Where the apps keep secrets The phone keeps its device key and refresh token in the Keychain, this-device-only. The Mac build ships unsigned and has no Keychain entitlement, so it keeps the same items in a 0600 file under ~/Library/Application Support/Hermey/ , excluded from backups."
+},
+{
+"h": "Reporting a problem",
+"p": "Security",
+"u": "security.html#reporting",
+"b": "Reporting a problem Open a private advisory at https://github.com/macblizzard/hermey/security/advisories/new rather than a public issue, and do not paste tokens, hostnames or personal data into either."
+},
+{
+"h": "CLI",
+"p": "Reference",
+"u": "reference.html#cli",
+"b": "CLI Command What it does hermey status unit, port and health at a glance hermey pair mints a code, a hermes:// link and a QR when possible hermey logs [n] the bridge journal, newest last hermey doctor unit, loopback health, gateway URL, Tailscale state, HTTPS through the certificate hermey update reinstall from the con"
+},
+{
+"h": "Ports and units",
+"p": "Reference",
+"u": "reference.html#ports",
+"b": "Ports and units Bridge 127.0.0.1:8787 \u2014 loopback only, by design Tailnet :8443 via tailscale serve , real certificate Units hermey-bridge.service ; hermey-gateway.service only when the host had no dashboard Never a unit named hermes-gateway.service \u2014 that is Hermes' messaging gateway"
+},
+{
+"h": "Paths",
+"p": "Reference",
+"u": "reference.html#paths",
+"b": "Paths Path What /opt/hermey/venv the installed bridge /var/lib/hermey/bridge.db devices, tickets, attachment index /var/lib/hermey/room-attachments/ uploaded files /etc/hermey/gateway.env gateway token, 0600 /etc/hermey/providers.env optional voice provider keys, 0600 ~/Library/Application Support/Hermey/Computer/Works"
+},
+{
+"h": "Endpoints",
+"p": "Reference",
+"u": "reference.html#health",
+"b": "Endpoints URL Answers GET /v1/health {{\"status\":\"ok\"}} on loopback or through the tailnet front door /v1/ws the device websocket (single-use 30 s ticket, then a session) /v1/pair/start begins a pairing exchange"
+},
+{
+"h": "Download URLs",
+"p": "Reference",
+"u": "reference.html#downloads",
+"b": "Download URLs URL iOS source https://github.com/macblizzard/hermey/releases/latest/download/altstore.json macOS download https://macblizzard.github.io/hermey-downloads/ Latest release https://github.com/macblizzard/hermey/releases/latest"
+},
+{
+"h": "How updates arrive",
+"p": "Reference",
+"u": "reference.html#updates",
+"b": "How updates arrive Host: re-run the install command; it is an upgrade and keeps state. macOS: Sparkle reads an appcast and offers the new build in the app. iOS: the sideloading app refreshes from the AltStore source."
+}
+]

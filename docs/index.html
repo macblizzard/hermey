@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermey documentation</title>
+<meta name="description" content="A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Hermey documentation">
+<meta property="og:description" content="A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html" aria-current="page">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Overview</p>
+    <h1>Hermey documentation</h1>
+    <p class="lede">A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.</p>
+    
+<p>Hermey is two pieces that meet at a tailnet address. A small <strong>bridge</strong> runs on the
+machine that already runs Hermes. The <strong>apps</strong> on your phone and Mac talk to that bridge
+over HTTPS with a real certificate, and nothing else is in the path — no account, no relay, no
+service of ours.</p>
+
+<h2 id="quick-start">Quick start</h2>
+<p>Three steps. The first needs root on the Hermes host; the others happen on the device.</p>
+<ol class="steps-list">
+  <li><strong>Install the host.</strong> One command, safe to re-run as an upgrade.
+    <div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash</code></pre><button class="copy" type="button" aria-label="Copy the host install command">Copy</button></div>
+  </li>
+  <li><strong>Mint a pairing code</strong> on that host, with the phone in your hand — codes expire.
+    <div class="code"><pre><code>hermey pair</code></pre><button class="copy" type="button" aria-label="Copy the pairing command">Copy</button></div>
+  </li>
+  <li><strong>Install the app and paste the code.</strong> iOS through AltStore or SideStore, macOS
+    from the disk image. <a href="apps.html">Both are unsigned</a> — that is the stated trade-off.</li>
+</ol>
+
+<h2 id="start-here">Start here</h2>
+<div class="cards">
+  <a class="card" href="install.html"><span class="card-kicker">Host</span><strong>Install the host</strong>
+    <span>The command, what it writes, the flags, and how to undo it.</span></a>
+  <a class="card" href="apps.html"><span class="card-kicker">Devices</span><strong>The apps</strong>
+    <span>Sideloading, first launch, quarantine, notifications, revocation.</span></a>
+  <a class="card" href="computer-use.html"><span class="card-kicker">Capability</span><strong>Local computer use</strong>
+    <span>Let bots drive the Mac you are sitting at — without SSH.</span></a>
+  <a class="card" href="agents.html"><span class="card-kicker">Automation</span><strong>For agents</strong>
+    <span>The install runbook written for an executor, with its verification gates.</span></a>
+  <a class="card" href="troubleshooting.html"><span class="card-kicker">Repair</span><strong>Troubleshooting</strong>
+    <span>Symptom, cause, fix — with the real log strings.</span></a>
+  <a class="card" href="security.html"><span class="card-kicker">Model</span><strong>Security</strong>
+    <span>Trust boundaries, invariants, and what is deliberately absent.</span></a>
+</div>
+
+<h2 id="requirements">Requirements</h2>
+<div class="table-wrap "><table><thead><tr><th>Piece</th><th>Needs</th></tr></thead><tbody><tr><td>Host</td><td>Linux with systemd, Python 3.11+, a working <code>hermes</code> install, and Tailscale (or your own TLS proxy in front of loopback)</td></tr><tr><td>iPhone / iPad</td><td>iOS 17 or later, plus AltStore, SideStore or another signer</td></tr><tr><td>Mac</td><td>macOS 14 or later</td></tr></tbody></table></div>
+
+<h2 id="two-halves">The two halves</h2>
+<div class="table-wrap "><table><thead><tr><th></th><th>Where it runs</th><th>What it is</th></tr></thead><tbody><tr><td><strong>Bridge</strong></td><td>Your Hermes host, bound to <code>127.0.0.1:8787</code></td><td>FastAPI service that adapts the Hermes dashboard to the apps' protocol. It holds the device registry, mints single-use tickets and audits every call.</td></tr><tr><td><strong>Apps</strong></td><td>iPhone, iPad, Mac</td><td>SwiftUI clients. They hold a device key, never a host secret, and can only answer the questions the agent asks.</td></tr><tr><td><strong>Front door</strong></td><td><code>tailscale serve --bg --https=8443</code></td><td>Terminates TLS with a real certificate. The apps refuse self-signed, so this is not optional.</td></tr></tbody></table></div>
+
+<p class="next-hint">New to this? Read <a href="install.html">Install the host</a>, then
+<a href="apps.html">the apps</a>.</p>
+
+    <nav class="pager" aria-label="Pages"><a class="next" href="install.html"><span>Next</span><strong>Install the host</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#quick-start">Quick start</a></li><li><a href="#start-here">Start here</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#two-halves">The two halves</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

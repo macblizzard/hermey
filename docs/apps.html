@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The apps · Hermey docs</title>
+<meta name="description" content="iOS and macOS, both unsigned. That is a deliberate trade-off: a few extra taps on first install, and no account anywhere.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/apps.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The apps · Hermey docs">
+<meta property="og:description" content="iOS and macOS, both unsigned. That is a deliberate trade-off: a few extra taps on first install, and no account anywhere.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html" aria-current="page">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / The apps</p>
+    <h1>The apps</h1>
+    <p class="lede">iOS and macOS, both unsigned. That is a deliberate trade-off: a few extra taps on first install, and no account anywhere.</p>
+    
+<h2 id="ios">iOS and iPadOS</h2>
+<ol class="steps-list">
+  <li>Install <a href="https://altstore.io">AltStore</a> or <a href="https://sidestore.io">SideStore</a>
+    following their setup for your device.</li>
+  <li>Add this source in the app:
+    <div class="code"><pre><code>https://github.com/macblizzard/hermey/releases/latest/download/altstore.json</code></pre><button class="copy" type="button" aria-label="Copy the AltStore source URL">Copy</button></div>
+    It is a release asset on purpose: the latest release always serves the newest build, with no host
+    of our own in the loop.</li>
+  <li>Install <strong>Hermey</strong> from the source.</li>
+</ol>
+<p>Any signing tool that accepts an unsigned IPA works (Sideloadly, Feather, or Xcode with a free Apple
+ID).</p>
+<div class="note warn"><p><strong>A free Apple ID signs for about seven days.</strong> Then the app stops launching until it is re-signed. AltStore and SideStore re-sign in the background while you are on the same network as their server; a paid developer account extends that to a year. The app itself needs no account.</p></div>
+
+<h2 id="macos">macOS</h2>
+<ol class="steps-list">
+  <li>Download the disk image from
+    <a href="https://macblizzard.github.io/hermey-downloads/">macblizzard.github.io/hermey-downloads</a>
+    — a direct link, with no release-CDN redirect in front of it. The newest build is published as
+    <code>Hermey-macOS-&lt;version&gt;.dmg</code>, so the filename tells you which build you have. Open
+    the image and drag Hermey onto the Applications shortcut.</li>
+  <li>The build is unsigned, so macOS quarantines it once. Either right-click → <strong>Open</strong> →
+    <strong>Open</strong>, or run:
+    <div class="code"><pre><code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code></pre><button class="copy" type="button" aria-label="Copy the quarantine removal command">Copy</button></div>
+    macOS remembers the choice. Moving or re-downloading the app brings the mark back with the new
+    copy.</li>
+  <li>Pair the same way as the phone: run <code>hermey pair</code> on the host and paste the code or
+    the whole link into <strong>Pairing code or link</strong> — the Mac has no camera. A hand-issued
+    device token still works under <strong>Advanced</strong>.</li>
+</ol>
+<p>macOS 14 or later is required.</p>
+
+<h2 id="first-run">First run</h2>
+<ul>
+  <li>Add a server: paste <code>https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443</code> or scan the QR.</li>
+  <li>Enter the code from <code>hermey pair</code>.</li>
+  <li>The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind
+    the three-dot menu.</li>
+</ul>
+
+<h2 id="notifications">Notifications and badges</h2>
+<p>A bot's reply earns a notification when <em>that bot is not the one on screen</em> — a chat you are
+reading has already told you. Both apps put the total waiting on the Dock tile or the app icon.</p>
+<div class="table-wrap "><table><thead><tr><th>Platform</th><th>How it behaves</th></tr></thead><tbody><tr><td>macOS</td><td>Delivers a banner as soon as the host reports the reply, even in the background; clicking it opens that conversation.</td></tr><tr><td>iOS, app open</td><td>Delivers while the app is running.</td></tr><tr><td>iOS, app closed</td><td>Falls back to a background refresh iOS schedules — expect delays in the tens of minutes, and only while the phone is awake.</td></tr></tbody></table></div>
+<p><strong>The relay closes that gap, and it is the only way a sideloaded build can.</strong> Push needs
+a credential for the team that signed the app, which a personal install does not have — so the host
+posts the banner to an app that already holds one. Install <strong>Bark</strong> (free), copy the
+address it shows, and paste it into <strong>Settings → Replies</strong> (iOS) or
+<strong>Settings → Notifications</strong> (macOS). <strong>Send a test</strong> proves it.</p>
+<p>Settings has one switch and a per-bot quiet list. A quieted bot still counts on its row and in the
+badge; it just never buzzes. Reactions, drafts, pins and the switch are per-device; unread counts come
+from the host and survive a reinstall.</p>
+
+<h2 id="revocation">Unpairing and revocation</h2>
+<p>Removing a device in the app deletes its key. Revoking from the host closes that device's link
+immediately and refuses the next connection — the token it held is spent. Neither touches your bots,
+your profiles or anything else on the host.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="install.html"><span>Previous</span><strong>Install the host</strong></a><a class="next" href="computer-use.html"><span>Next</span><strong>Local computer use</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#ios">iOS and iPadOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#notifications">Notifications and badges</a></li><li><a href="#revocation">Unpairing and revocation</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

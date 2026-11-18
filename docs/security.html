@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Security and threat model · Hermey docs</title>
+<meta name="description" content="The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/security.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Security and threat model · Hermey docs">
+<meta property="og:description" content="The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html" aria-current="page">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Security</p>
+    <h1>Security and threat model</h1>
+    <p class="lede">The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.</p>
+    
+<p>The full document, including the audit and its residual risks, is
+<a href="https://github.com/macblizzard/hermey/blob/main/docs/SECURITY.md">docs/SECURITY.md</a>. This page is the shape of it.</p>
+
+<h2 id="boundaries">Trust boundaries</h2>
+<div class="table-wrap "><table><thead><tr><th>Boundary</th><th>Crossing it requires</th><th>What is on the other side</th></tr></thead><tbody><tr><td>Public internet → tailnet</td><td>Tailscale identity + ACL</td><td>nothing: no public ingress exists</td></tr><tr><td>Tailnet → bridge</td><td>TLS to <code>tailscale serve</code>, then a single-use 30 s ticket</td><td>pairing, tokens, <code>/v1/ws</code></td></tr><tr><td>Bridge → gateway</td><td>loopback plus the gateway token, which is never sent to a device</td><td>full authority over the agent</td></tr><tr><td>Gateway → app</td><td>a server-to-client request (approval, clarify, sudo, secret)</td><td>a human decision</td></tr><tr><td>App → gateway</td><td>the client method allow-list</td><td>sessions, prompts, discovery</td></tr></tbody></table></div>
+
+<h2 id="invariants">Invariants</h2>
+<ul>
+  <li>The bridge listens on loopback only; <code>tailscale serve</code> is the only front door.</li>
+  <li>Tickets are single-use and expire in 30 seconds; a device is identified by its own Ed25519 key.</li>
+  <li>The device never receives the gateway token — it cannot talk to the agent directly.</li>
+  <li>Approvals are the agent's to ask and the human's to answer; a device cannot grant itself
+    authority.</li>
+  <li>Revocation is immediate and per-device.</li>
+</ul>
+
+<h2 id="absent">Deliberately absent</h2>
+<ul>
+  <li>No account, no analytics, no crash reporting, no relay of ours in the request path.</li>
+  <li>No public ingress: if the tailnet is up but the device is not on it, nothing is reachable.</li>
+  <li>No per-bot permission system on the Mac. Computer use is one owner-level switch — a small number
+    of trusted bots is the stated model.</li>
+</ul>
+
+<h2 id="storage">Where the apps keep secrets</h2>
+<p>The phone keeps its device key and refresh token in the Keychain, this-device-only. The Mac build
+ships unsigned and has no Keychain entitlement, so it keeps the same items in a <code>0600</code> file
+under <code>~/Library/Application Support/Hermey/</code>, excluded from backups.</p>
+
+<h2 id="reporting">Reporting a problem</h2>
+<p>Open a private advisory at
+<a href="https://github.com/macblizzard/hermey/security/advisories/new">https://github.com/macblizzard/hermey/security/advisories/new</a> rather than a public
+issue, and do not paste tokens, hostnames or personal data into either.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="troubleshooting.html"><span>Previous</span><strong>Troubleshooting</strong></a><a class="next" href="reference.html"><span>Next</span><strong>Reference</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#boundaries">Trust boundaries</a></li><li><a href="#invariants">Invariants</a></li><li><a href="#absent">Deliberately absent</a></li><li><a href="#storage">Where the apps keep secrets</a></li><li><a href="#reporting">Reporting a problem</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install the host · Hermey docs</title>
+<meta name="description" content="One command on the machine that already runs Hermes. It adds a loopback service and exposes it over your tailnet — nothing else on the host changes.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/install.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Install the host · Hermey docs">
+<meta property="og:description" content="One command on the machine that already runs Hermes. It adds a loopback service and exposes it over your tailnet — nothing else on the host changes.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html" aria-current="page">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Install the host</p>
+    <h1>Install the host</h1>
+    <p class="lede">One command on the machine that already runs Hermes. It adds a loopback service and exposes it over your tailnet — nothing else on the host changes.</p>
+    
+<h2 id="one-command">The one command</h2>
+<div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash</code></pre><button class="copy" type="button" aria-label="Copy the host install command">Copy</button></div>
+<p>Re-running it is an <strong>upgrade</strong>: same units, same state, package reinstalled and the
+services restarted.</p>
+
+<h2 id="what-it-does">What it does, in order</h2>
+<ol class="steps-list">
+  <li><strong>Preflight.</strong> Python 3.11+, systemd, and a <code>hermes</code> binary it can find.
+    It stops with a clear message rather than half-installing.</li>
+  <li><strong>Service account.</strong> The bridge runs as the owner of the Hermes home — the account
+    that can already read your bots' profiles. <code>HERMEY_USER</code> names a different one if you
+    prefer; it then needs read access to the profiles directory. State lives in
+    <code>/var/lib/hermey</code>.</li>
+  <li><strong>Bridge.</strong> Installed into <code>/opt/hermey/venv</code>, run as
+    <code>hermey-bridge.service</code>, bound to <code>127.0.0.1:8787</code>.</li>
+  <li><strong>Gateway.</strong> Hermes allows one machine-level dashboard per host, so the installer
+    <em>reuses</em> the one already running, reading its port and token from the process environment.
+    Only when there is none does it create <code>hermey-gateway.service</code>.</li>
+  <li><strong>TLS and reachability.</strong>
+    <code>tailscale serve --bg --https=8443 http://127.0.0.1:8787</code> — a real certificate, tailnet
+    only, no public listener. It then verifies the HTTPS endpoint answers.</li>
+  <li><strong>The CLI.</strong> <code>hermey</code> in <code>/usr/local/bin</code>:
+    <code>status</code>, <code>pair</code>, <code>logs</code>, <code>doctor</code>,
+    <code>update</code>, <code>uninstall</code>.</li>
+</ol>
+
+<div class="note warn"><p><strong>Never name a unit <code>hermes-gateway.service</code>.</strong> That is Hermes' own <em>messaging</em> gateway. The collision is silent until the next restart, when messaging does not come back. Hermey's units are <code>hermey-bridge.service</code> and, only when needed, <code>hermey-gateway.service</code>.</p></div>
+
+<h2 id="pairing">Pairing</h2>
+<div class="code"><pre><code>hermey pair</code></pre><button class="copy" type="button" aria-label="Copy the pairing command">Copy</button></div>
+<p>It prints a code, a <code>hermes://pair?host=…&amp;code=…</code> link and — when the
+<code>qrcode</code> package could be installed — a QR. The <strong>link carries the address</strong>,
+so it is the one to paste on a Mac that has never paired. The eight digits work on their own only once
+the app already knows the host.</p>
+<p>Codes are single-use and short-lived. Mint one when the phone is in your hand. Pair as many devices
+as you like; each is individually revocable.</p>
+
+<h2 id="options">Options</h2>
+<p>Every flag is also readable as an environment variable, which matters when you pipe the script into
+a shell.</p>
+<div class="table-wrap "><table><thead><tr><th>Flag</th><th>Env</th><th>Default</th><th>Meaning</th></tr></thead><tbody><tr><td><code>--port N</code></td><td><code>HERMEY_PORT</code></td><td><code>8787</code></td><td>bridge port (loopback)</td></tr><tr><td><code>--https-port N</code></td><td><code>HERMEY_HTTPS_PORT</code></td><td><code>8443</code></td><td>tailnet port for <code>tailscale serve</code></td></tr><tr><td><code>--ref R</code></td><td><code>HERMEY_REF</code></td><td><code>main</code></td><td>git ref to install; a release tag pins a build</td></tr><tr><td><code>--local DIR</code></td><td><code>HERMEY_LOCAL_SRC</code></td><td>—</td><td>install from a checkout instead of GitHub</td></tr><tr><td><code>--no-serve</code></td><td><code>HERMEY_SERVE=no</code></td><td>auto</td><td>do not touch <code>tailscale serve</code></td></tr><tr><td><code>--uninstall</code></td><td>—</td><td>—</td><td>remove the units and the serve mapping, keep state</td></tr><tr><td><code>--purge</code></td><td>—</td><td>—</td><td>with <code>--uninstall</code>: also delete state, config and the service user</td></tr></tbody></table></div>
+<p>Paths are overridable too: <code>HERMEY_PREFIX</code> (<code>/opt/hermey</code>),
+<code>HERMEY_STATE</code> (<code>/var/lib/hermey</code>), <code>HERMEY_CONF</code>
+(<code>/etc/hermey</code>), <code>HERMEY_BINDIR</code>, <code>HERMEY_USER</code> and
+<code>HERMEY_UNIT_PREFIX</code>. The last two exist so a second isolated instance can run for
+testing.</p>
+
+<h2 id="on-disk">What is on disk</h2>
+<div class="table-wrap "><table><thead><tr><th>Path</th><th>What</th></tr></thead><tbody><tr><td><code>/opt/hermey/venv</code></td><td>the installed bridge</td></tr><tr><td><code>/var/lib/hermey/bridge.db</code></td><td>devices, tickets, room attachment index</td></tr><tr><td><code>/var/lib/hermey/room-attachments/</code></td><td>uploaded files</td></tr><tr><td><code>/etc/hermey/gateway.env</code></td><td>the loopback gateway token, <code>0600</code>, read as an <code>EnvironmentFile</code> so the token never sits in a world-readable unit file</td></tr><tr><td><code>/etc/hermey/providers.env</code></td><td>optional: the same for voice provider keys</td></tr><tr><td><code>/etc/systemd/system/hermey-bridge.service</code></td><td>the service</td></tr><tr><td><code>/etc/systemd/system/hermey-gateway.service</code></td><td>only created when this host had no dashboard</td></tr></tbody></table></div>
+
+<h2 id="without-tailscale">Without Tailscale</h2>
+<p>The bridge refuses to listen on anything but loopback — that is a design invariant, not a default.
+If the host has no tailnet, put your own TLS proxy in front of <code>127.0.0.1:8787</code> (Caddy with
+a real certificate is the least work) and pass <code>--no-serve</code>.</p>
+<div class="code"><pre><code>sudo bash install.sh --no-serve</code></pre><button class="copy" type="button" aria-label="Copy install without tailscale serve">Copy</button></div>
+<div class="note warn"><p><strong>A self-signed certificate will not work.</strong> The apps follow App Transport Security and refuse it. In this arrangement <code>hermey pair</code> prints the code alone, because there is no address to put in a link — add your public address in the app first, then enter the code.</p></div>
+
+<h2 id="uninstall">Uninstall</h2>
+<div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash -s -- --uninstall</code></pre><button class="copy" type="button" aria-label="Copy the uninstall command">Copy</button></div>
+<p>Stops and removes the units, turns the <code>tailscale serve</code> mapping off, and keeps your
+state and paired devices. Add <code>--purge</code> to delete <code>/opt/hermey</code>,
+<code>/var/lib/hermey</code> and <code>/etc/hermey</code> as well.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="index.html"><span>Previous</span><strong>Overview</strong></a><a class="next" href="apps.html"><span>Next</span><strong>The apps</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#one-command">The one command</a></li><li><a href="#what-it-does">What it does, in order</a></li><li><a href="#pairing">Pairing</a></li><li><a href="#options">Options</a></li><li><a href="#on-disk">What is on disk</a></li><li><a href="#without-tailscale">Without Tailscale</a></li><li><a href="#uninstall">Uninstall</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

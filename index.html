@@ -328,6 +328,14 @@
   .faq details[open] summary::after { content: "–"; }
   .faq .answer { padding: 0 0 1.5rem; max-width: 62ch; color: var(--body); font-size: .97rem; }
 
+  /* docs band */
+  .doc-links { list-style: none; margin: 1.2rem 0 0; padding: 0; display: grid; gap: .9rem; }
+  .doc-links li { display: grid; gap: .1rem; }
+  .doc-links a { font-size: 1rem; color: var(--ink); border-bottom: 1px solid rgba(217,119,87,.35); justify-self: start; }
+  .doc-links a:hover { border-bottom-color: var(--clay); }
+  .doc-links span { font-size: .86rem; color: var(--muted); }
+  .docs-more { margin-top: 1.6rem; font-size: .95rem; }
+
   /* footer */
   .site-foot { border-top: 1px solid var(--line); padding: 3rem 0 4rem; }
   .foot-row { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; align-items: baseline; justify-content: space-between; }
@@ -350,6 +358,7 @@
       <a href="#install">Install</a>
       <a href="#platforms">Platforms</a>
       <a href="#faq">Questions</a>
+      <a href="docs/">Docs</a>
     </nav>
     <a class="btn btn-primary" href="#install">Install</a>
   </div>
@@ -606,6 +615,41 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
     </div>
   </section>
 
+  <!-- docs -->
+  <section class="block" id="docs">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Documentation</p>
+          <h2>Everything, written down.</h2>
+        </div>
+        <p>Install, sideloading, computer use, the agent runbook and every failure we know about — on its own site, with a search box.</p>
+      </div>
+
+      <div class="platforms">
+        <div class="platform">
+          <h3>Setting it up</h3>
+          <ul class="doc-links">
+            <li><a href="docs/install.html">Install the host</a><span>The one command, the flags, what lands on disk.</span></li>
+            <li><a href="docs/apps.html">The apps</a><span>Sideloading, first launch, notifications, revocation.</span></li>
+            <li><a href="docs/computer-use.html">Local computer use</a><span>Permissions, containment, the workspace.</span></li>
+          </ul>
+        </div>
+        <div class="platform">
+          <h3>Running it</h3>
+          <ul class="doc-links">
+            <li><a href="docs/agents.html">For agents</a><span>The install runbook, with its verification gates.</span></li>
+            <li><a href="docs/troubleshooting.html">Troubleshooting</a><span>Symptom, cause, fix — with the real log strings.</span></li>
+            <li><a href="docs/reference.html">Reference</a><span>CLI, ports, paths and download URLs.</span></li>
+            <li><a href="docs/security.html">Security</a><span>The threat model, plainly stated.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="docs-more"><a href="docs/">Read the documentation →</a></p>
+    </div>
+  </section>
+
   <!-- faq -->
   <section class="block" id="faq">
     <div class="wrap">
@@ -665,7 +709,7 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
       <a class="brand" href="#top">Hermey<span class="dot">.</span></a>
       <nav class="foot-links" aria-label="Elsewhere">
         <a href="https://github.com/macblizzard/hermey">Source</a>
-        <a href="https://github.com/macblizzard/hermey/blob/main/docs/INSTALL.md">Docs</a>
+        <a href="docs/">Docs</a>
         <a href="https://github.com/macblizzard/hermey/issues">Issues</a>
         <a href="https://github.com/macblizzard/hermey/releases/latest">Releases</a>
       </nav>

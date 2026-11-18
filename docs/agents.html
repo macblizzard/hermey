@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>For agents · Hermey docs</title>
+<meta name="description" content="The installation procedure written for an executor rather than a reader: preflight, install, two hard verification gates, then the pairing handoff.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/agents.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="For agents · Hermey docs">
+<meta property="og:description" content="The installation procedure written for an executor rather than a reader: preflight, install, two hard verification gates, then the pairing handoff.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html" aria-current="page">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / For agents</p>
+    <h1>For agents</h1>
+    <p class="lede">The installation procedure written for an executor rather than a reader: preflight, install, two hard verification gates, then the pairing handoff.</p>
+    
+<p>If you are an agent with a root shell on the user's Hermes host, this page is your runbook. The
+authoritative long form lives in <a href="https://github.com/macblizzard/hermey/blob/main/docs/FOR-AGENTS.md">docs/FOR-AGENTS.md</a>;
+it is also packaged as a skill in <a href="https://github.com/macblizzard/hermey/blob/main/setup/SKILL.md">setup/SKILL.md</a>.</p>
+
+<h2 id="who-does-what">Who does what</h2>
+<div class="table-wrap "><table><thead><tr><th>Actor</th><th>Owns</th></tr></thead><tbody><tr><td>You (agent)</td><td>Preflight, install, verification, pairing code, handover of both app links.</td></tr><tr><td>The human</td><td>The phone or Mac, and the decision to pair it.</td></tr><tr><td>Never you</td><td>Their profiles, their bots, their other services, their tailnet configuration.</td></tr></tbody></table></div>
+
+<h2 id="runbook">Runbook</h2>
+<ol class="steps-list">
+  <li><strong>Confirm this is the right host.</strong> Hermes must already run here and have profiles
+    the human talks to.</li>
+  <li><strong>Install.</strong>
+    <div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash</code></pre><button class="copy" type="button" aria-label="Copy the host install command">Copy</button></div>
+  </li>
+  <li><strong>Verify before you say it works.</strong> Both gates must pass:
+    <div class="code"><pre><code>hermey doctor
+curl -fsS https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443/v1/health</code></pre><button class="copy" type="button" aria-label="Copy the verification commands">Copy</button></div>
+    The second answers <code>{"status":"ok", …}</code>. If it does not, do not proceed — go to the
+    failure playbook.</li>
+  <li><strong>Pair the human's device.</strong> Run <code>hermey pair</code> and give them the code or
+    the full link. Do not paste a code into a public channel.</li>
+  <li><strong>Hand over the apps.</strong> The AltStore source for iOS, the downloads page for macOS,
+    and the seven-day re-sign caveat.</li>
+</ol>
+
+<h2 id="hard-rules">Hard rules</h2>
+<ul class="rules">
+  <li>Never bind the bridge to anything but <code>127.0.0.1</code>. <code>tailscale serve</code> is the
+    only front door.</li>
+  <li>Never create a unit named <code>hermes-gateway.service</code>. That is Hermes' messaging gateway.</li>
+  <li>Never add App Transport Security exceptions to the apps. The certificate must be real.</li>
+  <li>Never stop or reconfigure an existing tailnet service to free port 8443 — reinstall with
+    <code>--https-port 8444</code>.</li>
+  <li>Do not touch the user's profiles or bots. Hermey reads them; it does not own them.</li>
+  <li>Copy no secrets into chat or logs. Provider keys go in <code>/etc/hermey/providers.env</code>
+    (<code>0600</code>).</li>
+</ul>
+
+<h2 id="failure-playbook">Failure playbook</h2>
+<div class="table-wrap "><table><thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td><code>the bridge did not answer on 127.0.0.1:8787</code></td><td>port taken, venv broken, or a crash on start</td><td><code>hermey logs 80</code>; <code>sudo ss -ltnp | grep 8787</code>; reinstall with <code>--port 8788</code></td></tr><tr><td><code>reusing this host's dashboard: pid …</code></td><td>a dashboard exists; Hermes allows one</td><td>expected — let it reuse; <code>hermes dashboard --status</code></td></tr><tr><td>doctor health FAIL, audit says <code>upstream_error</code> / <code>connect_failed</code></td><td>the dashboard is not answering, or restarted with a new token</td><td>re-run the installer; it re-reads both</td></tr><tr><td><code>tailscale serve</code> refused</td><td>not root, or serve not enabled on the tailnet</td><td>run as root; <code>tailscale serve status</code></td></tr><tr><td>HTTPS fails, loopback healthy</td><td>serve mapping points elsewhere, or wrong DNS name</td><td><code>tailscale serve status</code>; <code>--https-port</code></td></tr><tr><td>App connects nowhere, host healthy</td><td>phone not on the tailnet, or ATS rejecting a self-signed cert</td><td>join the tailnet; use the <code>ts.net</code> name</td></tr><tr><td>Pairing code rejected</td><td>expired — they are short-lived</td><td><code>hermey pair</code> again</td></tr><tr><td>iOS app stops launching after ~a week</td><td>free-Apple-ID signature expired</td><td>re-sign through AltStore/SideStore</td></tr></tbody></table></div>
+
+<h2 id="done">Definition of done</h2>
+<ul class="checklist">
+  <li><code>hermey doctor</code> — unit active, health ok, HTTPS ok</li>
+  <li><code>curl</code> against <code>/v1/health</code> answers <code>ok</code></li>
+  <li>The human has a pairing code or link</li>
+  <li>The human has both app links and knows the iOS re-sign caveat</li>
+  <li>You changed nothing else on the host</li>
+</ul>
+
+<h2 id="facts">Facts you can rely on</h2>
+<div class="table-wrap "><table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td>Units</td><td><code>hermey-bridge.service</code> always; <code>hermey-gateway.service</code> only if the host had no dashboard</td></tr><tr><td>Ports</td><td>bridge <code>127.0.0.1:8787</code> (loopback only), tailnet <code>8443</code></td></tr><tr><td>Paths</td><td><code>/opt/hermey/venv</code>, <code>/var/lib/hermey</code>, <code>/etc/hermey/*.env</code> (0600)</td></tr><tr><td>CLI</td><td><code>hermey status | pair | logs [n] | doctor | update | uninstall</code></td></tr></tbody></table></div>
+
+<h2 id="no-tailnet">No tailnet</h2>
+<p>Install with <code>--no-serve</code>, terminate TLS in front of <code>127.0.0.1:8787</code> with a
+real certificate, and give the apps that URL. Self-signed certificates are refused — do not work around
+that in the app.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="computer-use.html"><span>Previous</span><strong>Local computer use</strong></a><a class="next" href="troubleshooting.html"><span>Next</span><strong>Troubleshooting</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#who-does-what">Who does what</a></li><li><a href="#runbook">Runbook</a></li><li><a href="#hard-rules">Hard rules</a></li><li><a href="#failure-playbook">Failure playbook</a></li><li><a href="#done">Definition of done</a></li><li><a href="#facts">Facts you can rely on</a></li><li><a href="#no-tailnet">No tailnet</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

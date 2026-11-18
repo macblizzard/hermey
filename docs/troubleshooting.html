@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Troubleshooting · Hermey docs</title>
+<meta name="description" content="Symptom, cause and fix — with the strings you will actually see.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/troubleshooting.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Troubleshooting · Hermey docs">
+<meta property="og:description" content="Symptom, cause and fix — with the strings you will actually see.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html" aria-current="page">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Troubleshooting</p>
+    <h1>Troubleshooting</h1>
+    <p class="lede">Symptom, cause and fix — with the strings you will actually see.</p>
+    
+<h2 id="start-here">Start here</h2>
+<div class="code"><pre><code>hermey doctor</code></pre><button class="copy" type="button" aria-label="Copy the doctor command">Copy</button></div>
+<p>It reports the unit state, loopback health, the gateway URL the bridge relays to, Tailscale's state,
+and whether the HTTPS endpoint answers through the certificate.</p>
+
+<h2 id="health-fail">Doctor says health FAIL</h2>
+<p>The bridge is not answering on <code>127.0.0.1:8787</code>. Read its log; the first line usually
+names the cause.</p>
+<div class="code"><pre><code>hermey logs 80</code></pre><button class="copy" type="button" aria-label="Copy the log command">Copy</button></div>
+<div class="table-wrap "><table><thead><tr><th>Log line</th><th>Meaning</th></tr></thead><tbody><tr><td><code>address already in use</code></td><td>something else holds the port — <code>sudo ss -ltnp | grep 8787</code>, then reinstall with <code>--port 8788</code></td></tr><tr><td><code>"event": "upstream_error"</code> with <code>"reason": "connect_failed"</code></td><td>the dashboard it relays to is not answering on the port the unit was given, or restarted with a different token; re-run the installer so it re-reads both</td></tr><tr><td><code>No module named hermes_bridge</code></td><td>the venv is broken; re-run the installer (it reinstalls)</td></tr></tbody></table></div>
+
+<h2 id="dashboard-exists">"Reusing this host's dashboard: pid …"</h2>
+<p>Expected. Hermes allows one dashboard per host and the installer reuses it. For a second isolated
+one while testing, use <code>HERMEY_UNIT_PREFIX</code> and a separate <code>HERMEY_CONF</code>, and
+point the second bridge at a dashboard you started with <code>--isolated</code>.</p>
+
+<h2 id="serve-refused">tailscale serve refused</h2>
+<div class="code"><pre><code>tailscale status
+tailscale serve status</code></pre><button class="copy" type="button" aria-label="Copy the tailscale status commands">Copy</button></div>
+<p>If another service owns <code>8443</code>, re-run the installer with <code>--https-port 8444</code>.
+Do not stop the other service to make room.</p>
+
+<h2 id="https-fails">HTTPS fails but the bridge is healthy</h2>
+<p>Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists:</p>
+<div class="code"><pre><code>tailscale cert &lt;host&gt;.&lt;tailnet&gt;.ts.net
+curl -v https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443/v1/health</code></pre><button class="copy" type="button" aria-label="Copy the certificate diagnosis">Copy</button></div>
+
+<h2 id="app-cannot-reach">The app cannot reach the host</h2>
+<ul>
+  <li>Is the device on the tailnet, logged into the same one?</li>
+  <li>Does the URL in the app exactly match <code>hermey pair</code>'s output, including the port?</li>
+  <li><code>curl https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443/v1/health</code> from another tailnet
+    device — if that fails, the problem is the host, not the app.</li>
+</ul>
+
+<h2 id="code-rejected">A pairing code is rejected</h2>
+<p>Codes are single-use and expire in minutes. Mint a fresh one with <code>hermey pair</code>. Repeated
+failures are rate limited per client, so wait a moment after a handful of attempts.</p>
+
+<h2 id="ios-week">The iOS app stops launching after a week</h2>
+<p>That is free-Apple-ID signing, not a bug. Re-sign through AltStore or SideStore, or use a paid
+developer account for a one-year profile.</p>
+
+<h2 id="mac-damaged">macOS says the app is damaged</h2>
+<p>The build is unsigned. Right-click → Open the first time, or once:</p>
+<div class="code"><pre><code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code></pre><button class="copy" type="button" aria-label="Copy the quarantine removal command">Copy</button></div>
+
+<h2 id="computer-down">Computer use keeps dropping</h2>
+<p>The Mac app must be running to hold the link. A machine that sleeps loses its socket; the app
+re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of
+hanging. If it stays down, open <strong>Settings → Computer</strong> on the Mac and read the status
+row, then check <code>hermey doctor</code> on the host.</p>
+
+    <nav class="pager" aria-label="Pages"><a href="agents.html"><span>Previous</span><strong>For agents</strong></a><a class="next" href="security.html"><span>Next</span><strong>Security</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#start-here">Start here</a></li><li><a href="#health-fail">Doctor says health FAIL</a></li><li><a href="#dashboard-exists">"Reusing this host's dashboard: pid …"</a></li><li><a href="#serve-refused">tailscale serve refused</a></li><li><a href="#https-fails">HTTPS fails but the bridge is healthy</a></li><li><a href="#app-cannot-reach">The app cannot reach the host</a></li><li><a href="#code-rejected">A pairing code is rejected</a></li><li><a href="#ios-week">The iOS app stops launching after a week</a></li><li><a href="#mac-damaged">macOS says the app is damaged</a></li><li><a href="#computer-down">Computer use keeps dropping</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>
