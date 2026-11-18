@@ -271,9 +271,9 @@ struct ConversationDrawer: View {
 extension ConversationDrawer {
     /// Preview-only fixture: `PreviewFixture` has no host, so every closure is a no-op.
     static func preview() -> ConversationDrawer {
-        ConversationDrawer(title: "cody", subtitle: "lead developer",
+        ConversationDrawer(title: "assistant", subtitle: "team lead",
                            face: nil,
-                           botID: "cody",
+                           botID: "assistant",
                            activity: .idle,
                            isCompressing: false,
                            hasAnyUnread: true, canSpeak: true, speakReplies: false,

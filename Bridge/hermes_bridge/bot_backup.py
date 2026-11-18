@@ -7,7 +7,7 @@ transcript dump would make the file enormous while restoring nothing you cannot 
 
 What one bot looks like in the export::
 
-    {"profile": "cody", "name": "Cody", "description": "Lead Developer…",
+    {"profile": "assistant", "name": "Assistant", "description": "Team lead…",
      "soul": "…", "memory": {"memory": "…", "user": "…"}, "notes": "…",
      "categories": ["sec-mw0thzic-h9tz0"],
      "routines": [{"id": "fbc2fb0f324d", "name": "hermey-nightly-audit",

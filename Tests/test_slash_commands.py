@@ -8,6 +8,7 @@ is never silently swallowed.
 from __future__ import annotations
 
 import json
+import os
 import re
 import unittest
 from pathlib import Path
@@ -19,8 +20,12 @@ COMPOSER = (ROOT / "Sources/HermeyUI/Composer.swift").read_text(encoding="utf-8"
 HELP = (ROOT / "Sources/HermeyUI/HermesCommandsHelpSheet.swift").read_text(encoding="utf-8")
 IOS = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
 MAC = (ROOT / "Apps/HermesMac/Conversation/MacComposerBar.swift").read_text(encoding="utf-8")
-HOST = json.loads(Path("/root/.hermes/profiles/cody/cache/scratch/hermes_commands.json").read_text()) \
-    if Path("/root/.hermes/profiles/cody/cache/scratch/hermes_commands.json").exists() else []
+# An optional cross-check against a host's own command inventory, supplied by whoever runs the
+# suite. It used to point at one developer's scratch file, which made the check silently skip for
+# everyone else and published that machine's home path in a public repo.
+_inventory = os.environ.get("HERMES_COMMAND_INVENTORY")
+HOST = json.loads(Path(_inventory).read_text()) \
+    if _inventory and Path(_inventory).is_file() else []
 
 
 class TheCatalogueIsTheHosts(unittest.TestCase):
