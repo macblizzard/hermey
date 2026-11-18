@@ -124,17 +124,19 @@ li::marker { color: var(--faint); }
 strong { color: var(--ink); font-weight: 600; }
 code {
   font-family: var(--mono); font-size: .86em; background: var(--paper-2);
-  border: 1px solid var(--line-soft); border-radius: 4px; padding: .08em .32em; color: #45443f;
+  border: 1px solid var(--line-soft); border-radius: 4px; padding: .08em .26em; color: #45443f;
 }
 h2 code, p code, li code, td code { white-space: nowrap; }
 @media (max-width: 640px) { h2 code, p code, li code { white-space: normal; } }
 
 /* code blocks — long commands wrap rather than hide behind a scrollbar: the install one-liner is the
-   single most important string on the site, and a clipped command is worse than a wrapped one. The
-   copy button still yields the exact text, newlines included. */
+   single most important string on the site, and a clipped command is worse than a wrapped one. A
+   negative text-indent offsets the first line, so wrapped continuations sit one step in and cannot be
+   mistaken for a second command. The copy button still yields the exact text. */
 .code { position: relative; margin: 0 0 1.2rem; border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2); overflow: hidden; }
 .code pre { margin: 0; padding: .85rem 4.6rem .85rem .95rem; overflow-x: auto; }
-.code code { background: none; border: 0; padding: 0; font-size: .8rem; line-height: 1.7; color: #35342f; white-space: pre-wrap; overflow-wrap: anywhere; }
+.code code { display: block; background: none; border: 0; padding: 0 0 0 1.15rem; text-indent: -1.15rem;
+             font-size: .8rem; line-height: 1.7; color: #35342f; white-space: pre-wrap; overflow-wrap: anywhere; }
 .copy {
   position: absolute; top: .5rem; right: .5rem; min-height: 30px; padding: 0 .55rem;
   border: 1px solid var(--line); border-radius: 6px; background: var(--paper);
