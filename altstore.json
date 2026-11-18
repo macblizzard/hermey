@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.575",
-          "buildVersion": "575",
-          "date": "2026-11-18T16:47:05Z",
-          "localizedDescription": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.575/Hermey-0.1.575-b575.ipa",
-          "size": 3346871,
+          "version": "0.1.576",
+          "buildVersion": "576",
+          "date": "2026-11-18T18:12:20Z",
+          "localizedDescription": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.576/Hermey-0.1.576-b576.ipa",
+          "size": 3346874,
           "minOSVersion": "17.0",
-          "sha256": "6052777aa5b17a6a80b4c91bd310304001cddf1949db99480b184e8eda3817e4"
+          "sha256": "f3166482a1fa34974c5c6e8342d25c16c3468419411e629af2ffa86996894277"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.575 (575)",
-      "identifier": "hermes-0.1.575-575",
-      "caption": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
-      "date": "2026-11-18T16:47:05Z",
+      "title": "Hermes 0.1.576 (576)",
+      "identifier": "hermes-0.1.576-576",
+      "caption": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
+      "date": "2026-11-18T18:12:20Z",
       "tintColor": "#9A9AA0"
     }
   ],
