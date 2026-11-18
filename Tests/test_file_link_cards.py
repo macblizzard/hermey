@@ -12,15 +12,21 @@ IOS_MD = (ROOT / "Apps/HermesMobile/Views/MobileMarkdown.swift").read_text(encod
 IOS_ROW = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text(encoding="utf-8")
 
 
-class BothFileStoreHostsAreRecognised(unittest.TestCase):
-    def test_the_card_knows_the_tailnet_and_dns_free_origins(self) -> None:
-        self.assertIn("hermes.corvus-vibes.ts.net", CARD)
-        self.assertIn("100.86.19.1", CARD)
-        self.assertIn(":9446", CARD)
-        self.assertIn(":8099", CARD)
+class StorePortsAreRecognised(unittest.TestCase):
+    def test_recognition_uses_the_store_ports_not_an_installation_address(self) -> None:
+        for token in ("tlsPort = 9446", "directPort = 8099", "isStorePort(url.port)"):
+            with self.subTest(token=token):
+                self.assertIn(token, CARD)
+        # A public repo must not compile in one install's host or IP: the store lives on
+        # whichever machine the app is paired to. Patterns, not literals, keep this guard clean.
+        for personal in (r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.",
+                         r"[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net"):
+            with self.subTest(personal=personal):
+                self.assertNotRegex(CARD, personal)
+        self.assertIn("(?:9446|8099)", CARD)
 
     def test_it_does_not_turn_every_link_into_a_card(self) -> None:
-        self.assertIn('host == "hermes.corvus-vibes.ts.net" || host == "100.86.19.1"', CARD)
+        self.assertIn("isStorePort(_ port: Int?) -> Bool", CARD)
         self.assertIn("parts.count >= 2", CARD)
 
     def test_names_and_owner_come_from_the_path(self) -> None:
@@ -97,7 +103,7 @@ class SaveToFilesNeedsAFile(unittest.TestCase):
         self.assertIn("URLSession.shared.download(from: downloadURL())", card)
         self.assertIn("HermesFileShareSheet(url: file.url)", card)
         self.assertIn("appendingPathComponent(link.filename)", card)
-        self.assertIn("components.host = \"hermes.corvus-vibes.ts.net\"", card)
+        self.assertIn("components.port = HermesFileLinks.tlsPort", card)
 
 
 class FleetApprovalSettings(unittest.TestCase):

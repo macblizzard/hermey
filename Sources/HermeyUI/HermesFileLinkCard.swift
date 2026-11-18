@@ -1,12 +1,13 @@
 import Foundation
 import SwiftUI
 
-/// A file link from the bots' shared tailnet file store, ready to draw as a card.
+/// A file link from the bots' shared file store, ready to draw as a card.
 ///
-/// The store serves `https://hermes.corvus-vibes.ts.net:9446/<bot>/<file>` and the DNS-free
-/// `http://100.86.19.1:8099/<bot>/<file>`. Both are recognised so a link Mo pastes from a script and
-/// one a bot writes in chat get the same treatment. Nothing else is turned into a card: a random
-/// `https://` link keeps the normal markdown link the renderer already draws.
+/// The store is a separate service on the paired host, and its address differs per installation —
+/// so recognition keys on the store's own ports and the `<owner>/<file>` path shape, never on a
+/// compiled-in hostname or IP. Both the TLS form and the DNS-free local form are recognised, so a
+/// link a bot writes in chat and one pasted from a script get the same treatment. Nothing else is
+/// turned into a card: a random `https://` link keeps the normal markdown link the renderer draws.
 public struct HermesFileLink: Identifiable, Equatable, Sendable {
     public let url: URL
     public let filename: String
@@ -16,8 +17,8 @@ public struct HermesFileLink: Identifiable, Equatable, Sendable {
 
     public init?(url: URL) {
         guard url.scheme?.lowercased() == "https" || url.scheme?.lowercased() == "http",
-              let host = url.host?.lowercased(),
-              host == "hermes.corvus-vibes.ts.net" || host == "100.86.19.1" else {
+              HermesFileLinks.isStorePort(url.port),
+              let host = url.host, !host.isEmpty else {
             return nil
         }
         let parts = url.pathComponents.filter { $0 != "/" }
@@ -49,8 +50,19 @@ public struct HermesFileLink: Identifiable, Equatable, Sendable {
 
 /// Detection and text cleanup for the shared file store.
 public enum HermesFileLinks {
-    /// Matches the store's two hosts with the `<bot>/<file>` path. Kept narrow on purpose.
-    private static let pattern = #"https?://(?:hermes\.corvus-vibes\.ts\.net(?::9446)?|100\.86\.19\.1(?::8099)?)/(?:[A-Za-z0-9._~%+\-]+/)+[A-Za-z0-9._~%+\-]+(?:\?[A-Za-z0-9._~%+\-=&]*)?"#
+    /// The file store's two ports. Deliberately keyed on the port, not the host: the store runs on
+    /// whichever machine this app is paired to, and baking one installation's address into a public
+    /// app would both publish it and break every other install.
+    public static let tlsPort = 9446
+    public static let directPort = 8099
+
+    public static func isStorePort(_ port: Int?) -> Bool {
+        port == tlsPort || port == directPort
+    }
+
+    /// Matches the store's two ports with the `<owner>/<file>` path. Kept narrow on purpose: an
+    /// ordinary link on an ordinary port keeps the renderer's normal markdown treatment.
+    private static let pattern = #"https?://[A-Za-z0-9.-]+:(?:9446|8099)/(?:[A-Za-z0-9._~%+\-]+/)+[A-Za-z0-9._~%+\-]+(?:\?[A-Za-z0-9._~%+\-=&]*)?"#
 
     private static let regex: NSRegularExpression? = try? NSRegularExpression(pattern: pattern)
 
@@ -191,17 +203,16 @@ public struct HermesFileLinkCard: View {
     }
 
     #if os(iOS)
-    /// The DNS-free address is plain HTTP, which the app cannot fetch under ATS. The same store is
-    /// served over TLS on the tailnet name, so prefer that form for the app's own download.
+    /// The DNS-free form is plain HTTP on the direct port, which the app cannot fetch under ATS.
+    /// The same store is served over TLS on the other port, so keep the host the bot gave us and
+    /// switch to that port and scheme — no per-installation address is stored in the app.
     private func downloadURL() -> URL {
-        guard var components = URLComponents(url: link.url, resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: link.url, resolvingAgainstBaseURL: false),
+              components.port == HermesFileLinks.directPort else {
             return link.url
         }
-        if components.host == "100.86.19.1" {
-            components.host = "hermes.corvus-vibes.ts.net"
-            components.port = 9446
-            components.scheme = "https"
-        }
+        components.port = HermesFileLinks.tlsPort
+        components.scheme = "https"
         return components.url ?? link.url
     }
 
