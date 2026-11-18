@@ -22,13 +22,17 @@ Checks
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SITE_DIR = ROOT.parent / "hermey-pages"  # the gh-pages worktree, when it is checked out beside the repo
+# The gh-pages worktree normally sits beside the repo; HERMEY_SITE_DIR overrides it so the check can
+# run against a fresh checkout (CI) or a copy, instead of only on the machine that has the worktree.
+_override = os.environ.get("HERMEY_SITE_DIR")
+SITE_DIR = pathlib.Path(_override).resolve() if _override else ROOT.parent / "hermey-pages"
 GENERATOR = ROOT / "Tools" / "site" / "build_docs.py"
 INSTALLER = ROOT / "setup" / "install.sh"
 APP = ROOT / "Bridge" / "hermes_bridge" / "app.py"
