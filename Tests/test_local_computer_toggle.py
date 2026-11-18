@@ -33,7 +33,8 @@ class LocalComputerPrototype(unittest.TestCase):
         self.assertIn("Date().timeIntervalSince(self.lastPong) > 60", service)
         self.assertNotIn("withThrowingTaskGroup", service)
         self.assertIn("backoff = min(backoff * 2, 30_000_000_000)", service)
-        self.assertIn("code == 4403 ? .refused : .reconnecting", service)
+        self.assertIn("let code = (error as? LocalComputerCloseError)?.code", service)
+        self.assertIn("if code == 4403 || code == 4401 {", service)
 
     def test_commands_are_argv_not_shell_and_output_is_capped(self) -> None:
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()

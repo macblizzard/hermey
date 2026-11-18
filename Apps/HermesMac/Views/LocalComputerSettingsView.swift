@@ -6,7 +6,7 @@ import SwiftUI
 /// keeps that single socket alive. Turning it off drops the socket; the bin revokes it on the host too.
 struct LocalComputerSettingsView: View {
     @ObservedObject var store: WorkspaceStore
-    @StateObject private var service = LocalComputerService()
+    @ObservedObject private var service = LocalComputerService.shared
     @StateObject private var permissions = ComputerPermissions()
     @State private var confirmingRevoke = false
 

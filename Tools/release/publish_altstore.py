@@ -157,7 +157,7 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
     pages_base = f"https://{owner}.github.io/{name}"
     size, digest = publish_dist.digest_of(dmg)
     dmg_url = f"{pages_base}/{versioned}"
-    release_page = f"https://github.com/{repo}/releases/tag/v{version}"
+    release_page = f"https://github.com/{repo}/releases/tag/v{safe_component(version)}"
     work = Path(tempfile.mkdtemp(prefix="hermey-downloads-"))
     try:
         run(["git", "init", "-q", "-b", "gh-pages"], cwd=work)
@@ -266,7 +266,7 @@ def main() -> int:
     # The tag names the *app*, not the build: a release whose tag disagrees with the version inside
     # the IPA is a support thread ("v22" beside an app that says 0.1.22"). Builds still differ per
     # run, which is what the sideload source compares.
-    tag = f"v{version}"
+    tag = f"v{safe_component(version)}"
     icon_url = ICON_URL.format(repo=args.repo)
     asset_name = f"Hermey-{safe_component(version)}-b{safe_component(build)}.ipa"
     download = f"https://github.com/{args.repo}/releases/download/{tag}/{asset_name}"

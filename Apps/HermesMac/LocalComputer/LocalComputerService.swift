@@ -11,6 +11,10 @@ import SwiftUI
 /// a computer on the host closes its socket and refuses the next one.
 @MainActor
 final class LocalComputerService: ObservableObject {
+    /// One executor per process. A view-scoped service kept a live socket when its Settings window
+    /// closed, then a fresh window dialed a second one and the two registrations fought on the bridge.
+    static let shared = LocalComputerService()
+
     enum Status: String {
         case off
         case connecting
@@ -49,6 +53,9 @@ final class LocalComputerService: ObservableObject {
         defaults.set(value, forKey: enabledKey)
         if value {
             guard let address else {
+                loop?.cancel()
+                loop = nil
+                drop(socket)
                 status = .refused
                 lastError = "Pair this Mac with a host before enabling local computer use."
                 return
@@ -84,6 +91,11 @@ final class LocalComputerService: ObservableObject {
         setEnabled(true, address: address)
     }
 
+    private struct LocalComputerCloseError: Error {
+        let code: Int
+        let underlying: Error
+    }
+
     // MARK: - Connection
 
     private func connectionLoop(address: PairingAddress) async {
@@ -94,13 +106,18 @@ final class LocalComputerService: ObservableObject {
                 backoff = 1_000_000_000
             } catch {
                 if Task.isCancelled { break }
-                ClientLog.shared.record("local computer reconnecting: \(error.localizedDescription)",
+                let code = (error as? LocalComputerCloseError)?.code
+                ClientLog.shared.record("local computer reconnecting: code=\(code ?? -1) \(error.localizedDescription)",
                                         level: .warning, category: "local-computer")
-                let code = (error as? URLSessionWebSocketTask.CloseCode)?.rawValue
-                status = code == 4403 ? .refused : .reconnecting
-                lastError = code == 4403
-                    ? "Access was revoked on the host. Turn this Mac off and on again to re-request it."
-                    : error.localizedDescription
+                if code == 4403 || code == 4401 {
+                    status = .refused
+                    lastError = code == 4403
+                        ? "Access was revoked on the host. Turn this Mac off and on again to re-request it."
+                        : "The pairing ticket was single-use. Pair again to reconnect."
+                    break
+                }
+                status = .reconnecting
+                lastError = error.localizedDescription
             }
             guard enabled, !Task.isCancelled else { break }
             try? await Task.sleep(nanoseconds: backoff)
@@ -149,11 +166,14 @@ final class LocalComputerService: ObservableObject {
         heartbeat = timer
         do {
             try await receiveFrames(on: task)
-        } catch {
             finish(task, timer: timer)
-            throw error
+        } catch {
+            // URLSession never throws the peer's close code. It is on the task after the failure,
+            // so read it before cancel() clears the transport.
+            let code = task.closeCode.rawValue
+            finish(task, timer: timer)
+            throw LocalComputerCloseError(code: code, underlying: error)
         }
-        finish(task, timer: timer)
     }
 
     private func receiveFrames(on task: URLSessionWebSocketTask) async throws {
@@ -209,6 +229,7 @@ final class LocalComputerService: ObservableObject {
         timer.invalidate()
         if heartbeat === timer { heartbeat = nil }
         if socket === task { socket = nil }
+        task.cancel(with: .goingAway, reason: nil)
         if status == .connected { status = .reconnecting }
     }
 

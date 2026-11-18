@@ -427,10 +427,6 @@ def main() -> int:
 
     drift = manifest_drift or bool(broken) or page_drift or readme_drift or bool(dead)
 
-    for label, url in manifest_urls(wanted):
-        if not url_ok(url):
-            print(f"still broken after repair  {label} {url}")
-
     if args.check:
         return 1 if drift else 0
 
@@ -461,6 +457,10 @@ def main() -> int:
         print(f"removed   gh-pages:{name}")
 
     failures = []
+    for label, url in manifest_urls(wanted):
+        if not url_ok(url):
+            print(f"still broken after repair  {label} {url}")
+            failures.append(label)
     for label, url in (("release", f"https://github.com/{args.repo}/releases/latest/download/altstore.json"),
                        ("pages", f"https://{args.repo.split('/')[0]}.github.io/{args.repo.split('/')[1]}/altstore.json")):
         try:

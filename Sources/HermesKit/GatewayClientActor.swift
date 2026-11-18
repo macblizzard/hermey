@@ -404,7 +404,10 @@ public actor GatewayClient: GatewayClientProtocol {
 
     public func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] {
         let result = try await performRead("session.history",
-                                           params: .object(["session_id": .string(id)]),
+                                           params: .object([
+                                               "session_id": .string(id),
+                                               "limit": .int(Int64(limit)),
+                                           ]),
                                            timeout: timeouts.call)
         return try GatewayPayloadDecoder.history(result, limit: limit)
     }

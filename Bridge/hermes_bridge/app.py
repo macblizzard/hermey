@@ -100,6 +100,8 @@ PAIRING_CODE_TTL_SECONDS = _pairing_ttl()
 ACCESS_TOKEN_TTL_SECONDS = 15 * 60
 WS_TICKET_TTL_SECONDS = 30
 MAX_CONTROL_BODY_BYTES = 1 * 1024 * 1024
+# A workspace file write is base64 JSON with a 4 MB decoded ceiling, so its request can reach ~6 MB.
+MAX_LOCAL_COMPUTER_BODY_BYTES = 6 * 1024 * 1024
 MAX_VOICE_BODY_BYTES = 16 * 1024 * 1024
 PROTOCOL_VERSION = 1
 MAX_DEVICES = 32
@@ -232,7 +234,12 @@ def create_app(
         a limit after the memory is already spent — and two of these routes are unauthenticated.
         Control routes are small by design; a voice upload is audio and gets a larger ceiling.
         """
-        limit = MAX_VOICE_BODY_BYTES if request.url.path.startswith("/v1/voice/") else MAX_CONTROL_BODY_BYTES
+        if request.url.path.startswith("/v1/voice/"):
+            limit = MAX_VOICE_BODY_BYTES
+        elif request.url.path.startswith("/v1/local-computers/"):
+            limit = MAX_LOCAL_COMPUTER_BODY_BYTES
+        else:
+            limit = MAX_CONTROL_BODY_BYTES
         declared = request.headers.get("content-length")
         if declared is None and "chunked" in request.headers.get("transfer-encoding", "").lower():
             # Every client here knows its size. A chunked body would reach the parser without ever

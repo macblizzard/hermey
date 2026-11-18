@@ -106,7 +106,11 @@ final class ComputerActions {
         for action in actions {
             try await apply(action)
         }
-        return try ComputerObserver.shared.observe()
+        let observation = try await Task.detached(priority: .userInitiated) {
+            try ComputerObserver.shared.observe()
+        }.value
+        noteObservation()
+        return observation
     }
 
     private static func requireUnlocked() throws {
@@ -175,9 +179,11 @@ final class ComputerActions {
             post(keyEvent(code, down: true, modifiers: action.modifiers))
             post(keyEvent(code, down: false, modifiers: action.modifiers))
         case "scroll":
-            let delta = action.amount ?? 3
+            // A remote amount goes straight into Int32; clamp before that conversion so a huge
+            // value cannot trap the whole GUI app.
+            let delta = min(max(action.amount ?? 3, -10_000), 10_000)
             let dx = action.direction == "left" ? -delta : (action.direction == "right" ? delta : 0)
-            let dy = action.direction == "up" ? -delta : (action.direction == "down" ? delta : delta)
+            let dy = action.direction == "up" ? -delta : (action.direction == "down" ? delta : 0)
             post(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                          wheel1: Int32(dy), wheel2: Int32(dx), wheel3: 0))
         case "wait":

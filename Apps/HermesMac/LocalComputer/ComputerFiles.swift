@@ -40,10 +40,13 @@ final class ComputerFiles {
         let cleaned = raw.replacingOccurrences(of: "\\", with: "/")
         let url = root.appendingPathComponent(cleaned).standardizedFileURL
         let rootPath = root.standardizedFileURL.path
-        guard url.path == rootPath || url.path.hasPrefix(rootPath + "/") else {
+        // `standardizedFileURL` removes `..` lexically but happily follows a symlink the full-access
+        // shell may have planted inside the workspace. Resolve it and re-check the root prefix.
+        let resolved = url.resolvingSymlinksInPath()
+        guard resolved.path == rootPath || resolved.path.hasPrefix(rootPath + "/") else {
             throw ComputerFileError.outside
         }
-        return url
+        return resolved
     }
 
     func perform(_ request: [String: Any]) throws -> [String: Any] {
@@ -55,8 +58,11 @@ final class ComputerFiles {
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw ComputerFileError.missing(path)
             }
+            // Size-check before loading, so a huge file cannot spike memory just to be rejected.
+            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let size = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            guard size <= maxBytes else { throw ComputerFileError.tooLarge }
             let data = try Data(contentsOf: url)
-            guard data.count <= maxBytes else { throw ComputerFileError.tooLarge }
             return ["op": "read", "path": path, "size": data.count,
                     "content_base64": data.base64EncodedString()]
         case "write":

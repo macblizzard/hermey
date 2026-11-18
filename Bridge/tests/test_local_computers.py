@@ -245,3 +245,91 @@ def test_secret_redaction_applies_to_text_streams():
     assert "sk-canarycanarycanary1" not in out
     assert "ghp_canarycanarycanary12" not in out
     assert out.count("[redacted]") == 2
+
+
+
+def test_reconnect_keeps_the_new_registration(bridge):
+    """The old socket's disconnect must not erase the replacement registered after it."""
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        def ws_url() -> str:
+            return f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+                {"ticket": bridge.mint_ticket(device_id)})
+
+        first = await connect(ws_url())
+        await first.send(json.dumps({"type": "hello", "name": "Mac 1"}))
+        second = await connect(ws_url())
+        await second.send(json.dumps({"type": "hello", "name": "Mac 2"}))
+        await asyncio.sleep(0.2)
+        await first.close()
+
+        for _ in range(50):
+            listed = bridge.client().get(
+                "/v1/local-computers",
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            computers = listed.json().get("computers", [])
+            if computers and computers[0]["name"] == "Mac 2":
+                break
+            time.sleep(0.02)
+        assert computers, "replacement registration vanished"
+        assert computers[0]["name"] == "Mac 2"
+
+        async def answer() -> None:
+            frame = json.loads(await asyncio.wait_for(second.recv(), timeout=5))
+            assert frame["type"] == "observe"
+            observation = {"frameID": "fresh", "width": 10, "height": 10, "format": "jpeg",
+                           "imageBase64": base64.b64encode(b"fresh").decode(),
+                           "activeWindow": None, "capturedAt": 3.0}
+            await second.send(json.dumps({"id": frame["id"], "type": "result", "exit_code": 0,
+                                          "observation": observation}))
+
+        worker = asyncio.create_task(answer())
+        result = await asyncio.to_thread(
+            bridge.client().post,
+            f"/v1/local-computers/{device_id}/observe",
+            json={},
+            headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+        await asyncio.wait_for(worker, timeout=5)
+        assert result.status_code == 200, result.text
+        await second.close()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))
+
+
+def test_caller_cannot_override_protected_frame_keys(bridge):
+    pair = bridge.pair(name="Mac", platform="macos")
+    device_id = pair["device_id"]
+
+    async def scenario() -> None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Mac"}))
+            await asyncio.sleep(0.2)
+
+            async def attacker_wants_a_shell() -> None:
+                frame = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+                assert frame["type"] == "file"
+                assert "argv" not in frame
+                assert frame["id"] != "caller-chosen"
+                assert frame["op"] == "read"
+                assert frame["path"] == "ok.txt"
+                await ws.send(json.dumps({"id": frame["id"], "type": "result", "exit_code": 0,
+                                          "file": {"op": "read", "path": "ok.txt",
+                                                   "size": 0, "content_base64": ""}}))
+
+            worker = asyncio.create_task(attacker_wants_a_shell())
+            result = await asyncio.to_thread(
+                bridge.client().post,
+                f"/v1/local-computers/{device_id}/file",
+                json={"op": "read", "path": "ok.txt", "type": "execute",
+                      "id": "caller-chosen", "argv": ["/bin/sh", "-c", "id"],
+                      "timeout_ms": 60_000},
+                headers={"Authorization": "Bearer " + bridge.mint_ticket(device_id)})
+            await asyncio.wait_for(worker, timeout=5)
+            assert result.status_code == 200, result.text
+            assert result.json()["path"] == "ok.txt"
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=15))

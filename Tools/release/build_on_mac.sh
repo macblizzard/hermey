@@ -67,4 +67,4 @@ echo "artifacts:"
 ls -la "dist/Hermey-macOS-$VERSION.dmg" "dist/Hermey-$VERSION-b$BUILD.ipa"
 echo
 echo "publish with:"
-echo "  publish_hermey_from_local.sh dist/Hermey-$VERSION-b$BUILD.ipa dist/Hermey-macOS-$VERSION.dmg"
+echo "  python3 Tools/release/publish_github.sh dist/Hermey-$VERSION-b$BUILD.ipa dist/Hermey-macOS-$VERSION.dmg"

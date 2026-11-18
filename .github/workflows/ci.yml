@@ -264,6 +264,7 @@ jobs:
       - name: Python syntax and imports
         run: |
           python3 -m compileall -q Bridge/hermes_bridge
+          python3 -m compileall -q Tools/release
       # Source-text guards that need no simulator: the bot-list bar, the reaction picker, and the
       # two files that advertise a build (README markers, no versioned download URLs).
       - name: Source guards

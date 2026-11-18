@@ -16,6 +16,8 @@ A file without the markers is left alone: a fork that trimmed its README must no
 
 from __future__ import annotations
 
+import html
+
 BEGIN = "<!-- build:start -->"
 END = "<!-- build:end -->"
 
@@ -47,13 +49,13 @@ def readme_body(version: str, build: str) -> str:
     """Markdown, centred under the badges: the build a visitor would get if they installed now."""
     return (
         f'\n<p align="center"><sub>Latest published build '
-        f"<b>{version}</b> (build {build})</sub></p>\n"
+        f"<b>{html.escape(version)}</b> (build {html.escape(str(build))})</sub></p>\n"
     )
 
 
 def index_body(version: str, build: str, ipa_name: str) -> str:
     """HTML for the landing page: the build, and the file the source actually serves."""
     return (
-        f'\n    <p class="build">Serving build <strong>{version}</strong> '
-        f"(build {build}) · <code>{ipa_name}</code></p>\n  "
+        f'\n    <p class="build">Serving build <strong>{html.escape(version)}</strong> '
+        f"(build {html.escape(str(build))}) · <code>{html.escape(ipa_name)}</code></p>\n  "
     )

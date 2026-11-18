@@ -44,6 +44,22 @@ if [ -n "$tunnel" ]; then
   fail=1
 fi
 
+# File contents are only half of the surface. A fetched mirror was once committed under a path
+# shaped like its URL, which leaked the tailnet host in the filename while every file's contents
+# scanned clean. Scan the listing itself, and refuse tracked build artifacts.
+tracked_paths=$(git ls-files | grep -E '[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net' | grep -vE '\.(example|tailnet)\.ts\.net' || true)
+if [ -n "$tracked_paths" ]; then
+  echo "::error::tailnet hostname in tracked path"
+  printf '%s\n' "$tracked_paths" | cut -c1-200
+  fail=1
+fi
+artifacts=$(git ls-files | grep -E '\.(ipa|dmg|zip)$' || true)
+if [ -n "$artifacts" ]; then
+  echo "::error::tracked build artifact"
+  printf '%s\n' "$artifacts" | cut -c1-200
+  fail=1
+fi
+
 # A tailnet address is not a secret; it is however somebody's private network, and this repo is
 # published. Keep the check separate so the failure message can say which of the two it is.
 printf 'secret scan: %s\n' "$([ $fail -eq 0 ] && echo clean || echo FAILED)"

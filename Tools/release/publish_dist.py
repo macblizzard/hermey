@@ -479,7 +479,11 @@ def latest_artifacts(directory: Path) -> tuple[Path, Path | None]:
                   key=lambda p: p.stat().st_mtime)
     if not ipas:
         raise SystemExit(f"no Hermey-*.ipa in {directory}")
-    dmgs = sorted(directory.glob("Hermey-macOS-*.dmg"), key=lambda p: p.stat().st_mtime)
+    # The stable alias can share the newest mtime with the versioned copy. Exclude it so a repair
+    # is deterministic and can never re-stamp the permanent alias as the "newest" build.
+    dmgs = sorted((path for path in directory.glob("Hermey-macOS-*.dmg")
+                   if path.name != STABLE_DMG_ALIAS),
+                  key=lambda p: p.stat().st_mtime)
     return ipas[-1], (dmgs[-1] if dmgs else None)
 
 
@@ -573,6 +577,18 @@ def verify_public_feeds(base_url: str, version: str, build: str, artifact_names:
                                     f"({feed_doc.get('build')}), published {version} ({build})")
                 if (feed_doc.get("url") or "").rsplit("/", 1)[-1] not in artifact_names:
                     problems.append("mac.json: names an artifact this publish did not stage")
+        for manifest in manifests:
+            try:
+                manifest_doc = json.loads(fetch(f"{base}/{manifest}?{stamp}").decode())
+                newest = manifest_doc["apps"][0]["versions"][0]
+            except Exception as error:  # noqa: BLE001
+                problems.append(f"{manifest}: {error}")
+                continue
+            if str(newest.get("version")) != version or str(newest.get("buildVersion")) != build:
+                problems.append(f"{manifest}: advertises {newest.get('version')} "
+                                f"({newest.get('buildVersion')}), published {version} ({build})")
+            if (newest.get("downloadURL") or "").rsplit("/", 1)[-1] not in artifact_names:
+                problems.append(f"{manifest}: names an artifact this publish did not stage")
         if not problems:
             print(f"  verified {len(artifact_names)} artifact(s) + {len(FEED_NAMES)} feeds on the "
                   f"public origin (attempt {attempt})")

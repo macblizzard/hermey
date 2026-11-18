@@ -123,9 +123,22 @@ final class ComputerBrowser: NSObject, WKNavigationDelegate, WKDownloadDelegate 
                               completionHandler: @escaping (URL?) -> Void) {
         let folder = ComputerFiles.shared.root.appendingPathComponent("downloads", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let name = suggestedFilename.isEmpty ? "download" : suggestedFilename
-        completionHandler(folder.appendingPathComponent(name))
-        Task { @MainActor in ComputerBrowser.shared.downloads.append(name) }
+        // The name comes from the server. Keep the last path component so it cannot climb out of
+        // downloads, and unique it so a repeat name never overwrites the earlier file.
+        let cleaned = URL(fileURLWithPath: suggestedFilename).lastPathComponent
+        let safe = cleaned.isEmpty ? "download" : cleaned
+        var target = folder.appendingPathComponent(safe)
+        var index = 1
+        while FileManager.default.fileExists(atPath: target.path) {
+            let stem = URL(fileURLWithPath: safe).deletingPathExtension().lastPathComponent
+            let ext = URL(fileURLWithPath: safe).pathExtension
+            let suffix = ext.isEmpty ? stem : "\(stem).\(ext)"
+            target = folder.appendingPathComponent("\(suffix)-\(index)")
+            index += 1
+            if index > 999 { target = folder.appendingPathComponent(UUID().uuidString); break }
+        }
+        completionHandler(target)
+        Task { @MainActor in ComputerBrowser.shared.downloads.append(target.lastPathComponent) }
     }
 
     nonisolated func downloadDidFinish(_ download: WKDownload) {}

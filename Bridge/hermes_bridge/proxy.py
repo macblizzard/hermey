@@ -334,7 +334,7 @@ class GatewayProxy:
                     self._config.upstream_url(),
                     open_timeout=self._config.connect_timeout,
                     close_timeout=5,
-                    max_size=None,  # per-frame cap is enforced after NDJSON split
+                    max_size=64 * 1024 * 1024,  # bounded before split; the legal max frame is ~11 MB
                     max_queue=64,
                     proxy=None,  # never route a loopback token through $HTTP_PROXY
                     logger=logging.getLogger("hermes_bridge.upstream"),

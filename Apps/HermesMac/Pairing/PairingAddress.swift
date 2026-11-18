@@ -133,8 +133,13 @@ struct PairingAddress: Equatable, Sendable, Codable {
         guard scheme == "wss" || scheme == "ws" else {
             throw PairingError.unsupportedScheme(components.scheme ?? "none")
         }
-        guard components.host?.isEmpty == false else {
+        guard let host = components.host, !host.isEmpty else {
             throw PairingError.missingHost
+        }
+        // A token over plaintext is only acceptable on this machine. A remote ws:// URL used to be
+        // accepted and silently turned into an http:// token mint.
+        if scheme == "ws", !["127.0.0.1", "localhost", "[::1]"].contains(host.lowercased()) {
+            throw PairingError.unsupportedScheme("ws")
         }
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasTicket = (components.queryItems ?? []).contains {

@@ -120,31 +120,50 @@ class LocalComputers:
             self._write_revoked()
         computer = self.computers.pop(device_id, None)
         if computer:
-            await computer.socket.close(code=4403)
+            await self._close_bounded(computer.socket, code=4403)
         return computer is not None
+
+    @staticmethod
+    async def _close_bounded(socket: WebSocket, code: int) -> None:
+        """Close without waiting on the peer's close handshake.
+
+        A hung or malicious client can otherwise stall an operator route on the library's close
+        timeout; the registry entry is already gone, so the force-close merely releases the socket.
+        """
+        try:
+            await asyncio.wait_for(asyncio.shield(asyncio.create_task(socket.close(code=code))), 1.0)
+        except (TimeoutError, asyncio.TimeoutError):
+            pass
 
     def list(self) -> list[dict[str, Any]]:
         return [c.public() for c in sorted(self.computers.values(), key=lambda c: c.name)]
 
     async def register(self, device_id: str, name: str, socket: WebSocket) -> _Computer:
-        previous = self.computers.get(device_id)
+        previous = self.computers.pop(device_id, None)
         if previous:
-            await previous.socket.close(code=4400)
+            for future in previous.pending.values():
+                if not future.done():
+                    future.set_exception(LookupError("local computer disconnected"))
+            await self._close_bounded(previous.socket, code=4400)
         now = time.time()
         computer = _Computer(device_id=device_id, name=name, socket=socket,
                              connected_at=now, last_seen=now)
         self.computers[device_id] = computer
         return computer
 
-    def unregister(self, device_id: str) -> None:
+    def unregister(self, device_id: str, socket: WebSocket) -> None:
+        """Only the owning socket may remove its registration.
+
+        A reconnect closes the previous socket with 4400; that socket's handler wakes later and must
+        not remove the *new* registration by device id alone.
+        """
         computer = self.computers.get(device_id)
-        if computer and computer.socket is not None:
+        if computer and computer.socket is socket:
             self.computers.pop(device_id, None)
             for future in computer.pending.values():
                 if not future.done():
-                    # A dropped socket is an ordinary "computer not connected", not a server bug:
-                    # dispatch catches LookupError and the route answers 503 instead of a 500 traceback.
                     future.set_exception(LookupError("local computer disconnected"))
+
 
     def on_message(self, device_id: str, message: dict[str, Any]) -> None:
         computer = self.computers.get(device_id)
@@ -172,7 +191,10 @@ class LocalComputers:
         computer.pending[call_id] = future
         try:
             async with computer.send_lock:
-                await computer.socket.send_json({"id": call_id, "type": "execute", **request})
+                try:
+                    await computer.socket.send_json({"id": call_id, "type": "execute", **request})
+                except Exception:
+                    raise LookupError("local computer disconnected") from None
             return await asyncio.wait_for(future, timeout=timeout_ms / 1000)
         except (TimeoutError, asyncio.TimeoutError):
             computer.pending.pop(call_id, None)
@@ -238,15 +260,20 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
             actions = body.get("actions")
             if not isinstance(actions, list) or not (1 <= len(actions) <= 10):
                 raise HTTPException(status_code=422, detail="actions must be a list of 1..10 objects")
+        payload: dict[str, Any] = {"type": "browser", "op": op}
+        if op == "navigate":
+            payload["url"] = value
+        elif op == "act":
+            payload["actions"] = actions
         try:
-            result = await computers.dispatch(device_id, {"type": "browser", **body}, timeout_ms=60_000)
+            result = await computers.dispatch(device_id, payload, timeout_ms=60_000)
         except LookupError:
             raise HTTPException(status_code=503, detail="that computer is not connected") from None
         except TimeoutError:
             raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
         if result.get("error") or result.get("exit_code", 0) != 0:
             raise HTTPException(status_code=409,
-                                detail=str(result.get("error") or "the browser call failed"))
+                                detail=redact_text(str(result.get("error") or "the browser call failed")))
         runtime.audit.emit("local_computer.browser", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/browser", outcome="finished")
         return result["browser"]
@@ -273,18 +300,32 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
                 raise HTTPException(status_code=422, detail="content_base64 is not base64") from None
             if size > 4_000_000:
                 raise HTTPException(status_code=413, detail="file exceeds 4 MB")
+        payload: dict[str, Any] = {"type": "file", "op": op, "path": path}
+        if op == "write":
+            payload["content_base64"] = encoded
         try:
-            result = await computers.dispatch(device_id, {"type": "file", **body}, timeout_ms=60_000)
+            result = await computers.dispatch(device_id, payload, timeout_ms=60_000)
         except LookupError:
             raise HTTPException(status_code=503, detail="that computer is not connected") from None
         except TimeoutError:
             raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
         if result.get("error") or result.get("exit_code", 0) != 0:
             raise HTTPException(status_code=409,
-                                detail=str(result.get("error") or "the file operation failed"))
+                                detail=redact_text(str(result.get("error") or "the file operation failed")))
         runtime.audit.emit("local_computer.file", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/file", outcome="finished")
-        return result["file"]
+        file = result.get("file")
+        if not isinstance(file, dict):
+            raise HTTPException(status_code=502, detail="the Mac returned no file payload")
+        if isinstance(file.get("content_base64"), str):
+            try:
+                raw = base64.b64decode(file["content_base64"], validate=True).decode("utf-8")
+                clean = redact_text(raw)
+                if clean != raw:
+                    file = {**file, "content_base64": base64.b64encode(clean.encode()).decode()}
+            except (ValueError, UnicodeDecodeError):
+                pass
+        return file
 
     @router.post("/{device_id}/act")
     async def act(device_id: str, body: dict[str, Any], request: Request,
@@ -306,7 +347,7 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
             raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
         if result.get("error") or result.get("exit_code", 0) != 0:
             raise HTTPException(status_code=409,
-                                detail=str(result.get("error") or "the action failed"))
+                                detail=redact_text(str(result.get("error") or "the action failed")))
         observation = result.get("observation")
         if not isinstance(observation, dict) or not (
                 observation.get("image_base64") or observation.get("imageBase64")):
@@ -329,7 +370,7 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
             raise HTTPException(status_code=504, detail="the Mac did not answer in time") from None
         if result.get("error") or result.get("exit_code", 0) != 0:
             raise HTTPException(status_code=409,
-                                detail=str(result.get("error") or "screen capture failed"))
+                                detail=redact_text(str(result.get("error") or "screen capture failed")))
         observation = result.get("observation")
         # Swift's JSONEncoder keeps camelCase; older frames used snake_case.
         image = observation.get("image_base64") or observation.get("imageBase64") if isinstance(observation, dict) else None
@@ -391,7 +432,7 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
     except Exception:  # noqa: BLE001 (one bad frame must not take the bridge down)
         log.exception("local computer socket failed for %s", device_id)
     finally:
-        computers.unregister(device_id)
+        computers.unregister(device_id, websocket)
         if name:
             runtime.audit.emit("local_computer.disconnected", device_id=device_id,
                                method="socket", path="/v1/local-computers/ws", outcome="closed")

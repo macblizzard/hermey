@@ -12,7 +12,7 @@ class BuildB(unittest.TestCase):
     def test_shared_workspace_is_confined(self) -> None:
         files = (ROOT / "Apps/HermesMac/LocalComputer/ComputerFiles.swift").read_text()
         self.assertIn('appendingPathComponent("Workspace", isDirectory: true)', files)
-        self.assertIn("url.path.hasPrefix(rootPath + \"/\")", files)
+        self.assertIn("resolved.path.hasPrefix(rootPath + \"/\")", files)
         self.assertIn("case \"read\":", files)
         self.assertIn("case \"write\":", files)
         self.assertIn("case \"list\":", files)

@@ -250,6 +250,9 @@ public final class AppModel: ObservableObject {
     /// answer when it lands) turns that wait into a refresh rather than a blank pane. Memory only:
     /// the host is the authority, and a stale cache must never survive a launch.
     private var recentTranscripts: [SessionID: RecentTranscript] = [:]
+    /// LRU order for `recentTranscripts`. The cache must stay small: entries carry whole
+    /// transcripts, and the attachment vault already owns the image bytes a row needs to draw.
+    private var recentTranscriptOrder: [SessionID] = []
 
     /// Rows kept per session: enough to fill a screen and its scroll-back, nothing more.
     private struct RecentTranscript {
@@ -1170,7 +1173,24 @@ public final class AppModel: ObservableObject {
     /// Record the transcript for a session so leaving and coming back is instant.
     private func remember(_ id: SessionID, entries: [TranscriptEntry], cursor: Int?, total: Int) {
         guard !entries.isEmpty else { return }
-        recentTranscripts[id] = RecentTranscript(entries: entries, earlierCursor: cursor, total: total)
+        // The transcript is display data, not a second image store. The vault and the disk cache
+        // own bytes; keeping them here multiplies every picture by the number of remembered chats.
+        let stripped = entries.map { entry -> TranscriptEntry in
+            guard !entry.attachments.isEmpty else { return entry }
+            let attachments = entry.attachments.map {
+                SentAttachment(id: $0.id, name: $0.name, isImage: $0.isImage, imageData: nil)
+            }
+            return TranscriptEntry(id: entry.id, rowID: entry.rowID, role: entry.role,
+                                   text: entry.text, at: entry.at, tool: entry.tool,
+                                   attachments: attachments)
+        }
+        recentTranscripts[id] = RecentTranscript(entries: stripped, earlierCursor: cursor, total: total)
+        recentTranscriptOrder.removeAll { $0 == id }
+        recentTranscriptOrder.append(id)
+        while recentTranscriptOrder.count > 8, let oldest = recentTranscriptOrder.first {
+            recentTranscriptOrder.removeFirst()
+            recentTranscripts.removeValue(forKey: oldest)
+        }
     }
 
     /// Write the rows on screen to the device cache, without making anyone wait for the disk.
