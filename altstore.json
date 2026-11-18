@@ -24,7 +24,7 @@
         {
           "version": "0.1.575",
           "buildVersion": "575",
-          "date": "2026-11-18T16:46:24Z",
+          "date": "2026-11-18T16:47:05Z",
           "localizedDescription": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.575/Hermey-0.1.575-b575.ipa",
           "size": 3346871,
@@ -46,7 +46,7 @@
       "title": "Hermes 0.1.575 (575)",
       "identifier": "hermes-0.1.575-575",
       "caption": "Prefetch works again: session.history no longer asks for a limit the gateway refuses, so bots are warmed before you open them. Also universal arm64 + x86_64.",
-      "date": "2026-11-18T16:46:24Z",
+      "date": "2026-11-18T16:47:05Z",
       "tintColor": "#9A9AA0"
     }
   ],
