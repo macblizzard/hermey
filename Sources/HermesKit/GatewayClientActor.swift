@@ -403,10 +403,14 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     public func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] {
+        // No `limit` on the wire: the gateway's `session.history` contract is `SessionParams`
+        // (`session_id`, `profile`) and its pydantic model refuses extra inputs, so asking for one
+        // made every prefetch fail with "limit: Extra inputs are not permitted". The decoder trims
+        // to `limit` on this side instead (`GatewayPayloadDecoder.history`), which is where the
+        // truncation always happened anyway.
         let result = try await performRead("session.history",
                                            params: .object([
                                                "session_id": .string(id),
-                                               "limit": .int(Int64(limit)),
                                            ]),
                                            timeout: timeouts.call)
         return try GatewayPayloadDecoder.history(result, limit: limit)
