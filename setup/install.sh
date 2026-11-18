@@ -314,7 +314,11 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=$STATE
+# Bot files and the skills the bridge installs for them. The skill installer writes into the shared
+# skills dir when the host has one (one copy for every bot) and into the profile dirs otherwise, so
+# both must be writable or a bot gets a Mac with no instructions on how to reach it. Prefixed with
+# `-` because none of these has to exist yet on a fresh host.
+ReadWritePaths=$STATE $PROFILES_ROOT -${PROFILES_ROOT%/profiles}/skills -${PROFILES_ROOT%/profiles}/shared/skills
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

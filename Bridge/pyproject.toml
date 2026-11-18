@@ -22,5 +22,11 @@ hermes-bridge = "hermes_bridge.__main__:main"
 [tool.setuptools.packages.find]
 include = ["hermes_bridge*"]
 
+# The Mac skill and its CLI are files, not modules, so they must be named here or a wheel ships
+# without them and every install silently gets no instructions. `agent_skills/` has no
+# `__init__.py` on purpose: it is data the bridge copies, never imports.
+[tool.setuptools.package-data]
+hermes_bridge = ["agent_skills/*/*.md", "agent_skills/bin/*.py"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

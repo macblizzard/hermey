@@ -20,12 +20,13 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
 from . import paths
+from .agent_skills import install as install_agent_skills
 from .device_auth import is_local_host_request, require_device
 
 log = logging.getLogger("hermes_bridge.local_computers")
@@ -467,6 +468,21 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
         runtime.audit.emit("local_computer.observe", device_id=caller, method="local_computer",
                            path=f"/v1/local-computers/{device_id}/observe", outcome="finished")
         return observation
+
+    @router.post("/skill")
+    async def install_skill(request: Request,
+                            authorization: Optional[str] = Header(default=None)) -> dict:
+        """Re-write the Mac skill into the bots' skills dirs, on demand.
+
+        A bridge start already does this, but an owner who just installed Hermey should not have to
+        restart a service — and after an upgrade this is the cheap way to pick up new instructions.
+        """
+        caller = authorize(request, authorization)
+        result = install_agent_skills()
+        runtime.audit.emit("local_computer.skill", device_id=caller, method="local_computer",
+                           path="/v1/local-computers/skill",
+                           outcome="installed" if result.get("installed") else "refused")
+        return result
 
     @router.delete("/{device_id}")
     async def revoke_computer(device_id: str, request: Request,

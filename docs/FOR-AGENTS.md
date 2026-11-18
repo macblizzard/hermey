@@ -79,6 +79,30 @@ curl -fsS "https://$(tailscale status --json | python3 -c 'import json,sys; prin
 Do not skip the HTTPS one. A loopback-only pass is the state that looks finished and is not: the app
 will fail to connect.
 
+## 2.5 The Mac skill installs itself — confirm it landed
+
+The bridge writes a `mac-local-computer` skill into this host's bot skills directory on every start,
+plus the CLI it points at (`/var/lib/hermey/bin/local_computer.py`). That is what makes the owner's
+Mac a capability for *every* bot on the host instead of something each one has to discover.
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/v1/local-computers/skill | python3 -m json.tool   # installed: [...]
+```
+
+Pass condition: `installed` is a non-empty list, and that path holds `mac-local-computer/SKILL.md`.
+A skill of the same name that the owner wrote themselves is never overwritten — the response says
+`"outcome": "foreign"` for that directory and the owner's file stays as it is.
+
+Two knobs matter if it does not land:
+
+- **Where.** `skills.external_dirs` in the Hermes `config.yaml` is used when set (one copy, every
+  profile). Otherwise the bridge writes into the install home's `skills/` and every
+  `profiles/*/skills/`. Both are under `ProtectHome=read-only` unless the unit lists them in
+  `ReadWritePaths`; `setup/install.sh` does, and a unit written by an older installer does not.
+- **The Mac still has to allow it.** The skill explains the switch: Hermey on the Mac → Computer →
+  **Let bots use this computer**. With that off, every call answers "no local computer is connected"
+  and the skill tells the bot to stop and ask rather than retry.
+
 ## 3. Pair the human's device
 
 ```bash

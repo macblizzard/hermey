@@ -55,6 +55,7 @@ from .rooms import create_rooms_router
 from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
 from .config import BridgeConfig, is_loopback_host
+from .agent_skills import install as install_agent_skills
 from .device_auth import require_device
 from .display import create_display_router
 from .local_computers import LocalComputers, create_local_computers_router, local_computer_socket
@@ -213,6 +214,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        # Every bot on this host gets the Mac skill and its CLI before any of them can ask how to
+        # reach the Mac. Best effort on purpose: a Hermes home this process cannot write must not
+        # stop the bridge from serving, and the next start simply tries again.
+        try:
+            install_agent_skills()
+        except Exception:  # noqa: BLE001 — never fail startup over an instruction file
+            logging.getLogger(cfg.audit_logger_name).exception("local computer skill install failed")
         # Banners while the app is shut: a relay (Bark) plus a timer that reads each bot's
         # conversation. Started here rather than at import so tests that build an app without
         # touching the network do not spawn threads.

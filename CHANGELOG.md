@@ -6,6 +6,19 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Every bot knows how to reach the owner's Mac, without being told.** The local-computer executor
+  was only useful to a bot that already knew the CLI existed — the rest tried SSH and failed. The
+  bridge now ships a `mac-local-computer` skill inside the package, writes the CLI to
+  `<state>/bin/local_computer.py` where it survives the installer deleting its checkout, and renders
+  the skill with that real path and this bridge's URL on every start. It lands in the shared skills
+  dir when Hermes has one (one copy, every bot, including bots created later) and otherwise in the
+  install home plus every `profiles/*/skills`. A file of the same name without the
+  `managed_by: hermey-bridge` marker is the owner's and is never overwritten;
+  `POST /v1/local-computers/skill` re-installs on demand. The skill is written as the playbook a bot
+  needs, not a man page: check the Mac is connected first, argv-not-shell, `observe` before any
+  `click`, the 30-second observation rule, the single global GUI gate, and a failure table that maps
+  every bridge error to what to do about it. `ReadWritePaths` in `setup/install.sh` grows to include
+  the skills dirs, because a sandboxed bridge cannot write a skill it is not allowed to write.
 - **A busy bot face performs now.** Between the acting it already had, every busy state — working,
   thinking, reading, writing, using the computer — jumps and flips: a crouch and a leap with a
   squash-and-stretch landing, then next beat a full 360° roll or an out-and-back 180° twist,

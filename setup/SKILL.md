@@ -35,6 +35,11 @@ What it does — and what it deliberately does not:
 5. Exposes the bridge with `tailscale serve --bg --https=8443 http://127.0.0.1:8787` — a real
    certificate, tailnet-only, no public listener.
 6. Installs `/usr/local/bin/hermey` for status, pairing, logs, doctor and updates.
+7. **Gives every bot on the host the Mac skill.** On each start the bridge writes a
+   `mac-local-computer` skill (plus the CLI it points at) into the skills dir Hermes already loads —
+   the shared one when `skills.external_dirs` is configured, otherwise the install home and every
+   profile. That is what makes "do this on my Mac" a capability instead of a discovery problem; a
+   skill of the same name written by the owner is never touched.
 
 Re-running the same command is an **upgrade**: same units, same state, package reinstalled.
 
