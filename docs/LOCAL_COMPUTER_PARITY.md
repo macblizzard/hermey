@@ -87,9 +87,10 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [x] Acceptance: closing Hermey immediately disables computer use; reopening reconnects without restart
 
 ## Phase 12 — Bot surface, verification
-- [ ] Extend the shared Hermey skill with every new subcommand and permission requirement
-- [ ] SLOs: observe < 1 s, act < 500 ms, shell start < 200 ms, reconnect < 30 s
-- [ ] 1-hour soak, two-bot stress, permission-revoke and offline/reconnect tests
+- [x] Extend the shared Hermey skill with every new subcommand and permission requirement
+- [x] SLOs: observe < 1 s, act < 500 ms, shell start < 200 ms, reconnect < 30 s
+- [x] Two-bot stress, permission-revoke and offline/reconnect tests
+- [ ] 1-hour soak (running)
 - [ ] Acceptance: SLOs met, no leaked processes or stale locks
 
 ## Build batches (one release per batch)
