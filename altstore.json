@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.571",
-          "buildVersion": "571",
-          "date": "2026-11-18T11:32:36Z",
-          "localizedDescription": "Audit pass 2: bot toggle no longer stalls the state lock, partial pause/enable is recorded, deleted-bot archives are capped, share links reject traversal, compaction guard is await-safe, approval failures surface, transcript filtering is cached, act validates all displays, and every local frame runs through one serial gate.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.571/Hermey-0.1.571-b571.ipa",
+          "version": "0.1.572",
+          "buildVersion": "572",
+          "date": "2026-11-18T12:13:35Z",
+          "localizedDescription": "Build C: physical input pauses a bot's desktop batch and an explicit resume continues it; ask_user posts into a bot's chat and waits for the owner's reply; Settings shows an activity feed with live command output; long commands stream NDJSON progress; offline/reconnect is pinned by tests.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.572/Hermey-0.1.572-b572.ipa",
           "size": 3347236,
           "minOSVersion": "17.0",
-          "sha256": "bb2b86edd1ddc832ef094c3f8332e548d79ca51b1cd540f1c0f34702b00a4f50"
+          "sha256": "11f829775ce79d4373e054cb456cb3413d0a3d013fe261484cdff6ffbacc08f0"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.571 (571)",
-      "identifier": "hermes-0.1.571-571",
-      "caption": "Audit pass 2: bot toggle no longer stalls the state lock, partial pause/enable is recorded, deleted-bot archives are capped, share links reject traversal, compaction guard is await-safe, approval failures surface, transcript filtering is cached, act validates all displays, and every local frame runs through one serial gate.",
-      "date": "2026-11-18T11:32:36Z",
+      "title": "Hermes 0.1.572 (572)",
+      "identifier": "hermes-0.1.572-572",
+      "caption": "Build C: physical input pauses a bot's desktop batch and an explicit resume continues it; ask_user posts into a bot's chat and waits for the owner's reply; Settings shows an activity feed with live command output; long commands stream NDJSON progress; offline/reconnect is pinned by tests.",
+      "date": "2026-11-18T12:13:35Z",
       "tintColor": "#9A9AA0"
     }
   ],
