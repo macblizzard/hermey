@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.572",
-          "buildVersion": "572",
-          "date": "2026-11-18T12:13:35Z",
-          "localizedDescription": "Build C: physical input pauses a bot's desktop batch and an explicit resume continues it; ask_user posts into a bot's chat and waits for the owner's reply; Settings shows an activity feed with live command output; long commands stream NDJSON progress; offline/reconnect is pinned by tests.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.572/Hermey-0.1.572-b572.ipa",
-          "size": 3347236,
+          "version": "0.1.573",
+          "buildVersion": "573",
+          "date": "2026-11-18T16:03:04Z",
+          "localizedDescription": "Local computer: a bot-instructions row in Settings > Computer. Every bot on the host now gets the Mac skill.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.573/Hermey-0.1.573-b573.ipa",
+          "size": 3347235,
           "minOSVersion": "17.0",
-          "sha256": "11f829775ce79d4373e054cb456cb3413d0a3d013fe261484cdff6ffbacc08f0"
+          "sha256": "4eaff5caaa649670fd253fa01f4eccce7dba6a6117c164e407e9133a1459eff0"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.572 (572)",
-      "identifier": "hermes-0.1.572-572",
-      "caption": "Build C: physical input pauses a bot's desktop batch and an explicit resume continues it; ask_user posts into a bot's chat and waits for the owner's reply; Settings shows an activity feed with live command output; long commands stream NDJSON progress; offline/reconnect is pinned by tests.",
-      "date": "2026-11-18T12:13:35Z",
+      "title": "Hermes 0.1.573 (573)",
+      "identifier": "hermes-0.1.573-573",
+      "caption": "Local computer: a bot-instructions row in Settings > Computer. Every bot on the host now gets the Mac skill.",
+      "date": "2026-11-18T16:03:04Z",
       "tintColor": "#9A9AA0"
     }
   ],
