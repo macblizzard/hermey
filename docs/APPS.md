@@ -123,6 +123,10 @@ every bot. There is no per-bot desktop to choose between.
 - **macOS:** the display button in the chat header (or ⋯ → **Bot computer…**) opens a right-hand
   panel beside the transcript; the panel's arrows put it full screen and bring it back.
 
+The socket comes up **with the app**. Once *Let bots use this computer* is on, Hermey connects at
+launch and redials on its own after a drop — you do not have to open Settings to bring computer use
+back, and opening Settings is not what switches it on.
+
 **Start screen** brings the desktop up (it otherwise starts itself on a bot's first
 `computer_use`, and stops after 30 idle minutes). **Open screen** attaches the viewer; the picture is
 live but input is inert. **Take over** asks the host for the control lease and enables keyboard and

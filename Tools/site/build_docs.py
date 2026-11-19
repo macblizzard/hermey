@@ -334,6 +334,8 @@ PAGES.append(dict(
 <p>The Mac app is the <strong>executor</strong>. Your host sends a command; the app performs it under
 your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on
 it and Remote Login stays off.</p>
+<p>With the switch on, that socket comes up when the app launches and redials itself after a drop.
+Opening Settings is never what switches it on.</p>
 {note("tip", "It starts switched off.", "Nothing is queried until you turn on "
       "<strong>Settings → Computer → Let bots use this computer</strong>.")}
 
