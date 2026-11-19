@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.579",
-          "buildVersion": "579",
-          "date": "2026-11-19T09:27:14Z",
-          "localizedDescription": "Parchment, a light theme taken from the project's own site, and the settings surfaces that now wear it on both apps. Also: open Hermey at login on the Mac, a switch to close the keyboard after sending on the phone, and sent text no longer lingering in the compose box.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.579/Hermey-0.1.579-b579.ipa",
-          "size": 3353422,
+          "version": "0.1.580",
+          "buildVersion": "580",
+          "date": "2026-11-19T10:03:00Z",
+          "localizedDescription": "Sheets and settings now follow the palette, so Parchment is readable on every screen it was not. Accessibility gains a Check button, and removing this computer can be undone by turning computer use back on.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.580/Hermey-0.1.580-b580.ipa",
+          "size": 3353629,
           "minOSVersion": "17.0",
-          "sha256": "915262673aa37a44b4f665d4f43f2d35a65dff04af8e90c46285dc846424c668"
+          "sha256": "37111f7c39da42f7d14157d0d2b63e47cbb76f37ae6f6d12a0b96da422870560"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.579 (579)",
-      "identifier": "hermes-0.1.579-579",
-      "caption": "Parchment, a light theme taken from the project's own site, and the settings surfaces that now wear it on both apps. Also: open Hermey at login on the Mac, a switch to close the keyboard after sending on the phone, and sent text no longer lingering in the compose box.",
-      "date": "2026-11-19T09:27:14Z",
+      "title": "Hermes 0.1.580 (580)",
+      "identifier": "hermes-0.1.580-580",
+      "caption": "Sheets and settings now follow the palette, so Parchment is readable on every screen it was not. Accessibility gains a Check button, and removing this computer can be undone by turning computer use back on.",
+      "date": "2026-11-19T10:03:00Z",
       "tintColor": "#9A9AA0"
     }
   ],
