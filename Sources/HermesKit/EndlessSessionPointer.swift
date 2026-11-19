@@ -179,6 +179,13 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bot-categories/order` — the whole arrangement, not one swap.
     func reorderBotCategories(ids: [String]) async throws -> BotCategoryState
 
+    /// `GET /v1/credentials/cards` — login cards waiting for the owner.
+    func credentialCards() async throws -> [CredentialCard]
+    /// `POST /v1/credentials/cards/{id}/answer` — what the owner typed; never echoed back.
+    func answerCredentialCard(id: String, values: [String: String]) async throws
+    /// `POST /v1/credentials/cards/{id}/cancel`
+    func cancelCredentialCard(id: String) async throws
+
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
@@ -267,6 +274,18 @@ public extension BotSessionPointerStore {
     }
     func deleteBotCategory(id: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
     func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+
+    func credentialCards() async throws -> [CredentialCard] {
+        throw BotAdminUnavailable()
+    }
+
+    func answerCredentialCard(id: String, values: [String: String]) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func cancelCredentialCard(id: String) async throws {
         throw BotAdminUnavailable()
     }
 
@@ -687,6 +706,24 @@ enum Failure: Error, Equatable, LocalizedError {
     public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
         try BotCategoryState.decode(try await bridgePUT("v1/bot-categories/order",
                                                         body: ["ids": ids], timeout: 20))
+    }
+
+    /// `GET /v1/credentials/cards` — the cards waiting for the owner, and nothing about their answers.
+    public func credentialCards() async throws -> [CredentialCard] {
+        try CredentialCard.list(from: try await bridgeGET("v1/credentials/cards", timeout: 20))
+    }
+
+    /// `POST /v1/credentials/cards/{id}/answer`. The reply says only that it was accepted.
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        let card = try Self.pathComponent(id)
+        _ = try await bridgePOST("v1/credentials/cards/\(card)/answer",
+                                 body: ["values": values], timeout: 20)
+    }
+
+    /// `POST /v1/credentials/cards/{id}/cancel`. Always obeyed.
+    public func cancelCredentialCard(id: String) async throws {
+        let card = try Self.pathComponent(id)
+        _ = try await bridgePOST("v1/credentials/cards/\(card)/cancel", body: [:], timeout: 20)
     }
 
     /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`

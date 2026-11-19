@@ -27,6 +27,9 @@ struct WorkspaceRoot: View {
     /// re-created for a new palette to reach every view.
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
 
+    /// The login cards waiting for the owner: asked for by a bot, answered here, never shown to the bot.
+    @StateObject private var credentials = CredentialCardCenter()
+
     /// Foreground is when another device's turn should appear in this list.
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -74,6 +77,12 @@ struct WorkspaceRoot: View {
             paletteOverlay
         }
         .background(WindowBackdrop(opacity: windowOpacity))
+        // A card is a question the owner must answer for a bot to get past a login page. It lives here
+        // rather than in the chat so the answer never becomes a message the bot can read.
+        .sheet(item: $credentials.card) { card in
+            CredentialCardSheet(card: card, model: store.model, center: credentials)
+        }
+        .task { credentials.watch(model: store.model) }
         .onReceive(NotificationCenter.default.publisher(for: .genUICardSend)) { note in
             // A card's button sends its text as the user's next message, the same contract the
             // plugin's own composer actions have.

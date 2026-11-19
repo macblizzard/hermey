@@ -194,6 +194,9 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func deleteBotCategory(id: String) async throws -> BotCategoryState
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
     func reorderBotCategories(ids: [String]) async throws -> BotCategoryState
+    func credentialCards() async throws -> [CredentialCard]
+    func answerCredentialCard(id: String, values: [String: String]) async throws
+    func cancelCredentialCard(id: String) async throws
 
     /// Findings inside every bot's conversation (`GET /v1/search`). Names are the list's business;
     /// a phrase a person remembers is this.
@@ -373,6 +376,15 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+    public func credentialCards() async throws -> [CredentialCard] {
+        throw BotAdminUnavailable()
+    }
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        throw BotAdminUnavailable()
+    }
+    public func cancelCredentialCard(id: String) async throws {
         throw BotAdminUnavailable()
     }
     public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {

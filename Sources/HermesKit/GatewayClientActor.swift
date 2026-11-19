@@ -584,6 +584,21 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.reorderBotCategories(ids: ids)
     }
 
+    public func credentialCards() async throws -> [CredentialCard] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.credentialCards()
+    }
+
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.answerCredentialCard(id: id, values: values)
+    }
+
+    public func cancelCredentialCard(id: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.cancelCredentialCard(id: id)
+    }
+
     /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every
     /// profile's transcript in one request.
     public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {

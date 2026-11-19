@@ -2795,6 +2795,21 @@ public final class AppModel: ObservableObject {
         try await writeBotCategories { try await client.reorderBotCategories(ids: ids) }
     }
 
+    /// The login cards waiting for the owner (docs/CREDENTIALS.md). Polled by the Mac's card centre.
+    public func credentialCards() async throws -> [CredentialCard] {
+        try await client.credentialCards()
+    }
+
+    /// Hand the owner's answer to the bridge. What they typed is not kept anywhere on this side.
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        try await client.answerCredentialCard(id: id, values: values)
+    }
+
+    /// Refuse a card. Always obeyed, and nothing is filled.
+    public func cancelCredentialCard(id: String) async throws {
+        try await client.cancelCredentialCard(id: id)
+    }
+
     /// Whether a move in `offset` has anywhere to go — what greys out the menu item at the ends.
     public func canMoveBotCategory(id: String, by offset: Int) -> Bool {
         let ids = botGroups.filter { !$0.isPinned && !$0.isUncategorized }.map(\.id)
