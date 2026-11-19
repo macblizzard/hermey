@@ -303,6 +303,18 @@ address it shows, and paste it into <strong>Settings → Replies</strong> (iOS) 
 badge; it just never buzzes. Reactions, drafts, pins and the switch are per-device; unread counts come
 from the host and survive a reinstall.</p>
 
+<h2 id="arranging">Arranging bot groups</h2>
+<p>Right-click a group's heading in the Mac's sidebar to <strong>Move … Up</strong> or
+<strong>Move … Down</strong>. The menu items grey out at the ends of the list.</p>
+<p>The arrangement is the host's, not the window's: it is stored beside the categories and both apps
+read it, so a group moved on the Mac is in the same place on the phone. Until you move something the
+list is alphabetical, which is how it has always been — so nothing has to be rearranged to look like
+it did before this existed. A group created on the other device keeps its alphabetical place until
+you arrange it, and <strong>Pinned</strong> and <strong>Uncategorized</strong> are the app's own
+headings: they sit above and below the arrangement and never move.</p>
+<p>The whole arrangement is written at once rather than "move this one up a slot", so two devices
+arranging at the same time end up with the last arrangement written, never with two half-swaps.</p>
+
 <h2 id="revocation">Unpairing and revocation</h2>
 <p>Removing a device in the app deletes its key. Revoking from the host closes that device's link
 immediately and refuses the next connection — the token it held is spent. Neither touches your bots,

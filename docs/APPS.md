@@ -87,6 +87,21 @@ shows a white title on a pale background, that surface is the one missing the ca
 
 Dark palettes are unchanged by any of this: they say "dark" and get dark.
 
+## Arranging bot groups
+
+Right-click a group's heading in the Mac's sidebar to **Move … Up** or **Move … Down**. The menu
+items grey out at the ends of the list.
+
+The arrangement is the host's, not the window's: it is stored beside the categories and both apps
+read it, so a group moved on the Mac is in the same place on the phone. Until you move something the
+list is alphabetical, which is how it has always been — so nothing has to be rearranged to look
+like it did before this existed. A group created on the other device keeps its alphabetical place
+until you arrange it, and **Pinned** and **Uncategorized** are the app's own headings: they sit
+above and below the arrangement and never move.
+
+The whole arrangement is written at once rather than "move this one up a slot", so two devices
+arranging at the same time end up with the last arrangement written, never with two half-swaps.
+
 ## Unpairing and revocation
 
 Removing a device in the app deletes its key — from the Keychain, and from the `0600` file an
