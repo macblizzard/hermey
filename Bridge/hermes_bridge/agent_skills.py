@@ -91,7 +91,22 @@ def render(cli: Path, name: str = SKILL_NAME) -> str:
     exactly as written rather than requiring a second renderer.
     """
     template = template_path(name).read_text(encoding="utf-8")
-    return template.replace(_CLI_PLACEHOLDER, str(cli)).replace(_BRIDGE_PLACEHOLDER, bridge_url())
+    if cli is not None:
+        template = template.replace(_CLI_PLACEHOLDER, str(cli))
+    return template.replace(_BRIDGE_PLACEHOLDER, bridge_url())
+
+
+def needs_cli(name: str = SKILL_NAME) -> bool:
+    """Whether a template is only meaningful with the local-computer CLI path in it.
+
+    The Mac skill is: every command in it is that CLI. The desktop skill is not, so a host that
+    cannot write the CLI must still receive it — the two are separate capabilities and one failing
+    must not silently withhold the other.
+    """
+    try:
+        return _CLI_PLACEHOLDER in template_path(name).read_text(encoding="utf-8")
+    except OSError:
+        return False
 
 
 def install_home() -> Path:
@@ -312,14 +327,20 @@ def install() -> dict[str, Any]:
     Called on every bridge start, so it must be safe to repeat: identical content is left untouched,
     and a changed template is picked up on the next restart (a template update ships with the bridge).
     """
+    cli: Path | None = None
+    cli_error = ""
     try:
         cli = install_cli()
     except OSError as exc:
-        LOGGER.error("agent skills not installed: %s", exc)
-        return {"installed": [], "attempted": [], "error": str(exc)}
+        # Recorded, not fatal: only the skills that actually run that CLI are held back.
+        LOGGER.error("local computer CLI could not be written: %s", exc)
+        cli_error = str(exc)
 
     per_skill: dict[str, Any] = {}
     for name in BUNDLED_SKILLS:
+        if cli is None and needs_cli(name):
+            per_skill[name] = {"installed": [], "attempted": [], "error": cli_error}
+            continue
         per_skill[name] = _install_one(name, render(cli, name))
 
     primary = per_skill[SKILL_NAME]
@@ -329,5 +350,8 @@ def install() -> dict[str, Any]:
         else:
             LOGGER.warning("%s skill could not be written: %s", name, result["attempted"])
 
-    return {"installed": primary["installed"], "attempted": primary["attempted"],
-            "cli": str(cli), "skills": per_skill}
+    result: dict[str, Any] = {"installed": primary["installed"], "attempted": primary["attempted"],
+                              "cli": str(cli) if cli is not None else "", "skills": per_skill}
+    if cli_error:
+        result["error"] = cli_error
+    return result

@@ -14,8 +14,10 @@ This file pins the mechanism rather than one skill's wording:
 * `status()` reports each skill, so the app can tell "installed" from "today's rules".
 """
 
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -98,3 +100,60 @@ class TheDesktopSkillSaysTheThingsThatWentWrong(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheyAreSeparateCapabilities(unittest.TestCase):
+    """Owner, 2026-11-19: "computer use / local Mac access and bot desktop are different skills".
+
+    One is about the owner's Mac, reachable through the bridge with a CLI per command; the other is
+    about the host's own screen, which exists whether or not a Mac is ever paired. Bundling them
+    together would be a mistake in either direction: a host with no Mac still needs a desktop, and a
+    desktop instruction is useless where a bot needs to run `xcodebuild`.
+    """
+
+    def test_only_the_mac_skill_depends_on_the_cli(self) -> None:
+        if agent_skills is None:
+            self.skipTest(f"bridge deps not installed: {IMPORT_ERROR}")
+        self.assertTrue(agent_skills.needs_cli("mac-local-computer"))
+        self.assertFalse(agent_skills.needs_cli("bot-desktop"),
+                         "the desktop skill must install on a host that cannot write the Mac CLI")
+
+    def test_the_desktop_skill_does_not_talk_about_the_mac(self) -> None:
+        text = (BUNDLE / "bot-desktop" / "SKILL.md").read_text(encoding="utf-8").lower()
+        for term in ("macbook", "local_computer", "xcode", "hermey app"):
+            self.assertNotIn(term, text, f"the desktop skill is not the Mac skill: {term}")
+
+    def test_a_cli_failure_still_installs_the_desktop_skill(self) -> None:
+        """One capability failing must not silently withhold the other."""
+        if agent_skills is None:
+            self.skipTest(f"bridge deps not installed: {IMPORT_ERROR}")
+        with tempfile.TemporaryDirectory() as tmp:
+            home = pathlib.Path(tmp) / ".hermes"
+            profiles = home / "profiles"
+            (profiles / "cody").mkdir(parents=True)
+            previous_root = os.environ.get("HERMES_PROFILES_ROOT")
+            previous_shared = os.environ.pop("HERMES_SKILLS_DIR", None)
+            os.environ["HERMES_PROFILES_ROOT"] = str(profiles)
+            original = agent_skills.install_cli
+
+            def broken(destination=None):
+                raise OSError("read-only state dir")
+
+            agent_skills.install_cli = broken
+            try:
+                result = agent_skills.install()
+            finally:
+                agent_skills.install_cli = original
+                if previous_root is None:
+                    os.environ.pop("HERMES_PROFILES_ROOT", None)
+                else:
+                    os.environ["HERMES_PROFILES_ROOT"] = previous_root
+                if previous_shared is not None:
+                    os.environ["HERMES_SKILLS_DIR"] = previous_shared
+
+            desktop = profiles / "cody" / "skills" / "bot-desktop" / "SKILL.md"
+            self.assertTrue(desktop.is_file(), "the desktop skill does not need the CLI")
+            self.assertTrue(result["skills"]["bot-desktop"]["installed"])
+            self.assertIn("error", result["skills"]["mac-local-computer"])
+            self.assertFalse((profiles / "cody" / "skills" / "mac-local-computer" / "SKILL.md").is_file(),
+                             "a Mac skill with no CLI path in it would be a broken instruction")
