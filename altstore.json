@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.576",
-          "buildVersion": "576",
-          "date": "2026-11-18T18:14:28Z",
-          "localizedDescription": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.576/Hermey-0.1.576-b576.ipa",
-          "size": 3346874,
+          "version": "0.1.577",
+          "buildVersion": "577",
+          "date": "2026-11-19T06:38:34Z",
+          "localizedDescription": "Parchment: the first light theme, taken from the project's own site \u2014 cream paper, warm ink, one clay accent, with the window chrome following the palette. Existing themes and the default are unchanged.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.577/Hermey-0.1.577-b577.ipa",
+          "size": 3382765,
           "minOSVersion": "17.0",
-          "sha256": "f3166482a1fa34974c5c6e8342d25c16c3468419411e629af2ffa86996894277"
+          "sha256": "2018463f56247c5428c979d9c6695697593d96daaa58b1250f117822afedaac3"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.576 (576)",
-      "identifier": "hermes-0.1.576-576",
-      "caption": "Computer access no longer dies on its own: the link survives sleep, a refused ticket retries instead of stopping, and both sides now notice a dead socket.",
-      "date": "2026-11-18T18:14:28Z",
+      "title": "Hermes 0.1.577 (577)",
+      "identifier": "hermes-0.1.577-577",
+      "caption": "Parchment: the first light theme, taken from the project's own site \u2014 cream paper, warm ink, one clay accent, with the window chrome following the palette. Existing themes and the default are unchanged.",
+      "date": "2026-11-19T06:38:34Z",
       "tintColor": "#9A9AA0"
     }
   ],
