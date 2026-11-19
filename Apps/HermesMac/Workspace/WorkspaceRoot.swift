@@ -48,6 +48,10 @@ struct WorkspaceRoot: View {
                 // a fresh subtree is what guarantees none of them kept the old palette. The model
                 // lives outside this identity, so nothing about the conversation is lost.
                 .id("\(themeID)-\(store.themeVersion)")
+                // The window's own chrome follows the palette. A light theme on a dark system would
+                // otherwise keep dark scrollers, sheets and menus around a cream page; read through
+                // the catalogue so an id this build does not publish resolves the way the app does.
+                .preferredColorScheme(ThemeCatalog.theme(id: themeID).isLight ? .light : .dark)
                 // Edge to edge, on every side. Midnight has no frame inside the window: the sidebar's
                 // fill and the chat's canvas run out to the window's own rounded corners, and the
                 // only thing drawn over the top edge is the traffic lights. The 8 pt surround and

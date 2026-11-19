@@ -93,7 +93,7 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | **Approvals in the app** | Tool approvals arrive as cards you can accept or reject, with the payload visible before you decide. |
 | **Voice both ways** | Dictate a prompt, have a reply read aloud — through the host's STT/TTS so it works with the ringer switch off. |
 | **Attachments** | Send images and files from the share sheet; the host sees a normal `@image:` reference. |
-| **Native on both** | SwiftUI on iOS 17 and macOS 14: three-pane desktop shell, phone-shaped mobile chrome, dark theme, no web view anywhere. |
+| **Native on both** | SwiftUI on iOS 17 and macOS 14: three-pane desktop shell, phone-shaped mobile chrome, eight themes from Midnight to Parchment, no web view anywhere. |
 
 ## How it works
 
