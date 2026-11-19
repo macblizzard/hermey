@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.577",
-          "buildVersion": "577",
-          "date": "2026-11-19T06:38:34Z",
-          "localizedDescription": "Parchment: the first light theme, taken from the project's own site \u2014 cream paper, warm ink, one clay accent, with the window chrome following the palette. Existing themes and the default are unchanged.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.577/Hermey-0.1.577-b577.ipa",
-          "size": 3382765,
+          "version": "0.1.578",
+          "buildVersion": "578",
+          "date": "2026-11-19T08:31:13Z",
+          "localizedDescription": "Parchment, the first light theme; an option to open the Mac app at login; and on the phone, a switch to close the keyboard on send plus a fix for sent text lingering in the compose box.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.578/Hermey-0.1.578-b578.ipa",
+          "size": 3386841,
           "minOSVersion": "17.0",
-          "sha256": "2018463f56247c5428c979d9c6695697593d96daaa58b1250f117822afedaac3"
+          "sha256": "ae015dcd8f5bb47ddbb5a68d39f0ddae4edb2541d14924c1a54a2b0de3ddd037"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.577 (577)",
-      "identifier": "hermes-0.1.577-577",
-      "caption": "Parchment: the first light theme, taken from the project's own site \u2014 cream paper, warm ink, one clay accent, with the window chrome following the palette. Existing themes and the default are unchanged.",
-      "date": "2026-11-19T06:38:34Z",
+      "title": "Hermes 0.1.578 (578)",
+      "identifier": "hermes-0.1.578-578",
+      "caption": "Parchment, the first light theme; an option to open the Mac app at login; and on the phone, a switch to close the keyboard on send plus a fix for sent text lingering in the compose box.",
+      "date": "2026-11-19T08:31:13Z",
       "tintColor": "#9A9AA0"
     }
   ],
