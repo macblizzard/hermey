@@ -102,6 +102,13 @@ struct HermesMacApp: App {
                     store.checkForUpdates = checkForUpdates
                     await store.attachFixtureHostIfNeeded()
                     await store.connectOnLaunchIfPaired()
+                    // Computer use is a standing decision, not a screen. The switch was already on
+                    // when this launch began, so the socket has to come up here: the only other
+                    // caller is the Settings view's `.task`, which meant the Mac sat unreachable
+                    // until the owner opened Settings — and looked like "computer use isn't
+                    // activated" every time the app restarted. `pairingChanged` is idempotent and
+                    // no-ops when the switch is off or a loop is already live.
+                    LocalComputerService.shared.pairingChanged(address: store.pairing)
                     // Last, so dialling the host is not delayed by the feed.
                     checkForUpdatesAtLaunch()
                     // Then warm every bot's conversation behind the window, so switching bots
