@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.580",
-          "buildVersion": "580",
-          "date": "2026-11-19T10:03:00Z",
-          "localizedDescription": "Sheets and settings now follow the palette, so Parchment is readable on every screen it was not. Accessibility gains a Check button, and removing this computer can be undone by turning computer use back on.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.580/Hermey-0.1.580-b580.ipa",
-          "size": 3353629,
+          "version": "0.1.581",
+          "buildVersion": "581",
+          "date": "2026-11-19T12:20:24Z",
+          "localizedDescription": "Scrolling, keyboard navigation, and a quieter connection. The transcript now builds only the rows on screen, a hovering sidebar row no longer rebuilds the whole bot list, opening Settings no longer drops the computer-use socket, and the keyboard scrolls both lists (arrows, Page Up/Down, Home/End). The phone gets the same rendering fix that made the Mac's markdown rows re-invalidate themselves.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.581/Hermey-0.1.581-b581.ipa",
+          "size": 3352963,
           "minOSVersion": "17.0",
-          "sha256": "37111f7c39da42f7d14157d0d2b63e47cbb76f37ae6f6d12a0b96da422870560"
+          "sha256": "56e0f9e47fddff7d21b3d654df0355053ee592bc4155e56a76930b8d24912bc4"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.580 (580)",
-      "identifier": "hermes-0.1.580-580",
-      "caption": "Sheets and settings now follow the palette, so Parchment is readable on every screen it was not. Accessibility gains a Check button, and removing this computer can be undone by turning computer use back on.",
-      "date": "2026-11-19T10:03:00Z",
+      "title": "Hermes 0.1.581 (581)",
+      "identifier": "hermes-0.1.581-581",
+      "caption": "Scrolling, keyboard navigation, and a quieter connection. The transcript now builds only the rows on screen, a hovering sidebar row no longer rebuilds the whole bot list, opening Settings no longer drops the computer-use socket, and the keyboard scrolls both lists (arrows, Page Up/Down, Home/End). The phone gets the same rendering fix that made the Mac's markdown rows re-invalidate themselves.",
+      "date": "2026-11-19T12:20:24Z",
       "tintColor": "#9A9AA0"
     }
   ],
