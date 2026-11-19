@@ -38,12 +38,13 @@ class TheKeys(unittest.TestCase):
     def test_one_handler_per_key_decides_on_the_modifier_inside(self) -> None:
         """A separate ⌘↑ handler beside a plain ↑ one never fires: the first consumes the press."""
         self.assertIn("press.modifiers.contains(.command) ? handle.toTop() : handle.line(-1)", SUPPORT)
-        self.assertEqual(SUPPORT.count(".onKeyPress(.upArrow)"), 1)
-        self.assertEqual(SUPPORT.count(".onKeyPress(.downArrow)"), 1)
+        self.assertEqual(SUPPORT.count(".onKeyPress(.upArrow"), 1)
+        self.assertEqual(SUPPORT.count(".onKeyPress(.downArrow"), 1)
 
     def test_page_and_home_keys_are_mapped(self) -> None:
         for key in (".pageUp", ".pageDown", ".home", ".end"):
-            self.assertIn(f".onKeyPress({key})", SUPPORT)
+            # `phases:` is part of the call — without it SwiftUI picks the overload with no press.
+            self.assertIn(f".onKeyPress({key}, phases: .down)", SUPPORT)
 
 
 class BothListsAreWired(unittest.TestCase):
