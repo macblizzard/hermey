@@ -133,11 +133,31 @@ class ComposioClient:
                 return str(identifier)
         return None
 
+    def ensure_auth_config(self, slug: str) -> str:
+        """The toolkit's blueprint, created with Composio-managed auth if the project has none.
+
+        A project starts with zero auth configs, and asking someone to create one per service in a
+        dashboard before Connect works is exactly the setup friction this feature exists to remove.
+        Composio's managed auth means no OAuth client of ours is involved, so creating it is safe and
+        idempotent: we only ever create when a lookup finds nothing.
+        """
+        existing = self.auth_config_id(slug)
+        if existing:
+            return existing
+        reply = self._request("POST", "/auth_configs", {"toolkit": {"slug": slug}})
+        created = reply.get("auth_config") if isinstance(reply, dict) else None
+        identifier = (created or {}).get("id") if isinstance(created, dict) else None
+        if not identifier:
+            # Some projects answer with the config at the top level instead of nested.
+            identifier = reply.get("id") if isinstance(reply, dict) else None
+        if not identifier:
+            raise ComposioError(f"Composio would not create an auth config for {slug}")
+        LOGGER.info("integrations: created a managed auth config for %s", slug)
+        return str(identifier)
+
     def connect_link(self, slug: str) -> str:
         """A hosted sign-in page for this toolkit. The user finishes there; nothing comes back to us."""
-        config = self.auth_config_id(slug)
-        if not config:
-            raise ComposioError(f"Composio has no auth config for {slug}")
+        config = self.ensure_auth_config(slug)
         reply = self._request("POST", "/connected_accounts/link",
                              {"auth_config_id": config, "user_id": user_id()})
         url = reply.get("redirect_url") if isinstance(reply, dict) else None

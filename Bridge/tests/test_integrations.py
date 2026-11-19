@@ -29,6 +29,8 @@ class FakeComposio(BaseHTTPRequestHandler):
 
     connected: dict[str, dict] = {}
     links: list[dict] = []
+    created: list[str] = []
+    has_configs: bool = True
 
     def log_message(self, fmt, *args):  # noqa: A003 - quieter than the default
         pass
@@ -48,8 +50,9 @@ class FakeComposio(BaseHTTPRequestHandler):
             return
         if url.path.endswith("/auth_configs"):
             slug = parse_qs(url.query).get("toolkit_slug", [""])[0]
-            self._reply(200, {"items": [{"id": f"cfg_{slug}", "toolkit_slug": slug,
-                                         "status": "ENABLED"}]})
+            items = ([] if not FakeComposio.has_configs else
+                     [{"id": f"cfg_{slug}", "toolkit_slug": slug, "status": "ENABLED"}])
+            self._reply(200, {"items": items})
             return
         if url.path.endswith("/connected_accounts"):
             slug = parse_qs(url.query).get("toolkit_slug", [""])[0]
@@ -65,6 +68,12 @@ class FakeComposio(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(length) or b"{}")
         if self.headers.get("x-api-key") != KEY:
             self._reply(401, {"error": "bad key"})
+            return
+        if url.path.endswith("/auth_configs"):
+            slug = body.get("toolkit", {}).get("slug", "")
+            FakeComposio.created.append(slug)
+            self._reply(201, {"toolkit": {"slug": slug},
+                              "auth_config": {"id": f"cfg_{slug}", "is_composio_managed": True}})
             return
         if url.path.endswith("/connected_accounts/link"):
             FakeComposio.links.append(body)
@@ -97,6 +106,8 @@ class IntegrationsTest(unittest.TestCase):
     def setUp(self) -> None:
         FakeComposio.connected = {}
         FakeComposio.links = []
+        FakeComposio.created = []
+        FakeComposio.has_configs = True
         self.client = ComposioClient(key=KEY, api=self.api)
         app = FastAPI()
         app.include_router(create_integrations_router(_FakeRuntime(), self.client))
@@ -121,6 +132,20 @@ class IntegrationsTest(unittest.TestCase):
         self.assertNotIn(KEY, reply.text)
         self.assertTrue(FakeComposio.links[0]["user_id"], "a link must say whose account it is for")
         self.assertEqual(FakeComposio.links[0]["auth_config_id"], "cfg_gmail")
+
+    def test_a_project_with_no_auth_config_gets_one_created(self) -> None:
+        """A fresh Composio project has none, and Connect must still work without a dashboard visit."""
+        FakeComposio.has_configs = False        # a project that has never connected this toolkit
+        client = ComposioClient(key=KEY, api=self.api)
+        self.assertEqual(client.connect_link("gmail"), "https://composio.test/connect/abc123")
+        self.assertEqual(FakeComposio.created, ["gmail"], "the config should be created once")
+
+    def test_an_existing_auth_config_is_reused(self) -> None:
+        """Creating one per connect would litter the project."""
+        client = ComposioClient(key=KEY, api=self.api)
+        client.auth_config_id = lambda slug: "cfg_existing"  # the lookup finds one
+        client.connect_link("gmail")
+        self.assertEqual(FakeComposio.created, [])
 
     def test_an_unknown_service_is_a_404_not_a_guess(self) -> None:
         self.assertEqual(self.app.post("/v1/integrations/outlook/connect").status_code, 404)
