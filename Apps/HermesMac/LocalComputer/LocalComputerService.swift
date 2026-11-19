@@ -340,6 +340,15 @@ final class LocalComputerService: ObservableObject {
                 let code = (error as? LocalComputerCloseError)?.code
                 ClientLog.shared.record("local computer reconnecting: code=\(code ?? -1) \(error.localizedDescription)",
                                         level: .warning, category: "local-computer")
+                if code == 4400 {
+                    // The host accepted a newer socket for this Mac and closed this one. A retry
+                    // would evict the replacement in turn, and the two would trade the registration
+                    // for ever. Status is left alone: the newer loop owns it.
+                    ClientLog.shared.record(
+                        "local computer socket replaced by a newer connection; standing down",
+                        level: .info, category: "local-computer")
+                    break
+                }
                 if code == 4403 {
                     // A revoke is the owner's decision. Stop and say so instead of hammering the host.
                     status = .refused
@@ -392,6 +401,15 @@ final class LocalComputerService: ObservableObject {
         let beat = startHeartbeat(for: task)
         do {
             try await receiveFrames(on: task)
+            if Task.isCancelled {
+                // This loop was replaced — a toggle, a re-dial after wake, a fresh ticket. Leaving
+                // the socket open would let the host accept it as a second live registration and
+                // close the *newer* one with 4400, which the newer loop then treats as a drop. That
+                // is the ~20 s reconnect churn in the bridge's audit log, and it killed a two-minute
+                // build halfway. A replaced loop closes what it was holding.
+                drop(task)
+                return
+            }
             finish(task)
         } catch {
             // URLSession never throws the peer's close code. It is on the task after the failure,
