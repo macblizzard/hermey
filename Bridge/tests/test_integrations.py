@@ -55,9 +55,8 @@ class FakeComposio(BaseHTTPRequestHandler):
             self._reply(200, {"items": items})
             return
         if url.path.endswith("/connected_accounts"):
-            slug = parse_qs(url.query).get("toolkit_slug", [""])[0]
-            rows = [row for row in self.connected.values()
-                    if not slug or row["toolkit_slug"] == slug]
+            # The real API ignores toolkit_slug and returns every account; the client must filter.
+            rows = list(self.connected.values())
             self._reply(200, {"items": rows})
             return
         self._reply(404, {"error": "not found"})
@@ -113,8 +112,20 @@ class IntegrationsTest(unittest.TestCase):
         app.include_router(create_integrations_router(_FakeRuntime(), self.client))
         self.app = TestClient(app)
 
+    def test_one_connected_service_does_not_make_the_others_look_connected(self) -> None:
+        """Composio returns every account regardless of the toolkit filter, so the filter is ours."""
+        FakeComposio.connected = {"g": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE"}}
+        body = self.app.get("/v1/integrations").json()
+        connected = {s["slug"] for s in body["services"] if s["connected"]}
+        self.assertEqual(connected, {"gmail"})
+
+    def test_a_link_mid_flow_is_not_connected(self) -> None:
+        FakeComposio.connected = {"g": {"id": "ca_2", "toolkit": {"slug": "gmail"}, "status": "INITIALIZING"}}
+        body = self.app.get("/v1/integrations").json()
+        self.assertFalse(next(s for s in body["services"] if s["slug"] == "gmail")["connected"])
+
     def test_the_catalog_lists_every_service_with_its_state(self) -> None:
-        FakeComposio.connected = {"g": {"id": "ca_1", "toolkit_slug": "gmail", "status": "ACTIVE"}}
+        FakeComposio.connected = {"g": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE"}}
         reply = self.app.get("/v1/integrations")
         assert reply.status_code == 200, reply.text
         body = reply.json()
@@ -171,7 +182,7 @@ class IntegrationsTest(unittest.TestCase):
         self.assertIn("no Composio key", failed.json()["detail"])
 
     def test_disconnect_revokes_the_connected_account(self) -> None:
-        FakeComposio.connected = {"g": {"id": "ca_1", "toolkit_slug": "gmail", "status": "ACTIVE"}}
+        FakeComposio.connected = {"g": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE"}}
         reply = self.app.post("/v1/integrations/gmail/disconnect")
         assert reply.status_code == 200, reply.text
         self.assertEqual(reply.json()["state"], "revoked")

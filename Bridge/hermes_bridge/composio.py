@@ -169,10 +169,27 @@ class ComposioClient:
         self._request("DELETE", f"/connected_accounts/{urllib.parse.quote(account_id, safe='')}")
 
 
-def _active(accounts: list[dict]) -> dict | None:
+def _toolkit_of(row: dict) -> str:
+    """The row's toolkit, whichever shape Composio used: nested object or flat key."""
+    nested = row.get("toolkit")
+    slug = nested.get("slug") if isinstance(nested, dict) else None
+    return str(slug or row.get("toolkit_slug") or "").strip().lower()
+
+
+def _active(accounts: list[dict], slug: str | None = None) -> dict | None:
+    """One usable account, for ``slug`` only.
+
+    The filter is applied here rather than trusted from the request: asking Composio for
+    ``toolkit_slug=googlecalendar`` returns the Gmail account too, which made every service on the screen
+    read "Connected" the moment one of them was connected.
+
+    ``ACTIVE`` is the only status that means usable. ``INITIALIZING`` is a link mid-flow — showing that as
+    connected would claim a sign-in that has not happened.
+    """
     for row in accounts:
-        status = str(row.get("status") or "").upper()
-        if status in ("ACTIVE", "CONNECTED", "INITIATED"):
+        if slug and _toolkit_of(row) != slug:
+            continue
+        if str(row.get("status") or "").upper() == "ACTIVE":
             return row
     return None
 
@@ -182,7 +199,7 @@ def integrations(client: ComposioClient) -> list[Integration]:
     out: list[Integration] = []
     for slug, name, blurb in CATALOG:
         try:
-            account = _active(client.connected_accounts(slug))
+            account = _active(client.connected_accounts(slug), slug)
         except ComposioError as exc:
             LOGGER.info("integrations: %s unknown (%s)", slug, exc)
             out.append(Integration(slug, name, blurb, connected=False, available=False))
@@ -236,7 +253,7 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
         if slug not in {entry[0] for entry in CATALOG}:
             raise HTTPException(status_code=404, detail="unknown integration")
         try:
-            account = _active(api.connected_accounts(slug))
+            account = _active(api.connected_accounts(slug), slug)
         except ComposioError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
         if not account or not account.get("id"):
