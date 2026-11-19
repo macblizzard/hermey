@@ -23,6 +23,8 @@ MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
 STATE = (ROOT / "Sources" / "HermesKit" / "BotCategories.swift").read_text()
 CLIENT = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text()
 SIDEBAR = (ROOT / "Apps" / "HermesMac" / "Sidebar" / "SidebarBotList.swift").read_text()
+SESSION = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text()
+PROTOCOL = (ROOT / "Sources" / "HermesKit" / "GatewayClient.swift").read_text()
 
 
 class TheHostKeepsTheArrangement(unittest.TestCase):
@@ -77,6 +79,17 @@ class TheMenuMovesOneStep(unittest.TestCase):
         self.assertIn("client.reorderBotCategories(ids: ids)", MODEL)
         self.assertIn('bridgePUT("v1/bot-categories/order"', CLIENT)
         self.assertIn("body: [\"ids\": ids]", CLIENT)
+
+    def test_every_layer_declares_the_call(self) -> None:
+        """AppModel holds `GatewayClientProtocol`, not the actor: the actor alone is not enough.
+
+        Pinned because it cost a build — the method went on the actor and on the inner session
+        pointer while the protocol AppModel actually holds said nothing about it.
+        """
+        signature = "func reorderBotCategories(ids: [String]) async throws -> BotCategoryState"
+        self.assertIn(signature, PROTOCOL, "GatewayClientProtocol is what AppModel calls")
+        self.assertIn(signature, SESSION, "the inner pointer needs the same member")
+        self.assertIn("throw BotAdminUnavailable()", PROTOCOL)
 
     def test_a_move_off_the_end_never_reaches_the_host(self) -> None:
         self.assertIn("guard ids.indices.contains(to) else { return }", MODEL)
