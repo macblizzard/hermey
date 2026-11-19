@@ -585,3 +585,45 @@ def test_a_refused_handshake_arrives_as_a_code_the_client_can_read(bridge):
         return closed.value.rcvd.code if closed.value.rcvd else None
 
     assert asyncio.run(asyncio.wait_for(scenario(), timeout=10)) == 4403
+
+
+def test_a_pong_refreshes_the_last_seen_the_listing_reports(bridge):
+    """An answering Mac must not read as minutes old.
+
+    The socket loop handles ping/pong before `on_message`, so the `last_seen` served by
+    `/v1/local-computers` only moved when a command arrived. The stale check uses the loop's own
+    clock — health was never wrong — but anything watching the listing saw a live Mac ageing.
+    """
+    pair = bridge.pair(name="Test MacBook Air", platform="macos")
+    device_id = pair["device_id"]
+    auth = {"Authorization": "Bearer " + bridge.mint_ticket(device_id)}
+
+    def reported() -> float:
+        listed = bridge.client().get("/v1/local-computers", headers=auth)
+        assert listed.status_code == 200
+        computers = listed.json()["computers"]
+        assert computers, "the Mac is not registered"
+        return float(computers[0]["last_seen"])
+
+    async def scenario() -> float:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        async with connect(url) as ws:
+            await ws.send(json.dumps({"type": "hello", "name": "Test MacBook Air"}))
+            for _ in range(50):
+                if bridge.client().get("/v1/local-computers", headers=auth).json()["computers"]:
+                    break
+                await asyncio.sleep(0.02)
+            before = await asyncio.to_thread(reported)
+            await asyncio.sleep(0.05)
+            await ws.send(json.dumps({"type": "pong"}))
+            after = before
+            for _ in range(50):
+                after = await asyncio.to_thread(reported)
+                if after > before:
+                    break
+                await asyncio.sleep(0.05)
+        return after - before
+
+    assert asyncio.run(asyncio.wait_for(scenario(), timeout=20)) > 0, \
+        "a pong did not move the reported last_seen"

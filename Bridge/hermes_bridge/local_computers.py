@@ -193,6 +193,18 @@ class LocalComputers:
                     future.set_exception(LookupError("local computer disconnected"))
 
 
+    def touch(self, device_id: str) -> None:
+        """Record that the Mac is alive, whatever it sent.
+
+        `last_seen` in the listing only moved when a *command* arrived, because the socket loop
+        handles ping/pong with `continue` before `on_message`. The stale check uses the loop's own
+        clock, so health was never wrong — but `/v1/local-computers` reported a connection as
+        minutes-old while it was answering pings, which reads as a dead Mac to anything watching it.
+        """
+        computer = self.computers.get(device_id)
+        if computer:
+            computer.last_seen = time.time()
+
     def on_message(self, device_id: str, message: dict[str, Any]) -> None:
         computer = self.computers.get(device_id)
         if not computer:
@@ -658,11 +670,15 @@ async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalC
                 # the task alive. The send lock is shared with command dispatch.
                 current = computers.computers.get(device_id)
                 if current:
+                    computers.touch(device_id)
                     async with current.send_lock:
                         await websocket.send_json({"type": "pong"})
                 continue
             if message.get("type") == "pong":
-                # Liveness only: `last_seen` already moved, which is all the stale check reads.
+                # Liveness only. The loop's own clock already moved, but the value the listing
+                # reports has to move too — an answering Mac that reads as minutes old is a dead Mac
+                # to whatever is watching it.
+                computers.touch(device_id)
                 continue
             computers.on_message(device_id, message)
     except (WebSocketDisconnect, ValueError, TimeoutError, asyncio.TimeoutError):
