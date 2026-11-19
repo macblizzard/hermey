@@ -25,6 +25,10 @@ EXTENSION_NAME = "hermey-signin"
 #: Everything the extension is made of. Listed so a missing file is an error, not a silent half-install.
 EXTENSION_FILES = ("manifest.json", "background.js", "popup.html", "popup.js")
 
+#: Beside the bridge's own state, which is the one directory the service unit lets it write
+#: (``ReadWritePaths=/var/lib/hermey`` with ``ProtectSystem=strict``). /opt was the first choice and was
+#: read-only in practice, so the install silently landed in the fallback while the launcher looked at
+#: /opt — the two have to agree, and the one that can be written is the honest answer.
 DEFAULT_HOME = "/opt/hermes-extension"
 
 
@@ -35,7 +39,10 @@ def source_dir() -> Path:
 
 def home() -> Path:
     """Where extensions are installed. ``HERMES_EXTENSION_HOME`` overrides it for tests and odd hosts."""
-    return Path(os.environ.get("HERMES_EXTENSION_HOME", DEFAULT_HOME))
+    override = os.environ.get("HERMES_EXTENSION_HOME")
+    if override:
+        return Path(override)
+    return Path(DEFAULT_HOME)
 
 
 def target_dir() -> Path:
