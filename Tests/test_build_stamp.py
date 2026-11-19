@@ -46,12 +46,19 @@ class StampTests(unittest.TestCase):
 
 
 class RepoDocTests(unittest.TestCase):
-    def test_readme_has_a_stamped_build_line(self):
+    def test_the_readme_does_not_type_a_version(self):
+        """The README used to carry a stamped "Latest published build 0.1.580" line.
+
+        It sat directly beneath a badge that already resolves `releases/latest`, so the two could
+        disagree and every publish had to rewrite one of them. The badge is the single source now:
+        a typed number in prose can only ever be wrong.
+        """
         readme = (ROOT / "README.md").read_text()
-        self.assertIsNotNone(build_stamp.current(readme),
-                             "README.md lost its build markers; the release tools can no longer "
-                             "keep the visible build line current")
-        self.assertIn("Latest published build", build_stamp.current(readme))
+        self.assertIsNone(build_stamp.current(readme),
+                          "README.md has build markers again — the release tools would rewrite a "
+                          "version that the badge already resolves on its own")
+        self.assertNotRegex(readme, r"Latest published build")
+        self.assertIn("img.shields.io/github/v/release/macblizzard/hermey", readme)
 
     def test_no_doc_pins_a_versioned_asset(self):
         # `releases/download/v0.1.66/...` 404s the moment the next build ships; every doc link must

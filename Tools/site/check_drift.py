@@ -2,7 +2,7 @@
 """Report where the published site has fallen behind the repo.
 
 The docs site is generated (`Tools/site/build_docs.py`) from markdown that also lives in the repo, and
-the landing page carries a build stamp the release pipeline rewrites. Both can silently drift: this
+the landing page reads its version from the published feed at load time. Both can silently drift: this
 script compares the claims on the site against the code and docs that are authoritative, so a daily job
 can decide "nothing to do" honestly instead of re-reading prose and hoping.
 
@@ -15,7 +15,7 @@ Checks
   ports      the port numbers on the site vs the installer's defaults
   units      the unit names on the site vs the installer's prefix
   routes     the endpoints the site documents vs the bridge's actual routes
-  stamp      the build version on the landing page vs the newest release tag
+  stamp      the feed the landing page reads vs the newest release tag
   sections   every heading in a mirrored docs/*.md page should exist on its site page
   assets     (--online) the download URLs the site offers should answer
 """
@@ -26,6 +26,7 @@ import os
 import pathlib
 import re
 import subprocess
+import urllib.request
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -121,11 +122,29 @@ def newest_tag() -> str | None:
     return out[0].lstrip("v") if out else None
 
 
-def stamp_version() -> str | None:
-    """The version the landing page advertises as served."""
+FEED_URL = "https://macblizzard.github.io/hermey-downloads/altstore.json"
+
+
+def page_reads_the_feed() -> bool:
+    """Whether the landing page still resolves its version from the feed.
+
+    It used to carry a number that the release pipeline rewrote. Every release therefore had to keep
+    two prose sentences true, and they could be rewritten or missed independently of the feed they
+    described. The page now asks the feed, so the check is that the wiring is intact — plus, when
+    online, that the feed itself agrees with the newest tag.
+    """
     text = read(SITE_DIR / "index.html")
-    match = re.search(r"Serving build\s*<strong>\s*([0-9][0-9.]*)\s*</strong>", text)
-    return match.group(1) if match else None
+    return 'id="build"' in text and FEED_URL in text
+
+
+def feed_version() -> str | None:
+    """The version the public feed advertises, or None when it cannot be read."""
+    try:
+        with urllib.request.urlopen(FEED_URL, timeout=20) as response:
+            document = json.loads(response.read().decode("utf-8"))
+        return str(document["apps"][0]["versions"][0]["version"])
+    except Exception:  # noqa: BLE001 - an unreadable feed is a finding, not a crash
+        return None
 
 
 def doc_headings(rel: str) -> list[str]:
@@ -179,17 +198,20 @@ def main() -> int:
             drift.append({"check": "routes", "what": f"{route} is served but not documented",
                           "where": "docs/reference"})
 
-    # stamp — the landing page must advertise the newest release
-    tag, stamp = newest_tag(), stamp_version()
-    checked.append(f"stamp: newest tag {tag}, landing page says {stamp}")
-    if tag and stamp and tag != stamp:
-        try:
-            newer = tuple(int(x) for x in tag.split(".")) > tuple(int(x) for x in stamp.split("."))
-        except ValueError:
-            newer = True
-        if newer:
-            drift.append({"check": "stamp", "what": f"a newer build exists: tag v{tag}, page says {stamp}",
-                          "where": "gh-pages index.html (publish_altstore.py stamps it)"})
+    # stamp — the page must still read the feed, and (online) the feed must match the newest tag
+    tag = newest_tag()
+    wired = page_reads_the_feed()
+    served = feed_version() if online else None
+    checked.append(f"stamp: newest tag {tag}, page reads the feed: {wired}"
+                   + (f", feed says {served}" if online else ""))
+    if not wired:
+        drift.append({"check": "stamp",
+                      "what": "the landing page no longer reads its version from the feed",
+                      "where": "gh-pages index.html (id=\"build\" + the feed URL)"})
+    if online and tag and served and tag != served:
+        drift.append({"check": "stamp",
+                      "what": f"the feed advertises {served}, newest tag is {tag}",
+                      "where": "hermey-downloads altstore.json / appcast.xml"})
 
     # sections — a page that gained a heading the site never got
     for rel, (slug, mode) in MIRRORED.items():
