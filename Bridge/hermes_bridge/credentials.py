@@ -166,6 +166,18 @@ def create_credentials_router(runtime, store: CardStore,
                            outcome="open", profile=body.bot)
         return {"id": card.id, "expires_at": card.expires_at}
 
+    @router.get("/cards")
+    def pending(request: Request, authorization: str | None = Header(default=None)) -> dict:
+        """Every card still waiting for the owner. What the app polls to know there is something to show.
+
+        A list rather than a push: the app already talks to several hosts, and a poll every couple of
+        seconds costs nothing while a card lives for two minutes.
+        """
+        authorize(request, authorization)
+        store.sweep()
+        live = [c.public() for c in store.cards.values() if c.state == "open"]
+        return {"cards": live}
+
     @router.get("/cards/{card_id}")
     def read(card_id: str, request: Request,
              authorization: str | None = Header(default=None)) -> dict:
