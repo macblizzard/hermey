@@ -47,6 +47,10 @@ struct SidebarBotList: View {
     /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
     @State private var hoveredRow: String?
 
+    /// Arrow/Page/Home keys for the roster. The list already scrolls to `highlighted`; this is the
+    /// pointer-free way to move through what is on screen.
+    @State private var keyboardScroll = KeyboardScrollHandle()
+
     /// The header's **+** menu asks for the category prompt through here; the row's own menu needs
     /// no router — it is the native `Menu` its ⋯ opens. See `BotMenuRouter`.
     @ObservedObject private var menuRouter = BotMenuRouter.shared
@@ -293,7 +297,9 @@ struct SidebarBotList: View {
                 // looked half-faded before the list had scrolled at all — 6 pt was not enough, and
                 // the row is 16 pt clear of the edge now (reported twice, 2026-11-14).
                 .padding(.top, 16)
+                .keyboardScrollProbe(keyboardScroll)
             }
+            .keyboardScrolling(keyboardScroll)
             // Up/Down must be able to reach every row, not only the ones already on screen: the
             // keyboard's row is followed into view as soon as it moves.
             .onChange(of: highlighted) { _, row in
