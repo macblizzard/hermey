@@ -28,6 +28,9 @@ UNIT_PREFIX=${HERMEY_UNIT_PREFIX:-hermey}
 REF=${HERMEY_REF:-}
 LOCAL_SRC=${HERMEY_LOCAL_SRC:-}
 DO_SERVE=${HERMEY_SERVE:-auto}
+# auto: prepare the desktop bots use, unless the flag says otherwise. It is the difference between an
+# app that can show a bot's screen and one that shows an Install card to every new user.
+DO_DESKTOP=${HERMEY_DESKTOP:-auto}
 UNINSTALL=0
 PURGE=0
 
@@ -53,6 +56,8 @@ while [ $# -gt 0 ]; do
     --https-port) HTTPS_PORT=${2:?}; shift 2;;
     --local) LOCAL_SRC=${2:?}; shift 2;;
     --no-serve) DO_SERVE=no; shift;;
+    --no-desktop) DO_DESKTOP=no; shift;;
+    --desktop) DO_DESKTOP=yes; shift;;
     --serve) DO_SERVE=yes; shift;;
     --uninstall) UNINSTALL=1; shift;;
     --purge) PURGE=1; shift;;
@@ -66,6 +71,7 @@ Hermey host installer
   --https-port N   tailnet port for tailscale serve (default 8443)
   --local DIR      install from a checkout instead of GitHub
   --no-serve       do not configure tailscale serve
+  --no-desktop     do not prepare the desktop bots use (the app shows Install instead)
   --uninstall      remove the units and the serve mapping, keep state
   --purge          with --uninstall: delete state, config and the service user
 
@@ -276,6 +282,52 @@ fi
 PUSH_ICON_ENV=""
 if [ -n "$TAIL_HOST" ] && [ "$DO_SERVE" != no ]; then
   PUSH_ICON_ENV="Environment=HERMEY_PUSH_ICON_BASE=https://$TAIL_HOST:$HTTPS_PORT/v1/push/icon"
+fi
+
+# ---------------------------------------------------------------- bot desktop
+# The screen a bot drives is the *agent's*, not the bridge's: the package list lives in
+# `tools/bot_desktop/runtime.py` and the launcher ships with the agent. What was missing is somebody
+# running it at install time, so a fresh host got a bridge, an app, and a bot that could not see a
+# screen until the owner clicked "Install" in the app and typed a sudo password.
+#
+# The agent is asked for its own list rather than a copy kept here: one source of truth across apt,
+# dnf and pacman, and the packages a new distro needs arrive with the agent rather than with us.
+if [ "$DO_DESKTOP" != no ]; then
+  say "Preparing the bot desktop (the screen bots drive)"
+  AGENT_ROOT=""
+  case "$HERMES_BIN" in
+    */bin/hermes) AGENT_ROOT=$(dirname "$(dirname "$HERMES_BIN")");;
+  esac
+  [ -d "$AGENT_ROOT" ] || AGENT_ROOT=""
+  if [ -n "$AGENT_ROOT" ] && [ -f "$AGENT_ROOT/tools/bot_desktop/runtime.py" ]; then
+    DESKTOP_BINS=$(cd "$AGENT_ROOT" && python3 -c 'import tools.bot_desktop.runtime as r; print(" ".join(r.REQUIRED_BINARIES))' 2>/dev/null || true)
+    DESKTOP_CMD=$(cd "$AGENT_ROOT" && python3 -c 'import tools.bot_desktop.runtime as r; print(r.install_command() or "")' 2>/dev/null || true)
+    DESKTOP_MISSING=""
+    for b in $DESKTOP_BINS; do
+      command -v "$b" >/dev/null 2>&1 || DESKTOP_MISSING="$DESKTOP_MISSING $b"
+    done
+    if [ -z "$DESKTOP_BINS" ]; then
+      note "the agent did not report a package list — leaving it to the app's Install card"
+    elif [ -z "$DESKTOP_MISSING" ]; then
+      note "already installed: $DESKTOP_BINS"
+    elif [ -z "$DESKTOP_CMD" ]; then
+      note "no supported package manager (apt/dnf/pacman) — the app shows the manual step"
+    elif [ "$(id -u)" = 0 ]; then
+      note "installing: $DESKTOP_CMD"
+      # Not fatal: the bridge is already useful without a screen, and the app can retry this from a
+      # bot's own screen. Dying here would fail an install over a package mirror.
+      if sh -c "$DESKTOP_CMD" >/dev/null 2>&1; then
+        note "the desktop stack is installed"
+      else
+        note "package install did not finish — a bot's screen offers Install to retry it"
+      fi
+    else
+      note "not running as root, so this step is skipped. Run this once to finish:"
+      note "  $DESKTOP_CMD"
+    fi
+  else
+    note "this host's Hermes has no tools/bot_desktop — the app's Install card is the only path"
+  fi
 fi
 
 # ---------------------------------------------------------------- units
