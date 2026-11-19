@@ -96,6 +96,11 @@ final class LocalComputerService: ObservableObject {
     private var session: URLSession?
     private var heartbeat: Task<Void, Never>?
     private var lastPong = Date()
+    /// When this socket opened and when the newest frame arrived — the two numbers that turn "it
+    /// dropped" into a diagnosis.
+    private var connectedAt: Date?
+    private var lastInboundAt: Date?
+
     /// When the ping still waiting for a pong was sent; `nil` means nothing is outstanding.
     ///
     /// This is what stops a suspended app from reading its own silence as a dead socket: walk-away
@@ -332,9 +337,24 @@ final class LocalComputerService: ObservableObject {
                         summary: "Control handed back", outcome: "resumed")
     }
 
-    private struct LocalComputerCloseError: Error {
+    /// A socket failure, with the part that makes it diagnosable.
+    ///
+    /// Without `LocalizedError` this printed "The operation couldn't be completed. (… error 1.)" —
+    /// the type's own description, not the failure's — which is why a run of drops with no close
+    /// code could not be attributed to the network, the host, or the client's own heartbeat. The
+    /// peer's code and the underlying error are the two facts that separate those cases.
+    private struct LocalComputerCloseError: Error, LocalizedError {
         let code: Int
         let underlying: Error
+        /// How long the socket had lived, so a drop can be read against idle time.
+        let lived: TimeInterval
+        /// Age of the newest frame at the moment of the failure: a self-drop has a large one.
+        let silent: TimeInterval
+
+        var errorDescription: String? {
+            let peer = code == 0 ? "no close code (closed locally or transport ended)" : "close code \(code)"
+            return "socket failed after \(Int(lived))s, \(peer); last frame \(Int(silent))s before; \(underlying.localizedDescription)"
+        }
     }
 
     // MARK: - Connection
@@ -402,6 +422,8 @@ final class LocalComputerService: ObservableObject {
         status = .connected
         lastError = nil
         lastPong = Date()
+        connectedAt = Date()
+        lastInboundAt = Date()
         pingSentAt = nil
         ComputerTakeover.shared.start()
         ClientLog.shared.record("local computer socket connected", category: "local-computer")
@@ -429,7 +451,11 @@ final class LocalComputerService: ObservableObject {
             // so read it before cancel() clears the transport.
             let code = task.closeCode.rawValue
             finish(task)
-            throw LocalComputerCloseError(code: code, underlying: error)
+            throw LocalComputerCloseError(
+                code: code,
+                underlying: error,
+                lived: connectedAt.map { Date().timeIntervalSince($0) } ?? 0,
+                silent: lastInboundAt.map { Date().timeIntervalSince($0) } ?? 0)
         }
         _ = beat
     }
@@ -442,6 +468,13 @@ final class LocalComputerService: ObservableObject {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 guard let self, let task, self.socket === task else { return }
                 if let sent = self.pingSentAt, Date().timeIntervalSince(sent) > 45 {
+                    // Name the reason. This path used to surface as "code=0 … couldn't be completed"
+                    // and read exactly like a network fault, while nothing had been heard from the
+                    // host for three heartbeats — a fact only this line knows.
+                    ClientLog.shared.record(
+                        "local computer socket dropped: no frame from the host for "
+                        + "\(Int(Date().timeIntervalSince(sent)))s (three heartbeats unanswered)",
+                        level: .warning, category: "local-computer")
                     self.drop(task)
                     return
                 }
@@ -468,6 +501,7 @@ final class LocalComputerService: ObservableObject {
     private func receiveFrames(on task: URLSessionWebSocketTask) async throws {
         while !Task.isCancelled {
             let message = try await task.receive()
+            lastInboundAt = Date()
             guard case .string(let text) = message,
                   let data = text.data(using: .utf8),
                   let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
