@@ -41,7 +41,10 @@ class OnlyTheSmallCache(unittest.TestCase):
 class ArtifactsExpire(unittest.TestCase):
     def test_every_upload_declares_a_retention(self) -> None:
         lines = CI.splitlines()
-        starts = [index for index, line in enumerate(lines) if "uses: actions/upload-artifact@v4" in line]
+        # Match the action by name, not by tag: the ref is a pinned commit now, and the rule being
+        # protected is "every upload declares a short retention", not "the ref is literally @v4".
+        starts = [index for index, line in enumerate(lines)
+                  if re.search(r"uses:\s*actions/upload-artifact@", line)]
         self.assertTrue(starts, "the workflow has no artifact uploads to check")
         for start in starts:
             block = "\n".join(lines[start:start + 14])
