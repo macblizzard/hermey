@@ -26,7 +26,7 @@ include = ["hermes_bridge*"]
 # without them and every install silently gets no instructions. `agent_skills/` has no
 # `__init__.py` on purpose: it is data the bridge copies, never imports.
 [tool.setuptools.package-data]
-hermes_bridge = ["agent_skills/*/*.md", "agent_skills/bin/*.py"]
+hermes_bridge = ["agent_skills/*/*.md", "agent_skills/bin/*.py", "browser_extension/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
