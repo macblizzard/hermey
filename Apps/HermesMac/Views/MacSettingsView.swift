@@ -67,7 +67,10 @@ struct MacSettingsView: View {
         // Caching, About): the bar pushes the last tab behind a chevron when the window is too narrow.
         .frame(width: 820, height: 500)
         .background(Tokens.canvas)
-        .preferredColorScheme(.dark)
+        // Settings is a separate window, so it carries its own direction: the window title, the tab
+        // bar, section headers and the small buttons are drawn by AppKit and were staying dark on a
+        // light palette (reported with a screenshot: white title and invisible tab labels on cream).
+        .hermesThemeChrome()
         // Escape and a click outside both close this window, the way every other surface in the
         // app closes. Before this, Escape here did nothing to the window and closed the sidebar
         // behind it instead (reported 2026-11-14).
