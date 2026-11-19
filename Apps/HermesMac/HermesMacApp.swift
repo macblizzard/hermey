@@ -92,7 +92,7 @@ struct HermesMacApp: App {
                 // The minimum is the arrangement's, not one pane's: opening the shared computer adds
                 // a pane and a hairline, and a window held to the two-pane sum clipped both edges.
                 .frame(minWidth: store.minimumWindowWidth, minHeight: WindowLayout.heightMin)
-                .preferredColorScheme(.dark)
+                .hermesThemeChrome()
                 // A paired host is dialled at launch: the app opens the last conversation instead
                 // of asking to be connected to one it already knows. `attachFixtureHostIfNeeded`
                 // is a no-op unless the fixture launch argument was given.

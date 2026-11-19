@@ -99,7 +99,9 @@ struct LocalComputerSettingsView: View {
                         Text(permission.detail)
                             .font(TypeScale.font(TypeScale.caption))
                             .foregroundStyle(Tokens.textMuted)
-                        if let note = state?.note, !note.isEmpty {
+                        if let note = state?.note, !note.isEmpty, note != state?.label {
+                            // A note that only repeats the status ("On first use") drew the same
+                            // words twice on the row.
                             Text(note)
                                 .font(TypeScale.font(TypeScale.caption))
                                 .foregroundStyle(Tokens.textMuted)
