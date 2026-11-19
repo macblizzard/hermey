@@ -266,7 +266,9 @@ struct LocalComputerSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Tokens.canvas)
         .task {
-            if service.isEnabled { service.setEnabled(true, address: pairedAddress) }
+            // Idempotent: this `.task` runs on every appearance, and re-dialling here cancelled a
+            // live socket each time Settings came back.
+            if service.isEnabled { service.ensureRunning(address: pairedAddress) }
             await service.refreshSkill(address: pairedAddress)
         }
         .onChange(of: store.pairing) { _, address in

@@ -221,6 +221,19 @@ final class LocalComputerService: ObservableObject {
         sendPing(on: socket)
     }
 
+    /// Start the loop only if it is not already running against this host.
+    ///
+    /// A view's `.task` re-runs every time the view appears — opening Settings, switching a tab,
+    /// coming back from a sheet. It used to call `setEnabled(true)` there, which cancels the loop
+    /// and re-dials: a healthy socket torn down mid-handshake. That is the failure tailscale serve
+    /// logs as `http: proxy error: context canceled` and the app reports as -1011 "bad response from
+    /// the server", on a reconnecting loop nobody asked for.
+    func ensureRunning(address: PairingAddress?) {
+        guard enabled, status != .refused else { return }
+        if loopRunning, self.address?.deviceID == address?.deviceID, socket != nil { return }
+        setEnabled(true, address: address)
+    }
+
     /// Restart the connection loop when it is not running (it exits on a revoked pairing).
     private func ensureConnected() {
         guard enabled, status != .refused, !loopRunning, let address else { return }
