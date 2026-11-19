@@ -10,6 +10,7 @@ struct LocalComputerSettingsView: View {
     @ObservedObject private var takeover = ComputerTakeover.shared
     @StateObject private var permissions = ComputerPermissions()
     @State private var confirmingRevoke = false
+    @ObservedObject private var launchAtLogin = LaunchAtLogin.shared
 
     private var pairedAddress: PairingAddress? { store.pairing }
 
@@ -148,6 +149,35 @@ struct LocalComputerSettingsView: View {
                 Text("Agents")
             } footer: {
                 Text("Every agent on the host gets a mac-local-computer skill, so it knows how to reach this Mac without being told. The host writes it on each start; this button only re-runs that.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+            }
+
+            Section {
+                Toggle("Open Hermey at login", isOn: Binding(
+                    get: { launchAtLogin.status.toggleIsOn },
+                    set: { launchAtLogin.set($0) }
+                ))
+                .tint(Tokens.accent)
+                .accessibilityIdentifier("computerOpenAtLogin")
+
+                // The row reports what macOS did, not what the click asked for: registration can land
+                // in "needs approval" or be refused outright on a build the system will not accept.
+                Text(launchAtLogin.status.detail)
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if launchAtLogin.status.offersApproval {
+                    Button("Open Login Items in System Settings") {
+                        launchAtLogin.openLoginItemsSettings()
+                    }
+                    .controlSize(.small)
+                }
+            } header: {
+                Text("Startup")
+            } footer: {
+                Text("A login item starts the app after a restart so computer use comes back without you opening it. It cannot wake a sleeping Mac: launchd runs nothing while macOS is asleep, and the wake has to come from a Wake-on-LAN packet or a Bonjour sleep proxy on your network — neither of which an app can arrange for itself.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
             }
