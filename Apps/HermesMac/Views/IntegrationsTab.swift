@@ -6,10 +6,10 @@ import SwiftUI
 
 /// Settings → Integrations: connect a Google account to this host through Composio.
 ///
-/// The screen never sees a token. Connect asks the bridge for a hosted Composio page, opens it in the
-/// browser, and then waits for the answer to arrive the only way it can: by polling the bridge until the
-/// service reports connected. That is why the button says "Waiting for the browser…" rather than
-/// pretending the tap finished the job.
+/// A card per service, with the service's own mark, because a list of names is unreadable at a glance
+/// when six of them are Google. The screen never sees a token: Connect asks the bridge for Composio's
+/// hosted page, opens it in the browser, and then polls until the service reports connected — the tap
+/// does not finish the job, and the card says so rather than pretending.
 struct IntegrationsTab: View {
     @ObservedObject var store: WorkspaceStore
 
@@ -18,30 +18,22 @@ struct IntegrationsTab: View {
     @State private var error: String?
     @State private var waiting: String?
 
+    private let columns = [GridItem(.adaptive(minimum: 232), spacing: 12)]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Integrations")
-                    .font(.title3.weight(.semibold))
-                Text("Let your bots read and act in your own accounts. Connections are made on Composio's page — "
-                     + "this app and your bots never see the password or the token.")
-                    .font(.callout)
-                    .foregroundStyle(Tokens.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            header
 
             if let state {
                 if !state.configured {
                     notice("No Composio key on this host yet. Put one in /etc/hermey/composio.key "
-                           + "or COMPOSIO_API_KEY, then reopen this tab.", tone: .warn)
+                           + "or COMPOSIO_API_KEY, then press Refresh.")
                 }
-                VStack(spacing: 0) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ForEach(state.services) { service in
-                        row(service, configured: state.configured)
-                        if service.id != state.services.last?.id { Divider() }
+                        card(service, configured: state.configured)
                     }
                 }
-                .background(Tokens.surface, in: RoundedRectangle(cornerRadius: Tokens.radiusGrouped))
             } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -58,52 +50,118 @@ struct IntegrationsTab: View {
                 Button("Refresh") { Task { await refresh() } }
                     .disabled(busy != nil)
                 Spacer()
-                if let state { Text("Signed in as \(state.user)").font(.caption).foregroundStyle(Tokens.textMuted) }
+                if let state {
+                    Text("Signed in as \(state.user)")
+                        .font(.caption)
+                        .foregroundStyle(Tokens.textMuted)
+                }
             }
         }
         .padding(20)
-        .frame(minWidth: 540, alignment: .leading)
+        .frame(minWidth: 560, alignment: .leading)
         .task { await refresh() }
     }
 
-    private func row(_ service: IntegrationService, configured: Bool) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(service.name).font(.body)
-                Text(service.blurb).font(.caption).foregroundStyle(Tokens.textMuted)
-            }
-            Spacer()
-            if service.connected {
-                Label("Connected", systemImage: "checkmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                Button("Disconnect") { Task { await disconnect(service) } }
-                    .buttonStyle(.link)
-                    .disabled(busy != nil)
-            } else if busy == service.slug || waiting == service.slug {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Waiting for the browser…").font(.caption).foregroundStyle(Tokens.textMuted)
-                }
-            } else {
-                Button("Connect") { Task { await connect(service) } }
-                    .disabled(busy != nil || !configured || !service.available)
-            }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Integrations")
+                .font(.title3.weight(.semibold))
+            Text("Let your bots read and act in your own accounts. The connection is made on Composio's page — "
+                 + "this app and your bots never see a password or a token.")
+                .font(.callout)
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
     }
 
-    private func notice(_ text: String, tone: NoticeTone) -> some View {
+    // MARK: - One service
+
+    private func card(_ service: IntegrationService, configured: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                mark(for: service)
+                Text(service.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                statusDot(service)
+            }
+
+            Text(service.blurb)
+                .font(.caption)
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+
+            footer(service, configured: configured)
+        }
+        .padding(12)
+        .frame(minHeight: 132, alignment: .topLeading)
+        .background(Tokens.surface, in: RoundedRectangle(cornerRadius: Tokens.radiusGrouped))
+        .overlay(
+            RoundedRectangle(cornerRadius: Tokens.radiusGrouped)
+                .strokeBorder(service.connected ? Color.green.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    /// The service's own mark, from the asset catalog (`brand-<slug>`). A missing logo would be an empty
+    /// box, so the size and aspect are fixed here rather than left to whatever the bundle happens to hold.
+    private func mark(for service: IntegrationService) -> some View {
+        Image("brand-\(service.slug)")
+            .resizable()
+            .interpolation(.high)
+            .aspectRatio(contentMode: .fit)
+            .frame(width: 22, height: 22)
+            .opacity(service.available ? 1 : 0.4)
+            .accessibilityHidden(true)
+    }
+
+    private func statusDot(_ service: IntegrationService) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(service.connected ? Color.green : Color.secondary.opacity(0.35))
+                .frame(width: 7, height: 7)
+            Text(service.connected ? "Connected" : (service.available ? "Not connected" : "Unavailable"))
+                .font(.caption2)
+                .foregroundStyle(Tokens.textMuted)
+        }
+    }
+
+    @ViewBuilder
+    private func footer(_ service: IntegrationService, configured: Bool) -> some View {
+        if service.connected {
+            HStack {
+                Text("Managed by Composio").font(.caption2).foregroundStyle(Tokens.textMuted)
+                Spacer()
+                Button("Disconnect") { Task { await disconnect(service) } }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .disabled(busy != nil)
+            }
+        } else if busy == service.slug || waiting == service.slug {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Waiting for the browser…").font(.caption2).foregroundStyle(Tokens.textMuted)
+            }
+        } else {
+            Button("Connect") { Task { await connect(service) } }
+                .controlSize(.small)
+                .disabled(busy != nil || !configured || !service.available)
+        }
+    }
+
+    private func notice(_ text: String) -> some View {
         Text(text)
             .font(.caption)
-            .foregroundStyle(tone == .warn ? Color.orange : Tokens.textMuted)
+            .foregroundStyle(Color.orange)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(Tokens.surface, in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private enum NoticeTone { case warn }
+    // MARK: - Actions
 
     private func refresh() async {
         do {
@@ -125,16 +183,16 @@ struct IntegrationsTab: View {
                 return
             }
             NSWorkspace.shared.open(url)
-            // The user is now in a browser; the connection completes there. Poll for a while so the row
-            // flips to Connected without them having to press Refresh.
             waiting = service.slug
             defer { waiting = nil }
+            // The sign-in happens in the browser, where this app cannot see it. Poll for a minute so the
+            // card flips on its own instead of asking the owner to come back and press Refresh.
             for _ in 0..<20 {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 await refresh()
                 if state?.services.first(where: { $0.slug == service.slug })?.connected == true { return }
             }
-            error = "Still not connected. Finish the page in your browser, then press Refresh."
+            error = "Still not connected — finish the page in your browser, then press Refresh."
         } catch {
             self.error = "Could not start the connection."
         }
