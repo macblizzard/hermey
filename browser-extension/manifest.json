@@ -3,8 +3,15 @@
   "name": "Hermey Sign-in",
   "version": "0.1.0",
   "description": "Lets Hermey fill a login form without the password ever reaching the bot.",
-  "permissions": ["scripting", "tabs", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "scripting",
+    "tabs",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js",
     "type": "module"
