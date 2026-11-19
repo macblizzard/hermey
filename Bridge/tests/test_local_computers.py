@@ -9,6 +9,7 @@ import urllib.parse
 
 import pytest
 from websockets.asyncio.client import connect
+from websockets.exceptions import ConnectionClosed
 
 
 def test_local_computer_executor_lifecycle(bridge):
@@ -522,3 +523,65 @@ def test_a_silent_mac_is_unregistered(bridge, monkeypatch):
     )
     assert listed.status_code == 200
     assert listed.json()["computers"] == [], "a silent Mac must not stay listed as connected"
+
+
+def test_a_revoke_can_be_lifted_so_the_switch_works_again(bridge):
+    """Removing this computer used to be a one-way door.
+
+    Revoking put the device id into a set that nothing ever removed from, so after the trash
+    button the Mac reconnected for ever into a rejected handshake — and the only way back was
+    editing a file on the host. Turning computer use back on is the opposite decision, and it
+    now has a route.
+    """
+    pair = bridge.pair(name="Test MacBook Air", platform="macos")
+    device_id = pair["device_id"]
+    auth = {"Authorization": "Bearer " + bridge.mint_ticket(device_id)}
+
+    revoked = bridge.client().delete(f"/v1/local-computers/{device_id}", headers=auth)
+    assert revoked.status_code == 200
+    refused = bridge.client().post(
+        f"/v1/local-computers/{device_id}/execute",
+        json={"argv": ["/bin/echo", "nope"]}, headers=auth,
+    )
+    assert refused.status_code == 403, "a revoked device is refused"
+
+    lifted = bridge.client().post(f"/v1/local-computers/{device_id}/enable", headers=auth)
+    assert lifted.status_code == 200, lifted.text
+    assert lifted.json()["was_revoked"] is True
+
+    # No longer refused. It is simply not connected (503), which the client retries.
+    after = bridge.client().post(
+        f"/v1/local-computers/{device_id}/execute",
+        json={"argv": ["/bin/echo", "nope"]}, headers=auth,
+    )
+    assert after.status_code == 503, after.text
+
+    # Idempotent: the switch may be flipped on a Mac that was never revoked.
+    again = bridge.client().post(f"/v1/local-computers/{device_id}/enable", headers=auth)
+    assert again.status_code == 200
+    assert again.json()["was_revoked"] is False
+
+
+def test_a_refused_handshake_arrives_as_a_code_the_client_can_read(bridge):
+    """A refusal must not look like a network fault.
+
+    Closing the websocket before accept() made the server answer the upgrade with a bare HTTP
+    403, which URLSession reports as "a bad response from the server" (-1011). The Mac could not
+    tell a revoke from a broken network, so it retried for ever and showed a meaningless error
+    instead of saying the access had been removed.
+    """
+    pair = bridge.pair(name="Test MacBook Air", platform="macos")
+    device_id = pair["device_id"]
+    auth = {"Authorization": "Bearer " + bridge.mint_ticket(device_id)}
+    assert bridge.client().delete(f"/v1/local-computers/{device_id}", headers=auth).status_code == 200
+
+    async def scenario() -> int | None:
+        url = f"ws://127.0.0.1:{bridge.port}/v1/local-computers/ws?" + urllib.parse.urlencode(
+            {"ticket": bridge.mint_ticket(device_id)})
+        # The handshake completing is the point: the reason then arrives as a close code.
+        async with connect(url) as ws:
+            with pytest.raises(ConnectionClosed) as closed:
+                await ws.recv()
+        return closed.value.rcvd.code if closed.value.rcvd else None
+
+    assert asyncio.run(asyncio.wait_for(scenario(), timeout=10)) == 4403
