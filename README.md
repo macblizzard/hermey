@@ -80,6 +80,12 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 </p>
 <p align="center"><sub>The Mac window gives a wide answer the room it needs.</sub></p>
 
+<p align="center">
+  <img src="docs/media/shots/ios-light-themes.webp" alt="The Parchment light theme on iPhone, with all eight palettes to choose from" width="196">
+  <img src="docs/media/shots/mac-light-connection.webp" alt="The Parchment light theme on macOS, showing the Connection settings" width="620">
+</p>
+<p align="center"><sub>The light theme — <b>Parchment</b>, taken from this site's own palette. Eight themes in all, one of them light.</sub></p>
+
 ## What it does
 
 | | |
