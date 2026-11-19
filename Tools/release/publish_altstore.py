@@ -216,6 +216,8 @@ def push_to_downloads_repo(slug: str, dmg: Path, version: str, build: str, repo:
     publish_dist.verify_public_feeds(
         pages_base, version, build, [versioned, publish_dist.STABLE_DMG_ALIAS],
         manifests=("altstore.json",),
+        # altstore.json advertises the IPA on the release; only the DMG is hosted here.
+        elsewhere=(advertised,),
         attempts=int(os.environ.get("HERMEY_PAGES_ATTEMPTS", "6")),
         interval=float(os.environ.get("HERMEY_PAGES_RETRY_SECONDS", "30")),
     )

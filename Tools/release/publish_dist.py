@@ -528,12 +528,18 @@ if __name__ == "__main__":
 
 def verify_public_feeds(base_url: str, version: str, build: str, artifact_names: list[str],
                         manifests: tuple[str, ...] = (), attempts: int = 6,
-                        interval: float = 30.0) -> None:
+                        interval: float = 30.0, elsewhere: tuple[str, ...] = ()) -> None:
     """§3.3: fetch the public feeds back over HTTPS and fail the publish if they disagree.
 
     Pages lags its commit by tens of seconds to minutes, so this retries — with the reason printed on
     every attempt, because "it worked after a while" and "it never worked" must not look the same in
     a log. Exhausted retries exit non-zero listing the refused URLs; there is no warn-and-continue.
+
+    # `elsewhere` names artifacts this directory advertises without hosting: the downloads repo
+    # carries the macOS image and the sideload source in one folder, while that source points at
+    # the IPA on the GitHub release. Checking against `artifact_names` alone reported "names an
+    # artifact this publish did not stage" on every publish that used --downloads-repo, after the
+    # release had already been verified, so the last line of the output was wrong every time.
     """
     base = base_url.rstrip("/")
     problems: list[str] = []
@@ -575,7 +581,8 @@ def verify_public_feeds(base_url: str, version: str, build: str, artifact_names:
                 if str(feed_doc.get("build")) != build or str(feed_doc.get("version")) != version:
                     problems.append(f"mac.json: advertises {feed_doc.get('version')} "
                                     f"({feed_doc.get('build')}), published {version} ({build})")
-                if (feed_doc.get("url") or "").rsplit("/", 1)[-1] not in artifact_names:
+                feed_name = (feed_doc.get("url") or "").rsplit("/", 1)[-1]
+                if feed_name not in artifact_names and feed_name not in elsewhere:
                     problems.append("mac.json: names an artifact this publish did not stage")
         for manifest in manifests:
             try:
@@ -587,7 +594,8 @@ def verify_public_feeds(base_url: str, version: str, build: str, artifact_names:
             if str(newest.get("version")) != version or str(newest.get("buildVersion")) != build:
                 problems.append(f"{manifest}: advertises {newest.get('version')} "
                                 f"({newest.get('buildVersion')}), published {version} ({build})")
-            if (newest.get("downloadURL") or "").rsplit("/", 1)[-1] not in artifact_names:
+            advertised = (newest.get("downloadURL") or "").rsplit("/", 1)[-1]
+            if advertised not in artifact_names and advertised not in elsewhere:
                 problems.append(f"{manifest}: names an artifact this publish did not stage")
         if not problems:
             print(f"  verified {len(artifact_names)} artifact(s) + {len(FEED_NAMES)} feeds on the "

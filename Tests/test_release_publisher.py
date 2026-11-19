@@ -83,6 +83,18 @@ class VerifiedOverTheWire(unittest.TestCase):
         self.assertIn("def verify(", DIST)
         self.assertIn("attempts: int = 6", DIST, "the origin is a TLS front end; retry the check")
 
+    def test_the_public_check_knows_which_artifacts_are_hosted_elsewhere(self) -> None:
+        """altstore.json in the downloads repo advertises the IPA that lives on the release.
+
+        The check compared that URL against the files staged in the downloads repo (the DMG and the
+        feeds), so every publish that used --downloads-repo ended with "altstore.json: names an
+        artifact this publish did not stage" *after* the release had verified. Reproduced against
+        the live origin, then fixed: the caller names the IPA as published elsewhere.
+        """
+        self.assertIn("elsewhere: tuple[str, ...] = ()", DIST)
+        self.assertIn("advertised not in elsewhere", DIST)
+        self.assertIn("elsewhere=(advertised,)", ALTSTORE)
+
     def test_the_publish_verifies_by_default(self) -> None:
         self.assertIn("verify_wire: bool = True", DIST)
         self.assertIn("if verify_wire:", DIST)
