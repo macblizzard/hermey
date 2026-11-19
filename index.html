@@ -376,9 +376,34 @@
           <a class="btn btn-primary" href="#install">Install Hermey</a>
           <a class="btn btn-quiet" href="https://github.com/macblizzard/hermey">View source</a>
         </div>
-        <!-- build:start -->
-    <p class="build">Serving build <strong>0.1.580</strong> (build 580) · <code>Hermey-0.1.580-b580.ipa</code></p>
-  <!-- build:end -->
+        <p class="build" id="build">Latest release: <a href="https://github.com/macblizzard/hermey/releases/latest">see the release page</a></p>
+    <script>
+    // This line used to be rewritten by the release pipeline, so every publish had to keep a prose
+    // sentence in step with the feed, and a missed rewrite advertised a version that was not what
+    // the download served. It now asks the feed at load time — same origin, so no CORS involved.
+    // If the fetch fails, the sentence above stays: a link to the release, never a stale or invented
+    // number.
+    (function () {
+      var el = document.getElementById('build');
+      if (!el || !window.fetch) return;
+      fetch('https://macblizzard.github.io/hermey-downloads/altstore.json', {cache: 'no-store'})
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(function (doc) {
+          var v = doc && doc.apps && doc.apps[0] && doc.apps[0].versions && doc.apps[0].versions[0];
+          if (!v || !v.version) throw new Error('no version');
+          var esc = function (s) {
+            return String(s).replace(/[&<>"']/g, function (c) {
+              return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+            });
+          };
+          var file = (v.downloadURL || '').split('/').pop();
+          el.innerHTML = 'Serving build <strong>' + esc(v.version) + '</strong>'
+            + (v.buildVersion ? ' (build ' + esc(v.buildVersion) + ')' : '')
+            + (file ? ' \u00b7 <code>' + esc(file) + '</code>' : '');
+        })
+        .catch(function () { /* the fallback sentence is the failure state */ });
+    })();
+    </script>
         <p class="fineprint">Free and MIT licensed. The builds are unsigned — you sideload the app with your own certificate, and the host never leaves your machine.</p>
       </div>
 
