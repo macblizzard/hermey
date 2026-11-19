@@ -25,12 +25,29 @@ public struct BotCategoryState: Hashable, Sendable, Codable {
     public let categories: [BotCategory]
     /// profile id → category id
     public let assignments: [String: String]
+    /// The owner's arrangement of the categories, by id.
+    ///
+    /// Empty means nobody has arranged them, and the list falls back to alphabetical — which is how
+    /// it behaved before the Mac could move a group, so an install that never reorders looks
+    /// unchanged. The host returns `categories` already arranged, so this is only needed to know
+    /// *where* a group sits when moving it.
+    public let order: [String]
 
     public static let empty = BotCategoryState(categories: [], assignments: [:])
 
-    public init(categories: [BotCategory], assignments: [String: String]) {
+    public init(categories: [BotCategory], assignments: [String: String], order: [String] = []) {
         self.categories = categories
         self.assignments = assignments
+        self.order = order
+    }
+
+    /// Decoded by hand rather than synthesised: `order` arrived after the cache existed, and a
+    /// missing key must read as "not arranged" instead of failing the whole cached document.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        categories = try container.decode([BotCategory].self, forKey: .categories)
+        assignments = try container.decode([String: String].self, forKey: .assignments)
+        order = try container.decodeIfPresent([String].self, forKey: .order) ?? []
     }
 
     /// The document as the cache stores it. Same keys the bridge sends, so one decoder reads both.
@@ -61,7 +78,8 @@ public struct BotCategoryState: Hashable, Sendable, Codable {
         for (profile, value) in (root["assignments"] as? [String: Any] ?? [:]) {
             if let category = value as? String, !category.isEmpty { assignments[profile] = category }
         }
-        return BotCategoryState(categories: categories, assignments: assignments)
+        let order = (root["order"] as? [Any] ?? []).compactMap { $0 as? String }
+        return BotCategoryState(categories: categories, assignments: assignments, order: order)
     }
 
     public enum DecodingFailure: LocalizedError {

@@ -47,8 +47,8 @@ class TheHostOwnsTheGroups(unittest.TestCase):
         self.assertIn("with _lock_for(path):", source)
         # Each route goes through `mutate` — a bare load/save pair in a route is the race back.
         routes = source.split("def create_bot_categories_router", 1)[1]
-        self.assertEqual(routes.count("mutate(runtime, change)"), 4,
-                         "create, rename, delete and assign are all one locked mutation")
+        self.assertEqual(routes.count("mutate(runtime, change)"), 5,
+                         "create, rename, delete, assign and arrange are all one locked mutation")
         for name in ("create_category", "rename_category", "delete_category", "assign_category"):
             body = routes.split(f"def {name}(", 1)[1]
             self.assertIn("mutate(runtime, change)", body.split("@router", 1)[0],
@@ -104,7 +104,7 @@ class TheListIsGrouped(unittest.TestCase):
         self.assertIn('public static let uncategorizedID', GROUPING)
         # Pinned is appended before the categories, Uncategorized after them.
         pinned_at = GROUPING.index("isPinned: true")
-        categories_at = GROUPING.index("for category in state.categories.sorted")
+        categories_at = GROUPING.index("for category in arranged(state.categories, by: state.order)")
         uncategorized_at = GROUPING.index("isUncategorized: true")
         self.assertLess(pinned_at, categories_at)
         self.assertLess(categories_at, uncategorized_at)

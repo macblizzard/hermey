@@ -182,3 +182,93 @@ final class AppModelCategoriesTests: XCTestCase {
     }
 }
 #endif
+
+/// Arranging the groups from the Mac's context menu: the order is the host's, and "up" means the
+/// group drawn above the one you right-clicked.
+@MainActor
+final class BotCategoryOrderTests: XCTestCase {
+
+    private func hostName(_ label: String) -> String {
+        "category-order-\(label)-\(UUID().uuidString)"
+    }
+
+    private func cacheKey(_ host: String) -> String { "hermes.botCategories.\(host)" }
+
+    private func state(_ names: [String], order: [String] = []) -> BotCategoryState {
+        BotCategoryState(
+            categories: names.enumerated().map { index, name in
+                BotCategory(id: "cat-\(index + 1)", name: name)
+            },
+            assignments: [:],
+            order: order)
+    }
+
+    private func categoryNames(_ model: AppModel) -> [String] {
+        model.botGroups.filter { !$0.isPinned && !$0.isUncategorized }.map(\.name)
+    }
+
+    func testAnUnarrangedListIsStillAlphabetical() {
+        let state = state(["Zebra", "Apple", "Mango"])
+        let groups = BotGrouping.groups(bots: [], state: state, pinned: [])
+        XCTAssertEqual(groups.map(\.name), ["Apple", "Mango", "Zebra", "Uncategorized"])
+    }
+
+    func testTheArrangementWinsOverTheAlphabet() {
+        let state = state(["Zebra", "Apple", "Mango"], order: ["cat-1", "cat-3", "cat-2"])
+        let groups = BotGrouping.groups(bots: [], state: state, pinned: [])
+        XCTAssertEqual(groups.map(\.name), ["Zebra", "Mango", "Apple", "Uncategorized"])
+    }
+
+    func testAGroupTheArrangementHasNotSeenKeepsItsAlphabeticalPlace() {
+        // A category created on the phone since this Mac last read the document: it must not jump
+        // to the end, and it must not be dropped.
+        let state = state(["Zebra", "Apple", "Mango"], order: ["cat-1"])
+        let groups = BotGrouping.groups(bots: [], state: state, pinned: [])
+        XCTAssertEqual(groups.map(\.name), ["Zebra", "Apple", "Mango", "Uncategorized"])
+    }
+
+    func testMovingAGroupUpSendsTheWholeArrangementAndTheListFollows() async throws {
+        let host = hostName("up")
+        defer { UserDefaults.standard.removeObject(forKey: cacheKey(host)) }
+        let scripted = ScriptedHost(session: "s1")
+        scripted.categoryState = state(["Alpha", "Beta", "Gamma"])
+        let model = AppModel(client: scripted, hostName: host)
+        await model.start()
+        XCTAssertEqual(categoryNames(model), ["Alpha", "Beta", "Gamma"])
+
+        try await model.moveBotCategory(id: "cat-3", by: -1)
+
+        XCTAssertEqual(categoryNames(model), ["Alpha", "Gamma", "Beta"])
+        XCTAssertTrue(scripted.categoryWrites.contains("order:cat-1,cat-3,cat-2"),
+                      "the arrangement should be sent whole: \(scripted.categoryWrites)")
+        await model.stop()
+    }
+
+    func testMovingPastEitherEndDoesNothing() async throws {
+        let host = hostName("ends")
+        defer { UserDefaults.standard.removeObject(forKey: cacheKey(host)) }
+        let scripted = ScriptedHost(session: "s1")
+        scripted.categoryState = state(["Alpha", "Beta"])
+        let model = AppModel(client: scripted, hostName: host)
+        await model.start()
+
+        XCTAssertFalse(model.canMoveBotCategory(id: "cat-1", by: -1))
+        XCTAssertFalse(model.canMoveBotCategory(id: "cat-2", by: 1))
+        XCTAssertTrue(model.canMoveBotCategory(id: "cat-2", by: -1))
+        XCTAssertTrue(model.canMoveBotCategory(id: "cat-1", by: 1))
+
+        try await model.moveBotCategory(id: "cat-1", by: -1)
+        try await model.moveBotCategory(id: "cat-2", by: 1)
+        XCTAssertEqual(categoryNames(model), ["Alpha", "Beta"])
+        XCTAssertTrue(scripted.categoryWrites.isEmpty, "nothing should reach the host: \(scripted.categoryWrites)")
+        await model.stop()
+    }
+
+    func testCachedDocumentsFromBeforeOrderingStillLoad() throws {
+        // The apps cache the document on disk; a cache written before `order` existed has no key.
+        let json = #"{"categories":[{"id":"cat-1","name":"Work","createdAt":null}],"assignments":{}}"#
+        let decoded = try JSONDecoder().decode(BotCategoryState.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.order, [])
+        XCTAssertEqual(decoded.categories.map(\.name), ["Work"])
+    }
+}

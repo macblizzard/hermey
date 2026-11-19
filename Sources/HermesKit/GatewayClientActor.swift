@@ -579,6 +579,10 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.setBotCategory(profile: profile, categoryID: categoryID)
     }
 
+    public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        try await sessionPointer.reorderBotCategories(ids: ids)
+    }
+
     /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every
     /// profile's transcript in one request.
     public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {

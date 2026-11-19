@@ -24,7 +24,8 @@ public struct BotGroup: Identifiable, Hashable, Sendable {
 /// Folds the bot list into the owner's categories.
 ///
 /// The order is the one the list promises: **Pinned** first (when anything is pinned), then the
-/// categories by name, then **Uncategorized** last — the group a bot lands in until it is sorted,
+/// categories in the owner's arrangement — alphabetically until they move one — then
+/// **Uncategorized** last — the group a bot lands in until it is sorted,
 /// and the one that always exists. A category with no bots still comes back, so an empty group can
 /// be seen (and filled) rather than silently disappearing.
 ///
@@ -63,9 +64,7 @@ public enum BotGrouping {
             }
         }
 
-        for category in state.categories.sorted(by: {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }) {
+        for category in arranged(state.categories, by: state.order) {
             groups.append(BotGroup(id: category.id,
                                    name: category.name,
                                    bots: byCategory[category.id] ?? []))
@@ -78,6 +77,28 @@ public enum BotGrouping {
                                bots: uncategorized,
                                isUncategorized: true))
         return groups
+    }
+
+
+    /// The categories in the order the owner arranged, or alphabetically when they have not.
+    ///
+    /// An empty arrangement is not "no categories" — it is "nobody has moved anything", which has to
+    /// keep looking alphabetical so an existing install does not silently reorder itself. A category
+    /// missing from the arrangement (created on another device since the app read it) takes its
+    /// alphabetical place among the others rather than jumping to the end.
+    static func arranged(_ categories: [BotCategory], by order: [String]) -> [BotCategory] {
+        let alphabetical = categories.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        guard !order.isEmpty else { return alphabetical }
+        var rank: [String: Int] = [:]
+        for (index, id) in order.enumerated() where rank[id] == nil { rank[id] = index }
+        return alphabetical.enumerated().sorted { left, right in
+            let leftRank = rank[left.element.id] ?? Int.max
+            let rightRank = rank[right.element.id] ?? Int.max
+            if leftRank != rightRank { return leftRank < rightRank }
+            return left.offset < right.offset
+        }.map(\.element)
     }
 
     /// The collapse key for a group's remembered state.

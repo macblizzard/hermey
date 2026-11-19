@@ -31,7 +31,7 @@ class TestCategoriesAreAName:
     def test_a_new_host_has_none(self, bridge) -> None:
         response = _request(bridge, "GET", "/v1/bot-categories")
         assert response.status_code == 200, response.text
-        assert response.json() == {"categories": [], "assignments": {}}
+        assert response.json() == {"categories": [], "assignments": {}, "order": []}
 
     def test_creating_returns_the_whole_document(self, bridge) -> None:
         response = _create(bridge, "Work")
@@ -224,3 +224,56 @@ class TestTheRoutesNeedADevice:
     def test_without_a_ticket(self, bridge, method, path, body) -> None:
         response = httpx.request(method, f"{bridge.base_url}{path}", json=body, timeout=10)
         assert response.status_code in (401, 403), response.text
+
+
+class TestTheOwnerCanArrangeThem:
+    """Ordering: the arrangement is the file's, not a device's memory."""
+
+    def _ids(self, payload: dict) -> list:
+        return [c["id"] for c in payload["categories"]]
+
+    def test_the_default_arrangement_is_still_the_alphabetical_one(self, bridge) -> None:
+        """No order stored, so the apps sort. An install that never reorders looks unchanged."""
+        _create(bridge, "Work")
+        _create(bridge, "Home")
+        assert _request(bridge, "GET", "/v1/bot-categories").json()["order"] == [
+            _request(bridge, "GET", "/v1/bot-categories").json()["categories"][0]["id"],
+            _request(bridge, "GET", "/v1/bot-categories").json()["categories"][1]["id"],
+        ]
+
+    def test_arranging_returns_the_document_in_the_new_order(self, bridge) -> None:
+        first = _create(bridge, "Work").json()["category"]["id"]
+        second = _create(bridge, "Home").json()["category"]["id"]
+        moved = _request(bridge, "PUT", "/v1/bot-categories/order", {"ids": [second, first]})
+        assert moved.status_code == 200, moved.text
+        assert moved.json()["order"] == [second, first]
+        # and the categories themselves come back in that order, so a reader that ignores `order`
+        # still draws what the owner arranged
+        assert self._ids(moved.json()) == [second, first]
+
+    def test_it_persists_across_reads(self, bridge) -> None:
+        first = _create(bridge, "Work").json()["category"]["id"]
+        second = _create(bridge, "Home").json()["category"]["id"]
+        _request(bridge, "PUT", "/v1/bot-categories/order", {"ids": [second, first]})
+        assert _request(bridge, "GET", "/v1/bot-categories").json()["order"] == [second, first]
+
+    def test_unknown_ids_are_ignored_and_missing_ones_are_kept(self, bridge) -> None:
+        """A device that has not seen a category cannot lose it by arranging."""
+        first = _create(bridge, "Work").json()["category"]["id"]
+        second = _create(bridge, "Home").json()["category"]["id"]
+        payload = _request(bridge, "PUT", "/v1/bot-categories/order",
+                           {"ids": [second, "not-a-real-id"]}).json()
+        assert payload["order"] == [second, first]
+
+    def test_a_new_category_joins_the_end_of_an_arrangement(self, bridge) -> None:
+        first = _create(bridge, "Work").json()["category"]["id"]
+        _request(bridge, "PUT", "/v1/bot-categories/order", {"ids": [first]})
+        third = _create(bridge, "Zebra").json()["category"]["id"]
+        assert _request(bridge, "GET", "/v1/bot-categories").json()["order"] == [first, third]
+
+    def test_deleting_removes_it_from_the_arrangement(self, bridge) -> None:
+        first = _create(bridge, "Work").json()["category"]["id"]
+        second = _create(bridge, "Home").json()["category"]["id"]
+        _request(bridge, "PUT", "/v1/bot-categories/order", {"ids": [second, first]})
+        _request(bridge, "DELETE", f"/v1/bot-categories/{second}")
+        assert _request(bridge, "GET", "/v1/bot-categories").json()["order"] == [first]

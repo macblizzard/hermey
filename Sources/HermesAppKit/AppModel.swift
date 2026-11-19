@@ -2778,6 +2778,30 @@ public final class AppModel: ObservableObject {
         try await writeBotCategories { try await client.deleteBotCategory(id: id) }
     }
 
+    /// Move one category up (-1) or down (+1) in the owner's arrangement.
+    ///
+    /// The arrangement is computed from what is *drawn* — `botGroups` — so "up" means the group
+    /// above the one on screen, not the one above it in the file. Pinned and Uncategorized are the
+    /// app's own headings and are not part of it, so they are filtered out before moving.
+    public func moveBotCategory(id: String, by offset: Int) async throws {
+        guard offset != 0 else { return }
+        var ids = botGroups
+            .filter { !$0.isPinned && !$0.isUncategorized }
+            .map(\.id)
+        guard let from = ids.firstIndex(of: id) else { return }
+        let to = from + offset
+        guard ids.indices.contains(to) else { return }
+        ids.swapAt(from, to)
+        try await writeBotCategories { try await client.reorderBotCategories(ids: ids) }
+    }
+
+    /// Whether a move in `offset` has anywhere to go — what greys out the menu item at the ends.
+    public func canMoveBotCategory(id: String, by offset: Int) -> Bool {
+        let ids = botGroups.filter { !$0.isPinned && !$0.isUncategorized }.map(\.id)
+        guard let from = ids.firstIndex(of: id) else { return false }
+        return ids.indices.contains(from + offset)
+    }
+
     /// `nil` puts the bot back in Uncategorized.
     public func setBotCategory(_ botID: String, to categoryID: String?) async throws {
         try await writeBotCategories {
