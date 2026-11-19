@@ -78,4 +78,9 @@ echo "artifacts:"
 ls -la "dist/Hermey-macOS-$VERSION.dmg" "dist/Hermey-$VERSION-b$BUILD.ipa"
 echo
 echo "publish with:"
-echo "  python3 Tools/release/publish_github.sh dist/Hermey-$VERSION-b$BUILD.ipa dist/Hermey-macOS-$VERSION.dmg"
+# publish_github.sh takes a CI *run id* and downloads that run's artifacts; handed local paths
+# it treats them as a run id and dies on a 404 (api.github.com/.../runs/dist/Hermey-*.ipa/...).
+# Artifacts built here are published with the publisher itself, which takes paths. Printed as one
+# line on purpose: a backslash continuation in a hint is the kind of thing that breaks on paste.
+echo "  python3 Tools/release/publish_altstore.py --ipa dist/Hermey-$VERSION-b$BUILD.ipa --mac-dmg dist/Hermey-macOS-$VERSION.dmg --repo macblizzard/hermey --downloads-repo macblizzard/hermey-downloads"
+echo "  (publish_github.sh is only for runner builds: it takes a run id, not paths)"
