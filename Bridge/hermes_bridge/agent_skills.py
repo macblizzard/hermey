@@ -36,7 +36,7 @@ SKILL_NAME = "mac-local-computer"
 #: its own. A bot with only the first lands on whatever display it finds — on this host a bot picked
 #: the owner's personal ``:10`` session, opened a browser there, exited 0 and reported success, while
 #: the owner's viewer showed an empty screen.
-BUNDLED_SKILLS = (SKILL_NAME, "bot-desktop")
+BUNDLED_SKILLS = (SKILL_NAME, "bot-desktop", "signin")
 
 #: Frontmatter line that marks a file as ours to update. Absence of it means "hands off".
 MANAGED_MARKER = "managed_by: hermey-bridge"
@@ -52,6 +52,8 @@ CLI_SOURCE = _BUNDLE / "bin" / "local_computer.py"
 
 _CLI_PLACEHOLDER = "@@CLI@@"
 _BRIDGE_PLACEHOLDER = "@@BRIDGE@@"
+#: The directory the bundled scripts live in, so a skill can name a sibling of the Mac CLI.
+_BIN_PLACEHOLDER = "@@BIN@@"
 
 
 def bridge_url() -> str:
@@ -74,6 +76,7 @@ def install_cli(destination: Path | None = None) -> Path:
         if existing != source:
             atomic_write_bytes(target, source)
         target.chmod(0o755)
+        _install_sibling_scripts(target.parent)
         return target
     except OSError as exc:
         # A read-only state dir still leaves the running checkout usable (developer hosts).
@@ -82,6 +85,25 @@ def install_cli(destination: Path | None = None) -> Path:
             LOGGER.warning("local computer CLI: %s; falling back to %s", exc, checkout)
             return checkout
         raise
+
+
+def _install_sibling_scripts(directory: Path) -> None:
+    """Every other script the bundled skills name, beside the Mac CLI.
+
+    One location for all of them: a skill says "@@BIN@@/hermey_signin.py" and does not care which
+    script it is talking about, so adding the next capability is a file, not a second installer.
+    """
+    for source in sorted(CLI_SOURCE.parent.glob("*.py")):
+        if source.name == CLI_SOURCE.name:
+            continue
+        target = directory / source.name
+        try:
+            wanted = source.read_bytes()
+            if not target.is_file() or target.read_bytes() != wanted:
+                atomic_write_bytes(target, wanted)
+            target.chmod(0o755)
+        except OSError as exc:  # noqa: PERF203 - one script failing must not stop the others
+            LOGGER.warning("bundled script %s: %s", source.name, exc)
 
 
 def render(cli: Path, name: str = SKILL_NAME) -> str:
@@ -93,6 +115,7 @@ def render(cli: Path, name: str = SKILL_NAME) -> str:
     template = template_path(name).read_text(encoding="utf-8")
     if cli is not None:
         template = template.replace(_CLI_PLACEHOLDER, str(cli))
+        template = template.replace(_BIN_PLACEHOLDER, str(cli.parent))
     return template.replace(_BRIDGE_PLACEHOLDER, bridge_url())
 
 
@@ -104,7 +127,8 @@ def needs_cli(name: str = SKILL_NAME) -> bool:
     must not silently withhold the other.
     """
     try:
-        return _CLI_PLACEHOLDER in template_path(name).read_text(encoding="utf-8")
+        body = template_path(name).read_text(encoding="utf-8")
+        return _CLI_PLACEHOLDER in body or _BIN_PLACEHOLDER in body
     except OSError:
         return False
 
