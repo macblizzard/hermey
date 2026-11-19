@@ -59,6 +59,7 @@ from .bot_sessions import create_bot_sessions_router
 from .config import BridgeConfig, is_loopback_host
 from .agent_skills import install as install_agent_skills
 from .browser_extension import install as install_browser_extension
+from .composio import create_integrations_router
 from .device_auth import require_device
 from .display import create_display_router
 from .local_computers import LocalComputers, create_local_computers_router, local_computer_socket
@@ -313,6 +314,9 @@ def create_app(
     # Login cards (docs/CREDENTIALS.md): the owner types a secret into the app and it goes
     # to the fill target, never to the bot. The deliverer is the bot screen's browser.
     app.include_router(create_browser_router(runtime, BROWSERS))
+    # Integrations (Composio): the owner connects Gmail/Calendar/etc. through Composio's hosted
+    # page; the project key stays on this host and never reaches the app.
+    app.include_router(create_integrations_router(runtime))
     app.include_router(create_credentials_router(
         runtime, CardStore(), deliver=deliver_to_bot_screen))
     app.include_router(create_bot_search_router(runtime))
