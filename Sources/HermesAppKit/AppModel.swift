@@ -2810,6 +2810,20 @@ public final class AppModel: ObservableObject {
         try await client.cancelCredentialCard(id: id)
     }
 
+    /// The Integrations screen's data (docs/INTEGRATIONS.md).
+    public func integrations() async throws -> IntegrationsState {
+        try await client.integrations()
+    }
+
+    /// The hosted Composio page for one service, ready to open in a browser.
+    public func connectIntegration(slug: String) async throws -> String {
+        try await client.connectIntegration(slug: slug)
+    }
+
+    public func disconnectIntegration(slug: String) async throws {
+        try await client.disconnectIntegration(slug: slug)
+    }
+
     /// Whether a move in `offset` has anywhere to go — what greys out the menu item at the ends.
     public func canMoveBotCategory(id: String, by offset: Int) -> Bool {
         let ids = botGroups.filter { !$0.isPinned && !$0.isUncategorized }.map(\.id)

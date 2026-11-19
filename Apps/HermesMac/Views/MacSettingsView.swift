@@ -36,6 +36,11 @@ struct MacSettingsView: View {
             ApprovalSettingsTab(store: store)
                 .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
 
+            // The owner's own accounts. Next to Approvals because both answer "what may the bots do",
+            // and both are the owner's decision rather than a per-bot setting.
+            IntegrationsTab(store: store)
+                .tabItem { Label("Integrations", systemImage: "link.badge.plus") }
+
             // The Mac as a local computer. Same pattern as the other native clients: a toggle in
             // settings, no inbound port and no SSH.
             LocalComputerSettingsView(store: store)

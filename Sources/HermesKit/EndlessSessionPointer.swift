@@ -186,6 +186,13 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/credentials/cards/{id}/cancel`
     func cancelCredentialCard(id: String) async throws
 
+    /// `GET /v1/integrations` — connectable services and whether this host can connect them at all.
+    func integrations() async throws -> IntegrationsState
+    /// `POST /v1/integrations/{slug}/connect` — the hosted sign-in URL to open.
+    func connectIntegration(slug: String) async throws -> String
+    /// `POST /v1/integrations/{slug}/disconnect`
+    func disconnectIntegration(slug: String) async throws
+
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
@@ -286,6 +293,18 @@ public extension BotSessionPointerStore {
     }
 
     func cancelCredentialCard(id: String) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func integrations() async throws -> IntegrationsState {
+        throw BotAdminUnavailable()
+    }
+
+    func connectIntegration(slug: String) async throws -> String {
+        throw BotAdminUnavailable()
+    }
+
+    func disconnectIntegration(slug: String) async throws {
         throw BotAdminUnavailable()
     }
 
@@ -724,6 +743,28 @@ enum Failure: Error, Equatable, LocalizedError {
     public func cancelCredentialCard(id: String) async throws {
         let card = try Self.pathComponent(id)
         _ = try await bridgePOST("v1/credentials/cards/\(card)/cancel", body: [:], timeout: 20)
+    }
+
+    /// `GET /v1/integrations`. The key that makes these work never travels — only the state does.
+    public func integrations() async throws -> IntegrationsState {
+        try IntegrationsState.from(try await bridgeGET("v1/integrations", timeout: 20))
+    }
+
+    /// `POST /v1/integrations/{slug}/connect`. Returns the hosted page the app opens in a browser.
+    public func connectIntegration(slug: String) async throws -> String {
+        let name = try Self.pathComponent(slug)
+        let data = try await bridgePOST("v1/integrations/\(name)/connect", body: [:], timeout: 40)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = root["url"] as? String, !url.isEmpty else {
+            throw BotAdminUnavailable()
+        }
+        return url
+    }
+
+    /// `POST /v1/integrations/{slug}/disconnect`.
+    public func disconnectIntegration(slug: String) async throws {
+        let name = try Self.pathComponent(slug)
+        _ = try await bridgePOST("v1/integrations/\(name)/disconnect", body: [:], timeout: 30)
     }
 
     /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`
