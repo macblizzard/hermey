@@ -29,11 +29,25 @@ LOGGER = logging.getLogger(__name__)
 #: The skill's directory name, and the name Hermes shows in its index.
 SKILL_NAME = "mac-local-computer"
 
+#: Every skill this bridge bundles, each a directory under ``agent_skills/`` holding a ``SKILL.md``.
+#:
+#: A host that installs the bridge gets all of them, because one instruction is not enough: the Mac
+#: skill teaches a bot to drive the owner's laptop, and ``bot-desktop`` teaches it which X display is
+#: its own. A bot with only the first lands on whatever display it finds — on this host a bot picked
+#: the owner's personal ``:10`` session, opened a browser there, exited 0 and reported success, while
+#: the owner's viewer showed an empty screen.
+BUNDLED_SKILLS = (SKILL_NAME, "bot-desktop")
+
 #: Frontmatter line that marks a file as ours to update. Absence of it means "hands off".
 MANAGED_MARKER = "managed_by: hermey-bridge"
 
 _BUNDLE = Path(__file__).resolve().parent / "agent_skills"
 TEMPLATE = _BUNDLE / SKILL_NAME / "SKILL.md"
+
+
+def template_path(name: str = SKILL_NAME) -> Path:
+    """The bundled template for one skill."""
+    return _BUNDLE / name / "SKILL.md"
 CLI_SOURCE = _BUNDLE / "bin" / "local_computer.py"
 
 _CLI_PLACEHOLDER = "@@CLI@@"
@@ -70,9 +84,13 @@ def install_cli(destination: Path | None = None) -> Path:
         raise
 
 
-def render(cli: Path) -> str:
-    """The skill text, with this host's paths substituted."""
-    template = TEMPLATE.read_text(encoding="utf-8")
+def render(cli: Path, name: str = SKILL_NAME) -> str:
+    """The skill text, with this host's paths substituted.
+
+    The substitutions are shared by every bundled skill, so a template that does not use one is left
+    exactly as written rather than requiring a second renderer.
+    """
+    template = template_path(name).read_text(encoding="utf-8")
     return template.replace(_CLI_PLACEHOLDER, str(cli)).replace(_BRIDGE_PLACEHOLDER, bridge_url())
 
 
@@ -158,10 +176,10 @@ def fallback_skill_dirs() -> list[Path]:
     return unique
 
 
-def template_version() -> str:
-    """The ``version:`` line of the template's frontmatter, for the app to show next to the row."""
+def template_version(name: str = SKILL_NAME) -> str:
+    """The ``version:`` line of a template's frontmatter, for the app to show next to the row."""
     try:
-        text = TEMPLATE.read_text(encoding="utf-8")
+        text = template_path(name).read_text(encoding="utf-8")
     except OSError:
         return ""
     for line in text.splitlines():
@@ -170,22 +188,14 @@ def template_version() -> str:
     return ""
 
 
-def status(cli: Path | None = None) -> dict[str, Any]:
-    """What Settings → Computer shows. Computed only — asking must never change the host.
-
-    ``present`` and ``up_to_date`` are separate because they answer different questions: a bot with
-    an older copy can still reach the Mac, it just has the previous instructions.
-
-    ``cli`` exists so a caller can ask about the same path ``install_cli`` would write; the rendered
-    text embeds it, and a copy rendered for a different path is by definition out of date.
-    """
-    cli = Path(cli) if cli is not None else STATE_DIR / "bin" / "local_computer.py"
-    body = render(cli)
+def _status_one(name: str, cli: Path) -> dict[str, Any]:
+    """Where one bundled skill stands on this host."""
+    body = render(cli, name)
     current: list[str] = []
     stale: list[str] = []
     foreign: list[str] = []
     for root in shared_skill_dirs() or fallback_skill_dirs():
-        path = Path(root) / SKILL_NAME / "SKILL.md"
+        path = Path(root) / name / "SKILL.md"
         if not path.is_file():
             continue
         try:
@@ -199,25 +209,45 @@ def status(cli: Path | None = None) -> dict[str, Any]:
         else:
             foreign.append(str(root))
     return {
-        "name": SKILL_NAME,
-        "version": template_version(),
+        "name": name,
+        "version": template_version(name),
         "installed": current,
         "out_of_date": stale,
         "owned_by_the_user": foreign,
         "present": bool(current or stale),
         "up_to_date": bool(current) and not stale,
-        "cli": str(cli),
-        "cli_present": cli.is_file(),
     }
 
 
-def write_skill(root: Path, body: str) -> str:
+def status(cli: Path | None = None) -> dict[str, Any]:
+    """What Settings → Computer shows. Computed only — asking must never change the host.
+
+    ``present`` and ``up_to_date`` are separate because they answer different questions: a bot with
+    an older copy can still reach the Mac, it just has the previous instructions.
+
+    ``cli`` exists so a caller can ask about the same path ``install_cli`` would write; the rendered
+    text embeds it, and a copy rendered for a different path is by definition out of date.
+
+    The top-level keys describe the primary skill (the Mac one, which the pane is about) and
+    ``skills`` carries every bundled skill — the desktop one has no CLI and no pane of its own, but a
+    bot's ability to use its screen depends on it being present and current.
+    """
+    cli = Path(cli) if cli is not None else STATE_DIR / "bin" / "local_computer.py"
+    per_skill = {name: _status_one(name, cli) for name in BUNDLED_SKILLS}
+    primary = dict(per_skill[SKILL_NAME])
+    primary["cli"] = str(cli)
+    primary["cli_present"] = cli.is_file()
+    primary["skills"] = per_skill
+    return primary
+
+
+def write_skill(root: Path, body: str, name: str = SKILL_NAME) -> str:
     """Write one copy. Returns ``written`` / ``current`` / ``foreign`` / ``failed: …``.
 
     ``foreign`` is a real answer, not a failure: the owner has a skill by that name, so their file
     stays exactly as it is and this install leaves it alone.
     """
-    path = Path(root) / SKILL_NAME / "SKILL.md"
+    path = Path(root) / name / "SKILL.md"
     try:
         if path.is_file():
             existing = path.read_text(encoding="utf-8", errors="replace")
@@ -250,19 +280,8 @@ def relax_mode(path: Path) -> None:
         pass
 
 
-def install() -> dict[str, Any]:
-    """Make the skill available to every bot on this host. Never raises for a permission problem.
-
-    Called on every bridge start, so it must be safe to repeat: identical content is left untouched,
-    and a changed template is picked up on the next restart (a template update ships with the bridge).
-    """
-    try:
-        cli = install_cli()
-    except OSError as exc:
-        LOGGER.error("local computer skill not installed: %s", exc)
-        return {"installed": [], "attempted": [], "error": str(exc)}
-    body = render(cli)
-
+def _install_one(name: str, body: str) -> dict[str, Any]:
+    """Write one skill into every place it belongs. Never raises for a permission problem."""
     attempted: list[dict[str, str]] = []
     installed: list[str] = []
 
@@ -270,7 +289,7 @@ def install() -> dict[str, Any]:
     # the same file into 20 profile dirs as well would only give the next reader 20 copies to keep
     # in step.
     for root in shared_skill_dirs():
-        outcome = write_skill(root, body)
+        outcome = write_skill(root, body, name)
         attempted.append({"dir": str(root), "outcome": outcome})
         if outcome in {"written", "current"}:
             installed.append(str(root))
@@ -279,13 +298,36 @@ def install() -> dict[str, Any]:
     # No shared dir (the stock install), or it is not writable from inside the unit's sandbox.
     if not installed:
         for root in fallback_skill_dirs():
-            outcome = write_skill(root, body)
+            outcome = write_skill(root, body, name)
             attempted.append({"dir": str(root), "outcome": outcome})
             if outcome in {"written", "current"}:
                 installed.append(str(root))
 
-    if installed:
-        LOGGER.info("local computer skill at %s (cli %s)", ", ".join(installed), cli)
-    else:
-        LOGGER.warning("local computer skill could not be written: %s", attempted)
-    return {"installed": installed, "attempted": attempted, "cli": str(cli)}
+    return {"installed": installed, "attempted": attempted}
+
+
+def install() -> dict[str, Any]:
+    """Make every bundled skill available to every bot on this host.
+
+    Called on every bridge start, so it must be safe to repeat: identical content is left untouched,
+    and a changed template is picked up on the next restart (a template update ships with the bridge).
+    """
+    try:
+        cli = install_cli()
+    except OSError as exc:
+        LOGGER.error("agent skills not installed: %s", exc)
+        return {"installed": [], "attempted": [], "error": str(exc)}
+
+    per_skill: dict[str, Any] = {}
+    for name in BUNDLED_SKILLS:
+        per_skill[name] = _install_one(name, render(cli, name))
+
+    primary = per_skill[SKILL_NAME]
+    for name, result in per_skill.items():
+        if result["installed"]:
+            LOGGER.info("%s skill at %s", name, ", ".join(result["installed"]))
+        else:
+            LOGGER.warning("%s skill could not be written: %s", name, result["attempted"])
+
+    return {"installed": primary["installed"], "attempted": primary["attempted"],
+            "cli": str(cli), "skills": per_skill}
