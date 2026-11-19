@@ -50,6 +50,11 @@ public struct Composer: View {
 
     @FocusState private var focused: Bool
 
+    /// Settings → Chat. Read here by the same key the settings screen writes, so the two cannot
+    /// disagree about it.
+    @AppStorage(ComposerPreferences.dismissKeyboardOnSendKey)
+    private var dismissKeyboardOnSend = ComposerPreferences.defaultDismissKeyboardOnSend
+
     #if os(macOS)
     /// The text view reports its own first-responder state: `@FocusState` cannot see an
     /// `NSViewRepresentable`, and the border colour is driven by focus.
@@ -507,6 +512,21 @@ public struct Composer: View {
             .frame(minHeight: rowHeight, alignment: .topLeading)
         #else
         baseField
+            .onChange(of: text) { previous, current in
+                // The model clears the draft on send. A focused multi-line field can keep drawing the
+                // old string on some iOS builds, which is the "text stays in the box after sending"
+                // report: the field is made to read the binding again. `ComposerFocusRule` decides,
+                // so this cannot fire mid-typing and never fights the dismiss preference.
+                guard ComposerFocusRule.shouldReassertFocus(previousDraft: previous,
+                                                            currentDraft: current,
+                                                            isFocused: focused,
+                                                            dismissKeyboardOnSend: dismissKeyboardOnSend)
+                else { return }
+                // Off the update's own stack: flipping `@FocusState` while SwiftUI is mid-change is
+                // the same trap the slash popup hit.
+                focused = false
+                Task { @MainActor in focused = true }
+            }
             .onSubmit { send() }
         #endif
     }
@@ -605,6 +625,11 @@ public struct Composer: View {
         }
         Haptics.impact()
         onSend()
+        #if os(iOS)
+        // The model clears the draft; whether the keyboard goes with it is the owner's choice in
+        // Settings → Chat. Done here rather than in the model, which has no keyboard to dismiss.
+        if dismissKeyboardOnSend { focused = false }
+        #endif
     }
 }
 

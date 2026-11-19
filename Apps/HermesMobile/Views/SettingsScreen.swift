@@ -23,6 +23,10 @@ struct SettingsScreen: View {
     @State private var showLog = false
     /// The bot list's size, dragged here. Same key the Mac uses.
     @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
+    /// Settings → Chat. The composer reads the same key, so the switch and the behaviour cannot
+    /// disagree.
+    @AppStorage(ComposerPreferences.dismissKeyboardOnSendKey)
+    private var dismissKeyboardOnSend = ComposerPreferences.defaultDismissKeyboardOnSend
 
     /// The soul a new bot starts from, and a JSON copy of the whole roster. Both live on the host, so
     /// the phone and the Mac are editing the same thing (asked for 2026-11-15).
@@ -417,6 +421,19 @@ struct SettingsScreen: View {
 
     private var chatSection: some View {
         Section {
+            Toggle(isOn: $dismissKeyboardOnSend) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Close keyboard after sending")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Text("Puts the keyboard away when a message goes, so the reply is not half hidden.")
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textGroupedSecondary)
+                }
+            }
+            .tint(Tokens.success)
+            .accessibilityIdentifier("chatCloseKeyboardAfterSend")
+
             Toggle(isOn: $model.showReasoning) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show reasoning")
