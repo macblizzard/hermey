@@ -125,6 +125,11 @@ struct TranscriptScroll: View {
     /// conversation started mid-history.
     @State private var scrollRequest = 0
 
+    /// Arrow/Page/Home keys, for the reader who has both hands on the keyboard. The scroll view is
+    /// the only thing that knows how far a page is, so the keys go through it rather than through
+    /// `ScrollViewProxy`, which can only scroll to an id.
+    @State private var keyboardScroll = KeyboardScrollHandle()
+
     var body: some View {
         VStack(spacing: 0) {
             // No permanent search *row*: idle, the transcript gets that height back and search is
@@ -204,7 +209,9 @@ struct TranscriptScroll: View {
                         if atBottom != followsBottom { followsBottom = atBottom }
                     }
                 )
+                .keyboardScrollProbe(keyboardScroll)
             }
+            .keyboardScrolling(keyboardScroll)
             // Floating over the transcript's foot — the strip just above the composer, which is
             // where the eye goes looking for it.
             .overlay(alignment: .bottom) { foot.padding(.bottom, bottomInset) }
