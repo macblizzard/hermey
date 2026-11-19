@@ -89,9 +89,42 @@ class BrowserRegistry:
             browser.pending.pop(call_id, None)
 
 
+async def browser_socket(websocket, runtime, registry: BrowserRegistry) -> None:
+    """One browser's socket. Registered on the app, beside the computer-use socket.
+
+    Declared on the app rather than on a sub-router on purpose: the sockets that work on this host are
+    all `@app.websocket`, and a router-created one closed before accepting (the server answers 403 and
+    the browser never connects).
+    """
+    from fastapi import WebSocketDisconnect
+
+    await websocket.accept()
+    try:
+        hello = await websocket.receive_json()
+    except Exception:  # noqa: BLE001 - a socket that cannot say hello is not a browser
+        await websocket.close(code=4400)
+        return
+    label = str(hello.get("label") or "browser")[:60]
+    browser = registry.register(label, websocket)
+    runtime.audit.emit("browser.connected", method="browser", path="/v1/browser/ws",
+                       outcome="connected", profile=label)
+    try:
+        while True:
+            message = await websocket.receive_json()
+            registry.on_message(browser.id, message)
+    except WebSocketDisconnect:
+        pass
+    except Exception:  # noqa: BLE001 - any other end of the socket is the same event
+        pass
+    finally:
+        registry.unregister(browser.id, websocket)
+        runtime.audit.emit("browser.disconnected", method="browser", path="/v1/browser/ws",
+                           outcome="closed", profile=label)
+
+
 def create_browser_router(runtime, registry: BrowserRegistry):
-    """The endpoint an extension connects to: one socket, one browser, many fills."""
-    from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect
+    """The HTTP side: what the app asks to know whether a browser is available."""
+    from fastapi import APIRouter, Header
 
     router = APIRouter(prefix="/v1/browser", tags=["browser"])
 
@@ -99,30 +132,5 @@ def create_browser_router(runtime, registry: BrowserRegistry):
     def targets(authorization: str | None = Header(default=None)) -> dict:
         """What the app shows: is a browser available to receive a sign-in?"""
         return {"browsers": [{"id": b.id, "label": b.label} for b in registry.browsers.values()]}
-
-    @router.websocket("/ws")
-    async def ws_endpoint(websocket: WebSocket) -> None:
-        await websocket.accept()
-        try:
-            hello = await websocket.receive_json()
-        except Exception:  # noqa: BLE001 - a socket that cannot say hello is not a browser
-            await websocket.close(code=4400)
-            return
-        label = str(hello.get("label") or "browser")[:60]
-        browser = registry.register(label, websocket)
-        runtime.audit.emit("browser.connected", method="browser", path="/v1/browser/ws",
-                           outcome="connected", profile=label)
-        try:
-            while True:
-                message = await websocket.receive_json()
-                registry.on_message(browser.id, message)
-        except WebSocketDisconnect:
-            pass
-        except Exception:  # noqa: BLE001 - any other end of the socket is the same event
-            pass
-        finally:
-            registry.unregister(browser.id, websocket)
-            runtime.audit.emit("browser.disconnected", method="browser", path="/v1/browser/ws",
-                               outcome="closed", profile=label)
 
     return router

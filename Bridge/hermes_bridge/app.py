@@ -44,7 +44,7 @@ from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_categories import create_bot_categories_router
-from .browser_bridge import BrowserRegistry, create_browser_router
+from .browser_bridge import BrowserRegistry, browser_socket, create_browser_router
 from .credentials import CardStore, create_credentials_router
 from .bot_search import create_bot_search_router
 from .bot_transfers import create_bot_transfers_router
@@ -472,6 +472,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="unknown device")
         runtime.tickets.revoke_device(device_id)
         return {"deleted": device_id}
+
+    @app.websocket("/v1/browser/ws")
+    async def ws_browser(websocket: WebSocket) -> None:
+        await browser_socket(websocket, runtime, BROWSERS)
 
     @app.websocket("/v1/local-computers/ws")
     async def ws_local_computer(websocket: WebSocket) -> None:
