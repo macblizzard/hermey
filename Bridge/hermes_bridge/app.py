@@ -187,13 +187,14 @@ def _public_host(request: Request) -> str:
 
 
 def deliver_to_bot_screen(card, values: dict[str, str]) -> bool:
-    """Fill a login form on the bot screen and forget the values.
+    """Fill a login form on the bot screen's browser and forget the values.
 
-    Not wired yet: the next increment connects to the bot screen Chromium over the DevTools port its
-    profile records and types the values there. Until then a card is asked, answered and consumed
-    correctly, and this returns False so no caller believes a login happened.
+    The browser must have been opened from the dock (it passes --remote-debugging-port=0). A browser
+    started by hand has no port, and the fill says so rather than falling back to typing at whatever
+    window happens to have focus.
     """
-    return False
+    from . import credentials_fill
+    return credentials_fill.fill(card, values)
 
 
 def create_app(
