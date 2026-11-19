@@ -147,6 +147,18 @@ def feed_version() -> str | None:
         return None
 
 
+def asset_urls(text: str) -> list[str]:
+    """The download URLs a page offers, wherever they appear.
+
+    A URL can sit in HTML, in Markdown, or inside a JavaScript string literal, so the match stops at
+    every quote style and at the punctuation that can follow one. Without the single quote and comma
+    this captured `altstore.json',` straight out of the page's fetch call and reported a 404 for a
+    URL no browser ever requests.
+    """
+    found = re.findall(r"https://macblizzard\.github\.io/hermey-downloads/[^\s\"'<>,)]+", text)
+    return sorted({url.rstrip(".,;)]}") for url in found})
+
+
 def doc_headings(rel: str) -> list[str]:
     text = read(ROOT / rel)
     return [h.strip() for h in re.findall(r"^##\s+(.+)$", text, flags=re.M)]
@@ -208,6 +220,11 @@ def main() -> int:
         drift.append({"check": "stamp",
                       "what": "the landing page no longer reads its version from the feed",
                       "where": "gh-pages index.html (id=\"build\" + the feed URL)"})
+    if online and tag and served is None:
+        # A feed that cannot be read is not "nothing to report": the page would fall back to its
+        # static sentence and no visitor would see a version at all.
+        drift.append({"check": "stamp", "what": f"the feed at {FEED_URL} could not be read",
+                      "where": "hermey-downloads altstore.json"})
     if online and tag and served and tag != served:
         drift.append({"check": "stamp",
                       "what": f"the feed advertises {served}, newest tag is {tag}",
@@ -242,7 +259,7 @@ def main() -> int:
 
     # assets — opt-in, because it needs the network
     if online:
-        urls = sorted(set(re.findall(r"https://macblizzard\.github\.io/hermey-downloads/[^\s\"<]+", site)))
+        urls = asset_urls(site)
         for url in urls[:8]:
             result = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-L", url],
                                     capture_output=True, text=True, timeout=45)
