@@ -188,10 +188,12 @@ struct TranscriptScroll: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 0) {
-                    rows
-                    endSentinel
-                }
+                // The lazy stack is the scroll view's *direct* child. It used to sit inside a plain
+                // `VStack` (only to hold the sentinel below it), and a `LazyVStack` nested in a stack
+                // that has to measure its children stops being lazy — every row gets built, and a
+                // long conversation then scrolls with all of its text laid out at once. The sentinel
+                // moved inside the stack, where it is also the last row rather than a sibling.
+                rows
                 // The measuring device: it reads the scroll view's own offset and height, and it
                 // is what performs the jump when `scrollRequest` changes. Growth-following is
                 // switched off while the search bar is up: a streaming token that lands mid-search
@@ -330,6 +332,8 @@ struct TranscriptScroll: View {
                     .background(fill([streamingID], among: matched, selected: selected))
                     .transition(.opacity)
             }
+
+            endSentinel
         }
         // Measured, *then* inset: the 640 pt measure is the text column, so the reading inset
         // sits outside it. Padding the measure instead (what the composer did) left the field
