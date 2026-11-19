@@ -16,6 +16,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVICE = (ROOT / "Apps" / "HermesMac" / "LocalComputer" / "LocalComputerService.swift").read_text()
+APP = (ROOT / "Apps" / "HermesMac" / "HermesMacApp.swift").read_text()
 
 
 class TheErrorNamesTheFailure(unittest.TestCase):
@@ -56,3 +57,25 @@ class TheHeartbeatDropSaysSo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ComputerUseStartsAtLaunch(unittest.TestCase):
+    """A standing switch must not need a screen opened to take effect.
+
+    Reported 2026-11-19: computer use looked "not activated" after every restart until Settings was
+    opened, because the only caller of `ensureRunning`/`pairingChanged` was the Settings view's
+    `.task`. The socket is a decision the owner already made, so it starts with the app.
+    """
+
+    def test_the_app_starts_it_on_launch(self) -> None:
+        self.assertIn("LocalComputerService.shared.pairingChanged(address: store.pairing)", APP)
+
+    def test_it_starts_after_the_pairing_is_connected(self) -> None:
+        launch = APP.index("await store.connectOnLaunchIfPaired()")
+        start = APP.index("LocalComputerService.shared.pairingChanged(address: store.pairing)")
+        self.assertLess(launch, start, "there is no address to dial before the pairing is restored")
+
+    def test_it_is_idempotent_so_a_relaunch_does_not_tear_a_live_socket(self) -> None:
+        self.assertIn("guard enabled else { return }", SERVICE)
+        self.assertIn("if loopRunning, self.address?.deviceID == address?.deviceID, socket != nil { return }",
+                      SERVICE)
