@@ -24,7 +24,12 @@ public struct HermesSheetChrome: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .background(Tokens.canvas.ignoresSafeArea())
-            .preferredColorScheme(.dark)
+            // The direction comes from the palette, not from a hardcoded dark. A dark scheme over
+            // a light palette is the worst case: the system draws the navigation title, section
+            // headers, footers and grouped row backgrounds its way (white text, near-black cards)
+            // while the token text stays ink — a sheet that is illegible in two directions at once.
+            // Reported on iOS Settings after the Parchment theme shipped.
+            .hermesThemeChrome()
             #if os(iOS)
             .presentationCornerRadius(Tokens.radiusGrouped)
             .presentationBackground(Tokens.canvas)

@@ -52,9 +52,20 @@ class TheRuleIsWrittenOnce(unittest.TestCase):
     def test_it_sets_the_three_things_it_promises(self) -> None:
         # Background, appearance, corner radius. These are the three the owner could see disagreeing.
         self.assertIn("Tokens.canvas.ignoresSafeArea()", LANGUAGE)
-        self.assertIn(".preferredColorScheme(.dark)", LANGUAGE)
         self.assertIn("presentationCornerRadius(Tokens.radiusGrouped)", LANGUAGE)
         self.assertIn("presentationBackground(Tokens.canvas)", LANGUAGE)
+
+    def test_the_appearance_follows_the_palette_not_a_hardcoded_dark(self) -> None:
+        """A sheet wore dark chrome whatever the palette was.
+
+        This assertion used to require `.preferredColorScheme(.dark)` right here, which pinned the
+        bug: with the light Parchment palette selected, every sheet painted the system's dark
+        chrome — white navigation title, white section headers, near-black grouped rows — over a
+        cream background and ink text. Reported from a screenshot of iOS Settings, where both
+        failure modes were visible in one screen.
+        """
+        self.assertIn(".hermesThemeChrome()", LANGUAGE)
+        self.assertNotIn(".preferredColorScheme(.dark)", LANGUAGE)
 
     def test_it_does_not_take_over_what_a_sheet_is(self) -> None:
         """Detents and sizes belong to the sheet; the rule is only how it looks."""
