@@ -44,6 +44,7 @@ from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_categories import create_bot_categories_router
+from .browser_bridge import BrowserRegistry, create_browser_router
 from .credentials import CardStore, create_credentials_router
 from .bot_search import create_bot_search_router
 from .bot_transfers import create_bot_transfers_router
@@ -187,14 +188,29 @@ def _public_host(request: Request) -> str:
 
 
 def deliver_to_bot_screen(card, values: dict[str, str]) -> bool:
-    """Fill a login form on the bot screen's browser and forget the values.
+    """Put a card's values on the page, by whichever door the browser holds open.
 
-    The browser must have been opened from the dock (it passes --remote-debugging-port=0). A browser
-    started by hand has no port, and the fill says so rather than falling back to typing at whatever
-    window happens to have focus.
+    The extension is preferred: it needs no launch flags, so it works for a browser the owner started
+    themselves and (later) for their own browser on their Mac. The DevTools path stays as the fallback
+    for a bot-screen browser that Hermey launched with a debugging port.
     """
     from . import credentials_fill
+
+    if BROWSERS.browsers:
+        import asyncio
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Called from a sync route: run the extension hop on its own loop.
+            if asyncio.run(BROWSERS.fill(values, site=card.site)):
+                return True
+        else:  # already inside a loop — the caller awaited us correctly elsewhere
+            return False
     return credentials_fill.fill(card, values)
+
+
+#: The browsers an extension has connected from. Empty is normal: a fill then falls back to CDP.
+BROWSERS = BrowserRegistry()
 
 
 def create_app(
@@ -288,6 +304,7 @@ def create_app(
     app.include_router(create_bot_categories_router(runtime))
     # Login cards (docs/CREDENTIALS.md): the owner types a secret into the app and it goes
     # to the fill target, never to the bot. The deliverer is the bot screen's browser.
+    app.include_router(create_browser_router(runtime, BROWSERS))
     app.include_router(create_credentials_router(
         runtime, CardStore(), deliver=deliver_to_bot_screen))
     app.include_router(create_bot_search_router(runtime))
