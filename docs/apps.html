@@ -71,6 +71,23 @@ ID).</p>
     device token still works under <strong>Advanced</strong>.</li>
 </ol>
 <p>macOS 14 or later is required.</p>
+<h3 id="start-at-login">Start at login</h3>
+<p>Settings → <strong>Computer</strong> → <strong>Startup</strong> → <strong>Open Hermey at
+login</strong> registers the app with <code>SMAppService</code>, so the computer-use socket comes
+back after a reboot without opening the app by hand. It opens the app at login; it does
+<strong>not</strong> wake a sleeping Mac — the app reconnects by itself when the Mac wakes, which is
+a different promise.</p>
+
+<h2 id="themes">Appearance and themes</h2>
+<p>Settings → <strong>Appearance</strong>. Eight palettes: <strong>Midnight</strong> (the default),
+Graphite, Gruvbox, Tokyo Night, Catppuccin, Dracula, Nord, and <strong>Parchment</strong> — a light
+theme taken from the colours of this site, for daylight and for screenshots.</p>
+<p>A theme is more than a colour set. The app draws its own colours from the palette, but the system
+draws navigation titles, section headers and footers, grouped row backgrounds, and the labels on its
+own controls — so every surface presented separately (a window, a sheet, a tab's navigation stack)
+tells the system which direction the palette faces. That is why Parchment is readable rather than
+white-on-cream. If a surface ever shows a white title on a pale background, that surface is the one
+missing the call. Dark palettes are unaffected: they say dark and get dark.</p>
 
 <h2 id="first-run">First run</h2>
 <ul>
@@ -103,7 +120,7 @@ your profiles or anything else on the host.</p>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#ios">iOS and iPadOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#notifications">Notifications and badges</a></li><li><a href="#revocation">Unpairing and revocation</a></li></ul>
+    <ul><li><a href="#ios">iOS and iPadOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#themes">Appearance and themes</a></li><li><a href="#first-run">First run</a></li><li><a href="#notifications">Notifications and badges</a></li><li><a href="#revocation">Unpairing and revocation</a></li></ul>
   </nav>
 </div>
 

@@ -92,13 +92,36 @@ developer account for a one-year profile.</p>
 re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of
 hanging. If it stays down, open <strong>Settings → Computer</strong> on the Mac and read the status
 row, then check <code>hermey doctor</code> on the host.</p>
+<p><strong>"Reconnecting" and it will not come back.</strong> Check whether the host has that Mac
+revoked — this is what the bin beside the computer name does:</p>
+<div class="code"><pre><code>cat /var/lib/hermey/revoked-local-computers.json</code></pre><button class="copy" type="button" aria-label="Copy the revoked devices on the host">Copy</button></div>
+<p>Turning <strong>Let bots use this computer</strong> off and on in the Mac app lifts it: the app
+calls <code>POST /v1/local-computers/&lt;device&gt;/enable</code> and reconnects. If it still will not
+connect, ask the bridge why rather than the screen:</p>
+<div class="code"><pre><code>journalctl -u hermes-native-bridge --since -10min | grep local_computer.rejected</code></pre><button class="copy" type="button" aria-label="Copy why the handshake was refused">Copy</button></div>
+<p>Each line names the failed check: <code>no ticket</code>, <code>ticket not redeemable</code>,
+<code>device not active</code>, or <code>revoked</code>. A refusal reaches the app as close code
+<code>4401</code>/<code>4403</code> rather than an opaque "bad response from the server".</p>
+
+<h2 id="update-error">"There was a problem updating"</h2>
+<p>Two different things wear that message.</p>
+<p><strong>You checked during the first ten minutes after a release.</strong> The feed and the
+download are published separately, and GitHub Pages serves the feed before the disk image it points
+at, so a check in that window finds a version whose file is still <code>404</code>. Nothing is wrong
+with the Mac; check again in ten minutes. The release page is always current even when the mirror is
+not.</p>
+<p><strong>A signature that does not verify.</strong> The app trusts exactly one Ed25519 public key,
+so a feed signed with a different key installs nothing. Check without guessing:</p>
+<div class="code"><pre><code>curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30</code></pre><button class="copy" type="button" aria-label="Copy the feed: version, length and signature">Copy</button></div>
+<p>The <code>length=</code> in the feed must equal the served <code>content-length</code>, or the file
+was replaced after the feed was signed.</p>
 
     <nav class="pager" aria-label="Pages"><a href="agents.html"><span>Previous</span><strong>For agents</strong></a><a class="next" href="security.html"><span>Next</span><strong>Security</strong></a></nav>
   </main>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#start-here">Start here</a></li><li><a href="#health-fail">Doctor says health FAIL</a></li><li><a href="#dashboard-exists">"Reusing this host's dashboard: pid …"</a></li><li><a href="#serve-refused">tailscale serve refused</a></li><li><a href="#https-fails">HTTPS fails but the bridge is healthy</a></li><li><a href="#app-cannot-reach">The app cannot reach the host</a></li><li><a href="#code-rejected">A pairing code is rejected</a></li><li><a href="#ios-week">The iOS app stops launching after a week</a></li><li><a href="#mac-damaged">macOS says the app is damaged</a></li><li><a href="#computer-down">Computer use keeps dropping</a></li></ul>
+    <ul><li><a href="#start-here">Start here</a></li><li><a href="#health-fail">Doctor says health FAIL</a></li><li><a href="#dashboard-exists">"Reusing this host's dashboard: pid …"</a></li><li><a href="#serve-refused">tailscale serve refused</a></li><li><a href="#https-fails">HTTPS fails but the bridge is healthy</a></li><li><a href="#app-cannot-reach">The app cannot reach the host</a></li><li><a href="#code-rejected">A pairing code is rejected</a></li><li><a href="#ios-week">The iOS app stops launching after a week</a></li><li><a href="#mac-damaged">macOS says the app is damaged</a></li><li><a href="#computer-down">Computer use keeps dropping</a></li><li><a href="#update-error">"There was a problem updating"</a></li></ul>
   </nav>
 </div>
 

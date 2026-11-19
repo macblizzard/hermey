@@ -78,6 +78,12 @@
 "b": "macOS Download the disk image from macblizzard.github.io/hermey-downloads \u2014 a direct link, with no release-CDN redirect in front of it. The newest build is published as Hermey-macOS-<version>.dmg , so the filename tells you which build you have. Open the image and drag Hermey onto the Applications shortcut. The build i"
 },
 {
+"h": "Appearance and themes",
+"p": "The apps",
+"u": "apps.html#themes",
+"b": "Appearance and themes Settings \u2192 Appearance . Eight palettes: Midnight (the default), Graphite, Gruvbox, Tokyo Night, Catppuccin, Dracula, Nord, and Parchment \u2014 a light theme taken from the colours of this site, for daylight and for screenshots. A theme is more than a colour set. The app draws its own colours from the "
+},
+{
 "h": "First run",
 "p": "The apps",
 "u": "apps.html#first-run",
@@ -232,6 +238,12 @@
 "p": "Troubleshooting",
 "u": "troubleshooting.html#computer-down",
 "b": "Computer use keeps dropping The Mac app must be running to hold the link. A machine that sleeps loses its socket; the app re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of hanging. If it stays down, open Settings \u2192 Computer on the Mac and read the status row, then check "
+},
+{
+"h": "\"There was a problem updating\"",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#update-error",
+"b": "\"There was a problem updating\" Two different things wear that message. You checked during the first ten minutes after a release. The feed and the download are published separately, and GitHub Pages serves the feed before the disk image it points at, so a check in that window finds a version whose file is still 404 . No"
 },
 {
 "h": "Trust boundaries",
