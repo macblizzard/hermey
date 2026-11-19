@@ -26,18 +26,38 @@ struct MarkdownTextView: View {
     /// Files from the bots' shared store become cards; the bare URL is taken out of the prose so a
     /// message shows the card instead of the link underneath it. Every caller passes a raw message
     /// body, so this one place covers replies, bot-to-bot messages and room history alike.
-    @State private var cachedSource: String?
-    @State private var cachedClean = ""
-    @State private var cachedLinks: [HermesFileLink] = []
+    ///
+    /// These are filled in `init` and refreshed by `synchronise`, never from `body`. They used to be
+    /// written by the `cleanText` getter itself — which `body` reads — so drawing a row mutated
+    /// state mid-layout. SwiftUI answers that with "Modifying state during view update, this will
+    /// cause undefined behavior": 486 warnings a minute at ~15% CPU with the app sitting still, and
+    /// a scroll that felt sticky because every row kept invalidating itself while being laid out.
+    @State private var cachedSource: String
+    @State private var cachedClean: String
+    @State private var cachedLinks: [HermesFileLink]
 
+    init(text: String, metrics: ChatTextMetrics = .macOSScaled, isStreaming: Bool = false) {
+        self.text = text
+        self.metrics = metrics
+        self.isStreaming = isStreaming
+        // Cheap and pure, so it belongs to the value's creation rather than to a later pass: the
+        // first body then draws finished text instead of flashing the raw form.
+        _cachedSource = State(initialValue: text)
+        _cachedClean = State(initialValue: HermesFileLinks.removingLinks(from: text))
+        _cachedLinks = State(initialValue: HermesFileLinks.find(in: text))
+    }
+
+    /// Reading never writes. A new text that has not reached `synchronise` yet is cleaned on the spot
+    /// — that pass is the only one that pays for it, and it is not persisted.
     private var cleanText: String {
         if cachedSource == text { return cachedClean }
-        cachedSource = text
-        cachedClean = HermesFileLinks.removingLinks(from: text)
-        cachedLinks = HermesFileLinks.find(in: text)
-        return cachedClean
+        return HermesFileLinks.removingLinks(from: text)
     }
-    private var fileLinks: [HermesFileLink] { cleanText; return cachedLinks }
+
+    private var fileLinks: [HermesFileLink] {
+        if cachedSource == text { return cachedLinks }
+        return HermesFileLinks.find(in: text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -61,8 +81,15 @@ struct MarkdownTextView: View {
         .onChange(of: cleanText) { _, newValue in synchronise(newValue) }
     }
 
-    /// Feed only what is new to the block layer.
+    /// Feed only what is new to the block layer, and remember the parse of the raw text so the next
+    /// body does not repeat it. Called from `onAppear`/`onChange`, which is a legal place to write
+    /// state; `body` only reads.
     private func synchronise(_ newValue: String) {
+        if cachedSource != text {
+            cachedSource = text
+            cachedClean = newValue
+            cachedLinks = HermesFileLinks.find(in: text)
+        }
         guard newValue != renderedSource else { return }
         if newValue.hasPrefix(renderedSource) {
             let delta = String(newValue.dropFirst(renderedSource.count))

@@ -49,7 +49,10 @@ class BothAppsRenderIt(unittest.TestCase):
         self.assertIn("ForEach(fileLinks)", MAC)
         self.assertIn("HermesFileLinkCard(link: link)", MAC)
         self.assertIn("synchronise(cleanText)", MAC)
-        self.assertIn("@State private var cachedSource: String?", MAC)
+        # The cache exists and is seeded where writing state is legal; the exact optionality moved
+        # when the getter stopped writing it from body (`test_render_state_writes` pins that rule).
+        self.assertIn("@State private var cachedSource: String", MAC)
+        self.assertIn("_cachedClean = State(initialValue:", MAC)
 
     def test_ios_renders_cards_and_takes_the_url_out_of_the_prose(self) -> None:
         self.assertIn("rawText: String? = nil", IOS_MD)

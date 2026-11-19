@@ -24,16 +24,26 @@ struct MobileMarkdownText: View {
     /// are removed from the blocks. Callers that only hold blocks (previews) pass nil and get none.
     var rawText: String? = nil
 
+    /// The parsed links for `rawText`. Written in `init` and by `onChange`, never by `body`: the
+    /// getter used to fill these itself, so drawing a row mutated state mid-layout — the same
+    /// "Modifying state during view update" defect the Mac's `MarkdownTextView` had, which cost a
+    /// re-render per visible row on every pass.
     @State private var cachedLinkSource: String?
     @State private var cachedLinks: [HermesFileLink] = []
 
+    init(blocks: [Block], rawText: String? = nil) {
+        self.blocks = blocks
+        self.rawText = rawText
+        _cachedLinkSource = State(initialValue: rawText)
+        _cachedLinks = State(initialValue: rawText.map(HermesFileLinks.find(in:)) ?? [])
+    }
+
+    /// Reading never writes. A source that has not reached `onChange` yet is parsed on the spot and
+    /// not remembered, so the pass that first sees it is the only one that pays.
     private var fileLinks: [HermesFileLink] {
         guard let rawText else { return [] }
         if cachedLinkSource == rawText { return cachedLinks }
-        let found = HermesFileLinks.find(in: rawText)
-        cachedLinkSource = rawText
-        cachedLinks = found
-        return found
+        return HermesFileLinks.find(in: rawText)
     }
 
     var body: some View {

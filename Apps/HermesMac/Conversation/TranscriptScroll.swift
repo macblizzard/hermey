@@ -260,10 +260,13 @@ struct TranscriptScroll: View {
     /// The messages, on the reading measure.
     private var rows: some View {
         // One pass for the highlight, not one per row: `matches` walks the whole conversation, and a
-        // `LazyVStack` would otherwise pay for it once for every row it builds.
-        let matchedIDs = matches
-        let matched = Set(matchedIDs)
-        let selected = search.selected(in: matchedIDs)
+        // `LazyVStack` would otherwise pay for it once for every row it builds. Idle it is not
+        // walked at all — `fill`/`ring` already draw nothing while the bar is closed, and a body
+        // pass costs O(conversation) in case-folding otherwise, every streaming token long.
+        let searching = search.isOpen
+        let matchedIDs = searching ? matches : []
+        let matched = searching ? Set(matchedIDs) : []
+        let selected = searching ? search.selected(in: matchedIDs) : nil
         return LazyVStack(alignment: .leading, spacing: 18) {
             if model.hasEarlierHistory {
                 EarlierHistoryRow(isLoading: model.loadingEarlier, total: model.historyTotal) {
