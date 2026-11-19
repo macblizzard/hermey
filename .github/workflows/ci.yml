@@ -264,9 +264,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The history scan below walks every reachable blob; a shallow clone has one commit of
+          # them, which would report "clean" about a history it never read.
+          fetch-depth: 0
       # No marketplace action: a scanner that needs third-party code to run has its own supply chain.
       - name: Scan for credential shapes
         run: bash Tools/ci/secret_scan.sh
+      # The working-tree scan cannot see a credential that was committed and then removed, and this
+      # repository is public — so history is published too. Values are masked to a prefix, a length
+      # and a fingerprint, so this log can never become the leak it is looking for.
+      - name: Scan every blob in history
+        run: python3 Tools/ci/secret_scan_history.py
       - name: Shellcheck the installer (it runs as root)
         run: |
           sudo apt-get update -qq

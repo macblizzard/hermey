@@ -57,6 +57,11 @@ All notable changes to Hermey are recorded here. The format follows
   new still comes from the cache, instantly (`StaleConversationTests`).
 
 ### Changed
+- **CI now scans the repository's history, not just the working tree.** `secret_scan.sh` cannot see a
+  credential that was committed and later removed, and this repository is public, so its history is
+  published too. The hygiene job checks out full history and runs `Tools/ci/secret_scan_history.py`,
+  which walks every reachable blob once and prints a masked prefix, length and fingerprint rather than
+  the value — a log that reported the finding must not become the leak.
 - **The bot list and the Mac sidebar no longer have a loading state of their own.** "Loading bots…",
   "Looking for bots…", "FINDING BOTS / Asking the host which bots it serves…" and their spinners are
   gone: the launch screen covers the pre-roster window instead, and a spinner behind a splash was a
