@@ -44,6 +44,7 @@ from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_categories import create_bot_categories_router
+from .credentials import CardStore, create_credentials_router
 from .bot_search import create_bot_search_router
 from .bot_transfers import create_bot_transfers_router
 from .bot_defaults import create_bot_defaults_router
@@ -185,6 +186,16 @@ def _public_host(request: Request) -> str:
     return request.headers.get("host", "127.0.0.1")
 
 
+def deliver_to_bot_screen(card, values: dict[str, str]) -> bool:
+    """Fill a login form on the bot screen and forget the values.
+
+    Not wired yet: the next increment connects to the bot screen Chromium over the DevTools port its
+    profile records and types the values there. Until then a card is asked, answered and consumed
+    correctly, and this returns False so no caller believes a login happened.
+    """
+    return False
+
+
 def create_app(
     config: Optional[BridgeConfig] = None,
     *,
@@ -274,6 +285,10 @@ def create_app(
     app.include_router(create_bot_memory_router(runtime))
     app.include_router(create_bot_notes_router(runtime))
     app.include_router(create_bot_categories_router(runtime))
+    # Login cards (docs/CREDENTIALS.md): the owner types a secret into the app and it goes
+    # to the fill target, never to the bot. The deliverer is the bot screen's browser.
+    app.include_router(create_credentials_router(
+        runtime, CardStore(), deliver=deliver_to_bot_screen))
     app.include_router(create_bot_search_router(runtime))
     app.include_router(create_bot_transfers_router(runtime))
     app.include_router(create_bot_defaults_router(runtime))
