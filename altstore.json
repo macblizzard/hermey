@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.578",
-          "buildVersion": "578",
-          "date": "2026-11-19T08:31:13Z",
-          "localizedDescription": "Parchment, the first light theme; an option to open the Mac app at login; and on the phone, a switch to close the keyboard on send plus a fix for sent text lingering in the compose box.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.578/Hermey-0.1.578-b578.ipa",
-          "size": 3386841,
+          "version": "0.1.579",
+          "buildVersion": "579",
+          "date": "2026-11-19T09:27:14Z",
+          "localizedDescription": "Parchment, a light theme taken from the project's own site, and the settings surfaces that now wear it on both apps. Also: open Hermey at login on the Mac, a switch to close the keyboard after sending on the phone, and sent text no longer lingering in the compose box.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.579/Hermey-0.1.579-b579.ipa",
+          "size": 3353422,
           "minOSVersion": "17.0",
-          "sha256": "ae015dcd8f5bb47ddbb5a68d39f0ddae4edb2541d14924c1a54a2b0de3ddd037"
+          "sha256": "915262673aa37a44b4f665d4f43f2d35a65dff04af8e90c46285dc846424c668"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.578 (578)",
-      "identifier": "hermes-0.1.578-578",
-      "caption": "Parchment, the first light theme; an option to open the Mac app at login; and on the phone, a switch to close the keyboard on send plus a fix for sent text lingering in the compose box.",
-      "date": "2026-11-19T08:31:13Z",
+      "title": "Hermes 0.1.579 (579)",
+      "identifier": "hermes-0.1.579-579",
+      "caption": "Parchment, a light theme taken from the project's own site, and the settings surfaces that now wear it on both apps. Also: open Hermey at login on the Mac, a switch to close the keyboard after sending on the phone, and sent text no longer lingering in the compose box.",
+      "date": "2026-11-19T09:27:14Z",
       "tintColor": "#9A9AA0"
     }
   ],
