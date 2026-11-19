@@ -15,6 +15,15 @@ public struct ThemePalette: Identifiable, Equatable {
     public let id: String
     public let name: String
 
+    /// Whether this palette is ink on paper rather than light on ink.
+    ///
+    /// One flag, because several things follow from it and no view should have to re-derive them:
+    /// the window's `preferredColorScheme` follows it, a border is a darkening of the canvas rather
+    /// than a white veil over it, and a placeholder steps *toward* the canvas instead of toward the
+    /// text. Deriving those from a canvas luminance instead would work here and fail on a mid-grey
+    /// palette, where neither direction is right.
+    public let isLight: Bool
+
     // MARK: Surfaces
     public let canvas: Color
     public let frame: Color
@@ -65,6 +74,7 @@ public enum ThemeCatalog {
     public static let all: [ThemePalette] = [
         midnight,
         graphite,
+        parchment,
         gruvbox,
         tokyoNight,
         catppuccin,
@@ -107,6 +117,35 @@ public enum ThemeCatalog {
         accent: 0x007CF7, accentText: 0x42A0FF,
         success: 0x31CF76, warning: 0xFF9412, danger: 0xFD2F3B,
         borderAlpha: 0.045)
+
+    /// The light theme, taken from this project's own website: cream paper, warm ink, one clay accent.
+    ///
+    /// The palette is the site's token table — `--paper #faf9f5`, `--ink #141413`, `--clay #d97757`,
+    /// hairline `--line #e3dacc` — with three departures, each measured rather than chosen by eye:
+    ///
+    /// * **The accent is `#CC6543`, not the site's `#D97757`.** The site's clay reaches 2.96:1 against
+    ///   its own paper, a hair under the 3:1 a control edge needs to be seen; this one reaches 3.62:1
+    ///   and still reads as the same colour at a glance.
+    /// * **The status colours are the site's warm hues pushed darker.** On cream they have to work as
+    ///   *text* — the site only ever drew them as borders — so success `#4E7040`, warning `#8E621A`
+    ///   and danger `#B3392B` all clear 4.5:1 on both canvas and sheet.
+    /// * **Borders are the site's hairlines, not the white overlay the dark palettes use.** White on
+    ///   cream is invisible; these are passed in as hex for exactly that reason.
+    ///
+    /// Button labels here are ink on clay, 5.9:1. White on this clay is 3.1:1 — the one place a light
+    /// theme cannot copy a dark one, and the reason `textPrimary` rather than a fixed white is the
+    /// primary button's foreground.
+    public static let parchment = ThemePalette.make(
+        id: "parchment", name: "Parchment",
+        canvas: 0xFAF9F5, frame: 0xF5F4ED, surface: 0xF0EEE6, surfaceHigh: 0xFFFDF8,
+        sheet: 0xFFFFFF,
+        text: 0x141413, textMuted: 0x3D3D3A, textDim: 0x6C6A64,
+        accent: 0xCC6543, accentText: 0xA84E30,
+        success: 0x4E7040, warning: 0x8E621A, danger: 0xB3392B,
+        borderAlpha: 0.10,
+        isLight: true,
+        border: 0xE3DACC, borderStrong: 0xD6CBB8,
+        accentHover: 0xD87554, insetMix: 0.05)
 
     public static let gruvbox = ThemePalette.make(
         id: "gruvbox", name: "Gruvbox",
@@ -237,12 +276,25 @@ private extension ThemePalette {
                      success: UInt32,
                      warning: UInt32,
                      danger: UInt32,
-                     borderAlpha: Double) -> ThemePalette {
+                     borderAlpha: Double,
+                     isLight: Bool = false,
+                     border: UInt32? = nil,
+                     borderStrong: UInt32? = nil,
+                     accentHover: UInt32? = nil,
+                     insetMix: Double = 0.35) -> ThemePalette {
         // A hovered control is the surface nudged toward the text; a dimmer sheet is the sheet
         // pulled toward black. Deriving these keeps each theme a dozen real decisions.
         let active = mix(surfaceHigh, text, 0.06)
+
+        // A dark palette draws its hairline as a white veil, because there is nothing lighter than
+        // its own text to mix from. A light palette cannot: white over cream is invisible, so a light
+        // palette passes its line colours outright and those are used unchanged.
+        let hairline = border.map { Color(hex: $0) } ?? Color.white.opacity(borderAlpha * 0.75)
+        let hairlineStrong = borderStrong.map { Color(hex: $0) } ?? Color.white.opacity(borderAlpha)
+
         return ThemePalette(
             id: id, name: name,
+            isLight: isLight,
             canvas: Color(hex: canvas),
             frame: Color(hex: frame),
             sidebar: Color(hex: canvas),
@@ -252,22 +304,26 @@ private extension ThemePalette {
             controlHover: Color(hex: surfaceHigh),
             controlActive: Color(hex: active),
             sheet: Color(hex: sheet),
-            sheetInset: Color(hex: mix(sheet, 0x000000, 0.35)),
+            sheetInset: Color(hex: mix(sheet, 0x000000, insetMix)),
             grouped: Color(hex: surface),
             textPrimary: Color(hex: text),
             textSecondary: Color(hex: mix(text, canvas, 0.22)),
             textMuted: Color(hex: textMuted),
             textDim: Color(hex: textDim),
-            textPlaceholder: Color(hex: mix(textMuted, text, 0.35)),
+            // A placeholder is muted text one step toward whatever the canvas is, so it reads as less
+            // than muted in either direction: toward the text on dark, toward the canvas on light.
+            textPlaceholder: Color(hex: isLight ? mix(textMuted, canvas, 0.35) : mix(textMuted, text, 0.35)),
             textGroupedSecondary: Color(hex: textMuted),
             accent: Color(hex: accent),
-            accentHover: Color(hex: accentText),
+            // A hovered fill goes brighter than the accent on a dark canvas and would go invisible on
+            // a light one, so a light palette names its own hover colour.
+            accentHover: accentHover.map { Color(hex: $0) } ?? Color(hex: accentText),
             accentText: Color(hex: accentText),
             success: Color(hex: success),
             warning: Color(hex: warning),
             danger: Color(hex: danger),
-            border: Color.white.opacity(borderAlpha * 0.75),
-            borderStrong: Color.white.opacity(borderAlpha),
+            border: hairline,
+            borderStrong: hairlineStrong,
             borderGrouped: Color(hex: mix(surface, text, 0.18)))
     }
 }

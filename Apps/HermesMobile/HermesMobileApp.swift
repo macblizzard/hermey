@@ -18,6 +18,11 @@ import HermeyUI
 struct HermesMobileApp: App {
     @StateObject private var app = AppEnvironment()
 
+    /// The chosen theme, watched at the root so the window's own chrome (sheets, keyboards, menus,
+    /// the status bar) follows it. Without this line a light palette would sit inside a dark system
+    /// appearance; the colour tokens would be cream and everything the system draws would not be.
+    @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
+
     /// Background-refresh registration has to happen before the app finishes launching, or iOS
     /// drops the request and a suspended app never learns that a bot replied.
     init() {
@@ -41,7 +46,7 @@ struct HermesMobileApp: App {
                 RootView()
             }
                 .environmentObject(app)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(ThemeCatalog.theme(id: themeID).isLight ? .light : .dark)
                 .task {
                     ThemeRuntime.restoreFromDefaults()
                     TypeScale.restoreScale()
