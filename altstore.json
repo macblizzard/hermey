@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.581",
-          "buildVersion": "581",
-          "date": "2026-11-19T12:20:24Z",
-          "localizedDescription": "Scrolling, keyboard navigation, and a quieter connection. The transcript now builds only the rows on screen, a hovering sidebar row no longer rebuilds the whole bot list, opening Settings no longer drops the computer-use socket, and the keyboard scrolls both lists (arrows, Page Up/Down, Home/End). The phone gets the same rendering fix that made the Mac's markdown rows re-invalidate themselves.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.581/Hermey-0.1.581-b581.ipa",
-          "size": 3352963,
+          "version": "0.1.584",
+          "buildVersion": "584",
+          "date": "2026-11-19T15:07:37Z",
+          "localizedDescription": "Right-click a bot category to move it up or down, and computer use that starts with the app. The category list now has an order of its own: move a group on the Mac and the phone shows it in the same place, because the arrangement lives on the host. Computer use no longer waits for you to open Settings \u2014 a Mac whose switch is already on connects when Hermey launches and redials itself after a drop. And a dropped computer-use socket now says why: how long it lived, how long it had been since the last frame, and the underlying error, instead of an opaque 'couldn't be completed'.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.584/Hermey-0.1.584-b584.ipa",
+          "size": 3359033,
           "minOSVersion": "17.0",
-          "sha256": "56e0f9e47fddff7d21b3d654df0355053ee592bc4155e56a76930b8d24912bc4"
+          "sha256": "cf1d1fedf5f7bc398d41c3b579ad059ee9f241561df4304d4171b137ed85b17a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.581 (581)",
-      "identifier": "hermes-0.1.581-581",
-      "caption": "Scrolling, keyboard navigation, and a quieter connection. The transcript now builds only the rows on screen, a hovering sidebar row no longer rebuilds the whole bot list, opening Settings no longer drops the computer-use socket, and the keyboard scrolls both lists (arrows, Page Up/Down, Home/End). The phone gets the same rendering fix that made the Mac's markdown rows re-invalidate themselves.",
-      "date": "2026-11-19T12:20:24Z",
+      "title": "Hermes 0.1.584 (584)",
+      "identifier": "hermes-0.1.584-584",
+      "caption": "Right-click a bot category to move it up or down, and computer use that starts with the app. The category list now has an order of its own: move a group on the Mac and the phone shows it in the same place, because the arrangement lives on the host. Computer use no longer waits for you to open Settings \u2014 a Mac whose switch is already on connects when Hermey launches and redials itself after a drop. And a dropped computer-use socket now says why: how long it lived, how long it had been since the last frame, and the underlying error, instead of an opaque 'couldn't be completed'.",
+      "date": "2026-11-19T15:07:37Z",
       "tintColor": "#9A9AA0"
     }
   ],
