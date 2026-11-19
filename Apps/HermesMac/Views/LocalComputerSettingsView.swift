@@ -36,7 +36,20 @@ struct LocalComputerSettingsView: View {
             Section {
                 Toggle("Let bots use this computer", isOn: Binding(
                     get: { service.isEnabled },
-                    set: { service.setEnabled($0, address: pairedAddress) }
+                    set: { on in
+                        if on {
+                            // Switching this on is also the answer to a revoke, so ask the host to
+                            // lift it before dialling. Without this the trash button was a one-way
+                            // door: the socket re-dialled into a rejected handshake for ever, and
+                            // the switch appeared to do nothing (reported 2026-11-19).
+                            Task {
+                                await service.allow(address: pairedAddress)
+                                service.setEnabled(true, address: pairedAddress)
+                            }
+                        } else {
+                            service.setEnabled(false, address: pairedAddress)
+                        }
+                    }
                 ))
                 .tint(Tokens.accent)
 

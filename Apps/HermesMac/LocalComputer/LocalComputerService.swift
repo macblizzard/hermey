@@ -245,6 +245,23 @@ final class LocalComputerService: ObservableObject {
         _ = try? await URLSession.shared.data(for: request)
     }
 
+    /// Ask the host to lift a revoke. Called when the computer-use switch goes back on.
+    ///
+    /// The trash button revokes this Mac on the host, and the switch used to do nothing about it:
+    /// turning it back on re-dialled into a rejected handshake forever. Removing a computer is a
+    /// decision about that moment; turning the switch on is the opposite decision, and the host
+    /// has a route for it — the same per-call ticket as the revoke.
+    func allow(address: PairingAddress?) async {
+        guard let address, !address.isTicketOnly,
+              let ticket = try? await address.mintedTicket(),
+              let origin = try? address.apiOrigin() else { return }
+        var request = URLRequest(
+            url: origin.appendingPathComponent("v1/local-computers/\(address.deviceID)/enable"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(ticket)", forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     /// Ask the host where the bot instructions are. Read-only on the host by design: looking must
     /// never install anything.
     func refreshSkill(address: PairingAddress?) async {
@@ -326,7 +343,9 @@ final class LocalComputerService: ObservableObject {
                 if code == 4403 {
                     // A revoke is the owner's decision. Stop and say so instead of hammering the host.
                     status = .refused
-                    lastError = "Access was revoked on the host. Turn this Mac off and on again to re-request it."
+                    // True now that the host has an enable route and this switch calls it; when the
+                    // handshake was rejected before accept this message could never appear at all.
+                    lastError = "Access was removed on the host. Turn this switch off and on to ask for it again."
                     break
                 }
                 // 4401 is a rejected *ticket*, not a verdict on this Mac: it was consumed, it expired,

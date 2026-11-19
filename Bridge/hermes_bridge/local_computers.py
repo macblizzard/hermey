@@ -134,6 +134,23 @@ class LocalComputers:
             await self._close_bounded(computer.socket, code=4403)
         return computer is not None
 
+    def allow(self, device_id: str) -> bool:
+        """Lift a revoke, so the Mac's own switch can undo the trash button.
+
+        Revoking used to be a one-way door: the id went into `revoked` and nothing ever took it
+        out, so after "remove this computer" the Mac reconnected forever into a rejected
+        handshake and the owner had no way back except editing a file on the host. Removing a
+        computer is a decision about *this moment*, and turning computer use back on is the
+        opposite decision — reported after the trash button left a Mac stuck on "Reconnecting".
+
+        Returns whether anything changed, so the route can say whether a revoke was lifted.
+        """
+        if device_id not in self.revoked:
+            return False
+        self.revoked.discard(device_id)
+        self._write_revoked()
+        return True
+
     @staticmethod
     async def _close_bounded(socket: WebSocket, code: int) -> None:
         """Close without waiting on the peer's close handshake.
@@ -512,18 +529,67 @@ def create_local_computers_router(runtime, computers: LocalComputers) -> APIRout
                            path=f"/v1/local-computers/{device_id}", outcome="revoked")
         return {"revoked": device_id, "was_connected": was_connected}
 
+    @router.post("/{device_id}/enable")
+    async def enable_computer(device_id: str, request: Request,
+                              authorization: str | None = Header(default=None)) -> dict:
+        """Undo a revoke. The Mac calls this when its own computer-use switch goes back on.
+
+        Same per-call ticket as the revoke beside it, so only the paired device can ask for its
+        own access back — and the owner still has to turn the switch on, on the Mac itself.
+        """
+        caller = authorize(request, authorization)
+        was_revoked = computers.allow(device_id)
+        runtime.audit.emit("local_computer.allow", device_id=caller, method="local_computer",
+                           path=f"/v1/local-computers/{device_id}/enable",
+                           outcome="allowed" if was_revoked else "already allowed")
+        return {"allowed": device_id, "was_revoked": was_revoked}
+
     return router
+
+
+async def _refuse(websocket: WebSocket, code: int) -> None:
+    """Complete the handshake, then close with a status the client can actually read.
+
+    Closing a websocket *before* `accept()` makes the server answer the upgrade with a bare HTTP
+    403. URLSession reports that as "a bad response from the server" (-1011) — indistinguishable
+    from a network fault — so a revoked Mac retried forever and the app could not say what was
+    wrong. Accepting first costs one empty socket and delivers 4401/4403 to the client's close
+    handler, where the reason lives.
+    """
+    await websocket.accept()
+    await websocket.close(code=code)
 
 
 async def local_computer_socket(websocket: WebSocket, runtime, computers: LocalComputers) -> None:
     """One authenticated Mac, one long-lived socket. The credential is minted per connection."""
     ticket = websocket.query_params.get("ticket") or websocket.headers.get("authorization", "")[7:]
-    device_id = runtime.tickets.redeem(ticket) if ticket else None
-    if not device_id or not runtime.registry.is_active(device_id):
-        await websocket.close(code=4401)
+    # A handshake rejected before accept() reaches the client as a bare HTTP error, which URLSession
+    # reports as "a bad response from the server" (-1011) — with no hint of which check failed. The
+    # bridge logged nothing at all on this path, so a Mac stuck on "Reconnecting" was
+    # indistinguishable from a Mac that was never dialling. Each branch says which one it is; the
+    # ticket value itself is never recorded.
+    if not ticket:
+        runtime.audit.emit("local_computer.rejected", device_id="unknown", method="socket",
+                           path="/v1/local-computers/ws", outcome="no ticket")
+        await _refuse(websocket, 4401)
+        return
+    device_id = runtime.tickets.redeem(ticket)
+    if not device_id:
+        # Unknown, expired (30 s), or already redeemed — tickets are single use, so a second dial
+        # with the same one lands here.
+        runtime.audit.emit("local_computer.rejected", device_id="unknown", method="socket",
+                           path="/v1/local-computers/ws", outcome="ticket not redeemable")
+        await _refuse(websocket, 4401)
+        return
+    if not runtime.registry.is_active(device_id):
+        runtime.audit.emit("local_computer.rejected", device_id=device_id, method="socket",
+                           path="/v1/local-computers/ws", outcome="device not active")
+        await _refuse(websocket, 4401)
         return
     if computers.is_revoked(device_id):
-        await websocket.close(code=4403)
+        runtime.audit.emit("local_computer.rejected", device_id=device_id, method="socket",
+                           path="/v1/local-computers/ws", outcome="revoked")
+        await _refuse(websocket, 4403)
         return
 
     await websocket.accept()
