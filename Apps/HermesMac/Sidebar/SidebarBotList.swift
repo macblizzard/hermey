@@ -259,7 +259,10 @@ struct SidebarBotList: View {
                     // so the row carries its category as a chip instead.
                     if isSearching {
                         ForEach(visibleBots) { bot in
-                            row(for: bot, isKeyboardSelected: highlighted == .bot(bot.id))
+                            HoverRow { hovered in
+                                row(for: bot, isHovered: hovered,
+                                    isKeyboardSelected: highlighted == .bot(bot.id))
+                            }
                                 // The identity the keyboard scrolls to: a row and a finding share the
                                 // one namespace `SidebarSearchRow` defines.
                                 .id(SidebarSearchRow.bot(bot.id))
@@ -269,7 +272,7 @@ struct SidebarBotList: View {
                             groupCaption(group)
                             if !isCollapsed(group) {
                                 ForEach(group.bots) { bot in
-                                    row(for: bot)
+                                    HoverRow { hovered in row(for: bot, isHovered: hovered) }
                                 }
                             }
                         }
@@ -538,13 +541,33 @@ struct SidebarBotList: View {
     /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
     @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
 
+
+/// One row's hover, held by the row.
+///
+/// The list used to keep a single `hoveredRow` and every row read it, so one pointer crossing rows
+/// invalidated the whole list — and a scroll with the cursor over the sidebar crosses rows for as
+/// long as it lasts. The state belongs to the row that can be hovered.
+private struct HoverRow<Content: View>: View {
+    @ViewBuilder var content: (_ isHovered: Bool) -> Content
+    @State private var inside = false
+
+    var body: some View {
+        content(inside)
+            .onHover { inside = $0 }
+    }
+}
+
     private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
 
-    private func row(for bot: Bot, isKeyboardSelected: Bool = false) -> some View {
+    private func row(for bot: Bot, isHovered: Bool = false,
+                     isKeyboardSelected: Bool = false) -> some View {
         // A room on screen owns the selection: the bot underneath is not the conversation the
         // pane is showing, and highlighting both made the sidebar look like two things were open.
         let isSelected = bot.id == model.selectedBotID && model.activeRoom == nil
-        let isHovered = hoveredRow == bot.id
+        // `isHovered` is the row's own now, handed down by `HoverRow`. It used to be
+        // `hoveredRow == bot.id`, read from one @State on the whole list — so every hover change
+        // rebuilt every visible row, and scrolling with the pointer over the list fires those
+        // transitions continuously. That is the sticky feel the conversation pane no longer has.
         let isPinned = model.isPinned(botID: bot.id)
 
         return Button {
@@ -655,10 +678,6 @@ struct SidebarBotList: View {
         }
         .buttonStyle(.plain)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
-        .onHover { inside in
-            if inside { hoveredRow = bot.id }
-            else if hoveredRow == bot.id { hoveredRow = nil }
-        }
         // The ⋯ is a sibling of the row's button, not a button inside it: a control nested in a
         // button's label is a control macOS never delivers a click to.
         .overlay(alignment: .trailing) {
