@@ -69,6 +69,10 @@ class CategoryWrite(BaseModel):
     name: str
 
 
+class OrderWrite(BaseModel):
+    ids: list[str]
+
+
 class AssignmentWrite(BaseModel):
     category_id: Optional[str] = None
 
@@ -84,7 +88,7 @@ def state_file(runtime) -> Path:
 
 
 def _empty() -> dict:
-    return {"version": 1, "categories": [], "assignments": {}}
+    return {"version": 1, "categories": [], "assignments": {}, "order": []}
 
 
 def load(runtime) -> dict:
@@ -110,6 +114,11 @@ def load(runtime) -> dict:
     assignments = data.get("assignments")
     data["categories"] = categories if isinstance(categories, list) else []
     data["assignments"] = assignments if isinstance(assignments, dict) else {}
+    order = data.get("order")
+    # An empty (or absent) order is not "no categories": it means nobody has arranged them, and the
+    # apps fall back to alphabetical — which is how the list behaved before ordering existed, so an
+    # existing install looks exactly the same until the owner drags something.
+    data["order"] = [str(x) for x in order] if isinstance(order, list) else []
     return data
 
 
@@ -170,7 +179,27 @@ def _clean_name(name: str) -> str:
 
 
 def _payload(data: dict) -> dict:
-    return {"categories": data["categories"], "assignments": data["assignments"]}
+    """The document as both apps read it.
+
+    `categories` comes back already arranged, so a client that ignores `order` still draws what the
+    owner arranged — and a client that wants the arrangement (to move one up or down) reads it from
+    the same list it is drawing.
+    """
+    ids = _ordered_ids(data)
+    by_id = {str(c.get("id")): c for c in data["categories"] if isinstance(c, dict)}
+    return {"categories": [by_id[cid] for cid in ids if cid in by_id],
+            "assignments": data["assignments"], "order": ids}
+
+
+def _ordered_ids(data: dict) -> list:
+    """The category ids, arranged.
+
+    Ids the owner has not placed come after the ones they have, in the order the file lists them, so
+    a category created on another device shows up at the end rather than vanishing.
+    """
+    known = [str(c.get("id")) for c in data["categories"] if isinstance(c, dict) and c.get("id")]
+    placed = [cid for cid in data["order"] if cid in known]
+    return placed + [cid for cid in known if cid not in placed]
 
 
 def create_bot_categories_router(runtime) -> APIRouter:
@@ -196,6 +225,9 @@ def create_bot_categories_router(runtime) -> APIRouter:
                 raise HTTPException(status_code=409, detail="a category with that name exists")
             category = {"id": uuid.uuid4().hex[:12], "name": name, "created_at": time.time()}
             data["categories"].append(category)
+            # A new group joins the end of the arrangement rather than disappearing into an
+            # alphabetical middle: the owner just made it and expects to see it where they are.
+            data["order"] = _ordered_ids(data)
             return category
 
         category = mutate(runtime, change)
@@ -235,6 +267,29 @@ def create_bot_categories_router(runtime) -> APIRouter:
             data["assignments"] = {profile: category
                                    for profile, category in data["assignments"].items()
                                    if category != category_id}
+            data["order"] = [cid for cid in data["order"] if cid != category_id]
+
+        mutate(runtime, change)
+        return _payload(load(runtime))
+
+    @router.put("/bot-categories/order")
+    def reorder_categories(body: OrderWrite,
+                           authorization: str | None = Header(default=None)) -> dict:
+        """Arrange the categories. One list of ids, in the order they should be drawn.
+
+        The whole arrangement at once, not "move X up": two devices moving two different groups
+        would otherwise each compute a swap from a document the other had already changed. Sending
+        the arrangement makes the last writer's arrangement the truth, which is the same rule every
+        other write here follows.
+
+        Ids that are unknown are ignored and ids that are missing are appended by the caller's own
+        `_ordered_ids` — a device that has not seen a category yet cannot lose it by arranging.
+        """
+        require_device(runtime, authorization)
+
+        def change(data: dict) -> None:
+            known = {str(c.get("id")) for c in data["categories"] if isinstance(c, dict)}
+            data["order"] = [cid for cid in body.ids if cid in known]
 
         mutate(runtime, change)
         return _payload(load(runtime))

@@ -300,6 +300,18 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         return categoryState
     }
 
+    func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        if let categoryError { throw categoryError }
+        categoryWrites.append("order:" + ids.joined(separator: ","))
+        // The host answers with the document already arranged, the way the bridge does.
+        let byID = Dictionary(uniqueKeysWithValues: categoryState.categories.map { ($0.id, $0) })
+        categoryState = BotCategoryState(
+            categories: ids.compactMap { byID[$0] },
+            assignments: categoryState.assignments,
+            order: ids)
+        return categoryState
+    }
+
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
         if let categoryError { throw categoryError }
         categoryWrites.append("assign:\(profile):\(categoryID ?? "-")")

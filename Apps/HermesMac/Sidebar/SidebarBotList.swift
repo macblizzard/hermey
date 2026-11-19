@@ -534,6 +534,24 @@ struct SidebarBotList: View {
             }
 
             if let category {
+                Divider()
+                // Moving a group is the one thing here that changes the list's shape, so it is
+                // greyed out where there is nowhere to go rather than failing silently.
+                Button {
+                    Task { try? await model.moveBotCategory(id: category.id, by: -1) }
+                } label: {
+                    Label("Move “\(category.name)” Up", systemImage: "arrow.up")
+                }
+                .disabled(!model.canMoveBotCategory(id: category.id, by: -1))
+
+                Button {
+                    Task { try? await model.moveBotCategory(id: category.id, by: 1) }
+                } label: {
+                    Label("Move “\(category.name)” Down", systemImage: "arrow.down")
+                }
+                .disabled(!model.canMoveBotCategory(id: category.id, by: 1))
+                Divider()
+
                 Button { sheet = .renameCategory(category) } label: {
                     Label("Rename “\(category.name)”…", systemImage: "pencil")
                 }

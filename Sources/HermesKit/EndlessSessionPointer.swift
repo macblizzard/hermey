@@ -176,6 +176,9 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bots/{profile}/category` — put a bot in a group, or take it out with `nil`.
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState
 
+    /// `PUT /v1/bot-categories/order` — the whole arrangement, not one swap.
+    func reorderBotCategories(ids: [String]) async throws -> BotCategoryState
+
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
@@ -263,6 +266,10 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
     func deleteBotCategory(id: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
+    func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+
     func setBotCategory(profile: String, categoryID: String?) async throws -> BotCategoryState {
         throw BotAdminUnavailable()
     }
@@ -670,6 +677,16 @@ enum Failure: Error, Equatable, LocalizedError {
         let body: [String: Any] = ["category_id": categoryID ?? NSNull()]
         return try BotCategoryState.decode(try await bridgePUT("v1/bots/\(name)/category",
                                                                body: body, timeout: 20))
+    }
+
+    /// `PUT /v1/bot-categories/order` — the arrangement, sent whole.
+    ///
+    /// Sending the arrangement rather than "move X up" is what keeps two devices from fighting: a
+    /// swap computed from a document the other device already changed would move the wrong group,
+    /// while an arrangement can only replace an arrangement.
+    public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        try BotCategoryState.decode(try await bridgePUT("v1/bot-categories/order",
+                                                        body: ["ids": ids], timeout: 20))
     }
 
     /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`
