@@ -81,6 +81,7 @@ struct WorkspaceRoot: View {
         // rather than in the chat so the answer never becomes a message the bot can read.
         .sheet(item: $credentials.card) { card in
             CredentialCardSheet(card: card, model: store.model, center: credentials)
+                .hermesSheetChrome()
         }
         .task { credentials.watch(model: store.model) }
         .onReceive(NotificationCenter.default.publisher(for: .genUICardSend)) { note in
