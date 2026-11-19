@@ -87,10 +87,14 @@ struct LocalComputerSettingsView: View {
                                                  : state?.granted == false ? Tokens.danger
                                                  : Tokens.textMuted)
                             Spacer(minLength: 6)
-                            if permission != .accessibility {
-                                Button("Check") { permissions.check(permission) }
-                                    .controlSize(.small)
-                            }
+                            // Every row gets Check, Accessibility included. It was left out because
+                            // granting that one happens in System Settings and the app only learns
+                            // of it on the next probe — which is exactly why a Check button belongs
+                            // there: it is the only way to tell whether the grant landed without
+                            // quitting and relaunching. `check(.accessibility)` re-reads
+                            // AXIsProcessTrusted, so the row answers honestly.
+                            Button("Check") { permissions.check(permission) }
+                                .controlSize(.small)
                             Button(permission == .accessibility ? "Request Access" : "Open Settings") {
                                 permissions.request(permission)
                             }
