@@ -580,7 +580,8 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
-        try await sessionPointer.reorderBotCategories(ids: ids)
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.reorderBotCategories(ids: ids)
     }
 
     /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every
