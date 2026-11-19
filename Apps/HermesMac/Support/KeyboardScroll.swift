@@ -86,7 +86,7 @@ struct KeyboardScrollProbe: NSViewRepresentable {
     }
 }
 
-public extension View {
+extension View {
     /// The half that goes **inside** the scroll view: it finds the AppKit scroll view that actually
     /// scrolls and hands it to `handle`. A background on the `ScrollView` itself cannot do this —
     /// `enclosingScrollView` is nil outside the content.
@@ -102,17 +102,19 @@ public extension View {
         self
             .focusable()
             .focusEffectDisabled()
-            .onKeyPress(.upArrow) { press in
+            // `phases:` is what hands the closure its `KeyPress`. Without it SwiftUI picks the
+            // no-argument overload — and the modifier can only be read from the press.
+            .onKeyPress(.upArrow, phases: .down) { press in
                 press.modifiers.contains(.command) ? handle.toTop() : handle.line(-1)
                 return .handled
             }
-            .onKeyPress(.downArrow) { press in
+            .onKeyPress(.downArrow, phases: .down) { press in
                 press.modifiers.contains(.command) ? handle.toBottom() : handle.line(1)
                 return .handled
             }
-            .onKeyPress(.pageUp) { _ in handle.page(-1); return .handled }
-            .onKeyPress(.pageDown) { _ in handle.page(1); return .handled }
-            .onKeyPress(.home) { _ in handle.toTop(); return .handled }
-            .onKeyPress(.end) { _ in handle.toBottom(); return .handled }
+            .onKeyPress(.pageUp, phases: .down) { _ in handle.page(-1); return .handled }
+            .onKeyPress(.pageDown, phases: .down) { _ in handle.page(1); return .handled }
+            .onKeyPress(.home, phases: .down) { _ in handle.toTop(); return .handled }
+            .onKeyPress(.end, phases: .down) { _ in handle.toBottom(); return .handled }
     }
 }
