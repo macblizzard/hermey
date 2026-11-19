@@ -96,6 +96,12 @@
 "b": "Notifications and badges A bot's reply earns a notification when that bot is not the one on screen \u2014 a chat you are reading has already told you. Both apps put the total waiting on the Dock tile or the app icon. Platform How it behaves macOS Delivers a banner as soon as the host reports the reply, even in the backgroun"
 },
 {
+"h": "Arranging bot groups",
+"p": "The apps",
+"u": "apps.html#arranging",
+"b": "Arranging bot groups Right-click a group's heading in the Mac's sidebar to Move \u2026 Up or Move \u2026 Down . The menu items grey out at the ends of the list. The arrangement is the host's, not the window's: it is stored beside the categories and both apps read it, so a group moved on the Mac is in the same place on the phone."
+},
+{
 "h": "Unpairing and revocation",
 "p": "The apps",
 "u": "apps.html#revocation",
@@ -105,7 +111,7 @@
 "h": "How it works",
 "p": "Local computer use",
 "u": "computer-use.html#how-it-works",
-"b": "How it works The Mac app is the executor . Your host sends a command; the app performs it under your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on it and Remote Login stays off. It starts switched off. Nothing is queried until you turn on Settings \u2192 Computer \u2192 Let bo"
+"b": "How it works The Mac app is the executor . Your host sends a command; the app performs it under your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on it and Remote Login stays off. With the switch on, that socket comes up when the app launches and redials itself after a"
 },
 {
 "h": "What bots can do",
