@@ -72,3 +72,43 @@ The build is unsigned. Right-click → Open the first time, or once:
 ```bash
 xattr -dr com.apple.quarantine /Applications/Hermey.app
 ```
+
+## "There was a problem updating" / an update error in the Mac app
+
+Two different things wear that message.
+
+1. **You checked during the first ten minutes after a release.** The feed and the download are
+   published separately: GitHub Pages serves `appcast.xml` for ~10 minutes before it serves the
+   `.dmg` it points at, so a check in that window finds a version whose file is still `404`. Nothing
+   is wrong with your Mac — check again in ten minutes. The release page is always current even when
+   the mirror is not.
+2. **A signature that does not verify.** The app trusts exactly one Ed25519 public key
+   (`SUPublicEDKey`), so a feed signed with a different key installs nothing. Check without guessing:
+
+   ```bash
+   curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30   # version + signature
+   curl -sI https://macblizzard.github.io/hermey-downloads/Hermey-macOS-0.1.580.dmg | head -3
+   ```
+
+   The `length=` in the feed must equal the served `content-length`, or the file was replaced after
+   the feed was signed.
+
+## The Mac's computer says "Reconnecting" and will not connect
+
+Check whether the host has that Mac revoked — this is what the trash button beside the computer name
+does:
+
+```bash
+cat /var/lib/hermey/revoked-local-computers.json      # {"revoked": ["<device id>"]}
+```
+
+Turning **Let bots use this computer** off and on in the Mac app lifts it (the app calls
+`POST /v1/local-computers/<device>/enable`). If it still will not connect, ask the bridge why rather
+than the screen:
+
+```bash
+journalctl -u hermes-native-bridge --since -10min | grep local_computer.rejected
+```
+
+Each line names the check that failed: `no ticket`, `ticket not redeemable`, `device not active`, or
+`revoked`.

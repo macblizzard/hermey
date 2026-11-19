@@ -102,6 +102,15 @@ Two knobs matter if it does not land:
 - **The Mac still has to allow it.** The skill explains the switch: Hermey on the Mac → Computer →
   **Let bots use this computer**. With that off, every call answers "no local computer is connected"
   and the skill tells the bot to stop and ask rather than retry.
+- **The trash button is reversible.** The bin beside the computer name revokes that Mac on the host
+  (it drops out of `/v1/local-computers` and its socket is closed). Turning **Let bots use this
+  computer** back on asks the host to lift the revoke: the app calls
+  `POST /v1/local-computers/<device>/enable` and reconnects. Before this existed the revoke was
+  permanent and only editing `revoked-local-computers.json` on the host would undo it.
+- **When a Mac will not connect**, the host now says why. Every rejected handshake logs a
+  `local_computer.rejected` audit event naming the failed check — no ticket, ticket not redeemable,
+  device not active, or revoked — instead of failing silently. A refusal reaches the app as close
+  code `4401`/`4403`, not an opaque "bad response from the server".
 
 ## 3. Pair the human's device
 

@@ -258,6 +258,23 @@ ID).</p>
     device token still works under <strong>Advanced</strong>.</li>
 </ol>
 <p>macOS 14 or later is required.</p>
+<h3 id="start-at-login">Start at login</h3>
+<p>Settings → <strong>Computer</strong> → <strong>Startup</strong> → <strong>Open Hermey at
+login</strong> registers the app with <code>SMAppService</code>, so the computer-use socket comes
+back after a reboot without opening the app by hand. It opens the app at login; it does
+<strong>not</strong> wake a sleeping Mac — the app reconnects by itself when the Mac wakes, which is
+a different promise.</p>
+
+<h2 id="themes">Appearance and themes</h2>
+<p>Settings → <strong>Appearance</strong>. Eight palettes: <strong>Midnight</strong> (the default),
+Graphite, Gruvbox, Tokyo Night, Catppuccin, Dracula, Nord, and <strong>Parchment</strong> — a light
+theme taken from the colours of this site, for daylight and for screenshots.</p>
+<p>A theme is more than a colour set. The app draws its own colours from the palette, but the system
+draws navigation titles, section headers and footers, grouped row backgrounds, and the labels on its
+own controls — so every surface presented separately (a window, a sheet, a tab's navigation stack)
+tells the system which direction the palette faces. That is why Parchment is readable rather than
+white-on-cream. If a surface ever shows a white title on a pale background, that surface is the one
+missing the call. Dark palettes are unaffected: they say dark and get dark.</p>
 
 <h2 id="first-run">First run</h2>
 <ul>
@@ -499,6 +516,29 @@ developer account for a one-year profile.</p>
 re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of
 hanging. If it stays down, open <strong>Settings → Computer</strong> on the Mac and read the status
 row, then check <code>hermey doctor</code> on the host.</p>
+<p><strong>"Reconnecting" and it will not come back.</strong> Check whether the host has that Mac
+revoked — this is what the bin beside the computer name does:</p>
+{code("cat /var/lib/hermey/revoked-local-computers.json", "the revoked devices on the host")}
+<p>Turning <strong>Let bots use this computer</strong> off and on in the Mac app lifts it: the app
+calls <code>POST /v1/local-computers/&lt;device&gt;/enable</code> and reconnects. If it still will not
+connect, ask the bridge why rather than the screen:</p>
+{code("journalctl -u hermes-native-bridge --since -10min | grep local_computer.rejected", "why the handshake was refused")}
+<p>Each line names the failed check: <code>no ticket</code>, <code>ticket not redeemable</code>,
+<code>device not active</code>, or <code>revoked</code>. A refusal reaches the app as close code
+<code>4401</code>/<code>4403</code> rather than an opaque "bad response from the server".</p>
+
+<h2 id="update-error">"There was a problem updating"</h2>
+<p>Two different things wear that message.</p>
+<p><strong>You checked during the first ten minutes after a release.</strong> The feed and the
+download are published separately, and GitHub Pages serves the feed before the disk image it points
+at, so a check in that window finds a version whose file is still <code>404</code>. Nothing is wrong
+with the Mac; check again in ten minutes. The release page is always current even when the mirror is
+not.</p>
+<p><strong>A signature that does not verify.</strong> The app trusts exactly one Ed25519 public key,
+so a feed signed with a different key installs nothing. Check without guessing:</p>
+{code("curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30", "the feed: version, length and signature")}
+<p>The <code>length=</code> in the feed must equal the served <code>content-length</code>, or the file
+was replaced after the feed was signed.</p>
 """,
 ))
 

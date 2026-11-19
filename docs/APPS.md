@@ -58,12 +58,34 @@ app itself needs no account, no Apple service and no internet beyond your tailne
 
 macOS 14+ is required (SwiftUI features the shell relies on).
 
+### Start at login
+
+Settings → **Computer** → **Startup** → **Open Hermey at login** registers the app with
+`SMAppService`, so the computer-use socket comes back after a reboot without opening the app by
+hand. It opens the app at login; it does **not** wake a sleeping Mac — the app reconnects by itself
+when the Mac wakes, which is a different thing.
+
 ## First run
 
 - Add a server: paste `https://<host>.<tailnet>.ts.net:8443` or scan the QR.
 - Enter the pairing code from `hermey pair`.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
+
+## Appearance and themes
+
+Settings → **Appearance**. Eight palettes: **Midnight** (the default), Graphite, Gruvbox, Tokyo
+Night, Catppuccin, Dracula, Nord, and **Parchment** — a light theme taken from the colours of the
+project's own site, for daylight and for screenshots.
+
+A theme is more than a colour set. The app draws its own colours from the palette, but the system
+draws navigation titles, section headers and footers, grouped row backgrounds and the labels on its
+own controls — so every surface that is presented separately (a window, a sheet, a tab's navigation
+stack) tells the system which direction the palette faces. That is why Parchment is readable rather
+than white-on-cream; it is also the bug that took three releases to corner, so if a surface ever
+shows a white title on a pale background, that surface is the one missing the call.
+
+Dark palettes are unchanged by any of this: they say "dark" and get dark.
 
 ## Unpairing and revocation
 
