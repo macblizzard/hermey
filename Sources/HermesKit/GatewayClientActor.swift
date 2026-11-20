@@ -610,10 +610,12 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] {
-        try await sessionPointer.integrationKeyFields(slug: slug)
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.integrationKeyFields(slug: slug)
     }
 
     public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
         try await sessionPointer.connectIntegrationWithKey(slug: slug, values: values)
     }
 
