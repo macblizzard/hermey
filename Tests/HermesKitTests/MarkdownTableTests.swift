@@ -245,4 +245,40 @@ final class MarkdownTableTests: XCTestCase {
         let table = parsed("| a | b |\n| --- | --- |\n| 1 | 2 |")
         XCTAssertEqual(table?.plainText, "a | b\n1 | 2")
     }
+    // MARK: Empty header row (GFM allows it)
+
+    /// GFM renders `| | |` above `|---|---|` as a two-column table with blank headings. Ours fell back to prose,
+    /// so an owner saw raw pipes in a bot's reply — the pipe guard that keeps a lone `|` out of tables also
+    /// rejected a header that happened to be empty.
+    func testEmptyHeaderRowIsStillATable() {
+        let table = parsed("""
+        | | |
+        |---|---|
+        | a | b |
+        | c | d |
+        """)
+        XCTAssertEqual(table?.columnCount, 2)
+        XCTAssertEqual(table?.header, ["", ""])
+        XCTAssertEqual(table?.rows, [["a", "b"], ["c", "d"]])
+    }
+
+    /// The guard this change had to keep: a stray empty row on its own is prose, not a table.
+    func testALoneEmptyRowWithoutADelimiterStaysProse() {
+        XCTAssertNil(parse("""
+        | |
+        some ordinary sentence
+        """))
+    }
+
+    /// An empty header does not excuse a ragged body: rows still normalise to the header's width.
+    func testRaggedBodyRowsNormalizeUnderAnEmptyHeader() {
+        let table = parsed("""
+        | | |
+        |---|---|
+        | a |
+        | a | b | c |
+        """)
+        XCTAssertEqual(table?.rows, [["a", ""], ["a", "b"]])
+    }
+
 }

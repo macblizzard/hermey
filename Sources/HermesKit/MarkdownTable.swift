@@ -77,13 +77,20 @@ public enum MarkdownTableParser {
         guard index >= 0, index + 1 < lines.count else { return nil }
 
         let headerLine = lines[index]
-        guard isRowLine(headerLine), let header = splitCells(headerLine), !header.isEmpty else {
+        guard let alignments = delimiterAlignments(lines[index + 1]) else { return nil }
+
+        let header: [String]
+        if let cells = splitCells(headerLine), !cells.isEmpty, isRowLine(headerLine) {
+            header = cells
+        } else if let width = cellCount(headerLine), width > 0, width == alignments.count {
+            // An empty header row is a table per GFM, and the delimiter row is what proves it: a stray `| |`
+            // with no delimiter of the same width below it is still prose, which is the case this guard was
+            // written for in the first place.
+            header = Array(repeating: "", count: width)
+        } else {
             return nil
         }
-        guard let alignments = delimiterAlignments(lines[index + 1]),
-              alignments.count == header.count else {
-            return nil
-        }
+        guard alignments.count == header.count else { return nil }
 
         var rows: [[String]] = []
         var cursor = index + 2
@@ -150,6 +157,21 @@ public enum MarkdownTableParser {
             return nil
         }
         return cells.map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// The number of cells in a row, whether or not any of them has text.
+    ///
+    /// `splitCells` refuses an all-empty row so that a lone `|` in prose is not a table; that rule is about
+    /// *rows*, and a header row is allowed to be empty. GFM renders `| | |` above `|---|---|` as a two-column
+    /// table, and so must we — the delimiter row is the evidence, so this reports the shape and the caller
+    /// decides whether a delimiter of that width is present.
+    public static func cellCount(_ line: String) -> Int? {
+        guard indentationWidth(line) < 4 else { return nil }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let (raw, pipes) = rawCells(trimmed)
+        guard pipes > 0 else { return nil }
+        return stripOuterPipes(raw, from: trimmed).count
     }
 
     /// Whether this line can be part of a table. A lone `|`, an indented line
