@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.608",
-          "buildVersion": "608",
-          "date": "2026-11-20T22:36:05Z",
-          "localizedDescription": "Build 0.1.608 (608).",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.608/Hermey-0.1.608-b608.ipa",
-          "size": 3668200,
+          "version": "0.1.609",
+          "buildVersion": "609",
+          "date": "2026-11-20T23:54:28Z",
+          "localizedDescription": "Build 0.1.609 (609).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.609/Hermey-0.1.609-b609.ipa",
+          "size": 3668203,
           "minOSVersion": "17.0",
-          "sha256": "b15d0eafb055e052b2181c2d7822cd11e66cc394274e9c76d8f1681b453f9090"
+          "sha256": "ac2b9bf7fc91a8118105a398569782f6aae369430b0bb6d714928b8ae916db3c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.608 (608)",
-      "identifier": "hermes-0.1.608-608",
-      "caption": "Build 608",
-      "date": "2026-11-20T22:36:05Z",
+      "title": "Hermes 0.1.609 (609)",
+      "identifier": "hermes-0.1.609-609",
+      "caption": "Build 609",
+      "date": "2026-11-20T23:54:28Z",
       "tintColor": "#9A9AA0"
     }
   ],
