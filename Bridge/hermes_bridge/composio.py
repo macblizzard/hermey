@@ -43,7 +43,15 @@ CATALOG = (
     ("notion", "Notion", "Read and write your pages"),
     ("linear", "Linear", "Track issues and projects"),
     ("stripe", "Stripe", "Customers, payments and invoices"),
+    # Connected with a key rather than a hosted sign-in: Composio has no managed OAuth app for these, and
+    # inventing one would mean the owner registering an OAuth client before they could use the card.
+    ("cloudflare", "Cloudflare", "DNS, cache and Workers"),
+    ("vercel", "Vercel", "Deployments, domains and projects"),
 )
+
+#: Services whose connection is a key, not a redirect. Composio calls these API_KEY schemes: the owner pastes
+#: a key (and whatever secondary field the toolkit wants) and there is no browser step at all.
+KEY_TOOLKITS = {"cloudflare", "vercel"}
 
 #: Where an operator puts the project key. A file rather than only an env var because the bridge runs
 #: under systemd and a key in a unit file is visible in `systemctl show`.
@@ -83,6 +91,8 @@ class Integration:
     available: bool = True
     #: Every connected account for this service: {"id", "label"}. One is the common case, two is normal.
     accounts: list[dict] | None = None
+    #: True when this service is connected by a key the owner pastes, not by a hosted sign-in page.
+    key_based: bool = False
 
 
 class ComposioClient:
@@ -164,6 +174,72 @@ class ComposioClient:
             raise ComposioError(f"Composio would not create an auth config for {slug}")
         LOGGER.info("integrations: created a managed auth config for %s", slug)
         return str(identifier)
+
+    def key_auth_config(self, slug: str) -> str:
+        """The API_KEY blueprint for a toolkit, created once with no credentials of ours in it.
+
+        ``use_custom_auth`` is the only type Composio accepts here — without it the request 404s with "no
+        managed credentials for this toolkit". The key itself is *not* part of the blueprint: it belongs to the
+        connected account, one per owner.
+        """
+        rows = self._request("GET", f"/auth_configs?{urllib.parse.urlencode({'toolkit_slug': slug})}")
+        items = rows.get("items") if isinstance(rows, dict) else rows
+        for row in items or []:
+            if not isinstance(row, dict):
+                continue
+            scheme = str(row.get("auth_scheme") or row.get("authScheme") or "").upper()
+            if scheme == "API_KEY" and row.get("id"):
+                return str(row["id"])
+        reply = self._request("POST", "/auth_configs", {
+            "toolkit": {"slug": slug},
+            "auth_config": {"type": "use_custom_auth", "authScheme": "API_KEY",
+                            "name": f"hermey-{slug}", "credentials": {}},
+        })
+        created = (reply.get("auth_config") or reply) if isinstance(reply, dict) else {}
+        identifier = created.get("id")
+        if not identifier:
+            raise ComposioError(f"Composio would not create a key auth config for {slug}")
+        LOGGER.info("integrations: created an API-key auth config for %s", slug)
+        return str(identifier)
+
+    def key_fields(self, slug: str) -> list[dict]:
+        """What the owner has to supply, as Composio defines it — never guessed here.
+
+        Cloudflare wants a Global API Key *and* the account email; Vercel wants a token and an optional team id.
+        Hard-coding that list would rot the first time a toolkit changes it.
+        """
+        config = self.key_auth_config(slug)
+        reply = self._request("GET", f"/auth_configs/{urllib.parse.quote(config, safe='')}")
+        config_body = (reply.get("auth_config") or reply) if isinstance(reply, dict) else {}
+        fields = []
+        for field in config_body.get("expected_input_fields") or []:
+            name = str(field.get("name") or "")
+            if not name:
+                continue
+            fields.append({
+                "name": name,
+                "label": str(field.get("displayName") or name),
+                "required": bool(field.get("required")),
+                "secret": bool(field.get("is_secret")),
+            })
+        return fields
+
+    def connect_with_key(self, slug: str, values: dict[str, str]) -> dict:
+        """Store a key with Composio as this owner's connection.
+
+        The value goes to Composio and nowhere else: it is not returned by the route, not written to the state
+        directory and not put in an audit line. Callers get an account id and a status, which is all the app
+        needs to draw a connected card.
+        """
+        config = self.key_auth_config(slug)
+        reply = self._request("POST", "/connected_accounts", {
+            "auth_config": {"id": config},
+            "user_id": user_id(),
+            "connection": {"state": {"authScheme": "API_KEY", "val": dict(values)}},
+        })
+        if isinstance(reply, dict) and reply.get("id"):
+            return {"account_id": str(reply["id"]), "status": str(reply.get("status") or "")}
+        raise ComposioError(f"Composio did not create a connection for {slug}")
 
     def connect_link(self, slug: str, alias: str | None = None) -> str:
         """A hosted sign-in page for this toolkit. The user finishes there; nothing comes back to us.
@@ -287,15 +363,18 @@ def integrations(client: ComposioClient) -> list[Integration]:
 def _one(client: ComposioClient, entry: tuple[str, str, str]) -> Integration:
     """One service's state. Runs on a worker thread, so it returns instead of appending."""
     slug, name, blurb = entry
+    key_based = slug in KEY_TOOLKITS
     try:
         rows = _active_all(client.connected_accounts(slug), slug)
     except ComposioError as exc:
         LOGGER.info("integrations: %s unknown (%s)", slug, exc)
-        return Integration(slug, name, blurb, connected=False, available=False, accounts=[])
+        return Integration(slug, name, blurb, connected=False, available=False, accounts=[],
+                           key_based=key_based)
     accounts = [{"id": str(row.get("id")), "label": _label_for(row, index)}
                 for index, row in enumerate(rows) if row.get("id")]
     return Integration(slug, name, blurb, connected=bool(accounts),
-                       account_id=accounts[0]["id"] if accounts else None, accounts=accounts)
+                       account_id=accounts[0]["id"] if accounts else None, accounts=accounts,
+                       key_based=key_based)
 
 
 def create_integrations_router(runtime, client: ComposioClient | None = None):
@@ -321,10 +400,41 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             "services": [
                 {"slug": row.slug, "name": row.name, "blurb": row.blurb, "connected": row.connected,
                  "account_id": row.account_id, "available": row.available,
-                 "accounts": row.accounts or []}
+                 "key_based": row.key_based, "accounts": row.accounts or []}
                 for row in rows
             ],
         }
+
+    @router.get("/{slug}/key-fields")
+    def key_fields(slug: str) -> dict:
+        """The inputs this service needs, straight from Composio's auth config."""
+        if slug not in KEY_TOOLKITS:
+            raise HTTPException(status_code=400, detail=f"{slug} is not connected with a key")
+        try:
+            return {"slug": slug, "fields": api.key_fields(slug)}
+        except ComposioError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+
+    @router.post("/{slug}/key-connect")
+    def key_connect(slug: str, body: dict | None = None) -> dict:
+        """Store the owner's key as their connection.
+
+        The values arrive from the app over its own authenticated link, go straight to Composio, and are not
+        echoed back, logged or stored on this host — the same rule as a login card. Only an account id and a
+        status come out.
+        """
+        if slug not in KEY_TOOLKITS:
+            raise HTTPException(status_code=400, detail=f"{slug} is not connected with a key")
+        values = {str(k): str(v) for k, v in ((body or {}).get("values") or {}).items() if str(v).strip()}
+        if not values:
+            raise HTTPException(status_code=422, detail="values are required")
+        try:
+            result = api.connect_with_key(slug, values)
+        except ComposioError as exc:
+            _audit("failed", slug, "key rejected")
+            raise HTTPException(status_code=502, detail=str(exc)) from None
+        _audit("connected", slug, "key")
+        return {"ok": True, **result}
 
     @router.post("/{slug}/connect")
     def connect(slug: str, body: dict | None = None) -> dict:

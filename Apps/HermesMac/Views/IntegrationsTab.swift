@@ -22,6 +22,10 @@ struct IntegrationsTab: View {
     /// The account being renamed, and what they are typing.
     @State private var renaming: String?
     @State private var renameText = ""
+    /// The key-based service whose sheet is open, the inputs Composio asked for, and what the owner typed.
+    @State private var keyService: IntegrationService?
+    @State private var keyFields: [IntegrationKeyField] = []
+    @State private var keyValues: [String: String] = [:]
 
     private let columns = [GridItem(.adaptive(minimum: 232), spacing: 12)]
 
@@ -75,6 +79,9 @@ struct IntegrationsTab: View {
         .padding(20)
         .frame(minWidth: 560, alignment: .leading)
         .task { await refresh() }
+        .sheet(item: $keyService) { service in
+            keySheet(service)
+        }
     }
 
     private var header: some View {
@@ -196,8 +203,12 @@ struct IntegrationsTab: View {
                 ProgressView().controlSize(.small)
                 Text("Waiting for the browser…").font(.caption2).foregroundStyle(Tokens.textMuted)
             }
-        } else {
-            Button("Connect") { Task { await connect(service) } }
+        } else if service.keyBased {
+            Button("Connect with a key") {
+                keyService = service
+            }
+            .controlSize(.mini)
+            .disabled(busy != nil || !configured || !service.available)
                 .controlSize(.small)
                 .disabled(busy != nil || !configured || !service.available)
         }
@@ -213,6 +224,76 @@ struct IntegrationsTab: View {
     }
 
     // MARK: - Actions
+
+    @ViewBuilder
+    private func keySheet(_ service: IntegrationService) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Connect \(service.name)").font(.headline)
+            Text("The key goes to Composio through this host. It is not kept by the app and never appears in a "
+                 + "chat or a log.")
+                .font(.caption)
+                .foregroundStyle(Tokens.textMuted)
+            if keyFields.isEmpty {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Asking the host…").font(.caption) }
+            }
+            ForEach(keyFields) { field in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(field.label).font(.caption)
+                    if field.secret {
+                        SecureField(field.required ? "Required" : "Optional",
+                                    text: Binding(get: { keyValues[field.name] ?? "" },
+                                                  set: { keyValues[field.name] = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        TextField(field.required ? "Required" : "Optional",
+                                  text: Binding(get: { keyValues[field.name] ?? "" },
+                                                set: { keyValues[field.name] = $0 }))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            HStack {
+                Button("Cancel") { keyService = nil; keyValues = [:] }
+                Spacer()
+                Button(busy == service.slug ? "Connecting…" : "Connect") {
+                    Task { await submitKey(service) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(busy != nil || keyFields.contains { $0.required && (keyValues[$0.name] ?? "").isEmpty })
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+        .hermesSheetChrome()
+        .task { await loadKeyFields(service) }
+    }
+
+    private func loadKeyFields(_ service: IntegrationService) async {
+        keyFields = []
+        keyValues = [:]
+        error = nil
+        do {
+            keyFields = try await store.model.integrationKeyFields(slug: service.slug)
+        } catch {
+            self.error = "Could not ask the host what \(service.name) needs."
+        }
+    }
+
+    /// Submit the key. Nothing is stored here afterwards: a success closes the sheet and refreshes the grid, a
+    /// failure says so and keeps what was typed so a typo is fixable rather than retyped.
+    private func submitKey(_ service: IntegrationService) async {
+        busy = service.slug
+        defer { busy = nil }
+        do {
+            try await store.model.connectIntegrationWithKey(slug: service.slug, values: keyValues)
+            keyService = nil
+            keyValues = [:]
+            await refresh()
+        } catch {
+            self.error = "\(service.name) did not accept that key."
+        }
+    }
 
     private func refresh() async {
         do {

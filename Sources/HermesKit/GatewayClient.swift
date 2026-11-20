@@ -199,6 +199,8 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func cancelCredentialCard(id: String) async throws
     func integrations() async throws -> IntegrationsState
     func connectIntegration(slug: String, alias: String?) async throws -> String
+    func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField]
+    func connectIntegrationWithKey(slug: String, values: [String: String]) async throws
     func renameIntegration(slug: String, accountID: String, alias: String) async throws
     func disconnectIntegration(slug: String, accountID: String?) async throws
 

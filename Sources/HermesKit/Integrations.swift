@@ -20,13 +20,43 @@ public struct IntegrationService: Identifiable, Codable, Hashable, Sendable {
     public let available: Bool
     /// Every connected account: empty, one, or several. `connected` is derived from this on the host.
     public let accounts: [IntegrationAccount]
+    /// True when this service is connected by a key the owner pastes, not by a hosted sign-in page.
+    public let keyBased: Bool
 
     public var id: String { slug }
 
     public enum CodingKeys: String, CodingKey {
-        case slug, name, blurb, connected, available, accounts
+        case slug, name, blurb, connected, available, accounts, keyBased
         case accountID = "account_id"
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        name = try container.decode(String.self, forKey: .name)
+        blurb = try container.decode(String.self, forKey: .blurb)
+        connected = try container.decode(Bool.self, forKey: .connected)
+        accountID = try container.decodeIfPresent(String.self, forKey: .accountID)
+        available = try container.decodeIfPresent(Bool.self, forKey: .available) ?? true
+        accounts = try container.decodeIfPresent([IntegrationAccount].self, forKey: .accounts) ?? []
+        // An older host does not send this; absent means "use the browser", not "decode failed".
+        keyBased = try container.decodeIfPresent(Bool.self, forKey: .keyBased) ?? false
+    }
+}
+
+/// One input a key-based service wants, as Composio defines it — never hard-coded in the app.
+public struct IntegrationKeyField: Identifiable, Codable, Hashable, Sendable {
+    public let name: String
+    public let label: String
+    public let required: Bool
+    public let secret: Bool
+
+    public var id: String { name }
+}
+
+public struct IntegrationKeyFields: Codable, Sendable {
+    public let slug: String
+    public let fields: [IntegrationKeyField]
 }
 
 /// `GET /v1/integrations` — what the screen renders, and whether this host can connect anything at all.
