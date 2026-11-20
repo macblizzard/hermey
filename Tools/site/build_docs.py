@@ -649,6 +649,7 @@ PAGES.append(dict(
   ["<code>/v1/pair/start</code>", "begins a pairing exchange"],
   ["<code>GET /v1/devices</code>", "the devices paired to this host, for revocation in the app"],
   ["<code>/v1/local-computers/ws</code>", "the Mac's own outbound socket for computer use — the bridge pings it and drops a silent one"],
+  ["<code>/v1/browser/ws</code>", "the sign-in extension's loopback socket; the bridge sends it a login card's fill, so values never reach the bot"],
 ])}
 
 <h2 id="downloads">Download URLs</h2>
