@@ -514,6 +514,15 @@ EOF
 chmod 0755 "$BINDIR/hermey"
 
 say "Done"
+
+# The bot desktop needs a browser that honours --load-extension and the extension on disk, or a login
+# card can be asked for and never filled. Idempotent, and it prints what it found.
+if [ -x "$(dirname "$0")/bot-browser.sh" ]; then
+  echo
+  echo "  Bot browser and sign-in extension:"
+  bash "$(dirname "$0")/bot-browser.sh" || true
+fi
+
 if [ -n "$TAIL_HOST" ]; then
   echo
   echo "  Add a server in the Hermey app:"
