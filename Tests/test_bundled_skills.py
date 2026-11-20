@@ -157,3 +157,25 @@ class TheyAreSeparateCapabilities(unittest.TestCase):
             self.assertIn("error", result["skills"]["mac-local-computer"])
             self.assertFalse((profiles / "cody" / "skills" / "mac-local-computer" / "SKILL.md").is_file(),
                              "a Mac skill with no CLI path in it would be a broken instruction")
+
+
+class TestTheSignInSkill:
+    """The bot-side half of a login card: a script plus the skill that teaches it."""
+
+    def test_it_is_bundled(self) -> None:
+        assert "signin" in agent_skills.BUNDLED_SKILLS
+
+    def test_no_placeholder_survives_rendering(self) -> None:
+        body = agent_skills.render(pathlib.Path("/opt/hermey/state/bin/local_computer.py"), name="signin")
+        assert "@@" not in body, "a placeholder reached a bot"
+
+    def test_its_script_lands_beside_the_mac_cli(self, tmp_path) -> None:
+        cli = agent_skills.install_cli(tmp_path / "local_computer.py")
+        script = cli.parent / "hermey_signin.py"
+        assert script.is_file(), "the skill names a script the installer did not copy"
+        assert script.stat().st_mode & 0o111, "a bot cannot run it"
+        assert "ASK" in script.read_text(encoding="utf-8").upper()
+
+    def test_the_skill_forbids_typing_a_password_into_chat(self) -> None:
+        body = agent_skills.template_path("signin").read_text(encoding="utf-8")
+        assert "Never ask for a password" in body

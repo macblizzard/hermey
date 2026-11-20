@@ -2795,6 +2795,40 @@ public final class AppModel: ObservableObject {
         try await writeBotCategories { try await client.reorderBotCategories(ids: ids) }
     }
 
+    /// The login cards waiting for the owner (docs/CREDENTIALS.md). Polled by the Mac's card centre.
+    public func credentialCards() async throws -> [CredentialCard] {
+        try await client.credentialCards()
+    }
+
+    /// Hand the owner's answer to the bridge. What they typed is not kept anywhere on this side.
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        try await client.answerCredentialCard(id: id, values: values)
+    }
+
+    /// Refuse a card. Always obeyed, and nothing is filled.
+    public func cancelCredentialCard(id: String) async throws {
+        try await client.cancelCredentialCard(id: id)
+    }
+
+    /// The Integrations screen's data (docs/INTEGRATIONS.md).
+    public func integrations() async throws -> IntegrationsState {
+        try await client.integrations()
+    }
+
+    /// The hosted Composio page for one service, ready to open in a browser.
+    public func connectIntegration(slug: String, alias: String? = nil) async throws -> String {
+        try await client.connectIntegration(slug: slug, alias: alias)
+    }
+
+    /// Name a connected account: "personal", "work" — what the owner will call it later.
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        try await client.renameIntegration(slug: slug, accountID: accountID, alias: alias)
+    }
+
+    public func disconnectIntegration(slug: String, accountID: String? = nil) async throws {
+        try await client.disconnectIntegration(slug: slug, accountID: accountID)
+    }
+
     /// Whether a move in `offset` has anywhere to go — what greys out the menu item at the ends.
     public func canMoveBotCategory(id: String, by offset: Int) -> Bool {
         let ids = botGroups.filter { !$0.isPinned && !$0.isUncategorized }.map(\.id)

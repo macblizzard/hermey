@@ -87,9 +87,14 @@ That is the complete list. If a future feature needs more, it goes in this docum
 
 | where the bot works | how the fill lands |
 | --- | --- |
-| the bot desktop's browser (Chromium, Linux host) | the browser driver fills the field; the value is not returned to the caller |
-| the owner's Mac browser | the Mac app performs the fill through its own browser surface, same rule |
+| the bot screen's browser | the **Hermey Sign-in extension** (first choice): it holds a loopback socket to the bridge and types the value into the field, replying only "ok" |
+| the bot screen's browser, launched by the dock | the DevTools port, as a fallback when no extension is connected |
+| the owner's Mac browser | the same extension, installed by hand; later, the Mac app may fill through its own browser surface |
 | native app windows | out of scope for this version; a bot must ask the owner to type |
+
+The extension is preferred because it needs no launch flags: it works for a browser the owner started
+themselves, and it is the same component on the Mac, where launch flags cannot reach at all. It never
+stores, logs or resends a value, and its reply is an id and a boolean.
 
 ## When it cannot work
 
