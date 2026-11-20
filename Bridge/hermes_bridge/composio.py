@@ -165,6 +165,17 @@ class ComposioClient:
             raise ComposioError("Composio did not return a link")
         return str(url)
 
+    def list_tools(self, slug: str, limit: int = 50) -> list[dict]:
+        """The tools a toolkit offers, by their real slugs.
+
+        A bot that guesses "send_email" wastes a turn and a context window; these are the names the
+        Composio session actually accepts.
+        """
+        rows = self._request("GET", f"/tools?{urllib.parse.urlencode({'toolkit_slug': slug, 'limit': limit})}")
+        items = rows.get("items") if isinstance(rows, dict) else rows
+        return [{"slug": str(t.get("slug")), "name": str(t.get("name") or "")}
+                for t in (items or []) if isinstance(t, dict) and t.get("slug")]
+
     def disconnect(self, account_id: str) -> None:
         self._request("DELETE", f"/connected_accounts/{urllib.parse.quote(account_id, safe='')}")
 
@@ -247,6 +258,16 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             raise HTTPException(status_code=409, detail=str(exc)) from None
         _audit("link_created", slug)
         return {"url": url}
+
+    @router.get("/{slug}/tools")
+    def tools(slug: str) -> dict:
+        """What a bot may call for this service, in Composio's own names."""
+        if slug not in {entry[0] for entry in CATALOG}:
+            raise HTTPException(status_code=404, detail="unknown integration")
+        try:
+            return {"tools": api.list_tools(slug)}
+        except ComposioError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
 
     @router.post("/{slug}/disconnect")
     def disconnect(slug: str) -> dict:

@@ -36,7 +36,7 @@ SKILL_NAME = "mac-local-computer"
 #: its own. A bot with only the first lands on whatever display it finds — on this host a bot picked
 #: the owner's personal ``:10`` session, opened a browser there, exited 0 and reported success, while
 #: the owner's viewer showed an empty screen.
-BUNDLED_SKILLS = (SKILL_NAME, "bot-desktop", "signin")
+BUNDLED_SKILLS = (SKILL_NAME, "bot-desktop", "signin", "integrations")
 
 #: Frontmatter line that marks a file as ours to update. Absence of it means "hands off".
 MANAGED_MARKER = "managed_by: hermey-bridge"

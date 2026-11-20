@@ -20,7 +20,12 @@ import time
 import urllib.error
 import urllib.request
 
-DEFAULT_BRIDGE = "@@BRIDGE@@"
+import os
+
+# The bridge on this host. The skill's examples do not pass --bridge, and bin scripts are installed
+# verbatim (only SKILL.md is rendered), so a placeholder here would be a literal "@@BRIDGE@@" at runtime.
+DEFAULT_BRIDGE = "http://" + os.environ.get("HERMES_BRIDGE_HOST", "127.0.0.1") + ":" + \
+                 os.environ.get("HERMES_BRIDGE_PORT", "8787")
 POLL_SECONDS = 1.5
 
 
