@@ -29,23 +29,33 @@ struct IntegrationsTab: View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            if let state {
-                if !state.configured {
-                    notice("No Composio key on this host yet. Put one in /etc/hermey/composio.key "
-                           + "or COMPOSIO_API_KEY, then press Refresh.")
-                }
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                    ForEach(state.services) { service in
-                        card(service, configured: state.configured)
-                    }
-                }
-            } else {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Checking…").foregroundStyle(Tokens.textMuted)
-                }
-                .padding(.vertical, 8)
+            if let state, !state.configured {
+                notice("No Composio key on this host yet. Put one in /etc/hermey/composio.key "
+                       + "or COMPOSIO_API_KEY, then press Refresh.")
             }
+
+            // The grid scrolls; the header and the footer stay put. Twelve services at this card height do
+            // not fit a settings window, and without a scroll view the first and last rows were simply
+            // clipped — there was no ScrollView in this tab at all, on a screen the phone version already
+            // had one on.
+            ScrollView(.vertical) {
+                if let state {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                        ForEach(state.services) { service in
+                            card(service, configured: state.configured)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Checking…").foregroundStyle(Tokens.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+                }
+            }
+            .frame(minHeight: 200)
 
             if let error {
                 Text(error).font(.caption).foregroundStyle(.red)
