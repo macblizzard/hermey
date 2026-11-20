@@ -152,6 +152,19 @@ public final class AppModel: ObservableObject {
     /// "is this the open conversation" guard every branch below applies.
     private var sessionBots: [SessionID: BotID] = [:]
 
+    /// Session ids the host has used for a conversation this app holds, and the id this model files
+    /// that conversation under.
+    ///
+    /// `session.resume` answers with the host's **runtime** id, which is minted per attach, while the
+    /// app stores the durable one. An event can therefore name the conversation this window is
+    /// showing by a name it has never seen — the report behind B3, "the sidebar knows, the window
+    /// does not": the message was received, previewed and badged, and every branch of `apply(_:)`
+    /// returned early because that id was not `selectedSessionID`.
+    private var sessionAliases: [SessionID: SessionID] = [:]
+
+    /// Moved session ids already asked about, so one idle id cannot cost a resume per event.
+    private var adoptAttempted: Set<SessionID> = []
+
     /// What this bot is doing, for `BotAvatarView`. The one accessor both shells call.
     public func activity(forBot botID: BotID) -> BotAvatarActivity {
         botActivityTracker.activity(for: botID)
@@ -1257,9 +1270,139 @@ public final class AppModel: ObservableObject {
     }
 
     /// The transcript on screen now contains the host's newest message for this bot.
+    ///
+    /// Two effects, because both follow from the same fact: the cache/host stamp is advanced, and
+    /// the bot's badge is cleared. A badge the thread cannot clear is a defect, not a cosmetic
+    /// issue — the owner's screenshot was cody's window open on an unread of 1.
     private func markTranscriptCurrent() {
         guard let bot = selectedBotID else { return }
         transcriptHostStamp[bot] = latestHostStamp(for: bot)
+        clearUnread(bot)
+    }
+
+    /// Drop a bot's unread dot, count and marks, because its conversation is on screen and current.
+    ///
+    /// The mark moves to the host's own newest stamp, never to this device's clock: the comparison
+    /// that lights a row next time is against host timestamps, and a fast device clock would place
+    /// the mark in the host's future and silence that bot for good.
+    private func clearUnread(_ botID: String) {
+        guard unreadBots.contains(botID) || (unreadCounts[botID] ?? 0) > 0 else { return }
+        unreadBots.remove(botID)
+        unreadCounts[botID] = nil
+        markRead(botID, at: hostActivityStamp(botID) ?? Date())
+        ClientLog.note("cleared \(botID)'s badge: its transcript is current",
+                       level: .info, category: "session")
+    }
+
+    /// Follow the bot on screen into a conversation the socket is naming instead.
+    ///
+    /// The bot has **one** conversation and the window follows it. When an event names a session id
+    /// this window is not showing, one of three things is true, and they must not be confused:
+    ///
+    /// - it is the open bot's own conversation under a new name (the host mints a runtime id per
+    ///   attach, and a *new* session — Reset chat, a retired Bot Chat, a runtime turnover — is a new
+    ///   id outright). Adopt it: re-resume **once** and paint it.
+    /// - it is another bot's traffic. Never draw it here; it is only counted as unseen.
+    /// - it cannot be resumed. Say so in the log and keep the current transcript rather than
+    ///   blanking a pane the reader is using.
+    ///
+    /// Returns true when the transcript on screen is now the named conversation, so the caller can
+    /// let the event through to the branch that would have applied it.
+    private func adoptMovedConversation(_ session: SessionID, insteadOf open: SessionID?) async -> Bool {
+        guard let bot = selectedBotID else { return false }
+        // A session this launch has already seen belong to another bot is that bot's, full stop.
+        if let owner = sessionBots[session], owner != bot { return false }
+        guard connection.isLive else { return false }
+        // One attempt per moved id: a session the host refuses must not be asked about on every
+        // frame of a turn, and a host that keeps minting ids must not become a resume storm.
+        guard adoptAttempted.insert(session).inserted else { return false }
+        // Bounded: a host that keeps minting ids must not grow this map without end. Clearing it is
+        // the cheap answer — the cost of forgetting is one extra resume, not a wrong row.
+        if adoptAttempted.count > 64 { adoptAttempted.removeAll() }
+        let epoch = botEpoch
+        do {
+            let resumed = try await client.resumeSession(session, profile: bot)
+            // The screen may have moved while the host was answering. Both facts are re-read after
+            // the await: a different bot is a different window, and a different session in the same
+            // bot means the reader chose something while this was in flight.
+            guard epoch == botEpoch, selectedBotID == bot, selectedSessionID == open else { return false }
+            // Whose conversation is this? The host's answer is the only authority the app has, and it
+            // names the durable id beside the runtime one. Acceptable:
+            //   - the durable id this window already holds — the same conversation under a new
+            //     runtime name, which is the reported B3 case;
+            //   - no durable id at all — nothing to contradict, and the resume was answered under
+            //     this bot's own profile;
+            //   - this bot holds no conversation yet — no other window to protect, and the bot's one
+            //     chat is whatever the socket is naming.
+            // Anything else is a *different* conversation (another bot's, or one this bot no longer
+            // owns) and must never be drawn here: that refusal is what keeps "a bot's window shows
+            // another bot's messages" impossible rather than unlikely.
+            let held = open ?? Self.defaults.string(forKey: Self.endlessKey(bot))
+            let durable = resumed.storedSessionID
+            let nothingHeld = open == nil && (held ?? "").isEmpty
+            guard durable == nil || durable == session || durable == held || nothingHeld else {
+                ClientLog.note("a different conversation for \(bot) (\(durable ?? session)) tried to "
+                               + "take the window; \(held ?? "nothing") stays", level: .info,
+                               category: "session")
+                return false
+            }
+            // A moved conversation is a *different* conversation: the older rows on screen belong to
+            // it, so they are not merged with its page (that is what `adoptResume` is for).
+            transcript = []
+            resetForMovedConversation()
+            selectedSessionID = session
+            sessionBots[session] = bot
+            if resumed.id != session { sessionAliases[resumed.id] = session }
+            if let stored = resumed.storedSessionID, stored != session {
+                sessionAliases[stored] = session
+            }
+            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                        total: resumed.historyTotal, sessionID: session, botID: bot)
+            pendingRequests = resumed.openRequests
+            adopt(resumed, session: session)
+            remember(session, entries: transcript, cursor: resumed.earlierCursor,
+                     total: resumed.historyTotal)
+            markTranscriptCurrent()
+            unseenSessions.remove(session)
+            unseenSessionOrder.removeAll { $0 == session }
+            cacheTranscriptSoon(session)
+            ClientLog.note("followed \(bot) into \(session) (\(open ?? "nothing") was on screen)",
+                           level: .info, category: "session")
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            // .info, not .warning: another bot's message names a session this window has never seen,
+            // and that is an ordinary event on a host with several bots — the attempt is one cheap
+            // local RPC and the refusal below is the answer.
+            ClientLog.note("a moved session for \(bot) would not resume (\(session)): "
+                           + error.localizedDescription, level: .info, category: "session")
+            return false
+        }
+    }
+
+    /// Clear the per-turn state a *different* conversation's rows must not inherit.
+    ///
+    /// Deliberately narrower than `resetForBotSwitch`: the bot does not change, so its drafts, model
+    /// label and bot-scoped lists stay, while the live bubble, tools and context gauge belong to the
+    /// turn of the conversation being left.
+    private func resetForMovedConversation() {
+        earlierCursor = nil
+        historyTotal = 0
+        turnRowStart = 0
+        setStreamed("")
+        reasoningText = ""
+        liveTools = []
+        isStreaming = false
+        runningSessions = []
+        contextUsed = nil
+        contextMax = nil
+        pendingRequests = []
+        compactionNotice = nil
+        sealedInterimKeys.removeAll()
+        sealedCommentary.removeAll()
+        loadingEarlier = false
+        earlierAnchor = nil
     }
 
     /// Remember that a session moved while it was not the one on screen.
@@ -1268,6 +1411,20 @@ public final class AppModel: ObservableObject {
         unseenSessionOrder.append(session)
         while unseenSessionOrder.count > Self.unseenSessionLimit {
             unseenSessions.remove(unseenSessionOrder.removeFirst())
+        }
+    }
+
+    /// Whether an event carries something a transcript can paint (and therefore something that has to
+    /// reach the right conversation). A context gauge or a bare `session.updated` names a session but
+    /// draws nothing, so a moved one is recorded, never worth a resume.
+    private static func carriesContent(_ event: ClientEvent) -> Bool {
+        switch event {
+        case .messageDelta, .messageComplete, .thinkingDelta, .interimMessage,
+             .toolStart, .toolProgress, .toolComplete:
+            return true
+        case .ready, .state, .request, .requestCancelled, .contextUsage, .sessionUpdated,
+             .error, .unknown:
+            return false
         }
     }
 
@@ -1495,6 +1652,15 @@ public final class AppModel: ObservableObject {
     /// inflight still carries its partial text, so the bubble keeps what the model already wrote.
     private func adopt(_ resumed: SessionResume, session: SessionID) {
         noteSessionOwner(session)
+        // The host answers with the *runtime* id (minted per attach) and names the durable one
+        // separately; events carry the runtime id. Both are recorded as this conversation, so an
+        // event that names either reaches the branch that belongs to it instead of being dropped.
+        noteSessionOwner(resumed.id)
+        if resumed.id != session { sessionAliases[resumed.id] = session }
+        if let stored = resumed.storedSessionID, stored != session {
+            noteSessionOwner(stored)
+            sessionAliases[stored] = session
+        }
         setStreamed(resumed.liveText)
         isStreaming = resumed.isStreaming
         reasoningText = ""
@@ -1832,6 +1998,9 @@ public final class AppModel: ObservableObject {
             draftSessionIDs.insert(created)
             selectedSessionID = created
             transcript = []
+            // An empty pane owns nobody: the next resume states whose rows these are, and a stale
+            // owner here would refuse that write.
+            transcriptOwner = nil
             setStreamed("")
             isStreaming = false
             pendingRequests = []
@@ -1899,6 +2068,31 @@ public final class AppModel: ObservableObject {
         if selectedSessionID != id { await select(id) }
     }
 
+    /// Which conversation a bot owns, **without moving the screen**.
+    ///
+    /// A pure lookup for anything that needs the id rather than the conversation: a notification
+    /// body, a background sweep, a second screen. `endlessSession(for:)` resolves *and selects*, and
+    /// a background caller using it is what made the selection oscillate (and the transcript reset
+    /// behind the owner's back) — so the two are separate doors now, and this one touches no
+    /// published state, sends no `session.resume` and paints nothing.
+    ///
+    /// Order is the same one the open uses: a pick made by hand outranks everything, then the host's
+    /// own canonical Bot Chat, then whatever id this device remembered.
+    public func conversationID(for botID: String) async -> SessionID? {
+        if let pinned = pinnedSessionPicks[botID] { return pinned }
+        if let canonical = await canonicalChatIdentity(for: botID) { return canonical }
+        guard let stored = Self.defaults.string(forKey: Self.endlessKey(botID)),
+              !stored.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return stored
+    }
+
+    /// The **one writer of the selection**: open a bot's conversation and put it on screen.
+    ///
+    /// Only navigation calls this — a bot row, the workspace's restore, Reset chat, the empty chat's
+    /// "start". Anything that merely needs to know which conversation a bot owns uses
+    /// `conversationID(for:)`: resolving a session must not select a bot, because a background reader
+    /// that moved the screen is what made the last caller win and the transcript repaint behind the
+    /// owner's back. Every move it does make is logged, so an oscillation has a witness.
     public func endlessSession(for botID: String) async -> SessionID? {
         if botID != selectedBotID {
             // The transcript, tools and streaming state on screen belong to the bot being left —
@@ -1906,7 +2100,12 @@ public final class AppModel: ObservableObject {
             // the resume below refresh it, instead of starting from an empty pane.
             captureConversation(for: selectedBotID)
             resetForBotSwitch()
+            let previous = selectedBotID
             selectedBotID = botID
+            // The one thing worth a log line here: navigation should be the only caller, so a second
+            // name inside a few seconds is an oscillation rather than a person clicking.
+            ClientLog.note("opened \(botID) (was \(previous ?? "nothing"))",
+                           level: .info, category: "session")
         }
         // Cached, so the pane has something the instant it is asked; nothing cached means the
         // resume is the first thing that will exist, and the pane should say "opening", not
@@ -2362,6 +2561,7 @@ public final class AppModel: ObservableObject {
         conversationCacheOrder.removeAll { $0 == botID }
         selectedSessionID = nil
         transcript = []
+        transcriptOwner = nil
         pendingRequests = []
         setStreamed("")
         reasoningText = ""
@@ -3840,14 +4040,28 @@ public final class AppModel: ObservableObject {
         // Before any of the branches below: an event for a bot the user is not looking at is still
         // *that bot's* activity, and those branches return early for exactly that reason.
         trackActivity(event)
-        // And the same for the transcript it belongs to: the branch will drop the event, so the one
-        // fact worth keeping — that session has moved — is recorded here, while it is still in hand.
-        if let moving = Self.session(of: event), moving != selectedSessionID {
-            noteUnseen(moving)
-        }
         // And after every one of them, including the early returns: the model's own run flags are
         // the authority for the open bot, whatever the event said.
         defer { syncActivityWithRunState() }
+        // The window shows one conversation; the socket may be naming another. Before a single
+        // branch can drop the event, decide whether the naming is a *move* of the conversation on
+        // screen (adopt it, once, and let the event through) or somebody else's traffic (count it as
+        // unseen and return as before).
+        if let named = Self.session(of: event), Self.carriesContent(event) {
+            let open = selectedSessionID
+            let known = sessionAliases[named] ?? named
+            if known != open, await adoptMovedConversation(named, insteadOf: open) {
+                // Adopted: `selectedSessionID` is now the named session, so the branch below is the
+                // right one and applies this event to the conversation it belongs to.
+            } else if known != open {
+                noteUnseen(named)
+                return
+            }
+        } else if let moving = Self.session(of: event), moving != selectedSessionID {
+            // Not content (a context gauge, a bare `session.updated`): worth recording that the
+            // session moved, not worth a resume.
+            noteUnseen(moving)
+        }
         switch event {
         case .ready:
             connection = .connected

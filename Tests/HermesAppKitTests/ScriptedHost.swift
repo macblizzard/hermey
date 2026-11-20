@@ -106,15 +106,29 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
 
     func resumeSession(_ id: SessionID, profile: String?) async throws -> SessionResume {
         resumed.append(id)
-        // Whichever delay applies, per bot first: a test that scripts a slow answer for one bot and
-        // a fast one for another is scripting the order the two answers arrive in.
+        // Whichever delay applies, per bot first: a test that scripts a slow answer for one bot and a
+        // fast one for another is scripting the order the two answers arrive in.
         if let delay = profile.flatMap({ resumeDelayByProfile[$0] }) ?? resumeDelay {
             try? await Task.sleep(for: delay)
         }
         if let resumeError { throw resumeError }
         if staleIDs.contains(id) { throw GatewayError.rpc(RPCError(code: 4007, message: "session not found")) }
+        // Rows for one *requested* id, whatever the profile mapping says: the moved-session tests ask
+        // about a conversation the open window is not showing and must get that conversation back.
+        if let rows = entriesByRequestedID[id] {
+            return SessionResume(id: id, entries: rows, inflight: nil, openRequests: [],
+                                 earlierCursor: nil, historyTotal: rows.count,
+                                 storedSessionID: storedByRequestedID[id])
+        }
         return resume(sessionByProfile[profile ?? ""] ?? session, profile: profile)
     }
+
+    /// What `session.resume` answers for one specific id. Empty by default, so no existing fixture
+    /// changes shape.
+    var entriesByRequestedID: [SessionID: [TranscriptEntry]] = [:]
+    /// The durable id the host reports beside a requested id — the fact `AppModel` uses to tell "this
+    /// conversation moved" from "this is somebody else's conversation".
+    var storedByRequestedID: [SessionID: SessionID] = [:]
 
     /// The paging state a resume reports: nil `earlierCursor` means "this is the whole transcript".
     var earlierCursor: Int?

@@ -58,6 +58,21 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **A bot's window follows its conversation when the session id moves.** The host mints a runtime
+  session id per attach and a new one when a conversation starts, while the app stores the durable
+  id — so an event could name the conversation on screen by a name that window had never seen. Every
+  branch of `apply(_:)` returned early on that mismatch: the sidebar updated its preview and raised
+  the unread badge (the message *had* arrived) and the open transcript refused to draw it, which is
+  the reported "cody has an unread of 1 and cody's window does not show it". A content event for the
+  bot on screen now follows the conversation — one `session.resume`, then paint — while a session
+  this launch has attributed to another bot is still only counted (`Sources/HermesAppKit/AppModel.swift`).
+- **A badge the open conversation cannot clear is gone.** When the transcript on screen is current
+  for a bot, that bot's dot and count are dropped and its read mark moves to the host's own newest
+  stamp, so a reply that is *visible* can no longer leave a number behind it.
+- **Only navigation moves the screen.** `endlessSession(for:)` resolves *and selects*; a background
+  reader using it is what made the last caller win. `conversationID(for:)` is the pure lookup (pin,
+  then the host's canonical Bot Chat, then the remembered id) that touches no published state and
+  sends no resume, and every selection `endlessSession` does make is now logged.
 - **A reply the list and the notification announced is in the chat when it is opened.** The row, the
   dot and the banner come from the sweep that reads every bot's newest message from the host; the
   chat comes from a resume — and opening a bot you had left within the last two minutes skipped that
