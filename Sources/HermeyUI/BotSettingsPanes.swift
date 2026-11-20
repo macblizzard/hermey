@@ -125,6 +125,7 @@ public struct BackupPane: View {
     private let export: () async -> Data?
     private let preview: (Data, BotImportMode) async -> (BackupImportResult?, String?)
     private let apply: (Data, BotImportMode) async -> (BackupImportResult?, String?)
+    private let prompt: () async -> String?
 
     @State private var exporting = false
     @State private var importing = false
@@ -140,11 +141,13 @@ public struct BackupPane: View {
     public init(botCount: Int,
                 export: @escaping () async -> Data?,
                 preview: @escaping (Data, BotImportMode) async -> (BackupImportResult?, String?),
-                apply: @escaping (Data, BotImportMode) async -> (BackupImportResult?, String?)) {
+                apply: @escaping (Data, BotImportMode) async -> (BackupImportResult?, String?),
+                prompt: @escaping () async -> String?) {
         self.botCount = botCount
         self.export = export
         self.preview = preview
         self.apply = apply
+        self.prompt = prompt
     }
 
     public var body: some View {
@@ -172,6 +175,16 @@ public struct BackupPane: View {
                     importing = true
                 } label: {
                     Text("Import…")
+                        .font(TypeScale.font(TypeScale.md))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Tokens.textMuted)
+                .disabled(writing)
+
+                Button {
+                    Task { await copyPrompt() }
+                } label: {
+                    Text("Prompt for another platform…")
                         .font(TypeScale.font(TypeScale.md))
                 }
                 .buttonStyle(.plain)
@@ -255,6 +268,26 @@ public struct BackupPane: View {
                 status = "Could not read that file: \(error.localizedDescription)"
             }
         }
+    }
+
+    /// Hand the owner the text that makes another product's bot produce a file this host reads.
+    ///
+    /// Served by the host rather than written into the app: the schema and the prompt change together, and a
+    /// prompt that describes a format the host refuses is worse than no prompt.
+    private func copyPrompt() async {
+        writing = true
+        defer { writing = false }
+        guard let text = await prompt() else {
+            status = "The host did not answer with a prompt."
+            return
+        }
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #endif
+        status = "Copied. Paste it into the other platform's bot, then import the zip it gives you."
     }
 
     private func applyPicked(_ chosen: BotImportMode) async {

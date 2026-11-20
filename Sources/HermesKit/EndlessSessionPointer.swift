@@ -212,6 +212,8 @@ public protocol BotSessionPointerStore: Sendable {
 
     func exportBackupZip() async throws -> Data
 
+    func importPrompt() async throws -> String
+
     func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult
 
     /// `POST /v1/backup/restore` — create what the document has and this host does not.
@@ -339,6 +341,7 @@ public extension BotSessionPointerStore {
     func setDefaultSoul(_ text: String) async throws -> BotDefaults { throw BotAdminUnavailable() }
     func exportBackup() async throws -> Data { throw BotAdminUnavailable() }
     func exportBackupZip() async throws -> Data { throw BotAdminUnavailable() }
+    func importPrompt() async throws -> String { throw BotAdminUnavailable() }
     func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
         throw BotAdminUnavailable()
     }
@@ -851,6 +854,17 @@ enum Failure: Error, Equatable, LocalizedError {
     /// `POST /v1/backup/restore` — the document goes back exactly as it came out of the file.
     public func exportBackupZip() async throws -> Data {
         try await bridgeGET("v1/backup.zip", timeout: 180)
+    }
+
+    /// The prompt lives on the host: the schema and this text change together, and an app built before a schema
+    /// change should not hand out a prompt describing a format the host no longer reads.
+    public func importPrompt() async throws -> String {
+        let data = try await bridgeGET("v1/backup/import-prompt", timeout: 30)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let prompt = object["prompt"] as? String, !prompt.isEmpty else {
+            throw Failure.malformedResponse
+        }
+        return prompt
     }
 
     /// The file goes up as-is: a zip is not base64-inflated on the way, and the host reads what was saved.

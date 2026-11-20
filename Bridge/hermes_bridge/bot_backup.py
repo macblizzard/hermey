@@ -97,6 +97,65 @@ def _read(directory: Path, relative: str) -> str:
     except OSError:
         return ""
 
+#: The prompt a person pastes into another product's bot so it writes a file this bridge can read.
+#:
+#: Generated from the same constants the exporter uses, so the example cannot describe a schema this bridge does
+#: not accept — and a test feeds the example through load_document to prove it.
+IMPORT_PROMPT = """You are preparing a bot export so it can be imported into Hermey.
+
+Produce ONE zip file named hermey-bots.zip with exactly this layout:
+
+  backup.json
+  icons/<profile>.png      (optional, one per bot, 256x256 PNG)
+
+backup.json must be a single JSON object shaped like this — the keys are fixed, the values are yours:
+
+{
+  "version": __VERSION__,
+  "kind": "hermey-bot-backup",
+  "exported_at": "2026-01-01T00:00:00+00:00",
+  "host": "the name of the machine this came from",
+  "categories": [{"id": "any-local-id", "name": "Work"}],
+  "bots": [
+    {
+      "profile": "scribe",
+      "name": "Scribe",
+      "description": "One line about what this bot does",
+      "soul": "The bot's system prompt / persona, as plain text",
+      "memory": {"memory": "What it knows", "user": "What it knows about the owner"},
+      "notes": "Its notes file, as plain text",
+      "categories": ["any-local-id"],
+      "enabled": true,
+      "icon": "icons/scribe.png",
+      "routines": [
+        {"id": "unique-id", "name": "nightly", "prompt": "what to do",
+         "schedule": "0 3 * * *", "enabled": true, "deliver": "bot-chat"}
+      ]
+    }
+  ]
+}
+
+Rules, all of which Hermey relies on:
+1. "kind" must be exactly "hermey-bot-backup" and "version" must be __VERSION__. Anything else is refused.
+2. "profile" is the bot's identity and becomes a directory name: lowercase letters, digits, hyphen or
+   underscore, starting with a letter or digit, at most 64 characters. One bot per profile.
+3. "soul", "memory.memory", "memory.user" and "notes" are plain text (markdown is fine). Use "" when unknown
+   rather than inventing content, and omit nothing: a missing key is treated as empty.
+4. "routines" entries keep their "id" so importing twice does not duplicate a schedule. "schedule" is a
+   cron expression or the object your platform stores — copy it verbatim if it is not cron.
+5. "categories" at the top level are groups; each bot lists the ids it belongs to. Ids are local to your export
+   and Hermey matches groups by "name", so use the real name.
+6. Do NOT include conversations, transcripts, API keys, tokens, passwords or file attachments. They are not
+   part of this format, and a file containing them will not be imported.
+7. If a bot has an avatar or icon, include the PNG at icons/<profile>.png and set "icon" to that path.
+   Otherwise set "icon" to null.
+8. Verify before you finish: parse your own backup.json, check every bot has profile/name, check the zip opens,
+   and report the bot count to me.
+
+If your platform cannot produce a zip, produce backup.json alone — Hermey reads that too. Ask me before you
+discard any information you cannot represent, and list what you dropped.""" .replace("__VERSION__",
+                                                                                   str(BACKUP_VERSION))
+
 
 def _icon_path(profile: str) -> Path:
     """Where the bridge keeps a bot's push icon; the file itself travels inside the zip."""
@@ -568,6 +627,16 @@ def create_backup_router(runtime) -> APIRouter:
                                        f"{MAX_BACKUP_BYTES}")
         return Response(content=payload, media_type="application/zip",
                         headers={"content-disposition": 'attachment; filename="hermey-bots.zip"'})
+
+    @router.get("/backup/import-prompt")
+    def import_prompt(authorization: str | None = Header(default=None)) -> dict:
+        """The prompt to paste into another product's bot so it writes a file this host can import.
+
+        Served rather than shipped in the app: the schema and this text change together, and an app built
+        before a schema change would otherwise hand out a prompt describing a format the host no longer reads.
+        """
+        require_device(runtime, authorization)
+        return {"version": BACKUP_VERSION, "prompt": IMPORT_PROMPT}
 
     @router.post("/backup/import")
     async def import_upload(request: Request, mode: str = "merge", dry_run: int = 0,

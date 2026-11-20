@@ -2900,6 +2900,15 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// The prompt to hand another platform's bot, so its export arrives in a shape this host reads.
+    public func importPromptText() async -> String? {
+        do { return try await client.importPrompt() } catch {
+            ClientLog.note("import prompt failed: \(error.localizedDescription)", level: .warning,
+                           category: "roster")
+            return nil
+        }
+    }
+
     /// What an import would do, without doing it. The owner approves this before anything is written.
     public func previewImport(_ file: Data, mode: BotImportMode) async -> (BackupImportResult?, String?) {
         rosterBusy = true
@@ -4129,6 +4138,7 @@ public final class PreviewGatewayClient: GatewayClientProtocol, @unchecked Senda
     /// exist to satisfy the protocol rather than to pretend: the preview Integrations screen shows the cards and
     /// nothing behind them.
     public func exportBackupZip() async throws -> Data { Data() }
+    public func importPrompt() async throws -> String { throw BotAdminUnavailable() }
     public func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
         throw BotAdminUnavailable()
     }

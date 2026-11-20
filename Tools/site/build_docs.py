@@ -1040,6 +1040,13 @@ PAGES.append(markdown_page(
     source="CREDENTIALS.md"))
 
 PAGES.append(markdown_page(
+    slug="importing",
+    nav="Importing bots",
+    group="Using it",
+    lede="Bring bots in from another platform: paste one prompt into its bot, import the zip it writes.",
+    source="IMPORT-FROM-ANOTHER-PLATFORM.md"))
+
+PAGES.append(markdown_page(
     slug="integrations",
     nav="Integrations",
     group="Using it",

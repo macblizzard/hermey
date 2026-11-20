@@ -223,6 +223,9 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// The same backup zipped with each bot's icon — what Import reads back.
     func exportBackupZip() async throws -> Data
 
+    /// The text to paste into another product's bot so it writes a file this host can read.
+    func importPrompt() async throws -> String
+
     /// `POST /v1/backup/import` — preview with `dryRun`, then apply with the same arguments.
     func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult
 
@@ -428,6 +431,7 @@ extension GatewayClientProtocol {
     public func setDefaultSoul(_ text: String) async throws -> BotDefaults { throw BotAdminUnavailable() }
     public func exportBackup() async throws -> Data { throw BotAdminUnavailable() }
     public func exportBackupZip() async throws -> Data { throw BotAdminUnavailable() }
+    public func importPrompt() async throws -> String { throw BotAdminUnavailable() }
     public func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
         throw BotAdminUnavailable()
     }

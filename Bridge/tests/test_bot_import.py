@@ -168,3 +168,31 @@ class TestImporting:
         assert document["version"] == bot_backup.BACKUP_VERSION
         assert document["bots"][0]["profile"] == "scribe"
         assert document["bots"][0]["soul"] == "s"
+
+
+class TestThePromptForAnotherPlatform:
+    """The prompt is a product surface: a person pastes it into someone else's bot and trusts the result."""
+
+    def test_it_names_this_bridge_s_version_and_kind(self):
+        prompt = bot_backup.IMPORT_PROMPT
+        assert f'"version": {bot_backup.BACKUP_VERSION}' in prompt
+        assert "hermey-bot-backup" in prompt
+        assert "__VERSION__" not in prompt
+
+    def test_it_says_what_must_not_be_exported(self):
+        prompt = bot_backup.IMPORT_PROMPT.lower()
+        for forbidden in ("conversations", "api keys", "password"):
+            assert forbidden in prompt
+
+    def test_the_example_in_the_prompt_is_actually_accepted(self):
+        """The example must round-trip through the reader, or the prompt describes a format we refuse."""
+        import re
+
+        block = bot_backup.IMPORT_PROMPT.split("{\n", 1)[1].split("\n}", 1)[0]
+        example = json.loads("{\n" + block + "\n}")
+        assert example["kind"] == "hermey-bot-backup"
+        assert example["version"] == bot_backup.BACKUP_VERSION
+        # The same loader an uploaded file goes through.
+        document, icons = bot_backup.load_backup(json.dumps(example).encode())
+        assert document["bots"][0]["profile"] == "scribe"
+        assert icons == {}

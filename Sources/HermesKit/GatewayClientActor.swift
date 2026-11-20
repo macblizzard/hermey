@@ -663,6 +663,11 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.exportBackupZip()
     }
 
+    public func importPrompt() async throws -> String {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.importPrompt()
+    }
+
     public func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
         guard let sessionPointer else { throw BotAdminUnavailable() }
         return try await sessionPointer.importBackup(file, mode: mode, dryRun: dryRun)
