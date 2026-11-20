@@ -178,7 +178,7 @@ struct IntegrationsScreen: View {
             state = try await model.integrations()
             error = nil
         } catch {
-            self.error = "Could not reach the host."
+            self.error = "Could not load integrations — \(error.localizedDescription)"
         }
     }
 

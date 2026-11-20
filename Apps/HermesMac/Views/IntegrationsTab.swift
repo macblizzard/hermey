@@ -209,7 +209,7 @@ struct IntegrationsTab: View {
             state = try await store.model.integrations()
             error = nil
         } catch {
-            self.error = "Could not reach the bridge."
+            self.error = "Could not load integrations — \(error.localizedDescription)"
         }
     }
 
