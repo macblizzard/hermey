@@ -2399,7 +2399,21 @@ public final class AppModel: ObservableObject {
         if let retired, !retired.isEmpty {
             await retireCanonicalChat(retired, botID: bot)
         }
-        _ = await endlessSession(for: bot)
+        var fresh = await endlessSession(for: bot)
+        // A retire is best effort — the host may still point at the chat we just dropped, in which case the
+        // open above walks straight back into it. That is what Mo saw: reset gives a working new conversation,
+        // then returning from the bot list lands in the old Bot Chat and the new one is only reachable through
+        // All Sessions. So refuse the retired id and mint instead.
+        if let retired, !retired.isEmpty, fresh == retired {
+            ClientLog.note("reset: the host still pointed at the retired chat for \(bot); minting a fresh one",
+                           level: .info, category: "session")
+            fresh = await mintCanonicalChat(for: bot)
+        }
+        // Persist whichever conversation we landed on: the reset cleared this key, and without writing it back
+        // the next appearance resolves the bot from the host again rather than to the chat the owner is in.
+        if let fresh {
+            Self.defaults.set(fresh, forKey: Self.endlessKey(bot))
+        }
         await loadBotPreviews(force: true)
     }
 
