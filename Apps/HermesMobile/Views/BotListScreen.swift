@@ -221,6 +221,10 @@ struct BotListScreen: View {
             // Coming back to the app is the moment the other device's turn should show up here.
             if phase == .active {
                 Task {
+                    // Coming back to the app is the moment the other device's turn should show up
+                    // here — and that needs the socket, not only the HTTP sweep: without this the
+                    // transcript waited out the reconnect backoff the suspension caused.
+                    await model.connectNow(reason: "foreground")
                     await model.loadBotPreviews()
                     // A room's badge is only as fresh as its refresh: coming back to the app is
                     // exactly when the other bots' replies landed.

@@ -50,6 +50,18 @@ public struct Composer: View {
 
     @FocusState private var focused: Bool
 
+    /// A screen that wants to drive the caret itself — the phone's conversation, which has to raise
+    /// the keyboard the moment a resume lands — passes its own `@FocusState` here. The composer then
+    /// reads *and writes* that one, so the screen and the field cannot hold two different answers to
+    /// "is the field focused". Nil on the Mac, whose editor reports its own first responder
+    /// (`editorFocused` below) because `@FocusState` cannot see an `NSViewRepresentable`.
+    private let externalFocus: FocusState<Bool>.Binding?
+
+    /// A tap that arrived while the field was disabled — a conversation still opening, so the field
+    /// never became first responder. UIKit records nothing at all in that case, which is why the
+    /// first tap after a cold start did nothing and the keyboard only came up on the second one.
+    @State private var wantsFocusWhenReady = false
+
     /// Settings → Chat. Read here by the same key the settings screen writes, so the two cannot
     /// disagree about it.
     @AppStorage(ComposerPreferences.dismissKeyboardOnSendKey)
@@ -89,7 +101,8 @@ public struct Composer: View {
                 onAttachItems: (([ComposerAttachment]) -> Void)? = nil,
                 attachPopoverPresented: Binding<Bool>? = nil,
                 attachPopoverContent: AnyView? = nil,
-                onCommand: ((HermesCommand) -> Void)? = nil) {
+                onCommand: ((HermesCommand) -> Void)? = nil,
+                focus: FocusState<Bool>.Binding? = nil) {
         _text = text
         self.floats = floats
         self.placeholder = placeholder
@@ -112,6 +125,7 @@ public struct Composer: View {
         self.attachPopoverPresented = attachPopoverPresented
         self.attachPopoverContent = attachPopoverContent
         self.onCommand = onCommand
+        self.externalFocus = focus
     }
 
     /// No hint line by default, on either platform.
@@ -230,7 +244,7 @@ public struct Composer: View {
                         #if os(macOS)
                         editorFocused = true
                         #else
-                        focused = true
+                        fieldFocus.wrappedValue = true
                         #endif
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -326,15 +340,37 @@ public struct Composer: View {
         // mutated `@FocusState` underneath it, which is what crashed the app on some taps. A shape
         // behind the field cannot compete with the field's own hit test, and it cannot take a tap
         // from a button drawn on top of it.
+        //
+        // Drawn whether or not the field is enabled: a tap that lands while the conversation is
+        // still opening is a request the user meant, and dropping it is why the keyboard only came
+        // up on a second tap after a cold start.
         .background {
-            if !isDisabled {
-                RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
-                    .fill(Color.clear)
-                    .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer,
-                                                style: .continuous))
-                    .onTapGesture { requestFocus() }
-            }
+            RoundedRectangle(cornerRadius: Tokens.radiusComposer, style: .continuous)
+                .fill(Color.clear)
+                .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusComposer,
+                                            style: .continuous))
+                .onTapGesture { tapFieldBackground() }
         }
+        // The remembered tap is honoured on the update that enables the field, never inside the
+        // touch that asked for it (same rule as `requestFocus`).
+        .onChange(of: isDisabled) { _, disabled in
+            guard !disabled, wantsFocusWhenReady else { return }
+            wantsFocusWhenReady = false
+            Task { @MainActor in focusField() }
+        }
+    }
+
+    /// A tap on the card's own padding.
+    ///
+    /// While the field is disabled the tap is a *request*, not a miss: the conversation is still
+    /// opening, so nothing took first responder and UIKit has nothing to remember. Hold it until the
+    /// field accepts one, instead of making the user ask twice.
+    private func tapFieldBackground() {
+        guard isDisabled else {
+            requestFocus()
+            return
+        }
+        wantsFocusWhenReady = true
     }
 
     private var commandList: some View {
@@ -436,8 +472,14 @@ public struct Composer: View {
         #if os(macOS)
         editorFocused = true
         #else
-        focused = true
+        fieldFocus.wrappedValue = true
         #endif
+    }
+
+    /// The one focus binding this composer writes to: the screen's when it supplied one, its own
+    /// otherwise. Two writable copies would drift the moment either side re-asserts.
+    private var fieldFocus: FocusState<Bool>.Binding {
+        externalFocus ?? $focused
     }
 
     /// One line is a capsule; a paragraph is not.
@@ -458,7 +500,7 @@ public struct Composer: View {
         #if os(macOS)
         editorFocused
         #else
-        focused
+        fieldFocus.wrappedValue
         #endif
     }
 
@@ -474,7 +516,7 @@ public struct Composer: View {
             .foregroundStyle(Tokens.textPrimary)
             .tint(Tokens.accent)
             .lineLimit(1...8)
-            .focused($focused)
+            .focused(fieldFocus)
             // The transcript's rhythm, so a message is the same shape in the field as on the page.
             .lineSpacing(TypeScale.chatLineSpacing)
             .padding(.vertical, lineInset)
@@ -519,13 +561,13 @@ public struct Composer: View {
                 // so this cannot fire mid-typing and never fights the dismiss preference.
                 guard ComposerFocusRule.shouldReassertFocus(previousDraft: previous,
                                                             currentDraft: current,
-                                                            isFocused: focused,
+                                                            isFocused: fieldFocus.wrappedValue,
                                                             dismissKeyboardOnSend: dismissKeyboardOnSend)
                 else { return }
                 // Off the update's own stack: flipping `@FocusState` while SwiftUI is mid-change is
                 // the same trap the slash popup hit.
-                focused = false
-                Task { @MainActor in focused = true }
+                fieldFocus.wrappedValue = false
+                Task { @MainActor in fieldFocus.wrappedValue = true }
             }
             .onSubmit { send() }
         #endif
@@ -628,7 +670,7 @@ public struct Composer: View {
         #if os(iOS)
         // The model clears the draft; whether the keyboard goes with it is the owner's choice in
         // Settings → Chat. Done here rather than in the model, which has no keyboard to dismiss.
-        if dismissKeyboardOnSend { focused = false }
+        if dismissKeyboardOnSend { fieldFocus.wrappedValue = false }
         #endif
     }
 }

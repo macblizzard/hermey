@@ -309,6 +309,12 @@ final class AppEnvironment: ObservableObject {
         model.replyNotificationSink = { note in
             MobileReplyNotifier.shared.post(note)
         }
+        // A banner is this device's own early warning that a reply exists: the sweep sees it over
+        // HTTP, the transcript needs the socket, so the wire is woken rather than left to its backoff.
+        MobileReplyNotifier.shared.onWake = { [weak self] in
+            guard let self else { return }
+            Task { await self.model.connectNow(reason: "reply notification") }
+        }
         MobileReplyNotifier.shared.updateBadge(model.badgeCount)
         // Ask iOS to wake us later; the run itself is the only way a suspended app can learn of
         // a reply, and iOS decides when (and whether) it happens.

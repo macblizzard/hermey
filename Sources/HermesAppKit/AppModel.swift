@@ -910,6 +910,28 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Bring the wire up now instead of waiting out the reconnect backoff.
+    ///
+    /// Two callers know something is late before the transport does: a resume that died with the
+    /// socket, and a notification about a reply this app has not drawn yet. Both used to sit through
+    /// the ladder's pause (up to 30 s between attempts) because nothing outside the transport could
+    /// shorten it — which is the delay behind "the message arrives after its notification".
+    ///
+    /// Returns whether the wire is up; `state` is read back from the client rather than from the
+    /// event stream, which may not have delivered `.ready` yet.
+    @discardableResult
+    public func connectNow(reason: String) async -> Bool {
+        if connection.isLive { return true }
+        ClientLog.note("dialling now (\(reason); \(connection.label))", level: .info, category: "connection")
+        await client.retryNow()
+        let wire = await client.state
+        if case .open = wire {
+            connection = .connected
+            return true
+        }
+        return false
+    }
+
     /// A host timestamp as a `Date`. Hosts write epoch seconds; a value that large in milliseconds
     /// is a different schema, not a date in the year 57000, so it is normalised here rather than
     /// trusted.
@@ -1901,6 +1923,15 @@ public final class AppModel: ObservableObject {
     }
 
     /// Resume one stored id and put it on screen.
+    ///
+    /// A cold start is the case this got wrong. The socket may still be coming up, and the first
+    /// resume then failed as a *transport* failure — which reached the user as "could not open the
+    /// conversation: … Software caused connection abort" with the cached transcript behind a banner,
+    /// and no retry anywhere, so the only cure was to back out of the bot and come in again.
+    ///
+    /// A transport failure now dials once (silently, ahead of the backoff) and asks again. A resume
+    /// the host *refused* — `4001`/`4007`, a forgotten id — is still never papered over: that path is
+    /// unchanged, because replacing it is how a live conversation gets mistaken for an empty bot.
     func openStoredConversation(_ stored: SessionID, botID: String,
                                 publish: Bool) async -> OpenOutcome {
         // Cache-first here too: the stored id is resumed the slow way, so the copy this device
@@ -1909,45 +1940,81 @@ public final class AppModel: ObservableObject {
             await paintCachedConversation(stored)
         }
         do {
-            let resumed = try await client.resumeSession(stored, profile: botID)
-            selectedSessionID = stored
-            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
-                        total: resumed.historyTotal, sessionID: stored)
-            pendingRequests = resumed.openRequests
-            adopt(resumed, session: stored)
-            markTranscriptCurrent()
-            unseenSessions.remove(stored)
-            unseenSessionOrder.removeAll { $0 == stored }
-            captureConversation(for: botID)
-            cacheTranscriptSoon(stored)
-            // Whatever actually opened is the best cache this device can keep — including a host id
-            // that replaced a different local one. The DURABLE key is what gets stored: the runtime id
-            // is minted per attach and stops resolving when the host's runtime goes away, which is how
-            // a device ends up being told "session not found" about its own conversation and opening a
-            // blank one instead (seen live 2026-11-16 22:48 for `aria`).
-            Self.defaults.set(resumed.storedSessionID ?? stored, forKey: Self.endlessKey(botID))
-            if publish {
-                await publishSharedSession(stored, for: botID)
-            }
+            try await adoptStoredConversation(stored, botID: botID, publish: publish)
             return .opened(stored)
         } catch is CancellationError {
             // Leaving the screen cancels the open-in-flight; the next visit resumes normally.
             return .failed
         } catch {
-            // Only a session the host has forgotten is worth replacing; a timeout or a dead socket
-            // must be reported, never papered over with a new empty conversation.
-            guard let gateway = error as? GatewayError, Self.isForgottenSession(gateway) else {
-                lastSendError = "could not open the conversation: \(error.localizedDescription)"
-                ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
-                               level: .error, category: "session")
-                await paintCachedConversation(stored)
-                return .failed
+            if let gateway = error as? GatewayError, Self.isForgottenSession(gateway) {
+                return await forgetStoredConversation(stored, botID: botID)
             }
-            // Forget it locally too, so an offline open does not retry a dead id.
-            Self.defaults.removeObject(forKey: Self.endlessKey(botID))
-            await diskCache.discard(stored)
-            return .forgotten
+            guard TransportFailure.isTransport(error) else {
+                return await reportOpenFailure(error, stored: stored)
+            }
+            // One silent retry, never two: a socket that is still down after a forced dial is a
+            // failure the user has to see.
+            ClientLog.note("resume of \(stored) hit the transport (\(error.localizedDescription)); "
+                           + "reconnecting once", level: .warning, category: "session")
+            guard await connectNow(reason: "a resume hit a dead socket") else {
+                return await reportOpenFailure(error, stored: stored)
+            }
+            do {
+                try await adoptStoredConversation(stored, botID: botID, publish: publish)
+                return .opened(stored)
+            } catch is CancellationError {
+                return .failed
+            } catch {
+                if let gateway = error as? GatewayError, Self.isForgottenSession(gateway) {
+                    return await forgetStoredConversation(stored, botID: botID)
+                }
+                return await reportOpenFailure(error, stored: stored)
+            }
         }
+    }
+
+    /// One resume, applied to the screen. Throws so the caller decides what a failure means: a
+    /// forgotten id is recoverable, a dead socket is retryable, anything else is the user's to read.
+    private func adoptStoredConversation(_ stored: SessionID, botID: String,
+                                         publish: Bool) async throws {
+        let resumed = try await client.resumeSession(stored, profile: botID)
+        selectedSessionID = stored
+        adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                    total: resumed.historyTotal, sessionID: stored)
+        pendingRequests = resumed.openRequests
+        adopt(resumed, session: stored)
+        markTranscriptCurrent()
+        unseenSessions.remove(stored)
+        unseenSessionOrder.removeAll { $0 == stored }
+        captureConversation(for: botID)
+        cacheTranscriptSoon(stored)
+        // Whatever actually opened is the best cache this device can keep — including a host id
+        // that replaced a different local one. The DURABLE key is what gets stored: the runtime id
+        // is minted per attach and stops resolving when the host's runtime goes away, which is how
+        // a device ends up being told "session not found" about its own conversation and opening a
+        // blank one instead (seen live 2026-11-16 22:48 for `aria`).
+        Self.defaults.set(resumed.storedSessionID ?? stored, forKey: Self.endlessKey(botID))
+        if publish {
+            await publishSharedSession(stored, for: botID)
+        }
+    }
+
+    /// The host does not know this id any more: drop the hint, keep the cache honest, and let the
+    /// caller mint or adopt a real conversation.
+    private func forgetStoredConversation(_ stored: SessionID, botID: String) async -> OpenOutcome {
+        // Forget it locally too, so an offline open does not retry a dead id.
+        Self.defaults.removeObject(forKey: Self.endlessKey(botID))
+        await diskCache.discard(stored)
+        return .forgotten
+    }
+
+    /// Say why the open failed, and put whatever this device already had back on screen.
+    private func reportOpenFailure(_ error: Error, stored: SessionID) async -> OpenOutcome {
+        lastSendError = "could not open the conversation: \(error.localizedDescription)"
+        ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
+                       level: .error, category: "session")
+        await paintCachedConversation(stored)
+        return .failed
     }
 
     /// The id of the host's canonical chat for this bot, or nil when it has none yet.

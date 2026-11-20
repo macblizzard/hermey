@@ -29,6 +29,15 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
     /// Set by the shell: tapping a banner opens that bot.
     var onGraphite: ((String) -> Void)?
 
+    /// Set by the shell: a banner means a reply this device has not drawn yet, so the wire is woken
+    /// now instead of on the transport's own backoff clock.
+    ///
+    /// The banner and the message travel different paths — the sweep that finds a reply is an HTTP
+    /// read through the bridge, the transcript needs the WebSocket — and a socket in backoff is
+    /// asleep for up to 30 s at a time. That gap is what made a message arrive "some time after" the
+    /// notification for it.
+    var onWake: (() -> Void)?
+
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
     @Published private(set) var deliveryError: String?
 
@@ -73,6 +82,9 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
     /// works while the app is open (reported 2026-11-14: "the banner isn't showing any more"), and
     /// `willPresent` below is what lets iOS draw it over the app.
     func post(_ note: ReplyNotification) {
+        // This device has just learned about a reply it has not drawn: wake the wire before the
+        // banner is even added, so the chat can catch up in the same second.
+        onWake?()
         let content = UNMutableNotificationContent()
         content.title = note.botName
         content.body = note.body
@@ -110,6 +122,10 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
                                             willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler:
                                             @escaping (UNNotificationPresentationOptions) -> Void) {
+        // The banner and the message are two paths to the same reply: the sweep that found it is
+        // HTTP, the transcript needs the socket. Waking it here is what keeps the two within a
+        // second of each other.
+        Task { @MainActor in self.onWake?() }
         completionHandler([.banner, .list, .sound])
     }
 
@@ -118,6 +134,9 @@ final class MobileReplyNotifier: NSObject, ObservableObject, UNUserNotificationC
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let botID = response.notification.request.content.userInfo["botID"] as? String
         Task { @MainActor in
+            // A tapped banner is the strongest evidence there is that the user wants this bot's
+            // message now: wake the wire before the screen even opens.
+            self.onWake?()
             if let botID { self.onGraphite?(botID) }
         }
         completionHandler()

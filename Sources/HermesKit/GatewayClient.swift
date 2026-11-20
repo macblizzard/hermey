@@ -25,6 +25,13 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
 
     func disconnect() async
 
+    /// End the reconnect ladder's pause and dial now, keeping the ladder alive if the dial fails.
+    ///
+    /// Used when the app learns — from a resume that died with the socket, or from a notification
+    /// about a message it has not drawn yet — that waiting out the backoff would be waiting for
+    /// something already known to be late.
+    func retryNow() async
+
     // Bots
     /// The bots (Hermes **profiles**) this one gateway serves.
     ///
@@ -351,6 +358,11 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
 }
 
 extension GatewayClientProtocol {
+    /// A client with no reconnect ladder — the unpaired one, a fixture, a preview — has nothing to
+    /// bring forward: there is no scheduled attempt to end. Declared as a default so every stub
+    /// conformance stays valid while the real client's own `retryNow` dispatches dynamically.
+    public func retryNow() async {}
+
     /// No bridge, no previews. Declared as a default (not just a concrete method) so every client
     /// that has no bridge credentials — the unpaired one, the fixture, a preview — is a valid
     /// conformer while `client.botPreviews()` still dispatches dynamically for the real one.

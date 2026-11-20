@@ -263,6 +263,24 @@ public actor GatewayClient: GatewayClientProtocol {
         setState(.closed(reason: "client closed"))
     }
 
+    /// Dial now instead of on the ladder's clock.
+    ///
+    /// The reconnect ladder sleeps up to `policy.maxDelay` (30 s) between attempts, and nothing
+    /// outside the transport can shorten that pause. A notification about a message this app has not
+    /// drawn yet, and a resume that died with the socket, are both evidence that something is waiting
+    /// on the other end *now* — so the pause is ended and the dial happens immediately.
+    ///
+    /// `connect()` cancels the ladder it replaces, which would leave a failed call with no scheduled
+    /// attempt at all; that is why the failure path re-arms it rather than giving up.
+    public func retryNow() async {
+        do {
+            try await connect()
+        } catch {
+            guard !isIntentionalDisconnect, policy.enabled, reconnectTask == nil else { return }
+            scheduleReconnect(after: "the forced attempt failed")
+        }
+    }
+
     // MARK: Sessions
 
     public func ping() async throws {

@@ -70,6 +70,26 @@ All notable changes to Hermey are recorded here. The format follows
   re-read when a sweep sees the host has written, which covers the messages that produce no socket
   event at all: another device's turn, an agent posting outside a run, a bot-to-bot transfer. Nothing
   new still comes from the cache, instantly (`StaleConversationTests`).
+- **A cold start opens the conversation instead of a banner.** The first `session.resume` after a
+  launch could meet a socket that was still coming up (or one a previous turn left dead), and the app
+  reported that transport failure as *"could not open the conversation: … Software caused connection
+  abort"* — with nothing retrying, so the only cure was to leave the bot and come back. A resume that
+  failed on the transport now dials once, ahead of the reconnect backoff, and asks again; a resume the
+  host *refused* (`4001`/`4007`) is untouched, because replacing a forgotten id is the one case where
+  the retry would be a lie (`TransportFailure`, `TransportFailureTests`).
+- **The keyboard opens on the first tap after a cold launch.** The composer is disabled until a
+  resume lands, and a disabled field never becomes first responder — so the tap that a user makes
+  while a bot is opening was recorded nowhere and the keyboard only appeared on a second tap, seconds
+  later. The composer now remembers a tap that arrives while it is disabled and takes the caret on the
+  update that enables it; the phone's conversation owns that `@FocusState` itself, so the tap it
+  catches while opening is honoured the moment the session is interactive. A third path — a tap on the
+  card's own padding — goes through the same request instead of being swallowed.
+- **A message no longer arrives seconds after the notification for it.** The banner and the message
+  travel different paths: the sweep that finds a reply is an HTTP read, the transcript needs the
+  WebSocket, and a socket in backoff sleeps up to 30 s between attempts with nothing able to shorten
+  the pause. `GatewayClient.retryNow()` ends that pause and dials immediately (re-arming the ladder if
+  the forced attempt fails), and the app calls it from the notification path, from returning to the
+  foreground, and from a resume that died with the socket.
 
 ### Changed
 - **CI now scans the repository's history, not just the working tree.** `secret_scan.sh` cannot see a
