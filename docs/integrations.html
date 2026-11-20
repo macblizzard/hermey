@@ -113,9 +113,44 @@ failing (<code>Tools/site/check_drift.py</code>, <code>catalog</code>). Adding a
 <td><code>googlemaps</code></td>
 <td>Places, directions and distance</td>
 </tr>
+<tr>
+<td>Supabase</td>
+<td><code>supabase</code></td>
+<td>Query your projects and run SQL</td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td><code>github</code></td>
+<td>Repositories, issues and pull requests</td>
+</tr>
+<tr>
+<td>Notion</td>
+<td><code>notion</code></td>
+<td>Read and write your pages</td>
+</tr>
+<tr>
+<td>Linear</td>
+<td><code>linear</code></td>
+<td>Track issues and projects</td>
+</tr>
+<tr>
+<td>Stripe</td>
+<td><code>stripe</code></td>
+<td>Customers, payments and invoices</td>
+</tr>
 </tbody>
 </table>
 <p>A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.</p>
+<p>These are all toolkits where <strong>Composio manages the OAuth app</strong>, so Connect works with nothing to set up. Some
+services need more than a tap:</p>
+<ul>
+<li><strong>Cloudflare</strong> — API key only (a Global API Key), no OAuth.</li>
+<li><strong>Vercel</strong> — your own OAuth client, or a personal access token.</li>
+<li><strong>Netlify</strong> — only available as an MCP toolkit (<code>netlify_mcp</code>, 9 tools), not a classic toolkit.</li>
+</ul>
+<p>They are not offered yet on purpose: a card that cannot connect is worse than a card that is not there. Each
+needs a screen that collects a key or your client credentials, and the same card mechanism that asks for a
+password can ask for those.</p>
 <h2 id="what-a-bot-can-do-with-it">What a bot can do with it</h2>
 <p>Once a service is connected, the agent uses it the way it uses any other tool: read the newest message from a
 sender, list tomorrow's appointments, look up the code a site just emailed you. The <code>integrations</code> skill
