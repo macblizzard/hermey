@@ -967,9 +967,9 @@ enum Failure: Error, Equatable, LocalizedError {
         request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
         request.httpBody = body
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw Failure.malformedResponse }
+        guard let http = response as? HTTPURLResponse else { throw Failure.notHTTP }
         guard (200..<300).contains(http.statusCode) else {
-            throw Failure.httpStatus(http.statusCode, Self.detail(from: data))
+            throw Failure.rejected(status: http.statusCode, detail: Self.detail(from: data))
         }
         return data
     }
