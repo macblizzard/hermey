@@ -25,7 +25,7 @@
           "version": "0.1.607",
           "buildVersion": "607",
           "date": "2026-11-20T22:21:30Z",
-          "localizedDescription": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's own arrows hand the Mac's *window* to\n  full screen (the green button's behaviour, falling back into its panel if you leave that way, `Esc` as the third\n  exit) and drop the header, status bar and safe-area inset on the phone. Either platform keeps one floating bar\n  with take-over / hand back, zoom \u2212/+, the level, Fit and the exit. The picture zooms 1\u00d7\u20135\u00d7 and pans \u2014 pinch about\n  the pointer, two-finger scroll or \u2325-drag on the Mac, pinch and two-finger drag on the phone \u2014 clamped to the\n  picture's edges, with take-over clicks still landing on the exact framebuffer pixel at any zoom.\n\n### Fixed\n- **The window follows the conversation the socket is naming.** A reply that arrived for the bot on screen but\n  carrying a moved session id was counted in the sidebar preview and the unread badge and never drawn, so the\n  thread sat still until the app was reopened or the chat was picked from All Sessions.\n- **Take-over moves the lease in place** instead of rebuilding the viewer underneath you.\n\n### Changed\n- **Releases carry their notes.** The publish script reads this changelog for the version's section instead of\n  falling back to \"Build X (Y).\", and updates the body of a release that already exists.",
+          "localizedDescription": "Build 0.1.607 (607).",
           "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.607/Hermey-0.1.607-b607.ipa",
           "size": 3668204,
           "minOSVersion": "17.0",
@@ -45,7 +45,7 @@
     {
       "title": "Hermes 0.1.607 (607)",
       "identifier": "hermes-0.1.607-607",
-      "caption": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's own arrows hand the Mac's *window* to\n  full screen (the green button's behaviour, falling back into its panel if you leave that way, `Esc` as the third\n  exit) and drop the header, status bar and safe-area inset on the phone. Either platform keeps one floating bar\n  with take-over / hand back, zoom \u2212/+, the level, Fit and the exit. The picture zooms 1\u00d7\u20135\u00d7 and pans \u2014 pinch about\n  the pointer, two-finger scroll or \u2325-drag on the Mac, pinch and two-finger drag on the phone \u2014 clamped to the\n  picture's edges, with take-over clicks still landing on the exact framebuffer pixel at any zoom.\n\n### Fixed\n- **The window follows the conversation the socket is naming.** A reply that arrived for the bot on screen but\n  carrying a moved session id was counted in the sidebar preview and the unread badge and never drawn, so the\n  thread sat still until the app was reopened or the chat was picked from All Sessions.\n- **Take-over moves the lease in place** instead of rebuilding the viewer underneath you.\n\n### Changed\n- **Releases carry their notes.** The publish script reads this changelog for the version's section instead of\n  falling back to \"Build X (Y).\", and updates the body of a release that already exists.",
+      "caption": "Build 607",
       "date": "2026-11-20T22:21:30Z",
       "tintColor": "#9A9AA0"
     }
