@@ -93,7 +93,9 @@ public struct BotComputerPane: View {
                     .transition(.opacity)
             }
         }
-        .ignoresSafeArea(.container, edges: fullScreenActive ? .all : Edge.Set())
+        // Not on the whole pane: the *picture* runs edge to edge in full screen, while the bar that
+        // leaves full screen stays inside the safe area — on a notched phone a control 14 pt from
+        // the glass sits under the island.
         #if os(iOS)
         .statusBarHidden(fullScreenActive)
         #endif
@@ -322,6 +324,7 @@ public struct BotComputerPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: fullScreenActive ? .all : Edge.Set())
     }
 
     private var connectingOverlay: some View {
