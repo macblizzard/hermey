@@ -41,6 +41,27 @@ Confirm a saved connection instead of typing anything:
   --options "Google — mo@example.com"
 ```
 
+## Getting to the login page
+
+The desktop sleeps when idle, so open the page first — this wakes it, clears a browser that is holding the
+profile without a connection, launches the browser and waits until the sign-in extension is attached:
+
+```bash
+@@BIN@@/hermey_browser.py open https://www.doctolib.de/patient/login
+```
+
+Do not start a browser another way. A second Chromium against the same profile only prints "Opening in
+existing browser session" and exits, and the card then has nothing to fill.
+
+What is not yet automatic: recognising which step a page is on. Probe and click exist in the extension but
+probe does not answer, so work from the site's own behaviour instead —
+
+- a single form with both fields: one card, `--fields username password`;
+- a site that asks email, then password, then a code: one card per step, in that order.
+
+If a page needs you to click "Continue" between steps, say so to the owner and ask them to click it, or
+press it yourself only when you can see the page.
+
 ## A whole login in one call
 
 ```bash
