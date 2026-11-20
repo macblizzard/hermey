@@ -41,6 +41,28 @@ Confirm a saved connection instead of typing anything:
   --options "Google — mo@example.com"
 ```
 
+## A whole login in one call
+
+```bash
+@@BIN@@/hermey_signin.py login --url https://www.doctolib.de/patient/login --site doctolib.de \
+  --note "Booking an appointment"
+```
+
+It opens the page, asks the owner **once** for the email and the password, fills each step as the page
+presents it, clicks the page's own continue button, and handles a two-step code. Print the link it gives you
+and let the owner answer; do not fill anything yourself.
+
+## When the site asks for a code by email
+
+If the owner has connected Gmail, you can fetch the code yourself with your Composio Gmail tools (see the
+`integrations` skill) and hand it in, so the owner is asked only for their password:
+
+```bash
+@@BIN@@/hermey_signin.py login --url https://… --site doctolib.de --otp 123456
+```
+
+Use the newest message only, and only the code from this site. Never read other mail for this.
+
 ## What you get back
 
 One line, after the owner answers and the browser has been filled:

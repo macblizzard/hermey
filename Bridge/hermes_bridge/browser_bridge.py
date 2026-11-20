@@ -58,16 +58,34 @@ class BrowserRegistry:
                     future.set_exception(LookupError("browser disconnected"))
 
     def on_message(self, browser_id: str, message: dict[str, Any]) -> None:
+        """A reply, matched to the call that asked for it. The whole message, because a probe answers with
+        the page's shape and not only a boolean."""
         browser = self.browsers.get(browser_id)
         if browser is None:
             return
         call_id = message.get("id")
         future = browser.pending.pop(call_id, None) if isinstance(call_id, str) else None
         if future is not None and not future.done():
-            future.set_result(bool(message.get("ok")))
+            future.set_result(message)
 
     def any(self) -> Optional[Browser]:
         return next(iter(self.browsers.values()), None)
+
+    async def command(self, payload: dict[str, Any], *, timeout: float = FILL_TIMEOUT_SECONDS) -> dict:
+        """Send one instruction to the browser and wait for its reply. Empty dict when nobody is there."""
+        browser = self.any()
+        if browser is None:
+            return {}
+        call_id = uuid.uuid4().hex
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        browser.pending[call_id] = future
+        try:
+            await browser.socket.send_json({"id": call_id, **payload})
+            return await asyncio.wait_for(future, timeout=timeout)
+        except (asyncio.TimeoutError, LookupError):
+            return {}
+        finally:
+            browser.pending.pop(call_id, None)
 
     async def fill(self, values: dict[str, str], *, site: str) -> bool:
         """Ask an extension to put ``values`` on the page. False when nobody is listening."""
@@ -82,7 +100,8 @@ class BrowserRegistry:
             await browser.socket.send_json(
                 {"id": call_id, "type": "fill", "site": site,
                  "fields": [{"name": name, "value": value} for name, value in values.items()]})
-            return await asyncio.wait_for(future, timeout=FILL_TIMEOUT_SECONDS)
+            reply = await asyncio.wait_for(future, timeout=FILL_TIMEOUT_SECONDS)
+            return bool(reply.get("ok"))
         except (asyncio.TimeoutError, LookupError):
             return False
         finally:
@@ -124,9 +143,33 @@ async def browser_socket(websocket, runtime, registry: BrowserRegistry) -> None:
 
 def create_browser_router(runtime, registry: BrowserRegistry):
     """The HTTP side: what the app asks to know whether a browser is available."""
-    from fastapi import APIRouter, Header
+    from fastapi import APIRouter, Header, HTTPException
 
     router = APIRouter(prefix="/v1/browser", tags=["browser"])
+
+    @router.post("/act")
+    async def act(body: dict) -> dict:
+        """One instruction for the browser: probe the page, click a button, or fill fields.
+
+        Scripted logins need to advance a page, and the values still never come back — a probe answers with
+        counts and labels, never an input's content.
+        """
+        kind = str(body.get("type") or "")
+        if kind not in ("probe", "click", "fill", "goto"):
+            raise HTTPException(status_code=400, detail="unknown instruction")
+        payload: dict = {"type": kind}
+        if kind == "click":
+            payload["match"] = str(body.get("match") or "")
+        if kind == "goto":
+            payload["url"] = str(body.get("url") or "")
+        if kind == "fill":
+            payload["fields"] = body.get("fields") or []
+        # Must be awaited on the server's own loop: the browser's socket belongs to it, and a second loop
+        # cannot send on it (which read as "no browser connected" while a browser was plainly connected).
+        reply = await registry.command(payload)
+        if not reply:
+            raise HTTPException(status_code=409, detail="no browser connected")
+        return reply
 
     @router.get("/targets")
     def targets(authorization: str | None = Header(default=None)) -> dict:

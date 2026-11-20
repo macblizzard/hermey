@@ -112,11 +112,26 @@ class CardStore:
             card.state = "cancelled"
         return card
 
-    def consume(self, card_id: str) -> dict[str, str]:
-        """Hand the values to the caller exactly once, then forget them."""
+    def consume(self, card_id: str, only: list[str] | None = None) -> dict[str, str]:
+        """Hand the values to the caller exactly once, then forget them.
+
+        ``only`` takes a slice for a multi-step login: a page that asks for the email, then the password,
+        then a code cannot receive all three at once, and asking the owner three times is the cost this
+        avoids. Each slice is removed as it is delivered, so nothing is handed out twice.
+        """
         card = self.get(card_id)
         if card.state != "answered":
             raise ValueError(f"card is {card.state}, not answered")
+        if only:
+            wanted = {str(name) for name in only}
+            picked = {k: v for k, v in card._values.items() if k in wanted}
+            for key in picked:
+                card._values.pop(key, None)
+            if not picked:
+                raise ValueError("none of those fields are on this card")
+            if not card._values:
+                card.state = "consumed"
+            return picked
         values = card._values
         card._values = {}
         card.state = "consumed"
@@ -206,12 +221,20 @@ def create_credentials_router(runtime, store: CardStore,
 
     @router.post("/cards/{card_id}/consume")
     def consume(card_id: str, request: Request,
+                body: dict | None = None,
                 authorization: str | None = Header(default=None)) -> dict:
-        """The bot says "fill it now". It is told whether that worked, never what was in it."""
+        """The bot says "fill it now". It is told whether that worked, never what was in it.
+
+        A body of {"only": ["password"]} delivers one slice of a multi-field card, which is how a login that
+        asks for the email and then the password is answered once instead of twice.
+        """
         authorize(request, authorization)
+        only = None
+        if isinstance(body, dict) and isinstance(body.get("only"), list):
+            only = [str(name) for name in body["only"]]
         try:
             card = store.get(card_id)
-            values = store.consume(card_id)
+            values = store.consume(card_id, only)
         except KeyError:
             raise HTTPException(status_code=404, detail="no such card") from None
         except ValueError as exc:

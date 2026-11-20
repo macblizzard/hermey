@@ -83,6 +83,40 @@ function fillFields(fields) {
   return touched > 0;
 }
 
+
+// Reports what the active page shows, so a scripted login can decide the next step without the bot
+// reading the page itself: how many password boxes, whether a one-time code is being asked for, and the
+// visible buttons with their text.
+function probePage() {
+  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const inputs = Array.from(document.querySelectorAll("input")).filter(visible);
+  const buttons = Array.from(document.querySelectorAll("button, input[type=submit], a[role=button]"))
+    .filter(visible)
+    .map((el) => (el.innerText || el.value || "").trim())
+    .filter((text) => text && text.length < 40);
+  return {
+    url: location.href,
+    passwordFields: inputs.filter((el) => el.type === "password").length,
+    otpBoxes: inputs.filter((el) => /one-time-code/i.test(el.autocomplete || "")).length,
+    textFields: inputs.filter((el) => el.type === "text" || el.type === "email").length,
+    buttons: [...new Set(buttons)],
+  };
+}
+
+// Clicks the first visible button whose text matches, so a login can advance a step. Matching is on the
+// page's own labels — the caller passes a locale it expects to see.
+function clickButton(match) {
+  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const wanted = String(match || "").toLowerCase();
+  const candidates = Array.from(document.querySelectorAll("button, input[type=submit], a[role=button]"))
+    .filter(visible)
+    .map((el) => ({ el, text: (el.innerText || el.value || "").trim().toLowerCase() }))
+    .filter((row) => row.text && row.text.includes(wanted));
+  if (!candidates.length) return false;
+  candidates[0].el.click();
+  return true;
+}
+
 async function applyFill(fields) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab || tab.id === undefined) return false;
@@ -121,15 +155,31 @@ function connect() {
     } catch (err) {
       return;
     }
-    if (message.type !== "fill" || !message.id) return;
-    let ok = false;
+    if (!message.type || !message.id) return;
+    let reply = { ok: false };
     try {
-      ok = await applyFill(message.fields || []);
+      if (message.type === "fill") {
+        reply = { ok: await applyFill(message.fields || []) };
+      } else if (message.type === "probe") {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const [out] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: probePage });
+        reply = { ok: true, page: (out && out.result) || null };
+      } else if (message.type === "goto") {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        await chrome.tabs.update(tab.id, { url: String(message.url || "") });
+        reply = { ok: true };
+      } else if (message.type === "click") {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const [out] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, func: clickButton, args: [message.match || ""],
+        });
+        reply = { ok: Boolean(out && out.result) };
+      }
     } catch (err) {
-      ok = false;
+      reply = { ok: false };
     }
-    // The reply carries the id and a boolean. Never a value.
-    send({ id: message.id, ok });
+    // The reply carries the id, a boolean and, for a probe, the page's shape. Never a value.
+    send({ id: message.id, ...reply });
   };
   socket.onclose = () => {
     chrome.storage.local.set({ connected: false });
