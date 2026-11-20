@@ -156,6 +156,12 @@ function connect() {
       return;
     }
     if (!message.type || !message.id) return;
+    // Answer immediately, before touching the page: a ping that returns proves the socket and the
+    // listener are alive, which separates "messages are not arriving" from "this branch is failing".
+    if (message.type === "ping") {
+      send({ id: message.id, ok: true, ready: true });
+      return;
+    }
     let reply = { ok: false };
     try {
       if (message.type === "fill") {

@@ -91,6 +91,10 @@ class BrowserRegistry:
             try:
                 await browser.socket.send_json({"id": call_id, **payload})
             except Exception:  # noqa: BLE001 - a dead socket is not an error for the caller
+                # Prune it. A worker that was suspended leaves a registration behind and the server side of
+                # the socket may not notice for a while; keeping it meant every later command failed
+                # instantly against a browser that was plainly connected and answering fills elsewhere.
+                self.unregister(browser.id, browser.socket)
                 if not future.done():
                     future.set_exception(LookupError("browser disconnected"))
         try:
@@ -117,9 +121,13 @@ class BrowserRegistry:
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         browser.pending[call_id] = future
         try:
-            await browser.socket.send_json(
-                {"id": call_id, "type": "fill", "site": site,
-                 "fields": [{"name": name, "value": value} for name, value in values.items()]})
+            try:
+                await browser.socket.send_json(
+                    {"id": call_id, "type": "fill", "site": site,
+                     "fields": [{"name": name, "value": value} for name, value in values.items()]})
+            except Exception:  # noqa: BLE001
+                self.unregister(browser.id, browser.socket)
+                return False
             reply = await asyncio.wait_for(future, timeout=FILL_TIMEOUT_SECONDS)
             return bool(reply.get("ok"))
         except (asyncio.TimeoutError, LookupError):
@@ -175,7 +183,7 @@ def create_browser_router(runtime, registry: BrowserRegistry):
         counts and labels, never an input's content.
         """
         kind = str(body.get("type") or "")
-        if kind not in ("probe", "click", "fill", "goto"):
+        if kind not in ("probe", "click", "fill", "goto", "ping"):
             raise HTTPException(status_code=400, detail="unknown instruction")
         payload: dict = {"type": kind}
         if kind == "click":
