@@ -4074,6 +4074,13 @@ public final class PreviewGatewayClient: GatewayClientProtocol, @unchecked Senda
         continuation = captured
     }
 
+    /// Preview has no host, so a key-based service cannot ask it what to collect or send anything to it. These
+    /// exist to satisfy the protocol rather than to pretend: the preview Integrations screen shows the cards and
+    /// nothing behind them.
+    public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] { [] }
+
+    public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {}
+
     public func connect() async throws {
         continuation.yield(.ready(replayEpoch: nil))
 
