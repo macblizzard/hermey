@@ -18,7 +18,19 @@ set -euo pipefail
 EXT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/browser-extension"
 EXT_DST="/opt/hermes-extension/hermey-signin"
 BROWSER_PY="/usr/local/lib/hermes-agent/tools/bot_desktop/browser.py"
-DROPIN="/etc/systemd/system/hermes-native-bridge.service.d/10-signin-extension.conf"
+# The unit `setup/install.sh` creates is the default; a host first set up under the predecessor's name
+# keeps serving from *that* one, so the drop-in follows whichever is actually running — the same rule
+# `Tools/release/deploy_bridge.sh` uses, for the same reason: both names bind one loopback port, and a
+# drop-in for the unit that is not there is a no-op that still prints "added". The bridge then cannot
+# refresh /opt/hermes-extension, writes the extension into its own state directory instead, while the
+# launcher keeps loading the older copy in /opt — a stale extension after an upgrade, all green.
+UNIT="${HERMEY_UNIT_PREFIX:-hermey}-bridge"
+if ! systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+  if systemctl is-active --quiet hermes-native-bridge 2>/dev/null; then
+    UNIT="hermes-native-bridge"
+  fi
+fi
+DROPIN="/etc/systemd/system/${UNIT}.service.d/10-signin-extension.conf"
 
 say() { printf '  %s\n' "$*"; }
 
