@@ -147,6 +147,7 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The protocol, the components, the state on disk |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | `hermey doctor`, common failures, and what each one means |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, device model, what the bridge will not do |
+| [`docs/CREDENTIALS.md`](docs/CREDENTIALS.md) | Login cards: a secret reaches the page without the bot ever seeing it |
 | [`docs/UI-PITFALLS.md`](docs/UI-PITFALLS.md) | Hard-won UI rules, if you are changing the app |
 | [`docs/FOR-AGENTS.md`](docs/FOR-AGENTS.md) | The install as a runbook an agent can execute, end to end |
 | [`llms.txt`](llms.txt) | The repo in the flat, machine-readable index format |

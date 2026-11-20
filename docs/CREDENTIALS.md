@@ -1,6 +1,9 @@
 # Login cards: how a bot logs in without ever seeing your password
 
-Status: design, agreed with the owner 2026-11-19. Nothing here is built yet.
+Status: built. The three cards (choice, secret, confirm) are asked, answered, consumed and cancelled
+by the bridge, drawn by both apps, and filled either through the sign-in extension's loopback socket
+or through the bot screen's DevTools port. What remains is the 1Password service-account backend
+behind the same interface, and installing the extension into an owner's own Mac browser by hand.
 
 ## The problem
 

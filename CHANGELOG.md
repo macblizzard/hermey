@@ -6,6 +6,21 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **A bot logs in without ever seeing the password.** The bot asks for a *card* — which sign-in method
+  (choice), a username/password or a one-time code typed by the owner (secret), or permission to use a
+  saved connection (confirm) — and the value travels app → bridge → the page, never into the
+  transcript, the model's context or a log. Every route answers by site and kind and never by value, a
+  card is single use, in memory only and dead after two minutes
+  (`Bridge/hermes_bridge/credentials.py`, the promise is `docs/CREDENTIALS.md`). The fill lands in the
+  bot screen's own Chromium through its DevTools port — a stale `DevToolsActivePort` is refused rather
+  than trusted, and values go in through the native setter so a React form does not keep believing the
+  field is empty — or through the **Hermey Sign-in** extension, which holds a loopback socket to the
+  bridge and can therefore fill a browser the owner started themselves (`setup/bot-browser.sh`
+  installs it and re-applies the launch flag `hermes update` overwrites; stable Chrome 137+ accepts
+  `--load-extension` and loads nothing, which the script says out loud). Both apps draw the three
+  cards, and both get the Composio connection screen — six account lookups run together instead of one
+  after another, 2.41 s → 0.82 s measured on the host, and a failure shows the underlying error
+  instead of one generic sentence.
 - **Settings → Computer shows whether the agents can reach this Mac.** One row: *Installed*,
   *Update available*, *Not installed*, *Yours* or *Unavailable*, with the skill version, a button that
   re-runs the host's installer, and a red line when the command the skill points agents at is missing

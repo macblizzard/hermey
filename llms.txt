@@ -31,6 +31,7 @@ then install the app on a phone or Mac and pair it with a short code.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom, cause, fix, with real log strings.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the bridge adapts the Hermes dashboard; WS protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
+- [docs/CREDENTIALS.md](docs/CREDENTIALS.md): login cards — a bot signs in without ever seeing the secret.
 - [setup/SKILL.md](setup/SKILL.md): the same install packaged as a Hermes agent skill.
 - [CONTRIBUTING.md](CONTRIBUTING.md): build, test and release from source.
 
