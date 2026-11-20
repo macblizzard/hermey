@@ -159,6 +159,17 @@ def asset_urls(text: str) -> list[str]:
     return sorted({url.rstrip(".,;)]}") for url in found})
 
 
+
+def catalog_services() -> list[tuple[str, str]]:
+    """The integrations the app actually offers, read from the bridge's one list."""
+    text = read(ROOT / "Bridge/hermes_bridge/composio.py")
+    block = re.search(r"CATALOG = \((.*?)\n\)", text, flags=re.S)
+    if not block:
+        return []
+    return [(slug, name) for slug, name, _ in
+            re.findall(r'\("([^"]+)",\s*"([^"]+)",\s*"([^"]*)"\)', block.group(1))]
+
+
 def doc_headings(rel: str) -> list[str]:
     text = read(ROOT / rel)
     return [h.strip() for h in re.findall(r"^##\s+(.+)$", text, flags=re.M)]
@@ -209,6 +220,20 @@ def main() -> int:
         if leaf not in site:
             drift.append({"check": "routes", "what": f"{route} is served but not documented",
                           "where": "docs/reference"})
+
+
+    # integrations — the page is generated from one list, so a new service must appear in the doc too
+    services = catalog_services()
+    checked.append(f"catalog: {len(services)} services")
+    doc = read(ROOT / "docs/INTEGRATIONS.md")
+    for slug, name in services:
+        if slug not in doc:
+            drift.append({"check": "catalog", "what": f"integration `{slug}` ({name}) is offered but missing "
+                                                      "from docs/INTEGRATIONS.md", "where": "docs/INTEGRATIONS.md"})
+    documented = set(re.findall(r"\|\s*`([a-z0-9-]+)`\s*\|", doc))
+    for extra in sorted(documented - {slug for slug, _ in services}):
+        drift.append({"check": "catalog", "what": f"`{extra}` is documented but not in CATALOG",
+                      "where": "docs/INTEGRATIONS.md"})
 
     # stamp — the page must still read the feed, and (online) the feed must match the newest tag
     tag = newest_tag()

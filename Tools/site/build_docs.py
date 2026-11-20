@@ -20,6 +20,8 @@ import hashlib
 import html
 import json
 import pathlib
+
+import markdown
 import re
 import sys
 
@@ -993,6 +995,56 @@ document.querySelectorAll('.copy').forEach(function (button) {
   });
 })();
 """
+
+
+
+def markdown_page(slug: str, nav: str, group: str, lede: str, source: str) -> dict:
+    """A page rendered from a docs/*.md file, not hand-copied into this script.
+
+    The hand-built pages in this file duplicate their facts as inline HTML, which is why they drift. Anything
+    that changes often — credentials, integrations — is rendered from the markdown instead, so an edit to the
+    doc is an edit to the site and there is nothing to keep in step.
+    """
+    import re
+
+    path = pathlib.Path(__file__).resolve().parent.parent.parent / "docs" / source
+    text = path.read_text(encoding="utf-8")
+    # Drop the leading H1: the page template supplies the title.
+    text = re.sub(r"\A#\s+.*\n", "", text, count=1)
+    html = markdown.Markdown(extensions=["tables", "fenced_code"]).convert(text)
+    used: set[str] = set()
+
+    def anchor(match: re.Match) -> str:
+        level, heading = match.group(1), re.sub(r"<[^>]+>", "", match.group(2))
+        slugged = re.sub(r"[^a-z0-9]+", "-", heading.lower()).strip("-") or "section"
+        unique = slugged
+        if unique in used:
+            index = 2
+            while f"{slugged}-{index}" in used:
+                index += 1
+            unique = f"{slugged}-{index}"
+        used.add(unique)
+        return f'<h{level} id="{unique}">{match.group(2)}</h{level}>'
+
+    html = re.sub(r"<h([23])>(.*?)</h\1>", anchor, html, flags=re.S)
+    title = f"{nav} · Hermey"
+    return dict(slug=slug, nav=nav, group=group, title=title, lede=lede, body=html)
+
+
+
+PAGES.append(markdown_page(
+    slug="credentials",
+    nav="Sign-in cards",
+    group="Reference",
+    lede="How a bot signs you in to a site without ever being given the password.",
+    source="CREDENTIALS.md"))
+
+PAGES.append(markdown_page(
+    slug="integrations",
+    nav="Integrations",
+    group="Using it",
+    lede="Connect your own Google account so a bot can act in it — mail, calendar, files, maps.",
+    source="INTEGRATIONS.md"))
 
 
 def sections(body: str) -> list[tuple[str, str, str]]:
