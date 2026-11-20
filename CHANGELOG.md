@@ -95,6 +95,19 @@ All notable changes to Hermey are recorded here. The format follows
   header on cell *count*, so `# a | b` above `--- | ---` became a two-column table with no headings
   and the line itself disappeared. Only a row made entirely of pipes and spaces may stand in for a
   header (`MarkdownTableParser.isBlankRowLine`), which is the shape the empty-header case actually is.
+- **A bot's window can no longer show another bot's messages.** The model holds one transcript for
+  whichever bot is on screen, and opening a bot awaited `session.resume` before writing it with no
+  record of which open was being written — so switching bots while that resume was in flight landed
+  its rows in the window of the bot the user had moved to, sometimes corrected by the next event and
+  sometimes stuck until a relaunch. The open now captures `botEpoch` before its first await and
+  discards an answer that arrives after a switch, and the transcript carries `transcriptOwner` so any
+  write of rows states whose they are and is refused when the answer disagrees — a guard in the
+  model, because no view can tell which bot it was handed (`OpenGenerationTests`).
+- **A chat that stops answering now says which side went quiet.** Nothing recorded how long the wire
+  had been silent, so "it gets stuck sometimes" could not be told apart from a host that had simply
+  stopped talking. `AppModel` keeps the last socket event and, on the sweep's clock, logs one line
+  when a turn has run 45 s with no frame at all. A transcript replacement whose first row changes —
+  the scroll jump — records the row it replaced, so that report has an anchor too.
 
 ### Changed
 - **CI now scans the repository's history, not just the working tree.** `secret_scan.sh` cannot see a

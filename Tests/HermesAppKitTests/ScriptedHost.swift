@@ -12,6 +12,9 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     let session: SessionID
     /// The transcript a resume answers with. Tests rewrite it to model what the host persisted.
     var entries: [TranscriptEntry]
+    /// Rows per profile, for the tests that need two bots to answer with two different transcripts.
+    /// Empty by default: every existing fixture has one transcript for every profile.
+    var entriesByProfile: [String: [TranscriptEntry]] = [:]
     private(set) var submitted: [String] = []
 
     private let continuation: AsyncStream<ClientEvent>.Continuation
@@ -81,6 +84,9 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     /// How long a resume takes. Zero for every existing test; a test that needs to look at the
     /// screen *while* the host is still thinking sets it.
     var resumeDelay: Duration?
+    /// The same, per bot: a slow answer for the bot the user leaves, a fast one for the bot they
+    /// move to, which is the ordering that made a late resume land in the wrong window.
+    var resumeDelayByProfile: [String: Duration] = [:]
 
     /// Ids this host has forgotten, while it still knows the others. `resumeError` fails every resume;
     /// this fails only the ids named, which is what a stale pointer actually looks like.
@@ -100,18 +106,24 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
 
     func resumeSession(_ id: SessionID, profile: String?) async throws -> SessionResume {
         resumed.append(id)
-        if let resumeDelay { try? await Task.sleep(for: resumeDelay) }
+        // Whichever delay applies, per bot first: a test that scripts a slow answer for one bot and
+        // a fast one for another is scripting the order the two answers arrive in.
+        if let delay = profile.flatMap({ resumeDelayByProfile[$0] }) ?? resumeDelay {
+            try? await Task.sleep(for: delay)
+        }
         if let resumeError { throw resumeError }
         if staleIDs.contains(id) { throw GatewayError.rpc(RPCError(code: 4007, message: "session not found")) }
-        return resume(sessionByProfile[profile ?? ""] ?? session)
+        return resume(sessionByProfile[profile ?? ""] ?? session, profile: profile)
     }
 
     /// The paging state a resume reports: nil `earlierCursor` means "this is the whole transcript".
     var earlierCursor: Int?
     var historyTotal = 0
-    private func resume(_ id: SessionID? = nil) -> SessionResume {
-        SessionResume(id: id ?? session, entries: entries, inflight: nil, openRequests: [],
-                      earlierCursor: earlierCursor, historyTotal: historyTotal)
+    private func resume(_ id: SessionID? = nil, profile: String? = nil) -> SessionResume {
+        // Per bot when the test scripted one, the single fixture otherwise.
+        let rows = profile.flatMap { entriesByProfile[$0] } ?? entries
+        return SessionResume(id: id ?? session, entries: rows, inflight: nil, openRequests: [],
+                             earlierCursor: earlierCursor, historyTotal: historyTotal)
     }
 
     /// Every `session.create` this host was asked for, so a test can prove no blank conversation was
