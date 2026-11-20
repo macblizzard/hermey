@@ -343,6 +343,10 @@
   .foot-links a { font-size: .88rem; color: var(--muted); text-decoration: none; }
   .foot-links a:hover { color: var(--ink); }
   .colophon { margin-top: 2rem; font-size: .78rem; color: var(--faint); }
+
+  .signin-more { margin: 2rem 0 0; font-size: .95rem; }
+  .signin-more a { color: var(--clay); text-decoration: none; border-bottom: 1px solid currentColor; padding-bottom: 1px; }
+  .block.dark .signin-more a { color: var(--paper); }
 </style>
 </head>
 <body>
@@ -353,6 +357,8 @@
     <a class="brand" href="#top">Hermey<span class="dot">.</span></a>
     <nav class="head-nav" aria-label="Sections">
       <a href="#look">Look</a>
+      <a href="#signin">Sign-in</a>
+      <a href="#integrations">Integrations</a>
       <a href="#features">Features</a>
       <a href="#computer">Computer use</a>
       <a href="#install">Install</a>
@@ -496,6 +502,50 @@
         <article class="feature"><span class="n">12</span><div><h3>Asks before it needs a password</h3><p>When a bot needs to sign in somewhere, it raises a card in the app naming the site and the fields it wants. You type them; the bot collects the answer once and the card closes.</p></div></article>
         <article class="feature"><span class="n">13</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
       </div>
+    </div>
+  </section>
+
+  <!-- secure sign-in -->
+  <section class="block" id="signin">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Secure sign-in</p>
+          <h2>Your password never reaches the bot.</h2>
+        </div>
+        <p>Tell a bot to book something, or to check a site you are already signed in to. If it needs a login, it finds the sign-in page itself and asks you there — with a card, not a chat message.</p>
+      </div>
+
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>It finds the form first</h3><p>The bot follows the site's own login link, walks past account-choice screens and waits until a real password field is on screen. A page with search boxes is not a sign-in page, and it is not treated as one.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>A card, in your app</h3><p>The card names the site and the fields, and nothing else. You fill it in the Mac or iPhone app; a card that is never answered simply expires.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Typed the way the page wants it</h3><p>Email on one screen, password on the next, a six-box one-time code on the third — filled in order, submitted with the form's own button, in the browser running on the bot's desktop.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>One use, then gone</h3><p>The value is held in memory, handed straight to the browser and swept. No route returns it, no log line contains it, and the bot is told one thing: whether it worked.</p></div></article>
+      </div>
+
+      <p class="signin-more"><a href="docs/credentials.html">How the cards work, and what ships today →</a></p>
+    </div>
+  </section>
+
+  <!-- integrations -->
+  <section class="block dark" id="integrations">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Integrations</p>
+          <h2>Your accounts, connected once.</h2>
+        </div>
+        <p>Gmail, Calendar, Drive, Docs, Sheets and Maps, connected through your own Composio project key. The bot gets a tool, not a token — and you can connect the same service twice when you have two accounts.</p>
+      </div>
+
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>One card per connection</h3><p>Each service is a card with its own logo and state. Connect, rename, or disconnect a single account by id — never "disconnect gmail", which would have to guess.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>Two Gmails, two names</h3><p>Connect a service again and name the account the way you say it out loud. That name is what the bot acts on, so "send it from the work one" means something.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Yours, not ours</h3><p>Tokens live on Composio under your key; the key sits at <code>/etc/hermey/composio.key</code> on your host. Your mail and calendars are never copied into Hermey.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>It makes sign-in cheaper</h3><p>With Gmail connected, a bot fetches the one-time code itself and hands it to the sign-in flow, so you are asked only for your password.</p></div></article>
+      </div>
+
+      <p class="signin-more"><a href="docs/integrations.html">Connecting services, multiple accounts, and what each one does →</a></p>
     </div>
   </section>
 

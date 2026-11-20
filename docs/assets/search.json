@@ -316,5 +316,125 @@
 "p": "Reference",
 "u": "reference.html#updates",
 "b": "How updates arrive Host: re-run the install command; it is an upgrade and keeps state. macOS: Sparkle reads an appcast and offers the new build in the app. iOS: the sideloading app refreshes from the AltStore source."
+},
+{
+"h": "The problem",
+"p": "Sign-in cards",
+"u": "credentials.html#the-problem",
+"b": "The problem A bot asked to \"log into my Doctolib account\" today has two bad options: be handed the password (it ends up in a transcript, a log and a model's context), or be given standing access to a vault (any bot can then read anything). Neither is acceptable, and both are how automation normally does it."
+},
+{
+"h": "The idea",
+"p": "Sign-in cards",
+"u": "credentials.html#the-idea",
+"b": "The idea The bot orchestrates the login. The owner supplies the secret. The two are kept apart: the secret is typed into a card in the Hermey app and flows from the app, through the bridge, into the page. It never enters the conversation, the bot's context, or a log. Every secret-bearing interaction is a card . There a"
+},
+{
+"h": "Card 1 \u2014 choice",
+"p": "Sign-in cards",
+"u": "credentials.html#card-1-choice",
+"b": "Card 1 \u2014 choice Shown when a bot reaches a login page and has to know how the owner wants to sign in. field meaning site the origin being signed into, e.g. doctolib.de options the methods the page actually offers: Continue with Google , Email and password , Passkey note (optional) one line from the bot: what it is tryi"
+},
+{
+"h": "Card 2 \u2014 secret",
+"p": "Sign-in cards",
+"u": "credentials.html#card-2-secret",
+"b": "Card 2 \u2014 secret Shown after a choice, or whenever a value must be typed. field meaning site the origin, repeated so a card is never ambiguous fields one or more masked inputs: username + password , or a single one-time code fills what the value will be placed into: \"the password field on the sign-in form\" expires 2 min"
+},
+{
+"h": "Card 3 \u2014 confirm",
+"p": "Sign-in cards",
+"u": "credentials.html#card-3-confirm",
+"b": "Card 3 \u2014 confirm Shown when a bot wants to use an existing connection instead of a typed secret. field meaning site where the action will happen connection which saved connection, e.g. \"Google \u2014 mo@example.com (Composio)\" action one line: \"sign in to doctolib.de with this account\" The bot learns yes or no . It never se"
+},
+{
+"h": "The rules that make it safe",
+"p": "Sign-in cards",
+"u": "credentials.html#the-rules-that-make-it-safe",
+"b": "The rules that make it safe Secrets bypass the model. A value entered in a secret card must never be delivered to the bot as a message. If it arrives in the conversation, the whole design has failed. A bot cannot read the field after the fill. Screenshots are acceptable \u2014 password inputs render as dots \u2014 but page scrip"
+},
+{
+"h": "What the bot learns, in full",
+"p": "Sign-in cards",
+"u": "credentials.html#what-the-bot-learns-in-full",
+"b": "What the bot learns, in full the site it is on, which sign-in method the owner chose, whether the fill succeeded, and the page's own response (wrong password, bad code), for a confirm card, yes or no. That is the complete list. If a future feature needs more, it goes in this document first."
+},
+{
+"h": "Fill targets",
+"p": "Sign-in cards",
+"u": "credentials.html#fill-targets",
+"b": "Fill targets where the bot works how the fill lands the bot screen's browser the Hermey Sign-in extension (first choice): it holds a loopback socket to the bridge and types the value into the field, replying only \"ok\" the bot screen's browser, launched by the dock the DevTools port, as a fallback when no extension is c"
+},
+{
+"h": "When it cannot work",
+"p": "Sign-in cards",
+"u": "credentials.html#when-it-cannot-work",
+"b": "When it cannot work case behaviour the site offers only a passkey the choice card says so, and the bot asks the owner to complete it on their own device the app is older than this feature the bot is told plainly to update the app, rather than falling back to asking for a password in chat the owner does not answer the c"
+},
+{
+"h": "Connecting accounts (Composio, and the same pattern later for others)",
+"p": "Sign-in cards",
+"u": "credentials.html#connecting-accounts-composio-and-the-same-pattern-later-for-others",
+"b": "Connecting accounts (Composio, and the same pattern later for others) Connecting happens in the app , once: the owner taps Connect, finishes the provider's own sign-in, and the connection is stored host-side, per owner, not per bot. A bot then only ever gets card 3 to use it. Revoking is a switch in the app. The same s"
+},
+{
+"h": "Rollout",
+"p": "Sign-in cards",
+"u": "credentials.html#rollout",
+"b": "Rollout Mac app: choice card, secret card, OTP card, one real site end to end. The same cards on iPhone, reusing the bridge contract. Confirm card and the Composio connection screen. A 1Password service-account backend behind the identical interface \u2014 no new bot-facing concepts."
+},
+{
+"h": "What must exist before any of this is switched on",
+"p": "Sign-in cards",
+"u": "credentials.html#what-must-exist-before-any-of-this-is-switched-on",
+"b": "What must exist before any of this is switched on The bridge route that carries a card answer must not log its body, and must not include it in any audit payload. A test that fails if a secret ever appears in a transcript, a log line or an event payload. A test that a bot cannot obtain the value after the fill."
+},
+{
+"h": "How it works",
+"p": "Integrations",
+"u": "integrations.html#how-it-works",
+"b": "How it works You paste your Composio project key into Hermey \u2014 once, on the host. It is stored at /etc/hermey/composio.key with 0600 permissions, not in a unit file, because a key in a systemd unit is visible to anyone who can run systemctl show . You press Connect on a service. Hermey asks Composio for a fresh connect"
+},
+{
+"h": "Connecting a service",
+"p": "Integrations",
+"u": "integrations.html#connecting-a-service",
+"b": "Connecting a service Open Settings \u2192 Integrations in the Mac app or the Integrations tab on the phone. Each service is a card; press Connect on the one you want. The browser opens on Google's consent page, you approve it, and the card turns to Connected . If the card says it is not configured, the project key is missin"
+},
+{
+"h": "More than one account",
+"p": "Integrations",
+"u": "integrations.html#more-than-one-account",
+"b": "More than one account Connect the same service again and you get a second account. Give each a name you will recognise \u2014 Hermey fills in the address it finds on the account, and you can rename it later: mnoman1942 dna.mailbox That name is what the bot uses when it acts, so make it the one you would say out loud. Two Gm"
+},
+{
+"h": "The services",
+"p": "Integrations",
+"u": "integrations.html#the-services",
+"b": "The services The list comes from the bridge's own catalogue, so this table cannot drift from the code without a check failing ( Tools/site/check_drift.py , catalog ). Adding a service to CATALOG in Bridge/hermes_bridge/composio.py adds it to the app and requires a line here. Service Slug What it is for Gmail gmail Read"
+},
+{
+"h": "What a bot can do with it",
+"p": "Integrations",
+"u": "integrations.html#what-a-bot-can-do-with-it",
+"b": "What a bot can do with it Once a service is connected, the agent uses it the way it uses any other tool: read the newest message from a sender, list tomorrow's appointments, look up the code a site just emailed you. The integrations skill documents the calls; the bot does not need new credentials and you do not need to"
+},
+{
+"h": "Where your data lives",
+"p": "Integrations",
+"u": "integrations.html#where-your-data-lives",
+"b": "Where your data lives Tokens \u2014 on the Composio side, under your project key. Hermey stores the key, not the tokens. The key \u2014 /etc/hermey/composio.key , 0600 , on the bridge host. Account names \u2014 in the bridge's own state, alongside the connection ids. They are labels, not credentials. Mail, calendars, files \u2014 never co"
+},
+{
+"h": "Troubleshooting",
+"p": "Integrations",
+"u": "integrations.html#troubleshooting",
+"b": "Troubleshooting \"could not reach the host\" on the phone \u2014 the pairing is stale; re-pair from the Mac app. A card says Connected but the bot gets nothing \u2014 the account is INITIALIZING , or the key lacks that toolkit on your Composio plan. Check the Composio dashboard. Every service shows Connected after one connect \u2014 th"
+},
+{
+"h": "Keeping this current",
+"p": "Integrations",
+"u": "integrations.html#keeping-this-current",
+"b": "Keeping this current Integrations will keep growing, so: the app's catalogue, this table and the drift check all come from one list ( CATALOG in Bridge/hermes_bridge/composio.py ); Tools/site/check_drift.py catalog fails when a catalogue entry is missing from this page, or when this page names a service the code no lon"
 }
 ]
