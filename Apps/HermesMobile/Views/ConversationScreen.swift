@@ -111,6 +111,11 @@ struct ConversationScreen: View {
     @State private var searchText = ""
     @State private var searchIndex = 0
     @FocusState private var searchFocused: Bool
+    /// The composer's caret, owned here rather than inside `Composer` so the screen can hand it back
+    /// after a resume: a tap during a cold start used to land on a disabled field and vanish.
+    @FocusState private var composerFocused: Bool
+    /// A tap that landed on the composer while the conversation was still opening.
+    @State private var composerTapWhileOpening = false
 
     private static let bottomID = "conversation-bottom"
     private static let streamingSearchID = "conversation-streaming-search"
@@ -251,6 +256,13 @@ struct ConversationScreen: View {
             model.setVisibleBot(bot.id)
             // The host does not push a bot's replies to the device reading it.
             Task { await model.reportPresence(bot: bot.id) }
+        }
+        .onChange(of: sessionID) { _, opened in
+            // A tap that arrived while the conversation was opening is the tap the user meant:
+            // hand it the caret now that the field accepts one, never inside the touch itself.
+            guard opened != nil, composerTapWhileOpening else { return }
+            composerTapWhileOpening = false
+            Task { @MainActor in composerFocused = true }
         }
         .onDisappear {
             model.setVisibleBot(nil)
@@ -1099,12 +1111,25 @@ struct ConversationScreen: View {
                      },
                      onMic: { toggleRecording() },
                      onInterrupt: { Task { await model.interrupt() } },
-                     onCommand: runCommand)
+                     onCommand: runCommand,
+                     // The caret belongs to this screen, so the tap that arrives before the
+                     // conversation has opened can be honoured the moment it has.
+                     focus: $composerFocused)
                 // The same gutter the bubbles stop at: a composer 4 pt wider on each side is what
                 // made a chat look tilted against its own text.
                 .padding(.horizontal, Geometry.chatGutter)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
+                // While the conversation is opening the field is disabled, so nothing becomes first
+                // responder and the tap reaches no one. Catch it here — off the field's own hit test,
+                // which is what the composer's background shape exists for too — and honour it below.
+                .overlay {
+                    if sessionID == nil {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { composerTapWhileOpening = true }
+                    }
+                }
                 // Anchored to the paperclip, above it: the card is an overlay, not a
                 // presentation, so nothing here can be dismissed out from under it.
                 .overlay(alignment: .topLeading) {

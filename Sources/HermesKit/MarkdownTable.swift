@@ -82,10 +82,13 @@ public enum MarkdownTableParser {
         let header: [String]
         if let cells = splitCells(headerLine), !cells.isEmpty, isRowLine(headerLine) {
             header = cells
-        } else if let width = cellCount(headerLine), width > 0, width == alignments.count {
+        } else if let width = cellCount(headerLine), width > 0, width == alignments.count,
+                  isBlankRowLine(headerLine) {
             // An empty header row is a table per GFM, and the delimiter row is what proves it: a stray `| |`
             // with no delimiter of the same width below it is still prose, which is the case this guard was
-            // written for in the first place.
+            // written for in the first place. The header must be *blank*, not merely pipe-shaped: `# a | b`
+            // above `--- | ---` is a heading and prose, and matching it on width alone drew an empty table
+            // where the heading belonged.
             header = Array(repeating: "", count: width)
         } else {
             return nil
@@ -172,6 +175,19 @@ public enum MarkdownTableParser {
         let (raw, pipes) = rawCells(trimmed)
         guard pipes > 0 else { return nil }
         return stripOuterPipes(raw, from: trimmed).count
+    }
+
+    /// Whether this line is a table row made entirely of empty cells — `|`, `| |`, `||` — which is
+    /// the only shape allowed to stand in for a header row.
+    ///
+    /// GFM renders one as a table with blank headings. Anything carrying content is *not* a blank
+    /// header, however many pipes it has: a heading, a bullet or a quote above a delimiter row is
+    /// prose, and matching it on cell count alone drew an empty table where the text belonged.
+    public static func isBlankRowLine(_ line: String) -> Bool {
+        guard indentationWidth(line) < 4 else { return false }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("|") else { return false }
+        return trimmed.allSatisfy { $0 == "|" || $0 == " " }
     }
 
     /// Whether this line can be part of a table. A lone `|`, an indented line
