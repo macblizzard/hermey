@@ -35,6 +35,14 @@ CATALOG = (
     ("googledocs", "Google Docs", "Read and write documents"),
     ("googlesheets", "Google Sheets", "Read and edit spreadsheets"),
     ("googlemaps", "Google Maps", "Places, directions and distance"),
+    # Beyond Google. These are the toolkits Composio manages the OAuth app for, so Connect works with no
+    # setup of your own — the same reason the Google ones do. A toolkit that needs your own API key or OAuth
+    # client is deliberately not offered until there is a screen to collect it.
+    ("supabase", "Supabase", "Query your projects and run SQL"),
+    ("github", "GitHub", "Repositories, issues and pull requests"),
+    ("notion", "Notion", "Read and write your pages"),
+    ("linear", "Linear", "Track issues and projects"),
+    ("stripe", "Stripe", "Customers, payments and invoices"),
 )
 
 #: Where an operator puts the project key. A file rather than only an env var because the bridge runs

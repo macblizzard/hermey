@@ -57,8 +57,24 @@ failing (`Tools/site/check_drift.py`, `catalog`). Adding a service to `CATALOG` 
 | Google Docs | `googledocs` | Read and write documents |
 | Google Sheets | `googlesheets` | Read and edit spreadsheets |
 | Google Maps | `googlemaps` | Places, directions and distance |
+| Supabase | `supabase` | Query your projects and run SQL |
+| GitHub | `github` | Repositories, issues and pull requests |
+| Notion | `notion` | Read and write your pages |
+| Linear | `linear` | Track issues and projects |
+| Stripe | `stripe` | Customers, payments and invoices |
 
 A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.
+
+These are all toolkits where **Composio manages the OAuth app**, so Connect works with nothing to set up. Some
+services need more than a tap:
+
+- **Cloudflare** — API key only (a Global API Key), no OAuth.
+- **Vercel** — your own OAuth client, or a personal access token.
+- **Netlify** — only available as an MCP toolkit (`netlify_mcp`, 9 tools), not a classic toolkit.
+
+They are not offered yet on purpose: a card that cannot connect is worse than a card that is not there. Each
+needs a screen that collects a key or your client credentials, and the same card mechanism that asks for a
+password can ask for those.
 
 ## What a bot can do with it
 
