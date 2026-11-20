@@ -49,3 +49,19 @@ class TestItCannotKeepASecret:
     def test_it_uses_the_native_setter(self) -> None:
         """A plain `el.value =` leaves React-controlled forms empty and looks like a wrong password."""
         assert 'getOwnPropertyDescriptor(proto, "value").set' in SOURCE
+
+
+class TestSixBoxCodes:
+    """Doctolib's Keycloak asks for a 6-digit code as six one-character inputs.
+
+    Filling the whole code into the first box is silently wrong — it looks exactly like a wrong code, and
+    the owner retries a code that was never entered. Verified against the live page: 6 boxes, 6 filled.
+    """
+
+    def test_it_distributes_digits_across_boxes(self) -> None:
+        assert "perBox" in SOURCE, "no distribution path for a multi-box one-time code"
+        assert "autocomplete*=one-time-code" in SOURCE
+
+    def test_it_still_fills_a_single_code_field(self) -> None:
+        """A page with one code input must keep working: the spread only runs above one box."""
+        assert "boxes.length > 1" in SOURCE

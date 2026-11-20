@@ -55,6 +55,24 @@ function fillFields(fields) {
       }
       continue;
     }
+    // A one-time code is often six boxes, not one field (Doctolib's Keycloak does exactly this). Typing
+    // the whole code into the first box is silently wrong, so spread it when the page asks that way.
+    if (field.name === "one-time code") {
+      const boxes = Array.from(document.querySelectorAll(
+        'input[autocomplete*=one-time-code i], input[name*=otp i], input[id*=otp i]'
+      )).filter(visible);
+      const chars = String(field.value).replace(/\s/g, "").split("");
+      if (boxes.length > 1 && chars.length >= 1) {
+        const perBox = boxes.length >= chars.length
+          ? chars.map((c) => c)
+          : [chars.join("")];
+        boxes.forEach((box, index) => {
+          if (perBox[index] !== undefined) setValue(box, perBox[index]);
+        });
+        touched += 1;
+        continue;
+      }
+    }
     const selector = pickers[field.name] || "input[type=text]";
     const el = Array.from(document.querySelectorAll(selector)).filter(visible)[0];
     if (el) {
