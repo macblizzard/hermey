@@ -20,9 +20,11 @@ PANEL = DRAWER[DRAWER.index("private func panel"):]
 class PagingTests(unittest.TestCase):
     def test_a_resume_never_replaces_the_pages_already_loaded(self) -> None:
         # Every place that adopts a host resume goes through one helper, so no call site can
-        # quietly assign over the transcript again: one definition, five call sites — the last
-        # being the retry after a socket that dropped under the open.
-        self.assertEqual(MODEL.count("adoptResume("), 6)
+        # quietly assign over the transcript again: one definition, six call sites — the last
+        # being the retry after a socket that dropped under the open — plus the one that *follows a
+        # moved conversation*, which empties the transcript first on purpose because the rows there
+        # belong to a different conversation rather than to an earlier page of this one.
+        self.assertEqual(MODEL.count("adoptResume("), 7)
         self.assertEqual(MODEL.count("decorate(resumed.entries"), 0)
         self.assertIn("TranscriptPaging.merge(keeping: transcript", MODEL)
 
