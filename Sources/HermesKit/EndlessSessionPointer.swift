@@ -306,6 +306,14 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
 
+    func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] {
+        throw BotAdminUnavailable()
+    }
+
+    func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {
+        throw BotAdminUnavailable()
+    }
+
     func renameIntegration(slug: String, accountID: String, alias: String) async throws {
         throw BotAdminUnavailable()
     }
@@ -767,6 +775,22 @@ enum Failure: Error, Equatable, LocalizedError {
             throw BotAdminUnavailable()
         }
         return url
+    }
+
+    /// `GET /v1/integrations/{slug}/key-fields` — what this service asks for, per Composio.
+    public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] {
+        let name = try Self.pathComponent(slug)
+        let data = try await bridgeGET("v1/integrations/\(name)/key-fields", timeout: 30)
+        return try JSONDecoder().decode(IntegrationKeyFields.self, from: data).fields
+    }
+
+    /// `POST /v1/integrations/{slug}/key-connect` — the key goes to the host and on to Composio, nowhere else.
+    ///
+    /// Nothing comes back but an acknowledgement: the value is not echoed, so it cannot be read out of a reply or
+    /// a log on the way home.
+    public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {
+        let name = try Self.pathComponent(slug)
+        _ = try await bridgePOST("v1/integrations/\(name)/key-connect", body: ["values": values], timeout: 60)
     }
 
     /// `POST /v1/integrations/{slug}/alias` — give an account a name the owner recognises.

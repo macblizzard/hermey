@@ -62,19 +62,30 @@ failing (`Tools/site/check_drift.py`, `catalog`). Adding a service to `CATALOG` 
 | Notion | `notion` | Read and write your pages |
 | Linear | `linear` | Track issues and projects |
 | Stripe | `stripe` | Customers, payments and invoices |
+| Cloudflare | `cloudflare` | DNS, cache and Workers |
+| Vercel | `vercel` | Deployments, domains and projects |
 
 A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.
 
-These are all toolkits where **Composio manages the OAuth app**, so Connect works with nothing to set up. Some
-services need more than a tap:
+Most of these are toolkits where **Composio manages the OAuth app**, so Connect opens a consent page and there
+is nothing to set up.
 
-- **Cloudflare** — API key only (a Global API Key), no OAuth.
-- **Vercel** — your own OAuth client, or a personal access token.
-- **Netlify** — only available as an MCP toolkit (`netlify_mcp`, 9 tools), not a classic toolkit.
+### Services you connect with a key
 
-They are not offered yet on purpose: a card that cannot connect is worse than a card that is not there. Each
-needs a screen that collects a key or your client credentials, and the same card mechanism that asks for a
-password can ask for those.
+Cloudflare and Vercel have no Composio-managed OAuth app, so their card asks for a key instead of opening a
+browser. **Connect with a key** opens a small form with exactly the fields Composio lists for that service —
+never a hard-coded guess:
+
+| Service | What it asks for |
+|---|---|
+| Cloudflare | Global API Key (stored as a secret) **and** the account email |
+| Vercel | Access Token (secret), with an optional team id |
+
+The value goes from the app to your bridge and straight on to Composio. It is not stored on the host, not
+returned in any response and not written to the audit log — only the resulting account id and status come back.
+
+**Netlify** is the one that still is not offered: Composio has it only as an MCP toolkit (`netlify_mcp`, 9
+tools) rather than a classic toolkit, which would need MCP support before a card could mean anything.
 
 ## What a bot can do with it
 

@@ -20,6 +20,10 @@ struct IntegrationsScreen: View {
     @State private var naming: String?
     @State private var namingAccount: IntegrationAccount?
     @State private var namingText = ""
+    /// The key-based service whose sheet is open, and what Composio asked it for.
+    @State private var keyService: IntegrationService?
+    @State private var keyFields: [IntegrationKeyField] = []
+    @State private var keyValues: [String: String] = [:]
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -80,10 +84,89 @@ struct IntegrationsScreen: View {
                 }
             }
         }
+        .sheet(item: $keyService) { service in
+            keySheet(service)
+        }
         .navigationTitle("Integrations")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await refresh() }
         .task { await refresh() }
+    }
+
+    private func keySheet(_ service: IntegrationService) -> some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("The key goes to Composio through your host. It is not kept by the app and never appears "
+                         + "in a chat or a log.")
+                        .font(.caption)
+                        .foregroundStyle(Tokens.textMuted)
+                }
+                Section {
+                    ForEach(keyFields) { field in
+                        if field.secret {
+                            SecureField(field.label + (field.required ? "" : " (optional)"),
+                                        text: Binding(get: { keyValues[field.name] ?? "" },
+                                                      set: { keyValues[field.name] = $0 }))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        } else {
+                            TextField(field.label + (field.required ? "" : " (optional)"),
+                                      text: Binding(get: { keyValues[field.name] ?? "" },
+                                                    set: { keyValues[field.name] = $0 }))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        }
+                    }
+                }
+                if let error {
+                    Section { Text(error).font(.caption).foregroundStyle(.red) }
+                }
+            }
+            .hermesSheetChrome()
+            .navigationTitle(service.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { closeKeySheet() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(busy == service.slug ? "Connecting…" : "Connect") {
+                        Task { await submitKey(service) }
+                    }
+                    .disabled(busy != nil || keyFields.contains { $0.required && (keyValues[$0.name] ?? "").isEmpty })
+                }
+            }
+            .task { await loadKeyFields(service) }
+        }
+    }
+
+    private func closeKeySheet() {
+        keyService = nil
+        keyValues = [:]
+        keyFields = []
+    }
+
+    private func loadKeyFields(_ service: IntegrationService) async {
+        keyFields = []
+        keyValues = [:]
+        do {
+            keyFields = try await model.integrationKeyFields(slug: service.slug)
+        } catch {
+            self.error = "Could not ask the host what \(service.name) needs."
+        }
+    }
+
+    private func submitKey(_ service: IntegrationService) async {
+        busy = service.slug
+        defer { busy = nil }
+        do {
+            try await model.connectIntegrationWithKey(slug: service.slug, values: keyValues)
+            closeKeySheet()
+            await refresh()
+        } catch {
+            self.error = "\(service.name) did not accept that key."
+        }
     }
 
     private func card(_ service: IntegrationService, configured: Bool) -> some View {
@@ -165,7 +248,12 @@ struct IntegrationsScreen: View {
                 Text("Waiting…").font(.caption2).foregroundStyle(Tokens.textMuted)
             }
         } else {
-            Button("Connect") { Task { await connect(service) } }
+            if service.keyBased {
+                Button("Connect with a key") { keyService = service }
+                    .font(.caption.weight(.semibold))
+                    .disabled(busy != nil || !configured || !service.available)
+            } else {
+                Button("Connect") { Task { await connect(service) } }
                 .font(.caption)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.mini)
