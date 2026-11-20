@@ -85,3 +85,35 @@ how the wrong-display failure above usually starts.
 input pauses bot actions (takeover); if the owner takes over, stop acting until `resume`. There is
 also only one pointer: two bots acting at once fight over it, so serialise GUI work and never assume
 your click landed where you aimed if another bot was active.
+
+## Reading a page: `probe` before guessing
+
+`probe` returns what the page actually offers, read from the DOM rather than from wording, so it works on a
+site or a language never seen before:
+
+```
+url, formPresent, usernameFields, passwordFields, otpBoxes, submitLabel, buttons, loginLinks, fields[]
+```
+
+- `usernameFields` counts real credential fields (`type=email`, `autocomplete=username`, or a name that says
+  so) and **excludes search boxes** — a page with text boxes is not a login page, and treating one as such
+  put an owner's email into a search field once.
+- `submitLabel` is the form's own submit control; prefer clicking it (`{"type":"submit"}`) over matching a
+  button label.
+- `loginLinks` are anchors whose `href` says login/auth/sso — follow them with `{"type":"clickHref"}` to reach
+  a sign-in page regardless of the page's language.
+
+```bash
+curl -s -X POST @@BRIDGE@@/v1/browser/act -H 'content-type: application/json' -d '{"type":"probe"}'
+```
+
+## The bot browser is pinned to Chrome for Testing
+
+Stable Google Chrome 137+ accepts `--load-extension` and loads **nothing**, silently — the sign-in extension
+never attaches and every fill reports "no browser could take it". `setup/bot-browser.sh` provisions Chrome for
+Testing under `/opt/hermes-chromium` and the launcher points at it. If a login suddenly stops filling after a
+browser change, check which binary is running before anything else.
+
+The browser also never offers to save a password: it types the owner's credentials by design, and a prompt
+over the page hides the field it is about to fill. The launcher writes that preference with the browser
+stopped, because Chrome rewrites `Preferences` from memory on shutdown.
