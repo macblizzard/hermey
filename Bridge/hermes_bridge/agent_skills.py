@@ -116,6 +116,12 @@ def render(cli: Path, name: str = SKILL_NAME) -> str:
     if cli is not None:
         template = template.replace(_CLI_PLACEHOLDER, str(cli))
         template = template.replace(_BIN_PLACEHOLDER, str(cli.parent))
+    else:
+        # A host that cannot write the scripts still gets this skill — the separation the owner asked for.
+        # The command cannot work there, so say that rather than leaving a literal placeholder in a bot's
+        # instructions and letting it run "<placeholder>/hermey_desktop.py".
+        template = template.replace(_BIN_PLACEHOLDER,
+                                    "(the bundled scripts are not installed on this host)")
     return template.replace(_BRIDGE_PLACEHOLDER, bridge_url())
 
 
@@ -127,8 +133,7 @@ def needs_cli(name: str = SKILL_NAME) -> bool:
     must not silently withhold the other.
     """
     try:
-        body = template_path(name).read_text(encoding="utf-8")
-        return _CLI_PLACEHOLDER in body or _BIN_PLACEHOLDER in body
+        return _CLI_PLACEHOLDER in template_path(name).read_text(encoding="utf-8")
     except OSError:
         return False
 
