@@ -73,6 +73,8 @@ class Integration:
     connected: bool
     account_id: str | None = None
     available: bool = True
+    #: Every connected account for this service: {"id", "label"}. One is the common case, two is normal.
+    accounts: list[dict] | None = None
 
 
 class ComposioClient:
@@ -155,11 +157,18 @@ class ComposioClient:
         LOGGER.info("integrations: created a managed auth config for %s", slug)
         return str(identifier)
 
-    def connect_link(self, slug: str) -> str:
-        """A hosted sign-in page for this toolkit. The user finishes there; nothing comes back to us."""
+    def connect_link(self, slug: str, alias: str | None = None) -> str:
+        """A hosted sign-in page for this toolkit. The user finishes there; nothing comes back to us.
+
+        ``allow_multiple`` is what makes a second Gmail possible at all: without it Composio refuses the
+        second connection for the same user and auth config. The alias is how the owner tells them apart
+        afterwards, and it has to be unique per toolkit.
+        """
         config = self.ensure_auth_config(slug)
-        reply = self._request("POST", "/connected_accounts/link",
-                             {"auth_config_id": config, "user_id": user_id()})
+        body: dict = {"auth_config_id": config, "user_id": user_id(), "allow_multiple": True}
+        if alias:
+            body["alias"] = alias
+        reply = self._request("POST", "/connected_accounts/link", body)
         url = reply.get("redirect_url") if isinstance(reply, dict) else None
         if not url:
             raise ComposioError("Composio did not return a link")
@@ -187,6 +196,37 @@ def _toolkit_of(row: dict) -> str:
     return str(slug or row.get("toolkit_slug") or "").strip().lower()
 
 
+def _active_all(accounts: list[dict], slug: str | None = None) -> list[dict]:
+    """Every usable account for a toolkit, newest last.
+
+    More than one is normal once the owner adds a second Gmail; showing only the first made the extra one
+    invisible and made Disconnect revoke whichever it happened to find.
+    """
+    out = []
+    for row in accounts:
+        if slug and _toolkit_of(row) != slug:
+            continue
+        if str(row.get("status") or "").upper() != "ACTIVE":
+            continue
+        out.append(row)
+    return out
+
+
+def _label_for(row: dict, index: int) -> str:
+    """How the owner recognises an account: its alias, else the address Composio knows, else its position."""
+    for key in ("alias", "alias_name"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    data = row.get("data")
+    if isinstance(data, dict):
+        for key in ("email", "emailAddress", "user_email"):
+            value = data.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return f"account {index + 1}"
+
+
 def _active(accounts: list[dict], slug: str | None = None) -> dict | None:
     """One usable account, for ``slug`` only.
 
@@ -210,13 +250,15 @@ def integrations(client: ComposioClient) -> list[Integration]:
     out: list[Integration] = []
     for slug, name, blurb in CATALOG:
         try:
-            account = _active(client.connected_accounts(slug), slug)
+            rows = _active_all(client.connected_accounts(slug), slug)
         except ComposioError as exc:
             LOGGER.info("integrations: %s unknown (%s)", slug, exc)
-            out.append(Integration(slug, name, blurb, connected=False, available=False))
+            out.append(Integration(slug, name, blurb, connected=False, available=False, accounts=[]))
             continue
-        out.append(Integration(slug, name, blurb, connected=account is not None,
-                               account_id=str(account.get("id")) if account and account.get("id") else None))
+        accounts = [{"id": str(row.get("id")), "label": _label_for(row, index)}
+                    for index, row in enumerate(rows) if row.get("id")]
+        out.append(Integration(slug, name, blurb, connected=bool(accounts),
+                               account_id=accounts[0]["id"] if accounts else None, accounts=accounts))
     return out
 
 
@@ -242,17 +284,21 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             "user": user_id(),
             "services": [
                 {"slug": row.slug, "name": row.name, "blurb": row.blurb, "connected": row.connected,
-                 "account_id": row.account_id, "available": row.available}
+                 "account_id": row.account_id, "available": row.available,
+                 "accounts": row.accounts or []}
                 for row in rows
             ],
         }
 
     @router.post("/{slug}/connect")
-    def connect(slug: str) -> dict:
+    def connect(slug: str, body: dict | None = None) -> dict:
         if slug not in {entry[0] for entry in CATALOG}:
             raise HTTPException(status_code=404, detail="unknown integration")
+        alias = None
+        if isinstance(body, dict) and isinstance(body.get("alias"), str) and body["alias"].strip():
+            alias = body["alias"].strip()[:40]
         try:
-            url = api.connect_link(slug)
+            url = api.connect_link(slug, alias)
         except ComposioError as exc:
             _audit("failed", slug, str(exc))
             raise HTTPException(status_code=409, detail=str(exc)) from None
@@ -270,13 +316,25 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             raise HTTPException(status_code=409, detail=str(exc)) from None
 
     @router.post("/{slug}/disconnect")
-    def disconnect(slug: str) -> dict:
+    def disconnect(slug: str, body: dict | None = None) -> dict:
+        """Revoke ONE account, named by its id.
+
+        By id rather than by service: once there are two Gmails, "disconnect gmail" has no safe meaning and
+        would revoke whichever came back first.
+        """
         if slug not in {entry[0] for entry in CATALOG}:
             raise HTTPException(status_code=404, detail="unknown integration")
+        wanted = body.get("account_id") if isinstance(body, dict) else None
         try:
-            account = _active(api.connected_accounts(slug), slug)
+            found = _active_all(api.connected_accounts(slug), slug)
         except ComposioError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
+        if wanted:
+            found = [row for row in found if str(row.get("id")) == str(wanted)]
+        elif len(found) > 1:
+            raise HTTPException(status_code=409,
+                                detail="more than one account is connected: say which one")
+        account = found[0] if found else None
         if not account or not account.get("id"):
             _audit("not_connected", slug)
             return {"ok": True, "state": "not connected"}

@@ -2820,8 +2820,8 @@ public final class AppModel: ObservableObject {
         try await client.connectIntegration(slug: slug)
     }
 
-    public func disconnectIntegration(slug: String) async throws {
-        try await client.disconnectIntegration(slug: slug)
+    public func disconnectIntegration(slug: String, accountID: String? = nil) async throws {
+        try await client.disconnectIntegration(slug: slug, accountID: accountID)
     }
 
     /// Whether a move in `offset` has anywhere to go — what greys out the menu item at the ends.

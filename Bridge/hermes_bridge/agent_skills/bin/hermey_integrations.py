@@ -61,7 +61,12 @@ def cmd_list(bridge: str) -> int:
         print("nothing connected yet — the owner can connect services in Settings → Integrations")
         return 0
     for row in connected:
-        print(f"{row['slug']}\t{row['name']}")
+        accounts = row.get("accounts") or []
+        if len(accounts) > 1:
+            for account in accounts:
+                print(f"{row['slug']}\t{account.get('label') or account.get('id')}")
+        else:
+            print(f"{row['slug']}\t{row['name']}")
     return 0
 
 
@@ -83,12 +88,13 @@ def cmd_tools(bridge: str, slug: str) -> int:
     return 0
 
 
-def cmd_connect(bridge: str, slug: str) -> int:
+def cmd_connect(bridge: str, slug: str, alias: str | None = None) -> int:
     if _connected(bridge, slug):
         print(f"{slug} is already connected")
         return 0
     try:
-        reply = _call(bridge, "POST", f"/v1/integrations/{slug}/connect", {}, timeout=90)
+        body = {"alias": alias} if alias else {}
+        reply = _call(bridge, "POST", f"/v1/integrations/{slug}/connect", body, timeout=90)
     except urllib.error.HTTPError as exc:
         print(f"could not start the connection: HTTP {exc.code}", file=sys.stderr)
         return 2
@@ -114,6 +120,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Connected integrations and their tool names")
     parser.add_argument("verb", choices=("list", "tools", "connect"))
     parser.add_argument("slug", nargs="?", help="gmail, googlecalendar, googledrive, googledocs, googlesheets, googlemaps")
+    parser.add_argument("--alias", default=None, help="connect: a name for this account, e.g. work")
     parser.add_argument("--bridge", default=DEFAULT_BRIDGE)
     args = parser.parse_args()
     if args.verb in ("tools", "connect") and not args.slug:
@@ -122,7 +129,7 @@ def main() -> int:
         return cmd_list(args.bridge)
     if args.verb == "tools":
         return cmd_tools(args.bridge, args.slug)
-    return cmd_connect(args.bridge, args.slug)
+    return cmd_connect(args.bridge, args.slug, args.alias)
 
 
 if __name__ == "__main__":

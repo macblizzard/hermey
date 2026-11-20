@@ -81,7 +81,8 @@ struct IntegrationsScreen: View {
                 Circle()
                     .fill(service.connected ? Color.green : Color.secondary.opacity(0.35))
                     .frame(width: 6, height: 6)
-                Text(service.connected ? "Connected" : (service.available ? "Not connected" : "Unavailable"))
+                Text(service.accounts.count > 1 ? "\(service.accounts.count) accounts"
+                     : (service.connected ? "Connected" : (service.available ? "Not connected" : "Unavailable")))
                     .font(.caption2)
                     .foregroundStyle(Tokens.textMuted)
             }
@@ -106,11 +107,23 @@ struct IntegrationsScreen: View {
 
     @ViewBuilder
     private func action(_ service: IntegrationService, configured: Bool) -> some View {
-        if service.connected {
-            Button("Disconnect", role: .destructive) { Task { await disconnect(service) } }
-                .font(.caption)
-                .buttonStyle(.borderless)
-                .disabled(busy != nil)
+        if !service.accounts.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(service.accounts) { account in
+                    HStack(spacing: 6) {
+                        Text(account.label).font(.caption2).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button("Remove", role: .destructive) { Task { await disconnect(service, account) } }
+                            .font(.caption2)
+                            .buttonStyle(.borderless)
+                            .disabled(busy != nil)
+                    }
+                }
+                Button("Add another") { Task { await connect(service) } }
+                    .font(.caption2)
+                    .buttonStyle(.borderless)
+                    .disabled(busy != nil || !configured || !service.available)
+            }
         } else if waiting == service.slug {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
@@ -158,11 +171,11 @@ struct IntegrationsScreen: View {
         }
     }
 
-    private func disconnect(_ service: IntegrationService) async {
+    private func disconnect(_ service: IntegrationService, _ account: IntegrationAccount) async {
         busy = service.slug
         defer { busy = nil }
         do {
-            try await model.disconnectIntegration(slug: service.slug)
+            try await model.disconnectIntegration(slug: service.slug, accountID: account.id)
             await refresh()
         } catch {
             self.error = "Could not disconnect."

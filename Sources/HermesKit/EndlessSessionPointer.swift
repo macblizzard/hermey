@@ -191,7 +191,7 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/integrations/{slug}/connect` — the hosted sign-in URL to open.
     func connectIntegration(slug: String) async throws -> String
     /// `POST /v1/integrations/{slug}/disconnect`
-    func disconnectIntegration(slug: String) async throws
+    func disconnectIntegration(slug: String, accountID: String?) async throws
 
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
@@ -304,7 +304,7 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
 
-    func disconnectIntegration(slug: String) async throws {
+    func disconnectIntegration(slug: String, accountID: String?) async throws {
         throw BotAdminUnavailable()
     }
 
@@ -761,10 +761,12 @@ enum Failure: Error, Equatable, LocalizedError {
         return url
     }
 
-    /// `POST /v1/integrations/{slug}/disconnect`.
-    public func disconnectIntegration(slug: String) async throws {
+    /// `POST /v1/integrations/{slug}/disconnect`. Named by account: with two Gmails, "gmail" is ambiguous.
+    public func disconnectIntegration(slug: String, accountID: String?) async throws {
         let name = try Self.pathComponent(slug)
-        _ = try await bridgePOST("v1/integrations/\(name)/disconnect", body: [:], timeout: 30)
+        var body: [String: Any] = [:]
+        if let accountID { body["account_id"] = accountID }
+        _ = try await bridgePOST("v1/integrations/\(name)/disconnect", body: body, timeout: 30)
     }
 
     /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`

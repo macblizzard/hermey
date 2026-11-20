@@ -35,8 +35,16 @@ class TestItCannotKeepASecret:
     def test_it_speaks_to_the_bridge_the_bridge_expects(self) -> None:
         assert "/v1/browser/ws" in SOURCE, "the extension and the bridge must agree on the path"
 
-    def test_the_reply_is_an_id_and_a_boolean(self) -> None:
-        assert "send({ id: message.id, ok })" in SOURCE
+    def test_the_reply_carries_an_id_and_no_value(self) -> None:
+        """The reply names the call and says whether it worked (and, for a probe, the page's shape).
+
+        It must never echo what was filled — that is the line between "the login worked" and "the bot has
+        the password".
+        """
+        assert "send({ id: message.id, ...reply })" in SOURCE
+        for line in SOURCE.splitlines():
+            if "send({" in line and "value" in line:
+                raise AssertionError(f"a reply line mentions a value: {line.strip()}")
 
     def test_nothing_is_logged(self) -> None:
         assert "console.log" not in SOURCE, "a value could reach a log through a debug print"

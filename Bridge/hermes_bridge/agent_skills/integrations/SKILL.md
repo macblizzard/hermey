@@ -47,6 +47,24 @@ tool-not-found back.
 It prints a link for **the owner** to open and approve, then waits until the connection appears. Give them
 the link and let them finish; do not try to sign in yourself.
 
+## More than one account
+
+An owner may connect two Gmails ("personal", "work"). `list` shows every account, and when a service has
+more than one, **every tool call must say which** — with two accounts an unqualified call silently uses
+whichever the session picks, which is how the wrong mailbox gets read or the wrong one sends.
+
+```bash
+@@BIN@@/hermey_integrations.py list
+```
+
+```
+gmail	personal
+gmail	work
+```
+
+Say the account out loud in your reply ("using *work*"), and pass that account when you call the tool. If the
+owner says "my mail" and there are two, ask which — do not choose for them.
+
 ## Rules
 
 - Reading is fine; **writing needs care**. Sending mail, deleting, moving, or creating events on the

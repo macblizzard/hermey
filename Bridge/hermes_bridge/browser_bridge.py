@@ -72,20 +72,40 @@ class BrowserRegistry:
         return next(iter(self.browsers.values()), None)
 
     async def command(self, payload: dict[str, Any], *, timeout: float = FILL_TIMEOUT_SECONDS) -> dict:
-        """Send one instruction to the browser and wait for its reply. Empty dict when nobody is there."""
-        browser = self.any()
-        if browser is None:
+        """Send one instruction to every connected browser, and take the first answer.
+
+        Every, not the first: a browser that died without a clean close leaves its registration behind, and
+        asking only that one made a plainly-connected browser look absent. The first reply wins because a
+        shared profile means at most one of them is really showing the owner's page; sending the same probe
+        to a stale socket costs nothing.
+        """
+        if not self.browsers:
             return {}
         call_id = uuid.uuid4().hex
-        future: asyncio.Future = asyncio.get_running_loop().create_future()
-        browser.pending[call_id] = future
+        loop = asyncio.get_running_loop()
+        futures: list[asyncio.Future] = []
+        for browser in list(self.browsers.values()):
+            future: asyncio.Future = loop.create_future()
+            browser.pending[call_id] = future
+            futures.append(future)
+            try:
+                await browser.socket.send_json({"id": call_id, **payload})
+            except Exception:  # noqa: BLE001 - a dead socket is not an error for the caller
+                if not future.done():
+                    future.set_exception(LookupError("browser disconnected"))
         try:
-            await browser.socket.send_json({"id": call_id, **payload})
-            return await asyncio.wait_for(future, timeout=timeout)
-        except (asyncio.TimeoutError, LookupError):
+            done, pending = await asyncio.wait(futures, timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            for future in done:
+                try:
+                    reply = future.result()
+                except Exception:  # noqa: BLE001
+                    continue
+                if reply:
+                    return reply
             return {}
         finally:
-            browser.pending.pop(call_id, None)
+            for browser in list(self.browsers.values()):
+                browser.pending.pop(call_id, None)
 
     async def fill(self, values: dict[str, str], *, site: str) -> bool:
         """Ask an extension to put ``values`` on the page. False when nobody is listening."""

@@ -125,22 +125,34 @@ struct IntegrationsTab: View {
             Circle()
                 .fill(service.connected ? Color.green : Color.secondary.opacity(0.35))
                 .frame(width: 7, height: 7)
-            Text(service.connected ? "Connected" : (service.available ? "Not connected" : "Unavailable"))
+            Text(statusText(service))
                 .font(.caption2)
                 .foregroundStyle(Tokens.textMuted)
         }
     }
 
+    private func statusText(_ service: IntegrationService) -> String {
+        if service.accounts.count > 1 { return "\(service.accounts.count) accounts" }
+        return service.connected ? "Connected" : (service.available ? "Not connected" : "Unavailable")
+    }
+
     @ViewBuilder
     private func footer(_ service: IntegrationService, configured: Bool) -> some View {
-        if service.connected {
-            HStack {
-                Text("Managed by Composio").font(.caption2).foregroundStyle(Tokens.textMuted)
-                Spacer()
-                Button("Disconnect") { Task { await disconnect(service) } }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .disabled(busy != nil)
+        if !service.accounts.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(service.accounts) { account in
+                    HStack(spacing: 6) {
+                        Text(account.label).font(.caption).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button("Remove") { Task { await disconnect(service, account) } }
+                            .buttonStyle(.link)
+                            .font(.caption2)
+                            .disabled(busy != nil)
+                    }
+                }
+                Button("Add another") { Task { await connect(service) } }
+                    .controlSize(.mini)
+                    .disabled(busy != nil || !configured || !service.available)
             }
         } else if busy == service.slug || waiting == service.slug {
             HStack(spacing: 6) {
@@ -200,11 +212,11 @@ struct IntegrationsTab: View {
         }
     }
 
-    private func disconnect(_ service: IntegrationService) async {
+    private func disconnect(_ service: IntegrationService, _ account: IntegrationAccount) async {
         busy = service.slug
         defer { busy = nil }
         do {
-            try await store.model.disconnectIntegration(slug: service.slug)
+            try await store.model.disconnectIntegration(slug: service.slug, accountID: account.id)
             await refresh()
         } catch {
             self.error = "Could not disconnect."

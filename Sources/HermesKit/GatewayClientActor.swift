@@ -609,9 +609,9 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.connectIntegration(slug: slug)
     }
 
-    public func disconnectIntegration(slug: String) async throws {
+    public func disconnectIntegration(slug: String, accountID: String?) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }
-        try await sessionPointer.disconnectIntegration(slug: slug)
+        try await sessionPointer.disconnectIntegration(slug: slug, accountID: accountID)
     }
 
     /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every

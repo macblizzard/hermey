@@ -144,6 +144,41 @@ class IntegrationsTest(unittest.TestCase):
         self.assertTrue(FakeComposio.links[0]["user_id"], "a link must say whose account it is for")
         self.assertEqual(FakeComposio.links[0]["auth_config_id"], "cfg_gmail")
 
+    def test_two_accounts_are_listed_separately(self) -> None:
+        FakeComposio.connected = {
+            "a": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE", "alias": "personal"},
+            "b": {"id": "ca_2", "toolkit": {"slug": "gmail"}, "status": "ACTIVE", "alias": "work"},
+        }
+        gmail = next(s for s in self.app.get("/v1/integrations").json()["services"] if s["slug"] == "gmail")
+        self.assertTrue(gmail["connected"])
+        self.assertEqual([a["label"] for a in gmail["accounts"]], ["personal", "work"])
+
+    def test_a_second_connection_is_allowed_and_can_be_named(self) -> None:
+        reply = self.app.post("/v1/integrations/gmail/connect", json={"alias": "work"})
+        self.assertEqual(reply.status_code, 200, reply.text)
+        self.assertIs(FakeComposio.links[-1]["allow_multiple"], True,
+                      "without allow_multiple Composio refuses a second account")
+        self.assertEqual(FakeComposio.links[-1]["alias"], "work")
+
+    def test_disconnecting_two_accounts_demands_a_choice(self) -> None:
+        FakeComposio.connected = {
+            "a": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE"},
+            "b": {"id": "ca_2", "toolkit": {"slug": "gmail"}, "status": "ACTIVE"},
+        }
+        refusal = self.app.post("/v1/integrations/gmail/disconnect", json={})
+        self.assertEqual(refusal.status_code, 409)
+        self.assertIn("which one", refusal.json()["detail"])
+        self.assertEqual(len(FakeComposio.connected), 2, "a refusal must not revoke anything")
+
+    def test_disconnecting_one_account_leaves_the_other(self) -> None:
+        FakeComposio.connected = {
+            "a": {"id": "ca_1", "toolkit": {"slug": "gmail"}, "status": "ACTIVE", "alias": "personal"},
+            "b": {"id": "ca_2", "toolkit": {"slug": "gmail"}, "status": "ACTIVE", "alias": "work"},
+        }
+        reply = self.app.post("/v1/integrations/gmail/disconnect", json={"account_id": "ca_2"})
+        self.assertEqual(reply.json()["state"], "revoked")
+        self.assertEqual([row["id"] for row in FakeComposio.connected.values()], ["ca_1"])
+
     def test_a_project_with_no_auth_config_gets_one_created(self) -> None:
         """A fresh Composio project has none, and Connect must still work without a dashboard visit."""
         FakeComposio.has_configs = False        # a project that has never connected this toolkit
