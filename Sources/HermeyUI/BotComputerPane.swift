@@ -168,7 +168,7 @@ public struct BotComputerPane: View {
                 // One web view per socket. A new ticket means a new page: reusing the old one left a
                 // dead viewer drawing nothing but its black background.
                 BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl) { event in
-                    handle(event)
+                    handle(event, from: socketURL)
                 }
                 .id(socketURL)
                 if !isConnected { connectingOverlay }
@@ -339,8 +339,8 @@ public struct BotComputerPane: View {
         }
     }
 
-    /// Tear the viewer down and open a fresh one, so a lease change is applied to a socket that
-    /// starts in the right mode instead of a page that has to be told about it after the fact.
+    /// Replace the socket: a dropped stream or a start/stop needs a new ticket and a new viewer id,
+    /// so the page is rebuilt from scratch rather than told about it after the fact.
     private func reopen() async {
         await MainActor.run {
             socketURL = nil
@@ -350,6 +350,14 @@ public struct BotComputerPane: View {
         openScreen()
     }
 
+    /// Take the lease for the viewer already on screen. Nothing is rebuilt.
+    ///
+    /// The gateway binds a lease to the viewer id that asked for it, and the socket on screen was
+    /// minted with exactly that id — so this socket's viewer IS the holder the moment the lease
+    /// answers. `holdsControl` then flows down to `BotComputerWebView.apply(viewOnly:)`, which flips
+    /// noVNC out of view-only in place. Rebuilding the viewer here instead (which this used to do)
+    /// closed the socket that had just won the lease: the host saw a connection that sent not one
+    /// byte and shut it, and the pane was left watching a dead picture.
     private func takeOver() {
         guard let viewerID, !isBusy else { return }
         isBusy = true
@@ -360,10 +368,8 @@ public struct BotComputerPane: View {
                 await MainActor.run {
                     holdsControl = held
                     isBusy = false
-                    errorText = nil
+                    errorText = held ? nil : "The host did not hand over control of this screen."
                 }
-                // Input, pointer and keyboard are then right from the first frame of the new socket.
-                if held { await reopen() }
             } catch {
                 await MainActor.run {
                     isBusy = false
@@ -373,13 +379,15 @@ public struct BotComputerPane: View {
         }
     }
 
+    /// Hand control back on the same socket: the host stops accepting our input, the page goes
+    /// view-only in place. A rebuild would spend a second ticket and race the very socket this
+    /// release just freed.
     private func handBack() {
         guard let viewerID else { holdsControl = false; return }
         Task {
             do {
                 _ = try await client.lease(profile: profile, acquire: false, viewerID: viewerID)
                 await MainActor.run { holdsControl = false; errorText = nil }
-                await reopen()
             } catch {
                 await MainActor.run { report(error) }
             }
@@ -392,7 +400,11 @@ public struct BotComputerPane: View {
         Task { _ = try? await client.lease(profile: profile, acquire: false, viewerID: viewerID) }
     }
 
-    private func handle(_ event: BotComputerEvent) {
+    private func handle(_ event: BotComputerEvent, from socket: URL) {
+        // A viewer that has been replaced still reports — its socket closing, its own teardown —
+        // and that report must not touch the viewer that replaced it. Only the page this pane is
+        // actually showing may change its state; anything else belongs to a socket already gone.
+        guard socket == socketURL else { return }
         switch event.name {
         case "connected":
             isConnected = true
