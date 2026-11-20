@@ -24,7 +24,7 @@ public struct IntegrationService: Identifiable, Codable, Hashable, Sendable {
     public var id: String { slug }
 
     public enum CodingKeys: String, CodingKey {
-        case slug, name, blurb, connected, available
+        case slug, name, blurb, connected, available, accounts
         case accountID = "account_id"
     }
 }
