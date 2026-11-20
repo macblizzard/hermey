@@ -185,6 +185,11 @@ class ComposioClient:
         return [{"slug": str(t.get("slug")), "name": str(t.get("name") or "")}
                 for t in (items or []) if isinstance(t, dict) and t.get("slug")]
 
+    def set_alias(self, account_id: str, alias: str) -> None:
+        """Rename a connected account. The alias is how the owner tells two Gmails apart."""
+        self._request("PATCH", f"/connected_accounts/{urllib.parse.quote(account_id, safe='')}",
+                      {"alias": alias})
+
     def disconnect(self, account_id: str) -> None:
         self._request("DELETE", f"/connected_accounts/{urllib.parse.quote(account_id, safe='')}")
 
@@ -314,6 +319,25 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             return {"tools": api.list_tools(slug)}
         except ComposioError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @router.post("/{slug}/alias")
+    def alias(slug: str, body: dict | None = None) -> dict:
+        """Give a connected account a name the owner recognises: personal, work, the office."""
+        if slug not in {entry[0] for entry in CATALOG}:
+            raise HTTPException(status_code=404, detail="unknown integration")
+        account_id = body.get("account_id") if isinstance(body, dict) else None
+        name = body.get("alias") if isinstance(body, dict) else None
+        if not isinstance(account_id, str) or not account_id:
+            raise HTTPException(status_code=400, detail="account_id is required")
+        if not isinstance(name, str) or not name.strip():
+            raise HTTPException(status_code=400, detail="alias is required")
+        try:
+            api.set_alias(account_id, name.strip()[:40])
+        except ComposioError as exc:
+            _audit("failed", slug, str(exc))
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        _audit("renamed", slug)
+        return {"ok": True, "alias": name.strip()[:40]}
 
     @router.post("/{slug}/disconnect")
     def disconnect(slug: str, body: dict | None = None) -> dict:

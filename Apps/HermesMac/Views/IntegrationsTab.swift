@@ -17,6 +17,11 @@ struct IntegrationsTab: View {
     @State private var busy: String?
     @State private var error: String?
     @State private var waiting: String?
+    /// A name the owner is typing for a new account, per service — "work", "personal".
+    @State private var naming: [String: String] = [:]
+    /// The account being renamed, and what they are typing.
+    @State private var renaming: String?
+    @State private var renameText = ""
 
     private let columns = [GridItem(.adaptive(minimum: 232), spacing: 12)]
 
@@ -142,17 +147,39 @@ struct IntegrationsTab: View {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(service.accounts) { account in
                     HStack(spacing: 6) {
-                        Text(account.label).font(.caption).lineLimit(1)
-                        Spacer(minLength: 4)
-                        Button("Remove") { Task { await disconnect(service, account) } }
-                            .buttonStyle(.link)
-                            .font(.caption2)
-                            .disabled(busy != nil)
+                        if renaming == account.id {
+                            TextField("Name", text: $renameText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                                .frame(width: 130)
+                                .onSubmit { Task { await rename(service, account) } }
+                            Button("Save") { Task { await rename(service, account) } }
+                                .buttonStyle(.link).font(.caption2)
+                            Button("Cancel") { renaming = nil }.buttonStyle(.link).font(.caption2)
+                        } else {
+                            Text(account.label).font(.caption).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Button("Rename") { renaming = account.id; renameText = account.label }
+                                .buttonStyle(.link).font(.caption2).disabled(busy != nil)
+                            Button("Remove") { Task { await disconnect(service, account) } }
+                                .buttonStyle(.link)
+                                .font(.caption2)
+                                .disabled(busy != nil)
+                        }
                     }
                 }
-                Button("Add another") { Task { await connect(service) } }
-                    .controlSize(.mini)
-                    .disabled(busy != nil || !configured || !service.available)
+                HStack(spacing: 6) {
+                    TextField("Name it (work, personal)", text: Binding(
+                        get: { naming[service.slug] ?? "" },
+                        set: { naming[service.slug] = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .frame(width: 150)
+                    Button("Add another") { Task { await connect(service, alias: naming[service.slug]) } }
+                        .controlSize(.mini)
+                        .disabled(busy != nil || !configured || !service.available)
+                }
             }
         } else if busy == service.slug || waiting == service.slug {
             HStack(spacing: 6) {
@@ -186,12 +213,27 @@ struct IntegrationsTab: View {
         }
     }
 
-    private func connect(_ service: IntegrationService) async {
+    private func rename(_ service: IntegrationService, _ account: IntegrationAccount) async {
+        let wanted = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { renaming = nil; return }
+        busy = service.slug
+        defer { busy = nil; renaming = nil }
+        do {
+            try await store.model.renameIntegration(slug: service.slug, accountID: account.id, alias: wanted)
+            await refresh()
+        } catch {
+            self.error = "Could not rename that account."
+        }
+    }
+
+    private func connect(_ service: IntegrationService, alias: String? = nil) async {
         busy = service.slug
         error = nil
         defer { busy = nil }
         do {
-            let link = try await store.model.connectIntegration(slug: service.slug)
+            let clean = (alias ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let link = try await store.model.connectIntegration(slug: service.slug,
+                                                                alias: clean.isEmpty ? nil : clean)
             guard let url = URL(string: link) else {
                 error = "The bridge returned a link that is not a URL."
                 return

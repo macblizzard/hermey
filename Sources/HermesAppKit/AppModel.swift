@@ -2816,8 +2816,13 @@ public final class AppModel: ObservableObject {
     }
 
     /// The hosted Composio page for one service, ready to open in a browser.
-    public func connectIntegration(slug: String) async throws -> String {
-        try await client.connectIntegration(slug: slug)
+    public func connectIntegration(slug: String, alias: String? = nil) async throws -> String {
+        try await client.connectIntegration(slug: slug, alias: alias)
+    }
+
+    /// Name a connected account: "personal", "work" — what the owner will call it later.
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        try await client.renameIntegration(slug: slug, accountID: accountID, alias: alias)
     }
 
     public func disconnectIntegration(slug: String, accountID: String? = nil) async throws {

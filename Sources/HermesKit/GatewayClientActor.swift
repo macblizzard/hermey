@@ -604,9 +604,14 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.integrations()
     }
 
-    public func connectIntegration(slug: String) async throws -> String {
+    public func connectIntegration(slug: String, alias: String?) async throws -> String {
         guard let sessionPointer else { throw BotAdminUnavailable() }
-        return try await sessionPointer.connectIntegration(slug: slug)
+        return try await sessionPointer.connectIntegration(slug: slug, alias: alias)
+    }
+
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.renameIntegration(slug: slug, accountID: accountID, alias: alias)
     }
 
     public func disconnectIntegration(slug: String, accountID: String?) async throws {

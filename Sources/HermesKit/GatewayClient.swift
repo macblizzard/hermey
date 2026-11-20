@@ -198,7 +198,8 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func answerCredentialCard(id: String, values: [String: String]) async throws
     func cancelCredentialCard(id: String) async throws
     func integrations() async throws -> IntegrationsState
-    func connectIntegration(slug: String) async throws -> String
+    func connectIntegration(slug: String, alias: String?) async throws -> String
+    func renameIntegration(slug: String, accountID: String, alias: String) async throws
     func disconnectIntegration(slug: String, accountID: String?) async throws
 
     /// Findings inside every bot's conversation (`GET /v1/search`). Names are the list's business;
@@ -393,7 +394,10 @@ extension GatewayClientProtocol {
     public func integrations() async throws -> IntegrationsState {
         throw BotAdminUnavailable()
     }
-    public func connectIntegration(slug: String) async throws -> String {
+    public func connectIntegration(slug: String, alias: String?) async throws -> String {
+        throw BotAdminUnavailable()
+    }
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
         throw BotAdminUnavailable()
     }
     public func disconnectIntegration(slug: String, accountID: String?) async throws {
