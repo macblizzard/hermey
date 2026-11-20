@@ -172,8 +172,10 @@ final class MarkdownTableTests: XCTestCase {
 
     func testLonePipeIsNotATable() {
         XCTAssertNil(parse("|"))
-        XCTAssertNil(parse("|\n|---|"))
         XCTAssertFalse(MarkdownTableParser.isRowLine("|"))
+        // Above a delimiter row of its own width it *is* a table — one column, blank heading, which
+        // is the empty-header case GFM renders (`testBlankHeaderRowIsATable` covers the wider one).
+        XCTAssertEqual(parse("|\n|---|")?.table.columnCount, 1)
     }
 
     func testIndentedCodeBlockIsNotATable() {
@@ -185,6 +187,12 @@ final class MarkdownTableTests: XCTestCase {
         XCTAssertNil(parse("# a | b\n--- | ---"))
         XCTAssertNil(parse("> a | b\n--- | ---"))
         XCTAssertNil(parse("- a | b\n--- | ---"))
+        // Matching the delimiter row's width is not the test — a blank row is. Otherwise the
+        // empty-header rule redraws every bullet and heading that happens to contain a pipe.
+        XCTAssertFalse(MarkdownTableParser.isBlankRowLine("# a | b"))
+        XCTAssertFalse(MarkdownTableParser.isBlankRowLine("- a | b"))
+        XCTAssertTrue(MarkdownTableParser.isBlankRowLine("| |"))
+        XCTAssertTrue(MarkdownTableParser.isBlankRowLine("|"))
     }
 
     func testDelimiterAloneIsARuleNotATable() {

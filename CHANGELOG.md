@@ -90,6 +90,11 @@ All notable changes to Hermey are recorded here. The format follows
   the pause. `GatewayClient.retryNow()` ends that pause and dials immediately (re-arming the ladder if
   the forced attempt fails), and the app calls it from the notification path, from returning to the
   foreground, and from a resume that died with the socket.
+- **A bullet, quote or heading containing a pipe is text again, not an empty table.** Allowing a
+  blank header row (so `| | |` above `|---|---|` renders as GFM's blank-headed table) matched the
+  header on cell *count*, so `# a | b` above `--- | ---` became a two-column table with no headings
+  and the line itself disappeared. Only a row made entirely of pipes and spaces may stand in for a
+  header (`MarkdownTableParser.isBlankRowLine`), which is the shape the empty-header case actually is.
 
 ### Changed
 - **CI now scans the repository's history, not just the working tree.** `secret_scan.sh` cannot see a
