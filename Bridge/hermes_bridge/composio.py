@@ -251,20 +251,30 @@ def _active(accounts: list[dict], slug: str | None = None) -> dict | None:
 
 
 def integrations(client: ComposioClient) -> list[Integration]:
-    """The catalog with each service's state. A Composio outage marks everything unavailable, not broken."""
-    out: list[Integration] = []
-    for slug, name, blurb in CATALOG:
-        try:
-            rows = _active_all(client.connected_accounts(slug), slug)
-        except ComposioError as exc:
-            LOGGER.info("integrations: %s unknown (%s)", slug, exc)
-            out.append(Integration(slug, name, blurb, connected=False, available=False, accounts=[]))
-            continue
-        accounts = [{"id": str(row.get("id")), "label": _label_for(row, index)}
-                    for index, row in enumerate(rows) if row.get("id")]
-        out.append(Integration(slug, name, blurb, connected=bool(accounts),
-                               account_id=accounts[0]["id"] if accounts else None, accounts=accounts))
-    return out
+    """The catalog with each service's state. A Composio outage marks everything unavailable, not broken.
+
+    The six lookups run together: serially they were 1.2–2.9 s of wall clock, which a phone on a weak link
+    turns into "could not reach the host". They are independent reads of the same account list, so the only
+    thing serialising them bought was latency.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=len(CATALOG)) as pool:
+        return list(pool.map(lambda entry: _one(client, entry), CATALOG))
+
+
+def _one(client: ComposioClient, entry: tuple[str, str, str]) -> Integration:
+    """One service's state. Runs on a worker thread, so it returns instead of appending."""
+    slug, name, blurb = entry
+    try:
+        rows = _active_all(client.connected_accounts(slug), slug)
+    except ComposioError as exc:
+        LOGGER.info("integrations: %s unknown (%s)", slug, exc)
+        return Integration(slug, name, blurb, connected=False, available=False, accounts=[])
+    accounts = [{"id": str(row.get("id")), "label": _label_for(row, index)}
+                for index, row in enumerate(rows) if row.get("id")]
+    return Integration(slug, name, blurb, connected=bool(accounts),
+                       account_id=accounts[0]["id"] if accounts else None, accounts=accounts)
 
 
 def create_integrations_router(runtime, client: ComposioClient | None = None):
