@@ -13,6 +13,19 @@ managed_by: hermey-bridge
 Every bot on this host uses **one** desktop: one X server, one browser profile, one set of logins,
 one control lease. It is not per-bot and not per-profile. Read where it is — never assume.
 
+## Wake it yourself
+
+The desktop sleeps when nothing is using it — it holds a whole X server and a browser, so leaving it up
+idle is waste. What matters is that you bring it back rather than reporting a dead screen:
+
+```bash
+@@BIN@@/hermey_desktop.py start     # idempotent; returns at once if already up
+@@BIN@@/hermey_desktop.py status
+```
+
+Run `start` before opening anything on the bot screen. If a browser later fails with "Missing X server",
+that is this: call `start` and retry. Never `stop` it yourself — the watchdog handles idleness.
+
 ## Where it is
 
 The Hermes install creates a `bot-desktop` directory, and every profile has a symlink to it. Three
