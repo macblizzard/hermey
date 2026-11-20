@@ -210,6 +210,10 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/backup` — every bot's config as one JSON document.
     func exportBackup() async throws -> Data
 
+    func exportBackupZip() async throws -> Data
+
+    func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult
+
     /// `POST /v1/backup/restore` — create what the document has and this host does not.
     func restoreBackup(_ document: Data) async throws -> BackupRestoreResult
 
@@ -334,6 +338,10 @@ public extension BotSessionPointerStore {
     func botDefaults() async throws -> BotDefaults { throw BotAdminUnavailable() }
     func setDefaultSoul(_ text: String) async throws -> BotDefaults { throw BotAdminUnavailable() }
     func exportBackup() async throws -> Data { throw BotAdminUnavailable() }
+    func exportBackupZip() async throws -> Data { throw BotAdminUnavailable() }
+    func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
+        throw BotAdminUnavailable()
+    }
     func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
         throw BotAdminUnavailable()
     }
@@ -841,6 +849,18 @@ enum Failure: Error, Equatable, LocalizedError {
     }
 
     /// `POST /v1/backup/restore` — the document goes back exactly as it came out of the file.
+    public func exportBackupZip() async throws -> Data {
+        try await bridgeGET("v1/backup.zip", timeout: 180)
+    }
+
+    /// The file goes up as-is: a zip is not base64-inflated on the way, and the host reads what was saved.
+    public func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
+        let query = "?mode=\(mode.rawValue)&dry_run=\(dryRun ? 1 : 0)"
+        let data = try await bridgeSend("v1/backup/import\(query)", method: "POST", body: file,
+                                         contentType: "application/zip", timeout: 300)
+        return try BackupImportResult.decode(data)
+    }
+
     public func restoreBackup(_ document: Data) async throws -> BackupRestoreResult {
         guard let object = try JSONSerialization.jsonObject(with: document) as? [String: Any] else {
             throw Failure.malformedResponse
@@ -935,6 +955,25 @@ enum Failure: Error, Equatable, LocalizedError {
     }
 
     /// One authenticated POST against the bridge, JSON in and JSON out.
+    /// POST a body that is not JSON — a zip, a picture — without wrapping it in a JSON envelope.
+    func bridgeSend(_ path: String, method: String, body: Data, contentType: String,
+                    timeout: TimeInterval = 60) async throws -> Data {
+        let endpoint = try await endpoint()
+        var request = URLRequest(url: Self.bridgeURL(endpoint.baseURL, path))
+        request.httpMethod = method
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        request.httpBody = body
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw Failure.malformedResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            throw Failure.httpStatus(http.statusCode, Self.detail(from: data))
+        }
+        return data
+    }
+
     func bridgePOST(_ path: String, body: [String: Any], timeout: TimeInterval = 60) async throws -> Data {
         let endpoint = try await endpoint()
         var request = URLRequest(url: Self.bridgeURL(endpoint.baseURL, path))

@@ -123,7 +123,8 @@ public struct DefaultSoulPane: View {
 public struct BackupPane: View {
     private let botCount: Int
     private let export: () async -> Data?
-    private let restore: (Data) async -> (BackupRestoreResult?, String?)
+    private let preview: (Data, BotImportMode) async -> (BackupImportResult?, String?)
+    private let apply: (Data, BotImportMode) async -> (BackupImportResult?, String?)
 
     @State private var exporting = false
     @State private var importing = false
@@ -131,12 +132,19 @@ public struct BackupPane: View {
     @State private var status: String?
     @State private var writing = false
 
+    @State private var picked: Data?
+    @State private var plan: BackupImportResult?
+    @State private var mode: BotImportMode = .merge
+    @State private var confirming = false
+
     public init(botCount: Int,
                 export: @escaping () async -> Data?,
-                restore: @escaping (Data) async -> (BackupRestoreResult?, String?)) {
+                preview: @escaping (Data, BotImportMode) async -> (BackupImportResult?, String?),
+                apply: @escaping (Data, BotImportMode) async -> (BackupImportResult?, String?)) {
         self.botCount = botCount
         self.export = export
-        self.restore = restore
+        self.preview = preview
+        self.apply = apply
     }
 
     public var body: some View {
@@ -163,7 +171,7 @@ public struct BackupPane: View {
                 Button {
                     importing = true
                 } label: {
-                    Text("Restore…")
+                    Text("Import…")
                         .font(TypeScale.font(TypeScale.md))
                 }
                 .buttonStyle(.plain)
@@ -192,8 +200,19 @@ public struct BackupPane: View {
             }
         }
         .fileImporter(isPresented: $importing,
-                      allowedContentTypes: [.json]) { result in
+                      allowedContentTypes: [.json, .zip]) { result in
             Task { await runImport(result) }
+        }
+        // The plan is shown before anything is written: an import that silently created, replaced or skipped
+        // bots is the one thing this screen must never do.
+        .confirmationDialog("Import these bots?", isPresented: $confirming, titleVisibility: .visible) {
+            ForEach(BotImportMode.allCases) { option in
+                Button(option.title) { Task { await applyPicked(option) } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(plan.map { "\($0.preview). Pick how to treat bots that already exist here." }
+                 ?? "Reading the file…")
         }
     }
 
@@ -218,22 +237,44 @@ public struct BackupPane: View {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 let data = try Data(contentsOf: url)
-                let (outcome, failure) = await restore(data)
+                picked = data
+                writing = true
+                let (outcome, failure) = await preview(data, mode)
+                writing = false
                 if let failure {
                     status = failure
-                } else if let outcome {
-                    status = summary(outcome)
-                } else {
-                    status = "The host did not answer."
+                    return
                 }
+                guard let outcome else {
+                    status = "The host did not answer."
+                    return
+                }
+                plan = outcome
+                confirming = true
             } catch {
                 status = "Could not read that file: \(error.localizedDescription)"
             }
         }
     }
 
+    private func applyPicked(_ chosen: BotImportMode) async {
+        guard let file = picked else { return }
+        writing = true
+        defer { writing = false }
+        let (outcome, failure) = await apply(file, chosen)
+        if let failure {
+            status = failure
+            return
+        }
+        guard let outcome else {
+            status = "The host did not answer."
+            return
+        }
+        status = summary(outcome)
+    }
+
     /// What to tell the owner: what was made, what was left alone, and that routines need a restart.
-    private func summary(_ outcome: BackupRestoreResult) -> String {
+    private func summary(_ outcome: BackupImportResult) -> String {
         var parts: [String] = []
         if !outcome.created.isEmpty {
             parts.append("created \(outcome.created.map(\.profile).joined(separator: ", "))")
@@ -243,6 +284,9 @@ public struct BackupPane: View {
         }
         if outcome.skipped.isEmpty == false {
             parts.append("skipped \(outcome.skipped.count)")
+        }
+        if outcome.icons.isEmpty == false {
+            parts.append("restored \(outcome.icons.count) icon\(outcome.icons.count == 1 ? "" : "s")")
         }
         if parts.isEmpty { parts.append("nothing to change — every bot here already has its own copy") }
         if outcome.restartRequired {
@@ -255,7 +299,7 @@ public struct BackupPane: View {
 
 /// A tiny file document wrapper: the export is bytes the app already has.
 public struct BackupFile: FileDocument {
-    public static var readableContentTypes: [UTType] { [.json] }
+    public static var readableContentTypes: [UTType] { [.zip, .json] }
     public var data: Data
 
     public init(data: Data = Data()) { self.data = data }

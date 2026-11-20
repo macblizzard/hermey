@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import re
 import time
 import uuid
@@ -40,7 +41,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from . import bot_admin, bot_categories, bot_notes, paths
@@ -48,7 +49,7 @@ from .device_auth import require_device
 
 #: A backup that claims to be from a newer shape than this bridge understands is refused rather than
 #: half-read: a restore that silently drops fields is worse than one that says it cannot.
-BACKUP_VERSION = 1
+BACKUP_VERSION = 2
 
 #: The document names, and where each lives inside the profile directory.
 SOUL_NAME = "SOUL.md"
@@ -97,6 +98,20 @@ def _read(directory: Path, relative: str) -> str:
         return ""
 
 
+def _icon_path(profile: str) -> Path:
+    """Where the bridge keeps a bot's push icon; the file itself travels inside the zip."""
+    return Path("/var/lib/hermey/push-icons") / f"{profile}.png"
+
+
+def _disabled() -> set[str]:
+    try:
+        from . import bot_admin
+
+        return set(bot_admin.disabled_profiles())
+    except Exception:  # noqa: BLE001 - an export must not fail over a delivery preference
+        return set()
+
+
 def _routines(directory: Path) -> list[dict[str, Any]]:
     """The bot's scheduled jobs, as the scheduler keeps them."""
     path = directory / "cron" / "jobs.json"
@@ -129,10 +144,16 @@ def export_backup(runtime) -> dict[str, Any]:
         if not directory.is_dir() or not PROFILE_RE.match(directory.name):
             continue
         fields = _profile_yaml(directory)
+        icon = f"icons/{directory.name}.png" if _icon_path(directory.name).is_file() else None
         bots.append({
             "profile": directory.name,
             "name": fields.get("name") or directory.name,
             "description": fields.get("description"),
+            # Model settings are not here on purpose: the bridge reads them from the dashboard over HTTP, so
+            # an export would fail (or invent) whenever that is down. A lossless *round trip of this document*
+            # is what import promises; per-bot model remains a known gap until it is file-readable.
+            "enabled": directory.name not in _disabled(),
+            "icon": icon,
             "soul": _read(directory, SOUL_NAME),
             "memory": {key: _read(directory, relative) for key, relative in MEMORY_FILES},
             "notes": _read(directory, NOTES_NAME),
@@ -225,27 +246,141 @@ def _restore_routines(directory: Path, routines: list[dict[str, Any]]) -> tuple[
         paths.atomic_write_text(path, json.dumps(data, indent=2))
     return added, kept
 
+def build_archive(runtime) -> bytes:
+    """The export as a zip: ``backup.json`` plus each bot's icon.
 
-def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
-    """Create what the backup has and this host does not. Additive: nothing live is overwritten."""
+    A single JSON cannot carry a picture, and an icon is part of what a bot looks like. The document keeps its
+    exact shape — everything that was in the JSON is still in the JSON — so a .zip and a bare .json are the same
+    backup, one with the pictures attached.
+    """
+    import io
+    import zipfile
+
+    document = export_backup(runtime)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("backup.json", json.dumps(document, indent=2))
+        for bot in document.get("bots") or []:
+            icon = bot.get("icon")
+            profile = str(bot.get("profile") or "")
+            if not icon or not profile:
+                continue
+            path = _icon_path(profile)
+            try:
+                archive.writestr(icon, path.read_bytes())
+            except OSError:
+                bot["icon"] = None
+    return buffer.getvalue()
+
+
+def load_backup(data: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """The document and any icons the archive carried."""
+    import io
+    import zipfile
+
+    icons: dict[str, bytes] = {}
+    if data[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                for name in archive.namelist():
+                    if name.startswith("icons/") and name.endswith(".png"):
+                        icons[pathlib.Path(name).stem] = archive.read(name)
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=422, detail="that file is not a readable zip") from None
+    return load_document(data), icons
+
+
+def load_document(data: bytes) -> dict[str, Any]:
+    """A backup from bytes: a .zip we wrote, or the bare JSON we wrote before zips existed.
+
+    Anything else is refused with a reason. Guessing at another product's export is how a user ends up with a
+    bot that looks imported and is empty, so the envelope is checked before a single file is touched.
+    """
+    import io
+    import zipfile
+
+    if data[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                raw = archive.read("backup.json")
+        except KeyError:
+            raise HTTPException(status_code=422,
+                                detail="this zip has no backup.json — it is not a Hermey bot backup") from None
+        except zipfile.BadZipFile:
+            raise HTTPException(status_code=422, detail="that file is not a readable zip") from None
+        try:
+            document = json.loads(raw)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="backup.json inside the zip is not JSON") from None
+    else:
+        try:
+            document = json.loads(data)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="that file is not JSON") from None
+    if not isinstance(document, dict):
+        raise HTTPException(status_code=422, detail="a backup is a JSON object")
+    if str(document.get("kind") or "") != "hermey-bot-backup":
+        raise HTTPException(
+            status_code=422,
+            detail="this is not a Hermey bot backup (kind must be 'hermey-bot-backup'); import from another "
+                   "product is not supported yet, and a guess would give you empty bots")
     version = document.get("version")
-    if version is not None and int(version) > BACKUP_VERSION:
-        raise HTTPException(status_code=409,
-                            detail=f"this backup is version {version}; this bridge reads {BACKUP_VERSION}")
+    try:
+        if version is not None and int(version) > BACKUP_VERSION:
+            raise HTTPException(status_code=409,
+                                detail=f"this backup is version {version}; this bridge reads {BACKUP_VERSION}")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="backup version is not a number") from None
+    return document
+
+def _unique_profile(root: Path, wanted: str) -> str:
+    """A free profile name based on ``wanted``: ``x``, ``x-2``, ``x-3`` …"""
+    if not (root / wanted).exists():
+        return wanted
+    for index in range(2, 100):
+        candidate = f"{wanted}-{index}"
+        if not (root / candidate).exists():
+            return candidate
+    raise HTTPException(status_code=409, detail=f"too many copies of {wanted}")
+
+
+def import_backup(runtime, document: dict[str, Any], icons: dict[str, bytes] | None = None,
+                  mode: str = "merge", dry_run: bool = False) -> dict[str, Any]:
+    """Bring a backup's bots onto this host.
+
+    Three modes, chosen by the owner rather than guessed:
+
+    ``merge`` (default) — create what is missing and fill only what is empty here; a live bot keeps its own
+    words. ``overwrite`` — also replace a bot's soul, memory and notes from the file. ``copy`` — never touch an
+    existing bot: each one lands beside it as ``name-2``, which is how you bring one host's bot in next to
+    another's.
+
+    ``dry_run`` returns exactly the same plan and writes nothing, so the app can show the owner what would
+    happen before it happens.
+    """
+    if mode not in ("merge", "overwrite", "copy"):
+        raise HTTPException(status_code=422, detail=f"unknown mode {mode!r}")
+    version = document.get("version")
+    try:
+        if version is not None and int(version) > BACKUP_VERSION:
+            raise HTTPException(status_code=409,
+                                detail=f"this backup is version {version}; this bridge reads {BACKUP_VERSION}")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="backup version is not a number") from None
     bots = document.get("bots") or []
     if not isinstance(bots, list):
         raise HTTPException(status_code=422, detail="bots must be a list")
+
     root = paths.profiles_root()
+    icons = icons or {}
     created: list[dict[str, Any]] = []
     updated: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    written_docs: list[str] = []
     routines_added = 0
+    icons_written: list[str] = []
     restart_required = False
 
-    # Categories first, by name: an id in a backup means nothing on this host, so each backup id is
-    # resolved to the local category carrying the same name. The assignments below used to be
-    # written with the *foreign* id, which left every restored bot pointing at a category that does
-    # not exist here — so a restore quietly lost the roster's grouping.
     local_by_id: dict[str, str] = {}
     for category in document.get("categories") or []:
         if not isinstance(category, dict):
@@ -254,9 +389,9 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
         if not name:
             continue
         try:
-            local = _ensure_category(runtime, name)
+            local = _ensure_category(runtime, name) if not dry_run else ""
         except Exception:
-            continue
+            local = ""
         if local:
             local_by_id[str(category.get("id") or "")] = local
 
@@ -264,22 +399,32 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(entry, dict):
             skipped.append({"profile": None, "reason": "not an object"})
             continue
-        profile = str(entry.get("profile") or "").strip()
-        if not PROFILE_RE.match(profile):
-            skipped.append({"profile": profile, "reason": "invalid profile name"})
+        wanted = str(entry.get("profile") or "").strip()
+        if not PROFILE_RE.match(wanted):
+            skipped.append({"profile": wanted, "reason": "invalid profile name"})
             continue
-        directory = root / profile
-        existed = directory.is_dir()
-        try:
-            if not existed:
-                how = _create_profile(profile, entry.get("description"),
-                                      str(entry.get("soul") or ""))
-                created.append({"profile": profile, "by": how})
-        except Exception as error:  # a refusal per bot, not for the whole file
-            skipped.append({"profile": profile, "reason": f"could not create: {error}"})
-            continue
+        existing = (root / wanted).is_dir()
+        if existing and mode == "copy":
+            try:
+                target = _unique_profile(root, wanted)
+            except HTTPException as error:
+                skipped.append({"profile": wanted, "reason": str(error.detail)})
+                continue
+        else:
+            target = wanted
+        directory = root / target
+        creating = not directory.is_dir()
 
-        # Documents: written only where this host has nothing. A live bot's own words are its own.
+        if not dry_run:
+            try:
+                if creating:
+                    _create_profile(target, entry.get("description"), str(entry.get("soul") or ""))
+            except Exception as error:  # a refusal per bot, not for the whole file
+                skipped.append({"profile": target, "reason": f"could not create: {error}"})
+                continue
+        if creating:
+            created.append({"profile": target, "by": "files", **({"from": wanted} if target != wanted else {})})
+
         wrote: list[str] = []
         for relative, text in ((SOUL_NAME, entry.get("soul")),
                                (MEMORY_FILES[0][1], (entry.get("memory") or {}).get("memory")),
@@ -287,38 +432,79 @@ def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
                                (NOTES_NAME, entry.get("notes"))):
             if not isinstance(text, str) or not text.strip():
                 continue
-            if _read(directory, relative).strip():
+            here = "" if creating or dry_run else _read(directory, relative)
+            if here.strip() and mode != "overwrite":
                 continue
-            _write(directory, relative, text)
+            if not dry_run:
+                _write(directory, relative, text)
             wrote.append(relative)
-        if wrote and existed:
-            updated.append({"profile": profile, "wrote": wrote})
+        if wrote:
+            written_docs += [f"{target}/{name}" for name in wrote]
+            if not creating:
+                updated.append({"profile": target, "wrote": wrote})
 
-        added, _kept = _restore_routines(directory, entry.get("routines") or [])
+        added, _kept = (0, 0)
+        if not dry_run:
+            added, _kept = _restore_routines(directory, entry.get("routines") or [])
+        else:
+            added = len([r for r in (entry.get("routines") or []) if isinstance(r, dict)])
         if added:
             routines_added += added
             restart_required = True
 
-        wanted = [str(c) for c in (entry.get("categories") or []) if c]
-        if wanted:
-            local = local_by_id.get(wanted[0])
+        icon = icons.get(wanted) or icons.get(target)
+        if icon:
+            if not dry_run:
+                try:
+                    path = _icon_path(target)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(icon)
+                except OSError:
+                    skipped.append({"profile": target, "reason": "icon could not be written"})
+            icons_written.append(target)
+
+        enabled = entry.get("enabled")
+        if enabled is False and not dry_run:
+            try:
+                from . import bot_admin
+
+                def change(state: dict[str, Any], name: str = target) -> None:
+                    entry_state = state.setdefault(name, {})
+                    entry_state["enabled"] = False
+
+                bot_admin._mutate_state(change)  # noqa: SLF001 - the same file the toggle writes
+            except Exception:
+                pass
+
+        wanted_categories = [str(c) for c in (entry.get("categories") or []) if c]
+        if wanted_categories and not dry_run:
+            local = local_by_id.get(wanted_categories[0])
             if local:
                 try:
-                    _assign(runtime, profile, local)
+                    _assign(runtime, target, local)
                 except Exception:
-                    skipped.append({"profile": profile, "reason": "category not restored"})
+                    skipped.append({"profile": target, "reason": "category not restored"})
             else:
-                skipped.append({"profile": profile,
+                skipped.append({"profile": target,
                                 "reason": "the backup names a category it does not carry"})
 
     return {
+        "mode": mode,
+        "dry_run": dry_run,
         "created": created,
         "updated": updated,
         "skipped": skipped,
+        "documents": written_docs,
+        "icons": icons_written,
         "routines_added": routines_added,
         "restart_required": restart_required,
         "restored_at": datetime.now(tz=timezone.utc).isoformat(),
     }
+
+
+def restore_backup(runtime, document: dict[str, Any]) -> dict[str, Any]:
+    """The older route: additive restore, kept for clients that send the document directly."""
+    return import_backup(runtime, document, mode="merge", dry_run=False)
 
 
 def _ensure_category(runtime, name: str) -> str:
@@ -368,6 +554,38 @@ def create_backup_router(runtime) -> APIRouter:
                                 detail=f"this roster is {size} bytes; the app reads files up to "
                                        f"{MAX_BACKUP_BYTES}")
         return document
+
+    @router.get("/backup.zip")
+    def download_zip(authorization: str | None = Header(default=None)):
+        """The same document, zipped with each bot's icon — what Import reads back."""
+        from fastapi import Response
+
+        require_device(runtime, authorization)
+        payload = build_archive(runtime)
+        if len(payload) > MAX_BACKUP_BYTES:
+            raise HTTPException(status_code=413,
+                                detail=f"this roster is {len(payload)} bytes; the app reads files up to "
+                                       f"{MAX_BACKUP_BYTES}")
+        return Response(content=payload, media_type="application/zip",
+                        headers={"content-disposition": 'attachment; filename="hermey-bots.zip"'})
+
+    @router.post("/backup/import")
+    async def import_upload(request: Request, mode: str = "merge", dry_run: int = 0,
+                            authorization: str | None = Header(default=None)) -> dict:
+        """Take a .zip (or the older bare .json) and bring its bots onto this host.
+
+        The body is the file itself, not a JSON envelope around it: the app hands over exactly what it saved,
+        and a 12 MB zip does not get base64-inflated on the way.
+        """
+        require_device(runtime, authorization)
+        data = await request.body()
+        if not data:
+            raise HTTPException(status_code=422, detail="an empty file is not a backup")
+        if len(data) > MAX_BACKUP_BYTES:
+            raise HTTPException(status_code=413, detail=f"this file is {len(data)} bytes; the limit is "
+                                                        f"{MAX_BACKUP_BYTES}")
+        document, icons = load_backup(data)
+        return import_backup(runtime, document, icons=icons, mode=mode, dry_run=bool(dry_run))
 
     @router.post("/backup/restore")
     def restore(body: RestoreBody,

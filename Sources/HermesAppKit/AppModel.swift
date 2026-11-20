@@ -2890,6 +2890,47 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// The export as a zip: the same document plus each bot's icon.
+    public func backupArchive() async -> Data? {
+        rosterBusy = true
+        defer { rosterBusy = false }
+        do { return try await client.exportBackupZip() } catch {
+            ClientLog.note("archive failed: \(error.localizedDescription)", level: .warning, category: "roster")
+            return nil
+        }
+    }
+
+    /// What an import would do, without doing it. The owner approves this before anything is written.
+    public func previewImport(_ file: Data, mode: BotImportMode) async -> (BackupImportResult?, String?) {
+        rosterBusy = true
+        defer { rosterBusy = false }
+        do { return (try await client.importBackup(file, mode: mode, dryRun: true), nil) } catch {
+            return (nil, importFailure(error))
+        }
+    }
+
+    /// Apply the import, then re-read the roster so the change is visible without a relaunch.
+    public func applyImport(_ file: Data, mode: BotImportMode) async -> (BackupImportResult?, String?) {
+        rosterBusy = true
+        defer { rosterBusy = false }
+        do {
+            let result = try await client.importBackup(file, mode: mode, dryRun: false)
+            await loadBots()
+            return (result, nil)
+        } catch {
+            return (nil, importFailure(error))
+        }
+    }
+
+    /// The host already refuses a foreign file with a sentence; pass that through rather than a code.
+    private func importFailure(_ error: Error) -> String {
+        let text = String(describing: error)
+        if let range = text.range(of: "detail") {
+            return String(text[range.lowerBound...]).prefix(240).description
+        }
+        return "Import failed: \(error.localizedDescription)"
+    }
+
     /// Rebuild what the document has and this host does not, then re-read the roster so the change is
     /// visible without a relaunch.
     public func restoreBackup(_ document: Data) async -> (BackupRestoreResult?, String?) {
@@ -4087,6 +4128,11 @@ public final class PreviewGatewayClient: GatewayClientProtocol, @unchecked Senda
     /// Preview has no host, so a key-based service cannot ask it what to collect or send anything to it. These
     /// exist to satisfy the protocol rather than to pretend: the preview Integrations screen shows the cards and
     /// nothing behind them.
+    public func exportBackupZip() async throws -> Data { Data() }
+    public func importBackup(_ file: Data, mode: BotImportMode, dryRun: Bool) async throws -> BackupImportResult {
+        throw BotAdminUnavailable()
+    }
+
     public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] { [] }
 
     public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {}

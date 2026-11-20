@@ -56,7 +56,7 @@ class TestTheExport:
                         "schedule": {"kind": "cron", "expr": "0 3 * * *"}, "enabled": True}])
         payload = _request(bridge, "GET", "/v1/backup").json()
         assert payload["kind"] == "hermey-bot-backup"
-        assert payload["version"] == 1
+        assert payload["version"] == 2
         assert [bot["profile"] for bot in payload["bots"]] == ["cody"]
         bot = payload["bots"][0]
         assert bot["name"] == "cody"
@@ -71,7 +71,9 @@ class TestTheExport:
         (directory / "sessions").mkdir()
         (directory / "sessions" / "one.json").write_text("{}")
         bot = _request(bridge, "GET", "/v1/backup").json()["bots"][0]
-        assert set(bot) == {"profile", "name", "description", "soul", "memory", "notes",
+        # v2 adds the bot's enabled state and, when the host has one, its icon: both are part of what a
+        # restored bot looks like, and both are file-local (unlike model settings, which need the dashboard).
+        assert set(bot) == {"profile", "name", "description", "soul", "memory", "notes", "enabled", "icon",
                            "categories", "routines"}
 
     def test_a_bot_in_a_category_says_so(self, bridge, profiles) -> None:

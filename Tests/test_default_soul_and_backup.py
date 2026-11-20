@@ -62,7 +62,10 @@ class TheBackupIsConfigOnly(unittest.TestCase):
         self.assertNotIn("sessions", BACKUP)
 
     def test_a_restore_never_overwrites_a_live_bot(self) -> None:
-        self.assertIn("if _read(directory, relative).strip():", BACKUP)
+        # The default path still refuses to write over a live bot's own words; only the explicit
+        # "overwrite" mode may, and it has to be named in the code to exist.
+        self.assertIn('if here.strip() and mode != "overwrite":', BACKUP)
+        self.assertIn('if mode not in ("merge", "overwrite", "copy")', BACKUP)
 
     def test_restoring_twice_does_not_double_a_schedule(self) -> None:
         self.assertIn("if job_id and job_id in known:", BACKUP)
@@ -72,7 +75,8 @@ class TheBackupIsConfigOnly(unittest.TestCase):
         self.assertIn("status_code=409", BACKUP)
 
     def test_a_profile_name_is_checked_before_a_directory_is_made(self) -> None:
-        self.assertIn("PROFILE_RE.match(profile)", BACKUP)
+        # The name is validated before any directory is made, whatever the entry is called here.
+        self.assertIn("PROFILE_RE.match(wanted)", BACKUP)
 
 
 class BothAppsEditTheSameThing(unittest.TestCase):

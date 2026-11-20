@@ -194,8 +194,9 @@ private struct BotsSettingsTab: View {
                     }
                     Section("Backup") {
                         BackupPane(botCount: model.bots.count,
-                                   export: { await model.backupDocument() },
-                                   restore: { await model.restoreBackup($0) })
+                                   export: { await model.backupArchive() },
+                                   preview: { await model.previewImport($0, mode: $1) },
+                                   apply: { await model.applyImport($0, mode: $1) })
                     }
                 }
                 .scrollContentBackground(.hidden)
