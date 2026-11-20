@@ -584,6 +584,41 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.reorderBotCategories(ids: ids)
     }
 
+    public func credentialCards() async throws -> [CredentialCard] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.credentialCards()
+    }
+
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.answerCredentialCard(id: id, values: values)
+    }
+
+    public func cancelCredentialCard(id: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.cancelCredentialCard(id: id)
+    }
+
+    public func integrations() async throws -> IntegrationsState {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.integrations()
+    }
+
+    public func connectIntegration(slug: String, alias: String?) async throws -> String {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.connectIntegration(slug: slug, alias: alias)
+    }
+
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.renameIntegration(slug: slug, accountID: accountID, alias: alias)
+    }
+
+    public func disconnectIntegration(slug: String, accountID: String?) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.disconnectIntegration(slug: slug, accountID: accountID)
+    }
+
     /// Search and the bot-to-bot record are the bridge's: it is the one process that can read every
     /// profile's transcript in one request.
     public func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {

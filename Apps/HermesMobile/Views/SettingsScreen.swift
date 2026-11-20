@@ -46,6 +46,18 @@ struct SettingsScreen: View {
         }
     }
 
+    /// The owner's own accounts. One door, because the screen is the same one the Mac has.
+    private var accountsSection: some View {
+        Section("Accounts") {
+            NavigationLink {
+                IntegrationsScreen(model: model)
+            } label: {
+                Label("Integrations", systemImage: "link.badge.plus")
+            }
+            .listRowBackground(Tokens.surface)
+        }
+    }
+
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {
         Section("Appearance") {
@@ -184,6 +196,7 @@ struct SettingsScreen: View {
         List {
             connectionSection
             approvalsSection
+            accountsSection
             appearanceSection
             storageSection
             rosterSection

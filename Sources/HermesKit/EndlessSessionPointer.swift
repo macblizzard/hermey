@@ -179,6 +179,22 @@ public protocol BotSessionPointerStore: Sendable {
     /// `PUT /v1/bot-categories/order` — the whole arrangement, not one swap.
     func reorderBotCategories(ids: [String]) async throws -> BotCategoryState
 
+    /// `GET /v1/credentials/cards` — login cards waiting for the owner.
+    func credentialCards() async throws -> [CredentialCard]
+    /// `POST /v1/credentials/cards/{id}/answer` — what the owner typed; never echoed back.
+    func answerCredentialCard(id: String, values: [String: String]) async throws
+    /// `POST /v1/credentials/cards/{id}/cancel`
+    func cancelCredentialCard(id: String) async throws
+
+    /// `GET /v1/integrations` — connectable services and whether this host can connect them at all.
+    func integrations() async throws -> IntegrationsState
+    /// `POST /v1/integrations/{slug}/connect` — the hosted sign-in URL to open.
+    func connectIntegration(slug: String, alias: String?) async throws -> String
+    /// `POST /v1/integrations/{slug}/alias` — name an account so it can be told from another.
+    func renameIntegration(slug: String, accountID: String, alias: String) async throws
+    /// `POST /v1/integrations/{slug}/disconnect`
+    func disconnectIntegration(slug: String, accountID: String?) async throws
+
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
@@ -267,6 +283,34 @@ public extension BotSessionPointerStore {
     }
     func deleteBotCategory(id: String) async throws -> BotCategoryState { throw BotAdminUnavailable() }
     func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
+        throw BotAdminUnavailable()
+    }
+
+    func credentialCards() async throws -> [CredentialCard] {
+        throw BotAdminUnavailable()
+    }
+
+    func answerCredentialCard(id: String, values: [String: String]) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func cancelCredentialCard(id: String) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func integrations() async throws -> IntegrationsState {
+        throw BotAdminUnavailable()
+    }
+
+    func connectIntegration(slug: String, alias: String?) async throws -> String {
+        throw BotAdminUnavailable()
+    }
+
+    func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func disconnectIntegration(slug: String, accountID: String?) async throws {
         throw BotAdminUnavailable()
     }
 
@@ -687,6 +731,57 @@ enum Failure: Error, Equatable, LocalizedError {
     public func reorderBotCategories(ids: [String]) async throws -> BotCategoryState {
         try BotCategoryState.decode(try await bridgePUT("v1/bot-categories/order",
                                                         body: ["ids": ids], timeout: 20))
+    }
+
+    /// `GET /v1/credentials/cards` — the cards waiting for the owner, and nothing about their answers.
+    public func credentialCards() async throws -> [CredentialCard] {
+        try CredentialCard.list(from: try await bridgeGET("v1/credentials/cards", timeout: 20))
+    }
+
+    /// `POST /v1/credentials/cards/{id}/answer`. The reply says only that it was accepted.
+    public func answerCredentialCard(id: String, values: [String: String]) async throws {
+        let card = try Self.pathComponent(id)
+        _ = try await bridgePOST("v1/credentials/cards/\(card)/answer",
+                                 body: ["values": values], timeout: 20)
+    }
+
+    /// `POST /v1/credentials/cards/{id}/cancel`. Always obeyed.
+    public func cancelCredentialCard(id: String) async throws {
+        let card = try Self.pathComponent(id)
+        _ = try await bridgePOST("v1/credentials/cards/\(card)/cancel", body: [:], timeout: 20)
+    }
+
+    /// `GET /v1/integrations`. The key that makes these work never travels — only the state does.
+    public func integrations() async throws -> IntegrationsState {
+        try IntegrationsState.from(try await bridgeGET("v1/integrations", timeout: 20))
+    }
+
+    /// `POST /v1/integrations/{slug}/connect`. Returns the hosted page the app opens in a browser.
+    public func connectIntegration(slug: String, alias: String?) async throws -> String {
+        let name = try Self.pathComponent(slug)
+        var body: [String: Any] = [:]
+        if let alias, !alias.isEmpty { body["alias"] = alias }
+        let data = try await bridgePOST("v1/integrations/\(name)/connect", body: body, timeout: 40)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = root["url"] as? String, !url.isEmpty else {
+            throw BotAdminUnavailable()
+        }
+        return url
+    }
+
+    /// `POST /v1/integrations/{slug}/alias` — give an account a name the owner recognises.
+    public func renameIntegration(slug: String, accountID: String, alias: String) async throws {
+        let name = try Self.pathComponent(slug)
+        _ = try await bridgePOST("v1/integrations/\(name)/alias",
+                                 body: ["account_id": accountID, "alias": alias], timeout: 30)
+    }
+
+    /// `POST /v1/integrations/{slug}/disconnect`. Named by account: with two Gmails, "gmail" is ambiguous.
+    public func disconnectIntegration(slug: String, accountID: String?) async throws {
+        let name = try Self.pathComponent(slug)
+        var body: [String: Any] = [:]
+        if let accountID { body["account_id"] = accountID }
+        _ = try await bridgePOST("v1/integrations/\(name)/disconnect", body: body, timeout: 30)
     }
 
     /// `GET /v1/search` — a query goes on the wire percent-encoded: a phrase with a `&` or a `#`

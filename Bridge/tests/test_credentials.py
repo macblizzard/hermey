@@ -116,6 +116,22 @@ class TestTheRoutesNeverReturnIt:
         assert _request(bridge, "POST", f"/v1/credentials/cards/{card_id}/answer",
                         {"values": {"choice": "Email and password"}}).status_code == 409
 
+    def test_the_app_can_see_what_is_waiting(self, bridge) -> None:
+        """What the Mac polls: open cards, and only open ones."""
+        first = _request(bridge, "POST", "/v1/credentials/cards",
+                         {"kind": "secret", "site": "one.test", "fields": ["password"]}).json()["id"]
+        second = _request(bridge, "POST", "/v1/credentials/cards",
+                          {"kind": "choice", "site": "two.test",
+                           "options": ["Continue with Google"]}).json()["id"]
+        _request(bridge, "POST", f"/v1/credentials/cards/{second}/cancel")
+
+        listed = _request(bridge, "GET", "/v1/credentials/cards")
+        assert listed.status_code == 200, listed.text
+        ids = [card["id"] for card in listed.json()["cards"]]
+        assert first in ids
+        assert second not in ids, "a cancelled card is not waiting for anybody"
+        assert SECRET not in listed.text
+
     def test_an_unknown_card_is_a_404(self, bridge) -> None:
         assert _request(bridge, "GET", "/v1/credentials/cards/not-a-card").status_code == 404
 

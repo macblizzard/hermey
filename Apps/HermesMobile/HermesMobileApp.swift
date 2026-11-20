@@ -71,6 +71,9 @@ struct RootView: View {
     /// lives in `AppEnvironment`, which this does not touch.
     @AppStorage(ThemeRuntime.defaultsKey) private var themeID: String = ThemeCatalog.defaultID
 
+    /// Login cards: a bot asks for a sign-in and the sheet appears here, whatever screen the owner is on.
+    @StateObject private var credentialCards = MobileCredentialCenter()
+
     var body: some View {
         // One screen at the root: the bot list. The floating Bots/Settings pill at the bottom was a
         // tab bar wearing a pill's clothes — the bots *are* the app, and Settings has a door in the
@@ -84,6 +87,11 @@ struct RootView: View {
                 PairingSheet()
                 .hermesSheetChrome()
             }
+            .sheet(item: $credentialCards.card) { card in
+                MobileCredentialCardSheet(card: card, model: app.model, center: credentialCards)
+                    .hermesSheetChrome()
+            }
+            .task { credentialCards.watch(model: app.model) }
             .onChange(of: app.model.badgeCount) { _, count in
                 // The icon badge follows every change, not just new banners: reading a chat clears
                 // its count without a reply arriving while the app is away.

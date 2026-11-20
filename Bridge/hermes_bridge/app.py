@@ -44,6 +44,7 @@ from .genui import create_genui_router
 from .bot_admin import create_bot_admin_router
 from .bot_memory import create_bot_memory_router
 from .bot_categories import create_bot_categories_router
+from .browser_bridge import BrowserRegistry, browser_socket, create_browser_router
 from .credentials import CardStore, create_credentials_router
 from .bot_search import create_bot_search_router
 from .bot_transfers import create_bot_transfers_router
@@ -57,6 +58,8 @@ from .bot_message import create_bot_message_router
 from .bot_sessions import create_bot_sessions_router
 from .config import BridgeConfig, is_loopback_host
 from .agent_skills import install as install_agent_skills
+from .browser_extension import install as install_browser_extension
+from .composio import create_integrations_router
 from .device_auth import require_device
 from .display import create_display_router
 from .local_computers import LocalComputers, create_local_computers_router, local_computer_socket
@@ -187,14 +190,29 @@ def _public_host(request: Request) -> str:
 
 
 def deliver_to_bot_screen(card, values: dict[str, str]) -> bool:
-    """Fill a login form on the bot screen's browser and forget the values.
+    """Put a card's values on the page, by whichever door the browser holds open.
 
-    The browser must have been opened from the dock (it passes --remote-debugging-port=0). A browser
-    started by hand has no port, and the fill says so rather than falling back to typing at whatever
-    window happens to have focus.
+    The extension is preferred: it needs no launch flags, so it works for a browser the owner started
+    themselves and (later) for their own browser on their Mac. The DevTools path stays as the fallback
+    for a bot-screen browser that Hermey launched with a debugging port.
     """
     from . import credentials_fill
+
+    if BROWSERS.browsers:
+        import asyncio
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # Called from a sync route: run the extension hop on its own loop.
+            if asyncio.run(BROWSERS.fill(values, site=card.site)):
+                return True
+        else:  # already inside a loop — the caller awaited us correctly elsewhere
+            return False
     return credentials_fill.fill(card, values)
+
+
+#: The browsers an extension has connected from. Empty is normal: a fill then falls back to CDP.
+BROWSERS = BrowserRegistry()
 
 
 def create_app(
@@ -233,6 +251,13 @@ def create_app(
             install_agent_skills()
         except Exception:  # noqa: BLE001 — never fail startup over an instruction file
             logging.getLogger(cfg.audit_logger_name).exception("local computer skill install failed")
+        # The sign-in extension ships with the bridge, so a fresh install can fill a login form without
+        # anyone being told to load it by hand. Same rule: never fail startup over it.
+        try:
+            path = install_browser_extension()
+            logging.getLogger(cfg.audit_logger_name).info("sign-in extension installed at %s", path)
+        except Exception:  # noqa: BLE001
+            logging.getLogger(cfg.audit_logger_name).exception("sign-in extension install failed")
         # Banners while the app is shut: a relay (Bark) plus a timer that reads each bot's
         # conversation. Started here rather than at import so tests that build an app without
         # touching the network do not spawn threads.
@@ -288,6 +313,10 @@ def create_app(
     app.include_router(create_bot_categories_router(runtime))
     # Login cards (docs/CREDENTIALS.md): the owner types a secret into the app and it goes
     # to the fill target, never to the bot. The deliverer is the bot screen's browser.
+    app.include_router(create_browser_router(runtime, BROWSERS))
+    # Integrations (Composio): the owner connects Gmail/Calendar/etc. through Composio's hosted
+    # page; the project key stays on this host and never reaches the app.
+    app.include_router(create_integrations_router(runtime))
     app.include_router(create_credentials_router(
         runtime, CardStore(), deliver=deliver_to_bot_screen))
     app.include_router(create_bot_search_router(runtime))
@@ -455,6 +484,10 @@ def create_app(
             raise HTTPException(status_code=404, detail="unknown device")
         runtime.tickets.revoke_device(device_id)
         return {"deleted": device_id}
+
+    @app.websocket("/v1/browser/ws")
+    async def ws_browser(websocket: WebSocket) -> None:
+        await browser_socket(websocket, runtime, BROWSERS)
 
     @app.websocket("/v1/local-computers/ws")
     async def ws_local_computer(websocket: WebSocket) -> None:
