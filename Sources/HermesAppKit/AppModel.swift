@@ -2815,6 +2815,16 @@ public final class AppModel: ObservableObject {
         try await client.integrations()
     }
 
+    /// What a key-based service asks for, as Composio declares it.
+    public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] {
+        try await client.integrationKeyFields(slug: slug)
+    }
+
+    /// Hand the owner's key to the host, which passes it to Composio. Nothing comes back but an acknowledgement.
+    public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {
+        try await client.connectIntegrationWithKey(slug: slug, values: values)
+    }
+
     /// The hosted Composio page for one service, ready to open in a browser.
     public func connectIntegration(slug: String, alias: String? = nil) async throws -> String {
         try await client.connectIntegration(slug: slug, alias: alias)

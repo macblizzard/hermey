@@ -351,6 +351,13 @@ extension GatewayClientProtocol {
 
     /// No bridge, no bot management: a client without the routes fails loudly rather than
     /// reporting a delete that never happened.
+    /// No bridge, no key-based integrations: an unpaired client, a fixture or a preview has nothing to ask and
+    /// nowhere to send a key. Declared here so every stub conformance is valid without repeating itself.
+    public func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField] { [] }
+    public func connectIntegrationWithKey(slug: String, values: [String: String]) async throws {
+        throw BotAdminUnavailable()
+    }
+
     public func deleteBot(_ profile: String) async throws { throw BotAdminUnavailable() }
     public func setBotEnabled(_ profile: String, enabled: Bool) async throws { throw BotAdminUnavailable() }
     public func disabledBots() async throws -> Set<String> { [] }
