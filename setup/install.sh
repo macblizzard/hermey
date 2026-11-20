@@ -520,7 +520,8 @@ say "Done"
 if [ -x "$(dirname "$0")/bot-browser.sh" ]; then
   echo
   echo "  Bot browser and sign-in extension:"
-  bash "$(dirname "$0")/bot-browser.sh" || true
+  # The prefix decides which unit the drop-in belongs to; pass it so a renamed install adds its own.
+  HERMEY_UNIT_PREFIX="$UNIT_PREFIX" bash "$(dirname "$0")/bot-browser.sh" || true
 fi
 
 if [ -n "$TAIL_HOST" ]; then

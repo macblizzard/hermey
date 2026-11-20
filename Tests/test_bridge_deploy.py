@@ -72,5 +72,37 @@ class TheDeployIsOneCommand(unittest.TestCase):
             self.assertIn(f'"{module}"', body)
 
 
+class TheSignInDropInFollowsTheInstalledUnit(unittest.TestCase):
+    """Same lesson as the deploy script, one script further: a unit name must be the one that exists.
+
+    `setup/install.sh` creates `<prefix>-bridge`. `setup/bot-browser.sh` adds a drop-in carrying
+    `ReadWritePaths=/opt/hermes-extension`, and it used to address it to `hermes-native-bridge.service`
+    — the predecessor's name. systemd ignores a drop-in for a unit that is not there, and the script
+    still printed `service: drop-in added`: the bridge then could not refresh that directory, wrote the
+    extension into its own state directory instead, while the launcher kept loading the older copy in
+    /opt — a stale extension after an upgrade, with every line of output green.
+    """
+
+    BRIDGE = (ROOT / "setup" / "bot-browser.sh").read_text(encoding="utf-8")
+    INSTALLER = (ROOT / "setup" / "install.sh").read_text(encoding="utf-8")
+
+    def test_it_writes_for_the_unit_the_installer_creates(self) -> None:
+        self.assertIn('UNIT="${HERMEY_UNIT_PREFIX:-hermey}-bridge"', self.BRIDGE)
+        self.assertIn('DROPIN="/etc/systemd/system/${UNIT}.service.d/', self.BRIDGE)
+        self.assertNotIn("/etc/systemd/system/hermes-native-bridge.service.d", self.BRIDGE,
+                         "the predecessor's unit is a fallback for a host that keeps serving from it, "
+                         "never the name a fresh install writes for")
+
+    def test_the_predecessor_is_only_used_when_it_is_the_installed_one(self) -> None:
+        # The unit that is *running* decides, not the one whose file happens to exist: both names can be
+        # on disk, and only one of them can hold the loopback port.
+        self.assertIn('if ! systemctl is-active --quiet "$UNIT" 2>/dev/null; then', self.BRIDGE)
+        self.assertIn("systemctl is-active --quiet hermes-native-bridge", self.BRIDGE)
+
+    def test_the_installer_hands_over_its_prefix(self) -> None:
+        self.assertIn('HERMEY_UNIT_PREFIX="$UNIT_PREFIX" bash', self.INSTALLER,
+                      "a renamed install would otherwise add a drop-in for the default name")
+
+
 if __name__ == "__main__":
     unittest.main()
