@@ -50,9 +50,9 @@ struct IntegrationsTab: View {
                 Button("Refresh") { Task { await refresh() } }
                     .disabled(busy != nil)
                 Spacer()
-                if let state {
-                    Text("Signed in as \(state.user)")
-                        .font(.caption)
+                if let state, state.services.contains(where: \.connected) {
+                    Text("Connections are held by Composio, never by this app.")
+                        .font(.caption2)
                         .foregroundStyle(Tokens.textMuted)
                 }
             }
@@ -83,9 +83,11 @@ struct IntegrationsTab: View {
                 Text(service.name)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                statusDot(service)
+                    .minimumScaleFactor(0.85)
+                Spacer(minLength: 0)
             }
+
+            statusDot(service)
 
             Text(service.blurb)
                 .font(.caption)
@@ -98,7 +100,7 @@ struct IntegrationsTab: View {
             footer(service, configured: configured)
         }
         .padding(12)
-        .frame(minHeight: 132, alignment: .topLeading)
+        .frame(minHeight: 148, alignment: .topLeading)
         .background(Tokens.surface, in: RoundedRectangle(cornerRadius: Tokens.radiusGrouped))
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.radiusGrouped)
