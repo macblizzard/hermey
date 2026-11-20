@@ -1,0 +1,13 @@
+{
+  "images": [
+    {
+      "filename": "brand-linear.png",
+      "idiom": "universal",
+      "scale": "1x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
