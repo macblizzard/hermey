@@ -185,6 +185,19 @@ class ComposioClient:
         return [{"slug": str(t.get("slug")), "name": str(t.get("name") or "")}
                 for t in (items or []) if isinstance(t, dict) and t.get("slug")]
 
+    def run_tool(self, tool_slug: str, arguments: dict | None = None,
+                 account_id: str | None = None) -> dict:
+        """Run one Composio tool for this owner, on the account named.
+
+        The slug goes in the PATH (/tools/execute/{slug}), which is why probing /tools/execute alone always
+        answered 404 — it is not a route without a tool in it. `version: latest` because v3.1 otherwise pins
+        the first published definition of the tool.
+        """
+        body: dict = {"arguments": arguments or {}, "user_id": user_id(), "version": "latest"}
+        if account_id:
+            body["connected_account_id"] = account_id
+        return self._request("POST", f"/tools/execute/{urllib.parse.quote(tool_slug, safe='')}", body)
+
     def set_alias(self, account_id: str, alias: str) -> None:
         """Rename a connected account. The alias is how the owner tells two Gmails apart."""
         self._request("PATCH", f"/connected_accounts/{urllib.parse.quote(account_id, safe='')}",
@@ -329,6 +342,29 @@ def create_integrations_router(runtime, client: ComposioClient | None = None):
             return {"tools": api.list_tools(slug)}
         except ComposioError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from None
+
+    @router.post("/run")
+    def run(body: dict | None = None) -> dict:
+        """Run one tool against a connected account: what a bot uses to actually read or act.
+
+        The account is named explicitly when a service has more than one, because an unqualified call would
+        silently pick one — and with two Gmails that is the wrong mailbox half the time.
+        """
+        tool = (body or {}).get("tool")
+        if not isinstance(tool, str) or not tool.strip():
+            raise HTTPException(status_code=400, detail="tool is required")
+        account = (body or {}).get("account_id")
+        arguments = (body or {}).get("arguments") or {}
+        if not isinstance(arguments, dict):
+            raise HTTPException(status_code=400, detail="arguments must be an object")
+        try:
+            result = api.run_tool(tool.strip(), arguments,
+                                  account if isinstance(account, str) and account else None)
+        except ComposioError as exc:
+            _audit("failed", tool[:20], str(exc))
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        _audit("ran", tool[:20])
+        return {"ok": True, "result": result}
 
     @router.post("/{slug}/alias")
     def alias(slug: str, body: dict | None = None) -> dict:

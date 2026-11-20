@@ -116,15 +116,42 @@ def cmd_connect(bridge: str, slug: str, alias: str | None = None) -> int:
     return 0
 
 
+def cmd_run(bridge: str, tool: str, account: str | None, arguments: str | None) -> int:
+    """Run one tool and print its result. This is how a bot actually reads or acts."""
+    try:
+        args = json.loads(arguments) if arguments else {}
+    except json.JSONDecodeError as exc:
+        print(f"--args is not JSON: {exc}", file=sys.stderr)
+        return 2
+    body = {"tool": tool, "arguments": args}
+    if account:
+        body["account_id"] = account
+    try:
+        reply = _call(bridge, "POST", "/v1/integrations/run", body, timeout=120)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")[:200]
+        print(f"could not run {tool}: HTTP {exc.code} {detail}", file=sys.stderr)
+        return 2
+    print(json.dumps(reply.get("result"), indent=2)[:4000])
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Connected integrations and their tool names")
-    parser.add_argument("verb", choices=("list", "tools", "connect"))
+    parser.add_argument("verb", choices=("list", "tools", "connect", "run"))
     parser.add_argument("slug", nargs="?", help="gmail, googlecalendar, googledrive, googledocs, googlesheets, googlemaps")
     parser.add_argument("--alias", default=None, help="connect: a name for this account, e.g. work")
+    parser.add_argument("--tool", default=None, help="run: tool slug, e.g. GMAIL_FETCH_EMAILS")
+    parser.add_argument("--account", default=None, help="run: which connected account")
+    parser.add_argument("--args", default=None, help="run: JSON arguments")
     parser.add_argument("--bridge", default=DEFAULT_BRIDGE)
     args = parser.parse_args()
     if args.verb in ("tools", "connect") and not args.slug:
         parser.error(f"{args.verb} needs a service, e.g. {args.verb} gmail")
+    if args.verb == "run":
+        if not args.tool:
+            parser.error("run needs --tool, e.g. --tool GMAIL_FETCH_EMAILS")
+        return cmd_run(args.bridge, args.tool, args.account, args.args)
     if args.verb == "list":
         return cmd_list(args.bridge)
     if args.verb == "tools":

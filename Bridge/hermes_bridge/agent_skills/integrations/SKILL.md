@@ -38,6 +38,19 @@ GMAIL_SEND_EMAIL	Send email
 Use these names exactly. Guessing (`send_email`, `list_messages`) wastes a turn and gets a
 tool-not-found back.
 
+## Reading and acting
+
+```bash
+@@BIN@@/hermey_integrations.py run --tool GMAIL_FETCH_EMAILS \
+  --account <account id from list> --args '{"max_results": 5}'
+```
+
+That is the call that actually reads mail or changes a calendar event. It goes through the bridge, which holds
+the project key — you never see a token. The result is the tool's own JSON.
+
+The account is required whenever a service has more than one. An unqualified call silently picks one, which
+with two Gmails is the wrong mailbox half the time.
+
 ## If the service the owner wants is not connected
 
 ```bash
