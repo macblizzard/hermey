@@ -68,6 +68,15 @@ public final class AppModel: ObservableObject {
     /// The bot whose sessions and transcript are on screen. `nil` means "not chosen yet", which
     /// is also what an unscoped `session.list` means.
     @Published public private(set) var selectedBotID: String?
+    /// The bot whose rows `transcript` currently holds — the model's answer to "whose messages are
+    /// these?", which nothing used to ask.
+    ///
+    /// One transcript serves whichever bot is on screen. Every write that *replaces* it states its
+    /// bot and is refused when the answer disagrees, so a late resume for the bot the user left can
+    /// no longer be drawn inside the bot they moved to — the report that a bot's window showed
+    /// another bot's messages until the app was relaunched. The guard is in the model, not the view:
+    /// a window is drawn from `transcript`, and no view can tell whose rows it was handed.
+    @Published public private(set) var transcriptOwner: String?
     /// Why the bot directory could not be read. The bot pane says so rather than "no bots".
     @Published public private(set) var botsError: String?
 
@@ -638,6 +647,7 @@ public final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.connection.isLive { await self.loadBotPreviews() }
+                self.noteWireSilence()
                 try? await Task.sleep(for: .seconds(Self.unreadSweepInterval))
             }
         }
@@ -646,6 +656,42 @@ public final class AppModel: ObservableObject {
     public func stopUnreadSweep() {
         unreadSweepTask?.cancel()
         unreadSweepTask = nil
+    }
+
+    // MARK: The wire's own heartbeat
+
+    /// How long a turn may run with no socket event at all before the log says so.
+    ///
+    /// "Chats get stuck sometimes" is the one report with no shape: a turn that stops mid-stream, a
+    /// spinner that never resolves. Two very different causes produce it — the host stopped talking,
+    /// or this app stopped drawing what it received — and only the wire's own silence tells them
+    /// apart. Nothing recorded it, so the next report was as shapeless as the first.
+    private static let silenceThreshold: TimeInterval = 45
+
+    private var lastWireEventAt = Date()
+    private var lastWireEventLabel = "none yet"
+    private var silenceReported = false
+
+    private func noteWireEvent(_ event: ClientEvent) {
+        lastWireEventAt = Date()
+        // A short name, not the payload: the rows carry the words, this is a diagnostic line.
+        lastWireEventLabel = String(describing: event).prefix(80).description
+        silenceReported = false
+    }
+
+    /// Say how long the wire has been quiet, once per stall, while a turn is supposed to be running.
+    ///
+    /// Runs on the sweep's clock (`unreadSweepInterval`) rather than a timer of its own: one slow
+    /// loop already exists, and a second one is how a client ends up polling twice as often as it
+    /// meant to.
+    func noteWireSilence() {
+        guard isStreaming || !runningSessions.isEmpty else { return }
+        let quiet = Date().timeIntervalSince(lastWireEventAt)
+        guard quiet >= Self.silenceThreshold, !silenceReported else { return }
+        silenceReported = true
+        ClientLog.note("no socket event for \(Int(quiet))s while a turn runs "
+                       + "(last: \(lastWireEventLabel); wire: \(connection.label))",
+                       level: .warning, category: "connection")
     }
 
     // MARK: Sessions
@@ -1105,7 +1151,10 @@ public final class AppModel: ObservableObject {
     /// wiped every earlier page — and "load earlier" looked broken because the page it fetched was
     /// discarded by the next reconnect a few seconds later.
     private func adoptResume(_ entries: [TranscriptEntry], cursor: Int?, total: Int,
-                             sessionID: String) {
+                             sessionID: String, botID: String? = nil) {
+        // Whose rows these are, before they are merged into rows somebody else may be reading.
+        let owner = botID ?? selectedBotID
+        if let owner, !mayOwn(owner, writing: "a resume") { return }
         let merged = TranscriptPaging.merge(keeping: transcript, incoming: entries,
                                             incomingCursor: cursor, oldCursor: earlierCursor)
         if merged.entries.count > entries.count {
@@ -1113,8 +1162,37 @@ public final class AppModel: ObservableObject {
                            level: .info, category: "paging")
         }
         transcript = SentAttachmentVault.decorate(merged.entries, sessionID: sessionID)
+        // The scroll-jump report in one line: a transcript whose *first* row changes is a
+        // transcript the reader's position cannot survive, so say when it happened and what it was
+        // replaced with. Without this the app can only say that the pane moved.
+        if !transcript.isEmpty, merged.entries.first?.id != transcript.first?.id {
+            ClientLog.note("transcript replaced (\(transcript.count) → \(merged.entries.count) rows, "
+                           + "first row \(transcript.first?.id ?? "-") → "
+                           + "\(merged.entries.first?.id ?? "-"))",
+                           level: .info, category: "session")
+        }
+        transcriptOwner = owner
         earlierCursor = merged.cursor
         historyTotal = total
+    }
+
+    /// Whether a write of `botID`'s rows may land on the transcript that is on screen.
+    ///
+    /// Two facts, both cheap: the bot that asked is the bot on screen, and the rows already there
+    /// (if any) belong to that same bot. A refusal is logged rather than silent — a dropped adopt
+    /// nobody can see is next week's mystery, and this one is *supposed* to be the quiet path.
+    private func mayOwn(_ botID: String, writing what: String) -> Bool {
+        guard selectedBotID == botID else {
+            ClientLog.note("refused \(what) for \(botID): \(selectedBotID ?? "no bot") is on screen",
+                           level: .warning, category: "session")
+            return false
+        }
+        guard transcriptOwner == nil || transcriptOwner == botID else {
+            ClientLog.note("refused \(what) for \(botID): the transcript holds "
+                           + "\(transcriptOwner ?? "nobody")'s rows", level: .warning, category: "session")
+            return false
+        }
+        return true
     }
 
     /// Put a remembered conversation back on screen, before any network call is made.
@@ -1134,6 +1212,7 @@ public final class AppModel: ObservableObject {
                        level: .info, category: "cache")
         selectedSessionID = snapshot.sessionID
         transcript = snapshot.entries
+        transcriptOwner = botID
         earlierCursor = snapshot.earlierCursor
         historyTotal = snapshot.historyTotal
         pendingRequests = snapshot.openRequests
@@ -1149,6 +1228,7 @@ public final class AppModel: ObservableObject {
         draftSessionIDs = []
         sessions = []
         transcript = []
+        transcriptOwner = nil
         earlierCursor = nil
         historyTotal = 0
         loadingEarlier = false
@@ -1257,12 +1337,16 @@ public final class AppModel: ObservableObject {
     /// takes. It is also what an offline launch falls back to. When the host answers, `adoptResume`
     /// merges its rows over these, keeping the cached earlier pages.
     @discardableResult
-    private func paintCachedConversation(_ id: SessionID) async -> Bool {
+    private func paintCachedConversation(_ id: SessionID, botID: String? = nil) async -> Bool {
         guard transcript.isEmpty, let cached = await diskCache.messages(for: id) else { return false }
         let index = await diskCache.links(for: id)
+        // After the reads, not before them: the point of the check is what moved while they ran.
+        let owner = botID ?? selectedBotID
+        if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
         selectedSessionID = id
         transcript = SentAttachmentVault.decorate(cached.messages, sessionID: id)
         if let index { transcript = index.attachMissing(to: transcript) }
+        transcriptOwner = owner
         earlierCursor = cached.cursor
         historyTotal = cached.total
         turnRowStart = transcript.count
@@ -1305,6 +1389,9 @@ public final class AppModel: ObservableObject {
             earlierCursor = nil
             historyTotal = 0
         }
+        // Everything above is this bot's: the session was chosen for it and the epoch that guards
+        // the resume was read after the switch.
+        transcriptOwner = selectedBotID
         turnRowStart = 0
         setStreamed("")
         reasoningText = ""
@@ -1934,13 +2021,19 @@ public final class AppModel: ObservableObject {
     /// unchanged, because replacing it is how a live conversation gets mistaken for an empty bot.
     func openStoredConversation(_ stored: SessionID, botID: String,
                                 publish: Bool) async -> OpenOutcome {
+        // Read *before* the first await: a bot switch (or a second open) moves `botEpoch` while the
+        // resume is in flight, and the answer that lands afterwards belongs to a conversation the
+        // user has already left. That late write is the "a bot's window shows another bot's
+        // messages" report — it lands in whichever window is now on screen.
+        let epoch = botEpoch
         // Cache-first here too: the stored id is resumed the slow way, so the copy this device
         // already has belongs on screen now rather than after the call returns.
         if transcript.isEmpty {
-            await paintCachedConversation(stored)
+            await paintCachedConversation(stored, botID: botID)
         }
         do {
-            try await adoptStoredConversation(stored, botID: botID, publish: publish)
+            try await adoptStoredConversation(stored, botID: botID, publish: publish,
+                                              epoch: epoch)
             return .opened(stored)
         } catch is CancellationError {
             // Leaving the screen cancels the open-in-flight; the next visit resumes normally.
@@ -1950,17 +2043,18 @@ public final class AppModel: ObservableObject {
                 return await forgetStoredConversation(stored, botID: botID)
             }
             guard TransportFailure.isTransport(error) else {
-                return await reportOpenFailure(error, stored: stored)
+                return await reportOpenFailure(error, stored: stored, botID: botID)
             }
             // One silent retry, never two: a socket that is still down after a forced dial is a
             // failure the user has to see.
             ClientLog.note("resume of \(stored) hit the transport (\(error.localizedDescription)); "
                            + "reconnecting once", level: .warning, category: "session")
             guard await connectNow(reason: "a resume hit a dead socket") else {
-                return await reportOpenFailure(error, stored: stored)
+                return await reportOpenFailure(error, stored: stored, botID: botID)
             }
             do {
-                try await adoptStoredConversation(stored, botID: botID, publish: publish)
+                try await adoptStoredConversation(stored, botID: botID, publish: publish,
+                                              epoch: epoch)
                 return .opened(stored)
             } catch is CancellationError {
                 return .failed
@@ -1968,19 +2062,29 @@ public final class AppModel: ObservableObject {
                 if let gateway = error as? GatewayError, Self.isForgottenSession(gateway) {
                     return await forgetStoredConversation(stored, botID: botID)
                 }
-                return await reportOpenFailure(error, stored: stored)
+                return await reportOpenFailure(error, stored: stored, botID: botID)
             }
         }
     }
 
     /// One resume, applied to the screen. Throws so the caller decides what a failure means: a
     /// forgotten id is recoverable, a dead socket is retryable, anything else is the user's to read.
+    ///
+    /// `epoch` is `botEpoch` as it stood when the open began. A resume that answers after a bot
+    /// switch is thrown away rather than drawn: the rows belong to the conversation the user left.
     private func adoptStoredConversation(_ stored: SessionID, botID: String,
-                                         publish: Bool) async throws {
+                                         publish: Bool, epoch: Int) async throws {
         let resumed = try await client.resumeSession(stored, profile: botID)
+        // After the await, never before it: the counter exists to notice what moved while we waited.
+        guard epoch == botEpoch, selectedBotID == botID else {
+            ClientLog.note("dropped a resume for \(botID) (\(stored)): "
+                           + "\(selectedBotID ?? "no bot") is on screen now",
+                           level: .info, category: "session")
+            throw CancellationError()
+        }
         selectedSessionID = stored
         adoptResume(resumed.entries, cursor: resumed.earlierCursor,
-                    total: resumed.historyTotal, sessionID: stored)
+                    total: resumed.historyTotal, sessionID: stored, botID: botID)
         pendingRequests = resumed.openRequests
         adopt(resumed, session: stored)
         markTranscriptCurrent()
@@ -2009,11 +2113,12 @@ public final class AppModel: ObservableObject {
     }
 
     /// Say why the open failed, and put whatever this device already had back on screen.
-    private func reportOpenFailure(_ error: Error, stored: SessionID) async -> OpenOutcome {
+    private func reportOpenFailure(_ error: Error, stored: SessionID,
+                                   botID: String) async -> OpenOutcome {
         lastSendError = "could not open the conversation: \(error.localizedDescription)"
         ClientLog.note("resume of the stored session failed: \(error.localizedDescription)",
                        level: .error, category: "session")
-        await paintCachedConversation(stored)
+        await paintCachedConversation(stored, botID: botID)
         return .failed
     }
 
@@ -3717,6 +3822,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func apply(_ event: ClientEvent) async {
+        noteWireEvent(event)
         // Before any of the branches below: an event for a bot the user is not looking at is still
         // *that bot's* activity, and those branches return early for exactly that reason.
         trackActivity(event)
