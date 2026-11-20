@@ -88,19 +88,78 @@ function fillFields(fields) {
 // reading the page itself: how many password boxes, whether a one-time code is being asked for, and the
 // visible buttons with their text.
 function probePage() {
+  // Semantic, not textual: a login form is recognised by its fields (autocomplete/type) and its submit
+  // control, and the way in is a link whose href says login. Matching button TEXT only works on sites you
+  // have already seen, in the language you happen to speak — it does not generalise, and it filled a search
+  // box on one site because "a visible text field" was the whole test.
   const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
   const inputs = Array.from(document.querySelectorAll("input")).filter(visible);
-  const buttons = Array.from(document.querySelectorAll("button, input[type=submit], a[role=button]"))
+  const describe = (el) => ({
+    type: el.type || "text",
+    name: el.name || el.id || "",
+    autocomplete: (el.autocomplete || "").toLowerCase(),
+    placeholder: el.placeholder || "",
+  });
+  const fields = inputs.map(describe);
+  const isSearch = (f) => f.type === "search" || /^(q|s|query|search|term)$/i.test(f.name) ||
+    /search|suche|recherche/i.test(f.name + " " + f.placeholder);
+  const isUsername = (f) =>
+    !isSearch(f) && (f.autocomplete.includes("username") || f.type === "email" ||
+      /email|user|login|identifier|e-?mail/i.test(f.name + " " + f.placeholder));
+  const isOtp = (f) => f.autocomplete.includes("one-time-code") || /otp|code|token/i.test(f.name);
+  const form = document.querySelector("form");
+  const submit = form
+    ? form.querySelector('button[type=submit], input[type=submit], button:not([type])')
+    : document.querySelector('button[type=submit], input[type=submit]');
+  const links = Array.from(document.querySelectorAll("a[href]"))
     .filter(visible)
-    .map((el) => (el.innerText || el.value || "").trim())
-    .filter((text) => text && text.length < 40);
+    .map((a) => ({ text: (a.innerText || "").trim().slice(0, 40), href: a.getAttribute("href") || "" }))
+    .filter((l) => /log ?in|sign ?in|anmelden|einloggen|connexion|accedi|auth|sso|oauth/i
+      .test(l.href + " " + l.text))
+    .slice(0, 6);
   return {
     url: location.href,
+    title: document.title,
+    formPresent: Boolean(form),
+    // Deliberately narrow: a page with text boxes is not a sign-in page. Doctolib's homepage has a search
+    // form with two, and treating that as a login form put the owner's email into a search field.
+    usernameFields: fields.filter(isUsername).length,
+    searchFields: fields.filter(isSearch).length,
+    buttons: Array.from(document.querySelectorAll("button, a[role=button]")).filter(visible)
+      .map((b) => (b.innerText || "").trim().slice(0, 30)).filter(Boolean).slice(0, 8),
     passwordFields: inputs.filter((el) => el.type === "password").length,
-    otpBoxes: inputs.filter((el) => /one-time-code/i.test(el.autocomplete || "")).length,
-    textFields: inputs.filter((el) => el.type === "text" || el.type === "email").length,
-    buttons: [...new Set(buttons)],
+    otpBoxes: fields.filter(isOtp).length,
+    submitLabel: submit ? (submit.innerText || submit.value || "").trim().slice(0, 30) : "",
+    loginLinks: links,
+    fields: fields.slice(0, 8),
   };
+}
+
+// Follow an auth-ish link by its href rather than its label, so the language of the page does not matter.
+function clickHref(hrefPart) {
+  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const wanted = String(hrefPart || "").toLowerCase();
+  const link = Array.from(document.querySelectorAll("a[href]")).filter(visible)
+    .find((a) => ((a.getAttribute("href") || "") + " " + (a.innerText || "")).toLowerCase().includes(wanted));
+  if (!link) return false;
+  link.click();
+  return true;
+}
+
+// Submit the form the way a human would: its own submit control, else Enter in the field.
+function submitForm() {
+  const form = document.querySelector("form");
+  const control = form
+    ? form.querySelector('button[type=submit], input[type=submit], button:not([type])')
+    : null;
+  if (control) { control.click(); return true; }
+  const field = Array.from(document.querySelectorAll("input")).find((el) => el.offsetParent !== null);
+  if (field) {
+    field.focus();
+    form?.requestSubmit ? form.requestSubmit() : null;
+    return true;
+  }
+  return false;
 }
 
 // Clicks the first visible button whose text matches, so a login can advance a step. Matching is on the
@@ -174,6 +233,16 @@ function connect() {
         const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         await chrome.tabs.update(tab.id, { url: String(message.url || "") });
         reply = { ok: true };
+      } else if (message.type === "clickHref") {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const [out] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, func: clickHref, args: [message.match || ""],
+        });
+        reply = { ok: Boolean(out && out.result) };
+      } else if (message.type === "submit") {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const [out] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: submitForm });
+        reply = { ok: Boolean(out && out.result) };
       } else if (message.type === "click") {
         const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         const [out] = await chrome.scripting.executeScript({
@@ -204,7 +273,10 @@ function scheduleRetry() {
 
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
-chrome.alarms?.create?.("hermey-keepalive", { periodInMinutes: 0.5 });
+// One minute is Chrome's minimum for a repeating alarm. Half a minute is silently refused, which left the
+  // worker with no way back after MV3 suspended it — the socket then dropped and stayed dropped until some
+  // other event happened to wake it.
+  chrome.alarms?.create?.("hermey-keepalive", { periodInMinutes: 1 });
 chrome.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === "hermey-keepalive") connect();
 });

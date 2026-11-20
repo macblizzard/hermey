@@ -53,14 +53,10 @@ profile without a connection, launches the browser and waits until the sign-in e
 Do not start a browser another way. A second Chromium against the same profile only prints "Opening in
 existing browser session" and exits, and the card then has nothing to fill.
 
-What is not yet automatic: recognising which step a page is on. Probe and click exist in the extension but
-probe does not answer, so work from the site's own behaviour instead —
-
-- a single form with both fields: one card, `--fields username password`;
-- a site that asks email, then password, then a code: one card per step, in that order.
-
-If a page needs you to click "Continue" between steps, say so to the owner and ask them to click it, or
-press it yourself only when you can see the page.
+`login` finds the sign-in form itself, and **asks for nothing until a real form is on screen**: it follows
+login links or clicks the login control, walks through account-choice screens, and only then raises a card.
+A page with text boxes is not a sign-in page — Doctolib's homepage search form once swallowed an owner's
+email that way, so search fields are excluded on purpose.
 
 ## A whole login in one call
 
@@ -69,9 +65,13 @@ press it yourself only when you can see the page.
   --note "Booking an appointment"
 ```
 
-It opens the page, asks the owner **once** for the email and the password, fills each step as the page
-presents it, clicks the page's own continue button, and handles a two-step code. Print the link it gives you
-and let the owner answer; do not fill anything yourself.
+It opens the page, finds the form, asks the owner **once** for the email and the password, fills each step as
+the page presents it, submits with the form's own control, and handles a two-step code. Print the link it
+gives you and let the owner answer; do not fill anything yourself.
+
+It prints one `step N:` line per move (url, field counts, what it clicked), so a run that stops short says
+where it stopped. Sites drop the sign-in step while the owner is reading the card; the verb re-enters the
+form at fill time, so a slow answer is not a failure.
 
 ## When the site asks for a code by email
 
@@ -86,29 +86,39 @@ Use the newest message only, and only the code from this site. Never read other 
 
 ## What you get back
 
-One line, after the owner answers and the browser has been filled:
-
 ```
 filled
-```
-or
-```
-not filled — the owner cancelled
-not filled — no browser could take it
+signed in (https://www.doctolib.de/)
+not filled — the browser did not take it: either it is not connected, or the page in front of it has no
+              field matching what was asked for
 not filled — the owner did not answer in time
+not filled — no sign-in page at <url> (0 text field(s), no password field); nothing was asked of you
 ```
 
-`filled` means the values reached the page. It does **not** mean the login succeeded — check the page and
-carry on. On anything else, stop and tell the owner plainly; never ask them to paste the password
-instead.
+`filled` means the values reached the page. `signed in` means the final page no longer shows a sign-in form —
+confirm before promising it. On anything else, stop and tell the owner plainly; never ask them to paste the
+password instead.
 
 ## Rules
 
 - Never ask for a password, a code or a card number in the conversation. There is no exception.
-- One card at a time. Do not fire two asks and hope one lands.
+- One card at a time. Do not fire two asks and hope one lands. Cards last 10 minutes for a login, 2 otherwise.
 - The `--site` is the origin you are actually on. It is what the owner sees, so make it the real one.
 - `--note` is one short line saying what you are doing. It is the only context the owner gets.
 - Never fill a login form yourself, by typing into the page or writing to a field. That is what the card
   is for, and it is how a value ends up somewhere you can read.
 - The bridge is at @@BRIDGE@@ ; if the script reports it cannot reach it, the bridge is down — say so
   rather than trying another route.
+
+## When it does not work
+
+- **"no browser connected"** — the desktop slept or the worker was suspended. Run `hermey_browser.py open`
+  again; it wakes the desktop and waits for the extension.
+- **A card is raised but nothing lands** — the page moved. Check with `probe` (see the `bot-desktop` skill):
+  if there is no sign-in form, `login` re-enters it; if the browser is on a search page, the site redirected.
+- **The extension is stale after an update** — Chrome binds an unpacked extension to its **path**, so new
+  files in an old directory are never loaded. The installer writes each version to its own
+  `/opt/hermes-extension/hermey-signin-<version>`; restart the browser, never call `chrome.runtime.reload()`
+  (that unloads a command-line-loaded extension for good).
+- **A "Save password?" prompt covers the field** — the launcher switches the password manager off in the
+  profile before every start; if you see it, the profile was edited while the browser was running.

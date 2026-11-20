@@ -71,11 +71,12 @@ class CardStore:
         self.cards: dict[str, Card] = {}
 
     def create(self, *, kind: str, site: str, fields: list[str], note: str, options: list[str],
-               asked_by: str) -> Card:
+               asked_by: str, ttl: float | None = None) -> Card:
         if kind not in KINDS:
             raise ValueError(f"unknown card kind {kind!r}")
+        life = self.ttl if ttl is None else max(30.0, min(float(ttl), 900.0))
         card = Card(id=secrets.token_urlsafe(18), kind=kind, site=site, fields=fields, note=note,
-                    options=options, expires_at=time.time() + self.ttl, asked_by=asked_by)
+                    options=options, expires_at=time.time() + life, asked_by=asked_by)
         self.cards[card.id] = card
         return card
 
@@ -145,6 +146,9 @@ class CardRequest(BaseModel):
     options: list[str] = Field(default_factory=list)
     note: str = ""
     bot: str = "cody"
+    #: Seconds this card stays answerable. A login in progress needs longer than a glance: the owner may be
+    #: mid-task, and a two-minute window closed under them twice while testing.
+    ttl: float | None = None
 
 
 class CardAnswer(BaseModel):
@@ -174,7 +178,8 @@ def create_credentials_router(runtime, store: CardStore,
         asked_by = authorize(request, authorization)
         store.sweep()
         card = store.create(kind=body.kind, site=body.site, fields=body.fields,
-                            note=body.note, options=body.options, asked_by=asked_by)
+                            note=body.note, options=body.options, asked_by=asked_by,
+                            ttl=body.ttl)
         # The audit record carries the site (a safe token) and the kind, never a value.
         runtime.audit.emit("credentials.requested", method=f"credentials.{body.kind}",
                            reason=body.site, path=f"/v1/credentials/cards/{card.id}",

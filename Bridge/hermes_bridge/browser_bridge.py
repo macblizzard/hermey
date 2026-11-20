@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -25,6 +26,12 @@ LOGGER = logging.getLogger(__name__)
 
 #: A fill must be quick: the card expires in two minutes and a human is watching the page.
 FILL_TIMEOUT_SECONDS = 10
+
+#: How long to wait for a browser that is merely asleep. An MV3 worker is suspended between events, so by
+#: the time the owner answers a card its socket has usually closed; the worker comes back on its own alarm
+#: (about 30 s). Failing instantly in that window told the owner "no browser could take it" for a browser
+#: that was connected the whole time.
+BROWSER_WAIT_SECONDS = 75.0
 
 
 @dataclass
@@ -45,6 +52,7 @@ class BrowserRegistry:
 
     def register(self, label: str, socket: Any) -> Browser:
         browser = Browser(id=uuid.uuid4().hex[:12], label=label, socket=socket)
+        self.browsers.clear()
         self.browsers[browser.id] = browser
         return browser
 
@@ -111,8 +119,26 @@ class BrowserRegistry:
             for browser in list(self.browsers.values()):
                 browser.pending.pop(call_id, None)
 
+    async def wait_for_browser(self, seconds: float | None = None) -> bool:
+        """Wait for a sleeping worker to come back. True if one is registered afterwards.
+
+        The budget is read per call, not bound as a default argument: a default froze the value at import
+        time, so a test could not shorten it and the suite sat through the production wait.
+        """
+        if seconds is None:
+            seconds = float(os.environ.get("HERMES_BROWSER_WAIT", BROWSER_WAIT_SECONDS))
+        deadline = asyncio.get_running_loop().time() + seconds
+        while asyncio.get_running_loop().time() < deadline:
+            if self.browsers:
+                return True
+            await asyncio.sleep(2)
+        return bool(self.browsers)
+
     async def fill(self, values: dict[str, str], *, site: str) -> bool:
-        """Ask an extension to put ``values`` on the page. False when nobody is listening."""
+        """Ask an extension to put ``values`` on the page. False when nobody answers in time."""
+        if not self.browsers and not await self.wait_for_browser():
+            LOGGER.info("credentials: no browser after waiting; cannot fill %s", site)
+            return False
         browser = self.any()
         if browser is None:
             LOGGER.info("credentials: no browser extension connected; cannot fill %s", site)
@@ -183,10 +209,10 @@ def create_browser_router(runtime, registry: BrowserRegistry):
         counts and labels, never an input's content.
         """
         kind = str(body.get("type") or "")
-        if kind not in ("probe", "click", "fill", "goto", "ping"):
+        if kind not in ("probe", "click", "clickHref", "submit", "fill", "goto", "ping"):
             raise HTTPException(status_code=400, detail="unknown instruction")
         payload: dict = {"type": kind}
-        if kind == "click":
+        if kind in ("click", "clickHref"):
             payload["match"] = str(body.get("match") or "")
         if kind == "goto":
             payload["url"] = str(body.get("url") or "")

@@ -10,8 +10,13 @@ The registry decides whether a login can reach a page. Two failures it must not 
 from __future__ import annotations
 
 import asyncio
+import os
 
 from hermes_bridge.browser_bridge import BrowserRegistry
+
+# Set at import, not in setUp: these are plain classes, and pytest does not call setUp on those — the
+# production wait for a sleeping worker then ran in full and turned a one-second suite into eighty.
+os.environ["HERMES_BROWSER_WAIT"] = "0.2"
 
 
 class FakeSocket:
@@ -49,6 +54,12 @@ class TestOnlyTheOwnerMayLeave:
 
 
 class TestAFill:
+    def setUp(self) -> None:
+        # The deliverer waits for a sleeping worker by design; tests must not sit through it.
+        self._env = os.environ.copy()
+        os.environ["HERMES_BROWSER_WAIT"] = "0.2"
+    def tearDown(self) -> None:
+        os.environ.clear(); os.environ.update(self._env)
     def test_without_a_browser_it_is_false_not_an_error(self) -> None:
         registry = BrowserRegistry()
         assert asyncio.run(registry.fill({"password": "x"}, site="example.test")) is False
