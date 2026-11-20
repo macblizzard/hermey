@@ -31,7 +31,7 @@
   <details class="side">
     <summary>Documentation</summary>
     <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="integrations.html" aria-current="page">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html" aria-current="page">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
     </div>
   </details>
 
@@ -138,19 +138,47 @@ failing (<code>Tools/site/check_drift.py</code>, <code>catalog</code>). Adding a
 <td><code>stripe</code></td>
 <td>Customers, payments and invoices</td>
 </tr>
+<tr>
+<td>Cloudflare</td>
+<td><code>cloudflare</code></td>
+<td>DNS, cache and Workers</td>
+</tr>
+<tr>
+<td>Vercel</td>
+<td><code>vercel</code></td>
+<td>Deployments, domains and projects</td>
+</tr>
 </tbody>
 </table>
 <p>A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.</p>
-<p>These are all toolkits where <strong>Composio manages the OAuth app</strong>, so Connect works with nothing to set up. Some
-services need more than a tap:</p>
-<ul>
-<li><strong>Cloudflare</strong> — API key only (a Global API Key), no OAuth.</li>
-<li><strong>Vercel</strong> — your own OAuth client, or a personal access token.</li>
-<li><strong>Netlify</strong> — only available as an MCP toolkit (<code>netlify_mcp</code>, 9 tools), not a classic toolkit.</li>
-</ul>
-<p>They are not offered yet on purpose: a card that cannot connect is worse than a card that is not there. Each
-needs a screen that collects a key or your client credentials, and the same card mechanism that asks for a
-password can ask for those.</p>
+<p>Most of these are toolkits where <strong>Composio manages the OAuth app</strong>, so Connect opens a consent page and there
+is nothing to set up.</p>
+<h3 id="services-you-connect-with-a-key">Services you connect with a key</h3>
+<p>Cloudflare and Vercel have no Composio-managed OAuth app, so their card asks for a key instead of opening a
+browser. <strong>Connect with a key</strong> opens a small form with exactly the fields Composio lists for that service —
+never a hard-coded guess:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>What it asks for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cloudflare</td>
+<td>Global API Key (stored as a secret) <strong>and</strong> the account email</td>
+</tr>
+<tr>
+<td>Vercel</td>
+<td>Access Token (secret), with an optional team id</td>
+</tr>
+</tbody>
+</table>
+<p>The value goes from the app to your bridge and straight on to Composio. It is not stored on the host, not
+returned in any response and not written to the audit log — only the resulting account id and status come back.</p>
+<p><strong>Netlify</strong> is the one that still is not offered: Composio has it only as an MCP toolkit (<code>netlify_mcp</code>, 9
+tools) rather than a classic toolkit, which would need MCP support before a card could mean anything.</p>
 <h2 id="what-a-bot-can-do-with-it">What a bot can do with it</h2>
 <p>Once a service is connected, the agent uses it the way it uses any other tool: read the newest message from a
 sender, list tomorrow's appointments, look up the code a site just emailed you. The <code>integrations</code> skill
@@ -185,7 +213,7 @@ hand it straight to the sign-in flow, so you are asked only for your password.</
   names a service the code no longer has;</li>
 <li>the nightly audit runs the drift checks and reports, without publishing — you are the publisher.</li>
 </ul>
-    <nav class="pager" aria-label="Pages"><a href="credentials.html"><span>Previous</span><strong>Sign-in cards</strong></a></nav>
+    <nav class="pager" aria-label="Pages"><a href="importing.html"><span>Previous</span><strong>Importing bots</strong></a></nav>
   </main>
 
   <nav class="toc" aria-label="On this page">

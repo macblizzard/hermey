@@ -390,6 +390,24 @@
 "b": "What must exist before any of this is switched on The bridge route that carries a card answer must not log its body, and must not include it in any audit payload. A test that fails if a secret ever appears in a transcript, a log line or an event payload. A test that a bot cannot obtain the value after the fill."
 },
 {
+"h": "How to use it",
+"p": "Importing bots",
+"u": "importing.html#how-to-use-it",
+"b": "How to use it Open Hermey \u2192 Settings \u2192 Back up your bots \u2192 Prompt for another platform\u2026 Paste the prompt into the other platform's main bot and let it work. It returns a hermey-bots.zip . Import it in Hermey, read the preview, choose how to treat bots that already exist here. If the other platform cannot write a zip, b"
+},
+{
+"h": "What the prompt asks for",
+"p": "Importing bots",
+"u": "importing.html#what-the-prompt-asks-for",
+"b": "What the prompt asks for kind must be hermey-bot-backup , and version must match this host \u2014 the app copies the version, you do not have to know it. One object per bot: profile (its identity, [a-z0-9][a-z0-9_-]{0,63} ), name , description , soul , memory.memory , memory.user , notes , categories , enabled , optional ic"
+},
+{
+"h": "What cannot come across",
+"p": "Importing bots",
+"u": "importing.html#what-cannot-come-across",
+"b": "What cannot come across Whatever the other platform has no equivalent for \u2014 model settings, proprietary memory structures, tool definitions. The prompt asks that bot to tell you what it dropped rather than inventing a substitution."
+},
+{
 "h": "How it works",
 "p": "Integrations",
 "u": "integrations.html#how-it-works",
