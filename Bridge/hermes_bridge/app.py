@@ -69,6 +69,10 @@ from .registry import DeviceRegistry
 from .tickets import AttemptThrottle, PairingCodes, TicketStore
 from .voice import VoiceBackend, create_voice_router
 
+#: The app's own voice in the journal. Never the audit logger for prose: that stream is one JSON object
+#: per line and is parsed as such (``hermes_bridge.audit``).
+LOGGER = logging.getLogger(__name__)
+
 #: How long a minted pairing code stays usable. Ten minutes covers the walk from the host to a
 #: phone with the app open, and a code is single-use, loopback-minted and rate-limited, so a
 #: longer window buys usability without buying risk. Override with HERMES_BRIDGE_PAIRING_TTL.
@@ -247,17 +251,21 @@ def create_app(
         # Every bot on this host gets the Mac skill and its CLI before any of them can ask how to
         # reach the Mac. Best effort on purpose: a Hermes home this process cannot write must not
         # stop the bridge from serving, and the next start simply tries again.
+        #
+        # These three report through the app's own logger, never the audit one: the audit stream is
+        # "one JSON object per line" and `Tools/qa/test_audit.py` parses every record in it, so a
+        # sentence written there is both a broken record and a red QA run.
         try:
             install_agent_skills()
         except Exception:  # noqa: BLE001 — never fail startup over an instruction file
-            logging.getLogger(cfg.audit_logger_name).exception("local computer skill install failed")
+            LOGGER.exception("local computer skill install failed")
         # The sign-in extension ships with the bridge, so a fresh install can fill a login form without
         # anyone being told to load it by hand. Same rule: never fail startup over it.
         try:
             path = install_browser_extension()
-            logging.getLogger(cfg.audit_logger_name).info("sign-in extension installed at %s", path)
+            LOGGER.info("sign-in extension installed at %s", path)
         except Exception:  # noqa: BLE001
-            logging.getLogger(cfg.audit_logger_name).exception("sign-in extension install failed")
+            LOGGER.exception("sign-in extension install failed")
         # Banners while the app is shut: a relay (Bark) plus a timer that reads each bot's
         # conversation. Started here rather than at import so tests that build an app without
         # touching the network do not spawn threads.
