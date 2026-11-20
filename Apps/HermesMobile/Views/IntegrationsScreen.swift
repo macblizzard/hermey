@@ -254,10 +254,11 @@ struct IntegrationsScreen: View {
                     .disabled(busy != nil || !configured || !service.available)
             } else {
                 Button("Connect") { Task { await connect(service) } }
-                .font(.caption)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
-                .disabled(busy != nil || !configured || !service.available)
+                    .font(.caption)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                    .disabled(busy != nil || !configured || !service.available)
+            }
         }
     }
 
