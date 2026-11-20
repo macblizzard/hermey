@@ -40,6 +40,8 @@ targets:
       - path: Apps/HermesMac
         excludes:
           - "Resources/novnc/**"
+      - path: Apps/Shared/BrandAssets.xcassets
+        buildPhase: resources
       # A folder reference, not a group: noVNC's ES modules import each other by relative path, so
       # the tree must land in the bundle with its shape intact.
       - path: Apps/HermesMac/Resources/novnc
@@ -127,6 +129,10 @@ targets:
       - path: Apps/HermesMobile
         excludes:
           - "Resources/novnc/**"
+      # One catalog for both apps: the marks are the same pictures, and a copy per target is how the phone
+      # came to show six logos while the Mac showed thirteen.
+      - path: Apps/Shared/BrandAssets.xcassets
+        buildPhase: resources
       # Same reason as the Mac: a folder reference keeps noVNC's relative module imports working.
       - path: Apps/HermesMobile/Resources/novnc
         type: folder
