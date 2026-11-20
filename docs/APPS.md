@@ -133,6 +133,25 @@ live but input is inert. **Take over** asks the host for the control lease and e
 pointer; **Hand back** returns it. Closing the pane hands control back on its own, so a bot is never
 locked out by a viewer you forgot.
 
+**Full screen** is the arrows in the pane's header. On the Mac it puts the *window* into full screen —
+the same thing the green button does — so the sidebar, the transcript and the traffic lights all go;
+leaving it the system's way (green button, ⌃⌘F) puts the pane back in its panel. On the phone the pane
+drops its own header, the status bar and the safe-area inset and runs edge to edge. Either platform
+shows one floating bar over the picture: take over / hand back, zoom −/+, the level, **Fit**, and the
+way out. `Esc` leaves full screen too (on the Mac the shell answers it, unless a text field has the
+caret).
+
+While the picture is bigger than its frame it zooms and pans between 1× and 5×:
+
+- **Mac:** pinch on the trackpad (or ⌘/⌃-scroll) zooms about the pointer, two-finger scroll pans while
+  zoomed, and ⌥-drag pans. A plain drag is still the remote mouse — that is what take-over is for.
+- **iPhone/iPad:** pinch zooms about the fingers, one-finger drag moves the remote pointer, and two
+  fingers drag the picture while zoomed (a two-finger tap is still the right click).
+
+Panning is clamped to the picture's own edges, and the click mapping stays exact at any zoom: noVNC
+measures the canvas's *rendered* rect and the page divides its own transform back out
+(`HERMEY-PATCHES.md` in each bundle), so a tap on a button in the zoomed picture presses that button.
+
 While you hold control every bot is refused (`human_has_control`), because they share the same
 screen — that is what makes "sign in once, then let the bot continue" work.
 

@@ -67,26 +67,36 @@ class EscapeClosesTheTopmostThing(unittest.TestCase):
 class TheComputerTakesTheBotPanelsSlot(unittest.TestCase):
     def test_it_takes_the_trailing_slot_the_panel_had(self) -> None:
         # The computer is a row on the bot panel, so it opens where the row is: the trailing edge,
-        # in the panel's own slot. Not the sidebar's, and not a fourth pane.
-        trailing = ROOT_VIEW.split("if store.isComputerPanelPresented, !store.isComputerFullScreen {", 1)[1]
-        self.assertIn("computerPane(fullScreen: false)", trailing.split("} else if store.isBotPanelPresented {", 1)[0])
-        self.assertIn("else if store.isBotPanelPresented {", trailing)
-        self.assertIn("max(WindowLayout.botPanelWidth, WindowLayout.computerMin)", trailing)
+        # at the panel's own width with a computer's floor. Not the sidebar's, and not a fourth
+        # pane. The row now reserves that width and the pane is drawn over it (see below), so the
+        # two cannot drift apart.
+        slot = ROOT_VIEW.split("// The shared computer borrows **this** slot", 1)[1]
+        slot = slot.split("// One pane, one place in the tree", 1)[0]
+        self.assertIn("Color.clear", slot)
+        self.assertIn("else if store.isBotPanelPresented {", slot)
+        self.assertIn("max(WindowLayout.botPanelWidth, WindowLayout.computerMin)", slot)
 
     def test_the_panel_comes_back_exactly_as_it_was(self) -> None:
         # The slot is chosen by the computer's flag; `isBotPanelPresented` is left alone, so the
         # panel is still open underneath and a close hands it straight back.
-        block = ROOT_VIEW.split("if store.isComputerPanelPresented, !store.isComputerFullScreen {", 1)[1]
-        block = block.split("Group {", 1)[0]
-        self.assertNotIn("isBotPanelPresented =", block)
+        slot = ROOT_VIEW.split("// The shared computer borrows **this** slot", 1)[1]
+        slot = slot.split("// One pane, one place in the tree", 1)[0]
+        self.assertNotIn("isBotPanelPresented =", slot)
 
     def test_the_sidebar_is_untouched_by_it(self) -> None:
         leading = ROOT_VIEW.split("HStack(spacing: 0) {", 1)[1].split("Group {", 1)[0]
         self.assertIn("if !store.isSidebarHidden {", leading)
         self.assertNotIn("computerPane", leading)
 
-    def test_full_screen_is_still_an_overlay(self) -> None:
-        self.assertIn("if store.isComputerPanelPresented, store.isComputerFullScreen {", ROOT_VIEW)
+    def test_full_screen_is_the_same_pane_not_a_second_one(self) -> None:
+        # Full screen used to be drawn as a second pane in an overlay. A second pane is a second
+        # viewer and a second socket, and the first one hands the control lease back on its way
+        # out — so going full screen threw the session away exactly when someone wanted to look
+        # closely at it. One pane, one place in the tree, a window-sized frame.
+        self.assertEqual(ROOT_VIEW.count("computerPane(fullScreen: store"), 1)
+        self.assertNotIn("store.isComputerPanelPresented, store.isComputerFullScreen {", ROOT_VIEW)
+        full = ROOT_VIEW.split("computerPane(fullScreen: store.isComputerFullScreen)", 1)[1]
+        self.assertIn("maxWidth: store.isComputerFullScreen ? .infinity : nil", full)
 
 
 class ABotCanBeDeletedFromItsSettings(unittest.TestCase):

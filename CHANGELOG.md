@@ -6,6 +6,15 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The shared computer goes full screen, and can be zoomed and panned while it is there.** The pane's
+  own arrows now hand the *window* to full screen on the Mac (the green button's behaviour, with the
+  pane falling back into its panel if you leave full screen that way, and `Esc` as the third way out)
+  and drop the header, status bar and safe-area inset on the phone; either platform keeps one floating
+  bar carrying take-over / hand back, zoom −/+, the level, Fit and the exit. The picture zooms 1×–5×
+  and pans — trackpad pinch about the pointer, two-finger scroll or ⌥-drag on the Mac, pinch and
+  two-finger drag on the phone — with the pan clamped to the picture's own edges and take-over clicks
+  still landing on the exact framebuffer pixel at any zoom (the page's CSS transform is divided back
+  out by the patched `clientToElement()`, guarded by `Tools/verify/novnc_zoom_pan.mjs`).
 - **A bot logs in without ever seeing the password.** The bot asks for a *card* — which sign-in method
   (choice), a username/password or a one-time code typed by the owner (secret), or permission to use a
   saved connection (confirm) — and the value travels app → bridge → the page, never into the

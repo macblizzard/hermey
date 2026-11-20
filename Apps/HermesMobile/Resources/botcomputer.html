@@ -178,7 +178,9 @@
     // the two-finger gestures outright.
     if (rfb._gestures) { rfb._gestures.detach(); }
 
-    const MAX_SCALE = 4;
+    // One definition of the zoom range: the pane's own buttons clamp to the same 1×–5×.
+    const MIN_SCALE = 1;
+    const MAX_SCALE = 5;
     let scale = 1, tx = 0, ty = 0, badgeTimer = 0;
     let single = null;     // the one finger that is down
     let pinch = null;      // the two fingers
@@ -220,22 +222,53 @@
     const middleOf = (touches) => ({ x: (touches[0].clientX + touches[1].clientX) / 2,
                                      y: (touches[0].clientY + touches[1].clientY) / 2 });
 
+    // The level, reported to the pane so its own buttons can show it and dim at either end. Trailing
+    // debounce rather than a plain throttle: a gesture's last frame is the number that matters, and a
+    // plain throttle drops it.
+    let lastZoomPost = 0, zoomPostTimer = 0;
+    function postZoom() {
+      clearTimeout(zoomPostTimer);
+      const wait = Math.max(0, 80 - (Date.now() - lastZoomPost));
+      zoomPostTimer = setTimeout(() => {
+        lastZoomPost = Date.now();
+        post('zoom', { scale });
+      }, wait);
+    }
+
     function applyTransform() {
       screen.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
       if (scale > 1.01) {
-        zoomBadge.textContent = `${Math.round(scale * 100)}% · two fingers to move`;
+        zoomBadge.textContent = `${Math.round(scale * 100)}% · ` +
+          (isTouch ? 'two fingers to move' : '⌥-drag or scroll to move');
         zoomBadge.style.opacity = '1';
         clearTimeout(badgeTimer);
         badgeTimer = setTimeout(() => { zoomBadge.style.opacity = '0'; }, 1600);
       } else {
         zoomBadge.style.opacity = '0';
       }
+      postZoom();
     }
     function clampPan() {
       const width = screen.clientWidth * scale;
       const height = screen.clientHeight * scale;
       tx = Math.min(0, Math.max(screen.clientWidth - width, tx));
       ty = Math.min(0, Math.max(screen.clientHeight - height, ty));
+    }
+
+    // Zoom about a point in the *visible* area, so what is under the fingers (or the pointer) stays
+    // under them. The transform lives on #screen and the canvas's bounding rect carries it, which is
+    // why noVNC still maps every click to the right framebuffer pixel — `clientToElement()` divides
+    // that rect back out (see HERMEY-PATCHES.md).
+    function zoomAround(factor, cx, cy) {
+      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * factor));
+      if (Math.abs(next - scale) < 0.0001) { return; }
+      const ratio = next / scale;
+      tx = cx - (cx - tx) * ratio;
+      ty = cy - (cy - ty) * ratio;
+      scale = next;
+      if (scale <= 1.001) { scale = MIN_SCALE; tx = 0; ty = 0; }
+      clampPan();
+      applyTransform();
     }
 
     screen.addEventListener('touchstart', (event) => {
@@ -315,7 +348,87 @@
     screen.addEventListener('touchend', endTouches, { passive: false });
     screen.addEventListener('touchcancel', endTouches, { passive: false });
 
-    window.__hermeyResetZoom = function () { scale = 1; tx = 0; ty = 0; applyTransform(); };
+    // ---- Mac pointer input ----------------------------------------------------------------
+    // A trackpad's pinch reaches WebKit as a wheel with `ctrlKey` set (and on WebKit as gesture
+    // events as well); a two-finger scroll is a plain wheel. Pinch zooms about the pointer, and while
+    // the view is zoomed a scroll pans it. At 1× the plain wheel is left alone, so it keeps reaching
+    // the remote desktop exactly as it always did. Option-drag pans, because a plain drag on the
+    // picture is the remote mouse and has to stay that.
+    //
+    // Every listener sits on #screen (the canvas's ancestor) in the capture phase: that is the only
+    // place a handler runs before noVNC's own, which is registered on the canvas itself.
+    let gestureActive = false, lastGestureAt = 0, gestureRatio = 1, panDrag = null;
+
+    screen.addEventListener('wheel', (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        // A pinch WebKit is reporting as a gesture is already being zoomed there; counting both
+        // would move the picture twice as far as the fingers did.
+        if (gestureActive || Date.now() - lastGestureAt < 150) { return; }
+        // Exponential, so one notch and a pinch's many small deltas move by the same proportion.
+        zoomAround(Math.exp(-event.deltaY * 0.012), event.clientX, event.clientY);
+        return;
+      }
+      if (scale > 1.01) {
+        event.preventDefault();
+        event.stopPropagation();
+        tx -= event.deltaX;
+        ty -= event.deltaY;
+        clampPan();
+        applyTransform();
+      }
+    }, { passive: false, capture: true });
+
+    screen.addEventListener('gesturestart', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      gestureActive = true;
+      gestureRatio = 1;
+    }, { passive: false, capture: true });
+    screen.addEventListener('gesturechange', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      zoomAround(event.scale / gestureRatio, event.clientX, event.clientY);
+      gestureRatio = event.scale || 1;
+    }, { passive: false, capture: true });
+    screen.addEventListener('gestureend', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      gestureActive = false;
+      lastGestureAt = Date.now();
+      gestureRatio = 1;
+    }, { passive: false, capture: true });
+
+    // `preventDefault()` on pointerdown is what suppresses the compatibility mousedown, so a pan
+    // never arrives at the remote pointer as a press-and-drag.
+    screen.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'mouse' || !event.altKey || scale <= 1.01) { return; }
+      event.preventDefault();
+      event.stopPropagation();
+      panDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, tx, ty };
+    }, { capture: true });
+    window.addEventListener('pointermove', (event) => {
+      if (!panDrag || event.pointerId !== panDrag.id) { return; }
+      tx = panDrag.tx + (event.clientX - panDrag.x);
+      ty = panDrag.ty + (event.clientY - panDrag.y);
+      clampPan();
+      applyTransform();
+    }, { capture: true });
+    const endPan = () => { panDrag = null; };
+    window.addEventListener('pointerup', endPan, { capture: true });
+    window.addEventListener('pointercancel', endPan, { capture: true });
+
+    // A resize — the pane going full screen, the Mac's window growing, a rotated phone — changes what
+    // "off the edge" means, so the pan is re-clamped against the new size.
+    window.addEventListener('resize', () => { clampPan(); applyTransform(); });
+
+    // The pane's own zoom buttons land on the same math as a pinch: the level is this page's, and
+    // native code only ever asks.
+    window.hermeyZoomBy = function (factor) {
+      zoomAround(factor, screen.clientWidth / 2, screen.clientHeight / 2);
+    };
+    window.__hermeyResetZoom = function () { scale = MIN_SCALE; tx = 0; ty = 0; applyTransform(); };
     window.hermeyResetZoom = window.__hermeyResetZoom;
 
     // ---- connection -------------------------------------------------------------------------
@@ -337,6 +450,8 @@
       // touches itself.
       if (rfb._gestures) { rfb._gestures.detach(); }
       post('connected');
+      // A fresh page is at 1×; saying so puts the pane's own controls where the picture is.
+      applyTransform();
       window.__hermeyApply();
     });
     rfb.addEventListener('disconnect', (e) => post('disconnected', { clean: !!(e.detail && e.detail.clean) }));

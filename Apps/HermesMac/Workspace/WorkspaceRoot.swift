@@ -433,112 +433,132 @@ struct WorkspaceShell: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Collapsed, the panel, its drag strip and the hairline all go: a hidden panel that
-            // still reserves 201 pt of chrome is not hidden.
-            if !store.isSidebarHidden {
-                BotSidebarView(model: model, store: store)
-                    .frame(width: store.sidebarWidth)
-                    // Animate the pane out to the leading edge and back, rather than deleting it from the
-                    // HStack on one frame (reported 2026-11-17: "sidebar opening and closing is janky").
-                    // The store wraps the toggle in `withAnimation`, which is what makes the removal
-                    // a transition instead of a snap.
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                // Collapsed, the panel, its drag strip and the hairline all go: a hidden panel that
+                // still reserves 201 pt of chrome is not hidden.
+                if !store.isSidebarHidden {
+                    BotSidebarView(model: model, store: store)
+                        .frame(width: store.sidebarWidth)
+                        // Animate the pane out to the leading edge and back, rather than deleting it from the
+                        // HStack on one frame (reported 2026-11-17: "sidebar opening and closing is janky").
+                        // The store wraps the toggle in `withAnimation`, which is what makes the removal
+                        // a transition instead of a snap.
+                        .transition(.move(edge: .leading).combined(with: .opacity))
 
-                PaneDivider(width: sidebarBinding,
-                            range: WorkspaceStore.sidebarFloor...Geometry.sidebarMax,
-                            onCommit: { store.endSidebarDrag() })
+                    PaneDivider(width: sidebarBinding,
+                                range: WorkspaceStore.sidebarFloor...Geometry.sidebarMax,
+                                onCommit: { store.endSidebarDrag() })
 
-                // The divider strip is `Geometry.paneDivider` of hit area; the boundary line itself
-                // is this one hairline, so the shell adds paneDivider + 1 to the conversation's
-                // minimum — the same sum `HermesMacApp`'s window minimum is built from.
-                Hairline(.vertical)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-
-            // One pane, two kinds of conversation: a bot's endless chat, or a room. A room is not a
-            // window on top of the app — it is the app, and closing it returns to the bot underneath.
-            Group {
-                if let room = model.activeRoom {
-                    RoomChatView(room: room,
-                                 icons: store.botFaces,
-                                 presentation: .pane,
-                                 load: { roomID, since in try await model.roomPage(roomID, since: since) },
-                                 send: { roomID, text, files in
-                                     try await model.sendRoomMessage(roomID, text: text, attachments: files)
-                                 },
-                                 onActivity: { Task { await model.refreshRooms() } },
-                                 onLatestSeq: { model.markRoomRead(room.id, seq: $0) },
-                                 onClose: { model.closeRoom() },
-                                 sidebarHidden: store.isSidebarHidden,
-                                 onToggleSidebar: { store.toggleSidebar() },
-                                 onDelete: { pendingRoomDelete = room },
-                                 onRename: { name in try await model.renameRoom(room.id, to: name) },
-                                 renameSignal: $model.renameRequest,
-                                 markdown: { markdownMessage($0) },
-                                 refreshSignal: model.refreshTick)
-                } else {
-                    ConversationPane(model: model, store: store)
+                    // The divider strip is `Geometry.paneDivider` of hit area; the boundary line itself
+                    // is this one hairline, so the shell adds paneDivider + 1 to the conversation's
+                    // minimum — the same sum `HermesMacApp`'s window minimum is built from.
+                    Hairline(.vertical)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
-            }
-                // With the computer beside it the reading pane hands back some width rather than
-                // pushing the window's edges out of view.
-                .frame(minWidth: store.isComputerPanelPresented
-                              ? WindowLayout.conversationMinWithComputer
-                              : WindowLayout.conversationMin,
-                       maxWidth: .infinity,
-                       maxHeight: .infinity)
-                // A new bot is a new conversation: re-creating the pane drops the old scroll
-                // position and any approval sheet that belonged to the last bot.
-                .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
+
+                // One pane, two kinds of conversation: a bot's endless chat, or a room. A room is not a
+                // window on top of the app — it is the app, and closing it returns to the bot underneath.
+                Group {
+                    if let room = model.activeRoom {
+                        RoomChatView(room: room,
+                                     icons: store.botFaces,
+                                     presentation: .pane,
+                                     load: { roomID, since in try await model.roomPage(roomID, since: since) },
+                                     send: { roomID, text, files in
+                                         try await model.sendRoomMessage(roomID, text: text, attachments: files)
+                                     },
+                                     onActivity: { Task { await model.refreshRooms() } },
+                                     onLatestSeq: { model.markRoomRead(room.id, seq: $0) },
+                                     onClose: { model.closeRoom() },
+                                     sidebarHidden: store.isSidebarHidden,
+                                     onToggleSidebar: { store.toggleSidebar() },
+                                     onDelete: { pendingRoomDelete = room },
+                                     onRename: { name in try await model.renameRoom(room.id, to: name) },
+                                     renameSignal: $model.renameRequest,
+                                     markdown: { markdownMessage($0) },
+                                     refreshSignal: model.refreshTick)
+                    } else {
+                        ConversationPane(model: model, store: store)
+                    }
+                }
+                    // With the computer beside it the reading pane hands back some width rather than
+                    // pushing the window's edges out of view.
+                    .frame(minWidth: store.isComputerPanelPresented
+                                  ? WindowLayout.conversationMinWithComputer
+                                  : WindowLayout.conversationMin,
+                           maxWidth: .infinity,
+                           maxHeight: .infinity)
+                    // A new bot is a new conversation: re-creating the pane drops the old scroll
+                    // position and any approval sheet that belonged to the last bot.
+                    .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
 
             // The bot's own panel, on the trailing edge: the phone's drawer as a pane. It is not
             // modal — the transcript keeps scrolling behind it, and a compaction keeps reporting
             // into it while you watch.
             //
-            // The shared computer takes **this** slot, not the sidebar's and not a fourth pane: the
-            // computer is a row on this panel, so it opens where the row is. `isBotPanelPresented`
-            // is left alone, so closing the computer hands the panel back exactly as it was
-            // (reported 2026-11-14, twice: first it was a third pane, then the wrong edge).
-            if store.isComputerPanelPresented, !store.isComputerFullScreen {
-                computerPane(fullScreen: false)
-                    // The panel's own width, with a computer's floor: narrower than this and the
-                    // screen inside stops being readable.
-                    .frame(width: max(WindowLayout.botPanelWidth, WindowLayout.computerMin))
-                    .transition(.move(edge: .trailing))
+            // The shared computer borrows **this** slot, not the sidebar's and not a fourth pane:
+            // the computer is a row on this panel, so it opens where the row is.
+            // `isBotPanelPresented` is left alone, so closing the computer hands the panel back
+            // exactly as it was (reported 2026-11-14, twice: first it was a third pane, then the
+            // wrong edge). What stays here while the computer is open is only the width it is drawn
+            // over — the pane itself is a sibling of this row, so it can change size without
+            // changing parent.
+            if store.isComputerPanelPresented {
+                Color.clear
+                    .frame(width: store.isComputerFullScreen
+                           ? 0
+                           : max(WindowLayout.botPanelWidth, WindowLayout.computerMin))
             } else if store.isBotPanelPresented {
                 MacBotPanel(model: model, store: store)
                     .transition(.move(edge: .trailing))
             }
-
-            // The shared computer, beside the conversation rather than over it: you read what the
-            // bot says about the errand while watching it do the errand. Full screen is the
-            // panel's own verb, so in that state this slot stays empty and the overlay below owns
-            // the window — one pane instance alive either way.
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // The panes start at the **window's** top edge, not at the bottom of the strip a title bar
-        // would occupy. `.hiddenTitleBar` removed the bar but not the inset that stood where it
-        // was, so both panes began 32 pt down and the transcript was clipped against that line,
-        // cutting the first visible line through its glyphs. Midnight has no such strip: its text
-        // runs to the edge and dissolves under its own floating pill. The traffic lights need no
-        // reservation — they live in the window's frame view and are hit-tested before this content
-        // — and the 6 pt drag strip still owns the gesture at the top.
-        .ignoresSafeArea(.container, edges: .top)
-        // A third pane in a narrow window is grown, not clipped.
-        .background(WindowWidthFitter(minimum: store.minimumWindowWidth).frame(width: 0, height: 0))
-        .overlay {
-            if store.isComputerPanelPresented, store.isComputerFullScreen {
-                computerPane(fullScreen: true)
-                    .background(Tokens.canvas)
-                    .transition(.opacity)
-            }
+
+        // The computer, beside the conversation rather than over it: you read what the bot says about
+        // the errand while watching it do the errand, and full screen is that same pane with a
+        // window-sized frame.
+        //
+        // One pane, one place in the tree, whatever size it is. Two slots — a pane in the row above
+        // for the panel, another in an overlay for full screen — meant SwiftUI built a **second**
+        // pane for the full-screen state, and a new pane is a new viewer, a new ticket and a new
+        // socket; its predecessor hands the control lease back on the way out, so going full screen
+        // while in control threw the session away. Same view, new frame.
+        if store.isComputerPanelPresented {
+            computerPane(fullScreen: store.isComputerFullScreen)
+                // The panel's own width, with a computer's floor: narrower than this and the screen
+                // inside stops being readable.
+                .frame(width: store.isComputerFullScreen
+                       ? nil
+                       : max(WindowLayout.botPanelWidth, WindowLayout.computerMin))
+                .frame(maxWidth: store.isComputerFullScreen ? .infinity : nil,
+                       maxHeight: .infinity)
+                .background(Tokens.canvas)
+                .transition(.move(edge: .trailing))
         }
-        .background(Tokens.canvas)
-        // Escape closes the topmost pane. The catcher sits under the shell, so it sees the key
-        // before any view that might want it — except a text field, which keeps it.
-        .background(EscapeKeyCatcher { store.closeTopmostOnEscape() }
-                        .frame(width: 0, height: 0))
+    }
+    // The panes start at the **window's** top edge, not at the bottom of the strip a title bar
+    // would occupy. `.hiddenTitleBar` removed the bar but not the inset that stood where it
+    // was, so both panes began 32 pt down and the transcript was clipped against that line,
+    // cutting the first visible line through its glyphs. Midnight has no such strip: its text
+    // runs to the edge and dissolves under its own floating pill. The traffic lights need no
+    // reservation — they live in the window's frame view and are hit-tested before this content
+    // — and the 6 pt drag strip still owns the gesture at the top.
+    .ignoresSafeArea(.container, edges: .top)
+    // A third pane in a narrow window is grown, not clipped.
+    .background(WindowWidthFitter(minimum: store.minimumWindowWidth).frame(width: 0, height: 0))
+    .background(Tokens.canvas)
+    // Escape closes the topmost pane. The catcher sits under the shell, so it sees the key
+    // before any view that might want it — except a text field, which keeps it.
+    .background(EscapeKeyCatcher { store.closeTopmostOnEscape() }
+                    .frame(width: 0, height: 0))
+    // The computer's full screen is the **window's** full screen, not a bigger rectangle inside
+    // it: the sidebar, the transcript and the traffic lights all go. Leaving it the system's way
+    // (green button, ⌃⌘F) puts the pane back in its panel through the same flag Escape uses.
+    .background(WindowFullScreenDriver(isFullScreen: store.isComputerFullScreen,
+                                       onExit: { store.isComputerFullScreen = false })
+                    .frame(width: 0, height: 0))
         .confirmationDialog(
             pendingRoomDelete.map { "Delete \($0.name)?" } ?? "Delete this group chat?",
             isPresented: Binding(get: { pendingRoomDelete != nil },

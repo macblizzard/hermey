@@ -37,13 +37,14 @@ class WindowLayoutGuards(unittest.TestCase):
 
     def test_the_computer_pane_holds_the_panel_slot(self) -> None:
         # It used to be a third pane with its own floors and ceiling, then briefly the sidebar's.
-        # It now takes the bot panel's slot, so its width is the panel's with a computer's floor.
+        # It now takes the bot panel's slot, so its width is the panel's with a computer's floor —
+        # reserved by the row and applied to the pane, which is one view at either size.
         self.assertNotIn(".frame(width: 520)", self.root,
                          "a fixed pane width cannot give way in a narrow window")
-        self.assertIn(".frame(width: max(WindowLayout.botPanelWidth, WindowLayout.computerMin))",
-                      self.root)
-        self.assertEqual(self.root.count("computerPane(fullScreen: false)"), 1,
-                         "one slot: drawing it twice is what put it on the wrong edge")
+        self.assertIn(".frame(width: store.isComputerFullScreen", self.root)
+        self.assertIn("max(WindowLayout.botPanelWidth, WindowLayout.computerMin)", self.root)
+        self.assertEqual(self.root.count("computerPane(fullScreen: store"), 1,
+                         "one pane: a second instance is a second viewer and a second socket")
 
     def test_the_conversation_hands_width_back_while_the_panel_is_open(self) -> None:
         self.assertIn("WindowLayout.conversationMinWithComputer", self.root)
