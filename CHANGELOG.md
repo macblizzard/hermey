@@ -790,3 +790,17 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds
   the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.
 
+## [0.1.611] — 2026-11-21
+
+### Added
+- **Arrange bot categories on the phone.** Long-press a group heading, or use the new ⋯ menu at its trailing
+  edge; the verbs grey out at the ends. The host stores the whole arrangement, so the order is the same on
+  every device.
+
+### Fixed
+- **A refused category move no longer looks like a successful one.** The Mac's menu called the move through
+  `try?`, so a write the host refused simply appeared not to happen. It now says "Category not changed".
+- **The vision model row shows the configured model instead of "auto".** Hermey read the flat
+  `auxiliary.vision_provider` key while the engine and both shipped configs use the nested
+  `auxiliary.vision.provider`, so the setting always looked unset.
+
