@@ -1,7 +1,7 @@
 # The genui card shell's vendored files
 
 The Hermey apps draw the `hermes-genui` plugin's cards in a `WKWebView` that loads
-`/v1/genui/host` from the bridge. That page needs React, because the plugin's bundle imports it as a
+`/v1/genui/host` from hermeyd. That page needs React, because the plugin's bundle imports it as a
 bare specifier — and React 19 ships no UMD build a page can just `<script src>`. These three files
 are what the page loads, and the import map in `host.html` is what makes the bare imports resolve:
 

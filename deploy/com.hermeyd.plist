@@ -5,21 +5,25 @@
   <key>Label</key><string>com.hermeyd</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/opt/hermey/hermeyd/target/release/hermeyd</string>
+    <string>/opt/hermey/bin/hermeyd</string>
   </array>
+  <!-- setup/install.sh writes this file with the real paths it detected; the values below are the
+       defaults it uses. Load it with:
+         sudo cp /etc/hermey/com.hermeyd.plist /Library/LaunchDaemons/
+         sudo launchctl bootstrap system /Library/LaunchDaemons/com.hermeyd.plist -->
   <key>EnvironmentVariables</key>
   <dict>
-    <key>HERMEY_HOME</key><string>/usr/local/var/hermeyd</string>
+    <key>HERMEY_HOME</key><string>/var/lib/hermeyd</string>
     <key>HERMEYD_PORT</key><string>8788</string>
-    <!-- What a pairing invite tells the phone. `localhost:8788` is right for a single machine;
-         `tailscale serve` puts a stable HTTPS name in front and this becomes <host>.ts.net:8445. -->
-    <key>HERMEYD_PUBLIC_HOST</key><string>localhost:8788</string>
+    <!-- What a pairing invite tells the app. `localhost:8788` is right for a single machine;
+         `tailscale serve` puts a stable HTTPS name in front and this becomes <host>.ts.net. -->
+    <key>HERMEYD_PUBLIC_HOST</key><string>localhost</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>5</integer>
   <key>ProcessType</key><string>Background</string>
-  <key>StandardOutPath</key><string>/usr/local/var/hermeyd/hermeyd.log</string>
-  <key>StandardErrorPath</key><string>/usr/local/var/hermeyd/hermeyd.log</string>
+  <key>StandardOutPath</key><string>/var/lib/hermeyd/hermeyd.log</string>
+  <key>StandardErrorPath</key><string>/var/lib/hermeyd/hermeyd.log</string>
 </dict>
 </plist>

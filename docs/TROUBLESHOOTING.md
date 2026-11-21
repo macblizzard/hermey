@@ -3,72 +3,77 @@
 Start here:
 
 ```bash
-hermey doctor
+systemctl status hermeyd --no-pager        # macOS: launchctl print system/com.hermeyd
+curl -fsS http://127.0.0.1:8788/v1/health
+sudo journalctl -u hermeyd -n 80 --no-pager
 ```
 
-It reports the unit state, loopback health, the gateway URL the bridge relays to, Tailscale's state,
-and whether the HTTPS endpoint answers through the certificate.
+That is the unit state, liveness, and the log. `{"status":"ok", …}` on `8788` means the service is
+up; a `401` from any other `/v1` route means the caller sent no local bearer
+(`/var/lib/hermeyd/local.token`) rather than that the service is unwell.
 
-## `hermey doctor` says health FAIL
-
-On a **hermeyd** host there is no bridge to answer: the service listens on `127.0.0.1:8788`, so
-`curl -fsS http://127.0.0.1:8788/v1/health` is the whole health check, and a `401` from any other
-`/v1` route means the caller sent no local bearer (`<state>/local.token`) rather than that the service
-is unwell. The rest of this section is the retired bridge's log.
-
-The bridge is not answering on `127.0.0.1:8787`. Read its log; the first line usually names the cause.
-
-```bash
-hermey logs 80
-```
+## The service will not start, or restarts in a loop
 
 | Log line | Meaning |
 |---|---|
-| `address already in use` | something else holds the port — `sudo ss -ltnp \| grep 8787`, then reinstall with `--port 8788` |
-| `"event": "upstream_error"` with `"reason": "connect_failed"` in the audit log | the dashboard it relays to is not answering on the port the unit was given, or restarted with a different token; re-run the installer so it re-reads both |
-| `No module named hermes_bridge` | the Python bridge, which this page describes, is no longer in the repo — a host on it is running the retired service. See [`HERMEYD.md`](HERMEYD.md) for the host service that replaced it |
+| `address already in use` | something else holds the port — `sudo ss -ltnp \| grep -E '8788\|8790'`; change `HERMEYD_PORT`/`HERMEYD_BROWSER_PORT` in `/etc/hermey/hermeyd.env` and restart |
+| `hermeyd refuses HERMEYD_BROWSER_PORT=…` | the browser channel was given the published port; they must differ |
+| `hermeyd refuses to bind …` | `HERMEYD_BIND` is not loopback. Only `127.0.0.1`, `::1` or `localhost` are accepted |
+| `"event":"upstream_error"`, `"reason":"connect_failed"` in the audit log | the engine is not answering on `ws://127.0.0.1:9121/api/ws`, or restarted with a different token. Start it with `hermes serve --isolated`; check `HERMEYD_ENGINE_WS` and `HERMEYD_ENGINE_TOKEN_FILE` |
+| `Permission denied` on a profile or skill file | hermeyd runs as a different UID from the engine's owner. It must share that UID — see [`INSTALL.md`](INSTALL.md) |
 
-## The dashboard already exists / "reusing this host's dashboard: pid …"
+After editing `/etc/hermey/hermeyd.env`: `sudo systemctl restart hermeyd` (macOS:
+`sudo launchctl kickstart -k system/com.hermeyd`).
 
-Expected. Hermes allows one dashboard per host, and the installer reuses it. If you need a second,
-isolated one for testing, use `HERMEY_UNIT_PREFIX` and a separate `HERMEY_CONF`, and point the second
-bridge at a dashboard you started with `--isolated`.
+## `hermeyd --gateway-check` exits 75
+
+A second Hermes gateway already serves this `HERMES_HOME`, so every routine would fire twice. Nothing
+was killed. Either stop that process, or run the engine isolated for this home:
+
+```bash
+hermes serve --isolated
+```
+
+The check is `sudo HERMEY_HOME=/var/lib/hermeyd HERMEYD_ENGINE_HOME=<engine> hermeyd --gateway-check`;
+exit `75` is the duplicate, anything else non-zero is a different failure the output names.
 
 ## `tailscale serve` refused
 
 ```bash
 tailscale status          # is this node up and logged in?
-tailscale serve status    # what is already published on 8443?
+tailscale serve status    # what is already published?
 ```
 
-If another service owns 8443, re-run the installer with `--https-port 8444`. Do not stop the other
-service to make room.
+hermeyd publishes serve-root — `tailscale serve --bg http://127.0.0.1:8788` — so pairing URLs carry
+no `:8443`. A leftover `:8443` mount from the old port scheme answers `502`; remove it with
+`tailscale serve --https=8443 off`. Do not stop another tailnet service to free a port.
 
-On a **hermeyd** host there is no port to negotiate: it publishes serve-root
-(`tailscale serve --bg http://127.0.0.1:8788`), so pairing URLs carry no `:8443`, and any leftover
-`:8443` mount pointing at the retired bridge on `8787` answers 502 — remove it with
-`tailscale serve --https=8443 off`.
+**Never add `8790` to `tailscale serve`.** The browser channel is loopback-only and carries no
+credential.
 
-## HTTPS check fails but the bridge is healthy
+## HTTPS fails but the service is healthy
 
 Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists:
 
 ```bash
 tailscale cert <host>.<tailnet>.ts.net
-curl -v https://<host>.<tailnet>.ts.net:8443/v1/health
+curl -v https://<host>.<tailnet>.ts.net/v1/health
 ```
+
+Remember there is no port in the URL. If a `:8443` is in the app's saved host, edit it out.
 
 ## The app cannot reach the host
 
 - Is the phone on the tailnet? (Tailscale app installed, logged into the same tailnet.)
-- Does the URL in the app exactly match `hermey pair`'s output, including the port?
-- `curl https://<host>.<tailnet>.ts.net:8443/v1/health` from another tailnet device — if that fails,
-  the problem is the host, not the app.
+- Does the URL in the app exactly match what `tailscale serve status` prints — host only, no port?
+- `curl https://<host>.<tailnet>.ts.net/v1/health` from another tailnet device — if that fails, the
+  problem is the host, not the app.
 
 ## A pairing code is rejected
 
-Codes are single-use and expire in minutes. Mint a fresh one with `hermey pair`. Repeated failures
-are rate limited per client, so wait a moment after a handful of attempts.
+Codes are single-use and expire in minutes. Mint a fresh one:
+`curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start`. That route answers on loopback only.
+Repeated failures are rate limited per client, so wait a moment after a handful of attempts.
 
 ## The iOS app stops launching after a week
 
@@ -103,21 +108,33 @@ Two different things wear that message.
    The `length=` in the feed must equal the served `content-length`, or the file was replaced after
    the feed was signed.
 
+## Cards are blank, or `/v1/genui/plugin.js` answers 503
+
+The `hermes-genui` plugin is missing from the engine. It ships with this repository, not with
+upstream Hermes:
+
+```bash
+ls <engine>/plugins/hermes-genui/desktop/plugin.js
+```
+
+Re-run the installer to restore it. The React shell itself is embedded in the binary, so a 503 here
+is always the plugin bundle, never the card page.
+
 ## The Mac's computer says "Reconnecting" and will not connect
 
 Check whether the host has that Mac revoked — this is what the trash button beside the computer name
 does:
 
 ```bash
-cat /var/lib/hermey/revoked-local-computers.json      # {"revoked": ["<device id>"]}
+cat /var/lib/hermeyd/revoked-local-computers.json     # {"revoked": ["<device id>"]}
 ```
 
 Turning **Let bots use this computer** off and on in the Mac app lifts it (the app calls
-`POST /v1/local-computers/<device>/enable`). If it still will not connect, ask the bridge why rather
+`POST /v1/local-computers/<device>/enable`). If it still will not connect, ask the host why rather
 than the screen:
 
 ```bash
-journalctl -u hermes-native-bridge --since -10min | grep local_computer.rejected
+sudo journalctl -u hermeyd --since -10min | grep local_computer.rejected
 ```
 
 Each line names the check that failed: `no ticket`, `ticket not redeemable`, `device not active`, or

@@ -1,0 +1,175 @@
+name: hermeyd release
+
+# The install path is "download a binary and check its SHA-256", so a tag has to produce the binary
+# this repository's installer looks for. Without this job `setup/install.sh` points at four assets
+# that do not exist and every first install fails at the download.
+#
+# Asset names are the contract between this file and the installer's `detect_target()`:
+#
+#   hermeyd-linux-x86_64   hermeyd-linux-aarch64   hermeyd-darwin-arm64   hermeyd-darwin-x86_64
+#   SHA256SUMS             hermes-genui-plugin.tar.gz                    install.sh
+#
+# There is no cache step, for the same reason `ci.yml` has none: `hermeyd/target` is a build tree,
+# and this account's 500 MB of Actions storage is shared with the artifacts the apps publish.
+
+on:
+  push:
+    tags: ["v*"]
+  # A re-run for a tag whose release failed halfway: the tag already exists, so the same inputs are
+  # needed rather than a new commit.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build, e.g. v0.2.0 (must already exist)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hermeyd-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # One matrix over the four published targets. Linux and macOS differ only in the runner and the
+  # cross linker, so they share every step that matters.
+  #
+  # Why not `cross` or `cargo-zigbuild`: both are third-party toolchains in a job that compiles the
+  # code guarding a host's credentials, and both need Docker (unavailable on macOS runners). The
+  # aarch64 Linux build is a plain rustup cross target plus Ubuntu's `gcc-aarch64-linux-gnu`; the
+  # bundled SQLite compiles through the `cc` crate, which picks up `aarch64-linux-gnu-gcc` from the
+  # target's default prefix. The macOS x86_64 build is `rustup target add x86_64-apple-darwin` on
+  # the arm64 runner, which Apple's SDK supports natively.
+  build:
+    name: hermeyd (${{ matrix.asset }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - asset: linux-aarch64
+            target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross_cc: aarch64-linux-gnu-gcc
+          - asset: darwin-arm64
+            target: aarch64-apple-darwin
+            os: macos-latest
+          - asset: darwin-x86_64
+            target: x86_64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # rustup ships on both runner images. No marketplace toolchain action: a compiler fetched by a
+      # third party is one more supply chain in the job that builds a credential-handling daemon.
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+          cargo --version
+      - name: Cross C toolchain (aarch64 Linux)
+        if: matrix.cross_cc != ''
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+      - name: Build
+        # `--locked` on purpose: a release must be built from the dependency graph that was tested,
+        # not from whatever the resolver picks on the day of the tag.
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross_cc }}
+          CC_aarch64_unknown_linux_gnu: ${{ matrix.cross_cc }}
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+        working-directory: hermeyd
+      # The binary is published under the installer's own name, so the download is one file with no
+      # archive step and no extraction on the host.
+      - name: Name the asset
+        run: |
+          install -m 0755 "hermeyd/target/${{ matrix.target }}/release/hermeyd" "hermeyd-${{ matrix.asset }}"
+          file "hermeyd-${{ matrix.asset }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hermeyd-${{ matrix.asset }}
+          path: hermeyd-${{ matrix.asset }}
+          retention-days: 3
+          if-no-files-found: error
+
+  publish:
+    name: Release assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Tag
+        id: tag
+        run: |
+          tag="${{ github.event_name == 'push' && github.ref_name || inputs.tag }}"
+          case "$tag" in
+            v*) ;;
+            *) echo "::error::tag '$tag' must start with v (e.g. v0.2.0)"; exit 1 ;;
+          esac
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist
+          merge-multiple: true
+      # The plugin the apps need for generated-UI cards. Upstream Hermes does not ship it, and
+      # `hermeyd` answers 503 for every card until it is in the engine's plugin directory.
+      - name: Package the genui plugin
+        run: tar -czf dist/hermes-genui-plugin.tar.gz -C setup/plugins hermes-genui
+      - name: The installer
+        run: |
+          sh -n setup/install.sh
+          install -m 0644 setup/install.sh dist/install.sh
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum hermeyd-* hermes-genui-plugin.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          # Every asset the installer will ask for must be present, or the release is incomplete and
+          # a first install fails at the download. Counted, not assumed.
+          for asset in hermeyd-linux-x86_64 hermeyd-linux-aarch64 \
+                       hermeyd-darwin-arm64 hermeyd-darwin-x86_64 \
+                       hermes-genui-plugin.tar.gz; do
+            grep -q " $asset\$" SHA256SUMS || { echo "::error::missing $asset"; exit 1; }
+          done
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists — uploading with --clobber"
+          else
+            gh release create "$TAG" --title "hermeyd $TAG" \
+              --notes "hermeyd $TAG. Install with:
+          \`\`\`
+          curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
+          \`\`\`
+          Binaries are listed in SHA256SUMS; setup/install.sh verifies it before installing."
+          fi
+          gh release upload "$TAG" dist/* --clobber
+      # Read back exactly what a fresh host will fetch. A successful upload is not a published asset:
+      # the CDN can lag, and the installer's first request is the one that matters.
+      - name: Verify the assets are downloadable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if gh release download "$TAG" --pattern SHA256SUMS --dir check --clobber 2>/dev/null; then
+              break
+            fi
+            sleep 10
+          done
+          test -s check/SHA256SUMS || { echo "::error::SHA256SUMS is not downloadable from $TAG"; exit 1; }
+          grep -c . check/SHA256SUMS

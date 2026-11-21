@@ -285,8 +285,9 @@ two).
 single-use ticket per subresource), `GET /host` + `/assets/*` serve the React shell **embedded in the
 binary**, `GET /blocks/{id}` and `/blocks/{id}/state` read the plugin's boards, `GET /plugin.js` stays
 live from the engine home so a plugin update reaches the apps without a rebuild. The plugin bundle is
-shipped in the repo (`engine/plugins/hermes-genui/`) and installed by `build-engine.sh` — without it
-every card answers 503.
+shipped in this repo (`setup/plugins/hermes-genui/`) and installed into `<engine>/plugins/hermes-genui`
+by `setup/install.sh` (and by the release's `hermes-genui-plugin.tar.gz` asset) — without it every
+card answers 503.
 
 **integrations** — a Composio proxy (`/v1/integrations`, `/{slug}/connect|tools|alias|disconnect`,
 `/run`) with the project key in `$HERMEY_HOME/.env` (`HERMEY_COMPOSIO_API_KEY`). `connected` is derived

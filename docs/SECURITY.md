@@ -10,8 +10,8 @@ invariants are for, and the evidence (a test, or an explicit gap) for each one.
 > **The Python bridge this document was written about has been removed.** Its code lived in
 > `Bridge/hermes_bridge`, which is no longer in this repository. The host service now is `hermeyd/`
 > (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). Everything below
-> describes the trust boundaries the apps still rely on — read "the bridge" as "the host service",
-> and check `hermeyd/src` for what actually enforces each invariant today.
+> describes the trust boundaries the apps still rely on — read "the bridge" as "hermeyd", and check
+> `hermeyd/src` for what actually enforces each invariant today.
 
 Scope: `hermes_bridge` as it was (the only new server-side code at the time), the `wss://` path into
 it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
@@ -22,12 +22,12 @@ here.
 
 ```
 ┌── iPhone / Mac ─────────────┐        ┌── hermes (100.64.0.1) ─────────────────────────────┐
-│ Ed25519 key in Keychain     │        │  tailscale serve :8443  ──TLS 1.3──►  127.0.0.1:8787 │
+│ Ed25519 key in Keychain     │        │  tailscale serve (serve-root) ──TLS 1.3──► 8788     │
 │ refresh token in Keychain   │        │                                        │            │
-│  ── 30 s WS ticket ─────────┼── wss ─┼─► hermes_bridge (FastAPI, loopback only)           │
+│  ── 30 s WS ticket ─────────┼── wss ─┼─► hermeyd (Rust, loopback only)                     │
 │                             │        │        │ allow-list, frame cap, audit              │
 └─────────────────────────────┘        │        ▼                                            │
-                                       │  127.0.0.1:9120/api/ws  (Hermes TUI gateway)        │
+                                       │  127.0.0.1:9121/api/ws  (Hermes engine)             │
                                        │  agent runtime · tools · approvals · vault          │
                                        └─────────────────────────────────────────────────────┘
 ```
@@ -167,40 +167,39 @@ tailnet is small and ACL'd; a global counter plus a per-device backoff would be 
 
 ## 5. Operating it
 
-**Start** (only this way — it validates the bind address before uvicorn sees it):
+**Start** (systemd; the unit is written by `setup/install.sh`):
 
 ```bash
-HERMES_BRIDGE_GATEWAY_TOKEN=… python -m hermes_bridge --port 8787
-tailscale serve --bg --https=8443 http://127.0.0.1:8787
+sudo systemctl start hermeyd
+tailscale serve --bg http://127.0.0.1:8788        # serve-root, no port
 ```
 
-Refuses to start if `HERMES_BRIDGE_HOST` is not loopback, or if the gateway URL is not loopback, or has
-no path.
+hermeyd refuses any bind but loopback, and refuses a published port equal to the browser channel's.
 
-**Rotate the gateway token:** stop the bridge, rotate the token on the gateway side, update
-`HERMES_BRIDGE_GATEWAY_TOKEN`, start. Live sockets drop with `1011`; the app reconnects with a fresh
-ticket. No device has to re-pair.
+**Rotate the engine token:** stop hermeyd, rotate the token on the engine side, update
+`HERMEYD_ENGINE_TOKEN_FILE` in `/etc/hermey/hermeyd.env`, start. Live sockets drop and the app
+reconnects with a fresh ticket. No device has to re-pair.
 
 **Revoke a device:** `DELETE /v1/devices/{id}` (or the app's device list). Kills the refresh token, any
 unused ticket, **and every live socket of that device** (`4401`) — the relay map is closed from this
 side rather than waiting for the phone to reconnect.
 
-**Read the audit log:** one JSON object per line on the `hermes_bridge.audit` logger. Fields:
-`ts, event, device, method, bytes, duration_ms, direction, outcome, reason, close_code`. Event names are
-a closed set (`audit.EVENTS`), so a typo fails a test instead of shipping silently. Look for
-`ticket_rejected`, `client_request_rejected`, `server_request_declined` and `frame_too_large` — those
-are the four signals that something is probing the bridge.
+**Read the audit log:** one JSON object per line, written beside `bridge.db` in the state directory.
+Fields: `ts, event, device, method, bytes, duration_ms, direction, outcome, reason, close_code`. Event
+names are a closed set (`hermeyd/src/audit.rs`), so a typo fails a test instead of shipping silently.
+Look for `ticket_rejected`, `client_request_rejected`, `server_request_declined` and `frame_too_large`
+— those are the four signals that something is probing the host.
 
-**Incident: a device is compromised.** Revoke it, rotate the gateway token (closes every live socket),
+**Incident: a device is compromised.** Revoke it, rotate the engine token (closes every live socket),
 check the audit for `client_request` from that `device` around the compromise window, and review which
-approvals were answered (`server_response`) in that window — the bridge records that an approval was
+approvals were answered (`server_response`) in that window — the host records that an approval was
 answered, never what the prompt said.
 
 ## 6. What is deliberately absent
 
 No accounts, no telemetry, no cloud relay, no public ingress, no second copy of your data, no
 "danger-full-access" default, no auto-approve, no per-device passwords, and no way for the client to
-escalate its own permissions. The bridge is ~1.8k lines of Python that can be read in an afternoon,
+escalate its own permissions. hermeyd is a single Rust binary small enough to read in an afternoon,
 which is the point.
 
 
@@ -212,7 +211,7 @@ the same reasoning written next to it.
 
 | Route | Why it is open | What it is bounded by |
 |---|---|---|
-| `GET /v1/health` | liveness for the installer and `hermey doctor` | returns `{status, protocol_version, ws}` only — no device count, no version of anything else |
+| `GET /v1/health` | liveness for the installer and `hermeyd --gateway-check` | returns `{status, protocol_version, ws}` only — no device count, no version of anything else |
 | `POST /v1/pair/start` | the host mints the code | **direct loopback only**: any `Forwarded` / `X-Forwarded-For` / `X-Real-IP` / `Tailscale-User-Login` header means it arrived through `tailscale serve` and is refused `403` |
 | `POST /v1/pair/claim` | the phone redeems the code it was shown | a live 8-digit code (single use, 600 s), 10 attempts/min/source, 32-device cap |
 | `POST /v1/token` | trades a refresh token for a ticket | a SHA-256 match against `device_id` + token; refused for a revoked device |

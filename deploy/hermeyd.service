@@ -5,23 +5,24 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
+# `User` is the engine's owner: hermeyd writes a bot's skill into the engine's profiles. Keep it in
+# step with `<engine>/plugins/hermes-genui`, which the service reads.
 User=hermey
 Group=hermey
 WorkingDirectory=/opt/hermey
-Environment=HERMEY_HOME=/var/lib/hermey
-Environment=HERMEYD_PORT=8788
-ExecStart=/opt/hermey/hermeyd/target/release/hermeyd
+EnvironmentFile=-/etc/hermey/hermeyd.env
+ExecStart=/opt/hermey/bin/hermeyd
 Restart=always
 RestartSec=2
 
-# Same shaping as the bridge it replaced: loopback networking and its own state, nothing else.
+# Loopback networking and its own state, nothing else. ProtectHome is deliberately off: the engine
+# home is often under the service account's home.
 NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/var/lib/hermey
+ProtectHome=no
+ReadWritePaths=/var/lib/hermeyd
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 

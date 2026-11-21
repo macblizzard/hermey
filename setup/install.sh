@@ -1,564 +1,681 @@
-#!/usr/bin/env bash
-# RETIRED 2026-11-21 with the Python bridge. This file still describes the bridge install
-# (`hermey-bridge.service`, `/opt/hermey/venv`, `Bridge/`); the guard below stops it before it can
-# half-install one. Rewriting it around hermeyd is a separate change.
+#!/bin/sh
+# Hermey host installer — hermeyd, the Rust host service.
 #
-# Hermey host setup — one command, on a host that already runs Hermes.
+#   curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
 #
-#   curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash
+# The binary is downloaded from this repository's GitHub release and checked against a published
+# SHA-256 before it is installed. `--from-source` compiles it instead, for a platform with no
+# published build or a host that will not run a download.
 #
-# It installs two services and nothing else:
+# What it installs, and nothing else:
 #
-#   hermey-bridge.service   the HTTP/WS surface the apps talk to (loopback only)
-#   hermey-gateway.service  a Hermes dashboard on loopback — skipped entirely when this host
-#                           already runs one, because Hermes permits exactly one per machine
+#   /opt/hermey/bin/hermeyd          the service binary
+#   /var/lib/hermeyd                 its state (devices, SQLite, attachments, local.token) — 0700
+#   /etc/hermey/hermeyd.env          its configuration, read as a systemd EnvironmentFile
+#   /etc/systemd/system/hermeyd.service
+#   <engine>/plugins/hermes-genui    the card plugin the apps need, which upstream Hermes lacks
 #
-# TLS and reachability are `tailscale serve`'s job: a real certificate, tailnet-only, no public
-# listener. The apps therefore never see a self-signed cert and nothing is exposed to the internet.
+# It never binds a public interface: hermeyd listens on 127.0.0.1:8788 and 127.0.0.1:8790, and
+# reachability is `tailscale serve`'s job. The installer prints that command rather than running it,
+# because publishing a host is a decision, not a step.
 #
-# Re-running it is an upgrade: same unit names, same state, the package is reinstalled and the
-# services restarted. `--uninstall` reverses all of it.
-set -euo pipefail
+# Re-running it is an upgrade: same paths, same state, the binary and unit are replaced and the
+# service restarted. `--uninstall` reverses it and keeps state; `--uninstall --purge` deletes it.
+set -eu
 
-# ---------------------------------------------------------------- retired with the Python bridge
-# The host service this repository ships is the Rust binary in `hermeyd/`, not the Python bridge
-# this script installs. Refusing here is deliberate: every path below would either write a unit for
-# a package that no longer exists or die on a confusing `no Bridge/pyproject.toml`. Say what to do
-# instead, in one place.
-cat >&2 <<'MESSAGE'
-hermey setup: the Python bridge was removed from this repository; install hermeyd instead.
-
-  cd hermeyd && cargo build --release
-  install -m 0755 hermeyd/target/release/hermeyd /usr/local/bin/hermeyd
-
-Then run it as a service, with the unit this repository ships:
-
-  deploy/hermeyd.service    systemd  (ExecStart points at .../hermeyd/target/release/hermeyd)
-  deploy/com.hermeyd.plist  launchd  (macOS)
-
-docs/HERMEYD.md is the contract and its environment: HERMEY_HOME, HERMEYD_PORT (8788) and the
-engine it relays to. This installer has not been rewritten for it yet; do not run it.
-MESSAGE
-exit 1
-
-# ---------------------------------------------------------------- knobs (env or flags)
+REPO=${HERMEY_REPO:-macblizzard/hermey}
+VERSION=${HERMEY_VERSION:-latest}
+BASE_URL=${HERMEY_BASE_URL:-}
 PREFIX=${HERMEY_PREFIX:-/opt/hermey}
-STATE=${HERMEY_STATE:-/var/lib/hermey}
+STATE=${HERMEY_STATE:-/var/lib/hermeyd}
 CONF=${HERMEY_CONF:-/etc/hermey}
+UNIT_DIR=${HERMEY_UNIT_DIR:-/etc/systemd/system}
+ENGINE_HOME=${HERMEYD_ENGINE_HOME:-}
 SVC_USER=${HERMEY_USER:-}
-BINDIR=${HERMEY_BINDIR:-/usr/local/bin}
-BRIDGE_PORT=${HERMEY_PORT:-8787}
-HTTPS_PORT=${HERMEY_HTTPS_PORT:-8443}
-UNIT_PREFIX=${HERMEY_UNIT_PREFIX:-hermey}
-REF=${HERMEY_REF:-}
-LOCAL_SRC=${HERMEY_LOCAL_SRC:-}
-DO_SERVE=${HERMEY_SERVE:-auto}
-# auto: prepare the desktop bots use, unless the flag says otherwise. It is the difference between an
-# app that can show a bot's screen and one that shows an Install card to every new user.
-DO_DESKTOP=${HERMEY_DESKTOP:-auto}
+SVC_GROUP=${HERMEY_GROUP:-}
+MAIN_PORT=${HERMEYD_PORT:-8788}
+BROWSER_PORT=${HERMEYD_BROWSER_PORT:-8790}
+PUBLIC_HOST=${HERMEYD_PUBLIC_HOST:-localhost}
+FROM_SOURCE=0
 UNINSTALL=0
 PURGE=0
+BASE=""
+OS=""
+SRC=""
 
-REPO=macblizzard/hermey
-GATEWAY_PORT_DEFAULT=9120
+BIN_NAME=hermeyd
+BIN="$PREFIX/bin/$BIN_NAME"
+UNIT=hermeyd
+UNIT_FILE="$UNIT_DIR/$UNIT.service"
+PLIST="$CONF/com.hermeyd.plist"
+PLUGIN=hermes-genui
+TMP=""
 
-# These knobs arrive from the environment, and `curl | bash` means the environment is attacker
-# territory (sudo -E, env_keep, a wrapper script). Everything below is validated before it is used
-# as a path, a unit name, a port, or interpolated into a root-executed script.
-valid_user() { [[ $1 =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; }
-valid_port() { [[ $1 =~ ^[0-9]{1,5}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
-valid_path() { [[ $1 == /* && $1 != *[[:space:]]* && $1 != *..* ]] && [[ $1 != *['$`"\\']* ]]; }
-valid_unit() { [[ $1 =~ ^[A-Za-z0-9_.-]{1,40}$ ]]; }
-
-say()  { printf '\033[1m%s\033[0m\n' "$*"; }
+say()  { printf '%s\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
-die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'warning: %s\n' "$*" >&2; }
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --ref) REF=${2:?}; shift 2;;
-    --port) BRIDGE_PORT=${2:?}; shift 2;;
-    --https-port) HTTPS_PORT=${2:?}; shift 2;;
-    --local) LOCAL_SRC=${2:?}; shift 2;;
-    --no-serve) DO_SERVE=no; shift;;
-    --no-desktop) DO_DESKTOP=no; shift;;
-    --desktop) DO_DESKTOP=yes; shift;;
-    --serve) DO_SERVE=yes; shift;;
-    --uninstall) UNINSTALL=1; shift;;
-    --purge) PURGE=1; shift;;
-    -h|--help) cat <<'USAGE'
-Hermey host installer
-
-  sudo bash install.sh [options]
-
-  --ref R          git ref to install (default: main; use a tag to pin)
-  --port N         bridge port on 127.0.0.1 (default 8787)
-  --https-port N   tailnet port for tailscale serve (default 8443)
-  --local DIR      install from a checkout instead of GitHub
-  --no-serve       do not configure tailscale serve
-  --no-desktop     do not prepare the desktop bots use (the app shows Install instead)
-  --uninstall      remove the units and the serve mapping, keep state
-  --purge          with --uninstall: delete state, config and the service user
-
-Environment overrides: HERMEY_PREFIX, HERMEY_STATE, HERMEY_CONF, HERMEY_USER,
-HERMEY_BINDIR, HERMEY_PORT, HERMEY_HTTPS_PORT, HERMEY_UNIT_PREFIX, HERMEY_REF,
-HERMEY_LOCAL_SRC, HERMEY_SERVE, HERMES_HOME, HERMES_PROFILES_ROOT
-USAGE
-      exit 0;;
-    *) die "unknown option $1 (try --help)";;
-  esac
-done
-
-[ "$(id -u)" -eq 0 ] || die "run as root (sudo)"
-command -v systemctl >/dev/null || die "this installer needs systemd"
-
-[ -z "$SVC_USER" ] || valid_user "$SVC_USER" || die "HERMEY_USER must match ^[a-z_][a-z0-9_-]*$ (got '$SVC_USER')"
-valid_unit "$UNIT_PREFIX"   || die "HERMEY_UNIT_PREFIX must be a unit-name fragment (got '$UNIT_PREFIX')"
-valid_path "$PREFIX"        || die "HERMEY_PREFIX must be an absolute path without spaces or '..'"
-valid_path "$STATE"         || die "HERMEY_STATE must be an absolute path without spaces or '..'"
-valid_path "$CONF"          || die "HERMEY_CONF must be an absolute path without spaces or '..'"
-valid_path "$BINDIR"        || die "HERMEY_BINDIR must be an absolute path without spaces or '..'"
-valid_port "$BRIDGE_PORT"   || die "HERMEY_PORT must be 1-65535"
-valid_port "$HTTPS_PORT"    || die "HERMEY_HTTPS_PORT must be 1-65535"
-[ "$PREFIX" != "/" ] && [ "$STATE" != "/" ] && [ "$CONF" != "/" ] || die "refusing to install into /"
-[ "$PREFIX" != "$STATE" ] && [ "$STATE" != "$CONF" ] || die "prefix, state and config must differ"
-
-GW_UNIT="$UNIT_PREFIX-gateway"
-BR_UNIT="$UNIT_PREFIX-bridge"
-UNIT_FILE="/etc/systemd/system/$BR_UNIT.service"
-
-# The account an install created, for `--purge`. `HERMEY_USER` is normally not in the environment
-# when someone runs `--uninstall --purge`, and `SVC_USER` is only resolved further down, so the
-# account is read back from the unit file. It is only deleted when it still looks like the account
-# `useradd --system` made — a system uid, `$STATE` as its home, no login shell — because an install
-# that adopted an existing account (`User=<the owner of the Hermes home>`) must never delete a real
-# person's login.
-purgeable_service_user() {
-  local user=$1 passwd uid home shell
-  [ -n "$user" ] || return 1
-  passwd=$(getent passwd "$user" 2>/dev/null) || return 1
-  [ -n "$passwd" ] || return 1
-  uid=$(printf '%s' "$passwd" | cut -d: -f3)
-  home=$(printf '%s' "$passwd" | cut -d: -f6)
-  shell=$(printf '%s' "$passwd" | cut -d: -f7)
-  [ "$uid" -gt 0 ] && [ "$uid" -lt 1000 ] && [ "$home" = "$STATE" ] || return 1
-  case "$shell" in */nologin|*/false) return 0;; esac
-  return 1
+# Every failure says what to do next. A half-installed host that exits 0 is the failure this
+# installer is written to avoid.
+fail() {
+    printf 'error: %s\n' "$1" >&2
+    shift
+    for line in "$@"; do printf '  %s\n' "$line" >&2; done
+    exit 1
 }
 
-# ---------------------------------------------------------------- uninstall
-if [ "$UNINSTALL" = 1 ]; then
-  say "Removing Hermey services"
-  PURGE_USER=$SVC_USER
-  if [ -z "$PURGE_USER" ] && [ -r "$UNIT_FILE" ]; then
-    PURGE_USER=$(sed -n 's/^User=//p' "$UNIT_FILE" | head -1 || true)
-  fi
-  systemctl disable --now "$BR_UNIT" >/dev/null 2>&1 || true
-  systemctl disable --now "$GW_UNIT" >/dev/null 2>&1 || true
-  rm -f "/etc/systemd/system/$BR_UNIT.service" "/etc/systemd/system/$GW_UNIT.service"
-  systemctl daemon-reload
-  rm -f "$BINDIR/hermey"
-  if command -v tailscale >/dev/null; then
-    tailscale serve --https="$HTTPS_PORT" off >/dev/null 2>&1 || true
-  fi
-  if [ "$PURGE" = 1 ]; then
-    rm -rf -- "$PREFIX" "$STATE" "$CONF"
-    if purgeable_service_user "$PURGE_USER"; then
-      userdel "$PURGE_USER" >/dev/null 2>&1 || true
-      say "Purged $PREFIX, $STATE, $CONF and the $PURGE_USER account"
+cleanup() {
+    if [ -n "$TMP" ]; then rm -rf "$TMP"; fi
+}
+trap cleanup EXIT INT TERM
+
+usage() {
+    cat <<'USAGE'
+Hermey host installer (hermeyd)
+
+  sudo sh install.sh [options]
+
+  --from-source        build hermeyd with cargo instead of downloading a release binary
+  --version TAG        release to install: a tag (v0.2.0) or "latest" (default: latest)
+  --prefix DIR         where the binary goes (default: /opt/hermey)
+  --state-dir DIR      hermeyd's state directory (default: /var/lib/hermeyd)
+  --engine-home DIR    the Hermes engine home — the directory containing profiles/ (default: detect)
+  --user NAME          the account hermeyd runs as; must be the engine's owner (default: detect)
+  --uninstall          stop and remove the service, binary, config and plugin; keep state
+  --purge              with --uninstall: also delete the state directory
+  -h, --help           this text
+
+Environment overrides: HERMEY_REPO, HERMEY_VERSION, HERMEY_BASE_URL, HERMEY_PREFIX,
+HERMEY_STATE, HERMEY_CONF, HERMEY_UNIT_DIR, HERMEY_USER, HERMEY_GROUP, HERMEYD_ENGINE_HOME, HERMEYD_PORT,
+HERMEYD_BROWSER_PORT, HERMEYD_PUBLIC_HOST, HERMES_HOME, HERMEY_SRC.
+
+Exit status: 0 on success, 1 on a failure the message explains, 2 on bad usage.
+USAGE
+}
+
+# ---------------------------------------------------------------- arguments
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from-source) FROM_SOURCE=1; shift ;;
+        --version)     [ $# -ge 2 ] || fail "--version needs a tag" "try --help"; VERSION=$2; shift 2 ;;
+        --prefix)      [ $# -ge 2 ] || fail "--prefix needs a directory" "try --help"; PREFIX=$2; shift 2 ;;
+        --state-dir)   [ $# -ge 2 ] || fail "--state-dir needs a directory" "try --help"; STATE=$2; shift 2 ;;
+        --engine-home) [ $# -ge 2 ] || fail "--engine-home needs a directory" "try --help"; ENGINE_HOME=$2; shift 2 ;;
+        --user)        [ $# -ge 2 ] || fail "--user needs an account name" "try --help"; SVC_USER=$2; shift 2 ;;
+        --uninstall)   UNINSTALL=1; shift ;;
+        --purge)       PURGE=1; shift ;;
+        -h|--help)     usage; exit 0 ;;
+        *)             printf 'error: unknown option %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+BIN="$PREFIX/bin/$BIN_NAME"
+PLIST="$CONF/com.hermeyd.plist"
+
+# These knobs arrive from the environment, and `curl | sh` means the environment is attacker
+# territory (sudo -E, env_keep, a wrapper script). Everything is validated before it is used as a
+# path, a unit name, a port, or written into a root-owned file.
+valid_user() { printf '%s' "$1" | grep -Eq '^[a-z_][a-z0-9_-]{0,31}$'; }
+valid_path() {
+    case "$1" in /*) : ;; *) return 1 ;; esac
+    case "$1" in *[[:space:]]*|*..*|*'$'*|*'`'*|*'"'*|*"'"*|*\\*) return 1 ;; esac
+    [ "$1" != "/" ]
+}
+valid_port() { printf '%s' "$1" | grep -Eq '^[0-9]{1,5}$' && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+
+# The systemctl binary exists on hosts where systemd is not PID 1 (containers, WSL). Restarting a
+# unit there fails with a message about a bus, which reads as "the install broke" — so the check is
+# whether this machine is actually running systemd.
+have_systemd() { [ "$(cat /proc/1/comm 2>/dev/null || true)" = systemd ]; }
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        fail "this installer writes to $PREFIX, $STATE and $CONF, so it needs root" \
+            "re-run it with sudo: sudo sh install.sh $*"
+    fi
+}
+
+# ---------------------------------------------------------------- platform
+# The release asset name. One place, so the installer and the release workflow cannot disagree: CI
+# publishes exactly these four binaries and a SHA256SUMS covering them.
+detect_target() {
+    uname_s=$(uname -s)
+    uname_m=$(uname -m)
+    case "$uname_s:$uname_m" in
+        Linux:x86_64)              TARGET=linux-x86_64 ;;
+        Linux:aarch64|Linux:arm64) TARGET=linux-aarch64 ;;
+        Darwin:arm64)              TARGET=darwin-arm64 ;;
+        Darwin:x86_64)             TARGET=darwin-x86_64 ;;
+        *)
+            fail "unsupported platform: $uname_s $uname_m" \
+                "hermeyd publishes builds for: linux x86_64, linux aarch64, macOS arm64, macOS x86_64." \
+                "On another platform, build it from a checkout: setup/install.sh --from-source" \
+                "(that needs a Rust toolchain — https://rustup.rs)."
+            ;;
+    esac
+    OS=$(printf '%s' "$uname_s" | tr '[:upper:]' '[:lower:]')
+}
+
+# The account hermeyd runs as. It must be the engine's owner: the service writes skills into the
+# engine's profiles, and a different UID turns every install into a permission error at runtime.
+resolve_user() {
+    if [ -z "$SVC_USER" ]; then
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+            SVC_USER=$SUDO_USER
+        elif [ -d "$ENGINE_HOME" ]; then
+            SVC_USER=$(stat -c %U "$ENGINE_HOME" 2>/dev/null || stat -f %Su "$ENGINE_HOME" 2>/dev/null || true)
+        fi
+        if [ -z "$SVC_USER" ]; then SVC_USER=root; fi
+    fi
+    valid_user "$SVC_USER" || fail "HERMEY_USER / --user must be a plain account name (got '$SVC_USER')" \
+        "pick the account that owns the Hermes engine home, e.g. --user hermey"
+    if [ -z "$SVC_GROUP" ]; then
+        SVC_GROUP=$(id -gn "$SVC_USER" 2>/dev/null || true)
+        if [ -z "$SVC_GROUP" ]; then SVC_GROUP=$SVC_USER; fi
+    fi
+    SVC_HOME=$(getent passwd "$SVC_USER" 2>/dev/null | cut -d: -f6 || true)
+    if [ -z "$SVC_HOME" ]; then SVC_HOME=${HOME:-/root}; fi
+}
+
+# The engine home holds profiles/, and hermeyd reads its .env, profiles and skills from it.
+# Detection is deliberately conservative: a wrong guess installs a plugin nobody loads.
+detect_engine_home() {
+    if [ -n "$ENGINE_HOME" ]; then return 0; fi
+    if [ -n "${HERMES_HOME:-}" ]; then
+        ENGINE_HOME=$HERMES_HOME
+    elif [ -d "$STATE/engine" ]; then
+        ENGINE_HOME=$STATE/engine
+    elif [ -d "$SVC_HOME/.hermes" ]; then
+        ENGINE_HOME=$SVC_HOME/.hermes
     else
-      say "Purged $PREFIX, $STATE, $CONF"
+        fail "cannot find the Hermes engine home on this host" \
+            "it is the directory that contains profiles/ — the one Hermes itself uses." \
+            "name it explicitly: setup/install.sh --engine-home /path/to/hermes/home" \
+            "(or set HERMES_HOME)."
     fi
-  else
-    say "Services removed; state kept in $STATE (and $CONF). Re-run with --purge to delete it."
-  fi
-  exit 0
-fi
+    [ -d "$ENGINE_HOME" ] || fail "engine home $ENGINE_HOME does not exist" \
+        "pass --engine-home with the directory Hermes uses (it must contain profiles/)."
+}
 
-# ---------------------------------------------------------------- preflight
-say "Checking this host"
-case "$(uname -m)" in x86_64|aarch64|arm64) :;; *) die "unsupported architecture $(uname -m)";; esac
-
-PY=""
-for cand in python3.13 python3.12 python3.11 python3; do
-  if command -v "$cand" >/dev/null; then
-    if "$cand" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
-      PY=$(command -v "$cand"); break
+# ---------------------------------------------------------------- filesystem
+ensure_dirs() {
+    mkdir -p "$PREFIX/bin" "$CONF" || fail "cannot create $PREFIX/bin and $CONF" \
+        "check that / is writable and that --prefix/--state-dir point at real paths."
+    if [ ! -d "$STATE" ]; then
+        mkdir -p "$STATE" || fail "cannot create the state directory $STATE" \
+            "pick another location with --state-dir."
     fi
-  fi
-done
-[ -n "$PY" ] || die "Python 3.11+ is required (Hermes itself needs it, so it is usually present)"
-note "python: $PY ($("$PY" -V 2>&1))"
+    chmod 0700 "$STATE"
+    chown "$SVC_USER:$SVC_GROUP" "$STATE" 2>/dev/null || \
+        warn "could not give $STATE to $SVC_USER:$SVC_GROUP — hermeyd may not be able to write state"
+}
 
-HERMES_BIN=$(command -v hermes 2>/dev/null || true)
-for cand in /usr/local/lib/hermes-agent/.hermes/bin/hermes "$HOME/.hermes/bin/hermes" \
-            /usr/local/bin/hermes /opt/hermes/bin/hermes; do
-  [ -n "$HERMES_BIN" ] && break
-  [ -x "$cand" ] && HERMES_BIN=$cand
-done
-[ -n "$HERMES_BIN" ] || die "no \`hermes\` on this host — install Hermes first: https://hermes-agent.nousresearch.com/docs"
-note "hermes: $HERMES_BIN"
+# ---------------------------------------------------------------- download
+sha256_of() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | cut -d' ' -f1
+    else
+        fail "no SHA-256 tool on this host (sha256sum or shasum)" \
+            "install coreutils (Linux) or use the built-in shasum (macOS), then re-run."
+    fi
+}
 
-# ---------------------------------------------------------------- source
-say "Fetching the bridge"
-WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-if [ -n "$LOCAL_SRC" ]; then
-  SRC=$LOCAL_SRC
-  note "using the checkout at $SRC"
-else
-  REF=${REF:-main}
-  URL="https://github.com/$REPO/archive/refs/${REF}.tar.gz"
-  case "$REF" in refs/*) URL="https://github.com/$REPO/archive/${REF}.tar.gz";; esac
-  curl -fsSL "$URL" -o "$WORK/src.tgz" || die "could not download $URL"
-  tar -xzf "$WORK/src.tgz" -C "$WORK"
-  SRC=$(find "$WORK" -maxdepth 1 -type d -name 'hermey-*' | head -1)
-  [ -n "$SRC" ] || die "the downloaded archive did not look like a Hermey checkout"
-  note "source: $REF"
-fi
-[ -f "$SRC/Bridge/pyproject.toml" ] || die "$SRC is not a Hermey checkout (no Bridge/pyproject.toml)"
+fetch() {
+    url=$1
+    dest=$2
+    proto='=https'
+    case "$url" in
+        file://*) proto='=file' ;;
+        http://*) proto='=http,https' ;;
+    esac
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --proto "$proto" --proto-redir "$proto" -o "$dest" "$url" 2>/dev/null || \
+            fail "could not download $url" \
+                "check this host's network and that the release exists:" \
+                "  $BASE" \
+                "A host with no outbound access can build instead: setup/install.sh --from-source"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$dest" "$url" || fail "could not download $url" \
+            "check this host's network and that the release exists: $BASE" \
+            "A host with no outbound access can build instead: setup/install.sh --from-source"
+    else
+        fail "no downloader on this host (curl or wget)" \
+            "install curl, or build from a checkout: setup/install.sh --from-source"
+    fi
+}
 
-# ---------------------------------------------------------------- venv
-say "Installing the bridge into $PREFIX/venv"
-[ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv"
-"$PREFIX/venv/bin/python" -m pip install --quiet --upgrade pip wheel
-"$PREFIX/venv/bin/python" -m pip install --quiet --upgrade "$SRC/Bridge"
-note "installed: $("$PREFIX/venv/bin/python" -c 'import hermes_bridge,sys;print("hermes_bridge",getattr(hermes_bridge,"__version__","ok"))' 2>/dev/null || echo ok)"
-# The QR is a nicety; the deep link is always printed.
-"$PREFIX/venv/bin/python" -m pip install --quiet qrcode 2>/dev/null || true
+# The published checksum is the entire trust anchor for a prebuilt binary: an asset that does not
+# match is not installed, and the message says so rather than suggesting a retry loop.
+verify_checksum() {
+    file=$1
+    sums=$2
+    name=$3
+    expected=$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1; exit }' "$sums")
+    if [ -z "$expected" ]; then
+        fail "SHA256SUMS has no entry for $name" \
+            "this release cannot be verified, so nothing was installed." \
+            "Use a release that publishes SHA256SUMS, or build from source:" \
+            "  sudo setup/install.sh --from-source"
+    fi
+    actual=$(sha256_of "$file")
+    if [ "$actual" != "$expected" ]; then
+        fail "checksum mismatch for $name" \
+            "  expected $expected" \
+            "  got      $actual" \
+            "The download is corrupt or is not what this script expects. Nothing was installed." \
+            "Re-run once; if it repeats, do not install this release — report it."
+    fi
+    note "checksum ok: $name"
+}
 
-# ---------------------------------------------------------------- the gateway it relays to
-say "Finding the Hermes dashboard this bridge relays to"
-GW_PID=""; GW_PORT=""; GW_TOKEN=""
-STATUS=$("$HERMES_BIN" dashboard --status 2>/dev/null || true)
-GW_PID=$(printf '%s' "$STATUS" | grep -o 'PID [0-9]*' | head -1 | awk '{print $2}' || true)
-if [ -n "$GW_PID" ] && [ -r "/proc/$GW_PID/cmdline" ]; then
-  GW_PORT=$(tr '\0' ' ' < "/proc/$GW_PID/cmdline" | grep -o -- '--port [0-9]*' | awk '{print $2}' | head -1 || true)
-  GW_PORT=${GW_PORT:-9119}
-  GW_TOKEN=$(tr '\0' '\n' < "/proc/$GW_PID/environ" 2>/dev/null \
-             | sed -n 's/^HERMES_DASHBOARD_SESSION_TOKEN=//p' | head -1 || true)
-  note "reusing this host's dashboard: pid $GW_PID on 127.0.0.1:$GW_PORT"
-  [ -n "$GW_TOKEN" ] || note "warning: that dashboard runs without a session token; the bridge will connect without one"
-else
-  GW_PORT=$GATEWAY_PORT_DEFAULT
-  if [ -f "$CONF/gateway.env" ]; then
-    GW_TOKEN=$(sed -n 's/^HERMES_DASHBOARD_SESSION_TOKEN=//p' "$CONF/gateway.env" | head -1)
-  else
-    GW_TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '\n/+=' | cut -c1-43)
-  fi
-  note "no dashboard on this host — will run one on 127.0.0.1:$GW_PORT (profile: default)"
-fi
+download_binary() {
+    if [ -n "$BASE_URL" ]; then
+        BASE=$BASE_URL
+    elif [ "$VERSION" = latest ]; then
+        BASE="https://github.com/$REPO/releases/latest/download"
+    else
+        case "$VERSION" in v*) tag=$VERSION ;; *) tag=v$VERSION ;; esac
+        BASE="https://github.com/$REPO/releases/download/$tag"
+    fi
+    TMP=$(mktemp -d "${TMPDIR:-/tmp}/hermey-install.XXXXXX") || fail "cannot create a temporary directory" \
+        "set TMPDIR to a writable directory and re-run."
+    asset="$BIN_NAME-$TARGET"
+    say "Downloading hermeyd for $TARGET"
+    note "$BASE/$asset"
+    fetch "$BASE/SHA256SUMS" "$TMP/SHA256SUMS"
+    fetch "$BASE/$asset" "$TMP/$asset"
+    verify_checksum "$TMP/$asset" "$TMP/SHA256SUMS" "$asset"
+    install -m 0755 "$TMP/$asset" "$BIN.new" || fail "cannot write $BIN" \
+        "check that $PREFIX is writable and on a filesystem that allows executables."
+    mv -f "$BIN.new" "$BIN"
+}
 
-# The bridge reports on the agent's profiles, so it belongs to whoever can read them. Running it as
-# a stranger with no access produced an empty bot list on a clean host.
-if [ -z "${HERMES_HOME:-}" ]; then
-  HERMES_HOME=$(tr '\0' '\n' < "/proc/${GW_PID:-0}/environ" 2>/dev/null | sed -n 's/^HERMES_HOME=//p' | head -1)
-fi
-HERMES_HOME=${HERMES_HOME:-$HOME/.hermes}
-# A running dashboard often carries a *profile* home in HERMES_HOME (`…/profiles/<name>`), so the
-# profiles directory is derived from the shape of the path rather than appended blindly.
-if [ -n "${HERMES_PROFILES_ROOT:-}" ]; then
-  PROFILES_ROOT=$HERMES_PROFILES_ROOT
-elif [ "${HERMES_HOME%%/profiles/*}" != "$HERMES_HOME" ]; then
-  PROFILES_ROOT=${HERMES_HOME%%/profiles/*}/profiles
-else
-  PROFILES_ROOT=$HERMES_HOME/profiles
-fi
-note "hermes home: $HERMES_HOME"
-note "profiles:    $PROFILES_ROOT"
+build_binary() {
+    if [ -z "$SRC" ]; then
+        here=$(cd -- "$(dirname -- "$0")" && pwd)
+        SRC=$(cd -- "$here/.." && pwd)
+    fi
+    [ -f "$SRC/hermeyd/Cargo.toml" ] || fail "no hermeyd source tree at $SRC" \
+        "clone the repository and run the installer from it:" \
+        "  git clone https://github.com/macblizzard/hermey && cd hermey" \
+        "  sudo setup/install.sh --from-source" \
+        "or set HERMEY_SRC to a checkout."
+    command -v cargo >/dev/null 2>&1 || fail "cargo is not on PATH, so --from-source cannot build" \
+        "install Rust first: https://rustup.rs (then open a new shell)." \
+        "Or drop --from-source to install a published binary."
+    say "Building hermeyd from $SRC/hermeyd (this takes a few minutes)"
+    ( cd "$SRC/hermeyd" && cargo build --release --locked ) || fail "cargo build failed" \
+        "the compiler output above names the cause. A missing C toolchain (cc, pkg-config) is the" \
+        "usual one; installing build-essential/pkg-config and re-running fixes it." \
+        "Or install a published binary: setup/install.sh (without --from-source)."
+    SOURCE_BIN="$SRC/hermeyd/target/release/$BIN_NAME"
+    [ -x "$SOURCE_BIN" ] || fail "cargo finished but $SOURCE_BIN is missing" \
+        "check that hermeyd/Cargo.toml still declares the $BIN_NAME binary."
+    install -m 0755 "$SOURCE_BIN" "$BIN.new" || fail "cannot write $BIN" \
+        "check that $PREFIX is writable."
+    mv -f "$BIN.new" "$BIN"
+}
 
-if [ -z "$SVC_USER" ]; then
-  SVC_USER=$(stat -c %U "$HERMES_HOME" 2>/dev/null || echo root)
-fi
-valid_user "$SVC_USER" || die "cannot use '$SVC_USER' as the service user"
-note "service user: $SVC_USER"
+# ---------------------------------------------------------------- plugin
+# The apps draw generated-UI cards by loading this plugin's bundle from the engine. Upstream Hermes
+# does not ship it, so without this step every card answers 503 and the failure looks like a bug in
+# the app. Installed into the engine home, never into hermeyd's own state.
+install_plugin() {
+    plugins="$ENGINE_HOME/plugins"
+    if [ "$FROM_SOURCE" = 1 ]; then
+        src_plugin="$SRC/setup/plugins/$PLUGIN"
+        [ -d "$src_plugin" ] || fail "the source tree has no $src_plugin" \
+            "the plugin bundle belongs in setup/plugins/$PLUGIN; restore it from the repository."
+        mkdir -p "$plugins" || fail "cannot create $plugins" \
+            "check that $ENGINE_HOME is writable by root."
+        rm -rf "${plugins:?}/$PLUGIN"
+        cp -R "$src_plugin" "$plugins/$PLUGIN" || fail "cannot copy the plugin into $plugins" \
+            "check free space and permissions on $ENGINE_HOME."
+    else
+        asset="$PLUGIN-plugin.tar.gz"
+        fetch "$BASE/$asset" "$TMP/$asset"
+        verify_checksum "$TMP/$asset" "$TMP/SHA256SUMS" "$asset"
+        # Refuse an archive that would write outside the plugin directory.
+        if tar -tzf "$TMP/$asset" 2>/dev/null | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+            fail "$asset contains absolute or parent paths; refusing to extract it" \
+                "this release is malformed — do not install it. Report it at" \
+                "https://github.com/$REPO/issues"
+        fi
+        mkdir -p "$plugins" || fail "cannot create $plugins" \
+            "check that $ENGINE_HOME is writable by root."
+        rm -rf "${plugins:?}/$PLUGIN"
+        tar -xzf "$TMP/$asset" -C "$plugins" || fail "cannot extract $asset into $plugins" \
+            "check free space and permissions on $ENGINE_HOME."
+    fi
+    [ -f "$plugins/$PLUGIN/desktop/plugin.js" ] || fail "the plugin did not land at $plugins/$PLUGIN/desktop/plugin.js" \
+        "the release asset is malformed; hermeyd is installed but cards will answer 503." \
+        "Report it at https://github.com/$REPO/issues"
+    chown -R "$SVC_USER:$SVC_GROUP" "$plugins/$PLUGIN" 2>/dev/null || true
+    note "plugin: $plugins/$PLUGIN"
+}
 
-# ---------------------------------------------------------------- service user, dirs
-say "Creating the service account and directories"
-if [ "$SVC_USER" = root ]; then
-  note "user: root (the Hermes home is root's; no privilege is gained that the agent did not have)"
-elif ! id -u "$SVC_USER" >/dev/null 2>&1; then
-  useradd --system --home "$STATE" --shell /usr/sbin/nologin -- "$SVC_USER"
-  note "user: $SVC_USER (system, no shell)"
-fi
-install -d -m 0750 -o "$SVC_USER" -g "$SVC_USER" "$STATE"
-install -d -m 0750 "$CONF"
-install -d -m 0755 "$PREFIX"
-install -d -m 0755 "$BINDIR"
-
-umask 077
-cat > "$CONF/gateway.env" <<EOF
-# The token Hermes accepts on a loopback WS upgrade. Both services read this file.
-HERMES_DASHBOARD_SESSION_TOKEN=$GW_TOKEN
+# ---------------------------------------------------------------- configuration
+write_env() {
+    engine_token="$ENGINE_HOME/../engine.token"
+    if [ ! -f "$engine_token" ]; then engine_token="$STATE/engine.token"; fi
+    ENVFILE="$CONF/hermeyd.env"
+    if [ -f "$ENVFILE" ]; then
+        # An upgrade must not reset ports or a public host name the owner chose.
+        chmod 0640 "$ENVFILE"
+        note "kept existing $ENVFILE (delete it to regenerate)"
+        return 0
+    fi
+    cat > "$ENVFILE" <<EOF
+# hermeyd configuration — written by setup/install.sh. Read as a systemd EnvironmentFile.
+# Every value here is an environment variable hermeyd reads at boot; there is no config file.
+HERMEY_HOME=$STATE
+HERMEYD_PORT=$MAIN_PORT
+HERMEYD_BROWSER_PORT=$BROWSER_PORT
+HERMEYD_BIND=127.0.0.1
+HERMEYD_ENGINE_HOME=$ENGINE_HOME
+HERMEYD_ENGINE_WS=ws://127.0.0.1:9121/api/ws
+HERMEYD_ENGINE_TOKEN_FILE=$engine_token
+# What a pairing invite tells the app. On a tailnet this is <host>.ts.net; the apps add no port
+# because tailscale serve publishes serve-root.
+HERMEYD_PUBLIC_HOST=$PUBLIC_HOST
 EOF
-umask 022
-chmod 0600 "$CONF/gateway.env"
+    chmod 0640 "$ENVFILE"
+    chown "root:$SVC_GROUP" "$ENVFILE" 2>/dev/null || true
+    note "wrote $ENVFILE"
+}
 
-TAIL_HOST=""
-if command -v tailscale >/dev/null; then
-  TAIL_HOST=$(tailscale status --json 2>/dev/null | "$PY" -c 'import json,sys
-try:
-    d=json.load(sys.stdin); print((d.get("Self") or {}).get("DNSName","").rstrip("."))
-except Exception: print("")' 2>/dev/null || true)
-fi
-
-# A banner's picture is fetched by the phone, so the bridge has to be told this host's public name —
-# and the only place that name exists is here. An install with no tailnet name (or `--no-serve`) has
-# nothing to name, and then the bridge sends no image rather than a URL on somebody else's tailnet.
-PUSH_ICON_ENV=""
-if [ -n "$TAIL_HOST" ] && [ "$DO_SERVE" != no ]; then
-  PUSH_ICON_ENV="Environment=HERMEY_PUSH_ICON_BASE=https://$TAIL_HOST:$HTTPS_PORT/v1/push/icon"
-fi
-
-# ---------------------------------------------------------------- bot desktop
-# The screen a bot drives is the *agent's*, not the bridge's: the package list lives in
-# `tools/bot_desktop/runtime.py` and the launcher ships with the agent. What was missing is somebody
-# running it at install time, so a fresh host got a bridge, an app, and a bot that could not see a
-# screen until the owner clicked "Install" in the app and typed a sudo password.
-#
-# The agent is asked for its own list rather than a copy kept here: one source of truth across apt,
-# dnf and pacman, and the packages a new distro needs arrive with the agent rather than with us.
-if [ "$DO_DESKTOP" != no ]; then
-  say "Preparing the bot desktop (the screen bots drive)"
-  AGENT_ROOT=""
-  case "$HERMES_BIN" in
-    */bin/hermes) AGENT_ROOT=$(dirname "$(dirname "$HERMES_BIN")");;
-  esac
-  [ -d "$AGENT_ROOT" ] || AGENT_ROOT=""
-  if [ -n "$AGENT_ROOT" ] && [ -f "$AGENT_ROOT/tools/bot_desktop/runtime.py" ]; then
-    DESKTOP_BINS=$(cd "$AGENT_ROOT" && python3 -c 'import tools.bot_desktop.runtime as r; print(" ".join(r.REQUIRED_BINARIES))' 2>/dev/null || true)
-    DESKTOP_CMD=$(cd "$AGENT_ROOT" && python3 -c 'import tools.bot_desktop.runtime as r; print(r.install_command() or "")' 2>/dev/null || true)
-    DESKTOP_MISSING=""
-    for b in $DESKTOP_BINS; do
-      command -v "$b" >/dev/null 2>&1 || DESKTOP_MISSING="$DESKTOP_MISSING $b"
-    done
-    if [ -z "$DESKTOP_BINS" ]; then
-      note "the agent did not report a package list — leaving it to the app's Install card"
-    elif [ -z "$DESKTOP_MISSING" ]; then
-      note "already installed: $DESKTOP_BINS"
-    elif [ -z "$DESKTOP_CMD" ]; then
-      note "no supported package manager (apt/dnf/pacman) — the app shows the manual step"
-    elif [ "$(id -u)" = 0 ]; then
-      note "installing: $DESKTOP_CMD"
-      # Not fatal: the bridge is already useful without a screen, and the app can retry this from a
-      # bot's own screen. Dying here would fail an install over a package mirror.
-      if sh -c "$DESKTOP_CMD" >/dev/null 2>&1; then
-        note "the desktop stack is installed"
-      else
-        note "package install did not finish — a bot's screen offers Install to retry it"
-      fi
-    else
-      note "not running as root, so this step is skipped. Run this once to finish:"
-      note "  $DESKTOP_CMD"
-    fi
-  else
-    note "this host's Hermes has no tools/bot_desktop — the app's Install card is the only path"
-  fi
-fi
-
-# ---------------------------------------------------------------- units
-say "Writing the services"
-cat > "/etc/systemd/system/$BR_UNIT.service" <<EOF
+# ---------------------------------------------------------------- service
+install_unit() {
+    if [ "$OS" = linux ]; then
+        mkdir -p "$UNIT_DIR" || fail "cannot create $UNIT_DIR for the systemd unit" \
+            "check that /etc is writable, or point HERMEY_UNIT_DIR at a directory that is."
+        cat > "$UNIT_FILE" <<EOF
 [Unit]
-Description=Hermey bridge (the native apps' host API; loopback only)
-Documentation=https://github.com/$REPO
-After=network-online.target tailscaled.service
+Description=Hermey host service (hermeyd) — pairing, devices, tickets
+Documentation=https://github.com/$REPO/blob/main/docs/HERMEYD.md
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=$SVC_USER
-Group=$SVC_USER
-EnvironmentFile=$CONF/gateway.env
-EnvironmentFile=-$CONF/providers.env
-Environment=HERMES_BRIDGE_HOST=127.0.0.1
-Environment=HERMES_BRIDGE_PORT=$BRIDGE_PORT
-Environment=HERMES_BRIDGE_DB=$STATE/bridge.db
-Environment=HERMES_BRIDGE_GATEWAY_URL=ws://127.0.0.1:$GW_PORT/api/ws
-Environment=HERMES_BRIDGE_STATE_DIR=$STATE
-Environment=HERMES_PROFILES_ROOT=$PROFILES_ROOT
-Environment=XDG_STATE_HOME=$STATE
-Environment=HERMES_BRIDGE_PUBLIC_HOST=${TAIL_HOST:-127.0.0.1}
-$PUSH_ICON_ENV
-ExecStart=$PREFIX/venv/bin/python -m hermes_bridge
+Group=$SVC_GROUP
 WorkingDirectory=$PREFIX
-# Restart on a clean exit too, not only on failure: a SIGTERM looks like a successful stop to
-# systemd, so on-failure leaves the bridge dead after a stray kill and every paired device silently
-# loses its host. (No backticks below: this block is an unquoted heredoc and the shell runs them.)
+EnvironmentFile=-$CONF/hermeyd.env
+ExecStart=$BIN
 Restart=always
 RestartSec=2
-# Loopback networking and one state directory: nothing else.
+
+# Loopback networking and its own state, nothing else. ProtectHome is deliberately off: the engine
+# home is often under the service account's home, and hermeyd has to read profiles and write a bot's
+# skill into them.
 NoNewPrivileges=yes
 PrivateTmp=yes
+PrivateDevices=yes
 ProtectSystem=strict
-ProtectHome=read-only
-# Bot files and the skills the bridge installs for them. The skill installer writes into the shared
-# skills dir when the host has one (one copy for every bot) and into the profile dirs otherwise, so
-# both must be writable or a bot gets a Mac with no instructions on how to reach it.
-# A leading '-' marks a path that may not exist yet on a fresh host. Backticks are not usable in this
-# comment: the heredoc is unquoted so that $STATE expands, which also makes shellcheck parse any
-# backtick pair here as a command substitution.
-ReadWritePaths=$STATE $PROFILES_ROOT -${PROFILES_ROOT%/profiles}/skills -${PROFILES_ROOT%/profiles}/shared/skills
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
+ProtectHome=no
+ReadWritePaths=$STATE $ENGINE_HOME
+CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-RestrictNamespaces=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
-if [ -z "$GW_PID" ]; then
-  cat > "/etc/systemd/system/$GW_UNIT.service" <<EOF
-[Unit]
-Description=Hermes dashboard for Hermey (loopback; Hermes allows one per host)
-Documentation=https://github.com/$REPO
-After=network.target
-
-[Service]
-Type=simple
-User=root
-EnvironmentFile=$CONF/gateway.env
-ExecStart=$HERMES_BIN dashboard --port $GW_PORT --host 127.0.0.1 --no-open
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-fi
-
-systemctl daemon-reload
-if [ -n "$GW_PID" ]; then
-  systemctl disable --now "$GW_UNIT" >/dev/null 2>&1 || true
-else
-  systemctl enable --now "$GW_UNIT" >/dev/null
-fi
-systemctl enable --now "$BR_UNIT" >/dev/null
-
-# ---------------------------------------------------------------- health
-say "Waiting for the bridge"
-ok=0
-for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:$BRIDGE_PORT/v1/health" >/dev/null 2>&1; then ok=1; break; fi
-  sleep 0.5
-done
-[ "$ok" = 1 ] || { journalctl -u "$BR_UNIT" -n 20 --no-pager || true; die "the bridge did not answer on 127.0.0.1:$BRIDGE_PORT"; }
-note "healthy on 127.0.0.1:$BRIDGE_PORT"
-
-# ---------------------------------------------------------------- tailnet front door
-if [ "$DO_SERVE" != no ] && [ -n "$TAIL_HOST" ]; then
-  say "Exposing it to your tailnet with a real certificate"
-  if tailscale serve --bg --https="$HTTPS_PORT" "http://127.0.0.1:$BRIDGE_PORT" >/dev/null 2>&1; then
-    if curl -fsS --max-time 20 "https://$TAIL_HOST:$HTTPS_PORT/v1/health" >/dev/null 2>&1; then
-      note "https://$TAIL_HOST:$HTTPS_PORT  (tailnet only, certificate valid)"
+        chmod 0644 "$UNIT_FILE"
+        note "installed $UNIT_FILE"
     else
-      note "serve is configured but the HTTPS check has not passed yet (tailscale cert issuance can take a minute)"
-    fi
-  else
-    note "tailscale serve refused; run it yourself: tailscale serve --bg --https=$HTTPS_PORT http://127.0.0.1:$BRIDGE_PORT"
-  fi
-elif [ "$DO_SERVE" = no ]; then
-  note "skipping tailscale serve (--no-serve)"
-else
-  note "tailscale not found: the bridge is loopback-only until you expose it"
-fi
-
-# ---------------------------------------------------------------- the hermey command
-cat > "$BINDIR/hermey" <<EOF
-#!/usr/bin/env bash
-# Installed by Hermey. Status, pairing, logs and updates for this host.
-set -euo pipefail
-PORT=\${HERMEY_PORT:-$BRIDGE_PORT}
-HTTPS=\${HERMEY_HTTPS_PORT:-$HTTPS_PORT}
-UNIT=$BR_UNIT
-CONF=$CONF
-HOST_DNS=${TAIL_HOST:-}
-base="http://127.0.0.1:\$PORT"
-
-case "\${1:-status}" in
-  status)
-    systemctl --no-pager --lines=0 status "\$UNIT" | head -3 || true
-    if curl -fsS "\$base/v1/health" >/dev/null 2>&1; then echo "bridge:   healthy on \$base"; else echo "bridge:   NOT answering on \$base"; fi
-    # An if, not a chained test: as the arm's last statement a failing [ -n ] became the script's
-    # exit status, so a --no-serve install (no tailnet name) exited 1 while the bridge was healthy,
-    # and "hermey status exits 0" is the installer's own pass condition.
-    if [ -n "\$HOST_DNS" ]; then echo "tailnet:  https://\$HOST_DNS:\$HTTPS (tailscale serve)"; fi
-    ;;
-  pair)
-    # A pairing code lives for minutes, so it is minted when you ask, not at install time.
-    out=\$(curl -fsS -X POST "\$base/v1/pair/start") || { echo "could not mint a code — is the bridge running?" >&2; exit 1; }
-    code=\$(printf '%s' "\$out" | sed -n 's/.*"code"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-    host=\$(printf '%s' "\$out" | sed -n 's/.*"host"[ ]*:[ ]*"\([^"]*\)".*/\1/p')
-    # The Host header of this loopback call carries the bridge port; the link wants the
-    # outside port, so a host that already names one must not end up with two.
-    host=\${host%%:*}
-    case "\$host" in
-      ""|127.*|localhost|::1)
-        # No tailnet name was configured, so nothing this prints could be pasted into the app:
-        # 127.0.0.1 from the phone is the phone. The code is still good — it is entered against
-        # whatever address reaches this host.
-        echo "Pair in the Hermey app: add this host's address, then enter this code"
-        echo "  code: \$code"
-        echo "  (no address is configured for this host, so there is no link to scan)"
-        ;;
-      *)
-        link="hermes://pair?host=https://\$host:\$HTTPS&code=\$code"
-        echo "Pair in the Hermey app: add server → paste this, or scan the QR"
-        echo "  \$link"
-        if "$PREFIX/venv/bin/python" -c 'import qrcode' 2>/dev/null; then
-          "$PREFIX/venv/bin/python" -c 'import qrcode,sys
-qr=qrcode.QRCode(border=1); qr.add_data(sys.argv[1]); qr.print_ascii(invert=True)' "\$link" || true
-        fi
-        ;;
-    esac
-    ;;
-  logs)   journalctl -u "\$UNIT" -n "\${2:-50}" --no-pager;;
-  doctor)
-    echo "unit:      \$(systemctl is-active "\$UNIT")"
-    echo "health:    \$(curl -fsS "\$base/v1/health" >/dev/null 2>&1 && echo ok || echo FAIL)"
-    echo "gateway:   \$(systemctl show -p Environment "\$UNIT" --value | tr ' ' '\n' | sed -n 's/^HERMES_BRIDGE_GATEWAY_URL=//p' | head -1)"
-    if command -v tailscale >/dev/null; then
-      echo "tailscale: \$(tailscale status --json 2>/dev/null | sed -n 's/.*"BackendState": *"\([A-Za-z]*\)".*/\1/p' | head -1)"
-      if [ -n "\$HOST_DNS" ]; then
-        # A failed check used to print nothing at all (a chained test with || true), so doctor went
-        # quiet exactly when the certificate or the serve mapping was the broken part.
-        if curl -fsS --max-time 10 "https://\$HOST_DNS:\$HTTPS/v1/health" >/dev/null 2>&1; then
-          echo "https:     ok"
-        else
-          echo "https:     FAIL"
-        fi
-      fi
-    fi
-    ;;
-  update)  curl -fsSL "https://github.com/$REPO/releases/latest/download/install.sh" | bash;;
-  uninstall) echo "run: curl -fsSL https://github.com/$REPO/releases/latest/download/install.sh | sudo bash -s -- --uninstall";;
-  *) echo "usage: hermey [status|pair|logs|doctor|update|uninstall]"; exit 1;;
-esac
+        # launchd is not loaded from here. An installer that bootstraps a daemon on a laptop without
+        # saying so is a malware pattern; printing the two commands is one paste.
+        cat > "$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hermeyd</string>
+  <key>ProgramArguments</key>
+  <array><string>$BIN</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HERMEY_HOME</key><string>$STATE</string>
+    <key>HERMEYD_ENGINE_HOME</key><string>$ENGINE_HOME</string>
+    <key>HERMEYD_PORT</key><string>$MAIN_PORT</string>
+    <key>HERMEYD_PUBLIC_HOST</key><string>$PUBLIC_HOST</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>$STATE/hermeyd.log</string>
+  <key>StandardErrorPath</key><string>$STATE/hermeyd.log</string>
+</dict>
+</plist>
 EOF
-chmod 0755 "$BINDIR/hermey"
+        chmod 0644 "$PLIST"
+        note "wrote $PLIST"
+    fi
+}
 
-say "Done"
+start_service() {
+    if [ "$OS" != linux ]; then
+        return 0
+    fi
+    if ! command -v systemctl >/dev/null 2>&1 || ! have_systemd; then
+        warn "systemd is not running here, so the unit was written but not started."
+        note "start it by hand: HERMEY_HOME=$STATE $BIN"
+        return 0
+    fi
+    mkdir -p "$UNIT_DIR"
+    systemctl daemon-reload || fail "systemctl daemon-reload failed" \
+        "the unit at $UNIT_FILE may be malformed; fix it and run 'systemctl daemon-reload'."
+    systemctl enable "$UNIT" >/dev/null 2>&1 || warn "could not enable $UNIT at boot"
+    if systemctl restart "$UNIT"; then
+        note "restarted $UNIT"
+    else
+        fail "the $UNIT service did not start" \
+            "its log says why: journalctl -u $UNIT -n 50 --no-pager" \
+            "the binary is installed at $BIN; fix the cause and run 'systemctl restart $UNIT'."
+    fi
+    if ! systemctl is-active --quiet "$UNIT"; then
+        warn "$UNIT is not active right after starting"
+        note "check: journalctl -u $UNIT -n 50 --no-pager"
+    fi
+}
 
-# The bot desktop needs a browser that honours --load-extension and the extension on disk, or a login
-# card can be asked for and never filled. Idempotent, and it prints what it found.
-if [ -x "$(dirname "$0")/bot-browser.sh" ]; then
-  echo
-  echo "  Bot browser and sign-in extension:"
-  # The prefix decides which unit the drop-in belongs to; pass it so a renamed install adds its own.
-  HERMEY_UNIT_PREFIX="$UNIT_PREFIX" bash "$(dirname "$0")/bot-browser.sh" || true
+# A duplicate gateway is not this installer's failure to abort on — the host is otherwise fine — but
+# it is the exact cause of every routine firing twice, so it is reported with the remedy.
+gateway_check() {
+    if [ ! -x "$BIN" ]; then return 0; fi
+    set +e
+    out=$(HERMEY_HOME="$STATE" HERMEYD_ENGINE_HOME="$ENGINE_HOME" "$BIN" --gateway-check 2>&1)
+    status=$?
+    set -e
+    if [ "$status" -eq 75 ]; then
+        warn "another Hermes gateway already serves $ENGINE_HOME (hermeyd --gateway-check exited 75)"
+        printf '%s\n' "$out" | sed 's/^/  /'
+        note "Fix: stop that process, or run the engine isolated for this home:"
+        note "  hermes serve --isolated"
+        note "Nothing was killed — routines would otherwise fire twice."
+    elif [ "$status" -ne 0 ]; then
+        warn "hermeyd --gateway-check failed (exit $status); the service may still run"
+        printf '%s\n' "$out" | sed 's/^/  /'
+    else
+        note "gateway-check: clear to run"
+    fi
+}
+
+# ---------------------------------------------------------------- verification
+verify() {
+    [ -x "$BIN" ] || fail "the binary is not executable at $BIN" \
+        "check the filesystem's mount options (a noexec mount cannot run it)." \
+        "Pick another --prefix."
+    version=$("$BIN" --version 2>/dev/null || true)
+    [ -n "$version" ] || fail "$BIN did not answer --version" \
+        "the binary is for another architecture or is corrupt — this is what the checksum guards." \
+        "Re-run the installer; if it repeats, report it at https://github.com/$REPO/issues"
+    note "$version"
+
+    if [ "$OS" = linux ] && command -v systemctl >/dev/null 2>&1 && have_systemd; then
+        tries=0
+        while [ "$tries" -lt 10 ]; do
+            if curl -fsS "http://127.0.0.1:$MAIN_PORT/v1/health" >/dev/null 2>&1; then
+                note "health: http://127.0.0.1:$MAIN_PORT/v1/health answers"
+                return 0
+            fi
+            tries=$((tries + 1))
+            sleep 1
+        done
+        warn "the service is running but /v1/health did not answer within 10s"
+        note "check: journalctl -u $UNIT -n 50 --no-pager"
+    fi
+}
+
+next_steps() {
+    printf '\n'
+    say "Installed."
+    note "binary:  $BIN"
+    note "state:   $STATE (0700, owned by $SVC_USER)"
+    note "config:  $CONF/hermeyd.env"
+    note "plugin:  $ENGINE_HOME/plugins/$PLUGIN"
+    note "token:   $STATE/local.token (0600, minted on first boot — the CLIs read it, never paste it)"
+    printf '\n'
+    say "Start the engine this service relays to:"
+    note "hermes serve --isolated          # one gateway per HERMES_HOME; --isolated is required"
+    printf '\n'
+    say "Publish it to your tailnet (optional, recommended):"
+    note "tailscale serve --bg http://127.0.0.1:$MAIN_PORT"
+    note "Never publish $BROWSER_PORT — the browser channel is loopback-only by design."
+    printf '\n'
+    say "Verify:"
+    note "curl -fsS http://127.0.0.1:$MAIN_PORT/v1/health"
+    note "curl -fsS -X POST http://127.0.0.1:$MAIN_PORT/v1/pair/start   # code for the app"
+    printf '\n'
+}
+
+# ---------------------------------------------------------------- uninstall
+do_uninstall() {
+    need_root --uninstall
+    say "Removing hermeyd"
+
+    # The engine home and the state directory survive by default; read the engine home back from the
+    # config, because the caller usually does not pass it again.
+    ENVFILE="$CONF/hermeyd.env"
+    if [ -z "$ENGINE_HOME" ] && [ -r "$ENVFILE" ]; then
+        ENGINE_HOME=$(sed -n 's/^HERMEYD_ENGINE_HOME=//p' "$ENVFILE" | head -1)
+    fi
+
+    if [ "$OS" = darwin ]; then
+        if command -v launchctl >/dev/null 2>&1; then
+            launchctl bootout "system/com.hermeyd" >/dev/null 2>&1 || true
+        fi
+        rm -f "/Library/LaunchDaemons/com.hermeyd.plist"
+        note "removed /Library/LaunchDaemons/com.hermeyd.plist"
+    else
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable --now "$UNIT" >/dev/null 2>&1 || true
+        fi
+        rm -f "$UNIT_FILE"
+        if command -v systemctl >/dev/null 2>&1 && have_systemd; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        fi
+        note "removed $UNIT_FILE"
+    fi
+
+    rm -f "$BIN"
+    rmdir "$PREFIX/bin" 2>/dev/null || true
+    rmdir "$PREFIX" 2>/dev/null || true
+    note "removed $BIN"
+
+    rm -f "$ENVFILE" "$PLIST"
+    rmdir "$CONF" 2>/dev/null || true
+    note "removed $ENVFILE"
+
+    if [ -n "$ENGINE_HOME" ] && [ -d "$ENGINE_HOME/plugins/$PLUGIN" ]; then
+        rm -rf "$ENGINE_HOME/plugins/$PLUGIN"
+        note "removed $ENGINE_HOME/plugins/$PLUGIN"
+    fi
+
+    if [ "$PURGE" = 1 ]; then
+        rm -rf "$STATE"
+        say "Purged $STATE (devices and pairing are gone; every app must pair again)."
+    else
+        say "Service removed. State kept in $STATE — delete it with --uninstall --purge."
+    fi
+    say "If you published the host, take the mapping down: tailscale serve --bg off"
+}
+
+# ---------------------------------------------------------------- install
+main() {
+    need_root "$@"
+
+    valid_path "$PREFIX" || fail "--prefix must be an absolute path without spaces or '..' (got '$PREFIX')"
+    valid_path "$STATE"  || fail "--state-dir must be an absolute path without spaces or '..' (got '$STATE')"
+    valid_path "$CONF"   || fail "the config directory must be absolute (got '$CONF')"
+    if [ "$PREFIX" = "$STATE" ] || [ "$STATE" = "$CONF" ]; then
+        fail "prefix, state and config must be different directories" \
+            "pick distinct --prefix/--state-dir values."
+    fi
+    valid_port "$MAIN_PORT"    || fail "HERMEYD_PORT must be 1-65535 (got '$MAIN_PORT')" \
+        "pick a free loopback port, e.g. HERMEYD_PORT=8788."
+    valid_port "$BROWSER_PORT" || fail "HERMEYD_BROWSER_PORT must be 1-65535 (got '$BROWSER_PORT')" \
+        "the browser channel needs its own port, e.g. 8790."
+    if [ "$MAIN_PORT" = "$BROWSER_PORT" ]; then
+        fail "HERMEYD_PORT and HERMEYD_BROWSER_PORT must differ" \
+            "hermeyd refuses to serve the browser channel on the published port."
+    fi
+
+    detect_target
+    say "Hermey host installer — $TARGET"
+
+    if [ "$FROM_SOURCE" = 1 ] && [ -z "$SRC" ]; then
+        # Building needs the checkout, so it is resolved before anything else; install_plugin reads
+        # the vendored plugin out of the same tree.
+        here=$(cd -- "$(dirname -- "$0")" && pwd)
+        SRC=$(cd -- "$here/.." && pwd)
+    fi
+
+    resolve_user
+    detect_engine_home
+    valid_path "$ENGINE_HOME" || fail "--engine-home must be an absolute path without spaces (got '$ENGINE_HOME')" \
+        "pass the directory Hermes uses, e.g. /var/lib/hermes."
+    if [ ! -d "$ENGINE_HOME/profiles" ]; then
+        warn "$ENGINE_HOME has no profiles/ — is this the engine home?"
+    fi
+    note "engine:  $ENGINE_HOME"
+    note "service: $SVC_USER:$SVC_GROUP"
+
+    ensure_dirs
+    if [ "$FROM_SOURCE" = 1 ]; then
+        build_binary
+    else
+        download_binary
+    fi
+    install_plugin
+    write_env
+    install_unit
+    start_service
+    gateway_check
+    verify
+    next_steps
+
+    if [ "$OS" = darwin ]; then
+        printf '\n'
+        say "This host uses launchd. Load the service yourself:"
+        note "sudo cp $PLIST /Library/LaunchDaemons/com.hermeyd.plist"
+        note "sudo launchctl bootstrap system /Library/LaunchDaemons/com.hermeyd.plist"
+        note "sudo launchctl kickstart -k system/com.hermeyd"
+    fi
+}
+
+if [ "$PURGE" = 1 ] && [ "$UNINSTALL" != 1 ]; then
+    fail "--purge only makes sense with --uninstall" "remove state with: sudo sh install.sh --uninstall --purge"
 fi
 
-if [ -n "$TAIL_HOST" ]; then
-  echo
-  echo "  Add a server in the Hermey app:"
-  echo "    https://$TAIL_HOST:$HTTPS_PORT"
-  echo "  then mint a pairing code here:"
-  echo "    hermey pair"
-else
-  echo
-  echo "  The bridge listens on 127.0.0.1:$BRIDGE_PORT only. To reach it from a phone,"
-  echo "  join both to a tailnet and run:"
-  echo "    tailscale serve --bg --https=$HTTPS_PORT http://127.0.0.1:$BRIDGE_PORT"
-  echo "    hermey pair"
+if [ "$UNINSTALL" = 1 ]; then
+    OS=$(printf '%s' "$(uname -s)" | tr '[:upper:]' '[:lower:]')
+    do_uninstall
+    exit 0
 fi
+
+main "$@"

@@ -1,7 +1,7 @@
 ---
 name: hermey-host
 description: Install and run a Hermey host (the native apps' backend) on a Hermes box.
-version: 1.0.0
+version: 2.0.0
 author: Assistant
 license: MIT
 metadata:
@@ -11,82 +11,91 @@ metadata:
 
 # Hermey host
 
-> **`setup/install.sh` is retired.** It installed the Python bridge, which is no longer in this
-> repository; it now stops with a message and exits 1. The host service is `hermeyd/` — see
-> [`docs/HERMEYD.md`](../docs/HERMEYD.md) and `deploy/hermeyd.service`. The description below is kept
-> for a host that has not migrated.
+Hermey is the native iOS/macOS client for a Hermes agent. The apps talk to **hermeyd** on your Hermes
+host: one loopback HTTP/WS service, a single Rust binary, that relays the engine's WebSocket. This
+skill installs it, pairs a device, and diagnoses it. Repo: `github.com/macblizzard/hermey`.
 
-Hermey is the native iOS/macOS client for a Hermes agent. The apps talk to a **bridge** on your
-Hermes host: one loopback HTTP/WS service that relays to the Hermes dashboard. This skill installs
-it, pairs a device, and diagnoses it. Repo: `github.com/macblizzard/hermey`.
+Contract and environment: [`docs/HERMEYD.md`](../docs/HERMEYD.md). Install reference and every flag:
+[`docs/INSTALL.md`](../docs/INSTALL.md).
 
 ## Install (one command, as root)
 
 ```bash
-curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
 ```
 
 What it does — and what it deliberately does not:
 
-1. Checks the host: Python 3.11+, systemd, and a `hermes` binary (it refuses politely otherwise).
-2. Runs the bridge as the owner of your Hermes home — the account that can already read your
-   bots — with state in `/var/lib/hermey` (device registry, SQLite, attachments). `HERMEY_USER` names
-   a different account if you prefer.
-3. Installs the bridge into `/opt/hermey/venv` and runs it as **`hermey-bridge.service`**, bound to
-   `127.0.0.1` only.
-4. **Reuses the dashboard this host already runs.** Hermes permits exactly one machine-level
-   dashboard per host, so the installer reads the running one's port and session token from its
-   process environment. Only when none is running does it install **`hermey-gateway.service`**.
-5. Exposes the bridge with `tailscale serve --bg --https=8443 http://127.0.0.1:8787` — a real
-   certificate, tailnet-only, no public listener.
-6. Installs `/usr/local/bin/hermey` for status, pairing, logs, doctor and updates.
-7. **Gives every bot on the host the Mac skill.** On each start the bridge writes a
-   `mac-local-computer` skill (plus the CLI it points at) into the skills dir Hermes already loads —
-   the shared one when `skills.external_dirs` is configured, otherwise the install home and every
-   profile. That is what makes "do this on my Mac" a capability instead of a discovery problem; a
-   skill of the same name written by the owner is never touched.
+1. Detects Linux x86_64/aarch64 or macOS arm64/x86_64 and refuses anything else with the supported
+   list plus the from-source alternative.
+2. Downloads the matching `hermeyd` binary **plus `SHA256SUMS`, and verifies the SHA-256 before
+   installing**. A missing or mismatched entry aborts with nothing installed.
+3. Installs `/opt/hermey/bin/hermeyd`, state at `/var/lib/hermeyd` (`0700`), and
+   `/etc/hermey/hermeyd.env` (ports, engine home, token path, public host).
+4. Installs the systemd unit (Linux) or writes the launchd plist and prints the two load commands
+   (macOS). The service runs as the engine's owner: it must share that UID, because it writes skills
+   into the engine's profiles.
+5. Installs the **`hermes-genui`** plugin into `<engine>/plugins/hermes-genui`. Upstream Hermes does
+   not ship it; without it every generated-UI card answers `503`.
+6. Runs `hermeyd --gateway-check`. Exit `75` means another gateway already serves this `HERMES_HOME`
+   — a warning, with the remedy, not a failure.
+7. Prints the exact `tailscale serve` command and the token path. It does not run `tailscale serve`:
+   publishing a host is a decision.
 
-Re-running the same command is an **upgrade**: same units, same state, package reinstalled.
+`--from-source` builds with `cargo build --release --locked` from a checkout instead of downloading.
+
+Re-running the same command is an **upgrade**: same paths, same state, new binary, unit and plugin.
+
+Three requirements, each of which fails in a way that does not look like setup:
+
+- **One gateway per `HERMES_HOME`.** Start the engine with `hermes serve --isolated`; a duplicate
+  ticker fires every routine twice.
+- **hermeyd and the engine share a UID.**
+- **The `hermes-genui` plugin is ours**, not upstream's.
 
 ## Pair a device
 
 ```bash
-hermey pair     # prints a fresh code, a hermes:// deep link, and a QR
+curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start
+# {"code":"12345678","host":"…","expires_at":…}
 ```
 
-Codes are short-lived, so mint one when the phone is in hand. In the app: add server → scan the QR
-or paste the link. The URL to type by hand is `https://<host>.<tailnet>.ts.net:8443`.
+`/v1/pair/start` answers on loopback only. Codes are short-lived, so mint one with the phone in hand.
+In the app: add server → this host's tailnet name → enter the code. Pair as many devices as you like;
+each is individually revocable.
 
 ## Verify
 
 ```bash
-hermey doctor   # unit, loopback health, gateway URL, tailscale state, HTTPS through the cert
-curl -fsS https://<host>.<tailnet>.ts.net:8443/v1/health
+curl -fsS http://127.0.0.1:8788/v1/health                         # unauthenticated liveness
+TOKEN=$(sudo cat /var/lib/hermeyd/local.token)                   # 0600, minted on boot
+curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8788/v1/local-computers
+curl -fsS "https://$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')/v1/health"
+sudo HERMEY_HOME=/var/lib/hermeyd hermeyd --gateway-check; echo $?   # 0 good, 75 duplicate
 ```
 
-A working install answers `{"status":"ok", ...}` on both the loopback and the tailnet URL.
+A working install answers `{"status":"ok", …}` on both the loopback and the tailnet URL.
 
 ## Pitfalls (each of these cost real time on a live host)
 
 - **Never create a unit called `hermes-gateway.service`.** That is Hermes' *messaging* gateway; the
-  collision only surfaces at the next restart, when messaging does not come back. Units here are
-  `hermey-*`.
-- **One dashboard per host.** A second `hermes dashboard` refuses to start ("this host is already
-  served by PID …"). That is why the installer prefers to reuse: run `hermes dashboard --status`
-  before assuming you need your own.
-- **The bridge must stay on loopback.** Hermes accepts the session token on a loopback WS upgrade
-  and refuses it on any other bind; `tailscale serve` is the only front door.
-- **iOS needs a trusted cert.** A self-signed endpoint will fail in the app, so use `tailscale serve`
-  (or a real domain + Caddy). Do not hand-edit ATS exceptions into the app.
-- **Port 8443 may already be taken** by another tailnet service; pass `--https-port 8444` (and
-  `--port 8788` for a second bridge) instead of stopping the other service.
+  collision only surfaces at the next restart, when messaging does not come back.
+- **One gateway per `HERMES_HOME`.** A second `hermes gateway run --force` bypasses the host lock and
+  duplicates every routine. Use `serve --isolated`, and read `hermeyd --gateway-check`'s exit code.
+- **hermeyd stays on loopback.** `HERMEYD_BIND` accepts only loopback values and the process refuses
+  anything else; `tailscale serve` is the front door.
+- **Do not publish `8790`.** That is the browser channel, it carries no credential, and it is
+  loopback-only by design.
+- **iOS needs a trusted cert.** A self-signed endpoint fails in the app; use `tailscale serve` (or a
+  real domain + Caddy). Do not hand-edit ATS exceptions into the app.
 
 ## Uninstall
 
 ```bash
-curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash -s -- --uninstall
-# add --purge to delete /opt/hermey, /var/lib/hermey and /etc/hermey too
+curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall
+# add --purge to delete /var/lib/hermeyd too
 ```
 
-`--uninstall` stops the units, removes them, turns the `tailscale serve` mapping off, and keeps your
-state and paired devices unless you add `--purge`.
+`--uninstall` stops and removes the unit, the binary, the config and the plugin, and keeps state and
+paired devices unless you add `--purge`. It also reminds you to take down the `tailscale serve`
+mapping, which it never created.

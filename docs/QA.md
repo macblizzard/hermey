@@ -1,5 +1,11 @@
 # QA: what is verified, how, and what is not
 
+> **This page describes the QA harness of the removed Python bridge (`Tools/qa`, gone with it).** The
+> host service today is `hermeyd/`: its behaviour is pinned by `cargo test` in `hermeyd/`, and the
+> end-to-end checks live in `scripts/smoke-hermeyd.sh`, `scripts/smoke-app-routes.sh`,
+> `scripts/smoke-attachments.sh` and `scripts/smoke-relay.py`. The measurements below are kept as the
+> record of what was proven about the protocol the apps still speak — not as commands to run.
+
 The Swift apps and the bridge make claims that cannot be checked by reading code: *an approval
 blocks the agent until the user answers*, *a ticket is single use*, *a frame over the cap never reaches
 the gateway*, *no prompt text is logged*. Those are timing and envelope behaviours, so they are tested

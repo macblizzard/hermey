@@ -50,9 +50,9 @@ app itself needs no account, no Apple service and no internet beyond your tailne
    or by hand: right-click `Hermey` → **Open** → **Open** again. macOS remembers the choice, so this
    is a first-launch step and not a routine one. If you move or re-download the app, the mark comes
    back with the new copy — run the command again.
-3. The Mac app pairs exactly like the phone: run `hermey pair` on the host and paste what it prints
-   into **Pairing code or link** — the eight digits, or the whole `hermes://` link (the Mac has no
-   camera). The code is single use and lives ten minutes.
+3. The Mac app pairs exactly like the phone: mint a code on the host with
+   `curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start` and enter the eight digits under
+   **Pairing code or link**. The code is single use and short-lived (the Mac has no camera).
    A hand-issued device token still works: open **Advanced — I have a device token** in the same
    sheet and paste the WebSocket URL, device ID and token.
 
@@ -67,8 +67,9 @@ when the Mac wakes, which is a different thing.
 
 ## First run
 
-- Add a server: paste `https://<host>.<tailnet>.ts.net:8443` or scan the QR.
-- Enter the pairing code from `hermey pair`.
+- Add a server: paste `https://<host>.<tailnet>.ts.net` — serve-root, no port.
+- Enter the pairing code minted on the host:
+  `curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start`.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
 
@@ -113,13 +114,13 @@ unsigned Mac build keeps it in. On the host, revoking a device invalidates its o
 immediately and leaves the other devices alone:
 
 ```bash
-hermey doctor            # see what is paired and whether it is healthy
-curl -s -H "Authorization: Bearer $(cat <state>/local.token)" http://127.0.0.1:8788/v1/devices
+sudo cat /var/lib/hermeyd/local.token                      # 0600, reminted at boot
+curl -s -H "Authorization: Bearer $(sudo cat /var/lib/hermeyd/local.token)" \
+     http://127.0.0.1:8788/v1/devices
 ```
 
-The second is the **hermeyd** host service: loopback, and the local bearer it mints at start
-(`<state>/local.token`). On a host still running the Python bridge it was `8787`, loopback-only, with
-no credential.
+`hermeyd` is loopback-only and every `/v1` route except `/v1/health` and `/v1/pair/start` requires
+that local bearer.
 
 ## Bot computer
 

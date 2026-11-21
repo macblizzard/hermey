@@ -21,33 +21,40 @@ a bot list as the home screen, one endless conversation per bot, group chats, ap
 attachments — talking to a small loopback service on your host over HTTPS on your tailnet.
 
 There is no Hermey server. The host you already run is the backend; this repo is the client, the
-bridge that adapts it, and the one command that installs the bridge.
+host service that adapts the engine (`hermeyd`, one Rust binary), and the one command that installs it.
 
 ## Quick start
 
-**1. On your Hermes host** (Linux, root):
+**1. On your Hermes host** (Linux or macOS, root):
 
 ```bash
-curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash
-hermey pair
+curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
+tailscale serve --bg http://127.0.0.1:8788     # optional but recommended
+curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start   # the pairing code
 ```
 
+The installer downloads the `hermeyd` binary for this platform, checks its published SHA-256, installs
+it under `/opt/hermey/bin`, creates `/var/lib/hermeyd`, writes `/etc/hermey/hermeyd.env`, installs the
+systemd unit (or prints the launchd commands) and puts the `hermes-genui` plugin into your engine's
+plugin directory. `--from-source` builds with cargo instead. Details and every flag:
+[`docs/INSTALL.md`](docs/INSTALL.md).
+
 **2. On your phone or Mac**: install the app ([iOS](docs/APPS.md#ios) · [macOS](docs/APPS.md#macos)),
-then scan the QR that `hermey pair` printed. For AltStore/SideStore, add the source
+then enter the pairing code against this host's tailnet name. For AltStore/SideStore, add the source
 `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`.
 
-That is the whole setup. The installer reuses the Hermes dashboard you already run, puts the bridge
-on loopback, and exposes it with `tailscale serve` — a real certificate, reachable only from your
-tailnet.
+That is the whole setup. hermeyd listens on `127.0.0.1:8788` only, and `tailscale serve` gives it a
+real certificate reachable only from your tailnet. The engine it relays to must be started with
+`hermes serve --isolated`: Hermes allows one gateway per `HERMES_HOME`.
 
 ### Rather hand it to your agent?
 
 Paste this into whatever agent has a root shell on your Hermes host:
 
 > Set up a Hermey host on this machine. The repo is <https://github.com/macblizzard/hermey>; read
-> `docs/FOR-AGENTS.md` and follow it exactly: install the bridge, verify `/v1/health` answers on both
+> `docs/FOR-AGENTS.md` and follow it exactly: install hermeyd, verify `/v1/health` answers on both
 > loopback and the tailnet URL, then give me the pairing code and the iOS/macOS install links. Don't
-> change anything else on this host, and don't bind the bridge to a public interface.
+> change anything else on this host, and don't bind hermeyd to a public interface.
 
 [`docs/FOR-AGENTS.md`](docs/FOR-AGENTS.md) is a runbook written for an executor, not a reader: state
 detection, the install command, two hard verification gates, the pairing handoff, the rules that keep
@@ -101,23 +108,22 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 
 ```
  ┌──────────────┐   HTTPS (tailscale serve, real cert)   ┌────────────────┐
- │  iOS / macOS │ ─────────────────────────────────────► │  hermey-bridge │  127.0.0.1 only
- │  Hermey app  │   device ticket, single use, 30 s      │  FastAPI + WS  │
+ │  iOS / macOS │ ─────────────────────────────────────► │    hermeyd    │  127.0.0.1:8788
+ │  Hermey app  │   device ticket, single use, 30 s      │    Rust + WS   │  (+ 8790 browsers)
  └──────────────┘ ◄───────────────────────────────────── └───────┬────────┘
-                                                                  │ loopback WS
+                                                                  │ ws://127.0.0.1:9121/api/ws
                                                           ┌───────▼────────┐
-                                                          │ Hermes dashboard│
-                                                          │  (your agents)  │
+                                                          │ Hermes engine  │
+                                                          │  (your agents) │
                                                           └────────────────┘
 ```
 
-The app never talks to Hermes directly. The bridge speaks the JSON-RPC that the Hermes dashboard
-already exposes, and adds only what a client needs: pairing, per-device credentials, attachments and
-voice. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The app never talks to Hermes directly. hermeyd relays the engine's JSON-RPC WebSocket and adds only
+what a client needs: pairing, per-device credentials, attachments, generated-UI cards and voice. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Security posture
 
-- The bridge binds `127.0.0.1`. The only way in is `tailscale serve`, which terminates TLS with a
+- hermeyd binds `127.0.0.1` (API on `8788`, browser channel on `8790`) and refuses any other bind. The only way in is `tailscale serve`, which terminates TLS with a
   real certificate — no public listener, no self-signed certificate, no port forward.
 - Operator-only routes (pairing, writing into a bot's chat) are refused when a proxy header is
   present, so a tailnet peer cannot act as if it were the host.
@@ -145,8 +151,8 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 | [`docs/INSTALL.md`](docs/INSTALL.md) | What the installer does, all flags, uninstall, moving hosts |
 | [`docs/APPS.md`](docs/APPS.md) | Installing the iOS and macOS builds, first run, re-signing |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The protocol, the components, the state on disk |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | `hermey doctor`, common failures, and what each one means |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, device model, what the bridge will not do |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Common failures and what each one means |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, device model, what hermeyd will not do |
 | [`docs/CREDENTIALS.md`](docs/CREDENTIALS.md) | Login cards: a secret reaches the page without the bot ever seeing it |
 | [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) | Integrations: your own Google accounts, connected once, several per service |
 | [`docs/UI-PITFALLS.md`](docs/UI-PITFALLS.md) | Hard-won UI rules, if you are changing the app |
@@ -162,16 +168,15 @@ Everything builds on GitHub-hosted macOS runners, so no local Xcode is required 
 # Swift packages (protocol, design system, renderer, app state)
 swift build && swift test
 
-# Bridge (Python 3.11+)
-python3 -m venv .venv && .venv/bin/pip install -e "Bridge/[test]"
-.venv/bin/pytest Bridge/tests
+# Host service (Rust)
+cd hermeyd && cargo test && cargo build --release
 
 # Generate the Xcode projects (they are never committed)
 brew install xcodegen && xcodegen generate
 ```
 
-CI runs the packages, both apps, the unsigned `.ipa`, the bridge tests and a QA harness on every
-push. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+CI runs the packages, both apps, the unsigned `.ipa`, the host service's Rust tests and a QA harness
+on every push. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Status
 
