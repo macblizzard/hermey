@@ -379,7 +379,7 @@
         <h1>Your agent,<br>in a real app<span class="clay">.</span></h1>
         <p class="lede">Hermey is a native client for the Hermes agent you run yourself. One endless conversation per bot, streamed over your own Tailscale network — and, on the Mac, a computer your bots can use when you say so. No SSH. No Remote Login. No cloud in the middle.</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="#install">Install Hermey</a>
+          <a class="btn btn-primary" href="docs/prerequisites.html">Get started</a>
           <a class="btn btn-quiet" href="https://github.com/macblizzard/hermey">View source</a>
         </div>
         <p class="build" id="build">Latest release: <a href="https://github.com/macblizzard/hermey/releases/latest">see the release page</a></p>
@@ -410,7 +410,7 @@
         .catch(function () { /* the fallback sentence is the failure state */ });
     })();
     </script>
-        <p class="fineprint">Free and MIT licensed. The builds are unsigned — you sideload the app with your own certificate, and the host never leaves your machine.</p>
+        <p class="fineprint">Free and MIT licensed, and it needs a Hermes install you already run. The builds are unsigned — you sideload the app with your own certificate — and the host never leaves your machine.</p>
       </div>
 
       <figure class="hero-shot">
@@ -425,7 +425,7 @@
     <div class="wrap">
       <dl class="facts">
         <div><dt>Opt-in by design</dt><dd>Computer use is off until you switch it on, and revocable in one click.</dd></div>
-        <div><dt>iOS 17 · macOS 14</dt><dd>Native on both platforms. There is no web wrapper anywhere.</dd></div>
+        <div><dt>iOS 17 · macOS 14</dt><dd>SwiftUI on both, not a web wrapper.</dd></div>
         <div><dt>Zero telemetry</dt><dd>No analytics, no crash reports, no accounts to create.</dd></div>
         <div><dt>MIT licensed</dt><dd>Read it, fork it, host it. Nothing to subscribe to.</dd></div>
       </dl>
@@ -468,9 +468,9 @@
         <figure>
           <div class="phone-frame">
             <img src="shots/ios-light-themes.webp" width="900" height="1957" loading="lazy"
-                 alt="The Parchment light theme selected in Hermey's Appearance settings, beside the eight available palettes">
+                 alt="The Parchment light theme selected in Hermey's Appearance settings">
           </div>
-          <figcaption><b>Light when you want it</b>Eight palettes, one of them light — Parchment, taken from this page's own colours.</figcaption>
+          <figcaption><b>Light when you want it</b>Parchment, for daylight.</figcaption>
         </figure>
       </div>
     </div>
@@ -484,7 +484,7 @@
           <p class="eyebrow">What it does</p>
           <h2>Built for one person, one machine.</h2>
         </div>
-        <p>Hermey is not a chat client bolted onto an API. It is the front end to a host you already run, so it can do the things a web page cannot — and it keeps nothing you did not give it.</p>
+        <p>Hermey is the front end to a host you already run, not a chat client bolted onto an API.</p>
       </div>
 
       <div class="feature-list">
@@ -493,14 +493,11 @@
         <article class="feature"><span class="n">03</span><div><h3>Reads like a document</h3><p>Full markdown — headings, tables, quotes — with code blocks that carry their own copy button and tick, and reasoning you can open.</p></div></article>
         <article class="feature"><span class="n">04</span><div><h3>Speaks, and shows pictures</h3><p>Read a long answer aloud in the system voice, attach files and screenshots, and open any image full screen at full resolution.</p></div></article>
         <article class="feature"><span class="n">05</span><div><h3>The bot's own computer</h3><p>Open the headless desktop your agent works on in a pane beside the chat — mouse and keyboard, so you can watch a run or take over.</p></div></article>
-        <article class="feature"><span class="n">06</span><div><h3>Yours alone</h3><p>Pair once with a device token, then talk. No login, no sync service, no analytics: the app knows your host and nothing else.</p></div></article>
-        <article class="feature"><span class="n">07</span><div><h3>Your Mac as a computer</h3><p>Turn on Computer use and bots can observe the screen, click and type, open apps and work in a shared folder — over the app's own authenticated link.</p></div></article>
-        <article class="feature"><span class="n">08</span><div><h3>Pair from either device</h3><p>Generate a QR code and pairing link on the Mac or the phone. Both apps accept the same short-lived invite.</p></div></article>
-        <article class="feature"><span class="n">09</span><div><h3>Fast by keyboard</h3><p>⌘K opens a command palette with ten verbs; typing / in the composer shows the gateway's slash commands with autocomplete.</p></div></article>
-        <article class="feature"><span class="n">10</span><div><h3>Nothing to run in the cloud</h3><p>The host is software you installed, on a machine you own. The apps dial it directly — there is no relay of ours in the path.</p></div></article>
-        <article class="feature"><span class="n">11</span><div><h3>Finds anything it ever said</h3><p>Search runs across every bot's conversation at once and comes back newest first, each hit shown with the line around the match — not a session list you have to open one by one.</p></div></article>
-        <article class="feature"><span class="n">12</span><div><h3>Asks before it needs a password</h3><p>When a bot needs to sign in somewhere, it raises a card in the app naming the site and the fields it wants. You type them; the bot collects the answer once and the card closes.</p></div></article>
-        <article class="feature"><span class="n">13</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
+        <article class="feature"><span class="n">06</span><div><h3>Pair from either device</h3><p>Generate an invite on the Mac or the phone. Both apps accept the same short-lived code.</p></div></article>
+        <article class="feature"><span class="n">07</span><div><h3>Driven from the keyboard</h3><p>⌘K opens the command palette; typing / in the composer shows the gateway's slash commands with autocomplete.</p></div></article>
+        <article class="feature"><span class="n">08</span><div><h3>Nothing in the middle</h3><p>The host is software you installed, on a machine you own. The apps dial it directly: no relay of ours, no login, no analytics.</p></div></article>
+        <article class="feature"><span class="n">09</span><div><h3>Finds anything it ever said</h3><p>Search runs across every bot's conversation at once and comes back newest first, each hit shown with the line around the match.</p></div></article>
+        <article class="feature"><span class="n">10</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
       </div>
     </div>
   </section>
@@ -535,14 +532,14 @@
           <p class="eyebrow">Integrations</p>
           <h2>Your accounts, connected once.</h2>
         </div>
-        <p>Gmail, Calendar, Drive, Docs, Sheets and Maps, connected through your own Composio project key. The bot gets a tool, not a token — and you can connect the same service twice when you have two accounts.</p>
+        <p>Eight services — Gmail, Calendar, Drive, Docs, Sheets and Maps, plus Cloudflare and Vercel by API key — connected through your own Composio project key. The bot gets a tool, not a token, and you can connect the same service twice when you have two accounts.</p>
       </div>
 
       <div class="feature-list">
         <article class="feature"><span class="n">01</span><div><h3>One card per connection</h3><p>Each service is a card with its own logo and state. Connect, rename, or disconnect a single account by id — never "disconnect gmail", which would have to guess.</p></div></article>
         <article class="feature"><span class="n">02</span><div><h3>Two Gmails, two names</h3><p>Connect a service again and name the account the way you say it out loud. That name is what the bot acts on, so "send it from the work one" means something.</p></div></article>
         <article class="feature"><span class="n">03</span><div><h3>Yours, not ours</h3><p>Tokens live on Composio under your key; the key sits at <code>/etc/hermey/composio.key</code> on your host. Your mail and calendars are never copied into Hermey.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>It makes sign-in cheaper</h3><p>With Gmail connected, a bot fetches the one-time code itself and hands it to the sign-in flow, so you are asked only for your password.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>It supplies the one-time code</h3><p>With Gmail connected, a bot reads the code a site just emailed you and hands it to the sign-in flow, so you are asked only for your password.</p></div></article>
       </div>
 
       <p class="signin-more"><a href="docs/integrations.html">Connecting services, multiple accounts, and what each one does →</a></p>
@@ -578,9 +575,7 @@
             <li>The app must be running. When it closes, computer use reports the Mac as offline.</li>
           </ul>
 
-          <pre class="cmd"><span class="c"># the same surface, from any bot on the host</span>
-$ hermey computer <span class="k">observe</span>
-$ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'</pre>
+          <p style="font-size: .95rem; max-width: 62ch;">Bots reach it through the host's own <code>computer</code> tools — observe, act, files, browser — over the same authenticated link. There is no separate command to learn or install.</p>
         </div>
 
         <div class="dark-shots">
@@ -625,7 +620,8 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
         <div class="step">
           <span class="n">Step one</span>
           <h3>Install the host</h3>
-          <p>On the machine that already runs Hermes. The script lives in the repo, so it can be read before it is run.</p>
+          <p>On the machine that already runs Hermes. The script is a release asset — it downloads the published binary, checks it against the release's <code>SHA256SUMS</code> and installs <code>hermeyd</code>; the same file is in the repo at <code>setup/install.sh</code> if you want to read it first. <code>--from-source</code> builds it with cargo instead.</p>
+          <p class="fineprint">Then <code>curl -fsS http://127.0.0.1:8788/v1/health</code> answers <code>{"status":"ok",…}</code>, and <code>hermeyd --gateway-check</code> exits 0. Two things break setups: <code>hermeyd</code> must run as the user that owns the Hermes install, and one gateway per <code>HERMES_HOME</code> — see <a href="docs/prerequisites.html">Getting Hermey running</a>.</p>
           <div class="snippet">
             <code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash</code>
             <button class="copy" type="button" aria-label="Copy the host install command">Copy</button>
@@ -635,10 +631,10 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
         <div class="step">
           <span class="n">Step two</span>
           <h3>Pair the app</h3>
-          <p><code>hermey pair</code> prints a pairing link and draws a QR code in that terminal. Paste the link or scan it; the token stays in the Keychain.</p>
+          <p><code>hermeyd pair</code> prints a six-digit code, a pairing URL of the form <code>https://&lt;host&gt;/?code=…</code> and a QR code the app can scan. Enter the code or scan it; the token stays in the Keychain.</p>
           <div class="snippet">
-            <code>hermey://pair?host=100.x.y.z:8787</code>
-            <button class="copy" type="button" aria-label="Copy the pairing link example">Copy</button>
+            <code>sudo hermeyd pair</code>
+            <button class="copy" type="button" aria-label="Copy the pairing command">Copy</button>
           </div>
         </div>
 
@@ -713,7 +709,7 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
       <div class="block-head">
         <div>
           <p class="eyebrow">Documentation</p>
-          <h2>Everything, written down.</h2>
+          <h2>Where the details live.</h2>
         </div>
         <p>Install, sideloading, computer use, the agent runbook and every failure we know about — on its own site, with a search box.</p>
       </div>
@@ -732,7 +728,7 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
           <ul class="doc-links">
             <li><a href="docs/agents.html">For agents</a><span>The install runbook, with its verification gates.</span></li>
             <li><a href="docs/troubleshooting.html">Troubleshooting</a><span>Symptom, cause, fix — with the real log strings.</span></li>
-            <li><a href="docs/reference.html">Reference</a><span>CLI, ports, paths and download URLs.</span></li>
+            <li><a href="docs/reference.html">Reference</a><span>Commands, ports, paths and download URLs.</span></li>
             <li><a href="docs/security.html">Security</a><span>The threat model, plainly stated.</span></li>
           </ul>
         </div>
@@ -806,6 +802,7 @@ $ hermey computer <span class="k">act</span> '[{"kind":"click","x":120,"y":80}]'
         <a href="https://github.com/macblizzard/hermey/releases/latest">Releases</a>
       </nav>
     </div>
+    <p class="colophon disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. <a href="docs/prerequisites.html">Getting Hermey running</a></p>
     <p class="colophon">MIT licensed · no analytics, no accounts · built for a host you own.</p>
   </div>
 </footer>

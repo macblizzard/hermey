@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Integrations · Hermey · Hermey docs</title>
-<meta name="description" content="Connect your own Google account so a bot can act in it — mail, calendar, files, maps.">
+<title>Integrations · Hermey docs</title>
+<meta name="description" content="Hermey&#x27;s Integrations screen connects your own Google account to the agent, so a bot can read your mail, check a calendar or look something up on a map without you copying anything into the chat.">
 <meta name="theme-color" content="#faf9f5">
 <link rel="canonical" href="https://macblizzard.github.io/hermey/docs/integrations.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Integrations · Hermey · Hermey docs">
-<meta property="og:description" content="Connect your own Google account so a bot can act in it — mail, calendar, files, maps.">
+<meta property="og:title" content="Integrations · Hermey docs">
+<meta property="og:description" content="Hermey&#x27;s Integrations screen connects your own Google account to the agent, so a bot can read your mail, check a calendar or look something up on a map without you copying anything into the chat.">
 <link rel="icon" href="../icon-512.png">
-<link rel="stylesheet" href="assets/docs.css?v=ea9097930c">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -31,29 +31,29 @@
   <details class="side">
     <summary>Documentation</summary>
     <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html" aria-current="page">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html" aria-current="page">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
     </div>
   </details>
 
   <main class="content" id="content">
     <p class="crumbs"><a href="index.html">Docs</a> / Integrations</p>
-    <h1>Integrations · Hermey</h1>
-    <p class="lede">Connect your own Google account so a bot can act in it — mail, calendar, files, maps.</p>
-    <p>Hermey's Integrations screen connects your own Google account to the agent, so a bot can read your mail,
+    <h1>Integrations</h1>
+    <p class="lede">Hermey's Integrations screen connects your own Google account to the agent, so a bot can read your mail,
 check a calendar or look something up on a map without you copying anything into the chat.</p>
-<p>The connection is yours, not ours: it runs through <a href="https://composio.dev">Composio</a> with <strong>your</strong> project key,
-and the tokens live on the machine that runs your bridge. No account, no relay, no service of ours is in the
-path.</p>
+    <p>Eight services: the six Google ones — Gmail, Calendar, Drive, Docs, Sheets, Maps — plus Cloudflare and
+Vercel, which connect with an API key. The connection is yours: it runs through
+<a href="https://composio.dev">Composio</a> with <strong>your</strong> project key, and the tokens stay on Composio's side. Your
+host holds only the key. No account, no relay, no service of ours in the path.</p>
 <h2 id="how-it-works">How it works</h2>
-<ol>
+<ol class="steps-list">
 <li>You paste your Composio project key into Hermey — once, on the host. It is stored at
-   <code>/etc/hermey/composio.key</code> with <code>0600</code> permissions, not in a unit file, because a key in a systemd unit is
-   visible to anyone who can run <code>systemctl show</code>.</li>
+<code>/etc/hermey/composio.key</code> with <code>0600</code> permissions, not in a unit file, because a key in a systemd unit is
+visible to anyone who can run <code>systemctl show</code>.</li>
 <li>You press <strong>Connect</strong> on a service. Hermey asks Composio for a fresh connection, and you finish the consent
-   on Google's own page.</li>
+on Google's own page.</li>
 <li>The bot gets a <em>tool</em>, not a password. It calls the service; it never sees a token.</li>
 </ol>
-<p>Nothing is shared between two people: one bridge, one Composio project, your accounts.</p>
+<p>Nothing is shared between two people: one host, one Composio project, your accounts.</p>
 <h2 id="connecting-a-service">Connecting a service</h2>
 <p>Open <strong>Settings → Integrations</strong> in the Mac app or the Integrations tab on the phone. Each service is a card;
 press <strong>Connect</strong> on the one you want. The browser opens on Google's consent page, you approve it, and the card
@@ -64,17 +64,16 @@ A service can be connected but show nothing until it is <code>ACTIVE</code> on C
 <h2 id="more-than-one-account">More than one account</h2>
 <p>Connect the same service again and you get a second account. Give each a name you will recognise — Hermey
 fills in the address it finds on the account, and you can rename it later:</p>
-<pre><code>mnoman1942
-dna.mailbox
-</code></pre>
+<div class="code plain"><pre><code>mnoman1942
+dna.mailbox</code></pre></div>
 <p>That name is what the bot uses when it acts, so make it the one you would say out loud. Two Gmails with no
-names are two identical cards, and "send it from Gmail" then has no safe meaning.</p>
-<p>Disconnecting is per account, by id — never "disconnect gmail", which would have to guess which one you meant.</p>
+names are two identical cards, and &quot;send it from Gmail&quot; then has no safe meaning.</p>
+<p>Disconnecting is per account, by id — never &quot;disconnect gmail&quot;, which would have to guess which one you meant.</p>
 <h2 id="the-services">The services</h2>
-<p>The list comes from the bridge's own catalogue, so this table cannot drift from the code without a check
+<p>The list comes from the host's own catalogue, so this table cannot drift from the code without a check
 failing (<code>Tools/site/check_drift.py</code>, <code>catalog</code>). Adding a service to <code>CATALOG</code> in
-<code>Bridge/hermes_bridge/composio.py</code> adds it to the app and requires a line here.</p>
-<table>
+<code>hermeyd/src/integrations.rs</code> adds it to the app and requires a line here.</p>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Service</th>
@@ -114,31 +113,6 @@ failing (<code>Tools/site/check_drift.py</code>, <code>catalog</code>). Adding a
 <td>Places, directions and distance</td>
 </tr>
 <tr>
-<td>Supabase</td>
-<td><code>supabase</code></td>
-<td>Query your projects and run SQL</td>
-</tr>
-<tr>
-<td>GitHub</td>
-<td><code>github</code></td>
-<td>Repositories, issues and pull requests</td>
-</tr>
-<tr>
-<td>Notion</td>
-<td><code>notion</code></td>
-<td>Read and write your pages</td>
-</tr>
-<tr>
-<td>Linear</td>
-<td><code>linear</code></td>
-<td>Track issues and projects</td>
-</tr>
-<tr>
-<td>Stripe</td>
-<td><code>stripe</code></td>
-<td>Customers, payments and invoices</td>
-</tr>
-<tr>
 <td>Cloudflare</td>
 <td><code>cloudflare</code></td>
 <td>DNS, cache and Workers</td>
@@ -149,15 +123,17 @@ failing (<code>Tools/site/check_drift.py</code>, <code>catalog</code>). Adding a
 <td>Deployments, domains and projects</td>
 </tr>
 </tbody>
-</table>
-<p>A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.</p>
+</table></div>
+<p>The screen offers only these eight: a card for anything else would promise a connection no host can
+make. A toolkit Composio does not support on your plan is reported as unavailable instead of pretending
+to connect.</p>
 <p>Most of these are toolkits where <strong>Composio manages the OAuth app</strong>, so Connect opens a consent page and there
 is nothing to set up.</p>
 <h3 id="services-you-connect-with-a-key">Services you connect with a key</h3>
 <p>Cloudflare and Vercel have no Composio-managed OAuth app, so their card asks for a key instead of opening a
 browser. <strong>Connect with a key</strong> opens a small form with exactly the fields Composio lists for that service —
 never a hard-coded guess:</p>
-<table>
+<div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Service</th>
@@ -174,45 +150,38 @@ never a hard-coded guess:</p>
 <td>Access Token (secret), with an optional team id</td>
 </tr>
 </tbody>
-</table>
-<p>The value goes from the app to your bridge and straight on to Composio. It is not stored on the host, not
+</table></div>
+<p>The value goes from the app to the host and straight on to Composio. It is not stored on the host, not
 returned in any response and not written to the audit log — only the resulting account id and status come back.</p>
-<p><strong>Netlify</strong> is the one that still is not offered: Composio has it only as an MCP toolkit (<code>netlify_mcp</code>, 9
-tools) rather than a classic toolkit, which would need MCP support before a card could mean anything.</p>
+<p><strong>Netlify</strong> is not offered: Composio provides it only as an MCP toolkit, which the host does not speak.</p>
 <h2 id="what-a-bot-can-do-with-it">What a bot can do with it</h2>
 <p>Once a service is connected, the agent uses it the way it uses any other tool: read the newest message from a
 sender, list tomorrow's appointments, look up the code a site just emailed you. The <code>integrations</code> skill
 documents the calls; the bot does not need new credentials and you do not need to paste anything into the chat.</p>
-<p>This is also what makes a login card cheaper: with Gmail connected, a bot can fetch a one-time code itself and
-hand it straight to the sign-in flow, so you are asked only for your password.</p>
+<p>It also supplies one-time codes: with Gmail connected, a bot reads the code a site just emailed you and
+hands it straight to the sign-in flow, so you are asked only for your password.</p>
 <h2 id="where-your-data-lives">Where your data lives</h2>
 <ul>
 <li><strong>Tokens</strong> — on the Composio side, under your project key. Hermey stores the key, not the tokens.</li>
-<li><strong>The key</strong> — <code>/etc/hermey/composio.key</code>, <code>0600</code>, on the bridge host.</li>
-<li><strong>Account names</strong> — in the bridge's own state, alongside the connection ids. They are labels, not
-  credentials.</li>
+<li><strong>The key</strong> — <code>/etc/hermey/composio.key</code>, <code>0600</code>, on the host that runs <code>hermeyd</code>.</li>
+<li><strong>Account names</strong> — in <code>hermeyd</code>'s state, alongside the connection ids. They are labels, not
+credentials.</li>
 <li><strong>Mail, calendars, files</strong> — never copied into Hermey. The bot reads them when it acts, through Composio.</li>
 </ul>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
-<li><strong>"could not reach the host"</strong> on the phone — the pairing is stale; re-pair from the Mac app.</li>
+<li><strong>&quot;could not reach the host&quot;</strong> on the phone — the pairing is stale; re-pair from the Mac app.</li>
 <li><strong>A card says Connected but the bot gets nothing</strong> — the account is <code>INITIALIZING</code>, or the key lacks that
-  toolkit on your Composio plan. Check the Composio dashboard.</li>
-<li><strong>Every service shows Connected after one connect</strong> — that was a real bug: Composio ignores the toolkit
-  filter in its connected-accounts list, so one Gmail lit all six. Hermey now filters locally and only counts
-  <code>ACTIVE</code> accounts.</li>
+toolkit on your Composio plan. Check the Composio dashboard.</li>
 <li><strong>Two accounts, wrong one used</strong> — rename them. The bot acts on the name you gave, so an unnamed pair is
-  ambiguous by construction.</li>
+ambiguous by construction.</li>
 </ul>
 <h2 id="keeping-this-current">Keeping this current</h2>
-<p>Integrations will keep growing, so:</p>
-<ul>
-<li>the app's catalogue, this table and the drift check all come from <strong>one</strong> list
-  (<code>CATALOG</code> in <code>Bridge/hermes_bridge/composio.py</code>);</li>
-<li><code>Tools/site/check_drift.py catalog</code> fails when a catalogue entry is missing from this page, or when this page
-  names a service the code no longer has;</li>
-<li>the nightly audit runs the drift checks and reports, without publishing — you are the publisher.</li>
-</ul>
+<p>The app's catalogue and this table come from <strong>one</strong> list, <code>CATALOG</code> in
+<code>hermeyd/src/integrations.rs</code>. <code>Tools/site/check_drift.py catalog</code> fails when a catalogue entry is missing
+from this page, or when this page names a service the code no longer has.</p>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/INTEGRATIONS.md">docs/INTEGRATIONS.md</a>, rendered at build time. Corrections belong in that file.</p>
     <nav class="pager" aria-label="Pages"><a href="importing.html"><span>Previous</span><strong>Importing bots</strong></a></nav>
   </main>
 
@@ -224,11 +193,12 @@ hand it straight to the sign-in flow, so you are asked only for your password.</
 
 <footer class="docfoot">
   <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
     <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
       are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
   </div>
 </footer>
 
-<script src="assets/docs.js?v=ea9097930c"></script>
+<script src="assets/docs.js?v=64bb989bfe"></script>
 </body>
 </html>

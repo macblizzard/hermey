@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Security and threat model · Hermey docs</title>
-<meta name="description" content="The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.">
+<title>Security model and threat model · Hermey docs</title>
+<meta name="description" content="The client puts a phone on a host that can run shell commands, read a vault and edit files. The whole security design is one sentence: the tailnet is the wall, the device is the identity, and the client can only answer questions the agent asks — never give itself permission.">
 <meta name="theme-color" content="#faf9f5">
 <link rel="canonical" href="https://macblizzard.github.io/hermey/docs/security.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Security and threat model · Hermey docs">
-<meta property="og:description" content="The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.">
+<meta property="og:title" content="Security model and threat model · Hermey docs">
+<meta property="og:description" content="The client puts a phone on a host that can run shell commands, read a vault and edit files. The whole security design is one sentence: the tailnet is the wall, the device is the identity, and the client can only answer questions the agent asks — never give itself permission.">
 <link rel="icon" href="../icon-512.png">
-<link rel="stylesheet" href="assets/docs.css?v=ea9097930c">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -31,65 +31,587 @@
   <details class="side">
     <summary>Documentation</summary>
     <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html" aria-current="page">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html" aria-current="page">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
     </div>
   </details>
 
   <main class="content" id="content">
     <p class="crumbs"><a href="index.html">Docs</a> / Security</p>
-    <h1>Security and threat model</h1>
-    <p class="lede">The tailnet is the wall, the device is the identity, and the client can only answer the questions the agent asks — never give itself permission.</p>
-    
-<p>The full document, including the audit and its residual risks, is
-<a href="https://github.com/macblizzard/hermey/blob/main/docs/SECURITY.md">docs/SECURITY.md</a>. This page is the shape of it.</p>
-
-<h2 id="boundaries">Trust boundaries</h2>
-<div class="table-wrap "><table><thead><tr><th>Boundary</th><th>Crossing it requires</th><th>What is on the other side</th></tr></thead><tbody><tr><td>Public internet → tailnet</td><td>Tailscale identity + ACL</td><td>nothing: no public ingress exists</td></tr><tr><td>Tailnet → bridge</td><td>TLS to <code>tailscale serve</code>, then a single-use 30 s ticket</td><td>pairing, tokens, <code>/v1/ws</code></td></tr><tr><td>Bridge → gateway</td><td>loopback plus the gateway token, which is never sent to a device</td><td>full authority over the agent</td></tr><tr><td>Gateway → app</td><td>a server-to-client request (approval, clarify, sudo, secret)</td><td>a human decision</td></tr><tr><td>App → gateway</td><td>the client method allow-list</td><td>sessions, prompts, discovery</td></tr></tbody></table></div>
-
-<h2 id="invariants">Invariants</h2>
+    <h1>Security model and threat model</h1>
+    <p class="lede">The client puts a phone on a host that can run shell commands, read a vault and edit files. The whole
+security design is one sentence: <strong>the tailnet is the wall, the device is the identity, and the client
+can only answer questions the agent asks — never give itself permission.</strong></p>
+    <p>This document states the trust boundaries, the invariants that hold them up, the threats those
+invariants are for, and the evidence (a test, or an explicit gap) for each one.</p>
+<div class="note info"><p><strong>The Python bridge this document was written about has been removed.</strong> Its code lived in
+<code>Bridge/hermes_bridge</code>, which is no longer in this repository. The host service now is <code>hermeyd/</code>
+(Rust); its contract, its routes and its own tests are <a href="https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md"><code>HERMEYD.md</code></a>. Everything below
+describes the trust boundaries the apps still rely on — read &quot;the bridge&quot; as &quot;hermeyd&quot;, and check
+<code>hermeyd/src</code> for what actually enforces each invariant today.</p></div>
+<p>Scope: <code>hermes_bridge</code> as it was (the only new server-side code at the time), the <code>wss://</code> path into
+it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
+item, or a <code>0600</code> file on the unsigned Mac build) is described where it matters, but not audited
+here.</p>
+<h2 id="1-trust-boundaries">1. Trust boundaries</h2>
+<div class="code plain"><pre><code>┌── iPhone / Mac ─────────────┐        ┌── hermes (100.64.0.1) ─────────────────────────────┐
+│ Ed25519 key in Keychain     │        │  tailscale serve (serve-root) ──TLS 1.3──► 8788     │
+│ refresh token in Keychain   │        │                                        │            │
+│  ── 30 s WS ticket ─────────┼── wss ─┼─► hermeyd (Rust, loopback only)                     │
+│                             │        │        │ allow-list, frame cap, audit              │
+└─────────────────────────────┘        │        ▼                                            │
+                                       │  127.0.0.1:9121/api/ws  (Hermes engine)             │
+                                       │  agent runtime · tools · approvals · vault          │
+                                       └─────────────────────────────────────────────────────┘</code></pre></div>
+<p>The Mac build ships unsigned and has no keychain entitlement, so it keeps those same items in a
+<code>0600</code> file under <code>~/Library/Application Support/Hermey/</code>, excluded from backups; the phone uses the
+Keychain alone.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Boundary</th>
+<th>Crossing it requires</th>
+<th>What is on the other side</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Public internet → tailnet</td>
+<td>Tailscale identity + ACL</td>
+<td>nothing (no public ingress exists)</td>
+</tr>
+<tr>
+<td>Tailnet → bridge</td>
+<td>TLS to <code>tailscale serve</code>, then a <strong>single-use 30 s ticket</strong></td>
+<td>pairing, tokens, <code>/v1/ws</code></td>
+</tr>
+<tr>
+<td>Bridge → gateway</td>
+<td>loopback + the <strong>gateway token</strong> (never sent to a device)</td>
+<td>full authority over the agent</td>
+</tr>
+<tr>
+<td>Gateway → app</td>
+<td>a server→client JSON-RPC request (approval, clarify, sudo, secret…)</td>
+<td>a human decision</td>
+</tr>
+<tr>
+<td>App → gateway</td>
+<td>the <strong>client method allow-list</strong></td>
+<td>sessions, prompts, discovery</td>
+</tr>
+</tbody>
+</table></div>
+<p>Three consequences worth stating plainly:</p>
 <ul>
-  <li>The bridge listens on loopback only; <code>tailscale serve</code> is the only front door.</li>
-  <li>Tickets are single-use and expire in 30 seconds; a device is identified by its own Ed25519 key.</li>
-  <li>The device never receives the gateway token — it cannot talk to the agent directly.</li>
-  <li>Approvals are the agent's to ask and the human's to answer; a device cannot grant itself
-    authority.</li>
-  <li>Revocation is immediate and per-device.</li>
+<li><strong>A compromised device is a compromised <em>user</em>, not a compromised host.</strong> The allow-list has no
+<code>shell.exec</code>, <code>cli.exec</code>, <code>config.set</code> or <code>vault.*</code>; the worst a stolen phone can do is drive
+sessions the user could drive anyway, and answer approvals — which is why approvals are rendered,
+not auto-accepted.</li>
+<li><strong>A compromised bridge is already root on the box.</strong> Loopback-only, token-gated and audited, but it
+adds no privilege; the point is that it does not <em>widen</em> what an attacker on the host can do.</li>
+<li><strong>The tailnet is the outer wall.</strong> Every control below assumes an attacker who is already on the
+tailnet or has stolen a device; controls that assume &quot;nobody can reach the port&quot; are marked as such.</li>
+</ul>
+<h2 id="2-invariants-and-the-test-that-holds-each-one">2. Invariants, and the test that holds each one</h2>
+<p>Every row is enforced in code and pinned by a test in <code>Tools/qa</code> (run with
+<code>python -m pytest -q Tools/qa</code>).</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Invariant</th>
+<th>Where</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>The bridge refuses to bind anything but loopback, and refuses a non-loopback gateway URL</td>
+<td><code>config.validate()</code>, <code>__main__</code></td>
+<td><code>test_config.py</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Pairing codes are minted <strong>only for a direct host-local caller</strong> — a request carrying <code>Forwarded</code>/<code>X-Forwarded-For</code>/<code>Tailscale-User-Login</code> is refused even though its peer address is loopback</td>
+<td><code>app._is_local_host_request</code></td>
+<td><code>test_pairing_codes_cannot_be_minted_through_a_proxy</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Pairing codes: 8 digits, <strong>600 s</strong> (<code>HERMES_BRIDGE_PAIRING_TTL</code>), <strong>single use</strong>, stored as SHA-256, max 64 outstanding</td>
+<td><code>tickets.PairingCodes</code></td>
+<td><code>test_pairing_code_is_single_use</code>, <code>test_pairing_code_expires</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>Pairing claims are throttled per source (<strong>10 / 60 s</strong>, then <code>429</code> + <code>Retry-After</code>)</td>
+<td><code>tickets.AttemptThrottle</code></td>
+<td><code>test_pairing_codes_are_rate_limited</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>A public key must be a real 32-byte Ed25519 key (base64/urlsafe, padding optional) — placeholders and private keys are refused</td>
+<td><code>pairing.normalize_public_key</code></td>
+<td><code>test_a_placeholder_public_key_is_rejected</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>At most 32 active devices</td>
+<td><code>app.MAX_DEVICES</code></td>
+<td><code>test_the_device_limit_is_enforced</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td>A refresh token is 256-bit, stored <strong>only as SHA-256</strong>, compared in constant time; the plaintext is not in <code>bridge.db</code></td>
+<td><code>registry.hash_token</code> / <code>token_matches</code></td>
+<td><code>test_the_refresh_token_is_stored_hashed_and_never_on_disk</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td>A refresh token is bound to its <code>device_id</code>: one without the other is useless</td>
+<td><code>registry.verify_refresh</code></td>
+<td><code>test_a_token_for_another_device_is_refused</code>, <code>test_a_bad_refresh_token_is_refused</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td>Revocation is immediate for <strong>new</strong> tokens and new upgrades</td>
+<td><code>registry.revoke</code>, <code>tickets.revoke_device</code></td>
+<td><code>test_a_revoked_device_cannot_mint_tokens</code>, <code>test_revoking_a_device_kills_its_unused_ticket</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td>WS tickets are <strong>single use</strong> and consumed <em>before</em> <code>accept()</code> — an aborted handshake cannot replay one</td>
+<td><code>app.ws_proxy</code>, <code>tickets.TicketStore.redeem</code></td>
+<td><code>test_ticket_is_spent_by_the_first_upgrade</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td>Tickets live <strong>30 s</strong>, are 256-bit, and are bound to one device</td>
+<td><code>tickets.TicketStore</code></td>
+<td><code>test_ticket_ttl_is_thirty_seconds</code>, <code>test_expired_ticket_is_refused</code>, <code>test_tickets_are_unique_and_long</code></td>
+</tr>
+<tr>
+<td>12</td>
+<td>An invalid, expired, missing or revoked-device ticket is refused <strong>before the gateway is dialled</strong> (no upstream amplification)</td>
+<td><code>app.ws_proxy</code></td>
+<td><code>test_expired_ticket_is_refused</code>, <code>test_missing_ticket_is_refused</code>, <code>test_ticket_used_by_a_different_upgrade_after_revoke_is_refused</code></td>
+</tr>
+<tr>
+<td>13</td>
+<td>Client requests outside the allow-list are answered <code>-32601</code> and <strong>never forwarded</strong></td>
+<td><code>policy.CLIENT_METHODS</code>, <code>proxy._handle_client_request</code></td>
+<td><code>test_methods_outside_the_allow_list_are_refused_by_the_bridge</code>, <code>test_dangerous_methods_never_reach_the_gateway_or_the_audit</code></td>
+</tr>
+<tr>
+<td>14</td>
+<td>Method names are validated as tokens (<code>^[A-Za-z][A-Za-z0-9_.-]{0,63}$</code>) before the allow-list</td>
+<td><code>policy.is_valid_method_name</code></td>
+<td><code>test_method_names_are_validated_before_the_allow_list</code></td>
+</tr>
+<tr>
+<td>15</td>
+<td>Gateway→app requests outside <code>SERVER_REQUEST_METHODS</code> are answered <code>-32601</code> by the bridge, so the agent fails fast</td>
+<td><code>proxy._handle_server_request</code></td>
+<td><code>test_unsupported_server_requests_are_answered_by_the_bridge</code></td>
+</tr>
+<tr>
+<td>16</td>
+<td><strong>Approvals stay enabled</strong>: the bridge announces <code>client.capabilities {server_requests: true}</code> itself, and <em>forces</em> it on a client that asks for less</td>
+<td><code>proxy._send_capabilities</code>, <code>_handle_client_request</code></td>
+<td><code>test_ready_is_forwarded_and_the_bridge_announces_its_own_capabilities</code>, <code>test_a_client_cannot_narrow_the_server_requests_capability</code></td>
+</tr>
+<tr>
+<td>17</td>
+<td>A server request blocks the agent until the app answers (or the bridge declines) — nothing auto-answers</td>
+<td><code>proxy</code> + <code>scenarios/turn-approval.ndjson</code></td>
+<td><code>test_approval_round_trip_blocks_the_agent_until_answered</code>, <code>test_declining_an_approval_fails_the_tool</code></td>
+</tr>
+<tr>
+<td>18</td>
+<td>A server-request id that collides with an in-flight client id is remapped for the app and <strong>restored</strong> upstream</td>
+<td><code>proxy._handle_server_request</code></td>
+<td><code>test_a_server_request_with_a_colliding_id_is_remapped_and_restored</code></td>
+</tr>
+<tr>
+<td>19</td>
+<td>A stale answer (unknown id, e.g. from a second device) is dropped, audited, and not forwarded</td>
+<td><code>proxy._handle_client_response</code></td>
+<td><code>test_a_stale_answer_is_dropped_and_not_forwarded</code></td>
+</tr>
+<tr>
+<td>20</td>
+<td>Every frame is capped at <strong>16 MiB</strong> (<code>HERMES_BRIDGE_FRAME_CAP</code>, a 16 MiB hard ceiling) <strong>in both directions</strong> — low enough to bound memory, high enough for an 8 MiB attachment base64-encoded inside one JSON frame (~10.7 MiB); an oversize frame is never forwarded and closes with <code>1009</code></td>
+<td><code>config.frame_cap</code>, <code>proxy.split_frames</code></td>
+<td><code>test_oversized_client_frame_is_refused_and_never_forwarded</code>, <code>test_oversized_gateway_frame_is_not_relayed</code>, <code>test_oversized_binary_frame_cannot_bypass_the_cap</code></td>
+</tr>
+<tr>
+<td>21</td>
+<td>The <strong>gateway token</strong> is used only in the upstream dial URI (loopback) — never in a response, an error string, the audit log, or a frame sent to a device</td>
+<td><code>config.upstream_url</code>, <code>AuditLog</code></td>
+<td><code>test_the_gateway_token_is_not_exposed_by_any_http_surface</code>, <code>test_the_gateway_token_travels_upstream_only</code></td>
+</tr>
+<tr>
+<td>22</td>
+<td>The audit log records <strong>device, method, direction, duration, bytes</strong> and nothing else — no params, no prompt text, no tool output, no tokens, no ids</td>
+<td><code>audit.AuditLog.emit</code> (no parameter for payload), closed key set</td>
+<td><code>test_the_audit_log_records_the_turn_but_none_of_its_text</code>, <code>test_audit_records_have_a_closed_key_set_and_scalar_values</code>, <code>test_the_audit_never_contains_a_token_or_ticket</code></td>
+</tr>
+<tr>
+<td>23</td>
+<td>A device cannot read another device's secrets from the API: <code>/v1/devices</code> returns no token, hash or public key</td>
+<td><code>app.devices</code></td>
+<td><code>test_the_refresh_token_is_stored_hashed_and_never_on_disk</code></td>
+</tr>
+<tr>
+<td>24</td>
+<td>HTTP responses under <code>/v1/</code> are <code>no-store</code> with <code>nosniff</code></td>
+<td><code>app.no_store</code></td>
+<td><code>test_health_reports_protocol_and_ws</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="3-threat-model">3. Threat model</h2>
+<p>Format: <strong>threat → what the attacker wants → control → residual risk</strong>. The tests named above are the
+evidence; this table is the reasoning.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Threat</th>
+<th>Goal</th>
+<th>Control</th>
+<th>Residual risk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>A device on the tailnet that was never paired</td>
+<td>drive the agent</td>
+<td><code>/v1/ws</code> requires a ticket from <code>/v1/token</code>, which requires a refresh token from a pairing claim; a claim requires a code only the host can mint (invariant 2, 10–12)</td>
+<td>a tailnet member can still reach <code>/v1/health</code>, <code>/v1/pair/claim</code> and <code>/v1/push/icon/&lt;profile&gt;.png</code> (see T2 and the surface map)</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Brute force of the 6-digit pairing code</td>
+<td>pair an unauthorised device</td>
+<td>600 s TTL, single use, <strong>30 attempts/minute/source</strong> (invariant 3–4). One source gets 30 guesses per 60 s window against 10⁶ codes — 300 guesses over a code's life, a 1-in-3 300 chance</td>
+<td>throttling is per source address; 1 000 tailnet addresses get ~300 000 guesses per window, roughly a one-in-four chance per code, and a missed code is dead</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Stolen <code>bridge.db</code> (backup, misconfigured permissions, root on host)</td>
+<td>mint tokens</td>
+<td>refresh tokens are SHA-256 only (invariant 7); no gateway token in the DB</td>
+<td>root on the host is game over regardless (A1)</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Stolen refresh token (malware on the phone, backup extraction)</td>
+<td>impersonate the device</td>
+<td>the token is useless without the <code>device_id</code>, which is not secret — <strong>so a stolen token <em>is</em> enough</strong> (invariant 8 is integrity, not proof-of-possession)</td>
+<td>see <strong>G1</strong>: no signed assertion. Mitigation today is revocation + 15 min access tokens</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Replay of a captured WS URL</td>
+<td>hijack a session</td>
+<td>30 s TTL, single use, consumed before accept (invariant 10–11); TLS prevents capture in transit</td>
+<td>a ticket captured <em>from the phone's memory</em> within 30 s is usable once — that requires code execution on the device</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Compromised client asks the bridge for more than the UI shows</td>
+<td>shell access</td>
+<td>allow-list (<code>shell.exec</code>, <code>cli.exec</code>, <code>config.set</code>, <code>vault.*</code> absent) and no generic proxy (invariant 13–14)</td>
+<td>a compromised client can still <code>prompt.submit</code> — i.e. ask the <em>agent</em> to run something, which then needs an approval the user sees (T8)</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>Malicious/compromised gateway asks the app for something it cannot render</td>
+<td>stall the agent, or phish the user</td>
+<td>the bridge answers anything outside the six approved methods with <code>-32601</code> (invariant 15)</td>
+<td>none material: fail-fast is the desired behaviour</td>
+</tr>
+<tr>
+<td>T8</td>
+<td>Approval fatigue / social engineering (the real risk)</td>
+<td>get a destructive action approved</td>
+<td>approvals are shown with tool + input + reason; <code>declines_not_shown</code> stays true; <strong>nothing auto-approves</strong>; the client cannot widen permissions (invariant 16–17)</td>
+<td>the human is the control. Show the command, not just the tool name</td>
+</tr>
+<tr>
+<td>T9</td>
+<td>Oversize frame / memory exhaustion</td>
+<td>DoS the bridge or the agent</td>
+<td>16 MiB per frame both directions, close <code>1009</code>, never forwarded (invariant 20)</td>
+<td>many small frames are still work; no per-device socket or bandwidth quota (<strong>G4</strong>)</td>
+</tr>
+<tr>
+<td>T10</td>
+<td>Prompt text or tool output leaks into logs / journald / a bug report</td>
+<td>read the user's data</td>
+<td><code>AuditLog.emit</code> has no parameter for payload and validates every free-form field against a token pattern; verified with a canary through a real turn (invariant 22)</td>
+<td>uvicorn access logs are off (<code>access_log=False</code>) but an operator can enable debug logging on the <em>gateway</em></td>
+</tr>
+<tr>
+<td>T11</td>
+<td>Gateway token exfiltration</td>
+<td>full agent authority</td>
+<td>token never leaves the process except in the loopback dial URI; never in responses or audit (invariant 21)</td>
+<td>a host-level reader (<code>/proc/…/environ</code>) can still see it — root on host</td>
+</tr>
+<tr>
+<td>T12</td>
+<td>Revoked (lost/stolen) device keeps acting</td>
+<td>persist access</td>
+<td>refresh + tickets are refused immediately (invariant 9, 12)</td>
+<td><strong>the live socket stays open until it reconnects — G2</strong></td>
+</tr>
+<tr>
+<td>T13</td>
+<td>Client forges another device's server-request id to answer its approval</td>
+<td>approve something the user never saw</td>
+<td>ids are per-socket and remapped on collision; a stale answer is dropped (invariant 18–19)</td>
+<td>within one socket the app <em>is</em> the user; there is no second authenticator by design</td>
+</tr>
+<tr>
+<td>T14</td>
+<td>Relay is used as a general-purpose proxy into the host</td>
+<td>lateral movement</td>
+<td>allow-list both directions, no arbitrary URL/method pass-through, no file or shell surface</td>
+<td>the agent itself is the powerful surface — that is the product</td>
+</tr>
+<tr>
+<td>T15</td>
+<td>Protocol smuggling (weird method names, <code>\n</code> injection, binary frames)</td>
+<td>bypass the allow-list</td>
+<td>method names are regex-validated; frames are split and re-serialised per frame; binary frames are parsed as bytes and still capped; invalid JSON gets <code>-32700</code> and is not forwarded</td>
+<td>a frame split across two WS messages is rejected rather than reassembled — safe failure (<strong>G3</strong>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Accepted risks (by design, not bugs):</p>
+<ul>
+<li><strong>A1</strong> Anyone who is root on the host owns the agent; the bridge adds no privilege.</li>
+<li><strong>A2</strong> A paired device can read that profile's sessions. There is no per-session ACL; the user model
+is &quot;my devices, my agent&quot;.</li>
+<li><strong>A3</strong> Pairing is a shared secret shown on the host. Shoulder-surfing a QR code within its 600 s
+lifetime is a physical-security problem.</li>
+<li><strong>A4</strong> The tailnet ACL is not enforced by this code. If a device is on the tailnet and not blocked by
+ACLs, it can reach <code>/v1/health</code> and attempt claims (T2 covers the cost).</li>
+</ul>
+<h2 id="4-gaps">4. Gaps</h2>
+<p>Each is a real difference between the design and the implementation, with the impact and the fix.
+<code>test_*</code> names refer to <code>Tools/qa</code>.</p>
+<p><strong>G1 — no proof-of-possession on the token exchange (medium).</strong> <code>POST /v1/token</code> accepts
+<code>{device_id, refresh_token}</code>; the Ed25519 key registered at pairing is stored but never used to verify
+a signed assertion (<code>02-architecture.md</code> §6.4 asks for one). A stolen refresh token is therefore a
+bearer credential. <em>Fix:</em> sign <code>{device_id, timestamp, nonce}</code> with the device key, verify with the
+stored public key, reject clock skew &gt; 60 s, and rate-limit per device. Until then, keep the refresh
+token in the Keychain with <code>kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code> and rely on revocation. The
+unsigned Mac build cannot use the Keychain, so there it lives in the <code>0600</code> file described above.</p>
+<p><strong>G2 — revoking a device does not drop its live socket (fixed).</strong> The runtime keeps a
+<code>device_id → set[socket]</code> map (<code>proxy.LiveSessions</code>), and <code>DELETE /v1/devices/{id}</code> closes every live
+relay for that device with <code>4401</code> before answering (<code>sockets_closed</code> in the response). The socket that
+was already upgraded is therefore torn down from this side, not on the client's next reconnect.
+Invariant 9 covers both the <em>new</em> token and the <em>open</em> socket now.</p>
+<p><strong>G3 — a frame split across WebSocket messages is rejected, not reassembled (low).</strong>
+<code>test_a_chunked_frame_is_rejected_rather_than_half_forwarded</code> pins the behaviour: each half gets
+<code>-32700</code>, nothing is forwarded. The Swift client sends one frame per message
+(<code>JSONRPCCodec.encodeFrame</code>), and the gateway's WS transport does the same, so this is not a live path.
+<em>Fix if it ever matters:</em> accumulate a partial buffer with the same 16 MiB ceiling.</p>
+<p><strong>G4 — no per-device socket or request quota (low).</strong> The bridge caps <code>max_pending_requests</code> per
+socket (256) and the ticket store at 1 024 pending tickets, but one device can open many sockets, each
+with its own upstream connection. <em>Fix:</em> per-device socket limit (2 is enough for a phone + a
+reconnect overlap) and a per-device connection rate limit.</p>
+<p><strong>G5 — gateway close codes are collapsed into <code>1011</code> (low, UX).</strong> When the gateway closes with one of
+Hermes' own codes (<code>4009</code> session busy, <code>4004</code>, <code>4018</code> …), the app sees <code>1011 &quot;gateway closed&quot;</code> and
+cannot tell a busy session from a gateway restart. <code>test_gateway_close_reaches_the_client</code> accepts
+either code today. <em>Fix:</em> forward the upstream close code when it is in the app's known set, else
+<code>1011</code>. (The <code>4403</code> used by that scenario is illustrative; the recorded fixtures contain no close
+frames.)</p>
+<p><strong>G6 — approval payload shapes are unverified (informational).</strong> No approval frame exists in
+<code>fixtures/</code>, so <code>params.choices</code>/<code>call_id</code> in the scenarios are modelled from the architecture doc.
+The envelope and blocking semantics are tested; the field names are not. <em>Fix:</em> record one real
+approval from the live gateway into <code>fixtures/approval.ndjson</code> and diff.</p>
+<p><strong>G7 — pairing-code throttle is per source address (informational).</strong> See T2. Sufficient while the
+tailnet is small and ACL'd; a global counter plus a per-device backoff would be stronger.</p>
+<h2 id="5-operating-it">5. Operating it</h2>
+<p><strong>Start</strong> (systemd; the unit is written by <code>setup/install.sh</code>):</p>
+<div class="code"><pre><code>sudo systemctl start hermeyd
+tailscale serve --bg http://127.0.0.1:8788        # serve-root, no port</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>hermeyd refuses any bind but loopback, and refuses a published port equal to the browser channel's.</p>
+<p><strong>Rotate the engine token:</strong> stop hermeyd, rotate the token on the engine side, update
+<code>HERMEYD_ENGINE_TOKEN_FILE</code> in <code>/etc/hermey/hermeyd.env</code>, start. Live sockets drop and the app
+reconnects with a fresh ticket. No device has to re-pair.</p>
+<p><strong>Revoke a device:</strong> <code>DELETE /v1/devices/{id}</code> (or the app's device list). Kills the refresh token, any
+unused ticket, <strong>and every live socket of that device</strong> (<code>4401</code>) — the relay map is closed from this
+side rather than waiting for the phone to reconnect.</p>
+<p><strong>Read the audit log:</strong> one JSON object per line, written beside <code>bridge.db</code> in the state directory.
+Fields: <code>ts, event, device, method, bytes, duration_ms, direction, outcome, reason, close_code</code>. Event
+names are a closed set (<code>hermeyd/src/audit.rs</code>), so a typo fails a test instead of shipping silently.
+Look for <code>ticket_rejected</code>, <code>client_request_rejected</code>, <code>server_request_declined</code> and <code>frame_too_large</code>
+— those are the four signals that something is probing the host.</p>
+<p><strong>Incident: a device is compromised.</strong> Revoke it, rotate the engine token (closes every live socket),
+check the audit for <code>client_request</code> from that <code>device</code> around the compromise window, and review which
+approvals were answered (<code>server_response</code>) in that window — the host records that an approval was
+answered, never what the prompt said.</p>
+<h2 id="6-what-is-deliberately-absent">6. What is deliberately absent</h2>
+<p>No accounts, no telemetry, no cloud relay, no public ingress, no second copy of your data, no
+&quot;danger-full-access&quot; default, no auto-approve, no per-device passwords, and no way for the client to
+escalate its own permissions. hermeyd is a single Rust binary small enough to read in an afternoon,
+which is the point.</p>
+<h2 id="surface-map-what-is-reachable-without-a-device-ticket">Surface map: what is reachable without a device ticket</h2>
+<p>Every <code>/v1/**</code> route consumes a <strong>single-use 30 s ticket</strong> in <code>Authorization: Bearer …</code>, except the
+handful below. They are unauthenticated on purpose and bounded on purpose; anything added here needs
+the same reasoning written next to it.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Why it is open</th>
+<th>What it is bounded by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /v1/health</code></td>
+<td>liveness for the installer and <code>hermeyd --gateway-check</code></td>
+<td>returns <code>{status, protocol_version, ws}</code> only — no device count, no version of anything else</td>
+</tr>
+<tr>
+<td><code>POST /v1/pair/start</code></td>
+<td>the host mints the code</td>
+<td><strong>direct loopback only</strong>: any <code>Forwarded</code> / <code>X-Forwarded-For</code> / <code>X-Real-IP</code> / <code>Tailscale-User-Login</code> header means it arrived through <code>tailscale serve</code> and is refused <code>403</code></td>
+</tr>
+<tr>
+<td><code>POST /v1/pair/claim</code></td>
+<td>the phone redeems the code it was shown</td>
+<td>a live 6-digit code (single use, 600 s), 30 attempts/min/source</td>
+</tr>
+<tr>
+<td><code>POST /v1/token</code></td>
+<td>trades a refresh token for a ticket</td>
+<td>a SHA-256 match against <code>device_id</code> + token; refused for a revoked device</td>
+</tr>
+<tr>
+<td><code>GET /v1/push/icon/{profile}.png</code></td>
+<td>Bark fetches the image itself and holds no credential</td>
+<td>only a bot's <em>face</em> and whether that bot exists; the profile name is <code>^[a-z0-9][a-z0-9_-]{0,63}$</code></td>
+</tr>
+<tr>
+<td><code>WS /v1/display/ws</code></td>
+<td>noVNC cannot set a header on its socket</td>
+<td>accepts, <em>then</em> redeems a single-use 60 s display ticket and re-checks the device; a bad ticket closes <code>4401</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>POST /v1/bots/{profile}/message</code> is different again: it takes <strong>no ticket</strong>, because it is an
+operator command for the agent on the host, and it is refused <code>404</code> for any caller that arrived
+through a proxy (same loopback rule as <code>pair/start</code>).</p>
+<h2 id="known-residual-risks-2026-11-audit">Known residual risks (2026-11 audit)</h2>
+<p>Written down because each is a real gap that is <em>not</em> hidden by the allow-list:</p>
+<ul>
+<li><strong>The Bark relay endpoint is device-supplied.</strong> <code>POST /v1/push/register</code> takes a URL a paired device
+types, and the watcher POSTs banner JSON to it. A paired device can therefore make this process
+issue an HTTP POST to any host it can reach (loopback included) — a stored SSRF. Redirects are now
+refused (<code>push._NoRedirect</code>), so the destination is exactly what was registered, but the
+registration itself is not restricted to public addresses because a self-hosted Bark server on the
+LAN is the normal deployment. A paired device is already root-equivalent (above), so this adds no
+reach; it is listed so nobody mistakes the relay for a hardened egress path.</li>
+<li><strong><code>access_token</code> in <code>POST /v1/token</code> is inert.</strong> The response carries a random <code>access_token</code> that
+no route accepts; only <code>ws_ticket</code> is a credential, and it is single use. A client that stores
+<code>access_token</code> and sends it gets <code>401</code>. Kept for wire compatibility with shipped app builds.</li>
+<li><strong>A pairing code is a shared secret on the host's screen</strong> (A3). Its window is 600 s and clamped to
+30–3600 s by <code>app._pairing_ttl</code>, so a mistyped override cannot mint a year-long code.</li>
+<li><strong>Two processes on the same state file are not coordinated.</strong> The categories, disabled-bots and
+defaults files take an in-process lock and publish with an atomic rename, which covers the one
+bridge a host runs. A second bridge pointed at the same <code>HERMES_BRIDGE_DB</code> is unsupported.</li>
+</ul>
+<h2 id="bot-to-bot-messages">Bot-to-bot messages</h2>
+<p><code>POST /v1/bots/{profile}/message</code> lets the agent on the host speak into another bot's chat, in the
+session the apps open. It is <strong>loopback only</strong> (off-host it answers 404, like any unknown route), it
+mints no ticket and writes no device row, and it refuses a profile with no stored conversation
+rather than creating one nobody can find. The audit log records the pair and whether a reply came
+back — never the words, which are the owner's conversation. A paired device does not need this
+route: it types into the chat itself, and letting a phone impersonate another bot would hand it a
+privilege it has no use for.</p>
+<h2 id="threat-model-stated-plainly-2026-11-audit">Threat model, stated plainly (2026-11 audit)</h2>
+<p>Three things this bridge does <em>not</em> defend against, written down because a reader of the allow-list
+could otherwise conclude the opposite:</p>
+<ul>
+<li><strong>A paired device is a root-equivalent credential.</strong> The method allow-list stops a client calling
+<code>shell.exec</code> directly, but <code>prompt.submit</code> is allowed, and the agent's own tool loop can run
+commands — including approvals, which the bridge relays to the socket that submitted the prompt.
+Treat a device ticket like an SSH key to the host, not like a scoped API key. The smallest real
+fix is a host-side confirmation for <code>approval</code>/<code>sudo</code>; until then, revoke a device you no longer
+control immediately.</li>
+<li><strong>The Ed25519 key is recorded, not verified.</strong> Pairing stores the device's public key, and
+<code>/v1/token</code> exchanges the refresh token without a challenge, so the key proves nothing today: a
+stolen refresh token is usable from any host. Either implement nonce + signature on <code>/v1/token</code>,
+or treat the refresh token as the whole credential (which is what the code does).</li>
+<li><strong>Device revocation is a shared secret's power.</strong> Any paired device can revoke any other. That adds
+no reach a ticket does not already have (see the first point) — it is listed so nobody mistakes the
+device list for an authorisation boundary.</li>
+</ul>
+<h2 id="bot-management-paired-device">Bot management (paired device)</h2>
+<p>A paired device can now create, disable and delete bots, and rewrite any bot's <code>SOUL.md</code>. This is a
+deliberate widening of the device's reach, and it is small in practice because a paired device is
+already root-equivalent (a device ticket buys shell access, see the threat model above). What the
+new verbs add is <em>authority over other bots</em>, not reach outside the host.</p>
+<ul>
+<li><strong>SOUL.md</strong> is written through <code>profiles.configure</code> (soul section only) and capped at 64,000
+characters in the bridge's allow-list: a SOUL.md is injected into every turn of that bot, so an
+accidental megabyte paste would be paid for on every message it ever answers.</li>
+<li><strong>Disable</strong> pauses the bot's scheduled jobs through the loopback dashboard and records which job
+ids it paused in the bridge's state directory (<code>/var/lib/hermes-bridge/disabled-bots.json</code>), so
+enabling resumes exactly those. A disabled bot also refuses <code>POST /v1/bots/{profile}/message</code>:
+otherwise another bot could make a disabled bot answer.</li>
+<li><strong>Delete</strong> goes through the dashboard's own <code>DELETE /api/profiles/{name}</code> — the process that owns
+tombstones, multiplexer release and alias cleanup — after the bridge tars the profile into
+<code>/var/lib/hermes-bridge/deleted-bots</code>. The archive is a mistake-catcher, not a backup contract.</li>
+<li>The bridge still runs under <code>ProtectSystem=strict</code> with only <code>/var/lib/hermes-bridge</code> writable.
+Nothing here widened that: management verbs are asked of the dashboard, which runs unconfined.</li>
+</ul>
+<h2 id="bot-computer-shared-desktop">Bot computer (shared desktop)</h2>
+<p>One headless desktop serves every bot on the host, on purpose: one Xvnc, one Chromium user-data-dir,
+one control lease. The consequences, stated rather than implied:</p>
+<ul>
+<li><strong>Logins are shared.</strong> A site signed into during a takeover is signed in for every bot on that
+host, and in every later session until the site expires it. That is the feature; it also means a
+bot can act on any site you signed in to.</li>
+<li><strong>The lease is a tool-level fence, not an OS one.</strong> While a human holds it, <code>computer_use</code> and the
+browser tools are refused (<code>human_has_control</code>), but a process the agent starts by hand against
+the published <code>DISPLAY</code> is inside the documented same-user boundary.</li>
+<li><strong>The viewer path.</strong> <code>/v1/display/*</code> is device-authenticated with the same single-use ticket as
+every other route; <code>observe</code> mints a bridge ticket (60 s, single use, bound to device + profile)
+and holds the gateway's own ticket inside the process. The socket carries its ticket in the query
+string because noVNC cannot set a header — the same trade-off the dashboard makes, with the same
+one-minute lifetime. Revoking a device closes an open viewer.</li>
+<li><strong>Audit</strong> records <code>display_open</code> / <code>display_close</code> with device, profile, close code and byte
+count — never frame content, because a screen shows passwords.</li>
 </ul>
 
-<h2 id="absent">Deliberately absent</h2>
-<ul>
-  <li>No account, no analytics, no crash reporting, no relay of ours in the request path.</li>
-  <li>No public ingress: if the tailnet is up but the device is not on it, nothing is reachable.</li>
-  <li>No per-bot permission system on the Mac. Computer use is one owner-level switch — a small number
-    of trusted bots is the stated model.</li>
-</ul>
-
-<h2 id="storage">Where the apps keep secrets</h2>
-<p>The phone keeps its device key and refresh token in the Keychain, this-device-only. The Mac build
-ships unsigned and has no Keychain entitlement, so it keeps the same items in a <code>0600</code> file
-under <code>~/Library/Application Support/Hermey/</code>, excluded from backups.</p>
-
-<h2 id="reporting">Reporting a problem</h2>
-<p>Open a private advisory at
-<a href="https://github.com/macblizzard/hermey/security/advisories/new">https://github.com/macblizzard/hermey/security/advisories/new</a> rather than a public
-issue, and do not paste tokens, hostnames or personal data into either.</p>
-
-    <nav class="pager" aria-label="Pages"><a href="troubleshooting.html"><span>Previous</span><strong>Troubleshooting</strong></a><a class="next" href="reference.html"><span>Next</span><strong>Reference</strong></a></nav>
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/SECURITY.md">docs/SECURITY.md</a>, rendered at build time. Corrections belong in that file.</p>
+    <nav class="pager" aria-label="Pages"><a href="computer-use.html"><span>Previous</span><strong>Local computer use</strong></a><a class="next" href="reference.html"><span>Next</span><strong>Reference</strong></a></nav>
   </main>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#boundaries">Trust boundaries</a></li><li><a href="#invariants">Invariants</a></li><li><a href="#absent">Deliberately absent</a></li><li><a href="#storage">Where the apps keep secrets</a></li><li><a href="#reporting">Reporting a problem</a></li></ul>
+    <ul><li><a href="#1-trust-boundaries">1. Trust boundaries</a></li><li><a href="#2-invariants-and-the-test-that-holds-each-one">2. Invariants, and the test that holds each one</a></li><li><a href="#3-threat-model">3. Threat model</a></li><li><a href="#4-gaps">4. Gaps</a></li><li><a href="#5-operating-it">5. Operating it</a></li><li><a href="#6-what-is-deliberately-absent">6. What is deliberately absent</a></li><li><a href="#surface-map-what-is-reachable-without-a-device-ticket">Surface map: what is reachable without a device ticket</a></li><li><a href="#known-residual-risks-2026-11-audit">Known residual risks (2026-11 audit)</a></li><li><a href="#bot-to-bot-messages">Bot-to-bot messages</a></li><li><a href="#threat-model-stated-plainly-2026-11-audit">Threat model, stated plainly (2026-11 audit)</a></li><li><a href="#bot-management-paired-device">Bot management (paired device)</a></li><li><a href="#bot-computer-shared-desktop">Bot computer (shared desktop)</a></li></ul>
   </nav>
 </div>
 
 <footer class="docfoot">
   <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
     <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
       are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
   </div>
 </footer>
 
-<script src="assets/docs.js?v=ea9097930c"></script>
+<script src="assets/docs.js?v=64bb989bfe"></script>
 </body>
 </html>

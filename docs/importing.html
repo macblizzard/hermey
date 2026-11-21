@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Importing bots · Hermey · Hermey docs</title>
-<meta name="description" content="Bring bots in from another platform: paste one prompt into its bot, import the zip it writes.">
+<title>Importing bots from another platform · Hermey docs</title>
+<meta name="description" content="Hermey&#x27;s Import reads one shape: hermey-bots.zip , containing backup.json in this host&#x27;s own format. A file from another product is refused rather than half-read, because a guess produces bots that look imported and are empty.">
 <meta name="theme-color" content="#faf9f5">
 <link rel="canonical" href="https://macblizzard.github.io/hermey/docs/importing.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Importing bots · Hermey · Hermey docs">
-<meta property="og:description" content="Bring bots in from another platform: paste one prompt into its bot, import the zip it writes.">
+<meta property="og:title" content="Importing bots from another platform · Hermey docs">
+<meta property="og:description" content="Hermey&#x27;s Import reads one shape: hermey-bots.zip , containing backup.json in this host&#x27;s own format. A file from another product is refused rather than half-read, because a guess produces bots that look imported and are empty.">
 <link rel="icon" href="../icon-512.png">
-<link rel="stylesheet" href="assets/docs.css?v=ea9097930c">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
@@ -31,42 +31,43 @@
   <details class="side">
     <summary>Documentation</summary>
     <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html" aria-current="page">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html" aria-current="page">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
     </div>
   </details>
 
   <main class="content" id="content">
     <p class="crumbs"><a href="index.html">Docs</a> / Importing bots</p>
-    <h1>Importing bots · Hermey</h1>
-    <p class="lede">Bring bots in from another platform: paste one prompt into its bot, import the zip it writes.</p>
-    <p>Hermey's Import reads one shape: <code>hermey-bots.zip</code>, containing <code>backup.json</code> in this host's own format. A file
+    <h1>Importing bots from another platform</h1>
+    <p class="lede">Hermey's Import reads one shape: <code>hermey-bots.zip</code>, containing <code>backup.json</code> in this host's own format. A file
 from another product is refused rather than half-read, because a guess produces bots that look imported and are
 empty.</p>
-<p>So the way to bring bots from elsewhere is to have <em>that</em> platform's bot write the file for you. <strong>Settings →
+    <p>So the way to bring bots from elsewhere is to have <em>that</em> platform's bot write the file for you. <strong>Settings →
 Back up your bots → Prompt for another platform</strong> copies the exact prompt; the host serves it, so it always
 describes the schema this host accepts.</p>
 <h2 id="how-to-use-it">How to use it</h2>
-<ol>
+<ol class="steps-list">
 <li>Open Hermey → Settings → Back up your bots → <strong>Prompt for another platform…</strong></li>
 <li>Paste the prompt into the other platform's main bot and let it work.</li>
 <li>It returns a <code>hermey-bots.zip</code>. Import it in Hermey, read the preview, choose how to treat bots that already
-   exist here.</li>
+exist here.</li>
 </ol>
 <p>If the other platform cannot write a zip, <code>backup.json</code> alone is accepted too.</p>
 <h2 id="what-the-prompt-asks-for">What the prompt asks for</h2>
 <ul>
 <li><code>kind</code> must be <code>hermey-bot-backup</code>, and <code>version</code> must match this host — the app copies the version, you do not
-  have to know it.</li>
+have to know it.</li>
 <li>One object per bot: <code>profile</code> (its identity, <code>[a-z0-9][a-z0-9_-]{0,63}</code>), <code>name</code>, <code>description</code>, <code>soul</code>,
-  <code>memory.memory</code>, <code>memory.user</code>, <code>notes</code>, <code>categories</code>, <code>enabled</code>, optional <code>icon</code>, and <code>routines</code>.</li>
+<code>memory.memory</code>, <code>memory.user</code>, <code>notes</code>, <code>categories</code>, <code>enabled</code>, optional <code>icon</code>, and <code>routines</code>.</li>
 <li>Routines keep their <code>id</code> so importing twice does not double a schedule.</li>
 <li>Categories are matched <strong>by name</strong>, because an id from another machine means nothing here.</li>
 <li>No conversations, no transcripts, no keys or passwords: they are not in this format, and a file carrying them
-  is not imported.</li>
+is not imported.</li>
 </ul>
 <h2 id="what-cannot-come-across">What cannot come across</h2>
 <p>Whatever the other platform has no equivalent for — model settings, proprietary memory structures, tool
 definitions. The prompt asks that bot to tell you what it dropped rather than inventing a substitution.</p>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/IMPORT-FROM-ANOTHER-PLATFORM.md">docs/IMPORT-FROM-ANOTHER-PLATFORM.md</a>, rendered at build time. Corrections belong in that file.</p>
     <nav class="pager" aria-label="Pages"><a href="credentials.html"><span>Previous</span><strong>Sign-in cards</strong></a><a class="next" href="integrations.html"><span>Next</span><strong>Integrations</strong></a></nav>
   </main>
 
@@ -78,11 +79,12 @@ definitions. The prompt asks that bot to tell you what it dropped rather than in
 
 <footer class="docfoot">
   <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
     <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
       are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
   </div>
 </footer>
 
-<script src="assets/docs.js?v=ea9097930c"></script>
+<script src="assets/docs.js?v=64bb989bfe"></script>
 </body>
 </html>
