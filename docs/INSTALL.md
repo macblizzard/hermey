@@ -151,13 +151,12 @@ Then publish and pair:
 
 ```bash
 tailscale serve --bg http://127.0.0.1:8788   # serve-root: URLs carry no :8443
-curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start
-# {"code":"123456","host":"localhost","expires_at":…}   (6 digits, 10 minutes)
+hermeyd pair    # prints a 6-digit code, https://<host>/?code=… and a QR to scan
 ```
 
-`/v1/pair/start` only answers on loopback. Enter the code in the app against the host's address;
-codes are short-lived, so mint one while the phone is in your hand. Pair as many devices as you like;
-each is individually revocable.
+`hermeyd pair` mints the code over loopback and wraps `POST /v1/pair/start`. Enter the code in the
+app against the host's address, or scan the QR; codes are short-lived, so mint one while the phone is
+in your hand. Pair as many devices as you like; each is individually revocable.
 
 Every `/v1` route except `/v1/health` and `/v1/pair/start` requires the local bearer. Loopback is not
 a substitute for it.
@@ -179,7 +178,7 @@ Stops and removes the unit, the binary, the config and the plugin. **State is ke
 devices survive a reinstall. Add `--purge` to delete `/var/lib/hermeyd` as well:
 
 ```bash
-sudo sh install.sh --uninstall --purge
+sudo setup/install.sh --uninstall --purge
 ```
 
 If you published the host, take the mapping down with `tailscale serve --bg off`.

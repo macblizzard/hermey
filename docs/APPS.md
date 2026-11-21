@@ -50,9 +50,8 @@ app itself needs no account, no Apple service and no internet beyond your tailne
    or by hand: right-click `Hermey` → **Open** → **Open** again. macOS remembers the choice, so this
    is a first-launch step and not a routine one. If you move or re-download the app, the mark comes
    back with the new copy — run the command again.
-3. The Mac app pairs exactly like the phone: mint a code on the host with
-   `curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start` and enter the eight digits under
-   **Pairing code or link**. The code is single use and short-lived (the Mac has no camera).
+3. The Mac app pairs exactly like the phone: run `hermeyd pair` on the host and enter the six-digit
+   code under **Pairing code or link**. The code is single use and short-lived (the Mac has no camera).
    A hand-issued device token still works: open **Advanced — I have a device token** in the same
    sheet and paste the WebSocket URL, device ID and token.
 
@@ -75,18 +74,10 @@ when the Mac wakes, which is a different thing.
 
 ## Appearance and themes
 
-Settings → **Appearance**. Eight palettes: **Midnight** (the default), Graphite, Gruvbox, Tokyo
-Night, Catppuccin, Dracula, Nord, and **Parchment** — a light theme taken from the colours of the
-project's own site, for daylight and for screenshots.
-
-A theme is more than a colour set. The app draws its own colours from the palette, but the system
-draws navigation titles, section headers and footers, grouped row backgrounds and the labels on its
-own controls — so every surface that is presented separately (a window, a sheet, a tab's navigation
-stack) tells the system which direction the palette faces. That is why Parchment is readable rather
-than white-on-cream; it is also the bug that took three releases to corner, so if a surface ever
-shows a white title on a pale background, that surface is the one missing the call.
-
-Dark palettes are unchanged by any of this: they say "dark" and get dark.
+Settings → **Appearance**. Several dark palettes, with **Midnight** the default, and **Parchment**
+for daylight. Every window, sheet and tab tells the system which direction its palette faces, so
+titles and grouped-row backgrounds follow the choice; a surface that shows a white title on a pale
+background is missing that call.
 
 ## Arranging bot groups
 

@@ -95,7 +95,7 @@ evidence; this table is the reasoning.
 | # | Threat | Goal | Control | Residual risk |
 |---|---|---|---|---|
 | T1 | A device on the tailnet that was never paired | drive the agent | `/v1/ws` requires a ticket from `/v1/token`, which requires a refresh token from a pairing claim; a claim requires a code only the host can mint (invariant 2, 10–12) | a tailnet member can still reach `/v1/health`, `/v1/pair/claim` and `/v1/push/icon/<profile>.png` (see T2 and the surface map) |
-| T2 | Brute force of the 8-digit pairing code | pair an unauthorised device | 600 s TTL, single use, 64 outstanding max, **10 attempts/minute/source** (invariant 3–4). One source gets ~10 guesses per 60 s window against 10⁸ codes: a 1-in-5 000 000 chance per code | throttling is per source address; an attacker holding 1 000 tailnet addresses gets ~20 000 guesses per window — a 1-in-5 000 chance per code, and a missed code is dead. Holding 1 000 tailnet identities is already a different incident |
+| T2 | Brute force of the 6-digit pairing code | pair an unauthorised device | 600 s TTL, single use, **30 attempts/minute/source** (invariant 3–4). One source gets 30 guesses per 60 s window against 10⁶ codes — 300 guesses over a code's life, a 1-in-3 300 chance | throttling is per source address; 1 000 tailnet addresses get ~300 000 guesses per window, roughly a one-in-four chance per code, and a missed code is dead |
 | T3 | Stolen `bridge.db` (backup, misconfigured permissions, root on host) | mint tokens | refresh tokens are SHA-256 only (invariant 7); no gateway token in the DB | root on the host is game over regardless (A1) |
 | T4 | Stolen refresh token (malware on the phone, backup extraction) | impersonate the device | the token is useless without the `device_id`, which is not secret — **so a stolen token *is* enough** (invariant 8 is integrity, not proof-of-possession) | see **G1**: no signed assertion. Mitigation today is revocation + 15 min access tokens |
 | T5 | Replay of a captured WS URL | hijack a session | 30 s TTL, single use, consumed before accept (invariant 10–11); TLS prevents capture in transit | a ticket captured *from the phone's memory* within 30 s is usable once — that requires code execution on the device |
@@ -213,7 +213,7 @@ the same reasoning written next to it.
 |---|---|---|
 | `GET /v1/health` | liveness for the installer and `hermeyd --gateway-check` | returns `{status, protocol_version, ws}` only — no device count, no version of anything else |
 | `POST /v1/pair/start` | the host mints the code | **direct loopback only**: any `Forwarded` / `X-Forwarded-For` / `X-Real-IP` / `Tailscale-User-Login` header means it arrived through `tailscale serve` and is refused `403` |
-| `POST /v1/pair/claim` | the phone redeems the code it was shown | a live 8-digit code (single use, 600 s), 10 attempts/min/source, 32-device cap |
+| `POST /v1/pair/claim` | the phone redeems the code it was shown | a live 6-digit code (single use, 600 s), 30 attempts/min/source |
 | `POST /v1/token` | trades a refresh token for a ticket | a SHA-256 match against `device_id` + token; refused for a revoked device |
 | `GET /v1/push/icon/{profile}.png` | Bark fetches the image itself and holds no credential | only a bot's *face* and whether that bot exists; the profile name is `^[a-z0-9][a-z0-9_-]{0,63}$` |
 | `WS /v1/display/ws` | noVNC cannot set a header on its socket | accepts, *then* redeems a single-use 60 s display ticket and re-checks the device; a bad ticket closes `4401` |

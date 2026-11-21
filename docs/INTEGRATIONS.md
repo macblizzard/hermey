@@ -3,9 +3,10 @@
 Hermey's Integrations screen connects your own Google account to the agent, so a bot can read your mail,
 check a calendar or look something up on a map without you copying anything into the chat.
 
-The connection is yours, not ours: it runs through [Composio](https://composio.dev) with **your** project key,
-and the tokens live on the machine that runs your bridge. No account, no relay, no service of ours is in the
-path.
+Eight services: the six Google ones — Gmail, Calendar, Drive, Docs, Sheets, Maps — plus Cloudflare and
+Vercel, which connect with an API key. The connection is yours: it runs through
+[Composio](https://composio.dev) with **your** project key, and the tokens stay on Composio's side. Your
+host holds only the key. No account, no relay, no service of ours in the path.
 
 ## How it works
 
@@ -16,7 +17,7 @@ path.
    on Google's own page.
 3. The bot gets a *tool*, not a password. It calls the service; it never sees a token.
 
-Nothing is shared between two people: one bridge, one Composio project, your accounts.
+Nothing is shared between two people: one host, one Composio project, your accounts.
 
 ## Connecting a service
 
@@ -60,12 +61,9 @@ failing (`Tools/site/check_drift.py`, `catalog`). Adding a service to `CATALOG` 
 | Cloudflare | `cloudflare` | DNS, cache and Workers |
 | Vercel | `vercel` | Deployments, domains and projects |
 
-Five services the earlier catalogue named — Supabase, GitHub, Notion, Linear and Stripe — are **not** offered
-today: `CATALOG` was narrowed to the eight rows above, and a card for one of the others would promise
-something no host can draw. They return when the catalogue gains them, and this table follows that list
-rather than the other way round.
-
-A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.
+The screen offers only these eight: a card for anything else would promise a connection no host can
+make. A toolkit Composio does not support on your plan is reported as unavailable instead of pretending
+to connect.
 
 Most of these are toolkits where **Composio manages the OAuth app**, so Connect opens a consent page and there
 is nothing to set up.
@@ -84,8 +82,7 @@ never a hard-coded guess:
 The value goes from the app to the host and straight on to Composio. It is not stored on the host, not
 returned in any response and not written to the audit log — only the resulting account id and status come back.
 
-**Netlify** is the one that still is not offered: Composio has it only as an MCP toolkit (`netlify_mcp`, 9
-tools) rather than a classic toolkit, which would need MCP support before a card could mean anything.
+**Netlify** is not offered: Composio provides it only as an MCP toolkit, which the host does not speak.
 
 ## What a bot can do with it
 
@@ -93,14 +90,14 @@ Once a service is connected, the agent uses it the way it uses any other tool: r
 sender, list tomorrow's appointments, look up the code a site just emailed you. The `integrations` skill
 documents the calls; the bot does not need new credentials and you do not need to paste anything into the chat.
 
-This is also what makes a login card cheaper: with Gmail connected, a bot can fetch a one-time code itself and
-hand it straight to the sign-in flow, so you are asked only for your password.
+It also supplies one-time codes: with Gmail connected, a bot reads the code a site just emailed you and
+hands it straight to the sign-in flow, so you are asked only for your password.
 
 ## Where your data lives
 
 - **Tokens** — on the Composio side, under your project key. Hermey stores the key, not the tokens.
-- **The key** — `/etc/hermey/composio.key`, `0600`, on the bridge host.
-- **Account names** — in the bridge's own state, alongside the connection ids. They are labels, not
+- **The key** — `/etc/hermey/composio.key`, `0600`, on the host that runs `hermeyd`.
+- **Account names** — in `hermeyd`'s state, alongside the connection ids. They are labels, not
   credentials.
 - **Mail, calendars, files** — never copied into Hermey. The bot reads them when it acts, through Composio.
 
@@ -109,18 +106,11 @@ hand it straight to the sign-in flow, so you are asked only for your password.
 - **"could not reach the host"** on the phone — the pairing is stale; re-pair from the Mac app.
 - **A card says Connected but the bot gets nothing** — the account is `INITIALIZING`, or the key lacks that
   toolkit on your Composio plan. Check the Composio dashboard.
-- **Every service shows Connected after one connect** — that was a real bug: Composio ignores the toolkit
-  filter in its connected-accounts list, so one Gmail lit all six. Hermey now filters locally and only counts
-  `ACTIVE` accounts.
 - **Two accounts, wrong one used** — rename them. The bot acts on the name you gave, so an unnamed pair is
   ambiguous by construction.
 
 ## Keeping this current
 
-Integrations will keep growing, so:
-
-- the app's catalogue, this table and the drift check all come from **one** list
-  (`CATALOG` in `hermeyd/src/integrations.rs`);
-- `Tools/site/check_drift.py catalog` fails when a catalogue entry is missing from this page, or when this page
-  names a service the code no longer has;
-- the nightly audit runs the drift checks and reports, without publishing — you are the publisher.
+The app's catalogue and this table come from **one** list, `CATALOG` in
+`hermeyd/src/integrations.rs`. `Tools/site/check_drift.py catalog` fails when a catalogue entry is missing
+from this page, or when this page names a service the code no longer has.

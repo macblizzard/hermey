@@ -299,8 +299,9 @@ ours.</p>
   <li><strong>Install the host.</strong> One command, safe to re-run as an upgrade.
     {code(doc_block("INSTALL.md", "The one command"), "the host install command")}
   </li>
-  <li><strong>Mint a pairing code</strong> on that host, with the phone in your hand — codes expire.
-    {code("curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start", "the pairing command")}
+  <li><strong>Pair a device</strong> on that host, with the phone in your hand — codes expire.
+    {code("sudo hermeyd pair", "the pairing command")}
+    It prints a six-digit code, a <code>https://&lt;host&gt;/?code=…</code> URL and a QR the app can scan.
   </li>
   <li><strong>Install the app and paste the code.</strong> iOS through AltStore or SideStore, macOS
     from the disk image. <a href="apps.html">Both are unsigned</a> — that is the stated trade-off.</li>

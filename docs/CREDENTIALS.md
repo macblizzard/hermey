@@ -1,9 +1,9 @@
 # Login cards: how a bot logs in without ever seeing your password
 
-Status: built. The three cards (choice, secret, confirm) are asked, answered, consumed and cancelled
-by the bridge, drawn by both apps, and filled either through the sign-in extension's loopback socket
-or through the bot screen's DevTools port. What remains is the 1Password service-account backend
-behind the same interface, and installing the extension into an owner's own Mac browser by hand.
+The three cards (choice, secret, confirm) are asked, answered, consumed and cancelled by `hermeyd`,
+drawn by both apps, and filled either through the sign-in extension's loopback socket or through the
+bot screen's DevTools port. The 1Password service-account backend behind the same interface is not
+built.
 
 ## The problem
 
@@ -14,7 +14,7 @@ A bot asked to "log into my Doctolib account" today has two bad options: be hand
 ## The idea
 
 The bot **orchestrates** the login. The owner **supplies** the secret. The two are kept apart: the
-secret is typed into a card in the Hermey app and flows from the app, through the bridge, into the
+secret is typed into a card in the Hermey app and flows from the app, through `hermeyd`, into the
 page. It never enters the conversation, the bot's context, or a log.
 
 Every secret-bearing interaction is a **card**. There are three kinds.
@@ -44,7 +44,7 @@ Shown after a choice, or whenever a value must be typed.
 
 Rules:
 
-- Values travel app → bridge → the fill target. **They are never returned to the bot**, never written
+- Values travel app → `hermeyd` → the fill target. **They are never returned to the bot**, never written
   to the transcript, never logged, and never stored after the fill.
 - The app records that a login happened and when. Not what was typed.
 - One-time codes are single use and expire with the card.
@@ -71,8 +71,8 @@ The bot learns **yes or no**. It never sees the token behind the connection.
 3. **Every card names the site**, and a card is only issued for the page the bot is currently on. This
    is what stops a bot — or something impersonating one — from asking for a secret it has no business
    holding.
-4. **One card at a time, short-lived, single use.** No stacking, no reuse, nothing valid after two
-   minutes.
+4. **Short-lived and single use.** A card expires in 15 minutes by default (`ttl_seconds`, clamped to
+   30 s – 24 h), up to 32 can be pending, and each is consumed once.
 5. **No secret is ever in a URL, a log line, a screenshot filename or an audit event.** The audit
    records the event, the site and the outcome only.
 6. **Cancel is always available and always obeyed.** A cancelled card fills nothing.
@@ -90,7 +90,7 @@ That is the complete list. If a future feature needs more, it goes in this docum
 
 | where the bot works | how the fill lands |
 | --- | --- |
-| the bot screen's browser | the **Hermey Sign-in extension** (first choice): it holds a loopback socket to the bridge and types the value into the field, replying only "ok" |
+| the bot screen's browser | the **Hermey Sign-in extension** (first choice): it holds a loopback socket to `hermeyd` and types the value into the field, replying only "ok" |
 | the bot screen's browser, launched by the dock | the DevTools port, as a fallback when no extension is connected |
 | the owner's Mac browser | the same extension, installed by hand; later, the Mac app may fill through its own browser surface |
 | native app windows | out of scope for this version; a bot must ask the owner to type |
@@ -115,19 +115,6 @@ and the connection is stored host-side, per owner, not per bot. A bot then only 
 use it. Revoking is a switch in the app.
 
 The same shape applies to a 1Password service account when the owner has a plan that offers one: the
-token is entered in the app, scoped to one vault, held by the bridge, and never by a bot. A bot's only
+token is entered in the app, scoped to one vault, held by `hermeyd`, and never by a bot. A bot's only
 door is the card.
 
-## Rollout
-
-1. Mac app: choice card, secret card, OTP card, one real site end to end.
-2. The same cards on iPhone, reusing the bridge contract.
-3. Confirm card and the Composio connection screen.
-4. A 1Password service-account backend behind the identical interface — no new bot-facing concepts.
-
-## What must exist before any of this is switched on
-
-- The bridge route that carries a card answer must not log its body, and must not include it in any
-  audit payload.
-- A test that fails if a secret ever appears in a transcript, a log line or an event payload.
-- A test that a bot cannot obtain the value after the fill.

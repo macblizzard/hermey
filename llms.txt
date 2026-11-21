@@ -14,7 +14,8 @@ then install the app on a phone or Mac and pair it with a short code.
   It downloads the `hermeyd` binary for the platform, verifies the published SHA-256, installs it
   under `/opt/hermey/bin`, and writes `/var/lib/hermeyd`, `/etc/hermey/hermeyd.env` and the unit.
   `--from-source` builds with cargo instead.
-- Then: `curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start` — mints a short code for the app.
+- Then: `hermeyd pair` — prints a 6-digit code, `https://<host>/?code=…` and a QR for the app
+  (`POST /v1/pair/start` is the same route).
 - Publish (optional): `tailscale serve --bg http://127.0.0.1:8788` — serve-root, no `:8443`.
 - iOS: add `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json` to
   AltStore or SideStore.
@@ -32,7 +33,7 @@ then install the app on a phone or Mac and pair it with a short code.
 - [docs/INSTALL.md](docs/INSTALL.md): installer flags, environment variables, paths on disk, uninstall.
 - [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, unpairing and revocation.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom, cause, fix, with real log strings.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the bridge adapts the Hermes dashboard; WS protocol.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how `hermeyd` relays the engine's WebSocket; the protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
 - [docs/CREDENTIALS.md](docs/CREDENTIALS.md): login cards — a bot signs in without ever seeing the secret.
 - [setup/SKILL.md](setup/SKILL.md): the same install packaged as a Hermes agent skill.
@@ -41,7 +42,7 @@ then install the app on a phone or Mac and pair it with a short code.
 ## Facts a tool needs
 
 - Host service: **hermeyd** — main API on `127.0.0.1:8788`, browser channel on `127.0.0.1:8790`.
-  Loopback only; `GET /v1/health` returns `{"status":"ok"}` and needs no credential.
+  Loopback only; `GET /v1/health` answers `{"status":"ok","protocol_version":…,"ws":true}` with no credential.
 - Credential: every other `/v1` route requires `Authorization: Bearer <token>`, read from
   `<state>/local.token` (mode `0600`, state dir `$HERMEY_HOME` or `~/.hermey`). The service mints it
   on boot.

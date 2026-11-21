@@ -56,7 +56,8 @@ That is `serve` at the root — **no port in the URL**. Pairing links therefore 
 
 ## 4. Pair the app
 
-Ask the host for a one-time code — `hermeyd` mints it over loopback and prints the URL to open:
+Ask the host for a one-time code — `hermeyd` mints it over loopback and prints the code, the URL to
+open and a QR code the app can scan:
 
 ```sh
 hermeyd pair
@@ -69,7 +70,7 @@ pairing URL   https://your-host.ts.net/?code=250240
 protocol      1
 ```
 
-Enter the code in Hermey, or open the pairing URL on a device on the same tailnet. A code is single-use and
+Enter the code in Hermey, open the pairing URL on a device on the same tailnet, or scan the QR. A code is single-use and
 expires in ten minutes; run `hermeyd pair` again for another. `--json` prints the route's object unchanged
 for scripts (`hermeyd pair --json | jq -r .code`), and `--host` overrides the name in the URL when
 `HERMEYD_PUBLIC_HOST` is not the one you want to publish.
