@@ -1,8 +1,8 @@
 # Hermey
 
 > A native iOS and macOS client for your own Hermes agent, plus the one command that installs its
-> host-side bridge. No account, no cloud in the middle: the apps talk to a loopback FastAPI service on
-> the user's own machine, exposed over their tailnet with a real certificate.
+> host-side service. No account, no cloud in the middle: the apps talk to a loopback service on the
+> user's own machine, exposed over their tailnet with a real certificate.
 
 The repo is a client, not a server. Installation is: run one shell command as root on the Hermes host,
 then install the app on a phone or Mac and pair it with a short code.
@@ -37,10 +37,19 @@ then install the app on a phone or Mac and pair it with a short code.
 
 ## Facts a tool needs
 
-- Bridge: `127.0.0.1:8787`, loopback only, `GET /v1/health` returns `{"status":"ok"}`.
-- Tailnet front door: `tailscale serve --bg --https=8443 http://127.0.0.1:8787` (real certificate;
-  the apps refuse self-signed).
-- Units: `hermey-bridge.service`; `hermey-gateway.service` only on hosts with no dashboard.
+- Host service: **hermeyd** — main API on `127.0.0.1:8788`, browser channel on `127.0.0.1:8790`.
+  Loopback only; `GET /v1/health` returns `{"status":"ok"}` and needs no credential.
+- Credential: every other `/v1` route requires `Authorization: Bearer <token>`, read from
+  `<state>/local.token` (mode `0600`, state dir `$HERMEY_HOME` or `~/.hermey`). The service mints it
+  on boot.
+  `HERMEYD_LOCAL_TOKEN` / `HERMEYD_LOCAL_TOKEN_FILE` override the value and the path.
+- Tailnet front door: `tailscale serve --bg http://127.0.0.1:8788` — serve-root, so pairing URLs carry
+  no port (real certificate; the apps refuse self-signed).
+- Retired: the Python **bridge** answered the same routes on `127.0.0.1:8787`, published at `:8443`,
+  with no credential. Nothing listens on 8787 on a hermeyd host; repo tooling keeps
+  `HERMES_BRIDGE_URL` as an override for one.
+- Units: `hermeyd.service` on current hosts; `hermey-bridge.service` (and
+  `hermey-gateway.service` only on hosts with no dashboard) on the bridge install.
 - CLI: `hermey status | pair | logs [n] | doctor | update | uninstall`.
 - Requirements: Linux with systemd, Python 3.11+, Hermes installed, Tailscale (or your own TLS proxy).
 - Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open).

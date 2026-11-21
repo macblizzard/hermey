@@ -50,6 +50,16 @@ MIRRORED = {
     "docs/SECURITY.md": ("security", "summary"),
 }
 
+# The host service's own defaults. hermeyd's source is not in this repo (it ships as the standalone
+# package), so its documented contract is these constants: the main API on 8788 — the port this repo's
+# tools default to — and the credential-free browser channel on 8790. Loopback only, published at
+# serve-root. The retired Python bridge's 8787 is still read out of the installer, but only as a
+# historical fact the site may keep stating, never as the port a host listens on.
+HERMEYD_API_PORT = "8788"
+HERMEYD_BROWSER_PORT = "8790"
+#: Where the local bearer lives, as the live pages have to say when they tell a bot to call the API.
+HERMEYD_TOKEN_NAME = "local.token"
+
 STOPWORDS = {
     "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is", "are", "it", "that",
     "this", "as", "at", "by", "from", "not", "no", "you", "your", "its", "be", "if", "when", "what",
@@ -85,8 +95,10 @@ def cli_verbs() -> set[str]:
 def installer_defaults() -> dict[str, str]:
     """Default port and unit prefix, read from the installer's own assignments.
 
-    The shell variables are named differently from the env knobs they read (`BRIDGE_PORT=${HERMEY_PORT:-8787}`),
-    so the pattern matches on the env knob and takes the fallback.
+    These are the **bridge** installer's numbers: 8787 on loopback. A hermeyd host does not read them,
+    which is why the ports check below treats them as history. The shell variables are named
+    differently from the env knobs they read (`BRIDGE_PORT=${HERMEY_PORT:-8787}`), so the pattern
+    matches on the env knob and takes the fallback.
     """
     text = read(INSTALLER)
     out = {}
@@ -104,8 +116,20 @@ def bridge_routes() -> set[str]:
 
 
 def site_text() -> str:
-    """Everything the generated site claims, plus the landing page."""
+    """Everything the site claims, plus the landing page."""
     chunks = [read(GENERATOR)]
+    chunks.append(published_text())
+    return "\n".join(chunks)
+
+
+def published_text() -> str:
+    """Only what a visitor can read: the built pages.
+
+    The port and credential facts are checked against this and not the generator, because a generator
+    that says `8788` while every built page still says `8787` is exactly the drift that matters — the
+    reader never sees the source file.
+    """
+    chunks = []
     for name in ("index.html", "install.html", "apps.html", "reference.html", "troubleshooting.html",
                  "agents.html", "security.html", "computer-use.html"):
         chunks.append(read(SITE_DIR / "docs" / name))
@@ -197,14 +221,34 @@ def main() -> int:
                 drift.append({"check": "cli", "what": f"`hermey {extra}` is documented but not dispatched",
                               "where": "docs/reference"})
 
-    # ports and units — the installer is the authority
+    # ports and units — the live host is hermeyd, and the *published* page has to say so
     defaults = installer_defaults()
-    checked.append(f"ports: installer defaults {defaults}")
-    for key, label in (("bridge_port", "bridge port"), ("https_port", "tailnet port")):
-        value = defaults.get(key)
-        if value and value not in site:
-            drift.append({"check": "ports", "what": f"{label} {value} from the installer is not on the site",
-                          "where": "docs/reference + docs/install"})
+    bridge_port = defaults.get("bridge_port")
+    published = published_text()
+    checked.append(f"ports: hermeyd {HERMEYD_API_PORT}/{HERMEYD_BROWSER_PORT}, "
+                   f"installer (bridge-only) defaults {defaults}")
+    for live_port, label in ((HERMEYD_API_PORT, "the host API port"),
+                             (HERMEYD_BROWSER_PORT, "the browser channel port")):
+        if live_port not in published:
+            drift.append({"check": "ports",
+                          "what": f"{label} {live_port} (hermeyd) is not on the built site — a page "
+                                  f"still sending readers to the retired bridge's port",
+                          "where": "docs/reference + docs/install + docs/agents — rebuild with Tools/site/build_docs.py"})
+    if "hermeyd" not in published:
+        drift.append({"check": "ports",
+                      "what": "the built site never names hermeyd, the service a host runs today",
+                      "where": "docs/install + docs/reference"})
+    if HERMEYD_TOKEN_NAME not in published:
+        drift.append({"check": "auth",
+                      "what": f"the built site tells readers to call the API but never mentions "
+                              f"{HERMEYD_TOKEN_NAME}, the bearer hermeyd requires",
+                      "where": "docs/agents + docs/reference"})
+    # Only when the site still carries the bridge's own instructions do the installer's numbers have
+    # to agree with them; a page that has dropped the bridge must not be nagged about its port.
+    if bridge_port and "hermey-bridge.service" in site and bridge_port not in site:
+        drift.append({"check": "ports",
+                      "what": f"bridge port {bridge_port} from the installer is not on the site while "
+                              f"the bridge is still documented", "where": "docs/reference + docs/install"})
     prefix = defaults.get("unit_prefix")
     if prefix:
         for unit in (f"{prefix}-bridge.service", f"{prefix}-gateway.service"):

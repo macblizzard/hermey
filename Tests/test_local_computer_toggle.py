@@ -73,7 +73,10 @@ class LocalComputerPrototype(unittest.TestCase):
 
     def test_bots_have_a_host_side_cli(self) -> None:
         cli = (ROOT / "Tools/local_computer.py").read_text()
-        self.assertIn('http://127.0.0.1:8787', cli)
+        self.assertIn('http://127.0.0.1:8788', cli)          # hermeyd, not the retired bridge's 8787
+        self.assertIn('HERMES_BRIDGE_URL', cli)             # a bridge host still works, by override
+        self.assertIn('Authorization', cli)                 # the route needs a bearer
+        self.assertIn('HERMEYD_LOCAL_TOKEN_FILE', cli)      # …read from the service, never hardcoded
         self.assertIn('"/v1/local-computers"', cli)
         self.assertIn('args.command[1:] if args.command and args.command[0] == "--"', cli)
         self.assertIn('base64.b64decode(result.get("stdout", ""))', cli)

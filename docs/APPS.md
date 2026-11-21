@@ -110,8 +110,12 @@ immediately and leaves the other devices alone:
 
 ```bash
 hermey doctor            # see what is paired and whether it is healthy
-curl -s http://127.0.0.1:8787/v1/devices   # loopback only
+curl -s -H "Authorization: Bearer $(cat <state>/local.token)" http://127.0.0.1:8788/v1/devices
 ```
+
+The second is the **hermeyd** host service: loopback, and the local bearer it mints at start
+(`<state>/local.token`). On a host still running the Python bridge it was `8787`, loopback-only, with
+no credential.
 
 ## Bot computer
 

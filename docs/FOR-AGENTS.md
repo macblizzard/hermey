@@ -9,6 +9,16 @@ loopback service to that machine — the **bridge** — which adapts the Hermes 
 HTTP/WS API, and exposes it to the tailnet with `tailscale serve`. The apps (iOS, macOS) talk only to
 that bridge.
 
+> **Read this first: is this host already on `hermeyd`?** Hosts installed today run **hermeyd**, the
+> Rust host service, not the Python bridge. It serves the main API on `127.0.0.1:8788` and the browser
+> channel on `8790`, publishes **serve-root** (`tailscale serve --bg http://127.0.0.1:8788`, so pairing
+> URLs carry no `:8443`), and every `/v1` route except `/v1/health` and `/v1/pair/start` requires the
+> **local bearer** it mints at `<state>/local.token` (`0600`) on boot. If `curl -fsS
+> http://127.0.0.1:8788/v1/health` answers, this host is already served — skip the install below and
+> go to [verify](#2-verify-before-you-tell-anyone-it-works). On such a host `8787` has **no listener**
+> and a leftover `:8443` mount answers 502. The rest of this file is the bridge procedure, which still
+> applies to a host that has not migrated.
+
 ## Who does what
 
 | Step | Who |
@@ -69,15 +79,28 @@ hermey doctor          # unit, loopback health, gateway URL, tailscale state, HT
 hermey status
 ```
 
-Then the two explicit checks — both must answer `{"status":"ok", ...}`:
+Then the explicit check — on a **hermeyd** host it is `8788`, and the tailnet URL has no port:
 
 ```bash
-curl -fsS http://127.0.0.1:8787/v1/health
-curl -fsS "https://$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):8443/v1/health"
+curl -fsS http://127.0.0.1:8788/v1/health                       # hermeyd (the retired bridge: 8787)
+curl -fsS "https://$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')/v1/health"
 ```
+
+Both must answer `{"status":"ok", ...}`. A bridge host publishes `:8443` and answers there instead —
+add the port if the loopback one is `8787`.
 
 Do not skip the HTTPS one. A loopback-only pass is the state that looks finished and is not: the app
 will fail to connect.
+
+Anything beyond `/v1/health` needs the service's local bearer. It is a file the service owns, so it is
+not in an app, not in a bot's config, and never pasted into chat:
+
+```bash
+TOKEN=$(cat /var/lib/hermeyd/local.token)     # <state> wherever hermeyd keeps the database
+curl -fsS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8788/v1/local-computers
+```
+
+Without it those routes answer `401` — that is a missing credential, not an unhealthy service.
 
 ## 2.5 The Mac skill installs itself — confirm it landed
 
@@ -86,7 +109,8 @@ plus the CLI it points at (`/var/lib/hermey/bin/local_computer.py`). That is wha
 Mac a capability for *every* bot on the host instead of something each one has to discover.
 
 ```bash
-curl -s -X POST http://127.0.0.1:8787/v1/local-computers/skill | python3 -m json.tool   # installed: [...]
+curl -s -X POST -H "Authorization: Bearer $(cat /var/lib/hermeyd/local.token)" \
+  http://127.0.0.1:8788/v1/local-computers/skill | python3 -m json.tool   # installed: [...]
 ```
 
 Pass condition: `installed` is a non-empty list, and that path holds `mac-local-computer/SKILL.md`.
@@ -124,8 +148,10 @@ short-lived — mint a fresh one when the human is actually holding the phone. T
 - iOS: in the app, **add server** → scan the QR (or paste the deep link).
 - macOS: the Mac has no camera; paste the `hermes://` link into **Pair a host**.
 
-To check what is paired afterwards: `hermey doctor`, or `curl -s http://127.0.0.1:8787/v1/devices`
-(loopback only). Revoke a device from the app, or by deleting it there.
+To check what is paired afterwards: `hermey doctor`, or
+`curl -s -H "Authorization: Bearer $(cat /var/lib/hermeyd/local.token)" http://127.0.0.1:8788/v1/devices`
+(loopback and the local bearer, on a hermeyd host; the bridge answered on `8787` with no credential).
+Revoke a device from the app, or by deleting it there.
 
 ## 4. Hand over the apps
 
@@ -154,7 +180,8 @@ Send the human these, verbatim:
   trusted certificate. If the user wants to avoid Tailscale, a real domain + Caddy in front of
   `127.0.0.1:8787` with `--no-serve` is the supported shape.
 - **Do not stop or reconfigure an existing tailnet service** to free port 8443. Reinstall with
-  `--https-port 8444` (and `--port 8788` if 8787 is busy).
+  `--https-port 8444` (and `--port 8789` if 8787 is busy — `8788` belongs to hermeyd, so a bridge
+  install cannot take it).
 - **Do not touch the user's profiles or bots.** Hermey reads them; it does not own them.
 - Copy no secrets into chat or logs. Provider keys for voice go in `/etc/hermey/providers.env` (0600).
 
@@ -162,7 +189,10 @@ Send the human these, verbatim:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `the bridge did not answer on 127.0.0.1:8787` | port taken, venv broken, or a crash on start | `hermey logs 80`; `sudo ss -ltnp \| grep 8787`; reinstall with `--port 8788` |
+| `curl: (7) Failed to connect` on `127.0.0.1:8787` | this host runs **hermeyd**, whose loopback API is `8788`; nothing listens on 8787 any more | `curl -fsS http://127.0.0.1:8788/v1/health`; `sudo ss -ltnp \| grep -E '8788\|8790'` |
+| `401` from any `/v1` route except `/v1/health` and `/v1/pair/start` | no local bearer on a hermeyd host | `-H "Authorization: Bearer $(cat <state>/local.token)"`; restart the service if the file is missing |
+| App reaches `…:8443` and gets `502` | a leftover `:8443` mount pointing at the retired bridge | `tailscale serve --https=8443 off` (hermeyd publishes serve-root) |
+| `the bridge did not answer on 127.0.0.1:8787` | port taken, venv broken, or a crash on start (bridge installs) | `hermey logs 80`; `sudo ss -ltnp \| grep 8787`; reinstall with `--port 8788` |
 | `reusing this host's dashboard: pid …` | a dashboard exists; Hermes allows one | expected — let the installer reuse it; `hermes dashboard --status` |
 | `hermey doctor` health FAIL, audit log says `"event": "upstream_error"` with `"reason": "connect_failed"` | the dashboard is not answering on that port, or restarted with a new token | re-run the installer; it re-reads both |
 | `tailscale serve` refused / permission denied | not root, or serve not enabled on the tailnet | run as root; `tailscale serve status`; check the tailnet policy allows serve |
@@ -187,7 +217,9 @@ the apps that URL. Self-signed certificates will be refused by the apps.
 ## Definition of done
 
 - [ ] `hermey doctor` — unit active, health ok, HTTPS ok
-- [ ] `curl -fsS https://<host>.<tailnet>.ts.net:8443/v1/health` answers `{"status":"ok", …}`
+- [ ] `curl -fsS https://<host>.<tailnet>.ts.net/v1/health` answers `{"status":"ok", …}` (hermeyd:
+      serve-root, no `:8443`; a bridge host publishes the port)
+- [ ] A `/v1` route other than health answers with `-H "Authorization: Bearer …"`, not `401`
 - [ ] `hermey pair` produced a code the human has been given
 - [ ] The human has both app links and knows the ~7-day re-sign caveat on iOS
 - [ ] You changed nothing else on the host
@@ -197,7 +229,8 @@ the apps that URL. Self-signed certificates will be refused by the apps.
 | | |
 |---|---|
 | Units | `hermey-bridge.service` (always), `hermey-gateway.service` (only if the host had no dashboard) |
-| Ports | bridge `127.0.0.1:8787` (loopback only), tailnet `8443` |
+| Ports | `hermeyd` `127.0.0.1:8788` (main API) and `127.0.0.1:8790` (browser channel), published at serve-root; the retired bridge used `127.0.0.1:8787` behind tailnet `8443` |
+| Credential | `<state>/local.token` (`0600`), sent as `Authorization: Bearer …`; only `/v1/health` and `/v1/pair/start` answer without it |
 | Paths | `/opt/hermey/venv`, `/var/lib/hermey` (state, SQLite, attachments), `/etc/hermey/*.env` (0600) |
 | CLI | `hermey status \| pair \| logs [n] \| doctor \| update \| uninstall` |
 | Env knobs | `HERMEY_PORT`, `HERMEY_HTTPS_PORT`, `HERMEY_REF`, `HERMEY_LOCAL_SRC`, `HERMEY_SERVE`, `HERMEY_PREFIX`, `HERMEY_STATE`, `HERMEY_CONF`, `HERMEY_USER`, `HERMEY_BINDIR`, `HERMEY_UNIT_PREFIX` |

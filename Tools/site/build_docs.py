@@ -110,14 +110,17 @@ service of ours.</p>
 
 <h2 id="two-halves">The two halves</h2>
 {table(["", "Where it runs", "What it is"], [
-  ["<strong>Bridge</strong>", "Your Hermes host, bound to <code>127.0.0.1:8787</code>",
-   "FastAPI service that adapts the Hermes dashboard to the apps' protocol. It holds the device "
-   "registry, mints single-use tickets and audits every call."],
+  ["<strong>Host service</strong>", "<code>hermeyd</code> on <code>127.0.0.1:8788</code>, with the browser channel on <code>8790</code>",
+   "Rust service that adapts the Hermes dashboard to the apps' protocol. It holds the device "
+   "registry, mints single-use tickets, audits every call, and issues the local bearer that host-side "
+   "scripts send. The retired Python bridge answered the same routes on <code>8787</code>."],
   ["<strong>Apps</strong>", "iPhone, iPad, Mac",
    "SwiftUI clients. They hold a device key, never a host secret, and can only answer the questions "
    "the agent asks."],
-  ["<strong>Front door</strong>", "<code>tailscale serve --bg --https=8443</code>",
-   "Terminates TLS with a real certificate. The apps refuse self-signed, so this is not optional."],
+  ["<strong>Front door</strong>", "<code>tailscale serve --bg http://127.0.0.1:8788</code>",
+   "Terminates TLS with a real certificate at serve-root, so pairing URLs carry no port. A host still "
+   "on the bridge publishes <code>--https=8443</code> in front of <code>8787</code>. The apps refuse "
+   "self-signed, so this is not optional."],
 ])}
 
 <p class="next-hint">New to this? Read <a href="install.html">Install the host</a>, then
@@ -137,6 +140,14 @@ PAGES.append(dict(
 {code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash", "the host install command")}
 <p>Re-running it is an <strong>upgrade</strong>: same units, same state, package reinstalled and the
 services restarted.</p>
+
+{note("info", "Current hosts run <code>hermeyd</code>, not the bridge.",
+      "The Rust host service listens on <code>127.0.0.1:8788</code> with the browser channel on "
+      "<code>8790</code>, publishes serve-root — so pairing URLs carry no <code>:8443</code> — and "
+      "requires the local bearer at <code>&lt;state&gt;/local.token</code> for host-side API calls. "
+      "Everything below details the retired Python bridge installer, which still works on a host that "
+      "has not been migrated: <code>8787</code> is its port, and it accepts loopback callers with no "
+      "credential.")}
 
 <h2 id="what-it-does">What it does, in order</h2>
 <ol class="steps-list">
@@ -177,7 +188,7 @@ as you like; each is individually revocable.</p>
 <p>Every flag is also readable as an environment variable, which matters when you pipe the script into
 a shell.</p>
 {table(["Flag", "Env", "Default", "Meaning"], [
-  ["<code>--port N</code>", "<code>HERMEY_PORT</code>", "<code>8787</code>", "bridge port (loopback)"],
+  ["<code>--port N</code>", "<code>HERMEY_PORT</code>", "<code>8787</code>", "bridge port (loopback); a hermeyd host serves <code>8788</code> instead and takes no such flag"],
   ["<code>--https-port N</code>", "<code>HERMEY_HTTPS_PORT</code>", "<code>8443</code>", "tailnet port for <code>tailscale serve</code>"],
   ["<code>--ref R</code>", "<code>HERMEY_REF</code>", "<code>main</code>", "git ref to install; a release tag pins a build"],
   ["<code>--local DIR</code>", "<code>HERMEY_LOCAL_SRC</code>", "—", "install from a checkout instead of GitHub"],
@@ -412,8 +423,12 @@ it is also packaged as a skill in <a href="{REPO}/blob/main/setup/SKILL.md">setu
     {code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash", "the host install command")}
   </li>
   <li><strong>Verify before you say it works.</strong> Both gates must pass:
-    {code("hermey doctor\ncurl -fsS https://<host>.<tailnet>.ts.net:8443/v1/health", "the verification commands")}
-    The second answers <code>{{"status":"ok", …}}</code>. If it does not, do not proceed — go to the
+    {code("hermey doctor\ncurl -fsS https://<host>.<tailnet>.ts.net/v1/health   # hermeyd: serve-root, no :8443", "the verification commands")}
+    On a host still running the retired bridge the published URL carries <code>:8443</code>. Anything
+    beyond <code>/v1/health</code> on a hermeyd host needs the service's bearer, which lives at
+    <code>&lt;state&gt;/local.token</code>:
+    {code("curl -fsS -H \"Authorization: Bearer $(cat /var/lib/hermeyd/local.token)\" http://127.0.0.1:8788/v1/devices", "a loopback call with the local bearer")}
+    The health check answers <code>{{"status":"ok", …}}</code>. If it does not, do not proceed — go to the
     failure playbook.</li>
   <li><strong>Pair the human's device.</strong> Run <code>hermey pair</code> and give them the code or
     the full link. Do not paste a code into a public channel.</li>
@@ -459,7 +474,8 @@ it is also packaged as a skill in <a href="{REPO}/blob/main/setup/SKILL.md">setu
 <h2 id="facts">Facts you can rely on</h2>
 {table(["", ""], [
   ["Units", "<code>hermey-bridge.service</code> always; <code>hermey-gateway.service</code> only if the host had no dashboard"],
-  ["Ports", "bridge <code>127.0.0.1:8787</code> (loopback only), tailnet <code>8443</code>"],
+  ["Ports", "<code>hermeyd</code> on <code>127.0.0.1:8788</code> (main API) and <code>8790</code> (browser channel), loopback only, published at serve-root; the retired bridge used <code>8787</code> behind <code>:8443</code>"],
+  ["Credential", "a host-side script sends <code>Authorization: Bearer $(cat &lt;state&gt;/local.token)</code>; only <code>/v1/health</code> and <code>/v1/pair/start</code> answer without it"],
   ["Paths", "<code>/opt/hermey/venv</code>, <code>/var/lib/hermey</code>, <code>/etc/hermey/*.env</code> (0600)"],
   ["CLI", "<code>hermey status | pair | logs [n] | doctor | update | uninstall</code>"],
 ])}
@@ -484,6 +500,11 @@ PAGES.append(dict(
 and whether the HTTPS endpoint answers through the certificate.</p>
 
 <h2 id="health-fail">Doctor says health FAIL</h2>
+<p>On a <strong>hermeyd</strong> host there is no bridge to answer: the service listens on
+<code>127.0.0.1:8788</code>, so <code>curl -fsS http://127.0.0.1:8788/v1/health</code> is the whole
+health check, and a <code>401</code> from any other <code>/v1</code> route means the caller sent no
+local bearer (see <code>&lt;state&gt;/local.token</code>) rather than that the service is unwell.
+The rest of this section is the retired bridge's log.</p>
 <p>The bridge is not answering on <code>127.0.0.1:8787</code>. Read its log; the first line usually
 names the cause.</p>
 {code("hermey logs 80", "the log command")}
@@ -628,8 +649,10 @@ PAGES.append(dict(
 
 <h2 id="ports">Ports and units</h2>
 {table(["", ""], [
-  ["Bridge", "<code>127.0.0.1:8787</code> — loopback only, by design"],
-  ["Tailnet", "<code>:8443</code> via <code>tailscale serve</code>, real certificate"],
+  ["Host service", "<code>hermeyd</code> on <code>127.0.0.1:8788</code> — loopback only, by design"],
+  ["Browser channel", "<code>127.0.0.1:8790</code> — the three <code>/v1/browser/*</code> routes, no credential"],
+  ["Bearer", "<code>&lt;state&gt;/local.token</code> (<code>0600</code>) — what a host-side script sends on <code>8788</code>"],
+  ["Tailnet", "serve-root via <code>tailscale serve</code>, real certificate; the bridge's shape was <code>:8443</code> in front of <code>8787</code>"],
   ["Units", "<code>hermey-bridge.service</code>; <code>hermey-gateway.service</code> only when the host had no dashboard"],
   ["Never", "a unit named <code>hermes-gateway.service</code> — that is Hermes' messaging gateway"],
 ])}

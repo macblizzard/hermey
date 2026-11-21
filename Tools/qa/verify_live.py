@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
-"""Verify a *live* deployment, not a replay: the real bridge behind real TLS.
+"""Verify a *live* deployment, not a replay: the real host behind real TLS.
 
 This is the check that answers "is the thing I deployed actually working, and does it see my
 bots?". It is separate from `Tools/qa` (which runs offline against a scripted gateway) because
 it needs the real host.
 
-    # on the host, once, to get a code (codes are minted on the host only, by design):
-    curl -s -X POST http://127.0.0.1:8787/v1/pair/start | jq .code
+    # on the host, once, to get a code (codes are minted on the host only, by design; loopback needs
+    # no credential — every other /v1 route on hermeyd does):
+    curl -s -X POST http://127.0.0.1:8788/v1/pair/start | jq .code
 
-    python Tools/qa/verify_live.py --base https://hermes.example.ts.net:8443 \
+    # hermeyd publishes serve-root, so the tailnet URL carries no port:
+    python Tools/qa/verify_live.py --base https://hermes.example.ts.net \
         --pair-code 12345678 --bots assistant,chief,analyst
+
+    # a host still running the retired Python bridge listens on 8787 and is published on :8443:
+    python Tools/qa/verify_live.py --base https://hermes.example.ts.net:8443 --pair-code …
 
 Exits non-zero on the first failed expectation, so it can gate a deploy.
 
 What it proves, in order: pairing over HTTPS, token → single-use ticket, WSS upgrade through
 `tailscale serve`, the mandatory `client.capabilities` advertisement, `ping` latency, that
 `profiles.list` enumerates every bot, and that per-bot `session.list` returns rows only with
-`include_hidden: true` (the filter that silently returns 0 for a normal profile).
+`include_hidden: true` (the filter that silently returns 0 for a normal profile). The check pairs a
+throwaway device, so it needs no local bearer of its own — pairing is its credential.
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ import statistics
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 try:
@@ -50,8 +57,17 @@ def get(url: str) -> dict:
         return json.loads(resp.read())
 
 
+def ws_base(base: str) -> str:
+    """`https` → `wss`, `http` → `ws`: a loopback check against hermeyd's own port is plain http."""
+    if base.startswith("https://"):
+        return "wss://" + base[len("https://"):]
+    if base.startswith("http://"):
+        return "ws://" + base[len("http://"):]
+    return base
+
+
 async def drive(args, ticket: str) -> int:
-    url = f"{args.base.replace('https://', 'wss://')}/v1/ws?ticket={ticket}"
+    url = "{}/v1/ws?ticket={}".format(ws_base(args.base).rstrip("/"), ticket)
     async with websockets.connect(url, open_timeout=15, max_size=None) as ws:
         ready = json.loads(await asyncio.wait_for(ws.recv(), timeout=30))
         event = (ready.get("params") or {}).get("type")
@@ -110,31 +126,53 @@ def fail(message: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="https://hermes.example.ts.net:8443")
+    parser.add_argument("--base", default="https://hermes.example.ts.net",
+                        help="the host's published URL (hermeyd: serve-root, no port; a bridge host "
+                             "publishes :8443), or http://127.0.0.1:8788 on the host itself")
     parser.add_argument("--pair-code", required=True, help="8-digit code printed by /v1/pair/start on the host")
     parser.add_argument("--bots", default="", help="comma-separated bot names to spot-check")
     parser.add_argument("--device-name", default="verify-live")
     args = parser.parse_args()
+    args.base = args.base.rstrip("/")
 
     print("live deployment check\n" + "-" * 40)
-    health = get(f"{args.base}/v1/health")
-    print(f"  /v1/health             -> {health.get('status')} (protocol {health.get('protocol_version')})")
+    print(f"  base                   -> {args.base}")
+    try:
+        health = get(f"{args.base}/v1/health")
+    except urllib.error.URLError as exc:
+        return fail(f"{args.base}/v1/health did not answer ({exc.reason}) — a hermeyd host listens on "
+                    f"127.0.0.1:8788 and publishes serve-root; the retired bridge used 8787 and :8443")
+    except json.JSONDecodeError:
+        return fail(f"{args.base}/v1/health answered something that is not JSON — is this URL the host?")
+    status = health.get("status")
+    if status != "ok":
+        return fail(f"/v1/health answered {status!r}, not 'ok'")
+    print(f"  /v1/health             -> {status} (protocol {health.get('protocol_version')})")
 
     # A valid Ed25519 public key is exactly 32 bytes; anything else is refused on purpose.
     public_key = base64.b64encode(bytes(range(32))).decode("ascii")
-    claim = post(f"{args.base}/v1/pair/claim", {
-        "code": args.pair_code.strip(), "public_key": public_key,
-        "device_name": args.device_name, "platform": "macos",
-    })
-    print(f"  pair/claim over HTTPS  -> device {claim.get('device_id')}")
-    token = post(f"{args.base}/v1/token", {
-        "device_id": claim["device_id"], "refresh_token": claim["refresh_token"],
-    })
+    try:
+        claim = post(f"{args.base}/v1/pair/claim", {
+            "code": args.pair_code.strip(), "public_key": public_key,
+            "device_name": args.device_name, "platform": "macos",
+        })
+        print(f"  pair/claim over HTTPS  -> device {claim.get('device_id')}")
+        token = post(f"{args.base}/v1/token", {
+            "device_id": claim["device_id"], "refresh_token": claim["refresh_token"],
+        })
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:200]
+        return fail(f"pairing failed: {exc.code} {body}")
+    except (urllib.error.URLError, KeyError, json.JSONDecodeError) as exc:
+        return fail(f"pairing failed: {exc!r}")
     if not token.get("ws_ticket"):
         return fail("no ws ticket issued")
     print(f"  token over HTTPS       -> ticket issued, access expires in {token.get('expires_in')}s")
 
-    return asyncio.run(drive(args, token["ws_ticket"]))
+    try:
+        return asyncio.run(drive(args, token["ws_ticket"]))
+    except (OSError, websockets.exceptions.WebSocketException) as exc:
+        return fail(f"the upgrade to {ws_base(args.base)}/v1/ws failed ({exc})")
 
 
 if __name__ == "__main__":

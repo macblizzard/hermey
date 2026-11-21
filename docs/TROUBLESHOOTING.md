@@ -11,6 +11,11 @@ and whether the HTTPS endpoint answers through the certificate.
 
 ## `hermey doctor` says health FAIL
 
+On a **hermeyd** host there is no bridge to answer: the service listens on `127.0.0.1:8788`, so
+`curl -fsS http://127.0.0.1:8788/v1/health` is the whole health check, and a `401` from any other
+`/v1` route means the caller sent no local bearer (`<state>/local.token`) rather than that the service
+is unwell. The rest of this section is the retired bridge's log.
+
 The bridge is not answering on `127.0.0.1:8787`. Read its log; the first line usually names the cause.
 
 ```bash

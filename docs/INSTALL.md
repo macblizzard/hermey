@@ -4,7 +4,10 @@
 > service: it serves the main API on `127.0.0.1:8788`, the browser channel on `8790`, and is
 > published with `tailscale serve --bg http://127.0.0.1:8788` — serve-root, no port, so pairing URLs
 > carry no `:8443`. The old bridge on `8787` has no listener on a hermeyd host, and a `:8443` mount
-> pointing at it answers 502. Everything below still applies to a host that has not migrated.
+> pointing at it answers 502. Every `/v1` route except `/v1/health` and `/v1/pair/start` requires the
+> **local bearer** hermeyd mints at `<state>/local.token` (`0600`), sent as
+> `Authorization: Bearer …`; loopback is not a substitute for it. Everything below still applies to a
+> host that has not migrated.
 
 The host is a machine that already runs Hermes. Hermey adds one loopback service to it — the bridge
 — and exposes that service through `tailscale serve`.
