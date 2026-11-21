@@ -310,7 +310,7 @@ ours.</p>
 <h2 id="start-here">Start here</h2>
 <div class="cards">
   <a class="card" href="prerequisites.html"><span class="card-kicker">Start</span><strong>Getting started</strong>
-    <span>What Hermes has to be doing first, then install, publish, pair.</span></a>
+    <span>What Hermes has to be doing first, then install, reach it, pair.</span></a>
   <a class="card" href="install.html"><span class="card-kicker">Host</span><strong>Install the host</strong>
     <span>The command, what it writes, the flags, and how to undo it.</span></a>
   <a class="card" href="apps.html"><span class="card-kicker">Devices</span><strong>The apps</strong>
@@ -1066,12 +1066,31 @@ def update_landing(site_root: pathlib.Path) -> None:
     print(f"landing: {page} now points its primary button at docs/prerequisites.html")
 
 
+def looks_generated(text: str) -> bool:
+    """True for a page this script wrote: it carries the shared shell, not the hand-written landing page."""
+    return 'assets/docs.css' in text or 'class="toc"' in text
+
+
 def build(out: pathlib.Path) -> None:
     """Write the docs pages into `out`, and nothing else."""
+    # The output directory is the site's `docs/`, never the site root. Pointing the build one level too
+    # high is not a typo it can recover from: it writes the overview page over index.html — the hand-
+    # written landing page — and drops a second copy of every page at the root while the real pages in
+    # `docs/` keep their old text. That happened once and the site served the stale copy for a week, so
+    # the shape is checked rather than inferred from whether index.html happens to carry a build stamp.
+    if out.name != "docs":
+        raise SystemExit(f"{out} is not a site docs/ directory. The pages are written to <site>/docs, "
+                         f"beside the landing page — building into the site root would replace "
+                         f"index.html with the overview page.\n"
+                         f"       e.g. build_docs.py ../hermey-pages/docs")
+
     landing = out / "index.html"
-    if landing.exists() and STAMP_BEGIN in landing.read_text(encoding="utf-8"):
-        raise SystemExit(f"{landing} carries the release build stamp — that is the landing page, not a "
-                         f"docs page. Pass the site's docs/ directory instead.")
+    if landing.exists():
+        text = landing.read_text(encoding="utf-8")
+        if STAMP_BEGIN in text or not looks_generated(text):
+            raise SystemExit(f"{landing} is not a generated docs page — refusing to overwrite it. "
+                             f"Pass the site's docs/ directory, not the directory that holds the landing "
+                             f"page.")
 
     (out / "assets").mkdir(parents=True, exist_ok=True)
 

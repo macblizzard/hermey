@@ -143,6 +143,34 @@ class TheBuildLeavesTheLandingPageAlone(unittest.TestCase):
                 build_docs.build(out)
             self.assertEqual((out / "index.html").read_text(encoding="utf-8"), stamped)
 
+    def test_it_refuses_the_site_root_even_with_no_build_stamp(self) -> None:
+        """The landing page stopped carrying a stamp; the shape of the path has to be checked instead.
+
+        Built one level too high, the run wrote the overview page over index.html and dropped a second
+        copy of every page at the root, while the pages in `docs/` kept their old text. The site then
+        served the stale copy and nothing failed.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            site = pathlib.Path(tmp)
+            landing = '<!doctype html><title>Hermey</title><h1>Your agent, in a real app</h1>'
+            (site / "index.html").write_text(landing, encoding="utf-8")
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+                build_docs.build(site)
+            self.assertEqual((site / "index.html").read_text(encoding="utf-8"), landing)
+            self.assertFalse((site / "prerequisites.html").exists(),
+                             "the build wrote a page at the site root")
+
+    def test_it_refuses_a_landing_page_inside_the_output_directory(self) -> None:
+        """A directory named `docs` that holds the hand-written landing page is still not the docs dir."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "docs"
+            out.mkdir()
+            landing = '<!doctype html><title>Hermey</title><h1>Your agent, in a real app</h1>'
+            (out / "index.html").write_text(landing, encoding="utf-8")
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+                build_docs.build(out)
+            self.assertEqual((out / "index.html").read_text(encoding="utf-8"), landing)
+
     def test_the_landing_cta_points_at_the_new_page_and_keeps_the_stamp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             site = pathlib.Path(tmp)

@@ -1,12 +1,12 @@
 # hermeyd — the host service (Rust)
 
-The layer between the apps and the engine: **pairing, devices, credentials, and (next) the WS relay**.
+The layer between the apps and the engine: **pairing, devices, credentials and the WS relay**.
 It holds no agent logic — bots, sessions and transcripts belong to the engine, so an engine swap
 cannot touch pairing.
 
 ## Why Rust, and why this layer
 
-| | Python bridge (production) | hermeyd (Rust) |
+| | Python bridge (retired, for comparison) | hermeyd (Rust) |
 |---|---|---|
 | Artifact | venv + 117 packages | **one 4.3 MB binary** |
 | Runtime needed on host | Python 3.11–3.14 | none |
@@ -16,7 +16,7 @@ cannot touch pairing.
 The engine stays Python on purpose (it is 47 tools and a working agent loop). The host service is
 small, security-critical and distribution-facing — exactly the shape a single static binary wins.
 
-## Routes (wire-compatible with the production bridge)
+## The core routes
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|
@@ -59,8 +59,9 @@ PASS  hermeyd refuses to bind 0.0.0.0 (exit 1)
 
 ## Port 8788, not 8787
 
-The production bridge binds 8787. hermeyd defaults to **8788** so both can run on one machine while
-this is developed — nothing of ours can shadow a working host.
+hermeyd listens on **8788**, and it is the only port involved now. It was picked to sit beside the
+retired Python bridge's 8787 so both could run on one machine during the swap; the bridge is gone, and
+a host that still answers on 8787 is a leftover mount, not a service (see TROUBLESHOOTING).
 
 ## State
 
@@ -178,7 +179,7 @@ Cross-build note: the Mac already had `cargo` via Homebrew (1.100.0); a cold bui
 ## Rooms (built)
 
 The engine hosts rooms (`groups.*` owns the log and routes to members); hermeyd is the translator,
-exactly as the production bridge is. A small server-side JSON-RPC client (`engine_client.rs`) dials
+which is all the retired bridge ever was here. A small server-side JSON-RPC client (`engine_client.rs`) dials
 the engine per call — low-frequency, idempotent, and no cached socket that a restart invalidates.
 
 | Route | Engine call |
@@ -301,9 +302,8 @@ and made Disconnect revoke whichever it found.
 | `/etc/hermes/.env` `COMPOSIO_API_KEY` | `ck_` (23 ch) | `401` on v3.1 and v3, `410` on v2 |
 | `/etc/hermey/composio.key` | `ak_` (23 ch) | **`200`** |
 
-The bridge reads the env var first and only then the key file, so a host with a stale consumer key in
-the env looks broken even though a working project key is right beside it. Hermey reads only
-`$HERMEY_HOME/.env`; copying the `ak_` key in (0600) made everything work with **no code change**:
+A host with a stale consumer key in the environment looks broken even though a working project key is
+right beside it. hermeyd reads only `$HERMEY_HOME/.env`; copying the `ak_` key in (0600) made everything work with **no code change**:
 
 ```
 LIST    -> 200 | configured=True | gmail connected=True accounts=2
@@ -317,8 +317,8 @@ the "show every active account" rule exists to prevent.
 ## Browser channel: a second listener on 8790, never published
 
 `/v1/browser/{act,targets,ws}` answer **without a device credential** — the extension and the on-host
-sign-in skill hold none, exactly as on the production bridge. Mounted on the main port that made them
-reachable by anyone on the tailnet through `tailscale serve` (measured before the fix: `GET
+sign-in skill hold none. Mounted on the main port they would be reachable by anyone on the tailnet through
+`tailscale serve` (measured before the fix, on the retired bridge's `:8445` scheme: `GET
 https://…:8445/v1/browser/targets` returned 200). They now live on their own listener:
 
 ```
@@ -333,8 +333,8 @@ WS   ws://127.0.0.1:8790/v1/browser/ws         the extension's socket; hello fir
 * **8790 must never be added to `tailscale serve`.** Boot says so: `HERMEYD_BROWSER_READY
   127.0.0.1:8790 (loopback only — never add this port to tailscale serve)`.
 * **The extension dials `ws://127.0.0.1:8790/v1/browser/ws`.** The sign-in skill must be pointed at the
-  same host: `hermey_signin.py --bridge http://127.0.0.1:8790` (its default is the production bridge's
-  8787, where nothing changed).
+  same host: `hermey_signin.py --bridge http://127.0.0.1:8790`. Its built-in default still names the
+  retired bridge's `8787`, so pass `--bridge` rather than relying on it.
 * **A browser listener that cannot bind is fatal at boot**, not a silent degradation: a service that
   looks healthy while every sign-in gets "connection refused" is worse than one that refuses to start.
   `HERMEYD_BROWSER_PORT` may not equal `HERMEYD_PORT`.

@@ -27,7 +27,7 @@ What Hermey needs from your Hermes install, once it is running:
 computer, browser control, credentials, backups and routines.
 
 ```sh
-curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
 ```
 
 The script detects your platform, verifies the published SHA-256 of the binary it downloads, installs

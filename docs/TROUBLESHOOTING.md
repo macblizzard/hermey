@@ -104,7 +104,9 @@ Two different things wear that message.
 
    ```bash
    curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30   # version + signature
-   curl -sI https://macblizzard.github.io/hermey-downloads/Hermey-macOS-0.1.580.dmg | head -3
+   # the .dmg the feed points at, without hardcoding a version that ages out
+   curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml \
+     | grep -o 'https://[^"]*\.dmg' | head -1 | xargs -I{} curl -sI {} | head -3
    ```
 
    The `length=` in the feed must equal the served `content-length`, or the file was replaced after

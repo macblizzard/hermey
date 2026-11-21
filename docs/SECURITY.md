@@ -9,9 +9,9 @@ invariants are for, and the evidence (a test, or an explicit gap) for each one.
 
 > **The Python bridge this document was written about has been removed.** Its code lived in
 > `Bridge/hermes_bridge`, which is no longer in this repository. The host service now is `hermeyd/`
-> (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). Everything below
-> describes the trust boundaries the apps still rely on — read "the bridge" as "hermeyd", and check
-> `hermeyd/src` for what actually enforces each invariant today.
+> (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). The trust
+> boundaries and threats below still apply — read "the bridge" as "hermeyd" — but §2's invariant table
+> is the bridge's own audit, and says so at its head.
 
 Scope: `hermes_bridge` as it was (the only new server-side code at the time), the `wss://` path into
 it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
@@ -55,10 +55,26 @@ Three consequences worth stating plainly:
 - **The tailnet is the outer wall.** Every control below assumes an attacker who is already on the
   tailnet or has stolen a device; controls that assume "nobody can reach the port" are marked as such.
 
-## 2. Invariants, and the test that holds each one
+## 2. Invariants, and where each one is enforced today
 
-Every row is enforced in code and pinned by a test in `Tools/qa` (run with
-`python -m pytest -q Tools/qa`).
+**The table below is the audit of the retired Python bridge.** It is kept because it is the reasoning
+behind the controls and records what each row used to be pinned by — not as a description of
+`hermeyd`. The modules and `test_*` names in its last two columns went with `Bridge/hermes_bridge`;
+there is no `Tools/qa` to run any more.
+
+For the service that runs today the evidence is its own code and tests:
+
+```bash
+cd hermeyd && cargo test                 # the unit and route tests, in hermeyd/src
+scripts/smoke-hermeyd.sh                 # end-to-end: real HTTP, real state, prints PASS per check
+```
+
+`scripts/smoke-hermeyd.sh` is the one that proves the properties a reader cares about most — health,
+a minted single-use code, a registered device, a rejection on replay, a bearer-less `401`, a refused
+revoke, and a refused non-loopback bind. Where a row below states a number, check it against
+`hermeyd/src` before quoting it: pairing codes are **6 digits** (not 8), the code TTL and device cap
+are the constants in `hermeyd/src/routes.rs` (`PAIRING_CODE_TTL_SECONDS`, `MAX_DEVICES`), and the
+attempt throttle lives in `hermeyd/src/pairing.rs`.
 
 | # | Invariant | Where | Test |
 |---|---|---|---|
@@ -123,7 +139,8 @@ Accepted risks (by design, not bugs):
 ## 4. Gaps
 
 Each is a real difference between the design and the implementation, with the impact and the fix.
-`test_*` names refer to `Tools/qa`.
+The `test_*` names below are the bridge's own suite and are historical; the gaps themselves are
+statements about the bridge's design, so re-check one against `hermeyd/src` before relying on it.
 
 **G1 — no proof-of-possession on the token exchange (medium).** `POST /v1/token` accepts
 `{device_id, refresh_token}`; the Ed25519 key registered at pairing is stored but never used to verify

@@ -116,7 +116,7 @@ ls <engine>/plugins/hermes-genui/desktop/plugin.js   # missing -> every card is 
 
 ```bash
 curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start
-# {"code":"12345678","host":"localhost","expires_at":…}
+# {"code":"482913","host":"localhost","expires_at":…}
 ```
 
 `/v1/pair/start` answers on loopback only. Codes are short-lived — mint a fresh one when the human is
