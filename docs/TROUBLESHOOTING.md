@@ -44,9 +44,11 @@ tailscale status          # is this node up and logged in?
 tailscale serve status    # what is already published?
 ```
 
-hermeyd publishes serve-root — `tailscale serve --bg http://127.0.0.1:8788` — so pairing URLs carry
-no `:8443`. A leftover `:8443` mount from the old port scheme answers `502`; remove it with
-`tailscale serve --https=8443 off`. Do not stop another tailnet service to free a port.
+The installer publishes serve-root — `tailscale serve --bg http://127.0.0.1:8788` — so pairing URLs
+carry no `:8443`. If it reported that the root already belongs to another service, it printed the
+`--https=<port>` command that publishes beside it. A leftover `:8443` mount from the old port scheme
+answers `502`; remove it with `tailscale serve --https=8443 off`. Do not stop another tailnet service
+to free a port.
 
 **Never add `8790` to `tailscale serve`.** The browser channel is loopback-only and carries no
 credential.

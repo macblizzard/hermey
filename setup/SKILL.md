@@ -39,8 +39,10 @@ What it does — and what it deliberately does not:
    not ship it; without it every generated-UI card answers `503`.
 6. Runs `hermeyd --gateway-check`. Exit `75` means another gateway already serves this `HERMES_HOME`
    — a warning, with the remedy, not a failure.
-7. Prints the exact `tailscale serve` command and the token path. It does not run `tailscale serve`:
-   publishing a host is a decision.
+7. Publishes the service with `tailscale serve --bg http://127.0.0.1:8788` — the serve root, so
+   pairing URLs carry no port — sets `HERMEYD_PUBLIC_HOST` to the node's MagicDNS name, and prints a
+   pairing code and URL. Only where it cannot act does it print the command instead: no `tailscale`,
+   no logged-in node, or a serve root another service owns. `--no-serve` skips publishing.
 
 `--from-source` builds with `cargo build --release --locked` from a checkout instead of downloading.
 

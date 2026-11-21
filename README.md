@@ -47,14 +47,14 @@ There are two ways to install that service, and both end with the same `hermeyd`
 
 ```bash
 curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh
-tailscale serve --bg http://127.0.0.1:8788     # optional but recommended
 sudo hermeyd pair      # prints a 6-digit code, a pairing URL (https://<host>/?code=…) and a QR to scan
 ```
 
 The installer downloads the `hermeyd` binary for this platform, checks its published SHA-256, installs
 it under `/opt/hermey/bin`, creates `/var/lib/hermeyd`, writes `/etc/hermey/hermeyd.env`, installs the
-systemd unit (or prints the launchd commands) and puts the `hermes-genui` plugin into your engine's
-plugin directory. `--from-source` builds with cargo instead. Details and every flag:
+systemd unit (or prints the launchd commands), puts the `hermes-genui` plugin into your engine's
+plugin directory, and publishes the service on your tailnet with `tailscale serve` — printing a
+pairing code and URL it minted. `--from-source` builds with cargo instead. Details and every flag:
 [`docs/INSTALL.md`](docs/INSTALL.md).
 
 **2. On your phone or Mac**: install the app ([iOS](docs/APPS.md#ios) · [macOS](docs/APPS.md#macos)),

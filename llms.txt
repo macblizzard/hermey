@@ -16,7 +16,9 @@ then install the app on a phone or Mac and pair it with a short code.
   `--from-source` builds with cargo instead.
 - Then: `hermeyd pair` — prints a 6-digit code, `https://<host>/?code=…` and a QR for the app
   (`POST /v1/pair/start` is the same route).
-- Publish (optional): `tailscale serve --bg http://127.0.0.1:8788` — serve-root, no `:8443`.
+- Publishing: the installer runs `tailscale serve --bg http://127.0.0.1:8788` itself — serve-root, no
+  `:8443` — and prints a pairing URL. `--no-serve` skips it; a missing or logged-out `tailscale`
+  leaves the one command to run.
 - iOS: add `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json` to
   AltStore or SideStore.
 - macOS: `Hermey-macOS-unsigned.dmg` from the latest release, or

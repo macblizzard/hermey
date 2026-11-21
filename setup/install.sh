@@ -16,8 +16,10 @@
 #   <engine>/plugins/hermes-genui    the card plugin the apps need, which upstream Hermes lacks
 #
 # It never binds a public interface: hermeyd listens on 127.0.0.1:8788 and 127.0.0.1:8790, and
-# reachability is `tailscale serve`'s job. The installer prints that command rather than running it,
-# because publishing a host is a decision, not a step.
+# reachability is `tailscale serve`'s job — which this installer does. Once the service answers it
+# publishes 8788 at the serve root and prints a real pairing URL. It declines, naming the command to
+# run, only where it cannot act: --no-serve, no `tailscale` binary, no logged-in node, or a serve
+# root another service already owns.
 #
 # Re-running it is an upgrade: same paths, same state, the binary and unit are replaced and the
 # service restarted. `--uninstall` reverses it and keeps state; `--uninstall --purge` deletes it.
@@ -36,9 +38,21 @@ SVC_GROUP=${HERMEY_GROUP:-}
 MAIN_PORT=${HERMEYD_PORT:-8788}
 BROWSER_PORT=${HERMEYD_BROWSER_PORT:-8790}
 PUBLIC_HOST=${HERMEYD_PUBLIC_HOST:-localhost}
+# Whether the owner named the pairing host. If they did, publishing must not overwrite it with the
+# MagicDNS name this install discovers.
+if [ -n "${HERMEYD_PUBLIC_HOST:-}" ]; then PUBLIC_HOST_SET=1; else PUBLIC_HOST_SET=0; fi
+# Publishing is on by default. `--no-serve` / HERMEY_SERVE=no is for hosts that front the service
+# themselves (Caddy, an existing reverse proxy, a port already mounted by hand).
+SERVE=${HERMEY_SERVE:-yes}
+case "$SERVE" in no|NO|No|0|false) SERVE=no ;; *) SERVE=yes ;; esac
+TS_BIN=${HERMEY_TAILSCALE:-}
 FROM_SOURCE=0
 UNINSTALL=0
 PURGE=0
+PUBLISHED=0
+PAIR_CODE=""
+PAIR_URL=""
+SERVE_LINE=""
 BASE=""
 OS=""
 SRC=""
@@ -83,11 +97,12 @@ Hermey host installer (hermeyd)
   --user NAME          the account hermeyd runs as; must be the engine's owner (default: detect)
   --uninstall          stop and remove the service, binary, config and plugin; keep state
   --purge              with --uninstall: also delete the state directory
+  --no-serve           do not publish with `tailscale serve`; print the command instead
   -h, --help           this text
 
 Environment overrides: HERMEY_REPO, HERMEY_VERSION, HERMEY_BASE_URL, HERMEY_PREFIX,
 HERMEY_STATE, HERMEY_CONF, HERMEY_UNIT_DIR, HERMEY_USER, HERMEY_GROUP, HERMEYD_ENGINE_HOME, HERMEYD_PORT,
-HERMEYD_BROWSER_PORT, HERMEYD_PUBLIC_HOST, HERMES_HOME, HERMEY_SRC.
+HERMEYD_BROWSER_PORT, HERMEYD_PUBLIC_HOST, HERMEY_SERVE, HERMEY_TAILSCALE, HERMES_HOME, HERMEY_SRC.
 
 Exit status: 0 on success, 1 on a failure the message explains, 2 on bad usage.
 USAGE
@@ -104,6 +119,7 @@ while [ $# -gt 0 ]; do
         --user)        [ $# -ge 2 ] || fail "--user needs an account name" "try --help"; SVC_USER=$2; shift 2 ;;
         --uninstall)   UNINSTALL=1; shift ;;
         --purge)       PURGE=1; shift ;;
+        --no-serve)    SERVE=no; shift ;;
         -h|--help)     usage; exit 0 ;;
         *)             printf 'error: unknown option %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
@@ -531,6 +547,206 @@ verify() {
     fi
 }
 
+# ---------------------------------------------------------------- publishing
+# A host nobody can reach is a host that was not installed. hermeyd binds loopback and nothing
+# else, so the serve root is what turns it into `https://<node>.ts.net/?code=…`, and this script
+# runs `tailscale serve` rather than handing the reader a command. The branches that end with a
+# command are the ones nothing here can act on: no binary, no login, a root another service owns,
+# and --no-serve.
+
+# `tailscale`, from the override first and then PATH. Empty means this host has no tailnet client.
+tailscale_bin() {
+    if [ -n "$TS_BIN" ]; then
+        command -v "$TS_BIN" 2>/dev/null || true
+        return 0
+    fi
+    command -v tailscale 2>/dev/null || true
+}
+
+# A tailscale call that fails is a branch to report, not a reason to abort an otherwise finished
+# install, so these return what was printed and let the caller read the state.
+ts_status() { "$1" status --json 2>/dev/null || true; }
+ts_serve() { "$1" serve status --json 2>/dev/null || true; }
+
+# "Running" is the only BackendState that can serve; NeedsLogin and Stopped cannot, and that is the
+# difference between "install the command for later" and "run it now".
+ts_state() {
+    printf '%s' "$1" | tr -d ' \t\r\n' \
+        | sed -n 's/.*"BackendState":"\([^"]*\)".*/\1/p' | head -1 || true
+}
+
+# The MagicDNS name of this node, without the trailing dot tailscale prints on it. Everything after
+# "Self" is a peer list whose entries also carry a DNSName, so the match is anchored at the first one.
+ts_node() {
+    printf '%s' "$1" | tr -d ' \t\r\n' \
+        | sed 's/^[^{]*"Self":{//' \
+        | sed -n 's/^[^}]*"DNSName":"\([^"]*\)".*/\1/p' \
+        | head -1 | sed 's/\.$//' || true
+}
+
+# The proxy behind the serve root — the "/" handler on :443, which is the URL a pairing link names.
+# jq is not a dependency an installer can assume, so this reads the flattened JSON: the handler
+# object has no nested braces, which makes the root readable without a parser. Empty output means
+# serve has no root yet, the only case where taking it is not taking something from someone.
+ts_root() {
+    flat=$(printf '%s' "$1" | tr -d ' \t\r\n')
+    case "$flat" in *':443":{"Handlers"'*) : ;; *) return 0 ;; esac
+    printf '%s' "$flat" | sed 's@.*:443":{"Handlers":{@@' | sed 's@}}.*@@' \
+        | grep -o '"/":{"Proxy":"[^"]*"' 2>/dev/null \
+        | sed 's@.*"Proxy":"@@; s@"$@@' | head -1 || true
+}
+
+# The first https port serve is not already terminating, so the alternative command in the
+# foreign-root case is printable as one paste.
+ts_free_port() {
+    port=8443
+    while printf '%s' "$1" | grep -q "\"$port\":{"; do
+        port=$((port + 1))
+        if [ "$port" -gt 8460 ]; then break; fi
+    done
+    printf '%s' "$port"
+}
+
+# The pairing URL is built from HERMEYD_PUBLIC_HOST, which a fresh install sets to localhost — a
+# URL no phone can open. Unless the owner named a host, the name this node reports is written in and
+# the service restarted, so `hermeyd pair` here and later prints the URL that actually works. A name
+# already in the file is the owner's choice from an earlier install and is kept.
+adopt_public_host() {
+    [ "$PUBLIC_HOST_SET" = 0 ] || return 0
+    [ -n "$1" ] || return 0
+    [ -r "$ENVFILE" ] || return 0
+    current=$(sed -n 's/^HERMEYD_PUBLIC_HOST=//p' "$ENVFILE" | head -1 || true)
+    if [ -n "$current" ] && [ "$current" != localhost ] && [ "$current" != 127.0.0.1 ]; then
+        PUBLIC_HOST=$current
+        return 0
+    fi
+    [ "$PUBLIC_HOST" != "$1" ] || return 0
+    if [ -n "$current" ]; then
+        sed "s|^HERMEYD_PUBLIC_HOST=.*|HERMEYD_PUBLIC_HOST=$1|" "$ENVFILE" > "$ENVFILE.tmp" || return 0
+    else
+        { cat "$ENVFILE"; printf 'HERMEYD_PUBLIC_HOST=%s\n' "$1"; } > "$ENVFILE.tmp" || return 0
+    fi
+    chmod 0640 "$ENVFILE.tmp" 2>/dev/null || true
+    mv -f "$ENVFILE.tmp" "$ENVFILE" || return 0
+    PUBLIC_HOST=$1
+    note "pairing host: $1 (HERMEYD_PUBLIC_HOST in $ENVFILE)"
+    if [ "$OS" = linux ] && command -v systemctl >/dev/null 2>&1 && have_systemd; then
+        systemctl restart "$UNIT" >/dev/null 2>&1 || warn "could not restart $UNIT after the pairing-host change"
+        tries=0
+        while [ "$tries" -lt 10 ]; do
+            if curl -fsS "http://127.0.0.1:$MAIN_PORT/v1/health" >/dev/null 2>&1; then break; fi
+            tries=$((tries + 1))
+            sleep 1
+        done
+    fi
+}
+
+# Mint a code with the installed binary rather than inventing a URL: what is printed here is what
+# the app will open. A service that cannot be paired with (no systemd, so not started) leaves the
+# shape of the URL and says where the live code comes from.
+mint_pairing() {
+    host=$1
+    out=""
+    if [ -x "$BIN" ] && [ -n "$host" ]; then
+        out=$(HERMEY_HOME="$STATE" HERMEYD_PORT="$MAIN_PORT" "$BIN" pair --host "$host" 2>/dev/null || true)
+    fi
+    PAIR_CODE=$(printf '%s' "$out" | sed -n 's/^pairing code  *//p' | head -1)
+    PAIR_URL=$(printf '%s' "$out" | sed -n 's/^pairing URL  *//p' | head -1)
+    if [ -z "$PAIR_URL" ] && [ -n "$host" ]; then
+        PAIR_URL="https://$host/?code=…"
+    fi
+    PUBLISHED=1
+}
+
+publish() {
+    want="http://127.0.0.1:$MAIN_PORT"
+    SERVE_LINE="Reachable at $want on this host only."
+    if [ "$SERVE" != yes ]; then
+        note "serve: skipped (--no-serve)"
+        SERVE_LINE="Reachable at $want on this host only — --no-serve was given; publish it when you want: tailscale serve --bg $want"
+        return 0
+    fi
+    ts=$(tailscale_bin)
+    if [ -z "$ts" ]; then
+        note "serve: no tailscale on this host, so nothing was published"
+        SERVE_LINE="Reachable at $want on this host only — install Tailscale and log in, then run: tailscale serve --bg $want"
+        return 0
+    fi
+    status_json=$(ts_status "$ts")
+    state=$(ts_state "$status_json")
+    if [ "$state" != Running ]; then
+        note "serve: tailscale is installed but this node is ${state:-not answering}, so nothing was published"
+        SERVE_LINE="Reachable at $want on this host only — run 'tailscale up' and log in, then: tailscale serve --bg $want"
+        return 0
+    fi
+    node=$(ts_node "$status_json")
+    serve_json=$(ts_serve "$ts")
+    root=$(ts_root "$serve_json")
+    if [ -n "$root" ] && [ "$root" != "$want" ]; then
+        alt=$(ts_free_port "$serve_json")
+        warn "the tailscale serve root already points at $root — left as it is"
+        note "publish beside it instead:"
+        note "  tailscale serve --https=$alt $want"
+        note "pairing URLs then carry the port: https://${node:-<host>}:$alt/?code=…"
+        note "and $ENVFILE needs HERMEYD_PUBLIC_HOST=${node:-<host>}:$alt, then: systemctl restart $UNIT"
+        SERVE_LINE="Reachable at $want on this host only — https://${node:-<host>}/ belongs to $root, so nothing published over it. Run the --https=$alt command above to have both."
+        return 0
+    fi
+    if [ -n "$root" ]; then
+        note "serve: the root already publishes $want"
+    elif "$ts" serve --bg "$want" >/dev/null 2>&1; then
+        note "serve: published $want at the root"
+    else
+        warn "tailscale serve --bg $want did not succeed"
+        SERVE_LINE="Reachable at $want on this host only — run it by hand to see why: tailscale serve --bg $want"
+        return 0
+    fi
+    if [ -z "$node" ]; then
+        note "serve: published $want, but this node reported no MagicDNS name"
+        SERVE_LINE="Reachable at $want on this host only — tailscale reported no MagicDNS name for this node; check 'tailscale status'"
+        return 0
+    fi
+    adopt_public_host "$node"
+    # The host the app dials: the owner's name when there is one, the MagicDNS name otherwise.
+    pair_host=$PUBLIC_HOST
+    if [ -z "$pair_host" ] || [ "$pair_host" = localhost ] || [ "$pair_host" = 127.0.0.1 ]; then
+        pair_host=$node
+    fi
+    mint_pairing "$pair_host"
+    note "8790 is not published: the browser channel is loopback-only."
+    SERVE_LINE="Reachable at https://$node/ from your tailnet."
+}
+
+# Take down the mapping this installer made, and only that one: the root is removed when it points
+# at this install's port. A root that points anywhere else belongs to somebody else.
+unpublish() {
+    if [ "$SERVE" != yes ]; then
+        note "serve: left alone (--no-serve)"
+        return 0
+    fi
+    ts=$(tailscale_bin)
+    if [ -z "$ts" ]; then
+        note "serve: no tailscale on this host, so there is no mapping to take down"
+        return 0
+    fi
+    want="http://127.0.0.1:$MAIN_PORT"
+    root=$(ts_root "$(ts_serve "$ts")")
+    if [ -z "$root" ]; then
+        note "serve: no root mapping to remove"
+        return 0
+    fi
+    if [ "$root" != "$want" ]; then
+        note "serve: the root points at $root, not at $want — left in place"
+        return 0
+    fi
+    if "$ts" serve --https=443 --set-path=/ off >/dev/null 2>&1; then
+        note "serve: removed the root mapping to $want"
+    else
+        warn "could not remove the serve root mapping to $want"
+        note "remove it by hand: tailscale serve --https=443 --set-path=/ off"
+    fi
+}
+
 next_steps() {
     printf '\n'
     say "Installed."
@@ -542,15 +758,19 @@ next_steps() {
     printf '\n'
     say "Start the engine this service relays to:"
     note "hermes serve --isolated          # one gateway per HERMES_HOME; --isolated is required"
-    printf '\n'
-    say "Publish it to your tailnet (optional, recommended):"
-    note "tailscale serve --bg http://127.0.0.1:$MAIN_PORT"
-    note "Never publish $BROWSER_PORT — the browser channel is loopback-only by design."
+    if [ "$PUBLISHED" = 1 ]; then
+        printf '\n'
+        say "Pair a device:"
+        if [ -n "$PAIR_CODE" ]; then note "code  $PAIR_CODE"; fi
+        note "url   $PAIR_URL"
+        note "single use, ten minutes. 'hermeyd pair' mints another and prints its QR."
+    fi
     printf '\n'
     say "Verify:"
     note "curl -fsS http://127.0.0.1:$MAIN_PORT/v1/health"
     note "curl -fsS -X POST http://127.0.0.1:$MAIN_PORT/v1/pair/start   # code for the app"
     printf '\n'
+    say "$SERVE_LINE"
 }
 
 # ---------------------------------------------------------------- uninstall
@@ -602,7 +822,7 @@ do_uninstall() {
     else
         say "Service removed. State kept in $STATE — delete it with --uninstall --purge."
     fi
-    say "If you published the host, take the mapping down: tailscale serve --bg off"
+    unpublish
 }
 
 # ---------------------------------------------------------------- install
@@ -657,7 +877,7 @@ main() {
     start_service
     gateway_check
     verify
-    next_steps
+    publish
 
     if [ "$OS" = darwin ]; then
         printf '\n'
@@ -666,6 +886,7 @@ main() {
         note "sudo launchctl bootstrap system /Library/LaunchDaemons/com.hermeyd.plist"
         note "sudo launchctl kickstart -k system/com.hermeyd"
     fi
+    next_steps
 }
 
 if [ "$PURGE" = 1 ] && [ "$UNINSTALL" != 1 ]; then

@@ -31,8 +31,8 @@ curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/instal
 ```
 
 The script detects your platform, verifies the published SHA-256 of the binary it downloads, installs
-`/opt/hermey/bin/hermeyd`, creates `/var/lib/hermeyd`, writes `/etc/hermey/hermeyd.env`, installs the systemd
-unit, and prints the token path and the serve command.
+`/opt/hermey/bin/hermeyd`, creates `/var/lib/hermeyd`, writes `/etc/hermey/hermeyd.env`, installs and
+starts the systemd unit, and publishes the service on your tailnet.
 
 Refuse to pipe a script into a shell? Build it instead — same binary, your compiler:
 
@@ -42,17 +42,38 @@ cargo build --release --locked --manifest-path hermeyd/Cargo.toml
 sudo install -m 0755 hermeyd/target/release/hermeyd /opt/hermey/bin/hermeyd
 ```
 
-## 3. Publish it
+## 3. Reachability
 
-`hermeyd` listens on loopback only. Give it a reachable address on your tailnet (the apps need TLS, and
-tailnet is the simplest honest way to get it):
+`hermeyd` listens on loopback only. The installer publishes it itself with `tailscale serve`, at the
+serve root, once the service is up — so a finished install already has:
 
-```sh
-tailscale serve --bg http://127.0.0.1:8788
+```
+  serve: published http://127.0.0.1:8788 at the root
+  ...
+Pair a device:
+  code  250240
+  url   https://your-host.ts.net/?code=250240
+
+Reachable at https://your-host.ts.net/ from your tailnet.
 ```
 
 That is `serve` at the root — **no port in the URL**. Pairing links therefore look like
 `https://your-host.ts.net/?code=…`, not `:8443`.
+
+Two cases it cannot publish in, and the install's last line says which one happened:
+
+- **no `tailscale` on the host**, or **the node is not logged in** — run, once, in that order:
+
+  ```sh
+  tailscale up
+  tailscale serve --bg http://127.0.0.1:8788
+  ```
+
+- **the serve root already belongs to another service** — the installer names what owns it, leaves it
+  alone, and prints the command that publishes beside it on a free https port.
+
+`--no-serve` (or `HERMEY_SERVE=no`) skips publishing entirely, for a host fronted by Caddy or another
+reverse proxy, and prints the command for when you want it.
 
 ## 4. Pair the app
 
@@ -65,9 +86,11 @@ hermeyd pair
 
 ```
 pairing code  250240
-expires       2026-11-21 20:31:33 +01:00 (9 min left)
+expires       2026-11-21 20:31:33 +01:00 (10 min left)
 pairing URL   https://your-host.ts.net/?code=250240
-protocol      1
+
+Scan with the Hermey app's QR scanner:
+[QR of the URL above]
 ```
 
 Enter the code in Hermey, open the pairing URL on a device on the same tailnet, or scan the QR. A code is single-use and

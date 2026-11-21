@@ -81,6 +81,38 @@ def fake_binary() -> str:
 case "$1" in
   --version) echo "hermeyd 0.2.0-test" ;;
   --gateway-check) echo "gateway-check: clear for $HERMEYD_ENGINE_HOME" ;;
+  pair)
+    host=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --host) host=$2; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [ -n "${PAIR_LOG:-}" ]; then printf '%s\\n' "$HERMEY_HOME" >> "$PAIR_LOG"; fi
+    printf 'pairing code  250240\\n'
+    printf 'pairing URL   https://%s/?code=250240\\n' "${host:-localhost}"
+    ;;
+esac
+exit 0
+"""
+
+
+# A `tailscale` stand-in. Written by each test with the node state and serve config it wants to
+# pretend this host has, and it records every invocation, so an assertion can say what the
+# installer actually asked tailscale to do. Nothing here reaches a real tailnet.
+def tailscale_stub(status_json: str, serve_json: str, log: Path,
+                   serve_exit: int = 0, off_exit: int = 0) -> str:
+    return f"""#!/bin/sh
+printf '%s\\n' "$*" >> '{log}'
+case "$1" in
+  status) printf '%s\\n' '{status_json}' ; exit 0 ;;
+  serve)
+    case "$2" in
+      status) printf '%s\\n' '{serve_json}' ; exit 0 ;;
+      --bg) exit {serve_exit} ;;
+      --https=443) exit {off_exit} ;;
+    esac ;;
 esac
 exit 0
 """
@@ -93,13 +125,37 @@ class InstallerCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.stubs = self.root / "stubs"
         self.stubs.mkdir()
+        self.serve_log = self.root / "serve.log"
+        # Present and logged out by default: a test that does not ask to publish must never reach
+        # a real tailnet, and HERMEY_TAILSCALE keeps this off PATH's real binary either way.
+        self.tailscale = self.stubs / "tailscale"
+        self.set_tailscale(logged_in=False)
         self.env = {
             "HOME": str(self.root),
             "TMPDIR": str(self.root),
             "PATH": f"{self.stubs}{os.pathsep}{os.environ.get('PATH', '')}",
             "HERMEY_CONF": str(self.root / "conf"),
             "HERMEY_UNIT_DIR": str(self.root / "units"),
+            "HERMEY_TAILSCALE": str(self.tailscale),
         }
+
+    def set_tailscale(self, logged_in: bool = True, dns: str = "hermes.example.ts.net.",
+                      serve: str = "{}", serve_exit: int = 0, off_exit: int = 0) -> None:
+        status = (
+            f'{{"BackendState":"Running","Self":{{"DNSName":"{dns}"}}}}'
+            if logged_in
+            else '{"BackendState":"NeedsLogin","Self":{"DNSName":""}}'
+        )
+        self.tailscale.write_text(
+            tailscale_stub(status, serve, self.serve_log, serve_exit, off_exit),
+            encoding="utf-8",
+        )
+        self.tailscale.chmod(0o755)
+
+    def serve_calls(self) -> list[str]:
+        if not self.serve_log.exists():
+            return []
+        return [line for line in self.serve_log.read_text(encoding="utf-8").splitlines() if line]
 
     def run_installer(self, *args: str, **env: str) -> subprocess.CompletedProcess:
         merged = dict(self.env)
@@ -331,6 +387,147 @@ class UninstallRemovesWhatWasInstalled(InstallerCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("--purge only makes sense with --uninstall", done.stderr)
 
+    def test_it_removes_only_the_mapping_it_made(self) -> None:
+        self.set_tailscale(
+            logged_in=True,
+            serve='{"TCP":{"443":{"HTTPS":true}},"Web":{"h.example.ts.net:443":'
+                  '{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8788"},'
+                  '"/podcast":{"Proxy":"http://127.0.0.1:9000"}}}}}',
+        )
+        done = self.uninstall()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("serve: removed the root mapping to http://127.0.0.1:8788", done.stdout)
+        self.assertIn("serve --https=443 --set-path=/ off", self.serve_calls(),
+                      "the root is removed by repeating its own flags, not with --bg off")
+
+    def test_it_leaves_a_root_someone_else_owns(self) -> None:
+        self.set_tailscale(
+            logged_in=True,
+            serve='{"TCP":{"443":{"HTTPS":true}},"Web":{"h.example.ts.net:443":'
+                  '{"Handlers":{"/":{"Proxy":"http://127.0.0.1:3000"}}}}}',
+        )
+        done = self.uninstall()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("left in place", done.stdout)
+        self.assertNotIn("serve --https=443 --set-path=/ off", self.serve_calls())
+        self.assertIn("http://127.0.0.1:3000", done.stdout)
+
+
+class ItPublishesTheService(InstallerCase):
+    """The installer ends with a reachable host, or with the one command it could not run."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        write_stubs(self.stubs)
+        self.release = self.make_release()
+        engine = self.root / "run" / "engine"
+        (engine / "profiles" / "default").mkdir(parents=True)
+
+    def install(self, *extra: str, **env: str) -> subprocess.CompletedProcess:
+        return self.run_installer(
+            *self.install_args(), *extra, HERMEY_BASE_URL=f"file://{self.release}", **env
+        )
+
+    def test_it_publishes_the_root_and_prints_the_url_that_works(self) -> None:
+        self.set_tailscale(logged_in=True, dns="hermes.example.ts.net.")
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("serve --bg http://127.0.0.1:8788", self.serve_calls())
+        self.assertIn("https://hermes.example.ts.net/?code=250240", done.stdout)
+        self.assertIn("code  250240", done.stdout)
+        self.assertEqual(done.stdout.strip().splitlines()[-1],
+                         "Reachable at https://hermes.example.ts.net/ from your tailnet.")
+
+        env_file = (self.root / "conf" / "hermeyd.env").read_text(encoding="utf-8")
+        self.assertIn("HERMEYD_PUBLIC_HOST=hermes.example.ts.net", env_file,
+                      "a pairing URL naming localhost cannot be opened on a phone")
+
+    def test_it_pairs_through_the_installed_binary_with_the_right_home(self) -> None:
+        self.set_tailscale(logged_in=True)
+        pair_log = self.root / "pair.log"
+        done = self.install(PAIR_LOG=str(pair_log))
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertEqual(pair_log.read_text(encoding="utf-8").strip(),
+                         str(self.root / "run" / "state"))
+
+    def test_a_public_host_the_owner_chose_earlier_survives_the_upgrade(self) -> None:
+        self.set_tailscale(logged_in=True)
+        conf = self.root / "conf"
+        conf.mkdir(parents=True, exist_ok=True)
+        (conf / "hermeyd.env").write_text("HERMEYD_PUBLIC_HOST=chosen.example.ts.net\n",
+                                          encoding="utf-8")
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("HERMEYD_PUBLIC_HOST=chosen.example.ts.net",
+                      (conf / "hermeyd.env").read_text(encoding="utf-8"))
+        self.assertIn("url   https://chosen.example.ts.net/?code=250240", done.stdout)
+
+    def test_an_already_published_root_is_left_alone_and_says_so(self) -> None:
+        self.set_tailscale(
+            logged_in=True,
+            serve='{"TCP":{"443":{"HTTPS":true}},"Web":{"hermes.example.ts.net:443":'
+                  '{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8788"}}}}}',
+        )
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("the root already publishes http://127.0.0.1:8788", done.stdout)
+        self.assertFalse([c for c in self.serve_calls() if " --bg " in f" {c} "],
+                         "publishing twice is not idempotent if it re-runs serve")
+
+    def test_a_foreign_root_is_named_and_not_clobbered(self) -> None:
+        self.set_tailscale(
+            logged_in=True,
+            serve='{"TCP":{"443":{"HTTPS":true}},"Web":{"hermes.example.ts.net:443":'
+                  '{"Handlers":{"/":{"Proxy":"http://127.0.0.1:3000"}}}}}',
+        )
+        done = self.install()
+        self.assertEqual(done.returncode, 0, "an install must not fail over someone else's root")
+        self.assertIn("already points at http://127.0.0.1:3000", done.stderr)
+        self.assertIn("tailscale serve --https=8443 http://127.0.0.1:8788", done.stdout)
+        self.assertIn("belongs to http://127.0.0.1:3000", done.stdout)
+        self.assertFalse([c for c in self.serve_calls() if c.startswith("serve --bg")],
+                         "the installer published over another service's root")
+        self.assertTrue((self.root / "run" / "opt" / "bin" / "hermeyd").is_file(),
+                        "the rest of the install must still be complete")
+
+    def test_no_serve_skips_publishing_entirely(self) -> None:
+        self.set_tailscale(logged_in=True)
+        done = self.install("--no-serve")
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertEqual(self.serve_calls(), [], "--no-serve must not touch tailscale")
+        self.assertIn("serve: skipped (--no-serve)", done.stdout)
+        self.assertIn("tailscale serve --bg http://127.0.0.1:8788", done.stdout,
+                      "the skipped branch still has to say how to publish later")
+
+    def test_the_environment_variable_skips_it_too(self) -> None:
+        self.set_tailscale(logged_in=True)
+        done = self.install(HERMEY_SERVE="no")
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertEqual(self.serve_calls(), [])
+
+    def test_no_tailscale_installs_and_names_the_command_for_later(self) -> None:
+        done = self.install(HERMEY_TAILSCALE=str(self.root / "missing" / "tailscale"))
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("no tailscale on this host", done.stdout)
+        self.assertIn("tailscale serve --bg http://127.0.0.1:8788", done.stdout)
+        self.assertIn("on this host only", done.stdout.strip().splitlines()[-1])
+        self.assertTrue((self.root / "run" / "opt" / "bin" / "hermeyd").is_file())
+
+    def test_a_logged_out_node_installs_and_says_to_log_in_first(self) -> None:
+        self.set_tailscale(logged_in=False)
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("NeedsLogin", done.stdout)
+        self.assertIn("tailscale up", done.stdout)
+        self.assertEqual(self.serve_calls(), ["status --json"])
+
+    def test_a_refused_serve_says_what_to_run(self) -> None:
+        self.set_tailscale(logged_in=True, serve_exit=1)
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertIn("did not succeed", done.stderr)
+        self.assertIn("tailscale serve --bg http://127.0.0.1:8788", done.stdout)
+
 
 class TheDocsDescribeThisHost(unittest.TestCase):
     def setUp(self) -> None:
@@ -360,6 +557,18 @@ class TheDocsDescribeThisHost(unittest.TestCase):
         self.assertIn("hermes serve --isolated", self.install_doc)
         self.assertIn("--uninstall", self.install_doc)
         self.assertIn("--purge", self.install_doc)
+
+    def test_no_doc_hands_the_reader_the_serve_command_as_a_step(self) -> None:
+        # The installer publishes now, so `tailscale serve --bg http://127.0.0.1:8788` must read as
+        # the no-tailscale / declined case, never as the step after installing.
+        serve = "tailscale serve --bg http://127.0.0.1:8788"
+        for name in ("docs/INSTALL.md", "docs/PREREQUISITES.md", "README.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            self.assertLessEqual(text.count(serve), 1,
+                                 f"{name} still tells the reader to publish by hand")
+        pre = (ROOT / "docs" / "PREREQUISITES.md").read_text(encoding="utf-8")
+        self.assertIn("no `tailscale` on the host", pre)
+        self.assertIn("publishes", pre)
 
 
 class NoLiveDocPointsAtTheOldBridge(unittest.TestCase):
@@ -473,7 +682,8 @@ class TheScriptIsSyntacticallyValid(unittest.TestCase):
     def test_help_lists_every_documented_flag(self) -> None:
         done = subprocess.run(["sh", str(INSTALLER), "--help"], capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stderr)
-        for flag in ("--from-source", "--prefix", "--state-dir", "--engine-home", "--uninstall"):
+        for flag in ("--from-source", "--prefix", "--state-dir", "--engine-home", "--uninstall",
+                     "--no-serve"):
             self.assertIn(flag, done.stdout)
 
     @unittest.skipUnless(shutil.which("shellcheck"), "shellcheck is not installed")

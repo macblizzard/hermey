@@ -19,8 +19,9 @@ serves the apps' `/v1` API. Nothing is exposed beyond `127.0.0.1`; reachability 
   contains `profiles/` (usually `~/.hermes` or `$HERMES_HOME`).
 - **Linux with systemd**, or **macOS** with launchd. The installer needs `sudo` either way because it
   writes to `/opt`, `/etc` and `/var/lib`.
-- **Tailscale is optional but recommended.** Without it the service is reachable only from the host
-  itself, which is enough to verify but not enough to pair a phone.
+- **Tailscale is optional but recommended.** With it, the installer publishes the service on your
+  tailnet and prints a pairing URL a phone can open. Without it the service is reachable only from
+  the host itself, which is enough to verify but not enough to pair a phone.
 - `curl` (or `wget`) and `sha256sum`/`shasum`. Both are present on a stock Linux or macOS install.
 
 Three requirements are worth stating plainly, because each one fails in a way that does not look like
@@ -58,8 +59,11 @@ What it does, in order:
 7. **Installs the `hermes-genui` plugin** into `<engine>/plugins/hermes-genui`.
 8. **Runs `hermeyd --gateway-check`** and *warns* — does not fail — when another gateway already owns
    the engine home.
-9. **Prints** the exact `tailscale serve` command and the token path. It never runs `tailscale serve`
-   itself: publishing a host is a decision.
+9. **Publishes the service** with `tailscale serve --bg http://127.0.0.1:8788` — the serve root, so
+   pairing URLs carry no port — sets `HERMEYD_PUBLIC_HOST` to the node's MagicDNS name, and prints a
+   real pairing code and URL. It declines, naming the one command to run, only where it cannot act:
+   no `tailscale`, the node is not logged in, or another service already owns the serve root. The
+   last line of the install says which of those it is. `--no-serve` skips publishing.
 
 Re-running the same command is the **upgrade** path: same paths, same state, new binary, unit and
 plugin replaced, service restarted.
@@ -91,6 +95,7 @@ Flags mirror environment variables, which matters when the script is piped into 
 | `--state-dir DIR` | `HERMEY_STATE` | `/var/lib/hermeyd` | state directory (created `0700`) |
 | `--engine-home DIR` | `HERMEYD_ENGINE_HOME` | detect | Hermes engine home (contains `profiles/`) |
 | `--user NAME` | `HERMEY_USER` | engine owner | account hermeyd runs as |
+| `--no-serve` | `HERMEY_SERVE` | publish | do not publish with `tailscale serve` |
 | `--uninstall` | — | — | remove the service, binary, config and plugin; keep state |
 | `--purge` | — | — | with `--uninstall`: delete state too |
 
@@ -147,16 +152,17 @@ sudo HERMEY_HOME=/var/lib/hermeyd hermeyd --gateway-check; echo $?
 ss -ltnp | grep -E '8788|8790'               # both on 127.0.0.1 only
 ```
 
-Then publish and pair:
+Then pair:
 
 ```bash
-tailscale serve --bg http://127.0.0.1:8788   # serve-root: URLs carry no :8443
 hermeyd pair    # prints a 6-digit code, https://<host>/?code=… and a QR to scan
 ```
 
-`hermeyd pair` mints the code over loopback and wraps `POST /v1/pair/start`. Enter the code in the
-app against the host's address, or scan the QR; codes are short-lived, so mint one while the phone is
-in your hand. Pair as many devices as you like; each is individually revocable.
+The installer already published the serve root and printed one code. `hermeyd pair` mints the next:
+it wraps `POST /v1/pair/start` over loopback. Enter the code in the app against the host's address,
+or scan the QR of the same URL that the command prints. A code is single-use and expires in ten
+minutes, so mint one while the phone is in your hand. Pair as many devices as you like; each is
+individually revocable.
 
 Every `/v1` route except `/v1/health` and `/v1/pair/start` requires the local bearer. Loopback is not
 a substitute for it.
@@ -164,9 +170,10 @@ a substitute for it.
 ## Without Tailscale
 
 hermeyd binds `127.0.0.1` and refuses any other bind — a design invariant, not a default. With no
-tailnet, put a TLS terminator with a real certificate (Caddy is least work) in front of
-`127.0.0.1:8788`. A self-signed certificate will not work: the apps follow App Transport Security and
-refuse it. Set `HERMEYD_PUBLIC_HOST` to the name the app dials, then restart the service.
+tailnet, install with `--no-serve` and put a TLS terminator with a real certificate (Caddy is least
+work) in front of `127.0.0.1:8788`. A self-signed certificate will not work: the apps follow App
+Transport Security and refuse it. Set `HERMEYD_PUBLIC_HOST` to the name the app dials, then restart
+the service.
 
 ## Uninstall
 
@@ -174,14 +181,14 @@ refuse it. Set `HERMEYD_PUBLIC_HOST` to the name the app dials, then restart the
 curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall
 ```
 
-Stops and removes the unit, the binary, the config and the plugin. **State is kept**, so paired
-devices survive a reinstall. Add `--purge` to delete `/var/lib/hermeyd` as well:
+Stops and removes the unit, the binary, the config and the plugin. It also removes the `tailscale serve`
+root mapping, but only when that root points at this install's port; a root another service owns is
+left in place, and the command says so. **State is kept**, so paired devices survive a reinstall. Add
+`--purge` to delete `/var/lib/hermeyd` as well:
 
 ```bash
 sudo setup/install.sh --uninstall --purge
 ```
-
-If you published the host, take the mapping down with `tailscale serve --bg off`.
 
 ## When the first install fails
 

@@ -67,7 +67,10 @@ What it does, so you can reason about failures:
 4. Installs the **`hermes-genui`** plugin into `<engine>/plugins/hermes-genui`.
 5. Runs `hermeyd --gateway-check`; exit `75` means another gateway owns this `HERMES_HOME` and is
    reported as a warning with the remedy, not a failure.
-6. Prints the exact `tailscale serve` command and the token path. It never runs `tailscale serve`.
+6. Publishes the service with `tailscale serve --bg http://127.0.0.1:8788` at the serve root, sets
+   `HERMEYD_PUBLIC_HOST` to the node's MagicDNS name, and prints a pairing code and URL. It prints
+   the command instead of running it only when it cannot: no `tailscale`, no logged-in node, or a
+   serve root another service owns. `--no-serve` skips publishing.
 
 Re-running it is the upgrade path. Nothing else on the host is modified. If the platform is not
 published, or policy forbids a downloaded binary:
