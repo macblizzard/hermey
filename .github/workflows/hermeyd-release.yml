@@ -14,7 +14,7 @@ name: hermeyd release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["hermeyd-v*"]
   # A re-run for a tag whose release failed halfway: the tag already exists, so the same inputs are
   # needed rather than a new commit.
   workflow_dispatch:
