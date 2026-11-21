@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Run commands or take a screenshot on the paired Mac through Hermey's local-computer executor.
 
-Bots run on the hermes host, so they reach the Hermey service over loopback. The script sends the
-service's local bearer (`$HERMEYD_LOCAL_TOKEN`, else the `local.token` file beside `bin/`); the
-service refuses an unauthenticated call, and refuses the same routes through tailscale serve.
-Examples:
+Bots run on the hermes host, so they reach the host service over loopback. The service is **hermeyd**
+(127.0.0.1:8788 by default); it refuses an unauthenticated call, so this script sends the service's
+local bearer — `$HERMEYD_LOCAL_TOKEN`, else the file `$HERMEYD_LOCAL_TOKEN_FILE` names, else
+`local.token` in the service's state directory (`$HERMEY_HOME`, normally `~/.hermey`). A host that
+still runs the retired Python bridge on 8787 works with one override: `HERMES_BRIDGE_URL` (or
+`HERMEYD_API_URL`), which also switches the bearer off-required. Examples:
 
     python3 Tools/local_computer.py -- sw_vers
     python3 Tools/local_computer.py --cwd ~/hermey-build -- Tools/release/build_on_mac.sh 0.1.567 567
@@ -28,66 +30,77 @@ import sys
 import urllib.error
 import urllib.request
 
-
-# --- where this host is ------------------------------------------------------------------------
+# --- where this host is, and who we are to it -------------------------------------------------
 #
-# hermeyd serves two loopback listeners and the scripts must not confuse them:
-#   * the main API (8788) — cards, integrations, local computers — needs a bearer;
-#   * the browser channel (8790) — /v1/browser/* only — carries no device credential.
-# An explicit --bridge (or HERMES_BRIDGE_URL) still governs both, so a host that still runs the
-# Python bridge works with one override.
+# hermeyd serves the main API on 8788 (the second listener, 8790, carries only `/v1/browser/*` and
+# needs no credential; this tool does not touch it). The retired Python bridge answered the same
+# routes on 8787 with no credential at all, so an explicit URL is also the signal that a credential
+# is not required: the default endpoint demands one, because a bearer hermeyd will not accept is
+# indistinguishable from "there are no computers" once it comes back as 401.
 DEFAULT_API = "http://127.0.0.1:8788"
-DEFAULT_BROWSER = "http://127.0.0.1:8790"
-#: The service's local bearer. `HERMEYD_LOCAL_TOKEN` wins; otherwise this file, which sits beside
-#: `bin/` in the service's state directory (`<state>/local.token`, mode 0600).
-TOKEN_FILE = os.environ.get("HERMEYD_LOCAL_TOKEN_FILE") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "local.token")
+API_ENV = "HERMEYD_API_URL"
+#: What the same override was called when the bridge was the host. Still honoured, both ways.
+COMPAT_ENV = "HERMES_BRIDGE_URL"
+#: The service's state directory (hermeyd's own `HERMEY_HOME`, else `~/.hermey`).
+STATE_ENV = "HERMEY_HOME"
+#: The token itself wins over the file, so a caller can pass one without a readable state dir.
+TOKEN_ENV = "HERMEYD_LOCAL_TOKEN"
+TOKEN_FILE_ENV = "HERMEYD_LOCAL_TOKEN_FILE"
+
+API = (os.environ.get(API_ENV) or os.environ.get(COMPAT_ENV) or DEFAULT_API).rstrip("/")
+#: True when the caller named the endpoint — that host may still be the bridge, so no bearer.
+NAMED_ENDPOINT = bool(os.environ.get(API_ENV) or os.environ.get(COMPAT_ENV))
 
 
-class AuthError(RuntimeError):
-    """No usable local bearer. The message says where we looked, never what was there."""
+class AuthError(Exception):
+    """No usable local bearer, or the service refused it. Deliberately not a `RuntimeError`: the
+    per-command handlers catch those and would report a missing credential as a failed call. This
+    one reaches `main`, which exits 3 with where we looked — never with a traceback."""
+
+
+def state_dir() -> str:
+    return os.environ.get(STATE_ENV) or os.path.join(os.path.expanduser("~"), ".hermey")
+
+
+def token_file() -> str:
+    return os.environ.get(TOKEN_FILE_ENV) or os.path.join(state_dir(), "local.token")
 
 
 def local_token() -> str:
-    value = os.environ.get("HERMEYD_LOCAL_TOKEN", "").strip()
+    value = os.environ.get(TOKEN_ENV, "").strip()
     if value:
         return value
+    path = token_file()
     try:
-        with open(TOKEN_FILE, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             token = handle.read().strip()
     except OSError as exc:
         raise AuthError(
-            f"no local bearer: set HERMEYD_LOCAL_TOKEN, or make {TOKEN_FILE} readable ({exc.strerror})"
+            f"no local bearer for {API}: set {TOKEN_ENV}, or point {TOKEN_FILE_ENV} at a readable "
+            f"token file ({path}: {exc.strerror}). On a host still running the Python bridge, set "
+            f"{COMPAT_ENV}=http://127.0.0.1:8787 instead."
         ) from None
     if not token:
-        raise AuthError(f"the local bearer file {TOKEN_FILE} is empty")
+        raise AuthError(f"the local bearer file {path} is empty — restart hermeyd to mint a new one")
     return token
 
 
 def auth_header() -> dict:
-    return {"Authorization": f"Bearer {local_token()}"}
-
-
-def endpoints(bridge: str | None = None, browser: str | None = None) -> tuple[str, str]:
-    """(main API, browser channel). `--bridge` governs both, as it did on the Python bridge."""
-    api = (bridge or os.environ.get("HERMEYD_API_URL") or os.environ.get("HERMES_BRIDGE_URL")
-           or DEFAULT_API).rstrip("/")
-    compat = bridge or os.environ.get("HERMES_BRIDGE_URL")
-    channel = browser or os.environ.get("HERMEYD_BROWSER_URL") or compat or DEFAULT_BROWSER
-    return api, channel.rstrip("/")
-
-
-API, _BROWSER = endpoints()
+    try:
+        return {"Authorization": f"Bearer {local_token()}"}
+    except AuthError:
+        if NAMED_ENDPOINT:
+            return {}  # a host the caller named: the bridge wants no credential
+        raise
 
 
 def request(path: str, payload: dict | None = None, method: str | None = None) -> dict:
     data = json.dumps(payload).encode() if payload is not None else None
-    headers = {"Content-Type": "application/json", **auth_header()}
     req = urllib.request.Request(
         API + path,
         data=data,
         method=method or ("POST" if data is not None else "GET"),
-        headers=headers,
+        headers={"Content-Type": "application/json", **auth_header()},
     )
     try:
         with urllib.request.urlopen(req, timeout=1800) as response:
@@ -95,8 +108,8 @@ def request(path: str, payload: dict | None = None, method: str | None = None) -
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
             raise AuthError(
-                f"the service refused the local bearer (401) — restart hermeyd to mint a new one "
-                f"at {TOKEN_FILE}") from None
+                f"{API} refused the local bearer (401) — restart hermeyd to mint a new one at "
+                f"{token_file()}") from None
         raise
 
 
@@ -114,7 +127,11 @@ def request_stream(path: str, payload: dict | None = None, timeout: float = 1800
 
 
 def pick_computer(name: str | None = None) -> dict:
-    computers = request("/v1/local-computers")["computers"]
+    # hermeyd answers with the bare array; the Python bridge wrapped it in {"computers": [...]}.
+    listed = request("/v1/local-computers")
+    computers = listed.get("computers") if isinstance(listed, dict) else listed
+    if not isinstance(computers, list):
+        raise RuntimeError(f"/v1/local-computers answered {type(computers).__name__}, not a list")
     if not computers:
         raise RuntimeError("no local computer is connected; pair the Mac and turn on Computer use")
     if name:
@@ -258,6 +275,20 @@ def do_act(computer_name: str | None, actions_json: str, bot: str, save: str | N
 
 
 def main() -> int:
+    try:
+        return dispatch()
+    except AuthError as exc:
+        print(f"local_computer: {exc}", file=sys.stderr)
+        return 3
+    except urllib.error.URLError as exc:
+        # A dead port is the one failure worth naming: on a migrated host it means the caller still
+        # has the bridge's 8787 written down somewhere.
+        print(f"local_computer: cannot reach {API} ({exc.reason}) — is hermeyd running, and is "
+              f"{API_ENV} or {COMPAT_ENV} pointing at the right host?", file=sys.stderr)
+        return 4
+
+
+def dispatch() -> int:
     raw = sys.argv[1:]
     if raw and raw[0] == "browser":
         browser = argparse.ArgumentParser(description="Drive the Mac's private browser surface")
@@ -373,8 +404,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except AuthError as exc:
-        print(f"local_computer: {exc}", file=sys.stderr)
-        raise SystemExit(3)
+    raise SystemExit(main())
