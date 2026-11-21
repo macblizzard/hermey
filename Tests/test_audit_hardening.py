@@ -89,9 +89,10 @@ class AuditHardening(unittest.TestCase):
         end = app.index("private func finishCompaction()", start)
         body = app[start:end]
         self.assertIn("isCompressing = true", body)
-        self.assertIn("_ = await endlessSession(for: bot)", body)
+        # `select: true` is the B2 classification (Compress acts on the conversation on screen).
+        self.assertIn("_ = await endlessSession(for: bot, select: true)", body)
         self.assertLess(body.index("isCompressing = true"),
-                        body.index("_ = await endlessSession(for: bot)"))
+                        body.index("_ = await endlessSession(for: bot, select: true)"))
 
     def test_approval_answers_report_send_failures(self) -> None:
         app = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()

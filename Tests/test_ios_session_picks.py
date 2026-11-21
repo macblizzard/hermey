@@ -27,7 +27,7 @@ class TheModelRecordsAPickAndHonoursItOnce(unittest.TestCase):
                         "a pick recorded after the resume can be overruled by an appear in between")
 
     def test_the_endless_opener_consumes_the_pick(self):
-        opener = MODEL[MODEL.index("public func endlessSession(for botID: String) async"):]
+        opener = MODEL[MODEL.index("public func endlessSession(for botID: String, select: Bool = true) async"):]
         opener = opener[: opener.index("\n    }\n")]
         self.assertIn("pinnedSessionPicks.removeValue(forKey: botID)", opener,
                       "the pick must be taken, not merely read, or the canonical chat never returns")

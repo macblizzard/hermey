@@ -1249,7 +1249,10 @@ struct ConversationScreen: View {
         // means no spinner without any help here.
         isOpening = true
 
-        if let sid = await model.endlessSession(for: bot.id) {
+        // [B2 navigation] This screen *is* the navigation: the row that pushed it selected this bot,
+        // and `.task(id: bot.id)` opens the conversation the person just asked for. `select: true` is
+        // correct here and nowhere else in this file.
+        if let sid = await model.endlessSession(for: bot.id, select: true) {
             sessionID = sid
         } else {
             sessionID = nil
@@ -1319,7 +1322,9 @@ struct ConversationScreen: View {
         sessionID = nil
         isOpening = true
 
-        if let sid = await model.endlessSession(for: bot.id) {
+        // [B2 navigation] "Reset chat" is a button on this bot's own conversation: re-opening it is
+        // the point of the tap, and the bot on screen does not change.
+        if let sid = await model.endlessSession(for: bot.id, select: true) {
             sessionID = sid
         }
 

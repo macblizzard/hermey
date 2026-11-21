@@ -52,6 +52,16 @@ if [ -n "$DOWNLOADS_REPO" ]; then
   DOWNLOAD_ARGS=(--downloads-repo "$DOWNLOADS_REPO")
 fi
 
+# Release notes are the publisher's job: it reads CHANGELOG.md for the version inside the IPA.
+# `--notes` here is an *override* for the rare release the changelog cannot describe, and it used to
+# be `--notes "${NOTES:-Build from CI run $RUN_ID.}"` — a placeholder that was always non-empty, so
+# the publisher never reached the changelog. Every release body, the appcast's `<description>` (the
+# Sparkle update dialog) and both manifests said "Build from CI run N." instead of what changed.
+NOTES_ARGS=()
+if [ -n "${NOTES:-}" ]; then
+  NOTES_ARGS=(--notes "$NOTES")
+fi
+
 MIRROR_ARGS=()
 if [ -n "${MIRROR_TO:-}" ]; then
   [ -n "${MIRROR_BASE_URL:-}" ] || {
@@ -77,9 +87,9 @@ python3 Tools/release/publish_altstore.py \
   --ipa "$IPA" \
   ${MAC:+--mac-dmg "$MAC"} \
   --repo "$REPO" \
+  ${NOTES_ARGS[@]+"${NOTES_ARGS[@]}"} \
   ${MIRROR_ARGS[@]+"${MIRROR_ARGS[@]}"} \
-  ${DOWNLOAD_ARGS[@]+"${DOWNLOAD_ARGS[@]}"} \
-  --notes "${NOTES:-Build from CI run $RUN_ID.}"
+  ${DOWNLOAD_ARGS[@]+"${DOWNLOAD_ARGS[@]}"}
 
 echo
 echo "add this source once in your sideloading app — later releases appear there as updates:"

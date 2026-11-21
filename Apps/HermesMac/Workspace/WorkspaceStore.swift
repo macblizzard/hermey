@@ -305,7 +305,10 @@ final class WorkspaceStore: ObservableObject {
         // No pre-paint here: `endlessSession` captures the outgoing bot, switches and restores the
         // target's snapshot synchronously, and restoring before that switch files the incoming bot's
         // rows under the outgoing bot's cache — the "come back to cody and see another bot's chat" bug.
-        _ = await model.endlessSession(for: botID)
+        // [B2 navigation] Reached only from `selectBot` (a row), `startConversation` (the empty
+        // chat's one button) and `openConversationIfNeeded` (the bot already selected) — every one
+        // of them a person opening a bot, so `select: true` is the intent, not a side effect.
+        _ = await model.endlessSession(for: botID, select: true)
         await refreshHermeyModelLabel()
         rememberGraphite()
     }

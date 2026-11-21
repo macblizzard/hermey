@@ -54,6 +54,55 @@ def run(cmd: list[str], **kwargs) -> str:
     return result.stdout
 
 
+#: CHANGELOG.md lives at the repo root, three levels up from `Tools/release/`.
+CHANGELOG = Path(__file__).resolve().parent.parent.parent / "CHANGELOG.md"
+#: The notes are read in Sparkle's update dialog, not as a document. `[Unreleased]` between releases
+#: grows to tens of thousands of characters, and the whole of it made a 60 KB appcast for a dialog
+#: with a three-line notes area — scrolled past, never read. Cut at a line boundary instead.
+MAX_NOTE_CHARS = 4000
+
+
+def _clip_notes(body: str) -> str:
+    if len(body) <= MAX_NOTE_CHARS:
+        return body
+    cut = body.rfind("\n", 0, MAX_NOTE_CHARS)
+    return body[:cut if cut > 0 else MAX_NOTE_CHARS].rstrip() + "\n…"
+
+
+def changelog_notes(version: str) -> str:
+    """The release notes, out of CHANGELOG.md rather than invented at publish time.
+
+    This must stay **module level** and be called from `main()` — a previous attempt at this fix
+    defined it inside `main()`, which left the publisher exit 0 without publishing anything.
+
+    A release with an empty body is what the owner saw for several builds: `gh release create` fell
+    back to "Build X (Y)." whenever `--notes` was missing, so nothing said what changed. The same
+    string now feeds the release body, the appcast's `<description>` (what Sparkle draws in the
+    update dialog), `mac.json` and both `altstore.json`s, so those four cannot disagree again.
+
+    Prefers the section for this version, falls back to `[Unreleased]`, then to nothing at all —
+    the caller decides what an empty answer means.
+    """
+    try:
+        text = CHANGELOG.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for heading in (f"## [{version}]", "## [Unreleased]"):
+        # The brackets make the match exact: `## [0.1.1]` must not answer for `## [0.1.14]`.
+        match = re.search(rf"^{re.escape(heading)}", text, re.MULTILINE)
+        if not match:
+            continue
+        # The rest of the heading line is the release date (`## [0.1.13] — 2026-11-09`), not news.
+        line_end = text.find("\n", match.end())
+        body = text[line_end + 1:] if line_end != -1 else ""
+        # A section ends at the next `## ` heading; `###` subsections belong to it.
+        end = re.search(r"^## ", body, re.MULTILINE)
+        body = (body[:end.start()] if end else body).strip()
+        if body:
+            return _clip_notes(body)
+    return ""
+
+
 def publish_pages(repo: str, tag: str, work: Path, version: str, build: str, ipa_name: str) -> None:
     """Write everything the release advertises *before* `main` is pushed.
 
@@ -265,6 +314,15 @@ def main() -> int:
     digest = hashlib.sha256(data).hexdigest()
     stamp = dt.datetime.fromtimestamp(args.ipa.stat().st_mtime, dt.timezone.utc)
 
+    # **One string, every destination.** `--notes` when it was passed, else the CHANGELOG's section
+    # for this version, else the old placeholder — computed once, before anything uses it. The
+    # release body, the appcast's `<description>` (Sparkle's update dialog), `mac.json` and both
+    # `altstore.json` files each used to read `args.notes` on their own, and since nothing ever
+    # passed it the dialog said "Build 0.1.60x (60x)" while the changelog had the text all along.
+    notes = (args.notes or changelog_notes(version) or f"Build {version} ({build}).").strip()
+    print(f"  notes    {len(notes)} chars, from "
+          f"{'--notes' if args.notes else 'CHANGELOG.md'}")
+
     # The tag names the *app*, not the build: a release whose tag disagrees with the version inside
     # the IPA is a support thread ("v22" beside an app that says 0.1.22"). Builds still differ per
     # run, which is what the sideload source compares.
@@ -284,12 +342,21 @@ def main() -> int:
             run(["gh", "release", "create", tag, *files,
                  "-R", args.repo,
                  "--title", f"{SOURCE_NAME} {version} ({build})",
-                 "--notes", args.notes or f"Build {version} ({build})."])
+                 "--notes", notes])
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         print(f"  release {tag}: {asset_name}")
     else:
-        print(f"  release {tag} already exists — reusing it")
+        # Re-running a publish is how an empty release body gets repaired: the same resolved notes
+        # are rewritten, so the GitHub page and the appcast cannot say different things about a
+        # build. Best-effort on purpose — a body that cannot be edited (a token without permission,
+        # a release managed elsewhere) must not abort a publish whose appcast and manifests are
+        # still correct.
+        try:
+            run(["gh", "release", "edit", tag, "-R", args.repo, "--notes", notes])
+            print(f"  release {tag} already exists — notes rewritten, assets reused")
+        except SystemExit as failure:
+            print(f"  release {tag} already exists — body left as it was ({failure})")
 
     # The asset is one of the two destinations that is not ours; fetch it back. A fresh asset can
     # 404 on the CDN for ~30 s, which is what the retries are for — not for a wrong digest.
@@ -307,7 +374,7 @@ def main() -> int:
         "version": version,
         "buildVersion": build,
         "date": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "localizedDescription": args.notes or f"Build {version} ({build}).",
+        "localizedDescription": notes,
         "downloadURL": download,
         "size": len(data),
         "minOSVersion": min_os,
@@ -343,7 +410,7 @@ def main() -> int:
                 header_url=icon_url,
                 source_url=f"https://github.com/{args.repo}/releases/latest/download/altstore.json",
             ),
-            args.notes,
+            notes,
         )
         # Newest first. `altstore.json` is untracked in `main`, so in practice the clone has no
         # manifest and this list is exactly one entry — the history is carried by release assets,
@@ -358,7 +425,7 @@ def main() -> int:
             # the origin before returning. This used to be three scripts writing here and one
             # hand-maintained manifest, and the served `source.json` sat at 0.1.52 for ~430 builds.
             publish_dist.publish(args.mirror_to, args.mirror_base_url, args.ipa, args.mac_dmg,
-                                 args.notes, verify_wire=not args.skip_mirror_verify,
+                                 notes, verify_wire=not args.skip_mirror_verify,
                                  insecure=args.insecure_mirror_verify)
 
         icon = Path(__file__).resolve().parent / "app-icon-512.png"
@@ -406,14 +473,15 @@ def main() -> int:
             "version": version,
             "buildVersion": build,
             "date": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "localizedDescription": args.notes or f"Build {version} ({build}).",
+            "localizedDescription": notes,
             "downloadURL": download,
             "size": len(data),
             "minOSVersion": min_os,
             "sha256": digest,
         }
+        # The appcast this writes is the one Sparkle reads: `notes` is what its `<description>` says.
         published = push_to_downloads_repo(args.downloads_repo, args.mac_dmg, version, build,
-                                           args.repo, entry, args.notes, info, ios_entry=ios_entry)
+                                           args.repo, entry, notes, info, ios_entry=ios_entry)
 
         print(f"\n  mac      {published['versioned']}  ({published['bytes']} bytes)")
         print(f"  mac      {published['stable']}")

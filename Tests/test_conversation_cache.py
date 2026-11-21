@@ -27,7 +27,7 @@ class TheSnapshotExistsAndIsBounded(unittest.TestCase):
                       "an unbounded map of transcripts is a leak with extra steps")
 
     def test_switching_captures_before_it_clears(self) -> None:
-        switch = MODEL.split("public func endlessSession(for botID: String)", 1)[1]
+        switch = MODEL.split("public func endlessSession(for botID: String, select: Bool", 1)[1]
         body = switch.split("await loadModelLabel()", 1)[0]
         self.assertIn("captureConversation(for: selectedBotID)", body,
                       "the bot being left must be kept before resetForBotSwitch wipes it")
@@ -37,7 +37,10 @@ class TheSnapshotExistsAndIsBounded(unittest.TestCase):
                       "the return visit paints from the cache instead of waiting for the host")
 
     def test_the_restore_happens_before_any_await(self) -> None:
-        switch = MODEL.split("public func endlessSession(for botID: String)", 1)[1]
+        switch = MODEL.split("public func endlessSession(for botID: String, select: Bool", 1)[1]
+        # The B2 lookup guard is the one `await` ahead of the restore, and it returns without
+        # painting anything; the navigation path itself must restore before its own first await.
+        switch = switch.split("guard select else { return await conversationID(for: botID) }", 1)[1]
         first_await = switch.index("await ")
         self.assertLess(switch.index("restoreConversation(for: botID)"), first_await,
                         "after the first await the pane has already flashed empty")
@@ -51,7 +54,7 @@ class ThePaneDoesNotLie(unittest.TestCase):
         self.assertIn("Resuming the conversation you already have", pane)
 
     def test_the_flag_clears_when_the_call_returns(self) -> None:
-        switch = MODEL.split("public func endlessSession(for botID: String)", 1)[1]
+        switch = MODEL.split("public func endlessSession(for botID: String, select: Bool", 1)[1]
         self.assertIn("defer { isOpeningConversation = false }", switch,
                       "a flag left true would hide the conversation behind 'Opening…' forever")
 

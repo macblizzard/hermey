@@ -728,6 +728,8 @@ public final class AppModel: ObservableObject {
             botsError = nil
             await diskCache.storeBots(loaded)
             if selectedBotID == nil || !loaded.contains(where: { $0.id == selectedBotID }) {
+                // [B2 bootstrap] The first roster after a cold start picks a bot to draw; nothing is
+                // on screen to be moved, and the branch cannot fire while a bot is selected.
                 selectedBotID = Self.defaultBot(in: loaded, hostName: hostName)?.id
             }
             // The bot list's third line belongs to the list, so it is loaded with the list: a
@@ -745,6 +747,7 @@ public final class AppModel: ObservableObject {
                 bots = cached.bots.map(\.bot)
                 applyCachedPreviews(cached)
                 if selectedBotID == nil {
+                    // [B2 bootstrap] the cached roster's turn, same rule: only when nothing is chosen.
                     selectedBotID = Self.defaultBot(in: bots, hostName: hostName)?.id
                 }
                 ClientLog.note("drawing \(bots.count) cached bots for \(hostName)",
@@ -1025,6 +1028,7 @@ public final class AppModel: ObservableObject {
         }
         captureConversation(for: selectedBotID)
         resetForBotSwitch()
+        // [B2 navigation] the bot list / restore picked this bot: a move the owner asked for.
         selectedBotID = resolved
         // Picking a bot is picking a different conversation: the room it is replacing must not come
         // back when the next launch restores the pane.
@@ -2061,6 +2065,7 @@ public final class AppModel: ObservableObject {
         if botID != selectedBotID {
             captureConversation(for: selectedBotID)
             resetForBotSwitch()
+            // [B2 navigation] a row in All Sessions: the owner picked a conversation on this bot.
             selectedBotID = botID
             await loadModelLabel()
         }
@@ -2076,8 +2081,11 @@ public final class AppModel: ObservableObject {
     /// behind the owner's back) — so the two are separate doors now, and this one touches no
     /// published state, sends no `session.resume` and paints nothing.
     ///
-    /// Order is the same one the open uses: a pick made by hand outranks everything, then the host's
-    /// own canonical Bot Chat, then whatever id this device remembered.
+    /// `endlessSession(for:select: false)` is this same answer through the other door, for a caller
+    /// that already thinks in terms of the open.
+    ///
+    /// [B2 lookup] Order is the same one the open uses: a pick made by hand outranks everything, then
+    /// the host's own canonical Bot Chat, then whatever id this device remembered.
     public func conversationID(for botID: String) async -> SessionID? {
         if let pinned = pinnedSessionPicks[botID] { return pinned }
         if let canonical = await canonicalChatIdentity(for: botID) { return canonical }
@@ -2086,14 +2094,23 @@ public final class AppModel: ObservableObject {
         return stored
     }
 
-    /// The **one writer of the selection**: open a bot's conversation and put it on screen.
+    /// The one door that both **resolves a conversation and moves the screen**.
     ///
-    /// Only navigation calls this — a bot row, the workspace's restore, Reset chat, the empty chat's
-    /// "start". Anything that merely needs to know which conversation a bot owns uses
-    /// `conversationID(for:)`: resolving a session must not select a bot, because a background reader
-    /// that moved the screen is what made the last caller win and the transcript repaint behind the
-    /// owner's back. Every move it does make is logged, so an oscillation has a witness.
-    public func endlessSession(for botID: String) async -> SessionID? {
+    /// `select` is the whole point (B2). Only navigation may ask for it — a bot row, the workspace's
+    /// restore, Reset chat, the empty chat's "start", Compress on a bot with nothing open. Anything
+    /// that merely needs to know which conversation a bot owns passes `select: false` (or calls
+    /// `conversationID(for:)` directly) and gets the id with no published state touched: no capture
+    /// of the transcript, no pane reset, no `selectedBotID` write.
+    ///
+    /// The failure this splits apart: a *lookup* — a preview, a notification body, a background
+    /// summary, an unread sweep — reached this door, ran the side effects below, and selected the bot
+    /// it only meant to ask about. Several of those in flight at once is the selection oscillating
+    /// between bots while the owner reads one conversation, and the transcript repainting under them.
+    /// Every call site carries a `[B2 navigation]` or `[B2 lookup]` marker saying which it is.
+    public func endlessSession(for botID: String, select: Bool = true) async -> SessionID? {
+        // A lookup is not a navigation: answer with the id and stop. The branch is first on purpose —
+        // everything below it, including the capture/reset/select block, is navigation's work.
+        guard select else { return await conversationID(for: botID) }
         if botID != selectedBotID {
             // The transcript, tools and streaming state on screen belong to the bot being left —
             // but they are worth keeping first: a return visit paints from the snapshot and lets
@@ -2101,6 +2118,8 @@ public final class AppModel: ObservableObject {
             captureConversation(for: selectedBotID)
             resetForBotSwitch()
             let previous = selectedBotID
+            // [B2 navigation] the move itself: this branch is reached only with `select: true`, and a
+            // lookup returned at the guard above.
             selectedBotID = botID
             // The one thing worth a log line here: navigation should be the only caller, so a second
             // name inside a few seconds is an oscillation rather than a person clicking.
@@ -2599,7 +2618,9 @@ public final class AppModel: ObservableObject {
         if let retired, !retired.isEmpty {
             await retireCanonicalChat(retired, botID: bot)
         }
-        var fresh = await endlessSession(for: bot)
+        // [B2 navigation] Reset chat is a user verb on the bot already on screen: `select: true` is
+        // what re-opens it after the id was dropped, and there is no other bot for it to move to.
+        var fresh = await endlessSession(for: bot, select: true)
         // A retire is best effort — the host may still point at the chat we just dropped, in which case the
         // open above walks straight back into it. That is what Mo saw: reset gives a working new conversation,
         // then returning from the bot list lands in the old Bot Chat and the new one is only reachable through
@@ -2689,7 +2710,9 @@ public final class AppModel: ObservableObject {
         // A bot whose conversation has not been opened in this process has no session id yet.
         // Compacting is a verb on that conversation, so it opens it rather than staying greyed out.
         if selectedSessionID == nil, let bot = selectedBotID {
-            _ = await endlessSession(for: bot)
+            // [B2 navigation] Compress acts on the conversation *on screen*, so opening it is the
+            // same navigation the pane does; `select: true` keeps the bot that is already selected.
+            _ = await endlessSession(for: bot, select: true)
         }
         guard let sid = selectedSessionID else { return finishCompaction() }
         compactionWait = CompactionWait(session: sid, entriesBefore: transcript.count,
