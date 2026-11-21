@@ -769,3 +769,24 @@ All notable changes to Hermey are recorded here. The format follows
 Bot list home screen, endless conversations per bot, group chats with rename/delete from the row's
 context menu, per-message read-aloud through the host voice, copy, reply and reactions, the composer
 clear button, approvals, attachments, and the three-pane macOS shell.
+
+## [0.1.610] — 2026-11-21
+
+### Added
+- **Full screen in the shared computer, on both platforms.** The pane's ⤢ hands the Mac's *window* to full
+  screen and drops the header, status bar and safe-area inset on the phone. Either platform keeps one floating
+  bar — take-over / hand back, zoom −/+, the level, Fit, exit — and the picture zooms 1×–5× and pans, clamped to
+  its edges, with take-over clicks landing on the right framebuffer pixel at any zoom. `Esc` exits.
+
+### Fixed
+- **The full-screen button actually moves the window.** Turning full screen on toggled the window without
+  adopting `.fullScreenPrimary`, which macOS accepts and then ignores: the pane grew, the menu bar, dock and
+  traffic lights stayed, and nothing said why. The behaviour is adopted first, and the request and any refusal
+  are logged with the window's style mask.
+- **Looking a conversation up no longer changes the selected bot.** `endlessSession(for:)` selected the bot as a
+  side effect, so background readers could move the user's screen — reported as the selection jumping between
+  bots mid-conversation. A lookup now returns before anything is selected.
+- **Release notes reach the update dialog.** The publisher read `--notes` at six call sites and the release
+  script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds
+  the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.
+
