@@ -9,7 +9,7 @@
 "h": "Start here",
 "p": "Overview",
 "u": "index.html#start-here",
-"b": "Start here Start Getting started What Hermes has to be doing first, then install, publish, pair. Host Install the host The command, what it writes, the flags, and how to undo it. Devices The apps Sideloading, first launch, quarantine, notifications, revocation. Capability Local computer use Let bots drive the Mac you a"
+"b": "Start here Start Getting started What Hermes has to be doing first, then install, reach it, pair. Host Install the host The command, what it writes, the flags, and how to undo it. Devices The apps Sideloading, first launch, quarantine, notifications, revocation. Capability Local computer use Let bots drive the Mac you "
 },
 {
 "h": "Requirements",
@@ -33,19 +33,19 @@
 "h": "2. Install hermeyd",
 "p": "Getting Hermey running",
 "u": "prerequisites.html#2-install-hermeyd",
-"b": "2. Install hermeyd hermeyd is the host service that fronts Hermes for the apps: pairing, the conversation relay, the shared computer, browser control, credentials, backups and routines. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sh Copy The script detects your platform, verif"
+"b": "2. Install hermeyd hermeyd is the host service that fronts Hermes for the apps: pairing, the conversation relay, the shared computer, browser control, credentials, backups and routines. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh Copy The script detects your platform, "
 },
 {
-"h": "3. Publish it",
+"h": "3. Reachability",
 "p": "Getting Hermey running",
-"u": "prerequisites.html#3-publish-it",
-"b": "3. Publish it hermeyd listens on loopback only. Give it a reachable address on your tailnet (the apps need TLS, and tailnet is the simplest honest way to get it): tailscale serve --bg http://127.0.0.1:8788 Copy That is serve at the root \u2014 no port in the URL . Pairing links therefore look like https://your-host.ts.net/?"
+"u": "prerequisites.html#3-reachability",
+"b": "3. Reachability hermeyd listens on loopback only. The installer publishes it itself with tailscale serve , at the serve root, once the service is up \u2014 so a finished install already has: serve: published http://127.0.0.1:8788 at the root ... Pair a device: code 250240 url https://your-host.ts.net/?code=250240 Reachable "
 },
 {
 "h": "4. Pair the app",
 "p": "Getting Hermey running",
 "u": "prerequisites.html#4-pair-the-app",
-"b": "4. Pair the app Ask the host for a one-time code \u2014 hermeyd mints it over loopback and prints the code, the URL to open and a QR code the app can scan: hermeyd pair Copy pairing code 250240 expires 2026-11-21 20:31:33 +01:00 (9 min left) pairing URL https://your-host.ts.net/?code=250240 protocol 1 Enter the code in Herm"
+"b": "4. Pair the app Ask the host for a one-time code \u2014 hermeyd mints it over loopback and prints the code, the URL to open and a QR code the app can scan: hermeyd pair Copy pairing code 250240 expires 2026-11-21 20:31:33 +01:00 (10 min left) pairing URL https://your-host.ts.net/?code=250240 Scan with the Hermey app's QR sc"
 },
 {
 "h": "Verify",
@@ -105,13 +105,13 @@
 "h": "Without Tailscale",
 "p": "Install the host",
 "u": "install.html#without-tailscale",
-"b": "Without Tailscale hermeyd binds 127.0.0.1 and refuses any other bind \u2014 a design invariant, not a default. With no tailnet, put a TLS terminator with a real certificate (Caddy is least work) in front of 127.0.0.1:8788 . A self-signed certificate will not work: the apps follow App Transport Security and refuse it. Set HE"
+"b": "Without Tailscale hermeyd binds 127.0.0.1 and refuses any other bind \u2014 a design invariant, not a default. With no tailnet, install with --no-serve and put a TLS terminator with a real certificate (Caddy is least work) in front of 127.0.0.1:8788 . A self-signed certificate will not work: the apps follow App Transport Se"
 },
 {
 "h": "Uninstall",
 "p": "Install the host",
 "u": "install.html#uninstall",
-"b": "Uninstall curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall Copy Stops and removes the unit, the binary, the config and the plugin. State is kept , so paired devices survive a reinstall. Add --purge to delete /var/lib/hermeyd as well: sudo setup/install.sh "
+"b": "Uninstall curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall Copy Stops and removes the unit, the binary, the config and the plugin. It also removes the tailscale serve root mapping, but only when that root points at this install's port; a root another servi"
 },
 {
 "h": "When the first install fails",
@@ -195,7 +195,7 @@
 "h": "3. Pair the human's device",
 "p": "For agents",
 "u": "agents.html#3-pair-the-humans-device",
-"b": "3. Pair the human's device curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start # {\"code\":\"12345678\",\"host\":\"localhost\",\"expires_at\":\u2026} Copy /v1/pair/start answers on loopback only. Codes are short-lived \u2014 mint a fresh one when the human is actually holding the phone. Tell them: iOS: in the app, add server \u2192 the host'"
+"b": "3. Pair the human's device curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start # {\"code\":\"482913\",\"host\":\"localhost\",\"expires_at\":\u2026} Copy /v1/pair/start answers on loopback only. Codes are short-lived \u2014 mint a fresh one when the human is actually holding the phone. Tell them: iOS: in the app, add server \u2192 the host's "
 },
 {
 "h": "4. Hand over the apps",
@@ -261,7 +261,7 @@
 "h": "tailscale serve refused",
 "p": "Troubleshooting",
 "u": "troubleshooting.html#tailscale-serve-refused",
-"b": "tailscale serve refused tailscale status # is this node up and logged in? tailscale serve status # what is already published? Copy hermeyd publishes serve-root \u2014 tailscale serve --bg http://127.0.0.1:8788 \u2014 so pairing URLs carry no :8443 . A leftover :8443 mount from the old port scheme answers 502 ; remove it with tai"
+"b": "tailscale serve refused tailscale status # is this node up and logged in? tailscale serve status # what is already published? Copy The installer publishes serve-root \u2014 tailscale serve --bg http://127.0.0.1:8788 \u2014 so pairing URLs carry no :8443 . If it reported that the root already belongs to another service, it printe"
 },
 {
 "h": "HTTPS fails but the service is healthy",
@@ -354,10 +354,10 @@
 "b": "1. Trust boundaries \u250c\u2500\u2500 iPhone / Mac \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u250c\u2500\u2500 hermes (100.64.0.1) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u2502 Ed25519 key in Keychain \u2502 \u2502 tailscale serve (serve-root) \u2500\u2500TLS 1.3\u2500\u2500\u25ba 8788 \u2502 \u2502 refresh token in Keychain \u2502 \u2502 \u2502 \u2502 \u2502 \u2500\u2500 30 s WS ticket \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500 wss \u2500\u253c\u2500\u25ba hermeyd (Rust, loopback only) \u2502 \u2502 \u2502 \u2502 \u2502 allow-list, fram"
 },
 {
-"h": "2. Invariants, and the test that holds each one",
+"h": "2. Invariants, and where each one is enforced today",
 "p": "Security",
-"u": "security.html#2-invariants-and-the-test-that-holds-each-one",
-"b": "2. Invariants, and the test that holds each one Every row is enforced in code and pinned by a test in Tools/qa (run with python -m pytest -q Tools/qa ). # Invariant Where Test 1 The bridge refuses to bind anything but loopback, and refuses a non-loopback gateway URL config.validate() , __main__ test_config.py 2 Pairing"
+"u": "security.html#2-invariants-and-where-each-one-is-enforced-today",
+"b": "2. Invariants, and where each one is enforced today The table below is the audit of the retired Python bridge. It is kept because it is the reasoning behind the controls and records what each row used to be pinned by \u2014 not as a description of hermeyd . The modules and test_* names in its last two columns went with Brid"
 },
 {
 "h": "3. Threat model",
@@ -369,7 +369,7 @@
 "h": "4. Gaps",
 "p": "Security",
 "u": "security.html#4-gaps",
-"b": "4. Gaps Each is a real difference between the design and the implementation, with the impact and the fix. test_* names refer to Tools/qa . G1 \u2014 no proof-of-possession on the token exchange (medium). POST /v1/token accepts {device_id, refresh_token} ; the Ed25519 key registered at pairing is stored but never used to ver"
+"b": "4. Gaps Each is a real difference between the design and the implementation, with the impact and the fix. The test_* names below are the bridge's own suite and are historical; the gaps themselves are statements about the bridge's design, so re-check one against hermeyd/src before relying on it. G1 \u2014 no proof-of-possess"
 },
 {
 "h": "5. Operating it",

@@ -88,9 +88,11 @@ exit <code>75</code> is the duplicate, anything else non-zero is a different fai
 <h2 id="tailscale-serve-refused"><code>tailscale serve</code> refused</h2>
 <div class="code"><pre><code>tailscale status          # is this node up and logged in?
 tailscale serve status    # what is already published?</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
-<p>hermeyd publishes serve-root — <code>tailscale serve --bg http://127.0.0.1:8788</code> — so pairing URLs carry
-no <code>:8443</code>. A leftover <code>:8443</code> mount from the old port scheme answers <code>502</code>; remove it with
-<code>tailscale serve --https=8443 off</code>. Do not stop another tailnet service to free a port.</p>
+<p>The installer publishes serve-root — <code>tailscale serve --bg http://127.0.0.1:8788</code> — so pairing URLs
+carry no <code>:8443</code>. If it reported that the root already belongs to another service, it printed the
+<code>--https=&lt;port&gt;</code> command that publishes beside it. A leftover <code>:8443</code> mount from the old port scheme
+answers <code>502</code>; remove it with <code>tailscale serve --https=8443 off</code>. Do not stop another tailnet service
+to free a port.</p>
 <p><strong>Never add <code>8790</code> to <code>tailscale serve</code>.</strong> The browser channel is loopback-only and carries no
 credential.</p>
 <h2 id="https-fails-but-the-service-is-healthy">HTTPS fails but the service is healthy</h2>
@@ -129,7 +131,9 @@ the mirror is not.</p>
 <p><strong>A signature that does not verify.</strong> The app trusts exactly one Ed25519 public key
 (<code>SUPublicEDKey</code>), so a feed signed with a different key installs nothing. Check without guessing:</p>
 <div class="code"><pre><code>curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30   # version + signature
-curl -sI https://macblizzard.github.io/hermey-downloads/Hermey-macOS-0.1.580.dmg | head -3</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+# the .dmg the feed points at, without hardcoding a version that ages out
+curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml \
+  | grep -o 'https://[^&quot;]*\.dmg' | head -1 | xargs -I{} curl -sI {} | head -3</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
 <p>The <code>length=</code> in the feed must equal the served <code>content-length</code>, or the file was replaced after
 the feed was signed.</p>
 </li>

@@ -3,111 +3,831 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hermey documentation</title>
-<meta name="description" content="A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.">
+<title>Hermey — a native client for the Hermes agent you run yourself</title>
+<meta name="description" content="Hermey is a native iOS and macOS client for your own Hermes agent. One endless conversation per bot over your Tailscale network, plus opt-in local computer use on the Mac — no SSH, no Remote Login, no account.">
 <meta name="theme-color" content="#faf9f5">
-<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/">
-<meta property="og:type" content="article">
-<meta property="og:title" content="Hermey documentation">
-<meta property="og:description" content="A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.">
-<link rel="icon" href="../icon-512.png">
-<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Hermey — a native client for your own Hermes agent">
+<meta property="og:description" content="Your agent, in a real app. iOS and macOS, over your own network, with opt-in computer use on the Mac.">
+<meta property="og:url" content="https://macblizzard.github.io/hermey/">
+<meta property="og:image" content="https://macblizzard.github.io/hermey/shots/mac-chat.webp">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="preload" as="image" href="shots/bots-list.webp">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #faf9f5;
+    --paper-2: #f5f4ed;
+    --card: #f0eee6;
+    --line: #e3dacc;
+    --line-soft: #ece8dd;
+    --ink: #141413;
+    --body: #3d3d3a;
+    --muted: #6c6a64;
+    --faint: #8f8d85;
+    --clay: #d97757;
+    --clay-deep: #b8603f;
+    --dark: #141413;
+    --on-dark: #f5f4ed;
+    --on-dark-muted: #b0aea5;
+    --max: 1140px;
+    --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Seravek", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --step: clamp(2.75rem, 7vw, 6rem);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { width: min(var(--max), calc(100% - 3rem)); margin-inline: auto; }
+  @media (max-width: 640px) { .wrap { width: calc(100% - 2.25rem); } }
+
+  a { color: inherit; }
+  a:focus-visible, summary:focus-visible, button:focus-visible {
+    outline: 2px solid var(--clay);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  .skip {
+    position: absolute; left: -9999px; top: 0;
+    background: var(--ink); color: var(--on-dark);
+    padding: .7rem 1rem; border-radius: 8px; z-index: 20;
+  }
+  .skip:focus { left: 1rem; top: 1rem; }
+
+  /* ── typography ─────────────────────────────────────────────── */
+  h1, h2, h3 {
+    font-family: var(--serif);
+    font-weight: 400;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 { font-size: clamp(2.7rem, 6.6vw, 4.75rem); line-height: 1.03; letter-spacing: -0.032em; }
+  h2 { font-size: clamp(1.9rem, 3.6vw, 3rem); line-height: 1.12; }
+  h3 { font-size: 1.3rem; line-height: 1.3; letter-spacing: -0.012em; }
+
+  p { margin: 0 0 1.1rem; }
+  p:last-child { margin-bottom: 0; }
+  .lede {
+    font-family: var(--serif);
+    font-size: clamp(1.15rem, 1.9vw, 1.35rem);
+    line-height: 1.55;
+    color: var(--body);
+    max-width: 42ch;
+  }
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: .72rem;
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex; align-items: center; gap: .6rem;
+    margin: 0 0 1.4rem;
+  }
+  .eyebrow::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--clay); flex: none;
+  }
+  .dark .eyebrow { color: var(--on-dark-muted); }
+  .clay { color: var(--clay); }
+  .fineprint { font-size: .84rem; color: var(--muted); line-height: 1.6; }
+
+  /* ── header ─────────────────────────────────────────────────── */
+  .site-head {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  @supports (backdrop-filter: blur(1px)) {
+    .site-head { background: rgba(250, 249, 245, .88); backdrop-filter: saturate(140%) blur(10px); }
+  }
+  .head-row { display: flex; align-items: center; gap: 2rem; height: 64px; }
+  .brand {
+    font-family: var(--serif); font-size: 1.3rem; letter-spacing: -0.02em;
+    text-decoration: none; color: var(--ink); flex: none;
+  }
+  .brand .dot { color: var(--clay); }
+  .head-nav { display: flex; gap: 1.55rem; margin-left: auto; }
+  .head-nav a {
+    font-size: .88rem; color: var(--muted); text-decoration: none;
+    padding: .4rem 0; border-bottom: 1px solid transparent;
+  }
+  .head-nav a:hover { color: var(--ink); border-bottom-color: var(--clay); }
+  @media (max-width: 900px) { .head-nav { display: none; } }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+    min-height: 44px; padding: 0 1.15rem;
+    border-radius: 8px; border: 1px solid transparent;
+    font-family: var(--sans); font-size: .92rem; font-weight: 500;
+    text-decoration: none; cursor: pointer;
+    transition: background-color .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .btn-primary { background: var(--ink); color: var(--on-dark); }
+  .btn-primary:hover { background: #26261f; }
+  .btn-quiet { border-color: var(--line); color: var(--ink); background: transparent; }
+  .btn-quiet:hover { border-color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } }
+
+  /* ── hero ───────────────────────────────────────────────────── */
+  .hero { padding: clamp(3.5rem, 8vw, 6.5rem) 0 0; }
+  .hero-grid {
+    display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+    gap: clamp(2.5rem, 6vw, 5rem); align-items: center;
+  }
+  @media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; } }
+
+  .hero-copy h1 { margin-bottom: 1.6rem; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: .75rem; margin: 2rem 0 1.5rem; }
+
+  .build {
+    font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    margin: 0 0 1rem; padding-top: .2rem;
+  }
+  .build strong { color: var(--ink); font-weight: 500; }
+  .build code { font-family: var(--mono); font-size: .95em; color: var(--faint); }
+
+  .hero-shot { margin: 0; justify-self: center; width: min(100%, 330px); }
+  /* On a phone the screenshot sits in the same left gutter as the copy above it, rather than
+     floating at its own centre and breaking the column edge. */
+  @media (max-width: 900px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-shot { justify-self: start; width: min(100%, 300px); }
+    .hero-shot figcaption { text-align: left; }
+  }
+  .hero-shot figcaption {
+    margin-top: 1.1rem; font-size: .78rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint); text-align: center;
+  }
+
+  /* device frames — the screenshots carry their own status bar, so this is a bezel only */
+  .phone-frame {
+    border: 9px solid var(--ink);
+    border-radius: 40px;
+    background: var(--ink);
+    overflow: hidden;
+    box-shadow: 0 34px 60px -44px rgba(20, 20, 19, .55);
+  }
+  .phone-frame img { display: block; width: 100%; height: auto; }
+
+  .mac-frame {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--ink);
+    box-shadow: 0 40px 70px -50px rgba(20, 20, 19, .5);
+  }
+  .mac-frame img { display: block; width: 100%; height: auto; }
+  .dark .mac-frame { border-color: #302e2a; }
+
+  /* facts strip */
+  .facts {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0; margin: clamp(3rem, 6vw, 5rem) 0 0;
+    border-top: 1px solid var(--line);
+    padding: 0;
+  }
+  .facts div { padding: 1.3rem 1.4rem 1.3rem 0; border-right: 1px solid var(--line-soft); }
+  .facts div:last-child { border-right: 0; }
+  .facts dt { font-family: var(--serif); font-size: 1rem; letter-spacing: -0.01em; }
+  .facts dd { margin: .3rem 0 0; font-size: .84rem; color: var(--muted); line-height: 1.5; }
+  @media (max-width: 860px) {
+    .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .facts div:nth-child(2n) { border-right: 0; }
+  }
+  @media (max-width: 480px) {
+    .facts { grid-template-columns: 1fr; }
+    .facts div { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+    .facts div:last-child { border-bottom: 0; }
+  }
+
+  /* ── sections ───────────────────────────────────────────────── */
+  .block { padding: var(--step) 0; border-top: 1px solid var(--line); }
+  .block-head { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: clamp(1.5rem, 5vw, 4rem); align-items: end; }
+  .block-head p { color: var(--body); margin-bottom: 0; }
+  @media (max-width: 860px) { .block-head { grid-template-columns: 1fr; gap: 1.1rem; } }
+
+  /* gallery */
+  /* Every grid/flex child that holds unbreakable content (a command line, a URL) needs
+     `min-width: 0`, or its automatic minimum size wins and the column grows past the page
+     gutter — which is what pushed the install snippets and the dark-band lists off a phone. */
+  .dark-grid > *, .steps > *, .platforms > *, .feature > *, .gallery > * { min-width: 0; }
+  .snippet code, .cmd { min-width: 0; max-width: 100%; }
+
+  .gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 2.75rem); margin-top: 3rem; }
+  @media (max-width: 860px) {
+    .gallery { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 74%; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 0; padding-bottom: 1rem; }
+    .gallery figure { scroll-snap-align: start; }
+  }
+  .gallery figure { margin: 0; }
+  .gallery .phone-frame { border-width: 7px; border-radius: 32px; }
+  .gallery figcaption { margin-top: 1rem; font-size: .86rem; color: var(--muted); line-height: 1.5; }
+  .gallery figcaption b { display: block; color: var(--ink); font-weight: 500; font-size: .9rem; margin-bottom: .15rem; }
+
+  /* feature list — numbered editorial column, no icons */
+  .feature-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 clamp(2rem, 6vw, 4.5rem); margin-top: 3rem; border-top: 1px solid var(--line-soft); }
+  @media (max-width: 780px) { .feature-list { grid-template-columns: 1fr; } }
+  .feature { display: grid; grid-template-columns: 2.6rem 1fr; gap: 1.1rem; padding: 1.7rem 0; border-bottom: 1px solid var(--line-soft); }
+  .feature .n { font-family: var(--mono); font-size: .76rem; color: var(--clay); padding-top: .35rem; letter-spacing: .04em; }
+  .feature h3 { margin-bottom: .35rem; }
+  .feature p { font-size: .95rem; color: var(--body); margin: 0; }
+
+  /* dark band */
+  .dark { background: var(--dark); color: var(--on-dark); border-top: 0; }
+  .dark h2, .dark h3 { color: var(--on-dark); }
+  .dark p { color: var(--on-dark-muted); }
+  .dark .fineprint { color: var(--on-dark-muted); }
+  .dark-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: clamp(2rem, 5vw, 4rem); align-items: start; }
+  @media (max-width: 900px) { .dark-grid { grid-template-columns: 1fr; } }
+  .dark-shots { display: grid; gap: 1.5rem; }
+  .dark-shots figure { margin: 0; }
+  .dark-shots figcaption { margin-top: .8rem; font-size: .8rem; color: #8c8a82; }
+
+  .rule-list { list-style: none; margin: 1.6rem 0 0; padding: 0; border-top: 1px solid #302e2a; }
+  .rule-list li { padding: .85rem 0; border-bottom: 1px solid #302e2a; font-size: .93rem; color: var(--on-dark-muted); display: grid; grid-template-columns: 1.3rem 1fr; gap: .6rem; }
+  .rule-list li::before { content: "—"; color: var(--clay); font-family: var(--mono); font-size: .85rem; }
+
+  .cmd {
+    font-family: var(--mono); font-size: .8rem; line-height: 1.7;
+    background: #1c1b19; border: 1px solid #302e2a; border-radius: 8px;
+    padding: .9rem 1rem; margin: 1.6rem 0 0; overflow-x: auto; color: #cfcabd;
+  }
+  .cmd .c { color: #8c8a82; }
+  .cmd .k { color: #e7a184; }
+
+  /* steps */
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 3rem); margin-top: 3rem; }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
+  .step { border-top: 1px solid var(--ink); padding-top: 1.2rem; }
+  .step .n { font-family: var(--mono); font-size: .74rem; letter-spacing: .12em; text-transform: uppercase; color: var(--clay); }
+  .step h3 { margin: .6rem 0 .5rem; }
+  .step p { font-size: .93rem; color: var(--body); }
+  .step code { font-family: var(--mono); font-size: .88em; }
+
+  .snippet {
+    display: flex; align-items: stretch; gap: 0; margin: 1rem 0 0;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--paper-2);
+    overflow: hidden;
+  }
+  .snippet code {
+    font-family: var(--mono); font-size: .79rem; line-height: 1.55;
+    padding: .8rem .9rem; flex: 1 1 auto; overflow-x: auto; white-space: nowrap;
+    color: #45443f;
+  }
+  .copy {
+    flex: none; border: 0; border-left: 1px solid var(--line);
+    background: transparent; color: var(--muted);
+    font-family: var(--sans); font-size: .76rem; letter-spacing: .06em; text-transform: uppercase;
+    padding: 0 .85rem; cursor: pointer; min-height: 44px;
+  }
+  .copy:hover { background: var(--card); color: var(--ink); }
+  .copy[data-done="1"] { color: var(--clay-deep); }
+
+  /* platforms */
+  .platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1.5rem, 4vw, 3rem); margin-top: 3rem; }
+  @media (max-width: 860px) { .platforms { grid-template-columns: 1fr; } }
+  .platform { border: 1px solid var(--line); border-radius: 14px; padding: clamp(1.5rem, 3vw, 2.2rem); background: var(--paper-2); }
+  .platform h3 { font-size: 1.5rem; }
+  .platform .kicker { font-size: .8rem; color: var(--muted); margin: .3rem 0 1.3rem; }
+  .platform ul { list-style: none; margin: 0 0 1.5rem; padding: 0; }
+  .platform li { position: relative; padding-left: 1.15rem; margin-bottom: .6rem; font-size: .93rem; color: var(--body); }
+  .platform li::before { content: ""; position: absolute; left: 0; top: .62em; width: 6px; height: 1px; background: var(--clay); }
+  .platform .links { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; align-items: center; font-size: .9rem; }
+  .platform a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); padding-bottom: 1px; }
+  .platform a:hover { border-bottom-color: var(--clay); }
+
+  /* faq */
+  .faq { margin-top: 2.5rem; border-top: 1px solid var(--line); }
+  .faq details { border-bottom: 1px solid var(--line); }
+  .faq summary {
+    cursor: pointer; list-style: none; padding: 1.35rem 0;
+    display: flex; align-items: baseline; gap: 1rem;
+    font-family: var(--serif); font-size: 1.16rem; letter-spacing: -0.012em;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; margin-left: auto; font-family: var(--mono); color: var(--clay); font-size: 1rem; }
+  .faq details[open] summary::after { content: "–"; }
+  .faq .answer { padding: 0 0 1.5rem; max-width: 62ch; color: var(--body); font-size: .97rem; }
+
+  /* docs band */
+  .doc-links { list-style: none; margin: 1.2rem 0 0; padding: 0; display: grid; gap: .9rem; }
+  .doc-links li { display: grid; gap: .1rem; }
+  .doc-links a { font-size: 1rem; color: var(--ink); border-bottom: 1px solid rgba(217,119,87,.35); justify-self: start; }
+  .doc-links a:hover { border-bottom-color: var(--clay); }
+  .doc-links span { font-size: .86rem; color: var(--muted); }
+  .docs-more { margin-top: 1.6rem; font-size: .95rem; }
+
+  /* footer */
+  .site-foot { border-top: 1px solid var(--line); padding: 3rem 0 4rem; }
+  .foot-row { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; align-items: baseline; justify-content: space-between; }
+  .foot-links { display: flex; flex-wrap: wrap; gap: 1.4rem; }
+  .foot-links a { font-size: .88rem; color: var(--muted); text-decoration: none; }
+  .foot-links a:hover { color: var(--ink); }
+  .colophon { margin-top: 2rem; font-size: .78rem; color: var(--faint); }
+
+  .signin-more { margin: 2rem 0 0; font-size: .95rem; }
+  .signin-more a { color: var(--clay); text-decoration: none; border-bottom: 1px solid currentColor; padding-bottom: 1px; }
+  .block.dark .signin-more a { color: var(--paper); }
+</style>
 </head>
 <body>
-<a class="skip" href="#content">Skip to content</a>
+<a class="skip" href="#main">Skip to content</a>
 
-<header class="top">
-  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
-  <span class="top-sep" aria-hidden="true">/</span>
-  <a class="top-link" href="index.html">Docs</a>
-  <div class="search">
-    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
-    <div class="results" role="listbox" aria-label="Search results"></div>
+<header class="site-head">
+  <div class="wrap head-row">
+    <a class="brand" href="#top">Hermey<span class="dot">.</span></a>
+    <nav class="head-nav" aria-label="Sections">
+      <a href="#look">Look</a>
+      <a href="#signin">Sign-in</a>
+      <a href="#integrations">Integrations</a>
+      <a href="#features">Features</a>
+      <a href="#computer">Computer use</a>
+      <a href="#install">Install</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#faq">Questions</a>
+      <a href="docs/">Docs</a>
+    </nav>
+    <a class="btn btn-primary" href="#install">Install</a>
   </div>
-  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
 </header>
 
-<div class="shell">
-  <details class="side">
-    <summary>Documentation</summary>
-    <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html" aria-current="page">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+<main id="main">
+
+  <section class="hero" id="top">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">iOS · macOS · self-hosted</p>
+        <h1>Your agent,<br>in a real app<span class="clay">.</span></h1>
+        <p class="lede">Hermey is a native client for the Hermes agent you run yourself. One endless conversation per bot, streamed over your own Tailscale network — and, on the Mac, a computer your bots can use when you say so. No SSH. No Remote Login. No cloud in the middle.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="docs/prerequisites.html">Get started</a>
+          <a class="btn btn-quiet" href="https://github.com/macblizzard/hermey">View source</a>
+        </div>
+        <p class="build" id="build">Latest release: <a href="https://github.com/macblizzard/hermey/releases/latest">see the release page</a></p>
+    <script>
+    // This line used to be rewritten by the release pipeline, so every publish had to keep a prose
+    // sentence in step with the feed, and a missed rewrite advertised a version that was not what
+    // the download served. It now asks the feed at load time — same origin, so no CORS involved.
+    // If the fetch fails, the sentence above stays: a link to the release, never a stale or invented
+    // number.
+    (function () {
+      var el = document.getElementById('build');
+      if (!el || !window.fetch) return;
+      fetch('https://macblizzard.github.io/hermey-downloads/altstore.json', {cache: 'no-store'})
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(function (doc) {
+          var v = doc && doc.apps && doc.apps[0] && doc.apps[0].versions && doc.apps[0].versions[0];
+          if (!v || !v.version) throw new Error('no version');
+          var esc = function (s) {
+            return String(s).replace(/[&<>"']/g, function (c) {
+              return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+            });
+          };
+          var file = (v.downloadURL || '').split('/').pop();
+          el.innerHTML = 'Serving build <strong>' + esc(v.version) + '</strong>'
+            + (v.buildVersion ? ' (build ' + esc(v.buildVersion) + ')' : '')
+            + (file ? ' \u00b7 <code>' + esc(file) + '</code>' : '');
+        })
+        .catch(function () { /* the fallback sentence is the failure state */ });
+    })();
+    </script>
+        <p class="fineprint">Free and MIT licensed, and it needs a Hermes install you already run. The builds are unsigned — you sideload the app with your own certificate — and the host never leaves your machine.</p>
+      </div>
+
+      <figure class="hero-shot">
+        <div class="phone-frame">
+          <img src="shots/bots-list.webp" width="806" height="1752"
+               alt="Hermey on iPhone: the bot list, with cody pinned and the lab bots grouped below" fetchpriority="high">
+        </div>
+        <figcaption>The bot list is the home screen</figcaption>
+      </figure>
     </div>
-  </details>
 
-  <main class="content" id="content">
-    <p class="crumbs"><a href="index.html">Docs</a> / Overview</p>
-    <h1>Hermey documentation</h1>
-    <p class="lede">A native iOS and macOS client for a Hermes agent you run yourself — and the one command that installs the host it talks to.</p>
-    
-<p>Hermey is two pieces that meet at a tailnet address. <strong>hermeyd</strong>, one Rust binary, runs
-on the machine that already runs Hermes. The <strong>apps</strong> on your phone and Mac talk to it over
-HTTPS with a real certificate, and nothing else is in the path — no account, no relay, no service of
-ours.</p>
+    <div class="wrap">
+      <dl class="facts">
+        <div><dt>Opt-in by design</dt><dd>Computer use is off until you switch it on, and revocable in one click.</dd></div>
+        <div><dt>iOS 17 · macOS 14</dt><dd>SwiftUI on both, not a web wrapper.</dd></div>
+        <div><dt>Zero telemetry</dt><dd>No analytics, no crash reports, no accounts to create.</dd></div>
+        <div><dt>MIT licensed</dt><dd>Read it, fork it, host it. Nothing to subscribe to.</dd></div>
+      </dl>
+    </div>
+  </section>
 
-<div class="start">
-  <a class="start-btn" href="prerequisites.html">Get started</a>
-  <span>From nothing to a paired app — four steps, about five minutes after Hermes is up.</span>
-</div>
+  <!-- what it looks like -->
+  <section class="block" id="look">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">On the phone</p>
+          <h2>A conversation, not a chat window.</h2>
+        </div>
+        <p>Every bot on your host is a row. Tap one and you are where you left off — no session list, no titles to manage. Answers arrive as documents: headings, tables, code with its own copy button, tool runs folded into a single line you can open.</p>
+      </div>
 
-<h2 id="quick-start">Quick start</h2>
-<p>Three steps. The first needs root on the Hermes host; the others happen on the device.</p>
-<ol class="steps-list">
-  <li><strong>Install the host.</strong> One command, safe to re-run as an upgrade.
-    <div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh</code></pre><button class="copy" type="button" aria-label="Copy the host install command">Copy</button></div>
-  </li>
-  <li><strong>Pair a device</strong> on that host, with the phone in your hand — codes expire.
-    <div class="code"><pre><code>sudo hermeyd pair</code></pre><button class="copy" type="button" aria-label="Copy the pairing command">Copy</button></div>
-    It prints a six-digit code, a <code>https://&lt;host&gt;/?code=…</code> URL and a QR the app can scan.
-  </li>
-  <li><strong>Install the app and paste the code.</strong> iOS through AltStore or SideStore, macOS
-    from the disk image. <a href="apps.html">Both are unsigned</a> — that is the stated trade-off.</li>
-</ol>
+      <div class="gallery">
+        <figure>
+          <div class="phone-frame">
+            <img src="shots/chat-table.webp" width="806" height="1752" loading="lazy"
+                 alt="A reply in Hermey showing a markdown table of machine update state">
+          </div>
+          <figcaption><b>Real markdown</b>Tables, quotes and headings render as a document, not as plain text.</figcaption>
+        </figure>
+        <figure>
+          <div class="phone-frame">
+            <img src="shots/chat-tools.webp" width="806" height="1752" loading="lazy"
+                 alt="A turn in Hermey with folded tool runs and a reasoning section">
+          </div>
+          <figcaption><b>Work you can audit</b>Thirty tool calls become one line; reasoning opens when you want it.</figcaption>
+        </figure>
+        <figure>
+          <div class="phone-frame">
+            <img src="shots/bot-settings.webp" width="806" height="1752" loading="lazy"
+                 alt="A bot's settings screen in Hermey: Computer, Library, Model, Skills, MCP, Routines, Notes, Soul and Memory">
+          </div>
+          <figcaption><b>Per-bot settings</b>Computer, model, skills, routines, memory — all from the app.</figcaption>
+        </figure>
+        <figure>
+          <div class="phone-frame">
+            <img src="shots/ios-light-themes.webp" width="900" height="1957" loading="lazy"
+                 alt="The Parchment light theme selected in Hermey's Appearance settings">
+          </div>
+          <figcaption><b>Light when you want it</b>Parchment, for daylight.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
 
-<h2 id="start-here">Start here</h2>
-<div class="cards">
-  <a class="card" href="prerequisites.html"><span class="card-kicker">Start</span><strong>Getting started</strong>
-    <span>What Hermes has to be doing first, then install, publish, pair.</span></a>
-  <a class="card" href="install.html"><span class="card-kicker">Host</span><strong>Install the host</strong>
-    <span>The command, what it writes, the flags, and how to undo it.</span></a>
-  <a class="card" href="apps.html"><span class="card-kicker">Devices</span><strong>The apps</strong>
-    <span>Sideloading, first launch, quarantine, notifications, revocation.</span></a>
-  <a class="card" href="computer-use.html"><span class="card-kicker">Capability</span><strong>Local computer use</strong>
-    <span>Let bots drive the Mac you are sitting at — without SSH.</span></a>
-  <a class="card" href="agents.html"><span class="card-kicker">Automation</span><strong>For agents</strong>
-    <span>The install runbook written for an executor, with its verification gates.</span></a>
-  <a class="card" href="troubleshooting.html"><span class="card-kicker">Repair</span><strong>Troubleshooting</strong>
-    <span>Symptom, cause, fix — with the real log strings.</span></a>
-  <a class="card" href="security.html"><span class="card-kicker">Model</span><strong>Security</strong>
-    <span>Trust boundaries, invariants, and what is deliberately absent.</span></a>
-</div>
+  <!-- features -->
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">What it does</p>
+          <h2>Built for one person, one machine.</h2>
+        </div>
+        <p>Hermey is the front end to a host you already run, not a chat client bolted onto an API.</p>
+      </div>
 
-<h2 id="requirements">Requirements</h2>
-<div class="table-wrap"><table><thead><tr><th>Piece</th><th>Needs</th></tr></thead><tbody><tr><td>Host</td><td>Linux with systemd or macOS with launchd, <code>sudo</code> (it writes under <code>/opt</code>, <code>/etc</code> and <code>/var/lib</code>), and a working <code>hermes</code> install with an engine home. Tailscale is optional but recommended — without it the service is reachable only from the host itself</td></tr><tr><td>iPhone / iPad</td><td>iOS 17 or later, plus AltStore, SideStore or another signer</td></tr><tr><td>Mac</td><td>macOS 14 or later</td></tr></tbody></table></div>
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>One conversation per bot</h3><p>The bot list is the home screen. Open a bot and its thread resumes exactly where it stopped — no sessions to name, nothing to tidy.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>Live over your own network</h3><p>Streaming over a WebSocket on your tailnet, with the round trip shown in the header so a slow link is visible instead of mysterious.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Reads like a document</h3><p>Full markdown — headings, tables, quotes — with code blocks that carry their own copy button and tick, and reasoning you can open.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>Speaks, and shows pictures</h3><p>Read a long answer aloud in the system voice, attach files and screenshots, and open any image full screen at full resolution.</p></div></article>
+        <article class="feature"><span class="n">05</span><div><h3>The bot's own computer</h3><p>Open the headless desktop your agent works on in a pane beside the chat — mouse and keyboard, so you can watch a run or take over.</p></div></article>
+        <article class="feature"><span class="n">06</span><div><h3>Pair once, per device</h3><p>The host mints a short-lived code, a <code>https://&lt;host&gt;/?code=…</code> URL and a QR. Type the code or scan it on the phone or the Mac; the token stays in the Keychain.</p></div></article>
+        <article class="feature"><span class="n">07</span><div><h3>Driven from the keyboard</h3><p>⌘K opens the command palette; typing / in the composer shows the gateway's slash commands with autocomplete.</p></div></article>
+        <article class="feature"><span class="n">08</span><div><h3>Nothing in the middle</h3><p>The host is software you installed, on a machine you own. The apps dial it directly: no relay of ours, no login, no analytics.</p></div></article>
+        <article class="feature"><span class="n">09</span><div><h3>Finds anything it ever said</h3><p>Search runs across every bot's conversation at once and comes back newest first, each hit shown with the line around the match.</p></div></article>
+        <article class="feature"><span class="n">10</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
+      </div>
+    </div>
+  </section>
 
-<h2 id="two-halves">The two halves</h2>
-<div class="table-wrap"><table><thead><tr><th></th><th>Where it runs</th><th>What it is</th></tr></thead><tbody><tr><td><strong>Host service</strong></td><td><code>hermeyd</code> on <code>127.0.0.1:8788</code>, with the browser channel on <code>8790</code></td><td>Rust service that adapts the Hermes engine to the apps' protocol. It holds the device registry, mints single-use 30-second tickets, relays the engine's WebSocket, and issues the local bearer at <code>/var/lib/hermeyd/local.token</code> that host-side scripts send.</td></tr><tr><td><strong>Apps</strong></td><td>iPhone, iPad, Mac</td><td>SwiftUI clients. They hold a device key, never a host secret, and can only answer the questions the agent asks.</td></tr><tr><td><strong>Front door</strong></td><td><code>tailscale serve --bg http://127.0.0.1:8788</code></td><td>Terminates TLS with a real certificate at serve-root, so pairing URLs carry no port. It is the only front door: hermeyd refuses any bind but loopback, and the apps refuse a self-signed certificate.</td></tr></tbody></table></div>
+  <!-- secure sign-in -->
+  <section class="block" id="signin">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Secure sign-in</p>
+          <h2>Your password never reaches the bot.</h2>
+        </div>
+        <p>Tell a bot to book something, or to check a site you are already signed in to. If it needs a login, it finds the sign-in page itself and asks you there — with a card, not a chat message.</p>
+      </div>
 
-<p class="next-hint">New to this? Start with <a href="prerequisites.html">Getting Hermey running</a>,
-then read <a href="install.html">Install the host</a>.</p>
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>It finds the form first</h3><p>The bot follows the site's own login link, walks past account-choice screens and waits until a real password field is on screen. A page with search boxes is not a sign-in page, and it is not treated as one.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>A card, in your app</h3><p>The card names the site and the fields, and nothing else. You fill it in the Mac or iPhone app; a card that is never answered simply expires.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Typed the way the page wants it</h3><p>Email on one screen, password on the next, a six-box one-time code on the third — filled in order, submitted with the form's own button, in the browser running on the bot's desktop.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>One use, then gone</h3><p>The value is held in memory, handed straight to the browser and swept. No route returns it, no log line contains it, and the bot is told one thing: whether it worked.</p></div></article>
+      </div>
 
-    <nav class="pager" aria-label="Pages"><a class="next" href="prerequisites.html"><span>Next</span><strong>Getting Hermey running</strong></a></nav>
-  </main>
+      <p class="signin-more"><a href="docs/credentials.html">How the cards work, and what ships today →</a></p>
+    </div>
+  </section>
 
-  <nav class="toc" aria-label="On this page">
-    <h2>On this page</h2>
-    <ul><li><a href="#quick-start">Quick start</a></li><li><a href="#start-here">Start here</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#two-halves">The two halves</a></li></ul>
-  </nav>
-</div>
+  <!-- integrations -->
+  <section class="block dark" id="integrations">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Integrations</p>
+          <h2>Your accounts, connected once.</h2>
+        </div>
+        <p>Eight services — Gmail, Calendar, Drive, Docs, Sheets and Maps, plus Cloudflare and Vercel by API key — connected through your own Composio project key. The bot gets a tool, not a token, and you can connect the same service twice when you have two accounts.</p>
+      </div>
 
-<footer class="docfoot">
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>One card per connection</h3><p>Each service is a card with its own logo and state. Connect, rename, or disconnect a single account by id — never "disconnect gmail", which would have to guess.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>Two Gmails, two names</h3><p>Connect a service again and name the account the way you say it out loud. That name is what the bot acts on, so "send it from the work one" means something.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Yours, not ours</h3><p>Tokens live on Composio under your key; the key sits at <code>/etc/hermey/composio.key</code> on your host. Your mail and calendars are never copied into Hermey.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>It supplies the one-time code</h3><p>With Gmail connected, a bot reads the code a site just emailed you and hands it to the sign-in flow, so you are asked only for your password.</p></div></article>
+      </div>
+
+      <p class="signin-more"><a href="docs/integrations.html">Connecting services, multiple accounts, and what each one does →</a></p>
+    </div>
+  </section>
+
+  <!-- computer use -->
+  <section class="block dark" id="computer">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Local computer use</p>
+          <h2>Your Mac, without Remote Login.</h2>
+        </div>
+        <p>The Mac app is the executor. Your host sends a command; the app performs it under your account and returns the result. Nothing listens for SSH, and no port is opened on the Mac.</p>
+      </div>
+
+      <div class="dark-grid" style="margin-top: clamp(2.5rem, 5vw, 4rem);">
+        <div>
+          <h3>What bots can do</h3>
+          <ul class="rule-list">
+            <li>Run one-shot commands on the Mac — including local builds — with a working directory you choose.</li>
+            <li>Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an app.</li>
+            <li>Read, write and list files in one shared workspace, with downloads from the private browser surface.</li>
+            <li>Open URLs and inspect a page snapshot without leaving the conversation.</li>
+          </ul>
+
+          <h3 style="margin-top: 2.4rem;">How it stays contained</h3>
+          <ul class="rule-list">
+            <li>Computer use starts switched off. Nothing is queried until you enable it.</li>
+            <li>Accessibility, Screen Recording, Input Monitoring and Automation each have their own status and Settings link.</li>
+            <li>One sorted queue drives the desktop, so two bots cannot interleave actions. Revoking the Mac closes its link immediately.</li>
+            <li>The app must be running. When it closes, computer use reports the Mac as offline.</li>
+          </ul>
+
+          <p style="font-size: .95rem; max-width: 62ch;">Bots reach it through the host's own <code>computer</code> tools — observe, act, files, browser — over the same authenticated link. There is no separate command to learn or install.</p>
+        </div>
+
+        <div class="dark-shots">
+          <figure>
+            <div class="mac-frame">
+              <img src="shots/mac-chat.webp" width="1600" height="935" loading="lazy"
+                   alt="Hermey for macOS: a bot sidebar beside a conversation answering a question about self-hosting n8n">
+            </div>
+            <figcaption>One window: bots on the left, the conversation on the right.</figcaption>
+          </figure>
+          <figure>
+            <div class="mac-frame">
+              <img src="shots/mac-table.webp" width="1600" height="944" loading="lazy"
+                   alt="Hermey for macOS showing a wide markdown table of node versions across the fleet">
+            </div>
+            <figcaption>Wide answers get the room they need — tables stay readable.</figcaption>
+          </figure>
+          <figure>
+            <div class="mac-frame">
+              <img src="shots/mac-light-connection.webp" width="1400" height="1005" loading="lazy"
+                   alt="Hermey for macOS on the Parchment light theme, showing the Connection settings with a paired host">
+            </div>
+            <figcaption>The same window on Parchment — settings and body text follow the palette, system chrome included.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- install -->
+  <section class="block" id="install">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Install</p>
+          <h2>Three steps to chat.<br>One more for the Mac.</h2>
+        </div>
+        <p>The host runs where Hermes already runs. The apps are unsigned, so they are sideloaded or opened once from the command line — that is the price of not having an account.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <span class="n">Step one</span>
+          <h3>Install the host</h3>
+          <p>On the machine that already runs Hermes. The script is a release asset — it downloads the published binary, checks it against the release's <code>SHA256SUMS</code> and installs <code>hermeyd</code>; the same file is in the repo at <code>setup/install.sh</code> if you want to read it first. <code>--from-source</code> builds it with cargo instead.</p>
+          <p class="fineprint">Then <code>curl -fsS http://127.0.0.1:8788/v1/health</code> answers <code>{"status":"ok",…}</code>, and <code>hermeyd --gateway-check</code> exits 0. Two things break setups: <code>hermeyd</code> must run as the user that owns the Hermes install, and one gateway per <code>HERMES_HOME</code> — see <a href="docs/prerequisites.html">Getting Hermey running</a>.</p>
+          <div class="snippet">
+            <code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh</code>
+            <button class="copy" type="button" aria-label="Copy the host install command">Copy</button>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="n">Step two</span>
+          <h3>Pair the app</h3>
+          <p><code>hermeyd pair</code> prints a six-digit code, a pairing URL of the form <code>https://&lt;host&gt;/?code=…</code> and a QR code the app can scan. Enter the code or scan it; the token stays in the Keychain.</p>
+          <div class="snippet">
+            <code>sudo hermeyd pair</code>
+            <button class="copy" type="button" aria-label="Copy the pairing command">Copy</button>
+          </div>
+        </div>
+
+        <div class="step">
+          <span class="n">Step three</span>
+          <h3>Talk to your bots</h3>
+          <p>Every profile on the host appears as a bot. Pick one and its conversation resumes where it stopped.</p>
+          <p class="fineprint" style="margin-top: .8rem;">cody · atlas · crony · sage — whatever your host runs.</p>
+        </div>
+      </div>
+
+      <div class="platform" style="margin-top: clamp(2rem, 4vw, 3rem);">
+        <h3 style="font-size: 1.2rem; margin-bottom: .4rem;">Optional: let bots use the Mac</h3>
+        <p style="font-size: .95rem; max-width: 62ch;">Open <strong>Settings → Computer</strong> on the Mac and switch on <em>Let bots use this computer</em>. Grant only the macOS permissions you want, from the buttons in that panel — nothing is requested just by opening Settings. Keep Remote Login off; the app does the work.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- platforms -->
+  <section class="block" id="platforms">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Platforms</p>
+          <h2>Two apps, one conversation.</h2>
+        </div>
+        <p>The phone is for when you are away from the desk; the Mac app is for when you are not. Both talk to the same host, and each keeps its own place in the same thread.</p>
+      </div>
+
+      <div class="platforms">
+        <div class="platform">
+          <h3>iPhone &amp; iPad</h3>
+          <p class="kicker">iOS 17 or later · installed with AltStore or SideStore</p>
+          <ul>
+            <li>Add the source once, then install and update from it</li>
+            <li>Re-signs with your own certificate — no developer account needed</li>
+            <li>Pair with the code the host prints, or scan its QR</li>
+            <li>Voice input, file cards and approval settings where you expect them</li>
+          </ul>
+          <div class="links">
+            <a href="https://macblizzard.github.io/hermey/altstore.json">AltStore source</a>
+            <a href="https://github.com/macblizzard/hermey/blob/main/docs/INSTALL.md">Sideloading guide</a>
+          </div>
+        </div>
+
+        <div class="platform">
+          <h3>macOS</h3>
+          <p class="kicker">macOS 14 or later · disk image, unsigned</p>
+          <ul>
+            <li>Open the disk image and drag Hermey onto Applications</li>
+            <li>Sidebar, chat and the bot's computer in one window</li>
+            <li>⌘K for the command palette, / for slash commands, ⌘↩ to send</li>
+            <li>Settings → Computer for local execution, permissions and revoke</li>
+          </ul>
+          <p style="font-size: .88rem; color: var(--muted); margin-bottom: .6rem;">Unsigned, so macOS quarantines the first launch. Authorise it once:</p>
+          <div class="snippet">
+            <code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code>
+            <button class="copy" type="button" aria-label="Copy the quarantine removal command">Copy</button>
+          </div>
+          <div class="links" style="margin-top: 1rem;">
+            <a href="https://github.com/macblizzard/hermey/releases/latest">Download for macOS</a>
+            <a href="https://github.com/macblizzard/hermey">Build it yourself</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- docs -->
+  <section class="block" id="docs">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Documentation</p>
+          <h2>Where the details live.</h2>
+        </div>
+        <p>Install, sideloading, computer use, the agent runbook and every failure we know about — on its own site, with a search box.</p>
+      </div>
+
+      <div class="platforms">
+        <div class="platform">
+          <h3>Setting it up</h3>
+          <ul class="doc-links">
+            <li><a href="docs/install.html">Install the host</a><span>The one command, the flags, what lands on disk.</span></li>
+            <li><a href="docs/apps.html">The apps</a><span>Sideloading, first launch, notifications, revocation.</span></li>
+            <li><a href="docs/computer-use.html">Local computer use</a><span>Permissions, containment, the workspace.</span></li>
+          </ul>
+        </div>
+        <div class="platform">
+          <h3>Running it</h3>
+          <ul class="doc-links">
+            <li><a href="docs/agents.html">For agents</a><span>The install runbook, with its verification gates.</span></li>
+            <li><a href="docs/troubleshooting.html">Troubleshooting</a><span>Symptom, cause, fix — with the real log strings.</span></li>
+            <li><a href="docs/reference.html">Reference</a><span>Commands, ports, paths and download URLs.</span></li>
+            <li><a href="docs/security.html">Security</a><span>The threat model, plainly stated.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="docs-more"><a href="docs/">Read the documentation →</a></p>
+    </div>
+  </section>
+
+  <!-- faq -->
+  <section class="block" id="faq">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Questions</p>
+          <h2>The things people ask before installing.</h2>
+        </div>
+        <p>If something here is wrong or missing, the repo takes issues — and the whole client is small enough to read.</p>
+      </div>
+
+      <div class="faq">
+        <details>
+          <summary>Do I need Hermes already running?</summary>
+          <div class="answer">Yes. Hermey is a client; the agent, its tools and its memory live on your host. If you have a Hermes install with profiles you talk to, Hermey talks to those same profiles.</div>
+        </details>
+        <details>
+          <summary>Why Tailscale?</summary>
+          <div class="answer">Because it gives you a private address for your own machine from anywhere, without exposing a port to the internet. The apps speak to that address directly; there is no relay of ours in between.</div>
+        </details>
+        <details>
+          <summary>Is it signed? Do I need a developer account?</summary>
+          <div class="answer">The builds are unsigned on purpose — signing them would tie them to one team. On iPhone you sideload with AltStore or SideStore, which re-signs with a certificate you already have. On the Mac you open it once and macOS remembers.</div>
+        </details>
+        <details>
+          <summary>Does it send anything anywhere?</summary>
+          <div class="answer">No analytics, no crash reporting, no account. The app stores a host address and a token, and talks to that host. Anything that leaves your machine leaves because your agent chose to send it.</div>
+        </details>
+        <details>
+          <summary>Do I need Remote Login or SSH turned on?</summary>
+          <div class="answer">No. With Computer use enabled, the Mac app itself connects out to your host and runs commands there. Remote Login can stay off, and no inbound port is opened on the Mac.</div>
+        </details>
+        <details>
+          <summary>What macOS permissions does computer use need?</summary>
+          <div class="answer">Accessibility for clicks and keys, Screen Recording for screenshots, Input Monitoring for taking control back, and Automation when an app is driven with AppleScript. Each has its own status in Settings → Computer and its own link to System Settings. Nothing is asked for until you choose to enable or check it.</div>
+        </details>
+        <details>
+          <summary>Can more than one bot drive my Mac?</summary>
+          <div class="answer">Yes, but not at the same time. A single queue serialises desktop actions and every action is attributed to the bot that requested it. All bots share one workspace folder.</div>
+        </details>
+        <details>
+          <summary>What does it cost?</summary>
+          <div class="answer">Nothing. MIT licensed, source on GitHub, no in-app purchases and nothing to subscribe to.</div>
+        </details>
+        <details>
+          <summary>Can I run it against more than one host?</summary>
+          <div class="answer">Yes — pair another host from Settings and switch between them. Each host keeps its own pairing, its own bots and its own read state.</div>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-foot">
   <div class="wrap">
-    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
-    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
-      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+    <div class="foot-row">
+      <a class="brand" href="#top">Hermey<span class="dot">.</span></a>
+      <nav class="foot-links" aria-label="Elsewhere">
+        <a href="https://github.com/macblizzard/hermey">Source</a>
+        <a href="docs/">Docs</a>
+        <a href="https://github.com/macblizzard/hermey/issues">Issues</a>
+        <a href="https://github.com/macblizzard/hermey/releases/latest">Releases</a>
+      </nav>
+    </div>
+    <p class="colophon disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. <a href="docs/prerequisites.html">Getting Hermey running</a></p>
+    <p class="colophon">MIT licensed · no analytics, no accounts · built for a host you own.</p>
   </div>
 </footer>
 
-<script src="assets/docs.js?v=64bb989bfe"></script>
+<script>
+  // Copy buttons: these commands appear only here, so a copy that fails silently is worse than none.
+  // The label reports what actually happened and resets itself.
+  document.querySelectorAll('.copy').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var code = button.parentElement.querySelector('code');
+      if (!code) return;
+      var text = code.textContent.trim();
+      var reset = function (label) {
+        button.textContent = label;
+        button.dataset.done = '1';
+        setTimeout(function () { button.textContent = 'Copy'; delete button.dataset.done; }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { reset('Copied'); },
+                                                 function () { reset('Select it'); });
+      } else {
+        reset('Select it');
+      }
+    });
+  });
+</script>
 </body>
 </html>

@@ -45,9 +45,9 @@ can only answer questions the agent asks — never give itself permission.</stro
 invariants are for, and the evidence (a test, or an explicit gap) for each one.</p>
 <div class="note info"><p><strong>The Python bridge this document was written about has been removed.</strong> Its code lived in
 <code>Bridge/hermes_bridge</code>, which is no longer in this repository. The host service now is <code>hermeyd/</code>
-(Rust); its contract, its routes and its own tests are <a href="https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md"><code>HERMEYD.md</code></a>. Everything below
-describes the trust boundaries the apps still rely on — read &quot;the bridge&quot; as &quot;hermeyd&quot;, and check
-<code>hermeyd/src</code> for what actually enforces each invariant today.</p></div>
+(Rust); its contract, its routes and its own tests are <a href="https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md"><code>HERMEYD.md</code></a>. The trust
+boundaries and threats below still apply — read &quot;the bridge&quot; as &quot;hermeyd&quot; — but §2's invariant table
+is the bridge's own audit, and says so at its head.</p></div>
 <p>Scope: <code>hermes_bridge</code> as it was (the only new server-side code at the time), the <code>wss://</code> path into
 it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
 item, or a <code>0600</code> file on the unsigned Mac build) is described where it matters, but not audited
@@ -112,9 +112,20 @@ adds no privilege; the point is that it does not <em>widen</em> what an attacker
 <li><strong>The tailnet is the outer wall.</strong> Every control below assumes an attacker who is already on the
 tailnet or has stolen a device; controls that assume &quot;nobody can reach the port&quot; are marked as such.</li>
 </ul>
-<h2 id="2-invariants-and-the-test-that-holds-each-one">2. Invariants, and the test that holds each one</h2>
-<p>Every row is enforced in code and pinned by a test in <code>Tools/qa</code> (run with
-<code>python -m pytest -q Tools/qa</code>).</p>
+<h2 id="2-invariants-and-where-each-one-is-enforced-today">2. Invariants, and where each one is enforced today</h2>
+<p><strong>The table below is the audit of the retired Python bridge.</strong> It is kept because it is the reasoning
+behind the controls and records what each row used to be pinned by — not as a description of
+<code>hermeyd</code>. The modules and <code>test_*</code> names in its last two columns went with <code>Bridge/hermes_bridge</code>;
+there is no <code>Tools/qa</code> to run any more.</p>
+<p>For the service that runs today the evidence is its own code and tests:</p>
+<div class="code"><pre><code>cd hermeyd &amp;&amp; cargo test                 # the unit and route tests, in hermeyd/src
+scripts/smoke-hermeyd.sh                 # end-to-end: real HTTP, real state, prints PASS per check</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p><code>scripts/smoke-hermeyd.sh</code> is the one that proves the properties a reader cares about most — health,
+a minted single-use code, a registered device, a rejection on replay, a bearer-less <code>401</code>, a refused
+revoke, and a refused non-loopback bind. Where a row below states a number, check it against
+<code>hermeyd/src</code> before quoting it: pairing codes are <strong>6 digits</strong> (not 8), the code TTL and device cap
+are the constants in <code>hermeyd/src/routes.rs</code> (<code>PAIRING_CODE_TTL_SECONDS</code>, <code>MAX_DEVICES</code>), and the
+attempt throttle lives in <code>hermeyd/src/pairing.rs</code>.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
@@ -404,7 +415,8 @@ ACLs, it can reach <code>/v1/health</code> and attempt claims (T2 covers the cos
 </ul>
 <h2 id="4-gaps">4. Gaps</h2>
 <p>Each is a real difference between the design and the implementation, with the impact and the fix.
-<code>test_*</code> names refer to <code>Tools/qa</code>.</p>
+The <code>test_*</code> names below are the bridge's own suite and are historical; the gaps themselves are
+statements about the bridge's design, so re-check one against <code>hermeyd/src</code> before relying on it.</p>
 <p><strong>G1 — no proof-of-possession on the token exchange (medium).</strong> <code>POST /v1/token</code> accepts
 <code>{device_id, refresh_token}</code>; the Ed25519 key registered at pairing is stored but never used to verify
 a signed assertion (<code>02-architecture.md</code> §6.4 asks for one). A stolen refresh token is therefore a
@@ -600,7 +612,7 @@ count — never frame content, because a screen shows passwords.</li>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#1-trust-boundaries">1. Trust boundaries</a></li><li><a href="#2-invariants-and-the-test-that-holds-each-one">2. Invariants, and the test that holds each one</a></li><li><a href="#3-threat-model">3. Threat model</a></li><li><a href="#4-gaps">4. Gaps</a></li><li><a href="#5-operating-it">5. Operating it</a></li><li><a href="#6-what-is-deliberately-absent">6. What is deliberately absent</a></li><li><a href="#surface-map-what-is-reachable-without-a-device-ticket">Surface map: what is reachable without a device ticket</a></li><li><a href="#known-residual-risks-2026-11-audit">Known residual risks (2026-11 audit)</a></li><li><a href="#bot-to-bot-messages">Bot-to-bot messages</a></li><li><a href="#threat-model-stated-plainly-2026-11-audit">Threat model, stated plainly (2026-11 audit)</a></li><li><a href="#bot-management-paired-device">Bot management (paired device)</a></li><li><a href="#bot-computer-shared-desktop">Bot computer (shared desktop)</a></li></ul>
+    <ul><li><a href="#1-trust-boundaries">1. Trust boundaries</a></li><li><a href="#2-invariants-and-where-each-one-is-enforced-today">2. Invariants, and where each one is enforced today</a></li><li><a href="#3-threat-model">3. Threat model</a></li><li><a href="#4-gaps">4. Gaps</a></li><li><a href="#5-operating-it">5. Operating it</a></li><li><a href="#6-what-is-deliberately-absent">6. What is deliberately absent</a></li><li><a href="#surface-map-what-is-reachable-without-a-device-ticket">Surface map: what is reachable without a device ticket</a></li><li><a href="#known-residual-risks-2026-11-audit">Known residual risks (2026-11 audit)</a></li><li><a href="#bot-to-bot-messages">Bot-to-bot messages</a></li><li><a href="#threat-model-stated-plainly-2026-11-audit">Threat model, stated plainly (2026-11 audit)</a></li><li><a href="#bot-management-paired-device">Bot management (paired device)</a></li><li><a href="#bot-computer-shared-desktop">Bot computer (shared desktop)</a></li></ul>
   </nav>
 </div>
 

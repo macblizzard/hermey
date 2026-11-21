@@ -102,7 +102,10 @@ prints the <code>launchctl</code> commands; it does not bootstrap a daemon itsel
 <li>Installs the <strong><code>hermes-genui</code></strong> plugin into <code>&lt;engine&gt;/plugins/hermes-genui</code>.</li>
 <li>Runs <code>hermeyd --gateway-check</code>; exit <code>75</code> means another gateway owns this <code>HERMES_HOME</code> and is
 reported as a warning with the remedy, not a failure.</li>
-<li>Prints the exact <code>tailscale serve</code> command and the token path. It never runs <code>tailscale serve</code>.</li>
+<li>Publishes the service with <code>tailscale serve --bg http://127.0.0.1:8788</code> at the serve root, sets
+<code>HERMEYD_PUBLIC_HOST</code> to the node's MagicDNS name, and prints a pairing code and URL. It prints
+the command instead of running it only when it cannot: no <code>tailscale</code>, no logged-in node, or a
+serve root another service owns. <code>--no-serve</code> skips publishing.</li>
 </ol>
 <p>Re-running it is the upgrade path. Nothing else on the host is modified. If the platform is not
 published, or policy forbids a downloaded binary:</p>
@@ -127,7 +130,7 @@ sudo ss -ltnp | grep -E '8788|8790'     # both bound to 127.0.0.1, never 0.0.0.0
 ls &lt;engine&gt;/plugins/hermes-genui/desktop/plugin.js   # missing -&gt; every card is 503</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
 <h2 id="3-pair-the-humans-device">3. Pair the human's device</h2>
 <div class="code"><pre><code>curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start
-# {&quot;code&quot;:&quot;12345678&quot;,&quot;host&quot;:&quot;localhost&quot;,&quot;expires_at&quot;:…}</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+# {&quot;code&quot;:&quot;482913&quot;,&quot;host&quot;:&quot;localhost&quot;,&quot;expires_at&quot;:…}</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
 <p><code>/v1/pair/start</code> answers on loopback only. Codes are short-lived — mint a fresh one when the human is
 actually holding the phone. Tell them:</p>
 <ul>
