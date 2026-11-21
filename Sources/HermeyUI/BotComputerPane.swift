@@ -43,6 +43,12 @@ public struct BotComputerPane: View {
     @State private var isBusy = false
     @State private var errorText: String?
     @State private var loop = 0
+    /// Full screen when no shell owns the verb (the phone): the Mac's shell keeps the flag itself,
+    /// because its *window* has to follow it.
+    @State private var localFullScreen = false
+    /// The viewer's zoom, for the pane's own controls. The page holds the transform and reports the
+    /// level back through this object.
+    @StateObject private var viewer = BotComputerViewerControls()
 
     public init(profile: String,
                 displayName: String,
@@ -62,19 +68,54 @@ public struct BotComputerPane: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            header
-            Rectangle().fill(Tokens.frame).frame(height: 1)
+            // In full screen the pane's own bar collapses to nothing rather than being removed: the
+            // subtree under it holds the web view, and the socket inside that. Changing the VStack's
+            // children would rebuild the page and drop the stream on every toggle.
+            chrome
+                .frame(height: fullScreenActive ? 0 : nil)
+                .opacity(fullScreenActive ? 0 : 1)
+                .clipped()
+                .allowsHitTesting(!fullScreenActive)
             content
             if let errorText {
                 errorStrip(errorText)
             }
         }
         .background(Tokens.canvas)
+        // Full screen floats its own bar over the picture: take-over, zoom and the way out. On the
+        // Mac the pane also leaves the window's chrome behind, because the window itself goes full
+        // screen; on the phone this is the whole screen already, so the bar is what replaces the
+        // header.
+        .overlay(alignment: .topTrailing) {
+            if fullScreenActive {
+                fullScreenBar
+                    .padding(14)
+                    .transition(.opacity)
+            }
+        }
+        // Not on the whole pane: the *picture* runs edge to edge in full screen, while the bar that
+        // leaves full screen stays inside the safe area — on a notched phone a control 14 pt from
+        // the glass sits under the island.
+        #if os(iOS)
+        .statusBarHidden(fullScreenActive)
+        #endif
+        // Escape leaves full screen on both platforms. On the Mac the shell's own catcher usually
+        // answers first (it sits in the window's event monitor); this covers the pane when it is
+        // shown anywhere else, and the hardware-keyboard case on the phone.
+        .onKeyPress(.escape) {
+            guard fullScreenActive else { return .ignored }
+            toggleFullScreen()
+            return .handled
+        }
         // While watching, the picture is a live stream, not a still: no polling needed. While it is
         // not open, the thumbnail is refreshed at a human rate — three seconds is the same cadence
         // the Desktop's own Screen pane uses.
         .task(id: loop) {
             await refreshLoop()
+        }
+        // A new socket is a new page, so the last viewer's zoom no longer describes anything.
+        .onChange(of: socketURL) { _, _ in
+            viewer.resetLocalScale()
         }
         .onDisappear {
             // Closing the pane hands control back. Leaving a stale human lease would lock every bot
@@ -84,7 +125,28 @@ public struct BotComputerPane: View {
         }
     }
 
+    /// Full screen, whichever side owns the flag: a call site that supplies the toggle owns it (the
+    /// Mac's shell has to move its window too), otherwise the pane does.
+    private var fullScreenActive: Bool {
+        onToggleFullScreen == nil ? localFullScreen : isFullScreen
+    }
+
+    private func toggleFullScreen() {
+        if let onToggleFullScreen {
+            onToggleFullScreen()
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) { localFullScreen.toggle() }
+        }
+    }
+
     // MARK: - Header
+
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            header
+            Rectangle().fill(Tokens.frame).frame(height: 1)
+        }
+    }
 
     private var header: some View {
         HStack(spacing: 10) {
@@ -100,18 +162,18 @@ public struct BotComputerPane: View {
             Spacer(minLength: 8)
             if isBusy { ProgressView().controlSize(.small) }
             actionButtons
-            if let onToggleFullScreen {
-                Button {
-                    onToggleFullScreen()
-                } label: {
-                    Image(systemName: isFullScreen
-                          ? "arrow.down.right.and.arrow.up.left"
-                          : "arrow.up.left.and.arrow.down.right")
-                }
-                .buttonStyle(.borderless)
-                .help(isFullScreen ? "Leave full screen" : "Full screen")
-                .accessibilityLabel(isFullScreen ? "Leave full screen" : "Full screen")
+            // Always here, on both platforms: the phone's full screen is the pane's own (no window
+            // to move), the Mac's belongs to the window.
+            Button {
+                toggleFullScreen()
+            } label: {
+                Image(systemName: fullScreenActive
+                      ? "arrow.down.right.and.arrow.up.left"
+                      : "arrow.up.left.and.arrow.down.right")
             }
+            .buttonStyle(.borderless)
+            .help(fullScreenActive ? "Leave full screen (Esc)" : "Full screen")
+            .accessibilityLabel(fullScreenActive ? "Leave full screen" : "Full screen")
             if let onClose {
                 Button { onClose() } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
@@ -158,6 +220,78 @@ public struct BotComputerPane: View {
         }
     }
 
+    // MARK: - Full screen bar
+
+    /// The chrome full screen keeps: what the header carried that a person still needs while the
+    /// desktop is the whole screen — take-over / hand back, zoom, and the way out. Over a picture
+    /// that can be any colour, so it is its own dark capsule rather than theme colours.
+    private var fullScreenBar: some View {
+        HStack(spacing: 10) {
+            actionButtons
+            barRule
+            zoomControls
+            barRule
+            Button {
+                toggleFullScreen()
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.white)
+            .help("Leave full screen (Esc)")
+            .accessibilityLabel("Leave full screen")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.black.opacity(0.62), in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private var barRule: some View {
+        Rectangle().fill(Color.white.opacity(0.18)).frame(width: 1, height: 16)
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 8) {
+            zoomButton("minus.magnifyingglass", label: "Zoom out", enabled: viewer.canZoomOut) {
+                viewer.zoom(by: 1 / 1.25)
+            }
+            Text("\(Int((viewer.scale * 100).rounded())) %")
+                .font(.system(size: TypeScale.label, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(Color.white.opacity(0.86))
+                .frame(width: 40)
+                .fixedSize()
+            zoomButton("plus.magnifyingglass", label: "Zoom in", enabled: viewer.canZoomIn) {
+                viewer.zoom(by: 1.25)
+            }
+            Button("Fit") { viewer.resetZoom() }
+                .font(TypeScale.font(TypeScale.label))
+                .buttonStyle(.plain)
+                .foregroundStyle(viewer.canZoomOut ? Color.white : Color.white.opacity(0.4))
+                .disabled(!viewer.canZoomOut)
+                .fixedSize()
+        }
+    }
+
+    private func zoomButton(_ symbol: String, label: String, enabled: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(enabled ? Color.white : Color.white.opacity(0.35))
+        .disabled(!enabled)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -167,7 +301,8 @@ public struct BotComputerPane: View {
             if isLive, let socketURL, let resources {
                 // One web view per socket. A new ticket means a new page: reusing the old one left a
                 // dead viewer drawing nothing but its black background.
-                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl) { event in
+                BotComputerWebView(url: socketURL, resources: resources, viewOnly: !holdsControl,
+                                   controls: viewer) { event in
                     handle(event, from: socketURL)
                 }
                 .id(socketURL)
@@ -189,6 +324,7 @@ public struct BotComputerPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(.container, edges: fullScreenActive ? .all : Edge.Set())
     }
 
     private var connectingOverlay: some View {

@@ -1,5 +1,6 @@
 import SwiftUI
 import HermesKit
+import Combine
 #if canImport(WebKit)
 import WebKit
 
@@ -106,22 +107,74 @@ public struct BotComputerResources: Sendable {
     }
 }
 
+/// The viewer's zoom, as the pane's own chrome sees it.
+///
+/// The zoom itself lives in the page: a CSS transform on the element noVNC draws into, which is what
+/// keeps the pointer mapping exact (`clientToElement()` is patched to undo that transform). This
+/// object is the wire across that boundary — it sends the verbs the page exposes and carries back the
+/// level the page reports, so the pane's buttons can show 100 %–500 % and dim at either end.
+public final class BotComputerViewerControls: ObservableObject {
+    /// The range both sides clamp to: the page states it once and so does this.
+    public static let minScale: Double = 1
+    public static let maxScale: Double = 5
+
+    @Published public private(set) var scale: Double = 1
+
+    private weak var webView: WKWebView?
+
+    public init() {}
+
+    public var canZoomIn: Bool { scale < Self.maxScale - 0.001 }
+    public var canZoomOut: Bool { scale > Self.minScale + 0.001 }
+
+    func attach(_ webView: WKWebView) { self.webView = webView }
+
+    public func zoom(by factor: Double) {
+        run("window.hermeyZoomBy && window.hermeyZoomBy(\(Self.number(factor)))")
+    }
+
+    public func resetZoom() {
+        run("window.hermeyZoomReset && window.hermeyZoomReset()")
+    }
+
+    /// A new socket is a new page, and a new page is at 1×: carrying the last viewer's level here
+    /// would label a fresh picture with a zoom it does not have.
+    func resetLocalScale() { scale = Self.minScale }
+
+    func note(scale value: Double) {
+        guard value.isFinite else { return }
+        let clamped = min(Self.maxScale, max(Self.minScale, value))
+        if abs(clamped - scale) > 0.004 { scale = clamped }
+    }
+
+    private func run(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
+    }
+
+    private static func number(_ value: Double) -> String {
+        String(format: "%.4f", value)
+    }
+}
+
 #if os(macOS)
 public struct BotComputerWebView: NSViewRepresentable {
     public let url: URL
     public let resources: BotComputerResources
     public let viewOnly: Bool
+    public let controls: BotComputerViewerControls?
     public var onEvent: (BotComputerEvent) -> Void
 
     public init(url: URL, resources: BotComputerResources, viewOnly: Bool,
+                controls: BotComputerViewerControls? = nil,
                 onEvent: @escaping (BotComputerEvent) -> Void = { _ in }) {
         self.url = url
         self.resources = resources
         self.viewOnly = viewOnly
+        self.controls = controls
         self.onEvent = onEvent
     }
 
-    public func makeCoordinator() -> Coordinator { Coordinator(onEvent: onEvent) }
+    public func makeCoordinator() -> Coordinator { Coordinator(onEvent: onEvent, controls: controls) }
 
     public func makeNSView(context: Context) -> WKWebView {
         makeWebView(context)
@@ -136,17 +189,20 @@ public struct BotComputerWebView: UIViewRepresentable {
     public let url: URL
     public let resources: BotComputerResources
     public let viewOnly: Bool
+    public let controls: BotComputerViewerControls?
     public var onEvent: (BotComputerEvent) -> Void
 
     public init(url: URL, resources: BotComputerResources, viewOnly: Bool,
+                controls: BotComputerViewerControls? = nil,
                 onEvent: @escaping (BotComputerEvent) -> Void = { _ in }) {
         self.url = url
         self.resources = resources
         self.viewOnly = viewOnly
+        self.controls = controls
         self.onEvent = onEvent
     }
 
-    public func makeCoordinator() -> Coordinator { Coordinator(onEvent: onEvent) }
+    public func makeCoordinator() -> Coordinator { Coordinator(onEvent: onEvent, controls: controls) }
 
     public func makeUIView(context: Context) -> WKWebView {
         makeWebView(context)
@@ -163,12 +219,26 @@ public struct BotComputerWebView: UIViewRepresentable {
 extension BotComputerWebView {
     public final class Coordinator: NSObject, WKScriptMessageHandler {
         let onEvent: (BotComputerEvent) -> Void
-        init(onEvent: @escaping (BotComputerEvent) -> Void) { self.onEvent = onEvent }
+        /// Held weakly: the pane owns this object, and a coordinator that outlived it would only be
+        /// keeping a dead web view's zoom object alive.
+        weak var controls: BotComputerViewerControls?
+
+        init(onEvent: @escaping (BotComputerEvent) -> Void,
+             controls: BotComputerViewerControls?) {
+            self.onEvent = onEvent
+            self.controls = controls
+        }
 
         public func userContentController(_ controller: WKUserContentController,
                                           didReceive message: WKScriptMessage) {
             guard let body = message.body as? [String: Any],
                   let event = body["event"] as? String else { return }
+            // The page owns the zoom level; this is it saying where it got to. Not an event the pane
+            // acts on, so it never reaches `onEvent`.
+            if event == "zoom" {
+                controls?.note(scale: (body["scale"] as? NSNumber)?.doubleValue ?? 1)
+                return
+            }
             onEvent(BotComputerEvent(name: event, message: body["message"] as? String))
         }
     }
@@ -181,6 +251,9 @@ extension BotComputerWebView {
         // noVNC may start audio/notification-less media; nothing else is allowed to pop windows.
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        // The pane's own zoom buttons speak to this view; the page is the only thing that knows the
+        // transform, so every verb crosses as JavaScript.
+        controls?.attach(webView)
         #if os(iOS)
         // macOS's WKWebView has neither: `isOpaque` is get-only and there is no backgroundColor.
         webView.isOpaque = false
