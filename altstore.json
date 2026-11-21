@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.609",
-          "buildVersion": "609",
-          "date": "2026-11-20T23:54:28Z",
-          "localizedDescription": "Build 0.1.609 (609).",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.609/Hermey-0.1.609-b609.ipa",
-          "size": 3668203,
+          "version": "0.1.610",
+          "buildVersion": "610",
+          "date": "2026-11-21T14:31:08Z",
+          "localizedDescription": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's \u2922 hands the Mac's *window* to full\n  screen and drops the header, status bar and safe-area inset on the phone. Either platform keeps one floating\n  bar \u2014 take-over / hand back, zoom \u2212/+, the level, Fit, exit \u2014 and the picture zooms 1\u00d7\u20135\u00d7 and pans, clamped to\n  its edges, with take-over clicks landing on the right framebuffer pixel at any zoom. `Esc` exits.\n\n### Fixed\n- **The full-screen button actually moves the window.** Turning full screen on toggled the window without\n  adopting `.fullScreenPrimary`, which macOS accepts and then ignores: the pane grew, the menu bar, dock and\n  traffic lights stayed, and nothing said why. The behaviour is adopted first, and the request and any refusal\n  are logged with the window's style mask.\n- **Looking a conversation up no longer changes the selected bot.** `endlessSession(for:)` selected the bot as a\n  side effect, so background readers could move the user's screen \u2014 reported as the selection jumping between\n  bots mid-conversation. A lookup now returns before anything is selected.\n- **Release notes reach the update dialog.** The publisher read `--notes` at six call sites and the release\n  script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds\n  the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.610/Hermey-0.1.610-b610.ipa",
+          "size": 3685014,
           "minOSVersion": "17.0",
-          "sha256": "ac2b9bf7fc91a8118105a398569782f6aae369430b0bb6d714928b8ae916db3c"
+          "sha256": "2905d4c913cd0f305dc622418767bddd43f3169a91040d415d882483b6ced6c5"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.609 (609)",
-      "identifier": "hermes-0.1.609-609",
-      "caption": "Build 609",
-      "date": "2026-11-20T23:54:28Z",
+      "title": "Hermes 0.1.610 (610)",
+      "identifier": "hermes-0.1.610-610",
+      "caption": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's \u2922 hands the Mac's *window* to full\n  screen and drops the header, status bar and safe-area inset on the phone. Either platform keeps one floating\n  bar \u2014 take-over / hand back, zoom \u2212/+, the level, Fit, exit \u2014 and the picture zooms 1\u00d7\u20135\u00d7 and pans, clamped to\n  its edges, with take-over clicks landing on the right framebuffer pixel at any zoom. `Esc` exits.\n\n### Fixed\n- **The full-screen button actually moves the window.** Turning full screen on toggled the window without\n  adopting `.fullScreenPrimary`, which macOS accepts and then ignores: the pane grew, the menu bar, dock and\n  traffic lights stayed, and nothing said why. The behaviour is adopted first, and the request and any refusal\n  are logged with the window's style mask.\n- **Looking a conversation up no longer changes the selected bot.** `endlessSession(for:)` selected the bot as a\n  side effect, so background readers could move the user's screen \u2014 reported as the selection jumping between\n  bots mid-conversation. A lookup now returns before anything is selected.\n- **Release notes reach the update dialog.** The publisher read `--notes` at six call sites and the release\n  script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds\n  the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.",
+      "date": "2026-11-21T14:31:08Z",
       "tintColor": "#9A9AA0"
     }
   ],
