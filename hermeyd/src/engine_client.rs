@@ -24,6 +24,22 @@ impl std::fmt::Display for EngineError {
     }
 }
 
+/// The URL one engine connection dials.
+///
+/// `token` is `None` whenever the engine says it needs none (see `engine_auth`): the query string
+/// must then be exactly the configured WS URL, with no empty `token=` and no stale value. One
+/// function, because four callers build this URL and a rule enforced in four places is a rule that
+/// drifts.
+pub fn engine_url(engine_ws: &str, token: Option<&str>) -> String {
+    match token.filter(|t| !t.is_empty()) {
+        Some(token) => {
+            let sep = if engine_ws.contains('?') { '&' } else { '?' };
+            format!("{engine_ws}{sep}token={token}")
+        }
+        None => engine_ws.to_string(),
+    }
+}
+
 /// Call one engine method. `token` is the engine's per-boot token (read per call by the caller).
 pub async fn rpc(
     engine_ws: &str,
@@ -42,13 +58,7 @@ pub async fn rpc_strict(
     method: &str,
     params: Value,
 ) -> Result<Value, EngineError> {
-    let url = match token {
-        Some(t) if !t.is_empty() => {
-            let sep = if engine_ws.contains('?') { '&' } else { '?' };
-            format!("{engine_ws}{sep}token={t}")
-        }
-        _ => engine_ws.to_string(),
-    };
+    let url = engine_url(engine_ws, token.as_deref());
 
     let (mut ws, _resp) = tokio_tungstenite::connect_async(&url)
         .await
@@ -101,5 +111,36 @@ pub async fn rpc_strict(
             });
         }
         return Ok(value.get("result").cloned().unwrap_or(Value::Null));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The decision `engine_auth` makes has to reach the URL, not just a variable: an engine that
+    /// answered `auth_required: false` must be dialled with no `token=` at all — not an empty one,
+    /// not a stale one from a token file left over from a previous build.
+    #[test]
+    fn a_connection_without_a_token_carries_no_token_parameter() {
+        let ws = "ws://127.0.0.1:9121/api/ws";
+        assert_eq!(engine_url(ws, None), ws);
+        assert!(!engine_url(ws, None).contains("token="), "no token may ride the URL");
+        // An empty file is not a credential either.
+        assert_eq!(engine_url(ws, Some("")), ws);
+    }
+
+    /// And when the engine does require one, it is appended exactly as before, `?` or `&` as the URL
+    /// already has a query string or not.
+    #[test]
+    fn a_connection_that_needs_a_token_carries_exactly_one() {
+        assert_eq!(
+            engine_url("ws://127.0.0.1:9121/api/ws", Some("abc123")),
+            "ws://127.0.0.1:9121/api/ws?token=abc123"
+        );
+        assert_eq!(
+            engine_url("ws://127.0.0.1:9121/api/ws?profile=cody", Some("abc123")),
+            "ws://127.0.0.1:9121/api/ws?profile=cody&token=abc123"
+        );
     }
 }

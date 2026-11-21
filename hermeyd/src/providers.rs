@@ -33,10 +33,6 @@ fn refuse(status: StatusCode, code: &str, msg: impl Into<String>, mut extra: Val
     (status, Json(extra))
 }
 
-fn engine_token(st: &AppState) -> Option<String> {
-    std::fs::read_to_string(&st.engine_token_file).ok().map(|s| s.trim().to_string())
-}
-
 fn valid_profile(profile: &str) -> bool {
     !profile.is_empty()
         && profile.len() <= 64
@@ -44,7 +40,7 @@ fn valid_profile(profile: &str) -> bool {
 }
 
 async fn engine_call(st: &AppState, method: &str, params: Value) -> Result<Value, EngineError> {
-    rpc_strict(&st.engine_ws, engine_token(st), method, params).await
+    rpc_strict(&st.engine_ws, st.engine_token(), method, params).await
 }
 
 /// The engine's own message, without the transport wrapper. The refusal frame is

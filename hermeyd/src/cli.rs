@@ -12,7 +12,7 @@
 //!   questions a person actually asks: is it up, is the engine up, where is the token, what host does
 //!   pairing name, and does the gateway guard object.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
@@ -47,7 +47,8 @@ USAGE
   hermeyd                            Run the service in the foreground. This is what systemd does.
   hermeyd pair [--json] [--host H]
                                      Mint a pairing code and print the URL to open in the app.
-  hermeyd status [--json]            One screen: service, engine, token, browser channel, gateway.
+  hermeyd status [--json]            One screen: service, engine (and its auth), token, browser
+                                     channel, gateway.
   hermeyd help [COMMAND]             Print this text (or one command's), then exit.
 
 FLAGS
@@ -110,12 +111,15 @@ USAGE
   hermeyd status [--json]
 
 Checks, each on its own line with an ok / warn / fail marker: which state directory it read and
-where the token came from, the service answers, the engine's WebSocket port accepts connections,
-the pairing host, the local token file and whether it is readable, whether the service ACCEPTS that
-token, the browser channel port, paired devices, and the gateway guard's decision.
+where the token came from, the service answers, the engine's WebSocket port accepts connections and
+whether that engine wants a token at all (`auth_required` from its /api/health), the pairing host,
+the local token file and whether it is readable, whether the service ACCEPTS that token, the browser
+channel port, paired devices, and which process owns the cron ticker for the engine home.
 
-Exit status is 0 only when the service answers AND a request was authenticated with its token; a
-token refused with 401 is reported as a failure, naming the file that was sent.
+Exit status is 0 only when the service answers, a request was authenticated with its token, and the
+gateway check could be evaluated; a token refused with 401 is reported as a failure, naming the file
+that was sent. `--gateway-check` keeps its own exit codes (0 clear, 75 another gateway owns the home)
+for the installer and any script.
 
   --json        Print the same facts as one JSON object, for scripts.
 
@@ -238,6 +242,9 @@ pub struct Target {
     pub browser_port: u16,
     pub public_host: String,
     pub engine_ws: String,
+    /// Where the engine's per-boot token would be read from — named by `status` when the engine says
+    /// it requires one, and never confused with this service's own `local.token`.
+    pub engine_token_file: PathBuf,
 }
 
 impl Target {
@@ -547,6 +554,34 @@ fn token_where(origin: &str) -> String {
     }
 }
 
+/// One `status` line for the engine's own answer about needing a token.
+///
+/// Two different facts must not read alike: "the engine says it needs no token" (ok, nothing to do)
+/// and "the probe could not tell" (warn, the token is still sent exactly as before). Printing `ok`
+/// for the second would be the silent change this line exists to prevent.
+fn engine_auth_line(
+    auth: &crate::engine_auth::EngineAuth,
+    token_file: &Path,
+) -> (Mark, String) {
+    match auth {
+        crate::engine_auth::EngineAuth::NotRequired => (
+            Mark::Ok,
+            "not required (auth_required=false)".to_string(),
+        ),
+        crate::engine_auth::EngineAuth::Required => (
+            Mark::Ok,
+            format!("token {}", token_file.display()),
+        ),
+        crate::engine_auth::EngineAuth::Unknown(reason) => (
+            Mark::Warn,
+            format!(
+                "unknown — {reason}; sending the token at {} as before",
+                token_file.display()
+            ),
+        ),
+    }
+}
+
 /// `hermeyd status` — one line per fact, with a marker a person can scan.
 ///
 /// The first two lines are the command's own inputs: which state directory it read and where the
@@ -583,6 +618,14 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
             format!("nothing listening on {engine_addr} ({e}) — start `hermes gateway run`"),
         ),
     };
+
+    // 2b. Whether the engine wants a token at all. The same one-question probe boot makes, against
+    //     the engine's own `/api/health`: a definite `auth_required: false` means no credential is
+    //     sent anywhere, and the token file stops being a requirement. Anything else — including a
+    //     probe that could not answer — keeps today's strict behaviour, and the line says why.
+    let engine_auth = crate::engine_auth::probe(&target.engine_ws).await;
+    let (engine_auth_mark, engine_auth_detail) =
+        engine_auth_line(&engine_auth, &target.engine_token_file);
 
     // 3. What pairing will actually print. Ask the service — it owns HERMEYD_PUBLIC_HOST — and only
     //    fall back to this shell's environment when it cannot answer, saying so if it does.
@@ -766,30 +809,30 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
         format!("nothing listening on {browser_addr} (HERMEYD_BROWSER_PORT)")
     };
 
-    // 7. Exactly what `--gateway-check` decides, for the home a boot would use. `evaluate`, not
-    //    `check`: the decision is this command's output, so it must not also be logged to stderr.
-    //    A refusal is not a fault: hermeyd serves fine next to another gateway — it must only never
-    //    spawn a second ticker. Only a check that could not be evaluated at all is a `fail`.
-    let decision = gateway_guard::evaluate(&target.engine_home, true);
-    let (gateway, gateway_detail) = match &decision {
-        gateway_guard::Decision::Refuse(owners) => (
-            Mark::Warn,
-            format!(
-                "refused for {} — {} other gateway process{} already ticks it; hermeyd serves beside \
-                 it, it just must not spawn a second ticker",
-                target.engine_home.display(),
-                owners.len(),
-                if owners.len() == 1 { "" } else { "es" }
-            ),
-        ),
-        other => (Mark::Ok, format!("{} for {}", other.as_str(), target.engine_home.display())),
+    // 7. What `--gateway-check` decides, for the home a boot would use — asked with *this service's*
+    //    spawning policy, not a hypothetical one. It used to pass `true` ("as if spawning"), so on a
+    //    host where HERMEYD_SPAWN_GATEWAY is off it printed "refused … must not spawn a second
+    //    ticker" at a service that had not tried to spawn anything. `evaluate_status`, not `check`:
+    //    the answer is this command's output, so it must not also be logged to stderr.
+    //
+    //    The policy comes from this shell's environment, which is all `status` can read: the word is
+    //    printed with the line so a service launched with a different value is diagnosable.
+    let spawn_requested = gateway_guard::spawn_requested();
+    let gateway_status = gateway_guard::evaluate_status(&target.engine_home, spawn_requested);
+    let gateway = match gateway_status.verdict {
+        gateway_guard::Verdict::Ok => Mark::Ok,
+        gateway_guard::Verdict::Warn => Mark::Warn,
+        gateway_guard::Verdict::Fail => Mark::Fail,
     };
+    let gateway_detail = gateway_status.detail.clone();
     // The pids are the value of the check — "routines will not fire twice because *this* process
-    // already ticks them" — so they are printed, one line each. The refusal verdict itself stays
-    // out: nothing here was asked to spawn, and this command must not read like a failure.
-    let gateway_explain = match &decision {
-        gateway_guard::Decision::Refuse(owners) => Some(
-            owners
+    // already ticks them" — so they are printed, one line each, under the line that names them.
+    let gateway_explain = if gateway_status.owners.is_empty() {
+        None
+    } else {
+        Some(
+            gateway_status
+                .owners
                 .iter()
                 .map(|owner| {
                     format!(
@@ -802,13 +845,13 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
                 })
                 .collect::<Vec<_>>()
                 .join("\n"),
-        ),
-        _ => None,
+        )
     };
 
     // A service that answers is not enough: a request this command could not authenticate leaves the
-    // screen saying so, and the exit code non-zero.
-    let failed = service.failed() || !authenticated;
+    // screen saying so, and the exit code non-zero. A check that could not be evaluated at all is a
+    // `fail` line, and a `fail` that exits 0 is a lie — so it counts here too.
+    let failed = service.failed() || !authenticated || gateway.failed();
     let token_source = token_choice.as_ref().map(|c| c.origin.clone());
 
     if json_out {
@@ -832,6 +875,17 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
                 "url": target.engine_ws,
                 "reachable": matches!(engine, Mark::Ok),
                 "detail": engine_detail,
+                // `required: null` means "could not tell", which is not the same as `false`.
+                "auth": {
+                    "decision": engine_auth.as_str(),
+                    "required": match &engine_auth {
+                        crate::engine_auth::EngineAuth::NotRequired => Value::Bool(false),
+                        crate::engine_auth::EngineAuth::Required => Value::Bool(true),
+                        crate::engine_auth::EngineAuth::Unknown(_) => Value::Null,
+                    },
+                    "token_file": target.engine_token_file.display().to_string(),
+                    "detail": engine_auth_detail,
+                },
             },
             "pairing_host": pairing_host,
             "pairing_host_source": if pairing_asked.is_ok() { "service" } else { "environment" },
@@ -854,9 +908,11 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
                 "total": devices_total,
             },
             "gateway_check": {
-                "decision": decision.as_str(),
+                "verdict": gateway_status.verdict.as_str(),
+                "spawn_gateway": spawn_requested,
+                "spawn_gateway_source": "this shell's HERMEYD_SPAWN_GATEWAY",
                 "home": target.engine_home.display().to_string(),
-                "detail": gateway_explain,
+                "detail": gateway_detail,
             },
         });
         println!("{}", serde_json::to_string_pretty(&facts).unwrap_or_else(|_| "{}".to_string()));
@@ -876,6 +932,7 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
         };
         line(&service, "service", &service_line);
         line(&engine, "engine", &engine_detail);
+        line(&engine_auth_mark, "engine auth", &engine_auth_detail);
         line(&pairing_mark, "pairing host", &format!("{pairing_host} {pairing_detail}"));
         line(&token_mark, "local token", &token_detail);
         line(&auth_mark, "authentication", &auth_detail);
@@ -901,6 +958,10 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
 /// Resolve the target once, from the same environment boot reads. Never creates the state directory:
 /// `status` must be safe to run on a host where nothing has started yet.
 pub fn target(home: PathBuf, engine_home: PathBuf) -> Target {
+    // Resolved before the struct literal takes ownership of `home`.
+    let engine_token_file = std::env::var("HERMEYD_ENGINE_TOKEN_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| crate::default_engine_token_file(&home));
     Target {
         home,
         engine_home,
@@ -915,6 +976,7 @@ pub fn target(home: PathBuf, engine_home: PathBuf) -> Target {
         public_host: std::env::var("HERMEYD_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string()),
         engine_ws: std::env::var("HERMEYD_ENGINE_WS")
             .unwrap_or_else(|_| "ws://127.0.0.1:9121/api/ws".to_string()),
+        engine_token_file,
     }
 }
 

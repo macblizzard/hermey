@@ -402,3 +402,323 @@ fn a_normal_first_run_announces_the_directory_then_boots() {
     assert!(home.join("local.token").is_file(), "no local.token in {:?}: {:?}", home, listing(&home));
     fs::remove_dir_all(&base).ok();
 }
+
+// ---------------------------------------------------------------------------------------------
+// The engine's own answer about needing a token, and the gateway line that says what happened
+// ---------------------------------------------------------------------------------------------
+
+/// The one place a child's environment is extended with engine settings: `child` clears everything,
+/// so a test that needs `HERMEYD_ENGINE_WS` added says so here instead of growing another builder.
+fn child_with_env(
+    home: &Path,
+    engine_home: &Path,
+    port: u16,
+    browser_port: u16,
+    extra: &[(&str, &str)],
+    args: &[&str],
+) -> Command {
+    let mut command = child(home, engine_home, port, browser_port, args);
+    for (key, value) in extra {
+        command.env(key, value);
+    }
+    command
+}
+
+/// Boot the service against whatever engine is at `extra`'s WS URL, wait for READY, and hand back
+/// its stderr. Boot is where the token decision is made, so boot is where it has to be readable.
+fn boot_and_collect(
+    home: &Path,
+    engine_home: &Path,
+    port: u16,
+    browser_port: u16,
+    extra: &[(&str, &str)],
+) -> (bool, String) {
+    let mut spawned = child_with_env(home, engine_home, port, browser_port, extra, &[])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hermeyd");
+
+    let stdout = spawned.stdout.take().expect("stdout");
+    let stderr = spawned.stderr.take().expect("stderr");
+    let stderr_log = Arc::new(Mutex::new(String::new()));
+    let sink = Arc::clone(&stderr_log);
+    let stderr_reader = std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            sink.lock().unwrap().push_str(&format!("{line}\n"));
+        }
+    });
+    let (tx, rx) = mpsc::channel();
+    let stdout_reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut ready = false;
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while std::time::Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(line) if line.contains("HERMEYD_READY") => {
+                ready = true;
+                break;
+            }
+            Ok(_) => continue,
+            Err(_) => break,
+        }
+    }
+    let _ = spawned.kill();
+    let _ = spawned.wait();
+    let _ = stdout_reader.join();
+    let _ = stderr_reader.join();
+    let log = stderr_log.lock().unwrap().clone();
+    (ready, log)
+}
+
+/// A loopback server that answers as both halves at once: an engine (`/api/health`, with whatever
+/// `auth_required` this test wants) and the hermeyd service `status` talks to. One port, no live
+/// install, and the decision under test is the one the binary actually reads.
+fn fake_engine_and_service(auth_required: bool, devices: u16, devices_body: &'static str) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake engine");
+    let port = listener.local_addr().expect("fake addr").port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut buffer = [0u8; 4096];
+            let n = stream.read(&mut buffer).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+            let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+            let (code, body): (u16, String) = match path.as_str() {
+                "/api/health" => (
+                    200,
+                    format!("{{\"ok\":true,\"auth_required\":{auth_required}}}"),
+                ),
+                "/v1/health" => (200, "{\"protocol_version\":1,\"ws\":true}".to_string()),
+                "/v1/pair/host" => (200, "{\"host\":\"hermes.example.ts.net\"}".to_string()),
+                "/v1/devices" => (devices, devices_body.to_string()),
+                _ => (404, "{}".to_string()),
+            };
+            let response = format!(
+                "HTTP/1.1 {code} ANSWER\r\ncontent-type: application/json\r\n\
+                 content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.flush();
+        }
+    });
+    port
+}
+
+/// `status` asks the engine the same question boot does. Stock Hermes says `auth_required: false`, so
+/// the line reads `ok engine auth not required` — and the token file, which is not there at all,
+/// does not turn into a warning.
+#[test]
+fn status_reports_that_the_engine_needs_no_token() {
+    let home = scratch("status-auth-off");
+    fs::create_dir_all(&home).unwrap();
+    fs::write(home.join("local.token"), "x".repeat(43)).unwrap();
+    // No engine.token anywhere: with `auth_required: false` that is the expected state.
+    let port = fake_engine_and_service(false, 200, "[]");
+
+    let out = child_with_env(
+        &home,
+        &home.join("engine"),
+        port,
+        free_port(),
+        &[("HERMEYD_ENGINE_WS", &format!("ws://127.0.0.1:{port}/api/ws"))],
+        &["status"],
+    )
+    .output()
+    .expect("run status");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(out.status.code(), Some(0), "stdout:\n{stdout}");
+
+    let line = stdout
+        .lines()
+        .find(|line| line.contains("engine auth"))
+        .unwrap_or_else(|| panic!("no engine auth line:\n{stdout}"));
+    assert!(line.starts_with("ok"), "a token nobody needs is not a warning: {line}");
+    assert!(line.contains("not required"), "{line}");
+    assert!(line.contains("auth_required=false"), "{line}");
+
+    // The same fact in the object a script reads, where `false` and "unknown" must stay different.
+    let out = child_with_env(
+        &home,
+        &home.join("engine"),
+        port,
+        free_port(),
+        &[("HERMEYD_ENGINE_WS", &format!("ws://127.0.0.1:{port}/api/ws"))],
+        &["status", "--json"],
+    )
+    .output()
+    .expect("run status --json");
+    let facts: serde_json::Value =
+        serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("JSON");
+    assert_eq!(facts["engine"]["auth"]["decision"], serde_json::json!("not-required"));
+    assert_eq!(facts["engine"]["auth"]["required"], serde_json::json!(false));
+    fs::remove_dir_all(&home).ok();
+}
+
+/// The other side: an engine that does require a token gets the file named, and the decision is
+/// `required` — not `ok, nothing to see`.
+#[test]
+fn status_reports_that_the_engine_needs_the_token() {
+    let home = scratch("status-auth-on");
+    fs::create_dir_all(&home).unwrap();
+    fs::write(home.join("local.token"), "x".repeat(43)).unwrap();
+    let port = fake_engine_and_service(true, 200, "[]");
+
+    let out = child_with_env(
+        &home,
+        &home.join("engine"),
+        port,
+        free_port(),
+        &[("HERMEYD_ENGINE_WS", &format!("ws://127.0.0.1:{port}/api/ws"))],
+        &["status"],
+    )
+    .output()
+    .expect("run status");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+
+    let line = stdout
+        .lines()
+        .find(|line| line.contains("engine auth"))
+        .unwrap_or_else(|| panic!("no engine auth line:\n{stdout}"));
+    assert!(line.starts_with("ok"), "{line}");
+    assert!(line.contains("token "), "{line}");
+    assert!(line.contains("engine.token"), "the file it will send is named: {line}");
+
+    let facts: serde_json::Value = serde_json::from_str(
+        &String::from_utf8_lossy(
+            &child_with_env(
+                &home,
+                &home.join("engine"),
+                port,
+                free_port(),
+                &[("HERMEYD_ENGINE_WS", &format!("ws://127.0.0.1:{port}/api/ws"))],
+                &["status", "--json"],
+            )
+            .output()
+            .unwrap()
+            .stdout,
+        ),
+    )
+    .expect("JSON");
+    assert_eq!(facts["engine"]["auth"]["decision"], serde_json::json!("required"));
+    assert_eq!(facts["engine"]["auth"]["required"], serde_json::json!(true));
+    // The *engine's* token file, never this service's own `local.token`: the two are different
+    // credentials in different directories, and naming the wrong one sends an operator to the file
+    // that was never in question.
+    assert_eq!(
+        facts["engine"]["auth"]["token_file"],
+        serde_json::json!(home.join("engine.token").display().to_string()),
+        "{facts}"
+    );
+    fs::remove_dir_all(&home).ok();
+}
+
+/// Inconclusive is not permission. An engine that is down cannot say `auth_required: false`, so the
+/// token stays required and `status` says it could not tell — a `warn`, never an `ok`.
+#[test]
+fn status_says_unknown_when_the_engine_cannot_be_probed() {
+    let home = scratch("status-auth-unknown");
+    fs::create_dir_all(&home).unwrap();
+    fs::write(home.join("local.token"), "x".repeat(43)).unwrap();
+    // The service answers; the engine port nothing listens on.
+    let port = fake_engine_and_service(false, 200, "[]");
+    let dead = free_port();
+
+    let out = child_with_env(
+        &home,
+        &home.join("engine"),
+        port,
+        free_port(),
+        &[("HERMEYD_ENGINE_WS", &format!("ws://127.0.0.1:{dead}/api/ws"))],
+        &["status"],
+    )
+    .output()
+    .expect("run status");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+
+    let line = stdout
+        .lines()
+        .find(|line| line.contains("engine auth"))
+        .unwrap_or_else(|| panic!("no engine auth line:\n{stdout}"));
+    assert!(line.starts_with("warn"), "an unanswered probe is not ok: {line}");
+    assert!(line.contains("unknown"), "{line}");
+    assert!(line.contains("as before"), "the fallback must be stated: {line}");
+    assert!(line.contains("engine.token"), "{line}");
+    fs::remove_dir_all(&home).ok();
+}
+
+/// The boot line: one statement, at the moment the decision is made, naming the socket. Without it,
+/// "no `?token=` on the URL" is a change nobody can date from a journal.
+#[test]
+fn boot_says_no_token_is_required_when_the_engine_asks_for_none() {
+    let base = scratch("boot-auth-off");
+    let home = base.join("state");
+    let engine = base.join("engine");
+    let ws_port = fake_engine_and_service(false, 200, "[]");
+    let ws = format!("ws://127.0.0.1:{ws_port}/api/ws");
+
+    let (ready, log) = boot_and_collect(&home, &engine, free_port(), free_port(), &[
+        ("HERMEYD_ENGINE_WS", &ws),
+    ]);
+    assert!(ready, "the service never reported READY; stderr:\n{log}");
+    assert!(
+        log.contains(&format!("engine: no token required by {ws} (auth_required=false)")),
+        "the decision is not on stderr:\n{log}"
+    );
+    // No warning about a token file that is not there: it is not needed, which is the whole point.
+    assert!(!log.contains("engine.token"), "a token nobody needs was mentioned:\n{log}");
+    // Not "token required by": that substring is inside "no token required by". The claim being
+    // ruled out is the *other* decision, which must be prefixed by the socket it applies to.
+    assert!(!log.contains("engine: token required by"), "{log}");
+    fs::remove_dir_all(&base).ok();
+}
+
+/// And the strict half: an engine that is down makes the probe inconclusive, so boot says so and
+/// keeps requiring the token exactly as before.
+#[test]
+fn boot_states_that_an_unanswered_probe_keeps_requiring_the_token() {
+    let base = scratch("boot-auth-unknown");
+    let home = base.join("state");
+    let engine = base.join("engine");
+    let dead = free_port();
+    let ws = format!("ws://127.0.0.1:{dead}/api/ws");
+
+    let (ready, log) = boot_and_collect(&home, &engine, free_port(), free_port(), &[
+        ("HERMEYD_ENGINE_WS", &ws),
+    ]);
+    assert!(ready, "an unreachable engine must not stop boot; stderr:\n{log}");
+    assert!(
+        log.contains(&format!(
+            "engine: could not confirm the token is unnecessary — \
+             http://127.0.0.1:{dead}/api/health did not answer"
+        )),
+        "the probe's URL and its failure are not named:\n{log}"
+    );
+    assert!(log.contains("requiring the token at"), "{log}");
+    assert!(log.contains("engine.token"), "{log}");
+    assert!(!log.contains("auth_required=false"), "nothing proved that:\n{log}");
+    fs::remove_dir_all(&base).ok();
+}
+
+/// The installer and every script depend on this: `--gateway-check` still exits 0 when no other
+/// gateway owns the home, and 75 when one does. Only the wording was allowed to change.
+#[test]
+fn gateway_check_keeps_its_exit_codes() {
+    let base = scratch("gateway-exit");
+    let home = base.join("state");
+    let engine = base.join("engine");
+    fs::create_dir_all(&home).unwrap();
+
+    let out = hermeyd(&home, &engine, free_port(), &["--gateway-check"]);
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert_eq!(out.status.code(), Some(0), "nothing ticks this home; stderr:\n{stderr}");
+    assert!(stderr.contains("gateway-check: clear"), "{stderr}");
+    fs::remove_dir_all(&base).ok();
+}

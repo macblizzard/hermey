@@ -19,10 +19,6 @@ fn bad(status: StatusCode, msg: impl Into<String>) -> Fail {
     (status, Json(json!({"detail": msg.into()})))
 }
 
-fn engine_token(st: &AppState) -> Option<String> {
-    std::fs::read_to_string(&st.engine_token_file).ok().map(|s| s.trim().to_string())
-}
-
 fn valid_profile(profile: &str) -> bool {
     !profile.is_empty()
         && profile.len() <= 64
@@ -59,7 +55,7 @@ pub async fn list_routines(
     }
     let result = rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "cron.manage",
         // `include_disabled` matters: without it the engine omits paused jobs, so a routine the owner
         // just paused would disappear from the list instead of showing as "Paused" and staying
@@ -167,7 +163,7 @@ pub async fn create_routine(
         }
     }
 
-    let result = rpc(&st.engine_ws, engine_token(&st), "cron.manage", params)
+    let result = rpc(&st.engine_ws, st.engine_token(), "cron.manage", params)
         .await
         .map_err(|e| bad(StatusCode::BAD_GATEWAY, e))?;
 
@@ -196,7 +192,7 @@ pub async fn create_routine(
         if !job_id.is_empty() {
             let answer = rpc(
                 &st.engine_ws,
-                engine_token(&st),
+                st.engine_token(),
                 "cron.manage",
                 json!({ "action": "pause", "name": job_id, "profile": profile }),
             )
@@ -232,7 +228,7 @@ pub async fn set_routine_state(
     let action = if body.paused { "pause" } else { "resume" };
     let result = rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "cron.manage",
         json!({"action": action, "name": job_id, "profile": profile}),
     )
@@ -262,7 +258,7 @@ pub async fn delete_routine(
     }
     let result = rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "cron.manage",
         json!({"action": "remove", "name": job_id, "profile": profile}),
     )

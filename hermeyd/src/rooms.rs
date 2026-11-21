@@ -50,10 +50,6 @@ pub struct RenameBody {
     pub name: String,
 }
 
-fn engine_token(st: &AppState) -> Option<String> {
-    std::fs::read_to_string(&st.engine_token_file).ok().map(|s| s.trim().to_string())
-}
-
 fn bad(status: StatusCode, msg: impl Into<String>) -> Fail {
     (status, Json(json!({"detail": msg.into()})))
 }
@@ -103,7 +99,7 @@ async fn last_spoken(st: &AppState, room: &Value) -> Value {
         return json!({});
     }
     let params = json!({"room_id": room_id, "since_seq": (latest - 8).max(0), "limit": 20});
-    let result = match rpc(&st.engine_ws, engine_token(st), "groups.log", params).await {
+    let result = match rpc(&st.engine_ws, st.engine_token(), "groups.log", params).await {
         Ok(v) => v,
         Err(_) => return json!({}),
     };
@@ -170,7 +166,7 @@ pub async fn list_rooms(
     headers: HeaderMap,
 ) -> Result<Json<Value>, Fail> {
     require_device(&st, &headers)?;
-    let result = rpc(&st.engine_ws, engine_token(&st), "groups.list", json!({"limit": 50}))
+    let result = rpc(&st.engine_ws, st.engine_token(), "groups.list", json!({"limit": 50}))
         .await
         .map_err(|e| bad(StatusCode::BAD_GATEWAY, e))?;
     let empty = vec![];
@@ -231,7 +227,7 @@ pub async fn create_room(
     let room_id = format!("{}-{}", slug(&name), if suffix.is_empty() { "id".to_string() } else { suffix });
     let result = rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "groups.create",
         json!({"room_id": room_id, "name": name, "members": members}),
     )
@@ -257,7 +253,7 @@ pub async fn room_log(
     if let Some(since) = q.since_seq {
         params["since_seq"] = json!(since);
     }
-    let result = rpc(&st.engine_ws, engine_token(&st), "groups.log", params)
+    let result = rpc(&st.engine_ws, st.engine_token(), "groups.log", params)
         .await
         .map_err(|e| bad(StatusCode::BAD_GATEWAY, e))?;
     let latest = result
@@ -324,7 +320,7 @@ pub async fn send_room(
         .unwrap_or_else(|| format!("app-{}", random_token(8)));
     let result = rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "groups.send",
         json!({"room_id": room_id, "event_id": event_id, "payload": {"thread_id": "main", "text": text}}),
     )
@@ -354,7 +350,7 @@ pub async fn rename_room(
     // `groups.rename` writes an event, and the gateway requires an event_id for it.
     rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "groups.rename",
         json!({"room_id": room_id, "name": name, "event_id": format!("rename-{}", random_token(8))}),
     )
@@ -371,7 +367,7 @@ pub async fn disband_room(
     require_device(&st, &headers)?;
     rpc(
         &st.engine_ws,
-        engine_token(&st),
+        st.engine_token(),
         "groups.disband",
         json!({"room_id": room_id, "event_id": format!("disband-{}", random_token(8))}),
     )

@@ -143,10 +143,22 @@ fn same_home(found: &Path, engine_home: &Path) -> bool {
 /// `proc_root` is a parameter so the tests can build a fake `/proc` out of temp dirs; production
 /// passes [`Path::new("/proc")`]. `self_pid` is excluded: this process is never the duplicate.
 pub fn scan(proc_root: &Path, engine_home: &Path, self_pid: u32) -> Vec<Owner> {
-    let Ok(entries) = std::fs::read_dir(proc_root) else {
-        // No /proc (a sandbox, a non-Linux host): nothing can be proven, so nothing is claimed.
-        return Vec::new();
-    };
+    scan_checked(proc_root, engine_home, self_pid).unwrap_or_default()
+}
+
+/// `scan`, but "I could not look" is `Err` instead of "nothing found".
+///
+/// The difference matters only where the answer is *reported* (`hermeyd status`): an unreadable
+/// `/proc` and a home nobody ticks are opposite facts, and a line that prints the second when the
+/// first is true is the kind of reassurance this service must not give. Boot keeps using [`scan`],
+/// where nothing can be proven and nothing is claimed either way.
+pub fn scan_checked(
+    proc_root: &Path,
+    engine_home: &Path,
+    self_pid: u32,
+) -> Result<Vec<Owner>, String> {
+    let entries =
+        std::fs::read_dir(proc_root).map_err(|e| format!("cannot read {}: {e}", proc_root.display()))?;
     let mut owners = Vec::new();
     for entry in entries.flatten() {
         let Some(pid) = entry.file_name().to_string_lossy().parse::<u32>().ok() else {
@@ -184,7 +196,7 @@ pub fn scan(proc_root: &Path, engine_home: &Path, self_pid: u32) -> Vec<Owner> {
         }
     }
     owners.sort_by_key(|owner| owner.pid);
-    owners
+    Ok(owners)
 }
 
 /// What was found, and what to do about it. Stable wording on purpose: an operator reads this in
@@ -224,12 +236,117 @@ pub fn detected_line(engine_home: &Path, owners: &[Owner]) -> String {
     )
 }
 
-/// Scan the real `/proc` and answer, without logging. For a caller that reports the decision itself
-/// (`hermeyd status`): the same scan as boot, but its own line, no duplicate stderr.
-pub fn evaluate(engine_home: &Path, spawn_requested: bool) -> Decision {
-    let owners = scan(Path::new("/proc"), engine_home, std::process::id());
-    decide(spawn_requested, &owners)
+// ---------------------------------------------------------------------------------------------
+// What `hermeyd status` prints
+// ---------------------------------------------------------------------------------------------
+
+/// The severity of one reported line. Its own type so the wording can be unit-tested in this
+/// module, with fabricated owners, instead of only by running the service against a live host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Verdict {
+    Ok,
+    Warn,
+    Fail,
 }
+
+impl Verdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Verdict::Ok => "ok",
+            Verdict::Warn => "warn",
+            Verdict::Fail => "fail",
+        }
+    }
+}
+
+/// One `status` line about the cron ticker, plus the processes it names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Status {
+    pub verdict: Verdict,
+    pub detail: String,
+    /// The pids whose command lines are printed under the line. Empty for every case that does not
+    /// name a process.
+    pub owners: Vec<Owner>,
+}
+
+/// The `status` answer, from the scan's result — no I/O, so every combination is testable.
+///
+/// The wording rule this replaces: `status` used to call `evaluate(home, true)`, i.e. it asked what a
+/// *spawning* process would decide, on a host where `HERMEYD_SPAWN_GATEWAY` is off and nothing was
+/// ever asked to spawn. It then printed "refused … must not spawn a second ticker" at a service that
+/// had not attempted anything. Five cases, five honest sentences:
+///
+/// | spawning | another gateway | line |
+/// |---|---|---|
+/// | off | yes | `ok` — one gateway owns the ticker; expected, hermeyd does not spawn one |
+/// | off | no  | `warn` — nothing ticks the cron store, so routines will not fire |
+/// | on  | yes | `warn` — hermeyd will not spawn a duplicate |
+/// | on  | no  | `ok` — hermeyd would spawn one |
+/// | —   | cannot look | `fail` |
+pub fn status(engine_home: &Path, spawn_requested: bool, found: Result<Vec<Owner>, String>) -> Status {
+    let home = engine_home.display();
+    let owners = match found {
+        Ok(owners) => owners,
+        Err(reason) => {
+            return Status {
+                verdict: Verdict::Fail,
+                detail: format!(
+                    "could not check {home} for a cron ticker ({reason}) — nothing is known about \
+                     who ticks it"
+                ),
+                owners: Vec::new(),
+            }
+        }
+    };
+    let pids: Vec<String> = owners.iter().map(|o| o.pid.to_string()).collect();
+    let one_owner = owners.len() == 1;
+    match decide(spawn_requested, &owners) {
+        Decision::NotRequested if !owners.is_empty() => Status {
+            verdict: Verdict::Ok,
+            detail: format!(
+                "one gateway owns the ticker (pid {}) — expected; hermeyd does not spawn one \
+                 (HERMEYD_SPAWN_GATEWAY is off in this shell)",
+                pids.join(",")
+            ),
+            owners,
+        },
+        Decision::NotRequested => Status {
+            verdict: Verdict::Warn,
+            detail: format!(
+                "no gateway ticks {home} — routines will not fire; start one, or set \
+                 HERMEYD_SPAWN_GATEWAY=1 and let hermeyd spawn it"
+            ),
+            owners: Vec::new(),
+        },
+        Decision::Clear => Status {
+            verdict: Verdict::Ok,
+            detail: format!(
+                "nothing owns {home} and HERMEYD_SPAWN_GATEWAY is on — hermeyd would spawn one \
+                 (it has not, yet)"
+            ),
+            owners: Vec::new(),
+        },
+        Decision::Refuse(_) => Status {
+            verdict: Verdict::Warn,
+            detail: format!(
+                "{} other gateway process{} already tick{} {home} (pid {}); spawning is enabled, so \
+                 hermeyd will not spawn a duplicate",
+                owners.len(),
+                if one_owner { "" } else { "es" },
+                if one_owner { "s" } else { "" },
+                pids.join(",")
+            ),
+            owners,
+        },
+    }
+}
+
+/// [`status`] against the real `/proc`.
+pub fn evaluate_status(engine_home: &Path, spawn_requested: bool) -> Status {
+    let found = scan_checked(Path::new("/proc"), engine_home, std::process::id());
+    status(engine_home, spawn_requested, found)
+}
+
 
 /// The boot-time check: scan the real `/proc`, then log and answer.
 ///
@@ -477,6 +594,114 @@ mod tests {
         let root = scratch("noproc");
         let engine = engine_dir(&root);
         assert!(scan(&root.join("no-such-proc"), &engine, 1).is_empty());
+        // …but it *is* a failure to look, and `status` must be able to say so.
+        assert!(scan_checked(&root.join("no-such-proc"), &engine, 1).is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn owner(pid: u32, engine: &Path) -> Owner {
+        Owner {
+            pid,
+            cmdline: "/opt/hermes/venv/bin/hermes gateway run --force".to_string(),
+            home: engine.to_path_buf(),
+            via: "environ",
+        }
+    }
+
+    /// The live shape this wording exists for: one systemd-managed gateway ticks the engine home and
+    /// spawning is off. Nothing was refused, so nothing may say "refused".
+    #[test]
+    fn status_says_one_gateway_is_expected_when_nothing_was_asked_to_spawn() {
+        let root = scratch("status-expected");
+        let engine = engine_dir(&root);
+        let owners = vec![owner(4093283, &engine)];
+
+        let reported = status(&engine, false, Ok(owners.clone()));
+        assert_eq!(reported.verdict, Verdict::Ok, "{reported:?}");
+        assert!(
+            reported.detail.contains("one gateway owns the ticker (pid 4093283)"),
+            "{}",
+            reported.detail
+        );
+        assert!(reported.detail.contains("expected"), "{}", reported.detail);
+        assert!(reported.detail.contains("hermeyd does not spawn one"), "{}", reported.detail);
+        assert!(
+            !reported.detail.contains("refused"),
+            "nothing was refused: {}",
+            reported.detail
+        );
+        assert!(
+            !reported.detail.contains("must not spawn a second ticker"),
+            "the old claim is still there: {}",
+            reported.detail
+        );
+        // The pid is still printed underneath, with its command line: that is the value of the check.
+        assert_eq!(reported.owners, owners);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Spawning enabled and a gateway already there: this is the one case where a spawn really would
+    /// be a duplicate, so it keeps today's meaning — as a warning, not a refusal.
+    #[test]
+    fn status_warns_when_spawning_is_enabled_and_a_gateway_already_owns_the_ticker() {
+        let root = scratch("status-duplicate");
+        let engine = engine_dir(&root);
+        let owners = vec![owner(4242, &engine)];
+
+        let reported = status(&engine, true, Ok(owners.clone()));
+        assert_eq!(reported.verdict, Verdict::Warn, "{reported:?}");
+        assert!(reported.detail.contains("pid 4242"), "{}", reported.detail);
+        assert!(reported.detail.contains("will not spawn a duplicate"), "{}", reported.detail);
+        assert!(reported.detail.contains(&engine.display().to_string()), "{}", reported.detail);
+        assert_eq!(reported.owners, owners);
+
+        // Two owners read as plural, and both pids are named.
+        let reported = status(&engine, true, Ok(vec![owner(1, &engine), owner(2, &engine)]));
+        assert!(reported.detail.contains("2 other gateway processes"), "{}", reported.detail);
+        assert!(reported.detail.contains("pid 1,2"), "{}", reported.detail);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Spawning enabled, nothing there: hermeyd *would* spawn one, and the line has to say which of
+    /// the two things is true rather than leave it ambiguous.
+    #[test]
+    fn status_says_hermeyd_would_spawn_when_spawning_is_enabled_and_nothing_owns_it() {
+        let root = scratch("status-clear");
+        let engine = engine_dir(&root);
+
+        let reported = status(&engine, true, Ok(Vec::new()));
+        assert_eq!(reported.verdict, Verdict::Ok, "{reported:?}");
+        assert!(reported.detail.contains("hermeyd would spawn one"), "{}", reported.detail);
+        assert!(reported.detail.contains("it has not, yet"), "{}", reported.detail);
+        assert!(reported.owners.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Spawning off and nothing ticking the store is the mirror image of the expected case: routines
+    /// silently stop firing, which is a warning even though nothing is duplicated.
+    #[test]
+    fn status_warns_when_nothing_ticks_the_store_and_spawning_is_off() {
+        let root = scratch("status-nothing");
+        let engine = engine_dir(&root);
+
+        let reported = status(&engine, false, Ok(Vec::new()));
+        assert_eq!(reported.verdict, Verdict::Warn, "{reported:?}");
+        assert!(reported.detail.contains("routines will not fire"), "{}", reported.detail);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A check that could not be evaluated is a failure, never a quiet `ok`.
+    #[test]
+    fn status_fails_when_the_scan_itself_failed() {
+        let root = scratch("status-unreadable");
+        let engine = engine_dir(&root);
+
+        let reported = status(&engine, false, Err("cannot read /proc: permission denied".to_string()));
+        assert_eq!(reported.verdict, Verdict::Fail, "{reported:?}");
+        assert_eq!(reported.verdict.as_str(), "fail");
+        assert!(reported.detail.contains("could not check"), "{}", reported.detail);
+        assert!(reported.detail.contains("permission denied"), "{}", reported.detail);
+        assert!(reported.owners.is_empty());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

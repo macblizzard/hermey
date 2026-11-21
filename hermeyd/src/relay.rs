@@ -1719,16 +1719,8 @@ pub async fn relay_guarded(
     limits: Limits,
     audit: Option<Arc<AuditLog>>,
 ) {
-    let url = match engine_token {
-        Some(t) if !t.is_empty() => {
-            if engine_url.contains('?') {
-                format!("{engine_url}&token={t}")
-            } else {
-                format!("{engine_url}?token={t}")
-            }
-        }
-        _ => engine_url,
-    };
+    // No token when the engine wants none: `routes::ws_upgrade` hands over `None` in that case.
+    let url = crate::engine_client::engine_url(&engine_url, engine_token.as_deref());
 
     // Register before dialing so a revoke that lands mid-dial is still honoured, and so the socket
     // caps are checked against the socket that is actually opening. The sender is cloned into the

@@ -46,7 +46,9 @@ pub struct DisplayHub {
 }
 
 impl DisplayHub {
-    pub fn spawn(engine_ws: String, token_file: PathBuf) -> Arc<Self> {
+    /// `token_file: None` means the engine answered `auth_required: false` at boot: this socket is
+    /// dialled with no credential, and no file is read. See `engine_auth`.
+    pub fn spawn(engine_ws: String, token_file: Option<PathBuf>) -> Arc<Self> {
         let (tx, rx) = mpsc::channel::<(String, Value, Reply)>(32);
         tokio::spawn(actor(engine_ws, token_file, rx));
         Arc::new(Self { tx })
@@ -62,17 +64,16 @@ impl DisplayHub {
     }
 }
 
+/// The URL this socket dials; the token rides it only when `engine_auth` said the engine wants one.
 fn ws_url(engine_ws: &str, token: Option<&str>) -> String {
-    match token.filter(|t| !t.is_empty()) {
-        Some(t) => {
-            let sep = if engine_ws.contains('?') { '&' } else { '?' };
-            format!("{engine_ws}{sep}token={t}")
-        }
-        None => engine_ws.to_string(),
-    }
+    crate::engine_client::engine_url(engine_ws, token)
 }
 
-async fn actor(engine_ws: String, token_file: PathBuf, mut rx: mpsc::Receiver<(String, Value, Reply)>) {
+async fn actor(
+    engine_ws: String,
+    token_file: Option<PathBuf>,
+    mut rx: mpsc::Receiver<(String, Value, Reply)>,
+) {
     let mut socket: Option<
         tokio_tungstenite::WebSocketStream<
             tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
@@ -87,8 +88,11 @@ async fn actor(engine_ws: String, token_file: PathBuf, mut rx: mpsc::Receiver<(S
         let mut attempt = 0;
         let answer = loop {
             if socket.is_none() {
-                let token = std::fs::read_to_string(&token_file)
-                    .ok()
+                // Re-read per (re)connect — the engine mints a fresh token each boot — but only when
+                // a token was wanted at all.
+                let token = token_file
+                    .as_ref()
+                    .and_then(|path| std::fs::read_to_string(path).ok())
                     .map(|s| s.trim().to_string());
                 match tokio_tungstenite::connect_async(ws_url(&engine_ws, token.as_deref())).await {
                     Ok((s, _)) => socket = Some(s),

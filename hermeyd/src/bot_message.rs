@@ -29,6 +29,7 @@
 //! missing/blank/long text, bad `from`, bad `from_profile`, bad `timeout`), 409 (disabled bot, no
 //! conversation yet, stale pointer), 413 (text over the cap), 502/503/504 (gateway faults).
 
+use crate::engine_client::engine_url;
 use crate::routes::AppState;
 use crate::transfers;
 use axum::body::Bytes;
@@ -336,11 +337,8 @@ struct LiveEngine {
 
 impl LiveEngine {
     fn new(st: &AppState) -> Self {
-        // Read per call: the engine mints a fresh token on every boot.
-        let token = std::fs::read_to_string(&st.engine_token_file)
-            .ok()
-            .map(|value| value.trim().to_string());
-        Self { ws: st.engine_ws.clone(), token }
+        // Read per call, and only when the engine asked for one: `engine_auth` decided at boot.
+        Self { ws: st.engine_ws.clone(), token: st.engine_token() }
     }
 }
 
@@ -350,17 +348,6 @@ impl Deliverer for LiveEngine {
         req: DeliverRequest<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<Delivered, Fail>> + Send + 'a>> {
         Box::pin(async move { deliver_live(&self.ws, self.token.as_deref(), req).await })
-    }
-}
-
-/// The engine's per-boot token rides the query string, as in `engine_client`.
-fn engine_url(engine_ws: &str, token: Option<&str>) -> String {
-    match token.filter(|t| !t.is_empty()) {
-        Some(token) => {
-            let sep = if engine_ws.contains('?') { '&' } else { '?' };
-            format!("{engine_ws}{sep}token={token}")
-        }
-        None => engine_ws.to_string(),
     }
 }
 
@@ -848,10 +835,15 @@ mod tests {
             public_host: "localhost".to_string(),
             engine_ws: "ws://127.0.0.1:1/api/ws".to_string(),
             engine_token_file: dir.join("engine.token"),
+            // The pre-detection shape: a token file, and an engine that wants it.
+            engine_auth: crate::engine_auth::EngineAuth::Required,
             engine_home: dir.join("engine"),
             local_computers: Default::default(),
             browsers: Default::default(),
-            display: DisplayHub::spawn("ws://127.0.0.1:1/api/ws".to_string(), dir.join("engine.token")),
+            display: DisplayHub::spawn(
+                "ws://127.0.0.1:1/api/ws".to_string(),
+                Some(dir.join("engine.token")),
+            ),
             relay_sockets: Default::default(),
             attachments_dir: dir.join("attachments"),
             local_token: std::sync::Arc::new(crate::local_token::LocalToken::from_value(

@@ -37,3 +37,12 @@ futures-util = "0.3"
 # `chown`/`chgrp` for the optional group/user access to `local.token` (see `local_token.rs`): std has
 # no ownership API, and shelling out to `chown` would lose the atomic set-then-rename at boot.
 libc = "0.2"
+# The pairing QR (`src/qr.rs`). `default-features = false` drops the image/svg/pic renderers: only
+# the module matrix is used, and it is drawn here so the quiet zone and the half-block polarity are
+# ours to get right. Pure Rust, no C, and with no features it has no dependencies at all.
+qrcode = { version = "0.14", default-features = false }
+
+[dev-dependencies]
+# Decodes the QR the tests render, so "scannable" is asserted rather than assumed. Pure Rust (a port
+# of quirc), reads a plain grayscale buffer — it never pulls in an image codec.
+quircs = "0.10"

@@ -35,6 +35,7 @@ mod local_computers;
 mod local_token;
 mod display;
 mod display_container;
+mod engine_auth;
 mod engine_client;
 mod model_settings;
 mod pairing;
@@ -116,7 +117,7 @@ fn default_engine_home(home: &std::path::Path) -> PathBuf {
 
 /// Where the engine writes its per-boot token. Prefers a token beside this service's state, then the
 /// sibling engine home used in development (`var/hermeyd` next to `var/hermey`).
-fn default_engine_token_file(home: &std::path::Path) -> PathBuf {
+pub(crate) fn default_engine_token_file(home: &std::path::Path) -> PathBuf {
     let beside = home.join("engine.token");
     if beside.exists() {
         return beside;
@@ -247,6 +248,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // before anything fires twice.
     gateway_guard::check(&engine_home, gateway_guard::spawn_requested());
 
+    // The engine's socket, the file a token would come from, and — the new question — whether the
+    // engine wants one at all. Resolved once here: boot, the relay and the display hub must all
+    // agree, and the probe should be asked once, not once per connection.
+    let engine_ws = std::env::var("HERMEYD_ENGINE_WS")
+        .unwrap_or_else(|_| "ws://127.0.0.1:9121/api/ws".to_string());
+    let engine_token_file = std::env::var("HERMEYD_ENGINE_TOKEN_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| default_engine_token_file(&home));
+    // Stock Hermes answers `auth_required: false` on `/api/health`; the token then stops being a
+    // requirement and stops riding the URL. A probe that cannot answer (engine down) is *not* that
+    // permission: it keeps the old, strict behaviour. The decision is printed either way — a silent
+    // change in whether a credential is sent is undebuggable from a journal.
+    let engine_auth = engine_auth::probe(&engine_ws).await;
+    eprintln!("{}", engine_auth.boot_line(&engine_ws, &engine_token_file));
+
     let salt = auth::load_or_create_salt(&home.join("bridge.salt"))?;
     // The bearer the bundled skill scripts send. Created here, once per boot: deleting the file and
     // restarting is the one way to invalidate it, and it is never printed. A deployment whose bots
@@ -267,22 +283,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         limiter: auth::RateLimiter::new(30, 60.0),
         salt,
         public_host: std::env::var("HERMEYD_PUBLIC_HOST").unwrap_or_else(|_| "localhost".to_string()),
-        engine_ws: std::env::var("HERMEYD_ENGINE_WS")
-            .unwrap_or_else(|_| "ws://127.0.0.1:9121/api/ws".to_string()),
-        engine_token_file: std::env::var("HERMEYD_ENGINE_TOKEN_FILE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| default_engine_token_file(&home)),
+        engine_ws: engine_ws.clone(),
+        engine_token_file: engine_token_file.clone(),
+        engine_auth: engine_auth.clone(),
         engine_home: engine_home.clone(),
         relay_sockets: relay::Registry::default(),
         local_computers: local_computers::Registry::default(),
         // Browser fill targets: the sign-in extension's socket registry (see browser.rs).
         browsers: browser::Registry::default(),
+        // The token file is `None` when the engine said it needs none: the display socket is then
+        // dialled bare, exactly like every other engine connection.
         display: display::DisplayHub::spawn(
-            std::env::var("HERMEYD_ENGINE_WS")
-                .unwrap_or_else(|_| "ws://127.0.0.1:9121/api/ws".to_string()),
-            std::env::var("HERMEYD_ENGINE_TOKEN_FILE")
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| default_engine_token_file(&home)),
+            engine_ws,
+            if engine_auth.send_token() { Some(engine_token_file) } else { None },
         ),
         attachments_dir: home.join("attachments"),
         local_token: Arc::clone(&local_token),

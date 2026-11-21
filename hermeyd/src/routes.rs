@@ -39,8 +39,12 @@ pub struct AppState {
     pub public_host: String,
     /// Engine's loopback WS endpoint, e.g. `ws://127.0.0.1:9121/api/ws`.
     pub engine_ws: String,
-    /// File holding the engine's per-boot token (written by run-engine.sh).
+    /// File holding the engine's per-boot token (written by run-engine.sh). Still the credential
+    /// when one is needed; `engine_auth` decides whether it is.
     pub engine_token_file: std::path::PathBuf,
+    /// What the engine's `/api/health` said about needing a token, probed once at boot.
+    /// [`AppState::engine_token`] is the only reader that has to care.
+    pub engine_auth: crate::engine_auth::EngineAuth,
     /// The engine's home (HERMES_HOME): profiles, memories, skills live under it.
     pub engine_home: std::path::PathBuf,
     /// Where uploaded bytes live. Metadata in SQLite, bytes on disk.
@@ -50,6 +54,23 @@ pub struct AppState {
     pub local_token: Arc<crate::local_token::LocalToken>,
     /// The structured audit stream: one bounded JSON-lines file, scalars only. See `audit.rs`.
     pub audit: Arc<crate::audit::AuditLog>,
+}
+
+impl AppState {
+    /// The bearer to put on an engine connection, or `None` when the engine said it wants none.
+    ///
+    /// Read per call, not at startup: the engine mints a fresh token on every boot. Read at all only
+    /// when the boot probe found `auth_required != false` — otherwise the file is not a credential,
+    /// it is a leftover, and appending it would be a query string the engine never asked for.
+    pub fn engine_token(&self) -> Option<String> {
+        if !self.engine_auth.send_token() {
+            return None;
+        }
+        std::fs::read_to_string(&self.engine_token_file)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
 }
 
 /// 25 MiB. Deliberately small enough that a phone photo fits after downscaling and a runaway upload
@@ -212,10 +233,9 @@ pub async fn ws_upgrade(
         ));
     }
 
-    // Read per connection, not at startup: the engine mints a fresh token on every boot.
-    let engine_token = std::fs::read_to_string(&st.engine_token_file)
-        .ok()
-        .map(|s| s.trim().to_string());
+    // Read per connection, not at startup: the engine mints a fresh token on every boot. `None`
+    // when the engine answered `auth_required: false`, so the relay dials without `?token=`.
+    let engine_token = st.engine_token();
 
     // Socket caps, enforced here so a device that is already at its limit has another socket
     // evicted for it instead of being refused (`proxy.py:226-241` refused with 4429; we only refuse
@@ -304,6 +324,23 @@ fn bearer(headers: &HeaderMap) -> Option<String> {
         .ok()?
         .strip_prefix("Bearer ")
         .map(|s| s.trim().to_string())
+}
+
+/// `GET /v1/pair/host` — the host a pairing URL would name, without minting anything.
+///
+/// `pair/start` already reports the field, but minting a single-use code to read it is a side
+/// effect (a live code appears in the log and in the store's uniqueness set). This answers the same
+/// value from the same state. Bearer-checked: the published listener is reachable from the tailnet,
+/// and the hostname of this machine is not something an unauthenticated peer needs handed to it.
+pub async fn pair_host(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    require_device(&st, &headers)?;
+    Ok(Json(json!({
+        "host": st.public_host,
+        "protocol_version": PROTOCOL_VERSION,
+    })))
 }
 
 pub async fn pair_start(
@@ -518,6 +555,9 @@ mod tests {
             public_host: "localhost".to_string(),
             engine_ws: engine_ws.clone(),
             engine_token_file: token_file.clone(),
+            // Tests keep the pre-detection shape unless they say otherwise: a token file that is
+            // read and appended. `no_token_is_read_when_the_engine_wants_none` flips it.
+            engine_auth: crate::engine_auth::EngineAuth::Required,
             engine_home: dir.join("engine"),
             attachments_dir: dir.join("attachments"),
             local_token: Arc::new(crate::local_token::LocalToken::from_value(
@@ -526,7 +566,7 @@ mod tests {
             )),
             local_computers: Default::default(),
             browsers: Default::default(),
-            display: crate::display::DisplayHub::spawn(engine_ws, token_file),
+            display: crate::display::DisplayHub::spawn(engine_ws, Some(token_file)),
             relay_sockets: Default::default(),
             audit: Arc::new(crate::audit::AuditLog::in_dir(dir)),
         })
@@ -612,6 +652,26 @@ mod tests {
             require_device(&st, &auth(&ticket)).unwrap_err().0,
             StatusCode::UNAUTHORIZED,
             "a ticket must stay single-use"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `status` cannot read the service's environment, so it asks this route. It must answer with
+    /// the same field `pair/start` reports, and it must not be an unauthenticated oracle for the
+    /// machine's hostname.
+    #[tokio::test]
+    async fn pair_host_reports_the_pairing_host_without_minting_a_code() {
+        let dir = scratch("pair-host");
+        let st = state(&dir);
+
+        let refused = pair_host(State(Arc::clone(&st)), HeaderMap::new()).await;
+        assert_eq!(refused.unwrap_err().0, StatusCode::UNAUTHORIZED);
+
+        let ok = pair_host(State(Arc::clone(&st)), auth(LOCAL)).await.expect("local bearer");
+        assert_eq!(ok.0.get("host").and_then(Value::as_str), Some("localhost"));
+        assert_eq!(
+            ok.0.get("protocol_version").and_then(Value::as_u64),
+            Some(PROTOCOL_VERSION as u64)
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -734,6 +794,52 @@ mod tests {
         assert_eq!(st.relay_sockets.count("device-b"), 1);
 
         server.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The point of the probe. A token file that exists is not a reason to send it: when the engine
+    /// answered `auth_required: false`, `engine_token()` is `None` and every connection — RPC, relay,
+    /// display, bot message — is dialled without `?token=`.
+    #[tokio::test]
+    async fn no_token_is_read_when_the_engine_wants_none() {
+        let dir = scratch("engine-auth-off");
+        let st = state(&dir);
+        std::fs::write(&st.engine_token_file, "left-over-from-a-previous-build").unwrap();
+
+        // Still the strict shape while the decision says "required": the file is read.
+        assert_eq!(
+            st.engine_token().as_deref(),
+            Some("left-over-from-a-previous-build")
+        );
+        let required_url =
+            crate::engine_client::engine_url(&st.engine_ws, st.engine_token().as_deref());
+        assert!(
+            required_url.contains("token=left-over-from-a-previous-build"),
+            "a required engine gets the token: {required_url}"
+        );
+
+        let mut off = state(&dir);
+        let state_off = Arc::get_mut(&mut off).expect("sole owner in a test");
+        state_off.engine_auth = crate::engine_auth::EngineAuth::NotRequired;
+
+        assert_eq!(off.engine_token(), None, "auth_required=false must not send the file");
+        let url = crate::engine_client::engine_url(&off.engine_ws, off.engine_token().as_deref());
+        assert_eq!(url, "ws://127.0.0.1:9121/api/ws", "the URL carries no token parameter");
+        assert!(!url.contains("token="), "{url}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Inconclusive keeps today's behaviour: the probe could not answer, so the token is still read
+    /// and still sent. A missing credential must never be *assumed* to be fine.
+    #[tokio::test]
+    async fn an_inconclusive_probe_still_sends_the_token() {
+        let dir = scratch("engine-auth-unknown");
+        let mut st = state(&dir);
+        std::fs::write(&st.engine_token_file, "per-boot-token").unwrap();
+        Arc::get_mut(&mut st).expect("sole owner").engine_auth =
+            crate::engine_auth::EngineAuth::Unknown("engine down".to_string());
+        assert_eq!(st.engine_token().as_deref(), Some("per-boot-token"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -65,14 +65,10 @@ fn config_fields(dir: &Path) -> (Option<String>, Option<String>) {
     )
 }
 
-fn engine_token(st: &AppState) -> Option<String> {
-    std::fs::read_to_string(&st.engine_token_file).ok().map(|s| s.trim().to_string())
-}
-
 async fn routines_for(st: &AppState, profile: &str) -> Vec<Value> {
     let Ok(result) = rpc(
         &st.engine_ws,
-        engine_token(st),
+        st.engine_token(),
         "cron.manage",
         json!({"action": "list", "profile": profile, "include_disabled": true}),
     )
@@ -282,7 +278,7 @@ pub async fn restore(
                     "prompt": routine.get("prompt").and_then(|p| p.as_str()).unwrap_or(""),
                     "profile": profile,
                 });
-                if let Ok(result) = rpc(&st.engine_ws, engine_token(&st), "cron.manage", params).await {
+                if let Ok(result) = rpc(&st.engine_ws, st.engine_token(), "cron.manage", params).await {
                     if result.get("success").and_then(|s| s.as_bool()) != Some(false) {
                         routines_added += 1;
                     }
@@ -437,7 +433,7 @@ fn one_line(value: Option<&str>, limit: usize) -> String {
 async fn known_jobs(st: &AppState, profile: &str) -> std::collections::HashSet<(String, String)> {
     let Ok(result) = rpc(
         &st.engine_ws,
-        engine_token(st),
+        st.engine_token(),
         "cron.manage",
         json!({"action": "list", "profile": profile, "include_disabled": true}),
     )
@@ -664,7 +660,7 @@ pub(crate) async fn import_backup(
                     });
                     if let Ok(result) = crate::engine_client::rpc(
                         &st.engine_ws,
-                        engine_token(st),
+                        st.engine_token(),
                         "cron.manage",
                         params,
                     )
