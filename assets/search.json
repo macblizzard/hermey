@@ -1,0 +1,590 @@
+[
+{
+"h": "Quick start",
+"p": "Overview",
+"u": "index.html#quick-start",
+"b": "Quick start Three steps. The first needs root on the Hermes host; the others happen on the device. Install the host. One command, safe to re-run as an upgrade. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh Copy Pair a device on that host, with the phone in your hand \u2014 co"
+},
+{
+"h": "Start here",
+"p": "Overview",
+"u": "index.html#start-here",
+"b": "Start here Start Getting started What Hermes has to be doing first, then install, publish, pair. Host Install the host The command, what it writes, the flags, and how to undo it. Devices The apps Sideloading, first launch, quarantine, notifications, revocation. Capability Local computer use Let bots drive the Mac you a"
+},
+{
+"h": "Requirements",
+"p": "Overview",
+"u": "index.html#requirements",
+"b": "Requirements Piece Needs Host Linux with systemd or macOS with launchd, sudo (it writes under /opt , /etc and /var/lib ), and a working hermes install with an engine home. Tailscale is optional but recommended \u2014 without it the service is reachable only from the host itself iPhone / iPad iOS 17 or later, plus AltStore, "
+},
+{
+"h": "The two halves",
+"p": "Overview",
+"u": "index.html#two-halves",
+"b": "The two halves Where it runs What it is Host service hermeyd on 127.0.0.1:8788 , with the browser channel on 8790 Rust service that adapts the Hermes engine to the apps' protocol. It holds the device registry, mints single-use 30-second tickets, relays the engine's WebSocket, and issues the local bearer at /var/lib/her"
+},
+{
+"h": "1. Hermes",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#1-hermes",
+"b": "1. Hermes Hermey is a client and a host service for Hermes , the agent runtime. Hermes has to be installed and working before anything here is useful, and its own documentation is the authority on installing it \u2014 follow that, not this page. What Hermey needs from your Hermes install, once it is running: a gateway \u2014 the"
+},
+{
+"h": "2. Install hermeyd",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#2-install-hermeyd",
+"b": "2. Install hermeyd hermeyd is the host service that fronts Hermes for the apps: pairing, the conversation relay, the shared computer, browser control, credentials, backups and routines. curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sh Copy The script detects your platform, verif"
+},
+{
+"h": "3. Reachability",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#3-reachability",
+"b": "3. Reachability hermeyd listens on loopback only. The installer publishes it itself with tailscale serve , at the serve root, once the service is up \u2014 so a finished install already has: serve: published http://127.0.0.1:8788 at the root ... Pair a device: code 250240 url https://your-host.ts.net/?code=250240 Reachable "
+},
+{
+"h": "4. Pair the app",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#4-pair-the-app",
+"b": "4. Pair the app Ask the host for a one-time code \u2014 hermeyd mints it over loopback and prints the code, the URL to open and a QR code the app can scan: hermeyd pair Copy pairing code 250240 expires 2026-11-21 20:31:33 +01:00 (10 min left) pairing URL https://your-host.ts.net/?code=250240 Scan with the Hermey app's QR sc"
+},
+{
+"h": "Verify",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#verify",
+"b": "Verify curl -s http://127.0.0.1:8788/v1/health # the service answers curl -s -o /dev/null -w '%{http_code}\\n' \\ -H \"Authorization: Bearer $(sudo cat /var/lib/hermeyd/local.token)\" \\ http://127.0.0.1:8788/v1/integrations # 200 with the token, 401 without Copy Then in the app: a bot list, and a conversation that opens. I"
+},
+{
+"h": "Requirements",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#requirements",
+"b": "Requirements Three things that cause almost every setup problem: One gateway per HERMES_HOME . A second gateway bypasses the host lock and can double-fire routines against the same cron store. hermeyd --gateway-check exits 75 when it sees a duplicate and names the process; treat that as \"stop, fix this\". hermeyd and th"
+},
+{
+"h": "Troubleshooting",
+"p": "Getting Hermey running",
+"u": "prerequisites.html#troubleshooting",
+"b": "Troubleshooting See Troubleshooting . The two failures worth knowing before you start: 401 on every call \u2014 no bearer. local.token is minted at boot, 0600 , owner-only; if the bots run as a different user than the service, grant that one principal 0640 via HERMEYD_LOCAL_TOKEN_GROUP . 502 from the tailnet URL \u2014 a leftove"
+},
+{
+"h": "Prerequisites",
+"p": "Install the host",
+"u": "install.html#prerequisites",
+"b": "Prerequisites A Hermes host. Hermes installed and working, with an engine home \u2014 the directory that contains profiles/ (usually ~/.hermes or $HERMES_HOME ). Linux with systemd , or macOS with launchd. The installer needs sudo either way because it writes to /opt , /etc and /var/lib . Tailscale is optional but recommend"
+},
+{
+"h": "The one command",
+"p": "Install the host",
+"u": "install.html#the-one-command",
+"b": "The one command curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh Copy What it does, in order: Detects the platform \u2014 Linux x86_64/aarch64 or macOS arm64/x86_64 \u2014 and refuses anything else with the supported list and the from-source alternative. Downloads the matching binary"
+},
+{
+"h": "Prebuilt or from source",
+"p": "Install the host",
+"u": "install.html#prebuilt-or-from-source",
+"b": "Prebuilt or from source Prebuilt is the default and needs no toolchain. Build from source when the platform is not published, when policy forbids running a downloaded binary, or when you are testing a change: git clone https://github.com/macblizzard/hermey cd hermey sudo setup/install.sh --from-source Copy --from-sourc"
+},
+{
+"h": "Options",
+"p": "Install the host",
+"u": "install.html#options",
+"b": "Options Flags mirror environment variables, which matters when the script is piped into a shell. Flag Env Default Meaning --from-source \u2014 off build with cargo instead of downloading --version TAG HERMEY_VERSION latest release tag to install ( v0.2.0 ) or latest --prefix DIR HERMEY_PREFIX /opt/hermey where the binary go"
+},
+{
+"h": "What is on disk",
+"p": "Install the host",
+"u": "install.html#what-is-on-disk",
+"b": "What is on disk Path What /opt/hermey/bin/hermeyd the service binary /var/lib/hermeyd/bridge.db devices, tickets, collections (SQLite) /var/lib/hermeyd/bridge.salt per-host salt for refresh hashing ( 0600 ) /var/lib/hermeyd/local.token the local bearer every CLI reads ( 0600 , reminted each boot) /var/lib/hermeyd/attac"
+},
+{
+"h": "Verify",
+"p": "Install the host",
+"u": "install.html#verify",
+"b": "Verify # 1. alive (unauthenticated, intentionally says nothing else) curl -fsS http://127.0.0.1:8788/v1/health # {\"status\":\"ok\",\"protocol_version\":\u2026,\"ws\":true} # 2. the local bearer exists and is private sudo ls -l /var/lib/hermeyd/local.token # -rw------- root TOKEN=$(sudo cat /var/lib/hermeyd/local.token) curl -fsS -"
+},
+{
+"h": "Without Tailscale",
+"p": "Install the host",
+"u": "install.html#without-tailscale",
+"b": "Without Tailscale hermeyd binds 127.0.0.1 and refuses any other bind \u2014 a design invariant, not a default. With no tailnet, install with --no-serve and put a TLS terminator with a real certificate (Caddy is least work) in front of 127.0.0.1:8788 . A self-signed certificate will not work: the apps follow App Transport Se"
+},
+{
+"h": "Uninstall",
+"p": "Install the host",
+"u": "install.html#uninstall",
+"b": "Uninstall curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall Copy Stops and removes the unit, the binary, the config and the plugin. It also removes the tailscale serve root mapping, but only when that root points at this install's port; a root another servi"
+},
+{
+"h": "When the first install fails",
+"p": "Install the host",
+"u": "install.html#when-the-first-install-fails",
+"b": "When the first install fails Symptom Cause Fix could not download \u2026/hermeyd-linux-aarch64 no published build for that platform/tag use a release that has it, or --from-source SHA256SUMS has no entry for \u2026 incomplete release install a complete release, or build checksum mismatch corrupt download or a replaced asset re-r"
+},
+{
+"h": "iOS",
+"p": "The apps",
+"u": "apps.html#ios",
+"b": "iOS The release page carries an unsigned .ipa ; you sign it with your own certificate. Install AltStore ( altstore.io ) or SideStore ( sidestore.io ) following their setup for your device. Add this source to the app: https://github.com/macblizzard/hermey/releases/latest/download/altstore.json (It is a release asset on "
+},
+{
+"h": "macOS",
+"p": "The apps",
+"u": "apps.html#macos",
+"b": "macOS Download the disk image \u2014 a direct link, with no release-CDN redirect in front of it: https://macblizzard.github.io/hermey-downloads/ The newest build is published there as Hermey-macOS-<version>.dmg , so the filename tells you which build you have; Hermey-macOS-unsigned.dmg on the same page is the same bytes und"
+},
+{
+"h": "First run",
+"p": "The apps",
+"u": "apps.html#first-run",
+"b": "First run Add a server: paste https://<host>.<tailnet>.ts.net \u2014 serve-root, no port. Enter the pairing code minted on the host: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
+},
+{
+"h": "Appearance and themes",
+"p": "The apps",
+"u": "apps.html#appearance-and-themes",
+"b": "Appearance and themes Settings \u2192 Appearance . Several dark palettes, with Midnight the default, and Parchment for daylight. Every window, sheet and tab tells the system which direction its palette faces, so titles and grouped-row backgrounds follow the choice; a surface that shows a white title on a pale background is "
+},
+{
+"h": "Arranging bot groups",
+"p": "The apps",
+"u": "apps.html#arranging-bot-groups",
+"b": "Arranging bot groups Right-click a group's heading in the Mac's sidebar to Move \u2026 Up or Move \u2026 Down . The menu items grey out at the ends of the list. On the phone the same two verbs are on a category heading: long-press it, or tap the \u22ef at its right edge \u2014 the visible door, since a long press on a heading is not somet"
+},
+{
+"h": "Unpairing and revocation",
+"p": "The apps",
+"u": "apps.html#unpairing-and-revocation",
+"b": "Unpairing and revocation Removing a device in the app deletes its key \u2014 from the Keychain, and from the 0600 file an unsigned Mac build keeps it in. On the host, revoking a device invalidates its outstanding tickets immediately and leaves the other devices alone: sudo cat /var/lib/hermeyd/local.token # 0600, reminted a"
+},
+{
+"h": "Bot computer",
+"p": "The apps",
+"u": "apps.html#bot-computer",
+"b": "Bot computer Both apps show the host's shared desktop \u2014 one screen, one browser profile, one set of logins for every bot. There is no per-bot desktop to choose between. iOS: a bot's chat \u2192 \u22ef \u2192 Bot computer . The sheet shows a live thumbnail until you open it, then the live screen. macOS: the display button in the chat "
+},
+{
+"h": "Notifications and badges",
+"p": "The apps",
+"u": "apps.html#notifications-and-badges",
+"b": "Notifications and badges A bot's reply earns a notification when that bot is not the one on screen \u2014 a chat you are reading has already told you. Both apps put the total waiting (bots and rooms together) on the Dock tile or the app icon; zero clears it. Settings \u2192 Notifications (macOS) or Settings \u2192 Replies (iOS) has o"
+},
+{
+"h": "Who does what",
+"p": "For agents",
+"u": "agents.html#who-does-what",
+"b": "Who does what Step Who Install and verify hermeyd on the host You (root shell on the Hermes host) Download and install the iOS/macOS apps The human (you cannot install to their phone) Pair a device You mint the code; the human enters it Your deliverable is: a host where /v1/health answers on both loopback and the tailn"
+},
+{
+"h": "0. Confirm this host is the right one",
+"p": "For agents",
+"u": "agents.html#0-confirm-this-host-is-the-right-one",
+"b": "0. Confirm this host is the right one Run all of these and check the right-hand column before changing anything. id -u # 0? the installer needs root uname -sm # Linux x86_64/aarch64 or Darwin arm64/x86_64 command -v hermes # a path? Hermes is installed ls -d \"${HERMES_HOME:-$HOME/.hermes}/profiles\" # exists? that is th"
+},
+{
+"h": "1. Install",
+"p": "For agents",
+"u": "agents.html#1-install",
+"b": "1. Install curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh Copy If policy forbids piping a download into a shell, fetch and read it first \u2014 it is a single reviewable POSIX shell file: curl -fsSLO https://github.com/macblizzard/hermey/releases/latest/download/install.sh les"
+},
+{
+"h": "2. Verify before you tell anyone it works",
+"p": "For agents",
+"u": "agents.html#2-verify-before-you-tell-anyone-it-works",
+"b": "2. Verify before you tell anyone it works curl -fsS http://127.0.0.1:8788/v1/health curl -fsS \"https://$(tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"Self\"][\"DNSName\"].rstrip(\".\"))')/v1/health\" Copy Both must answer {\"status\":\"ok\", \u2026} . Do not skip the HTTPS one. A loopback-only pa"
+},
+{
+"h": "3. Pair the human's device",
+"p": "For agents",
+"u": "agents.html#3-pair-the-humans-device",
+"b": "3. Pair the human's device curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start # {\"code\":\"12345678\",\"host\":\"localhost\",\"expires_at\":\u2026} Copy /v1/pair/start answers on loopback only. Codes are short-lived \u2014 mint a fresh one when the human is actually holding the phone. Tell them: iOS: in the app, add server \u2192 the host'"
+},
+{
+"h": "4. Hand over the apps",
+"p": "For agents",
+"u": "agents.html#4-hand-over-the-apps",
+"b": "4. Hand over the apps Send the human these, verbatim: iOS \u2014 install AltStore ( altstore.io ) or SideStore ( sidestore.io ), then add this source in its Sources tab: https://github.com/macblizzard/hermey/releases/latest/download/altstore.json and install Hermey from it. Unsigned builds need re-signing every ~7 days with"
+},
+{
+"h": "Hard rules",
+"p": "For agents",
+"u": "agents.html#hard-rules",
+"b": "Hard rules Never bind hermeyd to anything but loopback. HERMEYD_BIND accepts only loopback values and the process refuses anything else; tailscale serve is the only front door. Do not open a firewall port and do not put it behind a public reverse proxy. Never publish 8790 . That is the browser channel; it carries no cr"
+},
+{
+"h": "Failure playbook",
+"p": "For agents",
+"u": "agents.html#failure-playbook",
+"b": "Failure playbook Symptom Cause Fix curl: (7) Failed to connect on 127.0.0.1:8787 nothing listens there; hermeyd is 8788 curl -fsS http://127.0.0.1:8788/v1/health ; sudo ss -ltnp | grep -E '8788|8790' 401 from any /v1 route except /v1/health and /v1/pair/start no local bearer sent -H \"Authorization: Bearer $(sudo cat /v"
+},
+{
+"h": "No tailnet",
+"p": "For agents",
+"u": "agents.html#no-tailnet",
+"b": "No tailnet hermeyd binds loopback and only loopback. With no tailnet, terminate TLS yourself with a real certificate in front of 127.0.0.1:8788 (Caddy is least work), and set HERMEYD_PUBLIC_HOST to the name the apps dial: sudo sed -i 's/^HERMEYD_PUBLIC_HOST=.*/HERMEYD_PUBLIC_HOST=hermey.example.com/' /etc/hermey/hermey"
+},
+{
+"h": "Definition of done",
+"p": "For agents",
+"u": "agents.html#definition-of-done",
+"b": "Definition of done systemctl is-active hermeyd reports active (or launchd: the job is loaded and running) curl -fsS http://127.0.0.1:8788/v1/health answers {\"status\":\"ok\", \u2026} curl -fsS https://<host>.<tailnet>.ts.net/v1/health answers the same \u2014 no port A /v1 route other than health answers with the bearer, not 401 her"
+},
+{
+"h": "Facts you can rely on",
+"p": "For agents",
+"u": "agents.html#facts-you-can-rely-on",
+"b": "Facts you can rely on Unit hermeyd.service (Linux); com.hermeyd (macOS launchd) Ports 127.0.0.1:8788 main API ( HERMEYD_PORT ), 127.0.0.1:8790 browser channel ( HERMEYD_BROWSER_PORT ), published at serve-root Credential /var/lib/hermeyd/local.token ( 0600 ), sent as Authorization: Bearer \u2026 ; only /v1/health and /v1/pai"
+},
+{
+"h": "Copy-paste prompt for the human",
+"p": "For agents",
+"u": "agents.html#copy-paste-prompt-for-the-human",
+"b": "Copy-paste prompt for the human Set up a Hermey host on this machine. The repo is https://github.com/macblizzard/hermey ; read docs/FOR-AGENTS.md in it and follow it exactly: install hermeyd, verify that /v1/health answers on both loopback and the tailnet URL, then give me the pairing code and the iOS/macOS install lin"
+},
+{
+"h": "Where the rest lives",
+"p": "For agents",
+"u": "agents.html#where-the-rest-lives",
+"b": "Where the rest lives INSTALL.md every installer flag and environment variable, what lands on disk HERMEYD.md the service contract: routes, state, ports, engine config APPS.md iOS and macOS install, first run, revocation TROUBLESHOOTING.md symptom \u2192 cause \u2192 fix, with real log strings ARCHITECTURE.md the components, the "
+},
+{
+"h": "The service will not start, or restarts in a loop",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#the-service-will-not-start-or-restarts-in-a-loop",
+"b": "The service will not start, or restarts in a loop Log line Meaning address already in use something else holds the port \u2014 sudo ss -ltnp | grep -E '8788|8790' ; change HERMEYD_PORT / HERMEYD_BROWSER_PORT in /etc/hermey/hermeyd.env and restart hermeyd refuses HERMEYD_BROWSER_PORT=\u2026 the browser channel was given the publi"
+},
+{
+"h": "hermeyd --gateway-check exits 75",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#hermeyd---gateway-check-exits-75",
+"b": "hermeyd --gateway-check exits 75 A second Hermes gateway already serves this HERMES_HOME , so every routine would fire twice. Nothing was killed. Either stop that process, or run the engine isolated for this home: hermes serve --isolated Copy The check is sudo HERMEY_HOME=/var/lib/hermeyd HERMEYD_ENGINE_HOME=<engine> h"
+},
+{
+"h": "tailscale serve refused",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#tailscale-serve-refused",
+"b": "tailscale serve refused tailscale status # is this node up and logged in? tailscale serve status # what is already published? Copy The installer publishes serve-root \u2014 tailscale serve --bg http://127.0.0.1:8788 \u2014 so pairing URLs carry no :8443 . If it reported that the root already belongs to another service, it printe"
+},
+{
+"h": "HTTPS fails but the service is healthy",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#https-fails-but-the-service-is-healthy",
+"b": "HTTPS fails but the service is healthy Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists: tailscale cert <host>.<tailnet>.ts.net curl -v https://<host>.<tailnet>.ts.net/v1/health Copy Remember there is no port in the URL. If a :8443 is in the app's saved host, edit it out."
+},
+{
+"h": "The app cannot reach the host",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#the-app-cannot-reach-the-host",
+"b": "The app cannot reach the host Is the phone on the tailnet? (Tailscale app installed, logged into the same tailnet.) Does the URL in the app exactly match what tailscale serve status prints \u2014 host only, no port? curl https://<host>.<tailnet>.ts.net/v1/health from another tailnet device \u2014 if that fails, the problem is th"
+},
+{
+"h": "A pairing code is rejected",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#a-pairing-code-is-rejected",
+"b": "A pairing code is rejected Codes are single-use and expire in minutes. Mint a fresh one: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . That route answers on loopback only. Repeated failures are rate limited per client, so wait a moment after a handful of attempts."
+},
+{
+"h": "The iOS app stops launching after a week",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#the-ios-app-stops-launching-after-a-week",
+"b": "The iOS app stops launching after a week That is free-Apple-ID signing, not a bug. Re-sign through AltStore/SideStore, or use a paid developer account for a one-year profile. See APPS.md ."
+},
+{
+"h": "macOS says the app is damaged or from an unidentified developer",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#macos-says-the-app-is-damaged-or-from-an-unidentified-developer",
+"b": "macOS says the app is damaged or from an unidentified developer The build is unsigned. Right-click \u2192 Open the first time, or once: xattr -dr com.apple.quarantine /Applications/Hermey.app Copy"
+},
+{
+"h": "&quot;There was a problem updating&quot; / an update error in the Mac app",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#quotthere-was-a-problem-updatingquot--an-update-error-in-the-mac-app",
+"b": "\"There was a problem updating\" / an update error in the Mac app Two different things wear that message. You checked during the first ten minutes after a release. The feed and the download are published separately: GitHub Pages serves appcast.xml for ~10 minutes before it serves the .dmg it points at, so a check in that"
+},
+{
+"h": "Cards are blank, or /v1/genui/plugin.js answers 503",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#cards-are-blank-or-v1genuipluginjs-answers-503",
+"b": "Cards are blank, or /v1/genui/plugin.js answers 503 The hermes-genui plugin is missing from the engine. It ships with this repository, not with upstream Hermes: ls <engine>/plugins/hermes-genui/desktop/plugin.js Copy Re-run the installer to restore it. The React shell itself is embedded in the binary, so a 503 here is "
+},
+{
+"h": "The Mac's computer says &quot;Reconnecting&quot; and will not connect",
+"p": "Troubleshooting",
+"u": "troubleshooting.html#the-macs-computer-says-quotreconnectingquot-and-will-not-connect",
+"b": "The Mac's computer says \"Reconnecting\" and will not connect Check whether the host has that Mac revoked \u2014 this is what the trash button beside the computer name does: cat /var/lib/hermeyd/revoked-local-computers.json # {\"revoked\": [\"<device id>\"]} Copy Turning Let bots use this computer off and on in the Mac app lifts "
+},
+{
+"h": "How it works",
+"p": "Local computer use",
+"u": "computer-use.html#how-it-works",
+"b": "How it works The Mac app is the executor . Your host sends a command; the app performs it under your account and returns the result. The Mac dials out and keeps the socket open, so nothing listens on it and Remote Login stays off. With the switch on, that socket comes up when the app launches and redials itself after a"
+},
+{
+"h": "What bots can do",
+"p": "Local computer use",
+"u": "computer-use.html#capabilities",
+"b": "What bots can do Run one-shot commands \u2014 including local builds \u2014 with a working directory you choose. Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an app. Read, write and list files in one shared workspace, including downloads from the private browser surface. Open URLs a"
+},
+{
+"h": "macOS permissions",
+"p": "Local computer use",
+"u": "computer-use.html#permissions",
+"b": "macOS permissions Each grant has its own status row and its own link into System Settings. Nothing is requested just by opening Settings \u2014 the probes run only when you press a button. Grant What it is for Accessibility clicks and keystrokes Screen Recording captures Input Monitoring detecting physical input so a bot ca"
+},
+{
+"h": "How it stays contained",
+"p": "Local computer use",
+"u": "computer-use.html#containment",
+"b": "How it stays contained Computer use starts switched off, and revoking the Mac closes its link immediately. One sorted queue drives the desktop, so two bots cannot interleave actions \u2014 and every action is attributed to the bot that asked. Physical input pauses the batch: touching the machine takes control back, and the "
+},
+{
+"h": "The workspace",
+"p": "Local computer use",
+"u": "computer-use.html#workspace",
+"b": "The workspace File tools are confined to one shared folder under ~/Library/Application Support/Hermey/Computer/Workspace/ . Every bot sees the same folder; paths that climb out of it are refused and audited."
+},
+{
+"h": "How a bot reaches it",
+"p": "Local computer use",
+"u": "computer-use.html#from-a-bot",
+"b": "How a bot reaches it There is no shell command to learn. The host exposes the paired Mac to the agent as the computer tools \u2014 observe, act, files, browser \u2014 over the same authenticated socket, and the shared mac-local-computer skill teaches a bot the call shape. Nothing is reachable until the Mac has paired and the swi"
+},
+{
+"h": "1. Trust boundaries",
+"p": "Security",
+"u": "security.html#1-trust-boundaries",
+"b": "1. Trust boundaries \u250c\u2500\u2500 iPhone / Mac \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u250c\u2500\u2500 hermes (100.64.0.1) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510 \u2502 Ed25519 key in Keychain \u2502 \u2502 tailscale serve (serve-root) \u2500\u2500TLS 1.3\u2500\u2500\u25ba 8788 \u2502 \u2502 refresh token in Keychain \u2502 \u2502 \u2502 \u2502 \u2502 \u2500\u2500 30 s WS ticket \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500 wss \u2500\u253c\u2500\u25ba hermeyd (Rust, loopback only) \u2502 \u2502 \u2502 \u2502 \u2502 allow-list, fram"
+},
+{
+"h": "2. Invariants, and the test that holds each one",
+"p": "Security",
+"u": "security.html#2-invariants-and-the-test-that-holds-each-one",
+"b": "2. Invariants, and the test that holds each one Every row is enforced in code and pinned by a test in Tools/qa (run with python -m pytest -q Tools/qa ). # Invariant Where Test 1 The bridge refuses to bind anything but loopback, and refuses a non-loopback gateway URL config.validate() , __main__ test_config.py 2 Pairing"
+},
+{
+"h": "3. Threat model",
+"p": "Security",
+"u": "security.html#3-threat-model",
+"b": "3. Threat model Format: threat \u2192 what the attacker wants \u2192 control \u2192 residual risk . The tests named above are the evidence; this table is the reasoning. # Threat Goal Control Residual risk T1 A device on the tailnet that was never paired drive the agent /v1/ws requires a ticket from /v1/token , which requires a refres"
+},
+{
+"h": "4. Gaps",
+"p": "Security",
+"u": "security.html#4-gaps",
+"b": "4. Gaps Each is a real difference between the design and the implementation, with the impact and the fix. test_* names refer to Tools/qa . G1 \u2014 no proof-of-possession on the token exchange (medium). POST /v1/token accepts {device_id, refresh_token} ; the Ed25519 key registered at pairing is stored but never used to ver"
+},
+{
+"h": "5. Operating it",
+"p": "Security",
+"u": "security.html#5-operating-it",
+"b": "5. Operating it Start (systemd; the unit is written by setup/install.sh ): sudo systemctl start hermeyd tailscale serve --bg http://127.0.0.1:8788 # serve-root, no port Copy hermeyd refuses any bind but loopback, and refuses a published port equal to the browser channel's. Rotate the engine token: stop hermeyd, rotate "
+},
+{
+"h": "6. What is deliberately absent",
+"p": "Security",
+"u": "security.html#6-what-is-deliberately-absent",
+"b": "6. What is deliberately absent No accounts, no telemetry, no cloud relay, no public ingress, no second copy of your data, no \"danger-full-access\" default, no auto-approve, no per-device passwords, and no way for the client to escalate its own permissions. hermeyd is a single Rust binary small enough to read in an after"
+},
+{
+"h": "Surface map: what is reachable without a device ticket",
+"p": "Security",
+"u": "security.html#surface-map-what-is-reachable-without-a-device-ticket",
+"b": "Surface map: what is reachable without a device ticket Every /v1/** route consumes a single-use 30 s ticket in Authorization: Bearer \u2026 , except the handful below. They are unauthenticated on purpose and bounded on purpose; anything added here needs the same reasoning written next to it. Route Why it is open What it is "
+},
+{
+"h": "Known residual risks (2026-11 audit)",
+"p": "Security",
+"u": "security.html#known-residual-risks-2026-11-audit",
+"b": "Known residual risks (2026-11 audit) Written down because each is a real gap that is not hidden by the allow-list: The Bark relay endpoint is device-supplied. POST /v1/push/register takes a URL a paired device types, and the watcher POSTs banner JSON to it. A paired device can therefore make this process issue an HTTP "
+},
+{
+"h": "Bot-to-bot messages",
+"p": "Security",
+"u": "security.html#bot-to-bot-messages",
+"b": "Bot-to-bot messages POST /v1/bots/{profile}/message lets the agent on the host speak into another bot's chat, in the session the apps open. It is loopback only (off-host it answers 404, like any unknown route), it mints no ticket and writes no device row, and it refuses a profile with no stored conversation rather than"
+},
+{
+"h": "Threat model, stated plainly (2026-11 audit)",
+"p": "Security",
+"u": "security.html#threat-model-stated-plainly-2026-11-audit",
+"b": "Threat model, stated plainly (2026-11 audit) Three things this bridge does not defend against, written down because a reader of the allow-list could otherwise conclude the opposite: A paired device is a root-equivalent credential. The method allow-list stops a client calling shell.exec directly, but prompt.submit is al"
+},
+{
+"h": "Bot management (paired device)",
+"p": "Security",
+"u": "security.html#bot-management-paired-device",
+"b": "Bot management (paired device) A paired device can now create, disable and delete bots, and rewrite any bot's SOUL.md . This is a deliberate widening of the device's reach, and it is small in practice because a paired device is already root-equivalent (a device ticket buys shell access, see the threat model above). Wha"
+},
+{
+"h": "Bot computer (shared desktop)",
+"p": "Security",
+"u": "security.html#bot-computer-shared-desktop",
+"b": "Bot computer (shared desktop) One headless desktop serves every bot on the host, on purpose: one Xvnc, one Chromium user-data-dir, one control lease. The consequences, stated rather than implied: Logins are shared. A site signed into during a takeover is signed in for every bot on that host, and in every later session "
+},
+{
+"h": "Commands",
+"p": "Reference",
+"u": "reference.html#cli",
+"b": "Commands A Hermey host installs a service, not a CLI of its own \u2014 the hermey wrapper belonged to the retired Python bridge. These are the commands a host actually runs; each one is also in Install the host . Command What it does \u2026install.sh | sudo sh install or upgrade hermeyd ; the same command both times sudo setup/i"
+},
+{
+"h": "Ports and units",
+"p": "Reference",
+"u": "reference.html#ports",
+"b": "Ports and units Host service hermeyd on 127.0.0.1:8788 ( HERMEYD_PORT ) \u2014 loopback only, by design Browser channel 127.0.0.1:8790 ( HERMEYD_BROWSER_PORT ) \u2014 carries no credential; never published Bearer /var/lib/hermeyd/local.token ( 0600 , reminted every boot) \u2014 what a host-side script sends on 8788 Tailnet serve-root"
+},
+{
+"h": "Paths",
+"p": "Reference",
+"u": "reference.html#paths",
+"b": "Paths Path What /opt/hermey/bin/hermeyd the service binary /var/lib/hermeyd state ( 0700 ): bridge.db , bridge.salt , local.token , attachments/ /etc/hermey/hermeyd.env configuration, 0640 , read as an EnvironmentFile /etc/systemd/system/hermeyd.service the unit (macOS: /etc/hermey/com.hermeyd.plist ) <engine>/plugins/"
+},
+{
+"h": "Endpoints",
+"p": "Reference",
+"u": "reference.html#health",
+"b": "Endpoints The routes worth knowing by name. The rest are below, generated rather than listed by hand. URL Answers GET /v1/health {\"status\":\"ok\",\"protocol_version\":\u2026,\"ws\":true} on loopback or through the tailnet front door /v1/pair/start mints a short single-use code; loopback only /v1/pair/claim the app presents the co"
+},
+{
+"h": "Every route",
+"p": "Reference",
+"u": "reference.html#every-route",
+"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 97 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
+},
+{
+"h": "Download URLs",
+"p": "Reference",
+"u": "reference.html#downloads",
+"b": "Download URLs URL iOS source https://github.com/macblizzard/hermey/releases/latest/download/altstore.json macOS download https://macblizzard.github.io/hermey-downloads/ Latest release https://github.com/macblizzard/hermey/releases/latest"
+},
+{
+"h": "How updates arrive",
+"p": "Reference",
+"u": "reference.html#updates",
+"b": "How updates arrive Host: re-run the install command; it is an upgrade and keeps state. macOS: Sparkle reads an appcast and offers the new build in the app. iOS: the sideloading app refreshes from the AltStore source."
+},
+{
+"h": "The problem",
+"p": "Sign-in cards",
+"u": "credentials.html#the-problem",
+"b": "The problem A bot asked to \"log into my Doctolib account\" today has two bad options: be handed the password (it ends up in a transcript, a log and a model's context), or be given standing access to a vault (any bot can then read anything). Neither is acceptable, and both are how automation normally does it."
+},
+{
+"h": "The idea",
+"p": "Sign-in cards",
+"u": "credentials.html#the-idea",
+"b": "The idea The bot orchestrates the login. The owner supplies the secret. The two are kept apart: the secret is typed into a card in the Hermey app and flows from the app, through hermeyd , into the page. It never enters the conversation, the bot's context, or a log. Every secret-bearing interaction is a card . There are"
+},
+{
+"h": "Card 1 \u2014 choice",
+"p": "Sign-in cards",
+"u": "credentials.html#card-1--choice",
+"b": "Card 1 \u2014 choice Shown when a bot reaches a login page and has to know how the owner wants to sign in. field meaning site the origin being signed into, e.g. doctolib.de options the methods the page actually offers: Continue with Google , Email and password , Passkey note (optional) one line from the bot: what it is tryi"
+},
+{
+"h": "Card 2 \u2014 secret",
+"p": "Sign-in cards",
+"u": "credentials.html#card-2--secret",
+"b": "Card 2 \u2014 secret Shown after a choice, or whenever a value must be typed. field meaning site the origin, repeated so a card is never ambiguous fields one or more masked inputs: username + password , or a single one-time code fills what the value will be placed into: \"the password field on the sign-in form\" expires 15 mi"
+},
+{
+"h": "Card 3 \u2014 confirm",
+"p": "Sign-in cards",
+"u": "credentials.html#card-3--confirm",
+"b": "Card 3 \u2014 confirm Shown when a bot wants to use an existing connection instead of a typed secret. field meaning site where the action will happen connection which saved connection, e.g. \"Google \u2014 mo@example.com (Composio)\" action one line: \"sign in to doctolib.de with this account\" The bot learns yes or no . It never se"
+},
+{
+"h": "The rules that make it safe",
+"p": "Sign-in cards",
+"u": "credentials.html#the-rules-that-make-it-safe",
+"b": "The rules that make it safe Secrets bypass the model. A value entered in a secret card must never be delivered to the bot as a message. If it arrives in the conversation, the whole design has failed. A bot cannot read the field after the fill. Screenshots are acceptable \u2014 password inputs render as dots \u2014 but page scrip"
+},
+{
+"h": "What the bot learns, in full",
+"p": "Sign-in cards",
+"u": "credentials.html#what-the-bot-learns-in-full",
+"b": "What the bot learns, in full the site it is on, which sign-in method the owner chose, whether the fill succeeded, and the page's own response (wrong password, bad code), for a confirm card, yes or no. That is the complete list. If a future feature needs more, it goes in this document first."
+},
+{
+"h": "Fill targets",
+"p": "Sign-in cards",
+"u": "credentials.html#fill-targets",
+"b": "Fill targets where the bot works how the fill lands the bot screen's browser the Hermey Sign-in extension (first choice): it holds a loopback socket to hermeyd and types the value into the field, replying only \"ok\" the bot screen's browser, launched by the dock the DevTools port, as a fallback when no extension is conn"
+},
+{
+"h": "When it cannot work",
+"p": "Sign-in cards",
+"u": "credentials.html#when-it-cannot-work",
+"b": "When it cannot work case behaviour the site offers only a passkey the choice card says so, and the bot asks the owner to complete it on their own device the app is older than this feature the bot is told plainly to update the app, rather than falling back to asking for a password in chat the owner does not answer the c"
+},
+{
+"h": "Connecting accounts (Composio, and the same pattern later for others)",
+"p": "Sign-in cards",
+"u": "credentials.html#connecting-accounts-composio-and-the-same-pattern-later-for-others",
+"b": "Connecting accounts (Composio, and the same pattern later for others) Connecting happens in the app , once: the owner taps Connect, finishes the provider's own sign-in, and the connection is stored host-side, per owner, not per bot. A bot then only ever gets card 3 to use it. Revoking is a switch in the app. The same s"
+},
+{
+"h": "How to use it",
+"p": "Importing bots",
+"u": "importing.html#how-to-use-it",
+"b": "How to use it Open Hermey \u2192 Settings \u2192 Back up your bots \u2192 Prompt for another platform\u2026 Paste the prompt into the other platform's main bot and let it work. It returns a hermey-bots.zip . Import it in Hermey, read the preview, choose how to treat bots that already exist here. If the other platform cannot write a zip, b"
+},
+{
+"h": "What the prompt asks for",
+"p": "Importing bots",
+"u": "importing.html#what-the-prompt-asks-for",
+"b": "What the prompt asks for kind must be hermey-bot-backup , and version must match this host \u2014 the app copies the version, you do not have to know it. One object per bot: profile (its identity, [a-z0-9][a-z0-9_-]{0,63} ), name , description , soul , memory.memory , memory.user , notes , categories , enabled , optional ic"
+},
+{
+"h": "What cannot come across",
+"p": "Importing bots",
+"u": "importing.html#what-cannot-come-across",
+"b": "What cannot come across Whatever the other platform has no equivalent for \u2014 model settings, proprietary memory structures, tool definitions. The prompt asks that bot to tell you what it dropped rather than inventing a substitution. This page is docs/IMPORT-FROM-ANOTHER-PLATFORM.md , rendered at build time. Corrections "
+},
+{
+"h": "How it works",
+"p": "Integrations",
+"u": "integrations.html#how-it-works",
+"b": "How it works You paste your Composio project key into Hermey \u2014 once, on the host. It is stored at /etc/hermey/composio.key with 0600 permissions, not in a unit file, because a key in a systemd unit is visible to anyone who can run systemctl show . You press Connect on a service. Hermey asks Composio for a fresh connect"
+},
+{
+"h": "Connecting a service",
+"p": "Integrations",
+"u": "integrations.html#connecting-a-service",
+"b": "Connecting a service Open Settings \u2192 Integrations in the Mac app or the Integrations tab on the phone. Each service is a card; press Connect on the one you want. The browser opens on Google's consent page, you approve it, and the card turns to Connected . If the card says it is not configured, the project key is missin"
+},
+{
+"h": "More than one account",
+"p": "Integrations",
+"u": "integrations.html#more-than-one-account",
+"b": "More than one account Connect the same service again and you get a second account. Give each a name you will recognise \u2014 Hermey fills in the address it finds on the account, and you can rename it later: mnoman1942 dna.mailbox That name is what the bot uses when it acts, so make it the one you would say out loud. Two Gm"
+},
+{
+"h": "The services",
+"p": "Integrations",
+"u": "integrations.html#the-services",
+"b": "The services The list comes from the host's own catalogue, so this table cannot drift from the code without a check failing ( Tools/site/check_drift.py , catalog ). Adding a service to CATALOG in hermeyd/src/integrations.rs adds it to the app and requires a line here. Service Slug What it is for Gmail gmail Read, searc"
+},
+{
+"h": "What a bot can do with it",
+"p": "Integrations",
+"u": "integrations.html#what-a-bot-can-do-with-it",
+"b": "What a bot can do with it Once a service is connected, the agent uses it the way it uses any other tool: read the newest message from a sender, list tomorrow's appointments, look up the code a site just emailed you. The integrations skill documents the calls; the bot does not need new credentials and you do not need to"
+},
+{
+"h": "Where your data lives",
+"p": "Integrations",
+"u": "integrations.html#where-your-data-lives",
+"b": "Where your data lives Tokens \u2014 on the Composio side, under your project key. Hermey stores the key, not the tokens. The key \u2014 /etc/hermey/composio.key , 0600 , on the host that runs hermeyd . Account names \u2014 in hermeyd 's state, alongside the connection ids. They are labels, not credentials. Mail, calendars, files \u2014 ne"
+},
+{
+"h": "Troubleshooting",
+"p": "Integrations",
+"u": "integrations.html#troubleshooting",
+"b": "Troubleshooting \"could not reach the host\" on the phone \u2014 the pairing is stale; re-pair from the Mac app. A card says Connected but the bot gets nothing \u2014 the account is INITIALIZING , or the key lacks that toolkit on your Composio plan. Check the Composio dashboard. Two accounts, wrong one used \u2014 rename them. The bot "
+},
+{
+"h": "Keeping this current",
+"p": "Integrations",
+"u": "integrations.html#keeping-this-current",
+"b": "Keeping this current The app's catalogue and this table come from one list, CATALOG in hermeyd/src/integrations.rs . Tools/site/check_drift.py catalog fails when a catalogue entry is missing from this page, or when this page names a service the code no longer has. This page is docs/INTEGRATIONS.md , rendered at build t"
+}
+]

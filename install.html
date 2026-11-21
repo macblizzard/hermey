@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Installing a Hermey host · Hermey docs</title>
+<meta name="description" content="The host is a machine that already runs Hermes. Hermey adds one loopback service to it — hermeyd , a single Rust binary that pairs devices, mints 30-second tickets, relays the engine&#x27;s WebSocket and serves the apps&#x27; /v1 API. Nothing is exposed beyond 127.0.0.1 ; reachability is Tailscale&#x27;s job.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/install.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Installing a Hermey host · Hermey docs">
+<meta property="og:description" content="The host is a machine that already runs Hermes. Hermey adds one loopback service to it — hermeyd , a single Rust binary that pairs devices, mints 30-second tickets, relays the engine&#x27;s WebSocket and serves the apps&#x27; /v1 API. Nothing is exposed beyond 127.0.0.1 ; reachability is Tailscale&#x27;s job.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html" aria-current="page">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Install the host</p>
+    <h1>Installing a Hermey host</h1>
+    <p class="lede">The host is a machine that already runs Hermes. Hermey adds one loopback service to it — <strong>hermeyd</strong>,
+a single Rust binary that pairs devices, mints 30-second tickets, relays the engine's WebSocket and
+serves the apps' <code>/v1</code> API. Nothing is exposed beyond <code>127.0.0.1</code>; reachability is Tailscale's job.</p>
+    <div class="table-wrap"><table>
+
+<tbody>
+<tr>
+<td>Main API</td>
+<td><code>127.0.0.1:8788</code> (<code>HERMEYD_PORT</code>)</td>
+</tr>
+<tr>
+<td>Browser channel</td>
+<td><code>127.0.0.1:8790</code> (<code>HERMEYD_BROWSER_PORT</code>) — never publish this one</td>
+</tr>
+<tr>
+<td>State</td>
+<td><code>/var/lib/hermeyd</code> (0700)</td>
+</tr>
+<tr>
+<td>Local bearer</td>
+<td><code>/var/lib/hermeyd/local.token</code> (0600), minted on boot</td>
+</tr>
+<tr>
+<td>Config</td>
+<td><code>/etc/hermey/hermeyd.env</code></td>
+</tr>
+<tr>
+<td>Unit</td>
+<td><code>/etc/systemd/system/hermeyd.service</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li><strong>A Hermes host.</strong> Hermes installed and working, with an <strong>engine home</strong> — the directory that
+contains <code>profiles/</code> (usually <code>~/.hermes</code> or <code>$HERMES_HOME</code>).</li>
+<li><strong>Linux with systemd</strong>, or <strong>macOS</strong> with launchd. The installer needs <code>sudo</code> either way because it
+writes to <code>/opt</code>, <code>/etc</code> and <code>/var/lib</code>.</li>
+<li><strong>Tailscale is optional but recommended.</strong> With it, the installer publishes the service on your
+tailnet and prints a pairing URL a phone can open. Without it the service is reachable only from
+the host itself, which is enough to verify but not enough to pair a phone.</li>
+<li><code>curl</code> (or <code>wget</code>) and <code>sha256sum</code>/<code>shasum</code>. Both are present on a stock Linux or macOS install.</li>
+</ul>
+<p>Three requirements are worth stating plainly, because each one fails in a way that does not look like
+a setup problem:</p>
+<ol class="steps-list">
+<li><strong>One gateway per <code>HERMES_HOME</code>.</strong> Hermes allows a single dashboard/gateway per engine home. If a
+second one is already running, <code>hermeyd --gateway-check</code> exits <code>75</code> and the installer warns; every
+routine would otherwise fire twice. Run the engine for this home with <code>hermes serve --isolated</code>.</li>
+<li><strong><code>hermeyd</code> and the engine must share a UID.</strong> hermeyd reads the engine's profiles and writes a
+bot's skill into them. A different account turns that into a permission error at runtime, not at
+install time.</li>
+<li><strong>The <code>hermes-genui</code> plugin ships with us.</strong> Upstream Hermes does not have it. The installer puts
+it in <code>&lt;engine&gt;/plugins/hermes-genui</code>; without it every generated-UI card answers <code>503</code>.</li>
+</ol>
+<h2 id="the-one-command">The one command</h2>
+<div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>What it does, in order:</p>
+<ol class="steps-list">
+<li><strong>Detects the platform</strong> — Linux x86_64/aarch64 or macOS arm64/x86_64 — and refuses anything else
+with the supported list and the from-source alternative.</li>
+<li><strong>Downloads the matching binary</strong> from this repository's GitHub release, plus <code>SHA256SUMS</code>, and
+verifies the <strong>SHA-256 before installing</strong>. A missing or mismatched entry aborts with nothing
+installed: the checksum is the whole trust anchor for a prebuilt binary.</li>
+<li><strong>Installs</strong> it to <code>/opt/hermey/bin/hermeyd</code>.</li>
+<li><strong>Creates state</strong> at <code>/var/lib/hermeyd</code> (<code>0700</code>, owned by the service account).</li>
+<li><strong>Writes <code>/etc/hermey/hermeyd.env</code></strong> with the detected engine home, ports, public host and token
+path. An existing file is kept on upgrade, so ports and a chosen host name are never reset.</li>
+<li><strong>Installs the systemd unit</strong> from the installer's own template (Linux) or writes
+<code>/etc/hermey/com.hermeyd.plist</code> and prints the two launchd commands (macOS). It does not bootstrap
+a daemon behind your back.</li>
+<li><strong>Installs the <code>hermes-genui</code> plugin</strong> into <code>&lt;engine&gt;/plugins/hermes-genui</code>.</li>
+<li><strong>Runs <code>hermeyd --gateway-check</code></strong> and <em>warns</em> — does not fail — when another gateway already owns
+the engine home.</li>
+<li><strong>Publishes the service</strong> with <code>tailscale serve --bg http://127.0.0.1:8788</code> — the serve root, so
+pairing URLs carry no port — sets <code>HERMEYD_PUBLIC_HOST</code> to the node's MagicDNS name, and prints a
+real pairing code and URL. It declines, naming the one command to run, only where it cannot act:
+no <code>tailscale</code>, the node is not logged in, or another service already owns the serve root. The
+last line of the install says which of those it is. <code>--no-serve</code> skips publishing.</li>
+</ol>
+<p>Re-running the same command is the <strong>upgrade</strong> path: same paths, same state, new binary, unit and
+plugin replaced, service restarted.</p>
+<h2 id="prebuilt-or-from-source">Prebuilt or from source</h2>
+<p>Prebuilt is the default and needs no toolchain. Build from source when the platform is not published,
+when policy forbids running a downloaded binary, or when you are testing a change:</p>
+<div class="code"><pre><code>git clone https://github.com/macblizzard/hermey
+cd hermey
+sudo setup/install.sh --from-source</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p><code>--from-source</code> needs <code>cargo</code> (<a href="https://rustup.rs">https://rustup.rs</a>) and a C compiler — <code>cargo build --release --locked</code> compiles the bundled SQLite. The plugin is installed from <code>setup/plugins/hermes-genui</code> in
+the same checkout, so a build is self-contained.</p>
+<h2 id="options">Options</h2>
+<p>Flags mirror environment variables, which matters when the script is piped into a shell.</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Env</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--from-source</code></td>
+<td>—</td>
+<td>off</td>
+<td>build with cargo instead of downloading</td>
+</tr>
+<tr>
+<td><code>--version TAG</code></td>
+<td><code>HERMEY_VERSION</code></td>
+<td><code>latest</code></td>
+<td>release tag to install (<code>v0.2.0</code>) or <code>latest</code></td>
+</tr>
+<tr>
+<td><code>--prefix DIR</code></td>
+<td><code>HERMEY_PREFIX</code></td>
+<td><code>/opt/hermey</code></td>
+<td>where the binary goes</td>
+</tr>
+<tr>
+<td><code>--state-dir DIR</code></td>
+<td><code>HERMEY_STATE</code></td>
+<td><code>/var/lib/hermeyd</code></td>
+<td>state directory (created <code>0700</code>)</td>
+</tr>
+<tr>
+<td><code>--engine-home DIR</code></td>
+<td><code>HERMEYD_ENGINE_HOME</code></td>
+<td>detect</td>
+<td>Hermes engine home (contains <code>profiles/</code>)</td>
+</tr>
+<tr>
+<td><code>--user NAME</code></td>
+<td><code>HERMEY_USER</code></td>
+<td>engine owner</td>
+<td>account hermeyd runs as</td>
+</tr>
+<tr>
+<td><code>--no-serve</code></td>
+<td><code>HERMEY_SERVE</code></td>
+<td>publish</td>
+<td>do not publish with <code>tailscale serve</code></td>
+</tr>
+<tr>
+<td><code>--uninstall</code></td>
+<td>—</td>
+<td>—</td>
+<td>remove the service, binary, config and plugin; keep state</td>
+</tr>
+<tr>
+<td><code>--purge</code></td>
+<td>—</td>
+<td>—</td>
+<td>with <code>--uninstall</code>: delete state too</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>HERMES_HOME</code> is honoured when <code>--engine-home</code> is not given. <code>HERMEY_BASE_URL</code> points the download at
+a mirror or a local directory of release assets; <code>HERMEY_SRC</code> points <code>--from-source</code> at a checkout.
+<code>HERMEY_UNIT_DIR</code> overrides <code>/etc/systemd/system</code> (for tests and second instances).</p>
+<p>Validation is deliberate: every path must be absolute and free of spaces and <code>..</code>, every port must
+be 1–65535, and the published and browser ports must differ. All of it is checked before anything is
+written.</p>
+<h2 id="what-is-on-disk">What is on disk</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Path</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/opt/hermey/bin/hermeyd</code></td>
+<td>the service binary</td>
+</tr>
+<tr>
+<td><code>/var/lib/hermeyd/bridge.db</code></td>
+<td>devices, tickets, collections (SQLite)</td>
+</tr>
+<tr>
+<td><code>/var/lib/hermeyd/bridge.salt</code></td>
+<td>per-host salt for refresh hashing (<code>0600</code>)</td>
+</tr>
+<tr>
+<td><code>/var/lib/hermeyd/local.token</code></td>
+<td>the local bearer every CLI reads (<code>0600</code>, reminted each boot)</td>
+</tr>
+<tr>
+<td><code>/var/lib/hermeyd/attachments/</code></td>
+<td>uploaded files</td>
+</tr>
+<tr>
+<td><code>/etc/hermey/hermeyd.env</code></td>
+<td>configuration, <code>0640</code>, read as an <code>EnvironmentFile</code></td>
+</tr>
+<tr>
+<td><code>/etc/systemd/system/hermeyd.service</code></td>
+<td>the unit (Linux)</td>
+</tr>
+<tr>
+<td><code>/etc/hermey/com.hermeyd.plist</code></td>
+<td>the launchd job to load (macOS)</td>
+</tr>
+<tr>
+<td><code>&lt;engine&gt;/plugins/hermes-genui/</code></td>
+<td>the card plugin, with its <code>desktop/plugin.js</code> bundle</td>
+</tr>
+</tbody>
+</table></div>
+<p>The config file is environment variables only — hermeyd has no config file of its own:</p>
+<div class="code"><pre><code>HERMEY_HOME=/var/lib/hermeyd
+HERMEYD_PORT=8788
+HERMEYD_BROWSER_PORT=8790
+HERMEYD_ENGINE_HOME=/path/to/engine
+HERMEYD_ENGINE_WS=ws://127.0.0.1:9121/api/ws
+HERMEYD_ENGINE_TOKEN_FILE=/path/to/engine.token
+HERMEYD_PUBLIC_HOST=localhost</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<h2 id="verify">Verify</h2>
+<div class="code"><pre><code># 1. alive (unauthenticated, intentionally says nothing else)
+curl -fsS http://127.0.0.1:8788/v1/health
+# {&quot;status&quot;:&quot;ok&quot;,&quot;protocol_version&quot;:…,&quot;ws&quot;:true}
+
+# 2. the local bearer exists and is private
+sudo ls -l /var/lib/hermeyd/local.token      # -rw-------  root
+TOKEN=$(sudo cat /var/lib/hermeyd/local.token)
+curl -fsS -H &quot;Authorization: Bearer $TOKEN&quot; http://127.0.0.1:8788/v1/local-computers
+
+# 3. no duplicate gateway for this engine home (exit 0 good, 75 duplicate)
+sudo HERMEY_HOME=/var/lib/hermeyd hermeyd --gateway-check; echo $?
+
+# 4. no public listener
+ss -ltnp | grep -E '8788|8790'               # both on 127.0.0.1 only</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Then pair:</p>
+<div class="code"><pre><code>hermeyd pair    # prints a 6-digit code, https://&lt;host&gt;/?code=… and a QR to scan</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The installer already published the serve root and printed one code. <code>hermeyd pair</code> mints the next:
+it wraps <code>POST /v1/pair/start</code> over loopback. Enter the code in the app against the host's address,
+or scan the QR of the same URL that the command prints. A code is single-use and expires in ten
+minutes, so mint one while the phone is in your hand. Pair as many devices as you like; each is
+individually revocable.</p>
+<p>Every <code>/v1</code> route except <code>/v1/health</code> and <code>/v1/pair/start</code> requires the local bearer. Loopback is not
+a substitute for it.</p>
+<h2 id="without-tailscale">Without Tailscale</h2>
+<p>hermeyd binds <code>127.0.0.1</code> and refuses any other bind — a design invariant, not a default. With no
+tailnet, install with <code>--no-serve</code> and put a TLS terminator with a real certificate (Caddy is least
+work) in front of <code>127.0.0.1:8788</code>. A self-signed certificate will not work: the apps follow App
+Transport Security and refuse it. Set <code>HERMEYD_PUBLIC_HOST</code> to the name the app dials, then restart
+the service.</p>
+<h2 id="uninstall">Uninstall</h2>
+<div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh -s -- --uninstall</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Stops and removes the unit, the binary, the config and the plugin. It also removes the <code>tailscale serve</code>
+root mapping, but only when that root points at this install's port; a root another service owns is
+left in place, and the command says so. <strong>State is kept</strong>, so paired devices survive a reinstall. Add
+<code>--purge</code> to delete <code>/var/lib/hermeyd</code> as well:</p>
+<div class="code"><pre><code>sudo setup/install.sh --uninstall --purge</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<h2 id="when-the-first-install-fails">When the first install fails</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>could not download …/hermeyd-linux-aarch64</code></td>
+<td>no published build for that platform/tag</td>
+<td>use a release that has it, or <code>--from-source</code></td>
+</tr>
+<tr>
+<td><code>SHA256SUMS has no entry for …</code></td>
+<td>incomplete release</td>
+<td>install a complete release, or build</td>
+</tr>
+<tr>
+<td><code>checksum mismatch</code></td>
+<td>corrupt download or a replaced asset</td>
+<td>re-run once; if it repeats, do not install that release</td>
+</tr>
+<tr>
+<td><code>cannot find the Hermes engine home</code></td>
+<td>detection found no <code>profiles/</code></td>
+<td><code>--engine-home /path/to/engine</code></td>
+</tr>
+<tr>
+<td><code>unsupported platform</code></td>
+<td>not one of the four targets</td>
+<td><code>--from-source</code> on that platform</td>
+</tr>
+<tr>
+<td>warning: gateway-check exited 75</td>
+<td>a second gateway for this <code>HERMES_HOME</code></td>
+<td>stop it, or <code>hermes serve --isolated</code></td>
+</tr>
+<tr>
+<td>cards answer <code>503</code></td>
+<td>plugin missing from the engine</td>
+<td>re-run the installer; check <code>&lt;engine&gt;/plugins/hermes-genui/desktop/plugin.js</code></td>
+</tr>
+<tr>
+<td>service restarts in a loop</td>
+<td>port taken, engine unreachable, or state unreadable</td>
+<td><code>journalctl -u hermeyd -n 80 --no-pager</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The installer exits non-zero on any of these and never reports success for a host it did not finish
+setting up.</p>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/INSTALL.md">docs/INSTALL.md</a>, rendered at build time. Corrections belong in that file.</p>
+    <nav class="pager" aria-label="Pages"><a href="prerequisites.html"><span>Previous</span><strong>Getting Hermey running</strong></a><a class="next" href="apps.html"><span>Next</span><strong>The apps</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#the-one-command">The one command</a></li><li><a href="#prebuilt-or-from-source">Prebuilt or from source</a></li><li><a href="#options">Options</a></li><li><a href="#what-is-on-disk">What is on disk</a></li><li><a href="#verify">Verify</a></li><li><a href="#without-tailscale">Without Tailscale</a></li><li><a href="#uninstall">Uninstall</a></li><li><a href="#when-the-first-install-fails">When the first install fails</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js?v=64bb989bfe"></script>
+</body>
+</html>

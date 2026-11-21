@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Troubleshooting · Hermey docs</title>
+<meta name="description" content="Symptom, cause and fix — with the strings you will actually see.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/troubleshooting.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Troubleshooting · Hermey docs">
+<meta property="og:description" content="Symptom, cause and fix — with the strings you will actually see.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html" aria-current="page">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Troubleshooting</p>
+    <h1>Troubleshooting</h1>
+    <p class="lede">Symptom, cause and fix — with the strings you will actually see.</p>
+    <p>Start here:</p>
+<div class="code"><pre><code>systemctl status hermeyd --no-pager        # macOS: launchctl print system/com.hermeyd
+curl -fsS http://127.0.0.1:8788/v1/health
+sudo journalctl -u hermeyd -n 80 --no-pager</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>That is the unit state, liveness, and the log. <code>{&quot;status&quot;:&quot;ok&quot;, …}</code> on <code>8788</code> means the service is
+up; a <code>401</code> from any other <code>/v1</code> route means the caller sent no local bearer
+(<code>/var/lib/hermeyd/local.token</code>) rather than that the service is unwell.</p>
+<h2 id="the-service-will-not-start-or-restarts-in-a-loop">The service will not start, or restarts in a loop</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Log line</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>address already in use</code></td>
+<td>something else holds the port — <code>sudo ss -ltnp | grep -E '8788|8790'</code>; change <code>HERMEYD_PORT</code>/<code>HERMEYD_BROWSER_PORT</code> in <code>/etc/hermey/hermeyd.env</code> and restart</td>
+</tr>
+<tr>
+<td><code>hermeyd refuses HERMEYD_BROWSER_PORT=…</code></td>
+<td>the browser channel was given the published port; they must differ</td>
+</tr>
+<tr>
+<td><code>hermeyd refuses to bind …</code></td>
+<td><code>HERMEYD_BIND</code> is not loopback. Only <code>127.0.0.1</code>, <code>::1</code> or <code>localhost</code> are accepted</td>
+</tr>
+<tr>
+<td><code>&quot;event&quot;:&quot;upstream_error&quot;</code>, <code>&quot;reason&quot;:&quot;connect_failed&quot;</code> in the audit log</td>
+<td>the engine is not answering on <code>ws://127.0.0.1:9121/api/ws</code>, or restarted with a different token. Start it with <code>hermes serve --isolated</code>; check <code>HERMEYD_ENGINE_WS</code> and <code>HERMEYD_ENGINE_TOKEN_FILE</code></td>
+</tr>
+<tr>
+<td><code>Permission denied</code> on a profile or skill file</td>
+<td>hermeyd runs as a different UID from the engine's owner. It must share that UID — see <a href="install.html"><code>INSTALL.md</code></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>After editing <code>/etc/hermey/hermeyd.env</code>: <code>sudo systemctl restart hermeyd</code> (macOS:
+<code>sudo launchctl kickstart -k system/com.hermeyd</code>).</p>
+<h2 id="hermeyd---gateway-check-exits-75"><code>hermeyd --gateway-check</code> exits 75</h2>
+<p>A second Hermes gateway already serves this <code>HERMES_HOME</code>, so every routine would fire twice. Nothing
+was killed. Either stop that process, or run the engine isolated for this home:</p>
+<div class="code"><pre><code>hermes serve --isolated</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The check is <code>sudo HERMEY_HOME=/var/lib/hermeyd HERMEYD_ENGINE_HOME=&lt;engine&gt; hermeyd --gateway-check</code>;
+exit <code>75</code> is the duplicate, anything else non-zero is a different failure the output names.</p>
+<h2 id="tailscale-serve-refused"><code>tailscale serve</code> refused</h2>
+<div class="code"><pre><code>tailscale status          # is this node up and logged in?
+tailscale serve status    # what is already published?</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The installer publishes serve-root — <code>tailscale serve --bg http://127.0.0.1:8788</code> — so pairing URLs
+carry no <code>:8443</code>. If it reported that the root already belongs to another service, it printed the
+<code>--https=&lt;port&gt;</code> command that publishes beside it. A leftover <code>:8443</code> mount from the old port scheme
+answers <code>502</code>; remove it with <code>tailscale serve --https=8443 off</code>. Do not stop another tailnet service
+to free a port.</p>
+<p><strong>Never add <code>8790</code> to <code>tailscale serve</code>.</strong> The browser channel is loopback-only and carries no
+credential.</p>
+<h2 id="https-fails-but-the-service-is-healthy">HTTPS fails but the service is healthy</h2>
+<p>Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists:</p>
+<div class="code"><pre><code>tailscale cert &lt;host&gt;.&lt;tailnet&gt;.ts.net
+curl -v https://&lt;host&gt;.&lt;tailnet&gt;.ts.net/v1/health</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Remember there is no port in the URL. If a <code>:8443</code> is in the app's saved host, edit it out.</p>
+<h2 id="the-app-cannot-reach-the-host">The app cannot reach the host</h2>
+<ul>
+<li>Is the phone on the tailnet? (Tailscale app installed, logged into the same tailnet.)</li>
+<li>Does the URL in the app exactly match what <code>tailscale serve status</code> prints — host only, no port?</li>
+<li><code>curl https://&lt;host&gt;.&lt;tailnet&gt;.ts.net/v1/health</code> from another tailnet device — if that fails, the
+problem is the host, not the app.</li>
+</ul>
+<h2 id="a-pairing-code-is-rejected">A pairing code is rejected</h2>
+<p>Codes are single-use and expire in minutes. Mint a fresh one:
+<code>curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start</code>. That route answers on loopback only.
+Repeated failures are rate limited per client, so wait a moment after a handful of attempts.</p>
+<h2 id="the-ios-app-stops-launching-after-a-week">The iOS app stops launching after a week</h2>
+<p>That is free-Apple-ID signing, not a bug. Re-sign through AltStore/SideStore, or use a paid developer
+account for a one-year profile. See <a href="apps.html"><code>APPS.md</code></a>.</p>
+<h2 id="macos-says-the-app-is-damaged-or-from-an-unidentified-developer">macOS says the app is damaged or from an unidentified developer</h2>
+<p>The build is unsigned. Right-click → Open the first time, or once:</p>
+<div class="code"><pre><code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<h2 id="quotthere-was-a-problem-updatingquot--an-update-error-in-the-mac-app">&quot;There was a problem updating&quot; / an update error in the Mac app</h2>
+<p>Two different things wear that message.</p>
+<ol class="steps-list">
+<li>
+<p><strong>You checked during the first ten minutes after a release.</strong> The feed and the download are
+published separately: GitHub Pages serves <code>appcast.xml</code> for ~10 minutes before it serves the
+<code>.dmg</code> it points at, so a check in that window finds a version whose file is still <code>404</code>. Nothing
+is wrong with your Mac — check again in ten minutes. The release page is always current even when
+the mirror is not.</p>
+</li>
+<li>
+<p><strong>A signature that does not verify.</strong> The app trusts exactly one Ed25519 public key
+(<code>SUPublicEDKey</code>), so a feed signed with a different key installs nothing. Check without guessing:</p>
+<div class="code"><pre><code>curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30   # version + signature
+curl -sI https://macblizzard.github.io/hermey-downloads/Hermey-macOS-0.1.580.dmg | head -3</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The <code>length=</code> in the feed must equal the served <code>content-length</code>, or the file was replaced after
+the feed was signed.</p>
+</li>
+</ol>
+<h2 id="cards-are-blank-or-v1genuipluginjs-answers-503">Cards are blank, or <code>/v1/genui/plugin.js</code> answers 503</h2>
+<p>The <code>hermes-genui</code> plugin is missing from the engine. It ships with this repository, not with
+upstream Hermes:</p>
+<div class="code"><pre><code>ls &lt;engine&gt;/plugins/hermes-genui/desktop/plugin.js</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Re-run the installer to restore it. The React shell itself is embedded in the binary, so a 503 here
+is always the plugin bundle, never the card page.</p>
+<h2 id="the-macs-computer-says-quotreconnectingquot-and-will-not-connect">The Mac's computer says &quot;Reconnecting&quot; and will not connect</h2>
+<p>Check whether the host has that Mac revoked — this is what the trash button beside the computer name
+does:</p>
+<div class="code"><pre><code>cat /var/lib/hermeyd/revoked-local-computers.json     # {&quot;revoked&quot;: [&quot;&lt;device id&gt;&quot;]}</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Turning <strong>Let bots use this computer</strong> off and on in the Mac app lifts it (the app calls
+<code>POST /v1/local-computers/&lt;device&gt;/enable</code>). If it still will not connect, ask the host why rather
+than the screen:</p>
+<div class="code"><pre><code>sudo journalctl -u hermeyd --since -10min | grep local_computer.rejected</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Each line names the check that failed: <code>no ticket</code>, <code>ticket not redeemable</code>, <code>device not active</code>, or
+<code>revoked</code>.</p>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/TROUBLESHOOTING.md">docs/TROUBLESHOOTING.md</a>, rendered at build time. Corrections belong in that file.</p>
+    <nav class="pager" aria-label="Pages"><a href="agents.html"><span>Previous</span><strong>For agents</strong></a><a class="next" href="computer-use.html"><span>Next</span><strong>Local computer use</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#the-service-will-not-start-or-restarts-in-a-loop">The service will not start, or restarts in a loop</a></li><li><a href="#hermeyd---gateway-check-exits-75">hermeyd --gateway-check exits 75</a></li><li><a href="#tailscale-serve-refused">tailscale serve refused</a></li><li><a href="#https-fails-but-the-service-is-healthy">HTTPS fails but the service is healthy</a></li><li><a href="#the-app-cannot-reach-the-host">The app cannot reach the host</a></li><li><a href="#a-pairing-code-is-rejected">A pairing code is rejected</a></li><li><a href="#the-ios-app-stops-launching-after-a-week">The iOS app stops launching after a week</a></li><li><a href="#macos-says-the-app-is-damaged-or-from-an-unidentified-developer">macOS says the app is damaged or from an unidentified developer</a></li><li><a href="#quotthere-was-a-problem-updatingquot--an-update-error-in-the-mac-app">&quot;There was a problem updating&quot; / an update error in the Mac app</a></li><li><a href="#cards-are-blank-or-v1genuipluginjs-answers-503">Cards are blank, or /v1/genui/plugin.js answers 503</a></li><li><a href="#the-macs-computer-says-quotreconnectingquot-and-will-not-connect">The Mac's computer says &quot;Reconnecting&quot; and will not connect</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js?v=64bb989bfe"></script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Getting Hermey running · Hermey docs</title>
+<meta name="description" content="From nothing to a paired app. Four steps, about five minutes after Hermes is up.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/prerequisites.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Getting Hermey running · Hermey docs">
+<meta property="og:description" content="From nothing to a paired app. Four steps, about five minutes after Hermes is up.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html" aria-current="page">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Getting Hermey running</p>
+    <h1>Getting Hermey running</h1>
+    <p class="lede">From nothing to a paired app. Four steps, about five minutes after Hermes is up.</p>
+    <div class="note info"><p><strong>Hermey is an independent project.</strong> It is not affiliated with, endorsed by, or supported by the Hermes
+project or its maintainers, and it is not an official Hermes client. &quot;Hermes&quot; is named only to say what
+Hermey connects to. Please don't ask the Hermes maintainers for support with Hermey — and please don't
+assume a Hermey problem is a Hermes problem until you've checked the logs on both sides.</p></div>
+<h2 id="1-hermes">1. Hermes</h2>
+<p>Hermey is a client and a host service for <strong>Hermes</strong>, the agent runtime. Hermes has to be installed and
+working before anything here is useful, and its own documentation is the authority on installing it — follow
+that, not this page.</p>
+<p>What Hermey needs from your Hermes install, once it is running:</p>
+<ul>
+<li><strong>a gateway</strong> — the engine's WebSocket API, normally on loopback (<code>/api/ws</code>);</li>
+<li><strong>at least one bot</strong> (a profile) — Hermey lists them; an empty install shows an empty app;</li>
+<li><strong>a discoverable home</strong> — a <code>HERMES_HOME</code> (or engine home) whose <code>profiles/</code> directory is visible, because
+Hermey reads each bot's <code>state.db</code>, <code>memories/</code>, <code>config.yaml</code> and <code>skills/</code> directly;</li>
+<li><strong>one gateway per <code>HERMES_HOME</code></strong> — see <a href="#requirements">Requirements</a> below.</li>
+</ul>
+<h2 id="2-install-hermeyd">2. Install hermeyd</h2>
+<p><code>hermeyd</code> is the host service that fronts Hermes for the apps: pairing, the conversation relay, the shared
+computer, browser control, credentials, backups and routines.</p>
+<div class="code"><pre><code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sh</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The script detects your platform, verifies the published SHA-256 of the binary it downloads, installs
+<code>/opt/hermey/bin/hermeyd</code>, creates <code>/var/lib/hermeyd</code>, writes <code>/etc/hermey/hermeyd.env</code>, installs and
+starts the systemd unit, and publishes the service on your tailnet.</p>
+<p>Refuse to pipe a script into a shell? Build it instead — same binary, your compiler:</p>
+<div class="code"><pre><code>git clone https://github.com/macblizzard/hermey &amp;&amp; cd hermey
+cargo build --release --locked --manifest-path hermeyd/Cargo.toml
+sudo install -m 0755 hermeyd/target/release/hermeyd /opt/hermey/bin/hermeyd</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<h2 id="3-reachability">3. Reachability</h2>
+<p><code>hermeyd</code> listens on loopback only. The installer publishes it itself with <code>tailscale serve</code>, at the
+serve root, once the service is up — so a finished install already has:</p>
+<div class="code plain"><pre><code>  serve: published http://127.0.0.1:8788 at the root
+  ...
+Pair a device:
+  code  250240
+  url   https://your-host.ts.net/?code=250240
+
+Reachable at https://your-host.ts.net/ from your tailnet.</code></pre></div>
+<p>That is <code>serve</code> at the root — <strong>no port in the URL</strong>. Pairing links therefore look like
+<code>https://your-host.ts.net/?code=…</code>, not <code>:8443</code>.</p>
+<p>Two cases it cannot publish in, and the install's last line says which one happened:</p>
+<ul>
+<li>
+<p><strong>no <code>tailscale</code> on the host</strong>, or <strong>the node is not logged in</strong> — run, once, in that order:</p>
+<div class="code"><pre><code>tailscale up
+tailscale serve --bg http://127.0.0.1:8788</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+</li>
+<li>
+<p><strong>the serve root already belongs to another service</strong> — the installer names what owns it, leaves it
+alone, and prints the command that publishes beside it on a free https port.</p>
+</li>
+</ul>
+<p><code>--no-serve</code> (or <code>HERMEY_SERVE=no</code>) skips publishing entirely, for a host fronted by Caddy or another
+reverse proxy, and prints the command for when you want it.</p>
+<h2 id="4-pair-the-app">4. Pair the app</h2>
+<p>Ask the host for a one-time code — <code>hermeyd</code> mints it over loopback and prints the code, the URL to
+open and a QR code the app can scan:</p>
+<div class="code"><pre><code>hermeyd pair</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<div class="code plain"><pre><code>pairing code  250240
+expires       2026-11-21 20:31:33 +01:00 (10 min left)
+pairing URL   https://your-host.ts.net/?code=250240
+
+Scan with the Hermey app's QR scanner:
+[QR of the URL above]</code></pre></div>
+<p>Enter the code in Hermey, open the pairing URL on a device on the same tailnet, or scan the QR. A code is single-use and
+expires in ten minutes; run <code>hermeyd pair</code> again for another. <code>--json</code> prints the route's object unchanged
+for scripts (<code>hermeyd pair --json | jq -r .code</code>), and <code>--host</code> overrides the name in the URL when
+<code>HERMEYD_PUBLIC_HOST</code> is not the one you want to publish.</p>
+<p>Prefer <code>curl</code>? It is the same route, and the local token is the bearer:</p>
+<div class="code"><pre><code>curl -s -X POST -H &quot;Authorization: Bearer $(cat /var/lib/hermeyd/local.token)&quot; \
+  http://127.0.0.1:8788/v1/pair/start
+# {&quot;code&quot;:&quot;…&quot;,&quot;expires_at&quot;:1795289493.7,&quot;host&quot;:&quot;your-host.ts.net&quot;,&quot;protocol_version&quot;:1}</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>The device appears on the host immediately; <code>/v1/devices</code> lists it. If <code>hermeyd pair</code> says the service is
+not running, fix that first — <code>hermeyd status</code> then names the half that is missing (service, engine, token
+file, browser channel, gateway).</p>
+<h2 id="verify">Verify</h2>
+<div class="code"><pre><code>curl -s http://127.0.0.1:8788/v1/health                  # the service answers
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H &quot;Authorization: Bearer $(sudo cat /var/lib/hermeyd/local.token)&quot; \
+  http://127.0.0.1:8788/v1/integrations                  # 200 with the token, 401 without</code></pre><button class="copy" type="button" aria-label="Copy the command">Copy</button></div>
+<p>Then in the app: a bot list, and a conversation that opens. If the conversation hangs on &quot;connecting&quot;, the
+relay reached your engine and the engine refused the session — check the engine's log, not Hermey's.</p>
+<h2 id="requirements">Requirements</h2>
+<p>Three things that cause almost every setup problem:</p>
+<ol class="steps-list">
+<li><strong>One gateway per <code>HERMES_HOME</code>.</strong> A second gateway bypasses the host lock and can double-fire routines
+against the same cron store. <code>hermeyd --gateway-check</code> exits <code>75</code> when it sees a duplicate and names the
+process; treat that as &quot;stop, fix this&quot;.</li>
+<li><strong><code>hermeyd</code> and the engine must run as the same user.</strong> Hermey reads <code>state.db</code>, <code>memories/*.md</code>,
+<code>config.yaml</code> and <code>skills/</code> directly. Different users means permission errors that look like missing data.</li>
+<li><strong>The <code>hermes-genui</code> plugin ships with Hermey</strong>, not with Hermes. The installer places it; a host without it
+answers <code>503</code> on <code>/v1/genui/plugin.js</code> and cards come up blank.</li>
+</ol>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p>See <a href="troubleshooting.html">Troubleshooting</a>. The two failures worth knowing before you start:</p>
+<ul>
+<li><strong>401 on every call</strong> — no bearer. <code>local.token</code> is minted at boot, <code>0600</code>, owner-only; if the bots run as a
+different user than the service, grant that one principal <code>0640</code> via <code>HERMEYD_LOCAL_TOKEN_GROUP</code>.</li>
+<li><strong>502 from the tailnet URL</strong> — a leftover <code>:8443</code> mount pointing at the retired Python bridge. Remove it with
+<code>tailscale serve --https=8443 off</code>; the current service is published at serve-root.</li>
+</ul>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/PREREQUISITES.md">docs/PREREQUISITES.md</a>, rendered at build time. Corrections belong in that file.</p>
+    <nav class="pager" aria-label="Pages"><a href="index.html"><span>Previous</span><strong>Overview</strong></a><a class="next" href="install.html"><span>Next</span><strong>Install the host</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#1-hermes">1. Hermes</a></li><li><a href="#2-install-hermeyd">2. Install hermeyd</a></li><li><a href="#3-reachability">3. Reachability</a></li><li><a href="#4-pair-the-app">4. Pair the app</a></li><li><a href="#verify">Verify</a></li><li><a href="#requirements">Requirements</a></li><li><a href="#troubleshooting">Troubleshooting</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js?v=64bb989bfe"></script>
+</body>
+</html>
