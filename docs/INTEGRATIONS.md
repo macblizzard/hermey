@@ -57,13 +57,13 @@ failing (`Tools/site/check_drift.py`, `catalog`). Adding a service to `CATALOG` 
 | Google Docs | `googledocs` | Read and write documents |
 | Google Sheets | `googlesheets` | Read and edit spreadsheets |
 | Google Maps | `googlemaps` | Places, directions and distance |
-| Supabase | `supabase` | Query your projects and run SQL |
-| GitHub | `github` | Repositories, issues and pull requests |
-| Notion | `notion` | Read and write your pages |
-| Linear | `linear` | Track issues and projects |
-| Stripe | `stripe` | Customers, payments and invoices |
 | Cloudflare | `cloudflare` | DNS, cache and Workers |
 | Vercel | `vercel` | Deployments, domains and projects |
+
+Five services the earlier catalogue named — Supabase, GitHub, Notion, Linear and Stripe — are **not** offered
+today: `CATALOG` was narrowed to the eight rows above, and a card for one of the others would promise
+something no host can draw. They return when the catalogue gains them, and this table follows that list
+rather than the other way round.
 
 A toolkit Composio does not support on your plan is reported as unavailable instead of pretending to connect.
 
@@ -81,7 +81,7 @@ never a hard-coded guess:
 | Cloudflare | Global API Key (stored as a secret) **and** the account email |
 | Vercel | Access Token (secret), with an optional team id |
 
-The value goes from the app to your bridge and straight on to Composio. It is not stored on the host, not
+The value goes from the app to the host and straight on to Composio. It is not stored on the host, not
 returned in any response and not written to the audit log — only the resulting account id and status come back.
 
 **Netlify** is the one that still is not offered: Composio has it only as an MCP toolkit (`netlify_mcp`, 9

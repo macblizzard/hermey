@@ -2,17 +2,24 @@
 """Build the Hermey documentation site.
 
 The docs are static HTML with one shared shell: a sidebar, a content column and an on-this-page list.
-Rather than hand-maintain eight near-identical pages, this script owns the shell, the navigation, the
-search index and the prev/next links, and each page below supplies only its body.
+Rather than hand-maintain a dozen near-identical pages, this script owns the shell, the navigation, the
+search index and the prev/next links, and each page supplies only its body.
 
     python3 Tools/site/build_docs.py <output-dir>
 
 `<output-dir>` is the `docs/` directory of the published site (the gh-pages worktree), so the output
 is committed as plain files and GitHub Pages serves them without a build step.
 
-Facts in here are copied from docs/INSTALL.md, docs/APPS.md, docs/TROUBLESHOOTING.md,
-docs/FOR-AGENTS.md and docs/SECURITY.md. When those change, change this too — the source docs remain
-the authority for the repo.
+**Pages that mirror a document render that document.** `docs/PREREQUISITES.md`, `docs/INSTALL.md`,
+`docs/APPS.md`, `docs/FOR-AGENTS.md`, `docs/TROUBLESHOOTING.md`, `docs/SECURITY.md`,
+`docs/INTEGRATIONS.md`, `docs/CREDENTIALS.md` and `docs/IMPORT-FROM-ANOTHER-PLATFORM.md` are read here
+at build time and converted to the site's own markup — headings keep GitHub's anchors, tables become the
+cream table cards, fenced commands become the mono block with its copy button, quotes become notes. No
+section of those documents is typed into this file, so a section added to a doc cannot be missing from
+the site. `Tools/site/check_drift.py` compares the two and `Tests/test_docs_site_sections.py` pins it.
+
+Pages with no document behind them — the overview, local computer use, the reference — are written in
+this file, and the reference's route table is generated from `hermeyd/src/main.rs` for the same reason.
 """
 from __future__ import annotations
 
@@ -20,27 +27,43 @@ import hashlib
 import html
 import json
 import pathlib
-
-import markdown
 import re
 import sys
+
+from markdown_it import MarkdownIt
 
 BRAND = "Hermey"
 REPO = "https://github.com/macblizzard/hermey"
 SITE = "../"  # docs/ lives one level under the landing page
+DOCS = pathlib.Path(__file__).resolve().parents[2] / "docs"
+
+# The independence statement. It is the same sentence in the page footer, on the landing page and in the
+# README, because a project that names someone else's trademark owes that in every place it is introduced.
+DISCLAIMER = ("Hermey is an independent project — not affiliated with, endorsed by, or supported by the "
+              "Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to.")
+
+
+def code_block(body: str, label: str = "", button: bool = True) -> str:
+    """A mono block around already-escaped HTML, with a copy button unless the block is not a command.
+
+    `label` is the aria-label, so a screen reader says what the button copies.
+    """
+    btn = (f'<button class="copy" type="button" aria-label="Copy {html.escape(label or "the command")}">'
+           f'Copy</button>') if button else ""
+    klass = "code" if button else "code plain"
+    return f'<div class="{klass}"><pre><code>{body}</code></pre>{btn}</div>'
 
 
 def code(text: str, label: str = "") -> str:
     """A mono block with a copy button. The label is the aria-label, so each button says what it copies."""
-    body = html.escape(text.strip("\n"))
-    name = html.escape(label or "the command")
-    return (f'<div class="code"><pre><code>{body}</code></pre>'
-            f'<button class="copy" type="button" aria-label="Copy {name}">Copy</button></div>')
+    return code_block(html.escape(text.strip("\n")), label)
 
 
 def table(head: list[str], rows: list[list[str]], cls: str = "") -> str:
-    klass = f' class="table-wrap {cls}"'.strip()
-    out = [f'<div {klass}><table><thead><tr>']
+    klass = " ".join(part for part in ("table-wrap", cls) if part)
+    if not rows:
+        return ""
+    out = [f'<div class="{klass}"><table><thead><tr>']
     out += [f"<th>{h}</th>" for h in head]
     out.append("</tr></thead><tbody>")
     for row in rows:
@@ -53,10 +76,204 @@ def note(kind: str, title: str, body: str) -> str:
     return f'<div class="note {kind}"><p><strong>{title}</strong> {body}</p></div>'
 
 
+# ── markdown → the site's markup ─────────────────────────────────────────────────────────────────────
+# A doc section and a page section have to say the same thing, so the page is generated from the doc. The
+# only work left is presentation: keep the site's palette and type, and make the doc's own anchors work.
+
+# doc -> the page that mirrors it. Doubles as the link rewriter, because a relative link in a doc has to
+# land somewhere a visitor can click.
+DOC_PAGE = {
+    "PREREQUISITES.md": "prerequisites.html",
+    "INSTALL.md": "install.html",
+    "APPS.md": "apps.html",
+    "FOR-AGENTS.md": "agents.html",
+    "TROUBLESHOOTING.md": "troubleshooting.html",
+    "SECURITY.md": "security.html",
+    "INTEGRATIONS.md": "integrations.html",
+    "CREDENTIALS.md": "credentials.html",
+    "IMPORT-FROM-ANOTHER-PLATFORM.md": "importing.html",
+}
+
+# The docs are CommonMark as GitHub renders it — a fence indented inside a list item is a code block, not
+# a paragraph. The older `markdown` package read those as paragraphs and printed a literal ``` on the page,
+# so this uses a CommonMark parser.
+MD = MarkdownIt("commonmark", {"html": True})
+MD.enable("table").enable("strikethrough")
+
+HERMEYD_ROUTER = pathlib.Path(__file__).resolve().parents[2] / "hermeyd" / "src" / "main.rs"
+
+
+def doc_text(source: str) -> str:
+    """One document, without its title line: the page template supplies the title."""
+    path = DOCS / source
+    if not path.exists():
+        raise SystemExit(f"{source} is missing — {DOC_PAGE.get(source, 'a site page')} mirrors it")
+    return re.sub(r"\A#\s+.*\n", "", path.read_text(encoding="utf-8"), count=1)
+
+
+def doc_block(source: str, heading: str) -> str:
+    """The first fenced block inside one `##` section, as text.
+
+    For a page that quotes a command without mirroring the whole document: the command still comes out of
+    the doc, so it cannot go stale on the site alone.
+    """
+    text = doc_text(source)
+    match = re.search(rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", text, flags=re.M | re.S)
+    fence = re.search(r"```[a-z]*\n(.*?)```", match.group(1), flags=re.S) if match else None
+    if not fence:
+        raise SystemExit(f"{source} has no fenced block under “{heading}”")
+    return fence.group(1).rstrip("\n")
+
+
+def _slug(text: str) -> str:
+    """GitHub's heading anchor, so an in-doc link like `#2-verify-…` still lands after rendering.
+
+    Same rule as GitHub's slugger: lower-case, drop everything that is not a word character or a hyphen,
+    then spaces become hyphens. Reproducing it exactly is what makes an anchor copied out of the rendered
+    page match the one in the doc.
+    """
+    return re.sub(r"[^\w\- ]", "", text.lower()).replace(" ", "-") or "section"
+
+
+def _anchor_headings(page: str) -> str:
+    used: set[str] = set()
+
+    def one(match: re.Match) -> str:
+        level, inner = match.group(1), match.group(2)
+        base = _slug(re.sub(r"<[^>]+>", "", inner))
+        name, n = base, 1
+        while name in used:
+            name, n = f"{base}-{n}", n + 1
+        used.add(name)
+        return f'<h{level} id="{name}">{inner}</h{level}>'
+
+    return re.sub(r"<h([2-4])>(.*?)</h\1>", one, page, flags=re.S)
+
+
+def _wrap_code(page: str) -> str:
+    """<pre> → the site's mono block; a fence with a language is a command, so it gets the copy button."""
+    def one(match: re.Match) -> str:
+        lang = (match.group(1) or "").strip()
+        # A fence's text ends in the newline before the closing ```; the copy button must not copy it.
+        return code_block(match.group(2).rstrip("\n"), "the command" if lang else "", button=bool(lang))
+
+    return re.sub(r'<pre><code(?: class="language-([\w+-]+)")?>(.*?)</code></pre>', one, page, flags=re.S)
+
+
+def _wrap_tables(page: str) -> str:
+    def one(match: re.Match) -> str:
+        mark = match.group(0)
+        head = re.search(r"<thead>.*?</thead>", mark, flags=re.S)
+        # `| | |` is a two-column table with no header text; a strip of empty cream cells reads as a bug.
+        if head and not any(cell.strip() for cell in re.findall(r"<th>(.*?)</th>", head.group(0), flags=re.S)):
+            mark = mark.replace(head.group(0), "")
+        return f'<div class="table-wrap">{mark}</div>'
+
+    return re.sub(r"<table>.*?</table>", one, page, flags=re.S)
+
+
+def _wrap_quotes(page: str) -> str:
+    """A doc's blockquote is the site's note — the disclaimer and the "already served" aside both are."""
+    return re.sub(r"<blockquote>(.*?)</blockquote>",
+                  lambda m: f'<div class="note info">{m.group(1).strip()}</div>', page, flags=re.S)
+
+
+def _wrap_tasks(page: str) -> str:
+    """GitHub's `- [ ]` checkboxes: the checklist style the definition-of-done section already used."""
+    def one(match: re.Match) -> str:
+        block = match.group(0)
+        items = re.findall(r"<li>(.*?)</li>", block, flags=re.S)
+        if not items or not all(re.match(r"\[[ xX]\]\s", i) for i in items):
+            return block
+        return '<ul class="checklist">' + re.sub(r"<li>\[[ xX]\]\s*", "<li>", block[len("<ul>"):])
+
+    return re.sub(r"<ul>.*?</ul>", one, page, flags=re.S)
+
+
+def _rewrite_links(page: str) -> str:
+    """A relative `.md` link in a doc points at a file; on the site it has to point at a page."""
+    def one(match: re.Match) -> str:
+        target, sep, fragment = match.group(1).partition("#")
+        name = pathlib.PurePosixPath(target).name
+        if "/" not in target.strip("./") and name in DOC_PAGE:
+            return f'href="{DOC_PAGE[name]}{sep}{fragment}"'
+        resolved = pathlib.PurePosixPath("docs", target)
+        return f'href="{REPO}/blob/main/{resolved}"'
+
+    return re.sub(r'href="([^"\s]+\.md(?:#[^"]*)?)"', one, page)
+
+
+def render_markdown(text: str) -> str:
+    """Markdown in, the site's own markup out."""
+    page = MD.render(text)
+    for step in (_anchor_headings, _wrap_code, _wrap_tables, _wrap_quotes, _wrap_tasks, _rewrite_links):
+        page = step(page)
+    # The site's numbered lists are the circled steps; every `<ol>` in a doc is a sequence too.
+    return page.replace("<ol>", '<ol class="steps-list">')
+
+
+def _split_intro(page: str, fallback: str) -> tuple[str, str]:
+    """The doc's opening paragraph becomes the page's standfirst, when it opens with a real paragraph.
+
+    Keeping it in the body as well would print the same sentence twice; dropping it would lose the doc's
+    own introduction behind a hand-written one.
+    """
+    match = re.match(r"<p>(.*?)</p>\s*", page, flags=re.S)
+    if not match:
+        return fallback, page
+    length = len(re.sub(r"<[^>]+>", "", match.group(1)).strip())
+    if length < 60 and fallback:
+        return fallback, page
+    return match.group(1), page[match.end():]
+
+
+def doc_title(source: str) -> str:
+    """The doc's own H1 — the page's title, so the heading a reader sees is the one the file carries."""
+    first = (DOCS / source).read_text(encoding="utf-8").lstrip().splitlines()[0]
+    return first[2:].strip() if first.startswith("# ") else source.removesuffix(".md").replace("-", " ")
+
+
+def markdown_page(slug: str, nav: str, group: str, lede: str, source: str) -> dict:
+    """A page rendered from a docs/*.md file, not hand-copied into this script."""
+    body = render_markdown(doc_text(source))
+    intro, body = _split_intro(body, lede)
+    body += (f'\n<p class="doc-source">This page is <a href="{REPO}/blob/main/docs/{source}">'
+             f'docs/{source}</a>, rendered at build time. Corrections belong in that file.</p>')
+    return dict(slug=slug, nav=nav, group=group, title=doc_title(source), lede=intro, body=body)
+
+
+def mounted_routes() -> list[tuple[str, str]]:
+    """(path, methods) for every route hermeyd mounts, read from its router at build time.
+
+    The reference page has to list what the service actually serves. Typing 96 paths by hand is the same
+    mistake as typing a doc section, and it is the one `check_drift.py` found 89 times on the old page.
+    """
+    text = HERMEYD_ROUTER.read_text(encoding="utf-8") if HERMEYD_ROUTER.exists() else ""
+    routes: dict[str, set[str]] = {}
+    for match in re.finditer(r'\.route\(\s*"(/v1/[^"]+)"', text):
+        after = text[match.end():match.end() + 240]
+        method = re.search(r"\b(get|post|put|patch|delete)\(", after)
+        routes.setdefault(match.group(1), set()).add(method.group(1).upper() if method else "—")
+    return sorted((path, ", ".join(sorted(m))) for path, m in routes.items())
+
+
+def route_table() -> str:
+    return table(["Method", "Path"],
+                 [[methods, f"<code>{html.escape(path)}</code>"] for path, methods in mounted_routes()])
+
+
 # ── pages ────────────────────────────────────────────────────────────────────────────────────────────
 # Each entry: slug, nav label, group, title, lede, body HTML.
 
 PAGES: list[dict] = []
+
+# Built here, appended after the overview: the sidebar reads PAGES in order.
+_PREREQUISITES = markdown_page(
+    slug="prerequisites",
+    nav="Getting Hermey running",
+    group="Getting started",
+    lede="",
+    source="PREREQUISITES.md")
 
 PAGES.append(dict(
     slug="index",
@@ -66,19 +283,24 @@ PAGES.append(dict(
     lede="A native iOS and macOS client for a Hermes agent you run yourself — and the one command "
          "that installs the host it talks to.",
     body=f"""
-<p>Hermey is two pieces that meet at a tailnet address. A small <strong>bridge</strong> runs on the
-machine that already runs Hermes. The <strong>apps</strong> on your phone and Mac talk to that bridge
-over HTTPS with a real certificate, and nothing else is in the path — no account, no relay, no
-service of ours.</p>
+<p>Hermey is two pieces that meet at a tailnet address. <strong>hermeyd</strong>, one Rust binary, runs
+on the machine that already runs Hermes. The <strong>apps</strong> on your phone and Mac talk to it over
+HTTPS with a real certificate, and nothing else is in the path — no account, no relay, no service of
+ours.</p>
+
+<div class="start">
+  <a class="start-btn" href="prerequisites.html">Get started</a>
+  <span>From nothing to a paired app — four steps, about five minutes after Hermes is up.</span>
+</div>
 
 <h2 id="quick-start">Quick start</h2>
 <p>Three steps. The first needs root on the Hermes host; the others happen on the device.</p>
 <ol class="steps-list">
   <li><strong>Install the host.</strong> One command, safe to re-run as an upgrade.
-    {code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash", "the host install command")}
+    {code(doc_block("INSTALL.md", "The one command"), "the host install command")}
   </li>
   <li><strong>Mint a pairing code</strong> on that host, with the phone in your hand — codes expire.
-    {code("hermey pair", "the pairing command")}
+    {code("curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start", "the pairing command")}
   </li>
   <li><strong>Install the app and paste the code.</strong> iOS through AltStore or SideStore, macOS
     from the disk image. <a href="apps.html">Both are unsigned</a> — that is the stated trade-off.</li>
@@ -86,6 +308,8 @@ service of ours.</p>
 
 <h2 id="start-here">Start here</h2>
 <div class="cards">
+  <a class="card" href="prerequisites.html"><span class="card-kicker">Start</span><strong>Getting started</strong>
+    <span>What Hermes has to be doing first, then install, publish, pair.</span></a>
   <a class="card" href="install.html"><span class="card-kicker">Host</span><strong>Install the host</strong>
     <span>The command, what it writes, the flags, and how to undo it.</span></a>
   <a class="card" href="apps.html"><span class="card-kicker">Devices</span><strong>The apps</strong>
@@ -102,8 +326,10 @@ service of ours.</p>
 
 <h2 id="requirements">Requirements</h2>
 {table(["Piece", "Needs"], [
-  ["Host", "Linux with systemd, Python 3.11+, a working <code>hermes</code> install, and Tailscale "
-           "(or your own TLS proxy in front of loopback)"],
+  ["Host", "Linux with systemd or macOS with launchd, <code>sudo</code> (it writes under <code>/opt</code>, "
+           "<code>/etc</code> and <code>/var/lib</code>), and a working <code>hermes</code> install with an "
+           "engine home. Tailscale is optional but recommended — without it the service is reachable only "
+           "from the host itself"],
   ["iPhone / iPad", "iOS 17 or later, plus AltStore, SideStore or another signer"],
   ["Mac", "macOS 14 or later"],
 ])}
@@ -111,229 +337,52 @@ service of ours.</p>
 <h2 id="two-halves">The two halves</h2>
 {table(["", "Where it runs", "What it is"], [
   ["<strong>Host service</strong>", "<code>hermeyd</code> on <code>127.0.0.1:8788</code>, with the browser channel on <code>8790</code>",
-   "Rust service that adapts the Hermes dashboard to the apps' protocol. It holds the device "
-   "registry, mints single-use tickets, audits every call, and issues the local bearer that host-side "
-   "scripts send. The retired Python bridge answered the same routes on <code>8787</code>."],
+   "Rust service that adapts the Hermes engine to the apps' protocol. It holds the device registry, "
+   "mints single-use 30-second tickets, relays the engine's WebSocket, and issues the local bearer at "
+   "<code>/var/lib/hermeyd/local.token</code> that host-side scripts send."],
   ["<strong>Apps</strong>", "iPhone, iPad, Mac",
    "SwiftUI clients. They hold a device key, never a host secret, and can only answer the questions "
    "the agent asks."],
   ["<strong>Front door</strong>", "<code>tailscale serve --bg http://127.0.0.1:8788</code>",
-   "Terminates TLS with a real certificate at serve-root, so pairing URLs carry no port. A host still "
-   "on the bridge publishes <code>--https=8443</code> in front of <code>8787</code>. The apps refuse "
-   "self-signed, so this is not optional."],
+   "Terminates TLS with a real certificate at serve-root, so pairing URLs carry no port. It is the only "
+   "front door: hermeyd refuses any bind but loopback, and the apps refuse a self-signed certificate."],
 ])}
 
-<p class="next-hint">New to this? Read <a href="install.html">Install the host</a>, then
-<a href="apps.html">the apps</a>.</p>
+<p class="next-hint">New to this? Start with <a href="prerequisites.html">Getting Hermey running</a>,
+then read <a href="install.html">Install the host</a>.</p>
 """,
 ))
 
-PAGES.append(dict(
+
+PAGES.append(_PREREQUISITES)
+
+PAGES.append(markdown_page(
     slug="install",
     nav="Install the host",
     group="Getting started",
-    title="Install the host",
-    lede="One command on the machine that already runs Hermes. It adds a loopback service and exposes "
-         "it over your tailnet — nothing else on the host changes.",
-    body=f"""
-<h2 id="one-command">The one command</h2>
-{code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash", "the host install command")}
-<p>Re-running it is an <strong>upgrade</strong>: same units, same state, package reinstalled and the
-services restarted.</p>
+    lede="",
+    source="INSTALL.md"))
 
-{note("info", "Current hosts run <code>hermeyd</code>, not the bridge.",
-      "The Rust host service listens on <code>127.0.0.1:8788</code> with the browser channel on "
-      "<code>8790</code>, publishes serve-root — so pairing URLs carry no <code>:8443</code> — and "
-      "requires the local bearer at <code>&lt;state&gt;/local.token</code> for host-side API calls. "
-      "Everything below details the retired Python bridge installer, which still works on a host that "
-      "has not been migrated: <code>8787</code> is its port, and it accepts loopback callers with no "
-      "credential.")}
-
-<h2 id="what-it-does">What it does, in order</h2>
-<ol class="steps-list">
-  <li><strong>Preflight.</strong> Python 3.11+, systemd, and a <code>hermes</code> binary it can find.
-    It stops with a clear message rather than half-installing.</li>
-  <li><strong>Service account.</strong> The bridge runs as the owner of the Hermes home — the account
-    that can already read your bots' profiles. <code>HERMEY_USER</code> names a different one if you
-    prefer; it then needs read access to the profiles directory. State lives in
-    <code>/var/lib/hermey</code>.</li>
-  <li><strong>Bridge.</strong> Installed into <code>/opt/hermey/venv</code>, run as
-    <code>hermey-bridge.service</code>, bound to <code>127.0.0.1:8787</code>.</li>
-  <li><strong>Gateway.</strong> Hermes allows one machine-level dashboard per host, so the installer
-    <em>reuses</em> the one already running, reading its port and token from the process environment.
-    Only when there is none does it create <code>hermey-gateway.service</code>.</li>
-  <li><strong>TLS and reachability.</strong>
-    <code>tailscale serve --bg --https=8443 http://127.0.0.1:8787</code> — a real certificate, tailnet
-    only, no public listener. It then verifies the HTTPS endpoint answers.</li>
-  <li><strong>The CLI.</strong> <code>hermey</code> in <code>/usr/local/bin</code>:
-    <code>status</code>, <code>pair</code>, <code>logs</code>, <code>doctor</code>,
-    <code>update</code>, <code>uninstall</code>.</li>
-</ol>
-
-{note("warn", "Never name a unit <code>hermes-gateway.service</code>.", "That is Hermes' own "
-      "<em>messaging</em> gateway. The collision is silent until the next restart, when messaging does "
-      "not come back. Hermey's units are <code>hermey-bridge.service</code> and, only when needed, "
-      "<code>hermey-gateway.service</code>.")}
-
-<h2 id="pairing">Pairing</h2>
-{code("hermey pair", "the pairing command")}
-<p>It prints a code, a <code>hermes://pair?host=…&amp;code=…</code> link and — when the
-<code>qrcode</code> package could be installed — a QR. The <strong>link carries the address</strong>,
-so it is the one to paste on a Mac that has never paired. The eight digits work on their own only once
-the app already knows the host.</p>
-<p>Codes are single-use and short-lived. Mint one when the phone is in your hand. Pair as many devices
-as you like; each is individually revocable.</p>
-
-<h2 id="options">Options</h2>
-<p>Every flag is also readable as an environment variable, which matters when you pipe the script into
-a shell.</p>
-{table(["Flag", "Env", "Default", "Meaning"], [
-  ["<code>--port N</code>", "<code>HERMEY_PORT</code>", "<code>8787</code>", "bridge port (loopback); a hermeyd host serves <code>8788</code> instead and takes no such flag"],
-  ["<code>--https-port N</code>", "<code>HERMEY_HTTPS_PORT</code>", "<code>8443</code>", "tailnet port for <code>tailscale serve</code>"],
-  ["<code>--ref R</code>", "<code>HERMEY_REF</code>", "<code>main</code>", "git ref to install; a release tag pins a build"],
-  ["<code>--local DIR</code>", "<code>HERMEY_LOCAL_SRC</code>", "—", "install from a checkout instead of GitHub"],
-  ["<code>--no-serve</code>", "<code>HERMEY_SERVE=no</code>", "auto", "do not touch <code>tailscale serve</code>"],
-  ["<code>--uninstall</code>", "—", "—", "remove the units and the serve mapping, keep state"],
-  ["<code>--purge</code>", "—", "—", "with <code>--uninstall</code>: also delete state, config and the service user"],
-])}
-<p>Paths are overridable too: <code>HERMEY_PREFIX</code> (<code>/opt/hermey</code>),
-<code>HERMEY_STATE</code> (<code>/var/lib/hermey</code>), <code>HERMEY_CONF</code>
-(<code>/etc/hermey</code>), <code>HERMEY_BINDIR</code>, <code>HERMEY_USER</code> and
-<code>HERMEY_UNIT_PREFIX</code>. The last two exist so a second isolated instance can run for
-testing.</p>
-
-<h2 id="on-disk">What is on disk</h2>
-{table(["Path", "What"], [
-  ["<code>/opt/hermey/venv</code>", "the installed bridge"],
-  ["<code>/var/lib/hermey/bridge.db</code>", "devices, tickets, room attachment index"],
-  ["<code>/var/lib/hermey/room-attachments/</code>", "uploaded files"],
-  ["<code>/etc/hermey/gateway.env</code>", "the loopback gateway token, <code>0600</code>, read as an <code>EnvironmentFile</code> so the token never sits in a world-readable unit file"],
-  ["<code>/etc/hermey/providers.env</code>", "optional: the same for voice provider keys"],
-  ["<code>/etc/systemd/system/hermey-bridge.service</code>", "the service"],
-  ["<code>/etc/systemd/system/hermey-gateway.service</code>", "only created when this host had no dashboard"],
-])}
-
-<h2 id="without-tailscale">Without Tailscale</h2>
-<p>The bridge refuses to listen on anything but loopback — that is a design invariant, not a default.
-If the host has no tailnet, put your own TLS proxy in front of <code>127.0.0.1:8787</code> (Caddy with
-a real certificate is the least work) and pass <code>--no-serve</code>.</p>
-{code("sudo bash install.sh --no-serve", "install without tailscale serve")}
-{note("warn", "A self-signed certificate will not work.", "The apps follow App Transport Security and "
-      "refuse it. In this arrangement <code>hermey pair</code> prints the code alone, because there is "
-      "no address to put in a link — add your public address in the app first, then enter the code.")}
-
-<h2 id="uninstall">Uninstall</h2>
-{code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash -s -- --uninstall", "the uninstall command")}
-<p>Stops and removes the units, turns the <code>tailscale serve</code> mapping off, and keeps your
-state and paired devices. Add <code>--purge</code> to delete <code>/opt/hermey</code>,
-<code>/var/lib/hermey</code> and <code>/etc/hermey</code> as well.</p>
-""",
-))
-
-PAGES.append(dict(
+PAGES.append(markdown_page(
     slug="apps",
     nav="The apps",
     group="Getting started",
-    title="The apps",
-    lede="iOS and macOS, both unsigned. That is a deliberate trade-off: a few extra taps on first "
-         "install, and no account anywhere.",
-    body=f"""
-<h2 id="ios">iOS and iPadOS</h2>
-<ol class="steps-list">
-  <li>Install <a href="https://altstore.io">AltStore</a> or <a href="https://sidestore.io">SideStore</a>
-    following their setup for your device.</li>
-  <li>Add this source in the app:
-    {code("https://github.com/macblizzard/hermey/releases/latest/download/altstore.json", "the AltStore source URL")}
-    It is a release asset on purpose: the latest release always serves the newest build, with no host
-    of our own in the loop.</li>
-  <li>Install <strong>Hermey</strong> from the source.</li>
-</ol>
-<p>Any signing tool that accepts an unsigned IPA works (Sideloadly, Feather, or Xcode with a free Apple
-ID).</p>
-{note("warn", "A free Apple ID signs for about seven days.", "Then the app stops launching until it is "
-      "re-signed. AltStore and SideStore re-sign in the background while you are on the same network as "
-      "their server; a paid developer account extends that to a year. The app itself needs no account.")}
+    lede="",
+    source="APPS.md"))
 
-<h2 id="macos">macOS</h2>
-<ol class="steps-list">
-  <li>Download the disk image from
-    <a href="https://macblizzard.github.io/hermey-downloads/">macblizzard.github.io/hermey-downloads</a>
-    — a direct link, with no release-CDN redirect in front of it. The newest build is published as
-    <code>Hermey-macOS-&lt;version&gt;.dmg</code>, so the filename tells you which build you have. Open
-    the image and drag Hermey onto the Applications shortcut.</li>
-  <li>The build is unsigned, so macOS quarantines it once. Either right-click → <strong>Open</strong> →
-    <strong>Open</strong>, or run:
-    {code("xattr -dr com.apple.quarantine /Applications/Hermey.app", "the quarantine removal command")}
-    macOS remembers the choice. Moving or re-downloading the app brings the mark back with the new
-    copy.</li>
-  <li>Pair the same way as the phone: run <code>hermey pair</code> on the host and paste the code or
-    the whole link into <strong>Pairing code or link</strong> — the Mac has no camera. A hand-issued
-    device token still works under <strong>Advanced</strong>.</li>
-</ol>
-<p>macOS 14 or later is required.</p>
-<h3 id="start-at-login">Start at login</h3>
-<p>Settings → <strong>Computer</strong> → <strong>Startup</strong> → <strong>Open Hermey at
-login</strong> registers the app with <code>SMAppService</code>, so the computer-use socket comes
-back after a reboot without opening the app by hand. It opens the app at login; it does
-<strong>not</strong> wake a sleeping Mac — the app reconnects by itself when the Mac wakes, which is
-a different promise.</p>
+PAGES.append(markdown_page(
+    slug="agents",
+    nav="For agents",
+    group="Automation",
+    lede="",
+    source="FOR-AGENTS.md"))
 
-<h2 id="themes">Appearance and themes</h2>
-<p>Settings → <strong>Appearance</strong>. Eight palettes: <strong>Midnight</strong> (the default),
-Graphite, Gruvbox, Tokyo Night, Catppuccin, Dracula, Nord, and <strong>Parchment</strong> — a light
-theme taken from the colours of this site, for daylight and for screenshots.</p>
-<p>A theme is more than a colour set. The app draws its own colours from the palette, but the system
-draws navigation titles, section headers and footers, grouped row backgrounds, and the labels on its
-own controls — so every surface presented separately (a window, a sheet, a tab's navigation stack)
-tells the system which direction the palette faces. That is why Parchment is readable rather than
-white-on-cream. If a surface ever shows a white title on a pale background, that surface is the one
-missing the call. Dark palettes are unaffected: they say dark and get dark.</p>
-
-<h2 id="first-run">First run</h2>
-<ul>
-  <li>Add a server: paste <code>https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443</code> or scan the QR.</li>
-  <li>Enter the code from <code>hermey pair</code>.</li>
-  <li>The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind
-    the three-dot menu.</li>
-</ul>
-
-<h2 id="notifications">Notifications and badges</h2>
-<p>A bot's reply earns a notification when <em>that bot is not the one on screen</em> — a chat you are
-reading has already told you. Both apps put the total waiting on the Dock tile or the app icon.</p>
-{table(["Platform", "How it behaves"], [
-  ["macOS", "Delivers a banner as soon as the host reports the reply, even in the background; clicking "
-            "it opens that conversation."],
-  ["iOS, app open", "Delivers while the app is running."],
-  ["iOS, app closed", "Falls back to a background refresh iOS schedules — expect delays in the tens of "
-                      "minutes, and only while the phone is awake."],
-])}
-<p><strong>The relay closes that gap, and it is the only way a sideloaded build can.</strong> Push needs
-a credential for the team that signed the app, which a personal install does not have — so the host
-posts the banner to an app that already holds one. Install <strong>Bark</strong> (free), copy the
-address it shows, and paste it into <strong>Settings → Replies</strong> (iOS) or
-<strong>Settings → Notifications</strong> (macOS). <strong>Send a test</strong> proves it.</p>
-<p>Settings has one switch and a per-bot quiet list. A quieted bot still counts on its row and in the
-badge; it just never buzzes. Reactions, drafts, pins and the switch are per-device; unread counts come
-from the host and survive a reinstall.</p>
-
-<h2 id="arranging">Arranging bot groups</h2>
-<p>Right-click a group's heading in the Mac's sidebar to <strong>Move … Up</strong> or
-<strong>Move … Down</strong>. The menu items grey out at the ends of the list.</p>
-<p>The arrangement is the host's, not the window's: it is stored beside the categories and both apps
-read it, so a group moved on the Mac is in the same place on the phone. Until you move something the
-list is alphabetical, which is how it has always been — so nothing has to be rearranged to look like
-it did before this existed. A group created on the other device keeps its alphabetical place until
-you arrange it, and <strong>Pinned</strong> and <strong>Uncategorized</strong> are the app's own
-headings: they sit above and below the arrangement and never move.</p>
-<p>The whole arrangement is written at once rather than "move this one up a slot", so two devices
-arranging at the same time end up with the last arrangement written, never with two half-swaps.</p>
-
-<h2 id="revocation">Unpairing and revocation</h2>
-<p>Removing a device in the app deletes its key. Revoking from the host closes that device's link
-immediately and refuses the next connection — the token it held is spent. Neither touches your bots,
-your profiles or anything else on the host.</p>
-""",
-))
+PAGES.append(markdown_page(
+    slug="troubleshooting",
+    nav="Troubleshooting",
+    group="Reference",
+    lede="Symptom, cause and fix — with the strings you will actually see.",
+    source="TROUBLESHOOTING.md"))
 
 PAGES.append(dict(
     slug="computer-use",
@@ -389,245 +438,20 @@ by opening Settings — the probes run only when you press a button.</p>
 <code>~/Library/Application Support/Hermey/Computer/Workspace/</code>. Every bot sees the same folder;
 paths that climb out of it are refused and audited.</p>
 
-<h2 id="cli">From a bot's shell</h2>
-{code('hermey computer observe\nhermey computer act \'[{"kind":"click","x":120,"y":80}]\'', "the computer CLI")}
-<p>The same commands are documented for agents in the shared <code>mac-local-computer</code> skill that
-the bridge installs for every bot on the host.</p>
+<h2 id="from-a-bot">How a bot reaches it</h2>
+<p>There is no shell command to learn. The host exposes the paired Mac to the agent as the
+<code>computer</code> tools — observe, act, files, browser — over the same authenticated socket, and the
+shared <code>mac-local-computer</code> skill teaches a bot the call shape. Nothing is reachable until the
+Mac has paired and the switch is on.</p>
 """,
 ))
 
-PAGES.append(dict(
-    slug="agents",
-    nav="For agents",
-    group="Automation",
-    title="For agents",
-    lede="The installation procedure written for an executor rather than a reader: preflight, install, "
-         "two hard verification gates, then the pairing handoff.",
-    body=f"""
-<p>If you are an agent with a root shell on the user's Hermes host, this page is your runbook. The
-authoritative long form lives in <a href="{REPO}/blob/main/docs/FOR-AGENTS.md">docs/FOR-AGENTS.md</a>;
-it is also packaged as a skill in <a href="{REPO}/blob/main/setup/SKILL.md">setup/SKILL.md</a>.</p>
-
-<h2 id="who-does-what">Who does what</h2>
-{table(["Actor", "Owns"], [
-  ["You (agent)", "Preflight, install, verification, pairing code, handover of both app links."],
-  ["The human", "The phone or Mac, and the decision to pair it."],
-  ["Never you", "Their profiles, their bots, their other services, their tailnet configuration."],
-])}
-
-<h2 id="runbook">Runbook</h2>
-<ol class="steps-list">
-  <li><strong>Confirm this is the right host.</strong> Hermes must already run here and have profiles
-    the human talks to.</li>
-  <li><strong>Install.</strong>
-    {code("curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash", "the host install command")}
-  </li>
-  <li><strong>Verify before you say it works.</strong> Both gates must pass:
-    {code("hermey doctor\ncurl -fsS https://<host>.<tailnet>.ts.net/v1/health   # hermeyd: serve-root, no :8443", "the verification commands")}
-    On a host still running the retired bridge the published URL carries <code>:8443</code>. Anything
-    beyond <code>/v1/health</code> on a hermeyd host needs the service's bearer, which lives at
-    <code>&lt;state&gt;/local.token</code>:
-    {code("curl -fsS -H \"Authorization: Bearer $(cat /var/lib/hermeyd/local.token)\" http://127.0.0.1:8788/v1/devices", "a loopback call with the local bearer")}
-    The health check answers <code>{{"status":"ok", …}}</code>. If it does not, do not proceed — go to the
-    failure playbook.</li>
-  <li><strong>Pair the human's device.</strong> Run <code>hermey pair</code> and give them the code or
-    the full link. Do not paste a code into a public channel.</li>
-  <li><strong>Hand over the apps.</strong> The AltStore source for iOS, the downloads page for macOS,
-    and the seven-day re-sign caveat.</li>
-</ol>
-
-<h2 id="hard-rules">Hard rules</h2>
-<ul class="rules">
-  <li>Never bind the bridge to anything but <code>127.0.0.1</code>. <code>tailscale serve</code> is the
-    only front door.</li>
-  <li>Never create a unit named <code>hermes-gateway.service</code>. That is Hermes' messaging gateway.</li>
-  <li>Never add App Transport Security exceptions to the apps. The certificate must be real.</li>
-  <li>Never stop or reconfigure an existing tailnet service to free port 8443 — reinstall with
-    <code>--https-port 8444</code>.</li>
-  <li>Do not touch the user's profiles or bots. Hermey reads them; it does not own them.</li>
-  <li>Copy no secrets into chat or logs. Provider keys go in <code>/etc/hermey/providers.env</code>
-    (<code>0600</code>).</li>
-</ul>
-
-<h2 id="failure-playbook">Failure playbook</h2>
-{table(["Symptom", "Cause", "Fix"], [
-  ["<code>the bridge did not answer on 127.0.0.1:8787</code>", "port taken, venv broken, or a crash on start",
-   "<code>hermey logs 80</code>; <code>sudo ss -ltnp | grep 8787</code>; reinstall with <code>--port 8788</code>"],
-  ["<code>reusing this host's dashboard: pid …</code>", "a dashboard exists; Hermes allows one", "expected — let it reuse; <code>hermes dashboard --status</code>"],
-  ["doctor health FAIL, audit says <code>upstream_error</code> / <code>connect_failed</code>", "the dashboard is not answering, or restarted with a new token", "re-run the installer; it re-reads both"],
-  ["<code>tailscale serve</code> refused", "not root, or serve not enabled on the tailnet", "run as root; <code>tailscale serve status</code>"],
-  ["HTTPS fails, loopback healthy", "serve mapping points elsewhere, or wrong DNS name", "<code>tailscale serve status</code>; <code>--https-port</code>"],
-  ["App connects nowhere, host healthy", "phone not on the tailnet, or ATS rejecting a self-signed cert", "join the tailnet; use the <code>ts.net</code> name"],
-  ["Pairing code rejected", "expired — they are short-lived", "<code>hermey pair</code> again"],
-  ["iOS app stops launching after ~a week", "free-Apple-ID signature expired", "re-sign through AltStore/SideStore"],
-])}
-
-<h2 id="done">Definition of done</h2>
-<ul class="checklist">
-  <li><code>hermey doctor</code> — unit active, health ok, HTTPS ok</li>
-  <li><code>curl</code> against <code>/v1/health</code> answers <code>ok</code></li>
-  <li>The human has a pairing code or link</li>
-  <li>The human has both app links and knows the iOS re-sign caveat</li>
-  <li>You changed nothing else on the host</li>
-</ul>
-
-<h2 id="facts">Facts you can rely on</h2>
-{table(["", ""], [
-  ["Units", "<code>hermey-bridge.service</code> always; <code>hermey-gateway.service</code> only if the host had no dashboard"],
-  ["Ports", "<code>hermeyd</code> on <code>127.0.0.1:8788</code> (main API) and <code>8790</code> (browser channel), loopback only, published at serve-root; the retired bridge used <code>8787</code> behind <code>:8443</code>"],
-  ["Credential", "a host-side script sends <code>Authorization: Bearer $(cat &lt;state&gt;/local.token)</code>; only <code>/v1/health</code> and <code>/v1/pair/start</code> answer without it"],
-  ["Paths", "<code>/opt/hermey/venv</code>, <code>/var/lib/hermey</code>, <code>/etc/hermey/*.env</code> (0600)"],
-  ["CLI", "<code>hermey status | pair | logs [n] | doctor | update | uninstall</code>"],
-])}
-
-<h2 id="no-tailnet">No tailnet</h2>
-<p>Install with <code>--no-serve</code>, terminate TLS in front of <code>127.0.0.1:8787</code> with a
-real certificate, and give the apps that URL. Self-signed certificates are refused — do not work around
-that in the app.</p>
-""",
-))
-
-PAGES.append(dict(
-    slug="troubleshooting",
-    nav="Troubleshooting",
-    group="Reference",
-    title="Troubleshooting",
-    lede="Symptom, cause and fix — with the strings you will actually see.",
-    body=f"""
-<h2 id="start-here">Start here</h2>
-{code("hermey doctor", "the doctor command")}
-<p>It reports the unit state, loopback health, the gateway URL the bridge relays to, Tailscale's state,
-and whether the HTTPS endpoint answers through the certificate.</p>
-
-<h2 id="health-fail">Doctor says health FAIL</h2>
-<p>On a <strong>hermeyd</strong> host there is no bridge to answer: the service listens on
-<code>127.0.0.1:8788</code>, so <code>curl -fsS http://127.0.0.1:8788/v1/health</code> is the whole
-health check, and a <code>401</code> from any other <code>/v1</code> route means the caller sent no
-local bearer (see <code>&lt;state&gt;/local.token</code>) rather than that the service is unwell.
-The rest of this section is the retired bridge's log.</p>
-<p>The bridge is not answering on <code>127.0.0.1:8787</code>. Read its log; the first line usually
-names the cause.</p>
-{code("hermey logs 80", "the log command")}
-{table(["Log line", "Meaning"], [
-  ["<code>address already in use</code>", "something else holds the port — <code>sudo ss -ltnp | grep 8787</code>, then reinstall with <code>--port 8788</code>"],
-  ["<code>\"event\": \"upstream_error\"</code> with <code>\"reason\": \"connect_failed\"</code>", "the dashboard it relays to is not answering on the port the unit was given, or restarted with a different token; re-run the installer so it re-reads both"],
-  ["<code>No module named hermes_bridge</code>", "the venv is broken; re-run the installer (it reinstalls)"],
-])}
-
-<h2 id="dashboard-exists">\"Reusing this host's dashboard: pid …\"</h2>
-<p>Expected. Hermes allows one dashboard per host and the installer reuses it. For a second isolated
-one while testing, use <code>HERMEY_UNIT_PREFIX</code> and a separate <code>HERMEY_CONF</code>, and
-point the second bridge at a dashboard you started with <code>--isolated</code>.</p>
-
-<h2 id="serve-refused">tailscale serve refused</h2>
-{code("tailscale status\ntailscale serve status", "the tailscale status commands")}
-<p>If another service owns <code>8443</code>, re-run the installer with <code>--https-port 8444</code>.
-Do not stop the other service to make room.</p>
-
-<h2 id="https-fails">HTTPS fails but the bridge is healthy</h2>
-<p>Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists:</p>
-{code("tailscale cert <host>.<tailnet>.ts.net\ncurl -v https://<host>.<tailnet>.ts.net:8443/v1/health", "the certificate diagnosis")}
-
-<h2 id="app-cannot-reach">The app cannot reach the host</h2>
-<ul>
-  <li>Is the device on the tailnet, logged into the same one?</li>
-  <li>Does the URL in the app exactly match <code>hermey pair</code>'s output, including the port?</li>
-  <li><code>curl https://&lt;host&gt;.&lt;tailnet&gt;.ts.net:8443/v1/health</code> from another tailnet
-    device — if that fails, the problem is the host, not the app.</li>
-</ul>
-
-<h2 id="code-rejected">A pairing code is rejected</h2>
-<p>Codes are single-use and expire in minutes. Mint a fresh one with <code>hermey pair</code>. Repeated
-failures are rate limited per client, so wait a moment after a handful of attempts.</p>
-
-<h2 id="ios-week">The iOS app stops launching after a week</h2>
-<p>That is free-Apple-ID signing, not a bug. Re-sign through AltStore or SideStore, or use a paid
-developer account for a one-year profile.</p>
-
-<h2 id="mac-damaged">macOS says the app is damaged</h2>
-<p>The build is unsigned. Right-click → Open the first time, or once:</p>
-{code("xattr -dr com.apple.quarantine /Applications/Hermey.app", "the quarantine removal command")}
-
-<h2 id="computer-down">Computer use keeps dropping</h2>
-<p>The Mac app must be running to hold the link. A machine that sleeps loses its socket; the app
-re-verifies on wake, and the host drops a Mac that stops answering so callers fail fast instead of
-hanging. If it stays down, open <strong>Settings → Computer</strong> on the Mac and read the status
-row, then check <code>hermey doctor</code> on the host.</p>
-<p><strong>"Reconnecting" and it will not come back.</strong> Check whether the host has that Mac
-revoked — this is what the bin beside the computer name does:</p>
-{code("cat /var/lib/hermey/revoked-local-computers.json", "the revoked devices on the host")}
-<p>Turning <strong>Let bots use this computer</strong> off and on in the Mac app lifts it: the app
-calls <code>POST /v1/local-computers/&lt;device&gt;/enable</code> and reconnects. If it still will not
-connect, ask the bridge why rather than the screen:</p>
-{code("journalctl -u hermes-native-bridge --since -10min | grep local_computer.rejected", "why the handshake was refused")}
-<p>Each line names the failed check: <code>no ticket</code>, <code>ticket not redeemable</code>,
-<code>device not active</code>, or <code>revoked</code>. A refusal reaches the app as close code
-<code>4401</code>/<code>4403</code> rather than an opaque "bad response from the server".</p>
-
-<h2 id="update-error">"There was a problem updating"</h2>
-<p>Two different things wear that message.</p>
-<p><strong>You checked during the first ten minutes after a release.</strong> The feed and the
-download are published separately, and GitHub Pages serves the feed before the disk image it points
-at, so a check in that window finds a version whose file is still <code>404</code>. Nothing is wrong
-with the Mac; check again in ten minutes. The release page is always current even when the mirror is
-not.</p>
-<p><strong>A signature that does not verify.</strong> The app trusts exactly one Ed25519 public key,
-so a feed signed with a different key installs nothing. Check without guessing:</p>
-{code("curl -s https://macblizzard.github.io/hermey-downloads/appcast.xml | head -30", "the feed: version, length and signature")}
-<p>The <code>length=</code> in the feed must equal the served <code>content-length</code>, or the file
-was replaced after the feed was signed.</p>
-""",
-))
-
-PAGES.append(dict(
+PAGES.append(markdown_page(
     slug="security",
     nav="Security",
     group="Reference",
-    title="Security and threat model",
-    lede="The tailnet is the wall, the device is the identity, and the client can only answer the "
-         "questions the agent asks — never give itself permission.",
-    body=f"""
-<p>The full document, including the audit and its residual risks, is
-<a href="{REPO}/blob/main/docs/SECURITY.md">docs/SECURITY.md</a>. This page is the shape of it.</p>
-
-<h2 id="boundaries">Trust boundaries</h2>
-{table(["Boundary", "Crossing it requires", "What is on the other side"], [
-  ["Public internet → tailnet", "Tailscale identity + ACL", "nothing: no public ingress exists"],
-  ["Tailnet → bridge", "TLS to <code>tailscale serve</code>, then a single-use 30 s ticket", "pairing, tokens, <code>/v1/ws</code>"],
-  ["Bridge → gateway", "loopback plus the gateway token, which is never sent to a device", "full authority over the agent"],
-  ["Gateway → app", "a server-to-client request (approval, clarify, sudo, secret)", "a human decision"],
-  ["App → gateway", "the client method allow-list", "sessions, prompts, discovery"],
-])}
-
-<h2 id="invariants">Invariants</h2>
-<ul>
-  <li>The bridge listens on loopback only; <code>tailscale serve</code> is the only front door.</li>
-  <li>Tickets are single-use and expire in 30 seconds; a device is identified by its own Ed25519 key.</li>
-  <li>The device never receives the gateway token — it cannot talk to the agent directly.</li>
-  <li>Approvals are the agent's to ask and the human's to answer; a device cannot grant itself
-    authority.</li>
-  <li>Revocation is immediate and per-device.</li>
-</ul>
-
-<h2 id="absent">Deliberately absent</h2>
-<ul>
-  <li>No account, no analytics, no crash reporting, no relay of ours in the request path.</li>
-  <li>No public ingress: if the tailnet is up but the device is not on it, nothing is reachable.</li>
-  <li>No per-bot permission system on the Mac. Computer use is one owner-level switch — a small number
-    of trusted bots is the stated model.</li>
-</ul>
-
-<h2 id="storage">Where the apps keep secrets</h2>
-<p>The phone keeps its device key and refresh token in the Keychain, this-device-only. The Mac build
-ships unsigned and has no Keychain entitlement, so it keeps the same items in a <code>0600</code> file
-under <code>~/Library/Application Support/Hermey/</code>, excluded from backups.</p>
-
-<h2 id="reporting">Reporting a problem</h2>
-<p>Open a private advisory at
-<a href="{REPO}/security/advisories/new">{REPO}/security/advisories/new</a> rather than a public
-issue, and do not paste tokens, hostnames or personal data into either.</p>
-""",
-))
+    lede="",
+    source="SECURITY.md"))
 
 PAGES.append(dict(
     slug="reference",
@@ -636,46 +460,58 @@ PAGES.append(dict(
     title="Reference",
     lede="The facts a script, an agent or a tired human needs: commands, ports, paths and URLs.",
     body=f"""
-<h2 id="cli">CLI</h2>
+<h2 id="cli">Commands</h2>
+<p>A Hermey host installs a service, not a CLI of its own — the <code>hermey</code> wrapper belonged to the
+retired Python bridge. These are the commands a host actually runs; each one is also in
+<a href="install.html">Install the host</a>.</p>
 {table(["Command", "What it does"], [
-  ["<code>hermey status</code>", "unit, port and health at a glance"],
-  ["<code>hermey pair</code>", "mints a code, a <code>hermes://</code> link and a QR when possible"],
-  ["<code>hermey logs [n]</code>", "the bridge journal, newest last"],
-  ["<code>hermey doctor</code>", "unit, loopback health, gateway URL, Tailscale state, HTTPS through the certificate"],
-  ["<code>hermey update</code>", "reinstall from the configured ref"],
-  ["<code>hermey uninstall</code>", "remove units and the serve mapping, keep state"],
-  ["<code>hermey computer …</code>", "observe / act / files / browser against a paired Mac"],
+  ["<code>…install.sh | sudo sh</code>", "install or upgrade <code>hermeyd</code>; the same command both times"],
+  ["<code>sudo setup/install.sh --from-source</code>", "build it in a checkout instead of downloading a binary"],
+  ["<code>…install.sh | sudo sh -s -- --uninstall</code>", "remove the service, binary, config and plugin; state is kept (<code>--purge</code> deletes it)"],
+  ["<code>hermeyd --gateway-check</code>", "exits <code>75</code> when another gateway owns this <code>HERMES_HOME</code>; it never kills anything"],
+  ["<code>hermeyd --version</code>", "the build installed at <code>/opt/hermey/bin/hermeyd</code>"],
+  ["<code>systemctl status hermeyd</code>", "unit state (macOS: <code>launchctl print system/com.hermeyd</code>)"],
+  ["<code>curl -fsS http://127.0.0.1:8788/v1/health</code>", "liveness — the one route that answers without the bearer"],
+  ["<code>tailscale serve --bg http://127.0.0.1:8788</code>", "publish at serve-root with a real certificate"],
 ])}
 
 <h2 id="ports">Ports and units</h2>
 {table(["", ""], [
-  ["Host service", "<code>hermeyd</code> on <code>127.0.0.1:8788</code> — loopback only, by design"],
-  ["Browser channel", "<code>127.0.0.1:8790</code> — the three <code>/v1/browser/*</code> routes, no credential"],
-  ["Bearer", "<code>&lt;state&gt;/local.token</code> (<code>0600</code>) — what a host-side script sends on <code>8788</code>"],
-  ["Tailnet", "serve-root via <code>tailscale serve</code>, real certificate; the bridge's shape was <code>:8443</code> in front of <code>8787</code>"],
-  ["Units", "<code>hermey-bridge.service</code>; <code>hermey-gateway.service</code> only when the host had no dashboard"],
+  ["Host service", "<code>hermeyd</code> on <code>127.0.0.1:8788</code> (<code>HERMEYD_PORT</code>) — loopback only, by design"],
+  ["Browser channel", "<code>127.0.0.1:8790</code> (<code>HERMEYD_BROWSER_PORT</code>) — carries no credential; never published"],
+  ["Bearer", "<code>/var/lib/hermeyd/local.token</code> (<code>0600</code>, reminted every boot) — what a host-side script sends on <code>8788</code>"],
+  ["Tailnet", "serve-root via <code>tailscale serve</code>, real certificate — pairing URLs carry no port"],
+  ["Units", "<code>hermeyd.service</code> on Linux; <code>com.hermeyd</code> in launchd on macOS"],
   ["Never", "a unit named <code>hermes-gateway.service</code> — that is Hermes' messaging gateway"],
 ])}
 
 <h2 id="paths">Paths</h2>
 {table(["Path", "What"], [
-  ["<code>/opt/hermey/venv</code>", "the installed bridge"],
-  ["<code>/var/lib/hermey/bridge.db</code>", "devices, tickets, attachment index"],
-  ["<code>/var/lib/hermey/room-attachments/</code>", "uploaded files"],
-  ["<code>/etc/hermey/gateway.env</code>", "gateway token, <code>0600</code>"],
-  ["<code>/etc/hermey/providers.env</code>", "optional voice provider keys, <code>0600</code>"],
+  ["<code>/opt/hermey/bin/hermeyd</code>", "the service binary"],
+  ["<code>/var/lib/hermeyd</code>", "state (<code>0700</code>): <code>bridge.db</code>, <code>bridge.salt</code>, <code>local.token</code>, <code>attachments/</code>"],
+  ["<code>/etc/hermey/hermeyd.env</code>", "configuration, <code>0640</code>, read as an <code>EnvironmentFile</code>"],
+  ["<code>/etc/systemd/system/hermeyd.service</code>", "the unit (macOS: <code>/etc/hermey/com.hermeyd.plist</code>)"],
+  ["<code>&lt;engine&gt;/plugins/hermes-genui/</code>", "the card plugin, with its <code>desktop/plugin.js</code> bundle"],
   ["<code>~/Library/Application Support/Hermey/Computer/Workspace/</code>", "the Mac's shared workspace for computer use"],
 ])}
 
 <h2 id="health">Endpoints</h2>
+<p>The routes worth knowing by name. The rest are below, generated rather than listed by hand.</p>
 {table(["URL", "Answers"], [
-  ["<code>GET /v1/health</code>", "<code>{{\"status\":\"ok\"}}</code> on loopback or through the tailnet front door"],
+  ["<code>GET /v1/health</code>", '<code>{"status":"ok","protocol_version":…,"ws":true}</code> on loopback or through the tailnet front door'],
+  ["<code>/v1/pair/start</code>", "mints a short single-use code; loopback only"],
+  ["<code>/v1/pair/claim</code>", "the app presents the code and its public key; a device is registered"],
   ["<code>/v1/ws</code>", "the device websocket (single-use 30 s ticket, then a session)"],
-  ["<code>/v1/pair/start</code>", "begins a pairing exchange"],
-  ["<code>GET /v1/devices</code>", "the devices paired to this host, for revocation in the app"],
-  ["<code>/v1/local-computers/ws</code>", "the Mac's own outbound socket for computer use — the bridge pings it and drops a silent one"],
-  ["<code>/v1/browser/ws</code>", "the sign-in extension's loopback socket; the bridge sends it a login card's fill, so values never reach the bot"],
+  ["<code>/v1/local-computers/ws</code>", "the Mac's own outbound socket for computer use — the host pings it and drops a silent one"],
+  ["<code>/v1/browser/ws</code>", "the sign-in extension's loopback socket; the host sends it a login card's fill, so values never reach the bot"],
 ])}
+
+<h2 id="every-route">Every route</h2>
+<p>Each path <code>hermeyd</code> mounts, read from the <code>.route(…)</code> table in
+<code>hermeyd/src/main.rs</code> when this page is built — {len(mounted_routes())} of them, so this list
+cannot fall behind the service. <code>/v1/health</code> and <code>/v1/pair/start</code> answer without the
+local bearer; everything else answers <code>401</code> without it.</p>
+{route_table()}
 
 <h2 id="downloads">Download URLs</h2>
 {table(["", "URL"], [
@@ -887,6 +723,25 @@ td code { white-space: normal; }
 .card span { display: block; font-size: .86rem; color: var(--muted); line-height: 1.5; }
 .next-hint { margin-top: 2rem; font-size: .92rem; color: var(--muted); }
 
+/* the docs' own start cue — the first page a new reader should open */
+.start { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; margin: 0 0 1.8rem; }
+.start-btn {
+  display: inline-flex; align-items: center; min-height: 42px; padding: 0 1.1rem;
+  border: 0; border-radius: 8px; background: var(--ink); color: var(--paper);
+  font-size: .92rem; font-weight: 500;
+}
+.start-btn:hover { background: #26261f; }
+.start span { font-size: .9rem; color: var(--muted); max-width: 40ch; line-height: 1.5; }
+
+/* rendered docs: the provenance line, and a quote block that is not a command */
+.doc-source { font-size: .82rem; color: var(--faint); margin: 2.4rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line-soft); }
+.doc-source a { color: var(--muted); border-bottom-color: var(--line); }
+.code.plain pre { padding-right: .95rem; }
+/* a diagram, not a command: wrapping one breaks its alignment, so it scrolls instead */
+.code.plain code { white-space: pre; overflow-wrap: normal; }
+.note > p:last-child { margin-bottom: 0; }
+.lede code { font-size: .82em; }
+
 /* on this page */
 .toc { display: none; padding: 2.4rem 1rem 3rem 0; font-size: .84rem; }
 @media (min-width: 1240px) { .toc { display: block; position: sticky; top: var(--head); height: calc(100vh - var(--head)); overflow-y: auto; } }
@@ -907,6 +762,7 @@ td code { white-space: normal; }
 footer.docfoot { border-top: 1px solid var(--line-soft); padding: 1.5rem 0 3rem; font-size: .82rem; color: var(--faint); }
 footer.docfoot .wrap { max-width: 820px; padding: 0 clamp(1.25rem, 4vw, 3rem); }
 footer.docfoot a { border: 0; color: var(--muted); }
+footer.docfoot .disclaimer { color: var(--muted); margin: 0 0 .9rem; max-width: 74ch; }
 """
 
 JS = """
@@ -1020,38 +876,6 @@ document.querySelectorAll('.copy').forEach(function (button) {
 """
 
 
-
-def markdown_page(slug: str, nav: str, group: str, lede: str, source: str) -> dict:
-    """A page rendered from a docs/*.md file, not hand-copied into this script.
-
-    The hand-built pages in this file duplicate their facts as inline HTML, which is why they drift. Anything
-    that changes often — credentials, integrations — is rendered from the markdown instead, so an edit to the
-    doc is an edit to the site and there is nothing to keep in step.
-    """
-    import re
-
-    path = pathlib.Path(__file__).resolve().parent.parent.parent / "docs" / source
-    text = path.read_text(encoding="utf-8")
-    # Drop the leading H1: the page template supplies the title.
-    text = re.sub(r"\A#\s+.*\n", "", text, count=1)
-    html = markdown.Markdown(extensions=["tables", "fenced_code"]).convert(text)
-    used: set[str] = set()
-
-    def anchor(match: re.Match) -> str:
-        level, heading = match.group(1), re.sub(r"<[^>]+>", "", match.group(2))
-        slugged = re.sub(r"[^a-z0-9]+", "-", heading.lower()).strip("-") or "section"
-        unique = slugged
-        if unique in used:
-            index = 2
-            while f"{slugged}-{index}" in used:
-                index += 1
-            unique = f"{slugged}-{index}"
-        used.add(unique)
-        return f'<h{level} id="{unique}">{match.group(2)}</h{level}>'
-
-    html = re.sub(r"<h([23])>(.*?)</h\1>", anchor, html, flags=re.S)
-    title = f"{nav} · Hermey"
-    return dict(slug=slug, nav=nav, group=group, title=title, lede=lede, body=html)
 
 
 
@@ -1186,6 +1010,7 @@ def page_html(index: int, version: str = "") -> str:
 
 <footer class="docfoot">
   <div class="wrap">
+    <p class="disclaimer">{DISCLAIMER} <a href="prerequisites.html">Getting Hermey running</a></p>
     <p>MIT licensed · the source docs in <a href="{REPO}/tree/main/docs">github.com/macblizzard/hermey/docs</a>
       are the authority for this site. Found a mistake? <a href="{REPO}/issues">Open an issue</a>.</p>
   </div>
@@ -1197,8 +1022,56 @@ def page_html(index: int, version: str = "") -> str:
 """
 
 
-def main() -> int:
-    out = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "docs")
+STAMP_BEGIN = "<!-- build:start -->"
+STAMP_END = "<!-- build:end -->"
+CTA = ('<a class="btn btn-primary" href="#install">Install Hermey</a>',
+       '<a class="btn btn-primary" href="docs/prerequisites.html">Get started</a>')
+
+
+def stamped(text: str) -> str:
+    """The bytes between the release build markers, or "" when the file carries none."""
+    start, end = text.find(STAMP_BEGIN), text.find(STAMP_END)
+    return text[start:end + len(STAMP_END)] if 0 <= start < end else ""
+
+
+def update_landing(site_root: pathlib.Path) -> None:
+    """Point the landing page's primary call to action at the intro page, and add the disclaimer.
+
+    The landing page is not generated here — the release tools stamp its version line — so this is the only
+    edit the docs build makes to it, and it is deliberately narrow: one anchor and one footer sentence,
+    applied once, with the `<!-- build:start -->` block asserted unchanged before anything is written.
+    """
+    page = site_root / "index.html"
+    if not page.exists():
+        return
+    text = page.read_text(encoding="utf-8")
+    before = stamped(text)
+    updated = text.replace(*CTA, 1) if CTA[0] in text else text
+
+    if "independent project" not in updated:
+        colophon = re.search(r'([ \t]*)<p class="colophon"', updated)
+        if colophon:
+            indent = colophon.group(1)
+            updated = (updated[:colophon.start()]
+                       + f'{indent}<p class="colophon disclaimer">{DISCLAIMER} '
+                         f'<a href="docs/prerequisites.html">Getting Hermey running</a></p>\n'
+                       + updated[colophon.start():])
+
+    if updated == text:
+        return
+    if stamped(updated) != before:
+        raise SystemExit("refusing to write index.html: the edit would disturb the build stamp")
+    page.write_text(updated, encoding="utf-8")
+    print(f"landing: {page} now points its primary button at docs/prerequisites.html")
+
+
+def build(out: pathlib.Path) -> None:
+    """Write the docs pages into `out`, and nothing else."""
+    landing = out / "index.html"
+    if landing.exists() and STAMP_BEGIN in landing.read_text(encoding="utf-8"):
+        raise SystemExit(f"{landing} carries the release build stamp — that is the landing page, not a "
+                         f"docs page. Pass the site's docs/ directory instead.")
+
     (out / "assets").mkdir(parents=True, exist_ok=True)
 
     css_text = CSS.strip() + "\n"
@@ -1226,7 +1099,18 @@ def main() -> int:
     for i, page in enumerate(PAGES):
         (out / f'{page["slug"]}.html').write_text(page_html(i, version), encoding="utf-8")
 
+    if out.name == "docs":
+        update_landing(out.parent)
     print(f"wrote {len(PAGES)} pages + assets to {out}")
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        # The old default wrote into `docs/` beside the markdown it mirrors, which is the source tree, not
+        # the site. Refuse rather than litter the repository.
+        raise SystemExit("usage: python3 Tools/site/build_docs.py <site-docs-dir>\n"
+                         "       e.g. build_docs.py ../hermey-pages/docs")
+    build(pathlib.Path(sys.argv[1]))
     return 0
 
 

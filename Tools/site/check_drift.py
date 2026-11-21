@@ -7,8 +7,13 @@ script compares the claims on the site against the code and docs that are author
 can decide "nothing to do" honestly instead of re-reading prose and hoping.
 
     python3 Tools/site/check_drift.py                    # human summary, exit 1 on drift
+    python3 Tools/site/check_drift.py <site-dir>         # check a build somewhere else
     python3 Tools/site/check_drift.py --json             # for a machine
     python3 Tools/site/check_drift.py --online           # also HEAD the published artifact URLs
+
+`<site-dir>` is the site root that holds `index.html` and `docs/`; without it the gh-pages worktree beside
+the repo is used (or `HERMEY_SITE_DIR`). That is what makes "build into a scratch directory and check it"
+a thing you can actually do.
 
 Checks
   cli        the verbs the site documents vs the verbs the CLI actually dispatches
@@ -45,11 +50,15 @@ INTEGRATIONS_RS = ROOT / "hermeyd" / "src" / "integrations.rs"
 # it. Without that distinction the check demands that a 300-line audit be copied onto a summary page,
 # which is how a "keep in sync" job turns into a page nobody wants to read.
 MIRRORED = {
+    "docs/PREREQUISITES.md": ("prerequisites", "full"),
     "docs/INSTALL.md": ("install", "full"),
     "docs/APPS.md": ("apps", "full"),
     "docs/TROUBLESHOOTING.md": ("troubleshooting", "full"),
     "docs/FOR-AGENTS.md": ("agents", "summary"),
     "docs/SECURITY.md": ("security", "summary"),
+    "docs/INTEGRATIONS.md": ("integrations", "full"),
+    "docs/CREDENTIALS.md": ("credentials", "full"),
+    "docs/IMPORT-FROM-ANOTHER-PLATFORM.md": ("importing", "full"),
 }
 
 # The host service's own defaults. Its source is `hermeyd/src` in this repo, and its documented
@@ -207,8 +216,14 @@ def doc_headings(rel: str) -> list[str]:
 
 
 def main() -> int:
+    global SITE_DIR
     as_json = "--json" in sys.argv
     online = "--online" in sys.argv
+    # A positional directory is the site to check: build into /tmp/site-check and pass it, rather than
+    # editing the worktree the owner publishes from.
+    given = [arg for arg in sys.argv[1:] if not arg.startswith("-")]
+    if given:
+        SITE_DIR = pathlib.Path(given[0]).resolve()
     drift: list[dict[str, str]] = []
     checked: list[str] = []
 

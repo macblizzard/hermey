@@ -7,6 +7,11 @@
   Your bots, your machine, your network — no account, no cloud in the middle.
 </p>
 
+> **Hermey is an independent project** — not affiliated with, endorsed by, or supported by the Hermes
+> project or its maintainers. "Hermes" is named only to say what Hermey connects to. Start with
+> [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) and please don't ask the Hermes maintainers for support
+> with Hermey.
+
 <p align="center">
   <a href="../../actions/workflows/ci.yml"><img alt="CI" src="https://github.com/macblizzard/hermey/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-black">
