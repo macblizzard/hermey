@@ -224,6 +224,13 @@ pub fn detected_line(engine_home: &Path, owners: &[Owner]) -> String {
     )
 }
 
+/// Scan the real `/proc` and answer, without logging. For a caller that reports the decision itself
+/// (`hermeyd status`): the same scan as boot, but its own line, no duplicate stderr.
+pub fn evaluate(engine_home: &Path, spawn_requested: bool) -> Decision {
+    let owners = scan(Path::new("/proc"), engine_home, std::process::id());
+    decide(spawn_requested, &owners)
+}
+
 /// The boot-time check: scan the real `/proc`, then log and answer.
 ///
 /// Logging is part of the contract: a refusal nobody can see is the same as a silent double-fire.

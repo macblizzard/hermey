@@ -22,6 +22,7 @@ mod bot_sessions;
 mod browser;
 mod bridge_routes;
 mod backup;
+mod cli;
 mod credentials;
 mod search;
 mod transfers;
@@ -106,12 +107,45 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // `hermeyd --version` must work on a box where the service is not running and the state dir is
-    // unreadable — it is the first thing anyone asks a release.
-    if std::env::args().any(|a| a == "--version" || a == "-V" || a == "version") {
-        println!("hermeyd {VERSION}");
-        return Ok(());
+    // Arguments first, world second. `--help` and `--version` must work on a box where the service is
+    // not running, the state dir is unreadable and no engine was ever installed — so nothing below
+    // this match has happened yet: no directory created, no token minted, no skills installed, no
+    // engine probed, no listener bound. A help flag that boots the daemon is a bug, not a style
+    // question: it printed a boot banner, held the port and read as a hang.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let command = match cli::parse(&args) {
+        Ok(command) => command,
+        Err(message) => {
+            eprintln!("hermeyd: {message}\n");
+            eprint!("{}", cli::usage());
+            std::process::exit(2);
+        }
+    };
+
+    match command {
+        cli::Command::Help(topic) => {
+            print!("{}", cli::usage_for(topic));
+            return Ok(());
+        }
+        cli::Command::Version => {
+            println!("hermeyd {VERSION}");
+            return Ok(());
+        }
+        // Both subcommands talk to the *running* service over loopback and never boot one. They
+        // resolve the same port, token path and engine home boot does, and create nothing.
+        cli::Command::Pair { json, host } => {
+            let (home, engine_home) = cli::resolve_paths();
+            let target = cli::target(home, engine_home);
+            std::process::exit(cli::run_pair(&target, json, host).await);
+        }
+        cli::Command::Status { json } => {
+            let (home, engine_home) = cli::resolve_paths();
+            let target = cli::target(home, engine_home);
+            std::process::exit(cli::run_status(&target, json).await);
+        }
+        cli::Command::Serve | cli::Command::GatewayCheck => {}
     }
+
     let home = hermes_home();
     std::fs::create_dir_all(&home)?;
 
@@ -125,7 +159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // `--gateway-check` is what a launcher calls before `hermes gateway run --force`: exit 0 when
     // no other gateway owns this home, 75 (EX_TEMPFAIL) when one does. It never spawns or kills.
-    if std::env::args().any(|a| a == "--gateway-check") {
+    if matches!(command, cli::Command::GatewayCheck) {
         let decision = gateway_guard::check(&engine_home, true);
         eprintln!(
             "gateway-check: {} for {}",

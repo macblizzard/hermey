@@ -56,8 +56,35 @@ That is `serve` at the root — **no port in the URL**. Pairing links therefore 
 
 ## 4. Pair the app
 
-Open Hermey, paste the host address, enter the pairing code. The device appears on the host immediately;
-`/v1/devices` lists it.
+Ask the host for a one-time code — `hermeyd` mints it over loopback and prints the URL to open:
+
+```sh
+hermeyd pair
+```
+
+```
+pairing code  250240
+expires       2026-11-21 20:31:33 +01:00 (9 min left)
+pairing URL   https://your-host.ts.net/?code=250240
+protocol      1
+```
+
+Enter the code in Hermey, or open the pairing URL on a device on the same tailnet. A code is single-use and
+expires in ten minutes; run `hermeyd pair` again for another. `--json` prints the route's object unchanged
+for scripts (`hermeyd pair --json | jq -r .code`), and `--host` overrides the name in the URL when
+`HERMEYD_PUBLIC_HOST` is not the one you want to publish.
+
+Prefer `curl`? It is the same route, and the local token is the bearer:
+
+```sh
+curl -s -X POST -H "Authorization: Bearer $(cat /var/lib/hermeyd/local.token)" \
+  http://127.0.0.1:8788/v1/pair/start
+# {"code":"…","expires_at":1795289493.7,"host":"your-host.ts.net","protocol_version":1}
+```
+
+The device appears on the host immediately; `/v1/devices` lists it. If `hermeyd pair` says the service is
+not running, fix that first — `hermeyd status` then names the half that is missing (service, engine, token
+file, browser channel, gateway).
 
 ## Verify
 
