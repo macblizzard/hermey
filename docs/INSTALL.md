@@ -1,5 +1,11 @@
 # Installing a Hermey host
 
+> **This page describes the retired Python bridge.** Current hosts run **hermeyd**, the Rust host
+> service: it serves the main API on `127.0.0.1:8788`, the browser channel on `8790`, and is
+> published with `tailscale serve --bg http://127.0.0.1:8788` — serve-root, no port, so pairing URLs
+> carry no `:8443`. The old bridge on `8787` has no listener on a hermeyd host, and a `:8443` mount
+> pointing at it answers 502. Everything below still applies to a host that has not migrated.
+
 The host is a machine that already runs Hermes. Hermey adds one loopback service to it — the bridge
 — and exposes that service through `tailscale serve`.
 
@@ -24,6 +30,7 @@ What it does, in order:
    when there is none does it create `hermey-gateway.service`.
 5. **TLS and reachability.** `tailscale serve --bg --https=8443 http://127.0.0.1:8787` — a real
    certificate, tailnet only, no public listener. It then verifies the HTTPS endpoint answers.
+   *(Bridge only. A hermeyd host publishes serve-root → `8788` instead, with no port in the URL.)*
 6. **The `hermey` CLI** in `/usr/local/bin`: `status`, `pair`, `logs`, `doctor`, `update`,
    `uninstall`.
 
@@ -50,7 +57,7 @@ shell.
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
 | `--port N` | `HERMEY_PORT` | `8787` | bridge port (loopback) |
-| `--https-port N` | `HERMEY_HTTPS_PORT` | `8443` | tailnet port for `tailscale serve` |
+| `--https-port N` | `HERMEY_HTTPS_PORT` | `8443` | tailnet port for `tailscale serve` (bridge only — hermeyd publishes serve-root, no port) |
 | `--ref R` | `HERMEY_REF` | `main` | git ref to install (a release tag pins a build; tags are `v<version>`) |
 | `--local DIR` | `HERMEY_LOCAL_SRC` | — | install from a checkout instead of GitHub |
 | `--no-serve` | `HERMEY_SERVE=no` | auto | do not touch `tailscale serve` |

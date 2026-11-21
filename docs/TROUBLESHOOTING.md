@@ -39,6 +39,11 @@ tailscale serve status    # what is already published on 8443?
 If another service owns 8443, re-run the installer with `--https-port 8444`. Do not stop the other
 service to make room.
 
+On a **hermeyd** host there is no port to negotiate: it publishes serve-root
+(`tailscale serve --bg http://127.0.0.1:8788`), so pairing URLs carry no `:8443`, and any leftover
+`:8443` mount pointing at the retired bridge on `8787` answers 502 — remove it with
+`tailscale serve --https=8443 off`.
+
 ## HTTPS check fails but the bridge is healthy
 
 Tailscale issues the certificate on first use; a fresh domain can take a minute. If it persists:
