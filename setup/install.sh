@@ -194,23 +194,34 @@ resolve_user() {
 }
 
 # The engine home holds profiles/, and hermeyd reads its .env, profiles and skills from it.
-# Detection is deliberately conservative: a wrong guess installs a plugin nobody loads.
+# Detection is deliberately conservative: a wrong guess installs a plugin nobody loads. Only the
+# guess is skipped when --engine-home names the path — the validation below is not, because a typo
+# there would otherwise write the plugin, env file and unit against a directory that is not there,
+# and the failure would surface much later as bots that never load.
 detect_engine_home() {
-    if [ -n "$ENGINE_HOME" ]; then return 0; fi
-    if [ -n "${HERMES_HOME:-}" ]; then
-        ENGINE_HOME=$HERMES_HOME
-    elif [ -d "$STATE/engine" ]; then
-        ENGINE_HOME=$STATE/engine
-    elif [ -d "$SVC_HOME/.hermes" ]; then
-        ENGINE_HOME=$SVC_HOME/.hermes
-    else
-        fail "cannot find the Hermes engine home on this host" \
-            "it is the directory that contains profiles/ — the one Hermes itself uses." \
-            "name it explicitly: setup/install.sh --engine-home /path/to/hermes/home" \
-            "(or set HERMES_HOME)."
+    if [ -z "$ENGINE_HOME" ]; then
+        if [ -n "${HERMES_HOME:-}" ]; then
+            ENGINE_HOME=$HERMES_HOME
+        elif [ -d "$STATE/engine" ]; then
+            ENGINE_HOME=$STATE/engine
+        elif [ -d "$SVC_HOME/.hermes" ]; then
+            ENGINE_HOME=$SVC_HOME/.hermes
+        else
+            fail "cannot find the Hermes engine home on this host" \
+                "it is the directory that contains profiles/ — the one Hermes itself uses." \
+                "name it explicitly: setup/install.sh --engine-home /path/to/hermes/home" \
+                "(or set HERMES_HOME)."
+        fi
     fi
+}
+
+# Validation runs for every engine home, detected or named, and before anything is written.
+require_engine_home() {
     [ -d "$ENGINE_HOME" ] || fail "engine home $ENGINE_HOME does not exist" \
         "pass --engine-home with the directory Hermes uses (it must contain profiles/)."
+    [ -d "$ENGINE_HOME/profiles" ] || fail "engine home $ENGINE_HOME has no profiles/" \
+        "that is not a Hermes engine home — pass the directory Hermes itself uses," \
+        "the one that contains profiles/ (e.g. --engine-home /root/.hermes)."
 }
 
 # ---------------------------------------------------------------- filesystem
@@ -859,9 +870,7 @@ main() {
     detect_engine_home
     valid_path "$ENGINE_HOME" || fail "--engine-home must be an absolute path without spaces (got '$ENGINE_HOME')" \
         "pass the directory Hermes uses, e.g. /var/lib/hermes."
-    if [ ! -d "$ENGINE_HOME/profiles" ]; then
-        warn "$ENGINE_HOME has no profiles/ — is this the engine home?"
-    fi
+    require_engine_home
     note "engine:  $ENGINE_HOME"
     note "service: $SVC_USER:$SVC_GROUP"
 

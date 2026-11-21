@@ -189,6 +189,10 @@ class InstallerCase(unittest.TestCase):
 
     def install_args(self, name: str = "run") -> list[str]:
         base = self.root / name
+        # The engine home this names has to be a real one: the installer validates --engine-home
+        # (it must exist and contain profiles/) before it writes anything, so a fixture that only
+        # named a path would now be refused before reaching what the test is actually about.
+        (base / "engine" / "profiles").mkdir(parents=True, exist_ok=True)
         return [
             "--prefix", str(base / "opt"),
             "--state-dir", str(base / "state"),
