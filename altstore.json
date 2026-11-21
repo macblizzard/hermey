@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.610",
-          "buildVersion": "610",
-          "date": "2026-11-21T14:31:08Z",
-          "localizedDescription": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's \u2922 hands the Mac's *window* to full\n  screen and drops the header, status bar and safe-area inset on the phone. Either platform keeps one floating\n  bar \u2014 take-over / hand back, zoom \u2212/+, the level, Fit, exit \u2014 and the picture zooms 1\u00d7\u20135\u00d7 and pans, clamped to\n  its edges, with take-over clicks landing on the right framebuffer pixel at any zoom. `Esc` exits.\n\n### Fixed\n- **The full-screen button actually moves the window.** Turning full screen on toggled the window without\n  adopting `.fullScreenPrimary`, which macOS accepts and then ignores: the pane grew, the menu bar, dock and\n  traffic lights stayed, and nothing said why. The behaviour is adopted first, and the request and any refusal\n  are logged with the window's style mask.\n- **Looking a conversation up no longer changes the selected bot.** `endlessSession(for:)` selected the bot as a\n  side effect, so background readers could move the user's screen \u2014 reported as the selection jumping between\n  bots mid-conversation. A lookup now returns before anything is selected.\n- **Release notes reach the update dialog.** The publisher read `--notes` at six call sites and the release\n  script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds\n  the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.610/Hermey-0.1.610-b610.ipa",
-          "size": 3685014,
+          "version": "0.1.611",
+          "buildVersion": "611",
+          "date": "2026-11-21T16:29:19Z",
+          "localizedDescription": "### Added\n- **Arrange bot categories on the phone.** Long-press a group heading, or use the new \u22ef menu at its trailing\n  edge; the verbs grey out at the ends. The host stores the whole arrangement, so the order is the same on\n  every device.\n\n### Fixed\n- **A refused category move no longer looks like a successful one.** The Mac's menu called the move through\n  `try?`, so a write the host refused simply appeared not to happen. It now says \"Category not changed\".\n- **The vision model row shows the configured model instead of \"auto\".** Hermey read the flat\n  `auxiliary.vision_provider` key while the engine and both shipped configs use the nested\n  `auxiliary.vision.provider`, so the setting always looked unset.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.611/Hermey-0.1.611-b611.ipa",
+          "size": 3689359,
           "minOSVersion": "17.0",
-          "sha256": "2905d4c913cd0f305dc622418767bddd43f3169a91040d415d882483b6ced6c5"
+          "sha256": "c21ccddb0485e02dbe27da3d9affce4196e0552b54ef399bd97aefa1c115f235"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.610 (610)",
-      "identifier": "hermes-0.1.610-610",
-      "caption": "### Added\n- **Full screen in the shared computer, on both platforms.** The pane's \u2922 hands the Mac's *window* to full\n  screen and drops the header, status bar and safe-area inset on the phone. Either platform keeps one floating\n  bar \u2014 take-over / hand back, zoom \u2212/+, the level, Fit, exit \u2014 and the picture zooms 1\u00d7\u20135\u00d7 and pans, clamped to\n  its edges, with take-over clicks landing on the right framebuffer pixel at any zoom. `Esc` exits.\n\n### Fixed\n- **The full-screen button actually moves the window.** Turning full screen on toggled the window without\n  adopting `.fullScreenPrimary`, which macOS accepts and then ignores: the pane grew, the menu bar, dock and\n  traffic lights stayed, and nothing said why. The behaviour is adopted first, and the request and any refusal\n  are logged with the window's style mask.\n- **Looking a conversation up no longer changes the selected bot.** `endlessSession(for:)` selected the bot as a\n  side effect, so background readers could move the user's screen \u2014 reported as the selection jumping between\n  bots mid-conversation. A lookup now returns before anything is selected.\n- **Release notes reach the update dialog.** The publisher read `--notes` at six call sites and the release\n  script always passed a non-empty placeholder, so the changelog could never be used. One resolution now feeds\n  the release body, both manifests and the Sparkle feed's description, clipped to 4000 characters.",
-      "date": "2026-11-21T14:31:08Z",
+      "title": "Hermes 0.1.611 (611)",
+      "identifier": "hermes-0.1.611-611",
+      "caption": "### Added\n- **Arrange bot categories on the phone.** Long-press a group heading, or use the new \u22ef menu at its trailing\n  edge; the verbs grey out at the ends. The host stores the whole arrangement, so the order is the same on\n  every device.\n\n### Fixed\n- **A refused category move no longer looks like a successful one.** The Mac's menu called the move through\n  `try?`, so a write the host refused simply appeared not to happen. It now says \"Category not changed\".\n- **The vision model row shows the configured model instead of \"auto\".** Hermey read the flat\n  `auxiliary.vision_provider` key while the engine and both shipped configs use the nested\n  `auxiliary.vision.provider`, so the setting always looked unset.",
+      "date": "2026-11-21T16:29:19Z",
       "tintColor": "#9A9AA0"
     }
   ],
