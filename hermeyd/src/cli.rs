@@ -112,7 +112,8 @@ USAGE
 
 Checks, each on its own line with an ok / warn / fail marker: which state directory it read and
 where the token came from, the service answers, the engine's WebSocket port accepts connections and
-whether that engine wants a token at all (`auth_required` from its /api/health), the pairing host,
+whether that engine wants a token at all (one tokenless upgrade attempt on its socket — not the
+`auth_required` flag on /api/health, which describes the dashboard's OAuth gate instead), the pairing host,
 the local token file and whether it is readable, whether the service ACCEPTS that token, the browser
 channel port, paired devices, and which process owns the cron ticker for the engine home.
 
@@ -566,7 +567,7 @@ fn engine_auth_line(
     match auth {
         crate::engine_auth::EngineAuth::NotRequired => (
             Mark::Ok,
-            "not required (auth_required=false)".to_string(),
+            "not required (a tokenless upgrade was accepted)".to_string(),
         ),
         crate::engine_auth::EngineAuth::Required => (
             Mark::Ok,

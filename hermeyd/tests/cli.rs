@@ -477,44 +477,74 @@ fn boot_and_collect(
     (ready, log)
 }
 
-/// A loopback server that answers as both halves at once: an engine (`/api/health`, with whatever
-/// `auth_required` this test wants) and the hermeyd service `status` talks to. One port, no live
-/// install, and the decision under test is the one the binary actually reads.
-fn fake_engine_and_service(auth_required: bool, devices: u16, devices_body: &'static str) -> u16 {
+/// A loopback server that answers as both halves at once: an engine (whose `/api/ws` either accepts
+/// a tokenless upgrade or refuses it, chosen by `wants_token`) and the hermeyd service `status`
+/// talks to. One port, no live install, and the decision under test is the one the binary actually
+/// reads — a real WebSocket handshake in one case, a real 403 in the other.
+///
+/// The request is *peeked* at, never consumed: the accepted path hands the same stream to
+/// `accept_async`, which must read the upgrade request itself.
+fn fake_engine_and_service(wants_token: bool, devices: u16, devices_body: &'static str) -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake engine");
     let port = listener.local_addr().expect("fake addr").port();
+    listener.set_nonblocking(true).expect("non-blocking listener");
     std::thread::spawn(move || {
-        for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut buffer = [0u8; 4096];
-            let n = stream.read(&mut buffer).unwrap_or(0);
-            let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
-            let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
-            let (code, body): (u16, String) = match path.as_str() {
-                "/api/health" => (
-                    200,
-                    format!("{{\"ok\":true,\"auth_required\":{auth_required}}}"),
-                ),
-                "/v1/health" => (200, "{\"protocol_version\":1,\"ws\":true}".to_string()),
-                "/v1/pair/host" => (200, "{\"host\":\"hermes.example.ts.net\"}".to_string()),
-                "/v1/devices" => (devices, devices_body.to_string()),
-                _ => (404, "{}".to_string()),
-            };
-            let response = format!(
-                "HTTP/1.1 {code} ANSWER\r\ncontent-type: application/json\r\n\
-                 content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes());
-            let _ = stream.flush();
-        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        runtime.block_on(async move {
+            use tokio::io::AsyncWriteExt;
+            let listener = tokio::net::TcpListener::from_std(listener).expect("tokio listener");
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else { continue };
+                let mut buffer = [0u8; 4096];
+                let n = match stream.peek(&mut buffer).await {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+                let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+                let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+                if path.starts_with("/api/ws") {
+                    if wants_token {
+                        let _ = stream
+                            .write_all(
+                                b"HTTP/1.1 403 Forbidden\r\ncontent-type: application/json\r\n\
+                                  content-length: 2\r\nconnection: close\r\n\r\n{}",
+                            )
+                            .await;
+                    } else if let Ok(mut ws) = tokio_tungstenite::accept_async(stream).await {
+                        use futures_util::SinkExt;
+                        let _ = ws.close(None).await;
+                    }
+                    continue;
+                }
+                let (code, body): (u16, String) = match path.as_str() {
+                    // Still the flag a *dashboard* gate reports; the probe must not read it as a
+                    // statement about the socket credential (that is the regression these tests
+                    // pin: `false` here next to a refusing `/api/ws` is the live engine's shape).
+                    "/api/health" => (200, "{\"ok\":true,\"auth_required\":false}".to_string()),
+                    "/v1/health" => (200, "{\"protocol_version\":1,\"ws\":true}".to_string()),
+                    "/v1/pair/host" => (200, "{\"host\":\"hermes.example.ts.net\"}".to_string()),
+                    "/v1/devices" => (devices, devices_body.to_string()),
+                    _ => (404, "{}".to_string()),
+                };
+                let response = format!(
+                    "HTTP/1.1 {code} ANSWER\r\ncontent-type: application/json\r\n\
+                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.flush().await;
+            }
+        });
     });
     port
 }
 
-/// `status` asks the engine the same question boot does. Stock Hermes says `auth_required: false`, so
-/// the line reads `ok engine auth not required` — and the token file, which is not there at all,
-/// does not turn into a warning.
+/// `status` asks the engine's socket the same question boot does. A socket that accepts a tokenless
+/// upgrade needs no token, so the line reads `ok engine auth not required` — and the token file,
+/// which is not there at all, does not turn into a warning.
 #[test]
 fn status_reports_that_the_engine_needs_no_token() {
     let home = scratch("status-auth-off");
@@ -542,7 +572,10 @@ fn status_reports_that_the_engine_needs_no_token() {
         .unwrap_or_else(|| panic!("no engine auth line:\n{stdout}"));
     assert!(line.starts_with("ok"), "a token nobody needs is not a warning: {line}");
     assert!(line.contains("not required"), "{line}");
-    assert!(line.contains("auth_required=false"), "{line}");
+    assert!(
+        line.contains("a tokenless upgrade was accepted"),
+        "the evidence must be named: {line}"
+    );
 
     // The same fact in the object a script reads, where `false` and "unknown" must stay different.
     let out = child_with_env(
@@ -669,7 +702,9 @@ fn boot_says_no_token_is_required_when_the_engine_asks_for_none() {
     ]);
     assert!(ready, "the service never reported READY; stderr:\n{log}");
     assert!(
-        log.contains(&format!("engine: no token required by {ws} (auth_required=false)")),
+        log.contains(&format!(
+            "engine: no token required by {ws} (a tokenless upgrade was accepted)"
+        )),
         "the decision is not on stderr:\n{log}"
     );
     // No warning about a token file that is not there: it is not needed, which is the whole point.
@@ -697,9 +732,9 @@ fn boot_states_that_an_unanswered_probe_keeps_requiring_the_token() {
     assert!(
         log.contains(&format!(
             "engine: could not confirm the token is unnecessary — \
-             http://127.0.0.1:{dead}/api/health did not answer"
+             ws://127.0.0.1:{dead}/api/ws did not answer"
         )),
-        "the probe's URL and its failure are not named:\n{log}"
+        "the probe's socket and its failure are not named:\n{log}"
     );
     assert!(log.contains("requiring the token at"), "{log}");
     assert!(log.contains("engine.token"), "{log}");

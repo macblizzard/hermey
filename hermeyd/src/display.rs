@@ -46,8 +46,8 @@ pub struct DisplayHub {
 }
 
 impl DisplayHub {
-    /// `token_file: None` means the engine answered `auth_required: false` at boot: this socket is
-    /// dialled with no credential, and no file is read. See `engine_auth`.
+    /// `token_file: None` means the probe found the engine accepting a tokenless upgrade at boot:
+    /// this socket is dialled with no credential, and no file is read. See `engine_auth`.
     pub fn spawn(engine_ws: String, token_file: Option<PathBuf>) -> Arc<Self> {
         let (tx, rx) = mpsc::channel::<(String, Value, Reply)>(32);
         tokio::spawn(actor(engine_ws, token_file, rx));

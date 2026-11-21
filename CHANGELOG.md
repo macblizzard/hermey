@@ -67,6 +67,14 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **The service stops reading a dashboard flag as a statement about its own socket.** `hermeyd` asked
+  `/api/health` whether the engine wanted a token and read `auth_required: false` as "none needed".
+  That flag describes the dashboard's OAuth gate: a loopback `hermes serve` answers `false` while its
+  `/api/ws` still demands the per-boot session token and refuses a tokenless upgrade with `403`. Every
+  relay, RPC and display socket therefore failed with `403 Forbidden` against a stock v0.23.0 engine.
+  The probe now asks the socket itself — one tokenless upgrade, accepted → send nothing, `401`/`403` →
+  send the token, anything else → send it as before — and boot and `status` both name the evidence
+  instead of quoting the flag.
 - **A bot's window follows its conversation when the session id moves.** The host mints a runtime
   session id per attach and a new one when a conversation starts, while the app stores the durable
   id — so an event could name the conversation on screen by a name that window had never seen. Every

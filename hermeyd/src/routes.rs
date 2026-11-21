@@ -60,8 +60,9 @@ impl AppState {
     /// The bearer to put on an engine connection, or `None` when the engine said it wants none.
     ///
     /// Read per call, not at startup: the engine mints a fresh token on every boot. Read at all only
-    /// when the boot probe found `auth_required != false` — otherwise the file is not a credential,
-    /// it is a leftover, and appending it would be a query string the engine never asked for.
+    /// when the boot probe found the socket refusing a tokenless upgrade — otherwise the file is not
+    /// a credential, it is a leftover, and appending it would be a query string the engine never
+    /// asked for.
     pub fn engine_token(&self) -> Option<String> {
         if !self.engine_auth.send_token() {
             return None;
@@ -234,7 +235,7 @@ pub async fn ws_upgrade(
     }
 
     // Read per connection, not at startup: the engine mints a fresh token on every boot. `None`
-    // when the engine answered `auth_required: false`, so the relay dials without `?token=`.
+    // when the probe found the socket accepting a tokenless upgrade, so the relay dials bare.
     let engine_token = st.engine_token();
 
     // Socket caps, enforced here so a device that is already at its limit has another socket

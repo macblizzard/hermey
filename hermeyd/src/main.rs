@@ -256,10 +256,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine_token_file = std::env::var("HERMEYD_ENGINE_TOKEN_FILE")
         .map(PathBuf::from)
         .unwrap_or_else(|_| default_engine_token_file(&home));
-    // Stock Hermes answers `auth_required: false` on `/api/health`; the token then stops being a
-    // requirement and stops riding the URL. A probe that cannot answer (engine down) is *not* that
-    // permission: it keeps the old, strict behaviour. The decision is printed either way — a silent
-    // change in whether a credential is sent is undebuggable from a journal.
+    // Stock Hermes answers `auth_required: false` on `/api/health` while its loopback `/api/ws`
+    // still demands the per-boot token, so the probe asks the socket itself: one tokenless upgrade,
+    // accepted or refused. A probe that cannot answer (engine down) is *not* permission to drop the
+    // credential. The decision is printed either way — a silent change in whether a credential is
+    // sent is undebuggable from a journal.
     let engine_auth = engine_auth::probe(&engine_ws).await;
     eprintln!("{}", engine_auth.boot_line(&engine_ws, &engine_token_file));
 

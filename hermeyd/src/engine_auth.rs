@@ -1,41 +1,53 @@
 //! Whether the engine wants a token on its socket at all.
 //!
-//! A stock Hermes install answers `{"ok":true,"auth_required":false}` on `/api/health`: its loopback
-//! WS is unauthenticated, so appending `?token=` to every connection is noise at best and a stale
-//! cookie at worst. Older builds — and any install with auth turned on — still require the per-boot
-//! token file. Which one is in front of this service is **asked**, once per boot and once per
-//! `status`, never assumed: one unauthenticated GET of the engine's own health route.
+//! The question is answered **by the socket**, not by `/api/health`. `auth_required` there states
+//! whether the dashboard's OAuth gate is engaged (a non-loopback bind or a public URL); a loopback
+//! `hermes serve` answers `false` while its `/api/ws` still demands the per-boot session token and
+//! refuses a tokenless upgrade with HTTP 403. Reading that `false` as "no credential needed" made
+//! this service dial bare and fail every relay and RPC with 403 — measured 2026-11-21 against a
+//! stock v0.23.0 engine: `/api/health` → `{"ok":true,"auth_required":false}`, `/api/ws?token=…` →
+//! accepted, `/api/ws` without → `403 Forbidden`.
+//!
+//! So the probe performs exactly the upgrade it is deciding about: one tokenless dial, at boot and
+//! once per `status`.
+//!
+//! * accepted → `NotRequired`: the engine really does not check, and `?token=` is noise.
+//! * refused with 401/403 → `Required`: that is the engine asking for the credential.
+//! * anything else (no answer, a 5xx, a socket closed before the upgrade completed) → `Unknown`,
+//!   which sends the token exactly as the service always has. An engine that is merely busy is not
+//!   evidence that it stopped wanting a credential, and sending the right token is never worse than
+//!   omitting it: an engine that does not check ignores the query string.
 //!
 //! What stays: `HERMEYD_ENGINE_WS` (the protocol), `HERMEYD_ENGINE_HOME` (direct file reads — see
-//! `previews`, `skills`, `bot_docs`) and `HERMEYD_ENGINE_TOKEN_FILE` (still the credential when one
-//! is needed). Only *sending* the token becomes conditional.
-//!
-//! An inconclusive probe is not permission to skip the token. The engine may simply be down while
-//! this service starts (it serves beside a dead engine today), so `Unknown` behaves exactly as the
-//! service always has: require the file, append the token.
+//! `previews`, `skills`, `bot_docs`) and `HERMEYD_ENGINE_TOKEN_FILE` (the credential when one is
+//! needed). Only *sending* the token becomes conditional.
 
-use serde_json::Value;
 use std::path::Path;
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::Error as WsError;
+
+/// How long the probe waits for an engine to answer the upgrade. A refused connect returns at once;
+/// this bound is for a listener that accepts TCP and then says nothing.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// The engine's answer to "do you want a token": two definite values and one honest "I could not
 /// tell", which is deliberately not the same as "not required".
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EngineAuth {
-    /// `/api/health` said `auth_required: false`. No token is minted or sent.
+    /// A tokenless upgrade was accepted. No token is read or sent.
     NotRequired,
-    /// `/api/health` said `auth_required: true`, or said nothing this build understands.
+    /// A tokenless upgrade was refused with 401/403: this engine wants the credential.
     Required,
-    /// The probe did not answer (engine down, not HTTP, a body that is not JSON). The reason is for
-    /// the operator, not for a decision: `Unknown` requires the token, exactly as before.
+    /// The probe reached no verdict (engine down, not answering, refusing for another reason). The
+    /// reason is for the operator, not for a decision: `Unknown` sends the token.
     Unknown(String),
 }
 
 impl EngineAuth {
     /// Whether a token should be read and appended to the engine URL.
     ///
-    /// Only a definite `auth_required: false` turns this off. A failed probe keeps today's
-    /// behaviour — a missing token must never be *assumed* to be fine.
+    /// Only a definite accepted upgrade turns this off. A failed probe keeps the service's original
+    /// behaviour — a missing credential must never be *assumed* to be fine.
     pub fn send_token(&self) -> bool {
         !matches!(self, EngineAuth::NotRequired)
     }
@@ -54,13 +66,13 @@ impl EngineAuth {
     pub fn boot_line(&self, engine_ws: &str, token_file: &Path) -> String {
         match self {
             EngineAuth::NotRequired => format!(
-                "engine: no token required by {engine_ws} (auth_required=false)"
+                "engine: no token required by {engine_ws} (a tokenless upgrade was accepted)"
             ),
             EngineAuth::Required => format!(
-                "engine: token required by {engine_ws} (auth_required=true); sending {}",
+                "engine: token required by {engine_ws} (a tokenless upgrade was refused); sending {}",
                 token_file.display()
             ),
-            // The reason names the URL it tried (see `probe`), so the line does not repeat it.
+            // The reason already names the socket it tried, so the line does not repeat it.
             EngineAuth::Unknown(reason) => format!(
                 "engine: could not confirm the token is unnecessary — {reason}; requiring the token \
                  at {} as before",
@@ -70,147 +82,155 @@ impl EngineAuth {
     }
 }
 
-/// The engine's health URL, derived from the WS endpoint this service already has configured.
-///
-/// `/api/ws` and `/api/health` are siblings on one loopback listener, so no new setting is needed:
-/// `ws://127.0.0.1:9121/api/ws` → `http://127.0.0.1:9121/api/health`. A query string (a token a
-/// human pasted) is dropped — the health route must answer without one.
-pub fn health_url(engine_ws: &str) -> String {
-    let bare = engine_ws
+/// The configured socket with any query string dropped: the probe must ask for an *unauthenticated*
+/// upgrade, so a token a human pasted into `HERMEYD_ENGINE_WS` must not ride along and turn a
+/// refusal into an accept.
+fn bare_socket(engine_ws: &str) -> String {
+    engine_ws
         .split(['?', '#'])
         .next()
         .unwrap_or(engine_ws)
         .trim()
-        .trim_end_matches('/');
-    let (scheme, rest) = match bare.split_once("://") {
-        Some((scheme, rest)) => (scheme, rest),
-        None => ("ws", bare),
-    };
-    let scheme = match scheme.to_ascii_lowercase().as_str() {
-        "wss" | "https" => "https",
-        _ => "http",
-    };
-    let (authority, path) = match rest.split_once('/') {
-        Some((authority, path)) => (authority, format!("/{path}")),
-        None => (rest, String::new()),
-    };
-    let health = match path.trim_end_matches('/').strip_suffix("/ws") {
-        Some(prefix) if prefix.is_empty() => "/health".to_string(),
-        Some(prefix) => format!("{prefix}/health"),
-        // Any other path: the route this engine family always serves.
-        None => "/api/health".to_string(),
-    };
-    format!("{scheme}://{authority}{health}")
+        .to_string()
 }
 
-/// The decision from a parsed `/api/health` body, with no I/O — the test suite pins this.
-pub fn interpret(body: &Value) -> EngineAuth {
-    match body.get("auth_required") {
-        Some(Value::Bool(false)) => EngineAuth::NotRequired,
-        Some(Value::Bool(true)) => EngineAuth::Required,
-        // `null`, `"false"`, `0`: a shape this build cannot vouch for. Strict is the safe side.
-        Some(other) => EngineAuth::Unknown(format!("auth_required is not a boolean: {other}")),
-        None => EngineAuth::Unknown("the body has no auth_required".to_string()),
-    }
-}
-
-/// Where the answer came from, for the failure text: the URL, never the body.
+/// Ask the socket itself, with no credential.
 pub async fn probe(engine_ws: &str) -> EngineAuth {
-    let url = health_url(engine_ws);
-    // Short: boot must not wait on an engine that is down, and `status` is a diagnostic, not a
-    // monitor. A refused connect returns immediately; this timeout is for a hung listener.
-    let client = match reqwest::Client::builder().timeout(Duration::from_secs(2)).build() {
-        Ok(client) => client,
-        Err(e) => return EngineAuth::Unknown(format!("no HTTP client: {e}")),
-    };
-    let response = match client.get(&url).send().await {
-        Ok(response) => response,
-        // `without_url` because the URL is already the first thing this sentence says: reqwest's
-        // own message repeats it, and a line with the same URL three times is harder to read than
-        // the fact it carries.
-        Err(e) => {
-            return EngineAuth::Unknown(format!("{url} did not answer: {}", e.without_url()))
+    let url = bare_socket(engine_ws);
+    let attempt =
+        tokio::time::timeout(PROBE_TIMEOUT, tokio_tungstenite::connect_async(url.as_str())).await;
+    match attempt {
+        Err(_) => EngineAuth::Unknown(format!(
+            "{url} did not answer within {} s",
+            PROBE_TIMEOUT.as_secs()
+        )),
+        // Accepted without a token: nothing to send. Close at once — this is a question, not a
+        // session, and an idle socket on the engine would hold a client slot for nothing.
+        Ok(Ok((mut socket, _response))) => {
+            let _ = socket.close(None).await;
+            EngineAuth::NotRequired
         }
-    };
-    let status = response.status();
-    if !status.is_success() {
-        return EngineAuth::Unknown(format!("{url} answered {status}"));
-    }
-    let body: Value = match response.json().await {
-        Ok(body) => body,
-        Err(e) => return EngineAuth::Unknown(format!("{url} is not JSON: {e}")),
-    };
-    match interpret(&body) {
-        EngineAuth::Unknown(reason) => EngineAuth::Unknown(format!("{url}: {reason}")),
-        decided => decided,
+        Ok(Err(WsError::Http(response))) => match response.status().as_u16() {
+            401 | 403 => EngineAuth::Required,
+            // A 5xx, a 404 on a wrong path, a proxy's own refusal: none of these say "no credential
+            // needed", so they are not permission to stop sending one.
+            code => EngineAuth::Unknown(format!("{url} refused the upgrade with HTTP {code}")),
+        },
+        Ok(Err(err)) => EngineAuth::Unknown(format!("{url} did not answer: {err}")),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use std::io::{Read, Write};
     use std::net::TcpListener;
 
-    /// Strip `scheme://host:port` so a failure text can be asserted without the port.
-    fn endpoint(url: &str) -> String {
-        url.split_once("://")
-            .map(|(_, rest)| rest.to_string())
-            .unwrap_or_else(|| url.to_string())
+    /// Serve one request on a fresh loopback port and answer it, so the probe meets a real socket
+    /// rather than a mock.
+    async fn one_shot(answer: Vec<u8>) -> u16 {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = [0u8; 2048];
+            let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buffer).await;
+            let _ = tokio::io::AsyncWriteExt::write_all(&mut stream, &answer).await;
+            let _ = tokio::io::AsyncWriteExt::flush(&mut stream).await;
+        });
+        port
     }
 
-    /// The URL the probe and the boot line name: the WS endpoint's sibling, over HTTP.
-    #[test]
-    fn the_health_url_is_the_ws_endpoints_sibling() {
-        assert_eq!(
-            health_url("ws://127.0.0.1:9121/api/ws"),
-            "http://127.0.0.1:9121/api/health"
-        );
-        assert_eq!(
-            health_url("ws://127.0.0.1:9121/api/ws/"),
-            "http://127.0.0.1:9121/api/health"
-        );
-        // A stale token in the URL must not be forwarded to a route that does not need one.
-        assert_eq!(
-            health_url("ws://127.0.0.1:9121/api/ws?token=abc"),
-            "http://127.0.0.1:9121/api/health"
-        );
-        assert_eq!(
-            health_url("wss://engine.example/api/ws"),
-            "https://engine.example/api/health"
-        );
-        // No path at all: the route this engine family serves.
-        assert_eq!(health_url("ws://127.0.0.1:9121"), "http://127.0.0.1:9121/api/health");
-    }
+    /// An engine that does not check: the upgrade is completed, and that is permission to stop
+    /// sending a token.
+    #[tokio::test]
+    async fn an_accepted_tokenless_upgrade_means_not_required() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async move {
+                let (stream, _) = listener.accept().unwrap();
+                stream.set_nonblocking(true).unwrap();
+                let stream = tokio::net::TcpStream::from_std(stream).unwrap();
+                let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                let _ = ws.close(None).await;
+            });
+        });
 
-    /// Stock Hermes: `auth_required: false` is the whole permission to skip the token.
-    #[test]
-    fn only_a_boolean_false_turns_the_token_off() {
-        let auth = interpret(&json!({"ok": true, "auth_required": false}));
+        let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
         assert_eq!(auth, EngineAuth::NotRequired);
         assert!(!auth.send_token());
         assert_eq!(auth.as_str(), "not-required");
-
-        let auth = interpret(&json!({"ok": true, "auth_required": true}));
-        assert_eq!(auth, EngineAuth::Required);
-        assert!(auth.send_token());
-        assert_eq!(auth.as_str(), "required");
     }
 
-    /// A body this build cannot vouch for is inconclusive, and inconclusive keeps the token.
-    #[test]
-    fn an_ambiguous_or_missing_field_is_inconclusive_and_stays_strict() {
-        for body in [
-            json!({"ok": true}),
-            json!({"auth_required": null}),
-            json!({"auth_required": "false"}),
-            json!({"auth_required": 0}),
+    /// The live shape of a stock engine: a tokenless upgrade is refused, which is the credential
+    /// being asked for — not a mystery to route around.
+    #[tokio::test]
+    async fn a_refused_tokenless_upgrade_means_required() {
+        for code in ["401 Unauthorized", "403 Forbidden"] {
+            let answer = format!(
+                "HTTP/1.1 {code}\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\
+                 connection: close\r\n\r\n{{}}"
+            );
+            let port = one_shot(answer.into_bytes()).await;
+            let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
+            assert_eq!(auth, EngineAuth::Required, "{code}");
+            assert!(auth.send_token());
+            assert_eq!(auth.as_str(), "required");
+        }
+    }
+
+    /// Anything that is not a definite refusal of the credential keeps the token: an engine that is
+    /// busy or answering on the wrong path is not evidence that it stopped wanting one.
+    #[tokio::test]
+    async fn an_inconclusive_answer_is_unknown_and_still_sends_the_token() {
+        for answer in [
+            "HTTP/1.1 503 Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
         ] {
-            let auth = interpret(&body);
-            assert!(auth.send_token(), "{body} must not drop the token: {auth:?}");
+            let port = one_shot(answer.as_bytes().to_vec()).await;
+            let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
+            assert!(auth.send_token(), "{answer}: {auth:?}");
             assert_eq!(auth.as_str(), "unknown");
         }
+    }
+
+    /// A dead engine is inconclusive, not permission.
+    #[tokio::test]
+    async fn a_probe_that_cannot_connect_keeps_the_token() {
+        let port = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
+        assert_eq!(auth.as_str(), "unknown");
+        assert!(
+            auth.send_token(),
+            "an unreachable engine must not drop the token"
+        );
+        match &auth {
+            EngineAuth::Unknown(reason) => {
+                assert!(reason.contains(&format!("127.0.0.1:{port}/api/ws")), "{reason}")
+            }
+            other => panic!("expected Unknown, got {other:?}"),
+        }
+    }
+
+    /// The probe asks without a credential: a token pasted into the configured URL must not turn
+    /// the question into an answer it was handed.
+    #[test]
+    fn the_probe_drops_a_token_from_the_configured_url() {
+        assert_eq!(
+            bare_socket("ws://127.0.0.1:9121/api/ws?token=abc"),
+            "ws://127.0.0.1:9121/api/ws"
+        );
+        assert_eq!(
+            bare_socket("ws://127.0.0.1:9121/api/ws"),
+            "ws://127.0.0.1:9121/api/ws"
+        );
     }
 
     /// The three boot lines: the decision, and what it was decided from.
@@ -222,92 +242,24 @@ mod tests {
         let line = EngineAuth::NotRequired.boot_line(ws, token);
         assert_eq!(
             line,
-            "engine: no token required by ws://127.0.0.1:9121/api/ws (auth_required=false)"
+            "engine: no token required by ws://127.0.0.1:9121/api/ws \
+             (a tokenless upgrade was accepted)"
         );
 
         let line = EngineAuth::Required.boot_line(ws, token);
         assert!(line.contains("token required by"), "{line}");
-        assert!(line.contains("auth_required=true"), "{line}");
+        assert!(line.contains("a tokenless upgrade was refused"), "{line}");
         assert!(line.contains("/var/lib/hermeyd/engine.token"), "{line}");
 
         let line = EngineAuth::Unknown(
-            "http://127.0.0.1:9121/api/health did not answer: connection refused".into(),
+            "ws://127.0.0.1:9121/api/ws did not answer: connection refused".into(),
         )
         .boot_line(ws, token);
         assert_eq!(
             line,
-            "engine: could not confirm the token is unnecessary — http://127.0.0.1:9121/api/health \
-             did not answer: connection refused; requiring the token at /var/lib/hermeyd/engine.token \
-             as before"
+            "engine: could not confirm the token is unnecessary — ws://127.0.0.1:9121/api/ws did \
+             not answer: connection refused; requiring the token at \
+             /var/lib/hermeyd/engine.token as before"
         );
-    }
-
-    /// The probe itself, against a loopback server: the hermetic shape of the live engine.
-    #[tokio::test]
-    async fn the_probe_reads_auth_required_from_a_real_http_answer() {
-        for (body, expected_required) in
-            [(r#"{"ok":true,"auth_required":false}"#, false), (r#"{"auth_required":true}"#, true)]
-        {
-            let listener = TcpListener::bind("127.0.0.1:0").expect("bind a fake engine");
-            let port = listener.local_addr().unwrap().port();
-            std::thread::spawn(move || {
-                for stream in listener.incoming() {
-                    let Ok(mut stream) = stream else { continue };
-                    let mut buffer = [0u8; 2048];
-                    let _ = stream.read(&mut buffer);
-                    let response = format!(
-                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
-                         content-length: {}\r\nconnection: close\r\n\r\n{body}",
-                        body.len()
-                    );
-                    let _ = stream.write_all(response.as_bytes());
-                }
-            });
-
-            let ws = format!("ws://127.0.0.1:{port}/api/ws");
-            let auth = probe(&ws).await;
-            assert_eq!(auth.send_token(), expected_required, "{auth:?}");
-            if !expected_required {
-                assert_eq!(auth, EngineAuth::NotRequired);
-            }
-        }
-    }
-
-    /// A dead engine is inconclusive, not permission: the token stays required.
-    #[tokio::test]
-    async fn a_probe_that_cannot_reach_the_engine_keeps_the_token() {
-        let port = {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            listener.local_addr().unwrap().port()
-        };
-        let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
-        assert_eq!(auth.as_str(), "unknown");
-        assert!(auth.send_token(), "an unreachable engine must not drop the token");
-        match &auth {
-            EngineAuth::Unknown(reason) => {
-                assert!(reason.contains(&endpoint(&format!("127.0.0.1:{port}/api/health"))), "{reason}")
-            }
-            other => panic!("expected Unknown, got {other:?}"),
-        }
-    }
-
-    /// An HTTP error is inconclusive too — a 401 from a proxy must not read as "no token needed".
-    #[tokio::test]
-    async fn an_http_error_answer_is_inconclusive() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind a fake engine");
-        let port = listener.local_addr().unwrap().port();
-        std::thread::spawn(move || {
-            for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { continue };
-                let mut buffer = [0u8; 2048];
-                let _ = stream.read(&mut buffer);
-                let _ = stream.write_all(
-                    b"HTTP/1.1 503 Unavailable\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
-                );
-            }
-        });
-        let auth = probe(&format!("ws://127.0.0.1:{port}/api/ws")).await;
-        assert_eq!(auth.as_str(), "unknown", "{auth:?}");
-        assert!(auth.send_token());
     }
 }
