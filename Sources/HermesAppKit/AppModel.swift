@@ -2160,7 +2160,8 @@ public final class AppModel: ObservableObject {
         // *following* visit goes back to the bot's endless conversation, which must not drift.
         if let picked = pinnedSessionPicks.removeValue(forKey: botID) {
             await loadModelLabel()
-            await select(picked)
+            // `self.` because the `select:` parameter of this function shadows the method of the same name.
+            await self.select(picked)
             return selectedSessionID
         }
         await loadModelLabel()
