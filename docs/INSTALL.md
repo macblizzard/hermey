@@ -152,7 +152,7 @@ Then publish and pair:
 ```bash
 tailscale serve --bg http://127.0.0.1:8788   # serve-root: URLs carry no :8443
 curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start
-# {"code":"12345678","host":"localhost","expires_at":…}
+# {"code":"123456","host":"localhost","expires_at":…}   (6 digits, 10 minutes)
 ```
 
 `/v1/pair/start` only answers on loopback. Enter the code in the app against the host's address;

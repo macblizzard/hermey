@@ -40,7 +40,7 @@ Shown after a choice, or whenever a value must be typed.
 | site | the origin, repeated so a card is never ambiguous |
 | fields | one or more masked inputs: `username` + `password`, or a single `one-time code` |
 | fills | what the value will be placed into: "the password field on the sign-in form" |
-| expires | 2 minutes by default |
+| expires | 15 minutes by default (`ttl_seconds`, clamped to 30 s – 24 h) |
 
 Rules:
 
