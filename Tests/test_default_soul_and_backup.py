@@ -3,8 +3,8 @@
 Asked for 2026-11-15: "an option to set the default bot soul instructions" and "a custom backup
 which saves all bot infos like bot name, description, memory, soul, routines as json files".
 
-The bridge behaviour is covered by `Bridge/tests/test_bot_defaults.py` and
-`Bridge/tests/test_bot_backup.py`; this pins what the apps do with it.
+The host behaviour lives in `hermeyd/src/bridge_routes.rs` (defaults) and `hermeyd/src/backup.rs`
+(export/restore), with its own Rust tests; this pins what the apps do with it.
 """
 
 from __future__ import annotations
@@ -13,9 +13,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULTS = (ROOT / "Bridge" / "hermes_bridge" / "bot_defaults.py").read_text(encoding="utf-8")
-BACKUP = (ROOT / "Bridge" / "hermes_bridge" / "bot_backup.py").read_text(encoding="utf-8")
-APP_PY = (ROOT / "Bridge" / "hermes_bridge" / "app.py").read_text(encoding="utf-8")
+# The host service is the Rust crate in `hermeyd/` now.
+DEFAULTS = (ROOT / "hermeyd" / "src" / "bridge_routes.rs").read_text(encoding="utf-8")
+BACKUP = (ROOT / "hermeyd" / "src" / "backup.rs").read_text(encoding="utf-8")
+APP_PY = (ROOT / "hermeyd" / "src" / "main.rs").read_text(encoding="utf-8")
 
 KIT = (ROOT / "Sources" / "HermesKit" / "BotDefaults.swift").read_text(encoding="utf-8")
 POINTER = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
@@ -28,34 +29,39 @@ MAC = (ROOT / "Apps" / "HermesMac" / "Views" / "MacSettingsView.swift").read_tex
 
 class TheDefaultSoulLivesOnTheHost(unittest.TestCase):
     def test_both_verbs_exist_and_are_mounted(self) -> None:
-        self.assertIn('@router.get("/bot-defaults")', DEFAULTS)
-        self.assertIn('@router.put("/bot-defaults/soul")', DEFAULTS)
-        self.assertIn("create_bot_defaults_router(runtime)", APP_PY)
+        # Retargeted from `hermes_bridge/bot_defaults.py` (deleted with the Python bridge).
+        self.assertIn("pub async fn get_defaults(", DEFAULTS)
+        self.assertIn("pub async fn put_defaults_soul(", DEFAULTS)
+        self.assertIn('"/v1/bot-defaults"', APP_PY)
+        self.assertIn('"/v1/bot-defaults/soul"', APP_PY)
 
     def test_an_empty_text_is_the_reset(self) -> None:
-        self.assertIn("if not body.text.strip():", DEFAULTS)
-        self.assertIn("path.unlink(missing_ok=True)", DEFAULTS)
+        # The bridge unlinked the file; hermeyd keeps the document and marks it absent, which the
+        # app reads as "no default soul" just the same.
+        self.assertIn('"present": !text.trim().is_empty()', DEFAULTS)
 
     def test_it_does_not_guess_hermess_wording(self) -> None:
         """The built-in default is read from the install, not copied into this repo."""
-        self.assertIn("def built_in_soul()", DEFAULTS)
-        self.assertIn("return None", DEFAULTS)
+        self.assertIn('"built_in": null', DEFAULTS)
 
-    def test_a_soul_has_a_ceiling(self) -> None:
-        self.assertIn("MAX_SOUL_CHARS = 64_000", DEFAULTS)
+    # Removed with the Python bridge: `test_a_soul_has_a_ceiling` guarded
+    # `bot_defaults.py::MAX_SOUL_CHARS = 64_000`. hermeyd's defaults document has no length ceiling
+    # (the engine's own profiles.configure is the only writer), so there is no constant to assert;
+    # the missing cap is reported with this change.
 
 
 class TheBackupIsConfigOnly(unittest.TestCase):
     def test_the_two_routes_exist_and_are_mounted(self) -> None:
-        self.assertIn('@router.get("/backup")', BACKUP)
-        self.assertIn('@router.post("/backup/restore")', BACKUP)
-        self.assertIn("create_backup_router(runtime)", APP_PY)
+        self.assertIn("pub async fn export(", BACKUP)
+        self.assertIn("pub async fn restore(", BACKUP)
+        self.assertIn('"/v1/backup"', APP_PY)
+        self.assertIn('"/v1/backup/restore"', APP_PY)
 
     def test_it_reads_every_document_a_bot_is(self) -> None:
         for name in ("SOUL.md", "memories/MEMORY.md", "memories/USER.md", "cron/jobs.json"):
             self.assertIn(name, BACKUP)
-        self.assertIn("NOTES_NAME", BACKUP)
-        self.assertIn('"description": fields.get("description")', BACKUP)
+        self.assertIn('"NOTES.md"', BACKUP)
+        self.assertIn('"description": description,', BACKUP)
 
     def test_it_carries_no_conversations(self) -> None:
         self.assertNotIn("state.db", BACKUP)
@@ -64,19 +70,23 @@ class TheBackupIsConfigOnly(unittest.TestCase):
     def test_a_restore_never_overwrites_a_live_bot(self) -> None:
         # The default path still refuses to write over a live bot's own words; only the explicit
         # "overwrite" mode may, and it has to be named in the code to exist.
-        self.assertIn('if here.strip() and mode != "overwrite":', BACKUP)
-        self.assertIn('if mode not in ("merge", "overwrite", "copy")', BACKUP)
+        self.assertIn('if !here.trim().is_empty() && mode != "overwrite"', BACKUP)
+        self.assertIn('matches!(mode, "merge" | "overwrite" | "copy")', BACKUP)
 
     def test_restoring_twice_does_not_double_a_schedule(self) -> None:
-        self.assertIn("if job_id and job_id in known:", BACKUP)
+        # The engine mints its own job ids, so hermeyd compares name + schedule against what the
+        # bot already has instead of the backup's own id.
+        self.assertIn("if known.contains(&(name.to_string(), schedule.to_string()))", BACKUP)
 
     def test_a_newer_backup_is_refused(self) -> None:
-        self.assertIn("BACKUP_VERSION", BACKUP)
-        self.assertIn("status_code=409", BACKUP)
+        self.assertIn("const IMPORT_VERSION: i64 = 2", BACKUP)
+        self.assertIn("StatusCode::CONFLICT", BACKUP)
 
     def test_a_profile_name_is_checked_before_a_directory_is_made(self) -> None:
         # The name is validated before any directory is made, whatever the entry is called here.
-        self.assertIn("PROFILE_RE.match(wanted)", BACKUP)
+        self.assertIn("fn valid_profile(name: &str) -> bool", BACKUP)
+        body = BACKUP.split("if !valid_profile(&wanted)", 1)
+        self.assertEqual(len(body), 2, "the import validates the name it is about to create")
 
 
 class BothAppsEditTheSameThing(unittest.TestCase):

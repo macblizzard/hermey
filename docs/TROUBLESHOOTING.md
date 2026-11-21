@@ -26,7 +26,7 @@ hermey logs 80
 |---|---|
 | `address already in use` | something else holds the port — `sudo ss -ltnp \| grep 8787`, then reinstall with `--port 8788` |
 | `"event": "upstream_error"` with `"reason": "connect_failed"` in the audit log | the dashboard it relays to is not answering on the port the unit was given, or restarted with a different token; re-run the installer so it re-reads both |
-| `No module named hermes_bridge` | the venv is broken; re-run the installer (it reinstalls) |
+| `No module named hermes_bridge` | the Python bridge, which this page describes, is no longer in the repo — a host on it is running the retired service. See [`HERMEYD.md`](HERMEYD.md) for the host service that replaced it |
 
 ## The dashboard already exists / "reusing this host's dashboard: pid …"
 

@@ -11,6 +11,11 @@ metadata:
 
 # Hermey host
 
+> **`setup/install.sh` is retired.** It installed the Python bridge, which is no longer in this
+> repository; it now stops with a message and exits 1. The host service is `hermeyd/` — see
+> [`docs/HERMEYD.md`](../docs/HERMEYD.md) and `deploy/hermeyd.service`. The description below is kept
+> for a host that has not migrated.
+
 Hermey is the native iOS/macOS client for a Hermes agent. The apps talk to a **bridge** on your
 Hermes host: one loopback HTTP/WS service that relays to the Hermes dashboard. This skill installs
 it, pairs a device, and diagnoses it. Repo: `github.com/macblizzard/hermey`.

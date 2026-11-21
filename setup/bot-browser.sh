@@ -19,6 +19,19 @@
 # Everything is idempotent: running it twice changes nothing the second time.
 set -euo pipefail
 
+# ---------------------------------------------------------------- retired with the Python bridge
+# Everything here ends in a systemd drop-in for `hermey-bridge.service`, the unit the Python bridge
+# ran as. That service no longer exists, so this would add a drop-in for a unit nothing creates and
+# report success. Refuse, and point at the host service this repository actually ships.
+cat >&2 <<'MESSAGE'
+bot-browser: the Python bridge was removed from this repository; install hermeyd instead.
+
+This script provisions Chrome and writes a systemd drop-in for `hermey-bridge.service`. The host
+service is `hermeyd` now (see docs/HERMEYD.md and deploy/hermeyd.service), and the sign-in extension
+is written by that service rather than refreshed by a drop-in.
+MESSAGE
+exit 1
+
 EXT_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/browser-extension"
 EXT_ROOT="/opt/hermes-extension"
 BROWSER_PY="/usr/local/lib/hermes-agent/tools/bot_desktop/browser.py"

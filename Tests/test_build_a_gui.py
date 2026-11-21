@@ -9,12 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class BuildAGUI(unittest.TestCase):
-    def test_bridge_act_route_is_audited_and_bounded(self) -> None:
-        module = (ROOT / "Bridge/hermes_bridge/local_computers.py").read_text()
-        self.assertIn('@router.post("/{device_id}/act")', module)
-        self.assertIn('{"type": "act", "actions": actions, "bot": bot}', module)
-        self.assertIn("1 <= len(actions) <= 24", module)
-        self.assertIn('"local_computer.act"', (ROOT / "Bridge/hermes_bridge/audit.py").read_text())
+    def test_host_act_route_is_audited_and_bounded(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn("/v1/local-computers/{device_id}/act", (ROOT / "hermeyd" / "src" / "main.rs").read_text())
+        self.assertIn('json!({"type": "act", "actions": body.actions, "bot": body.bot})', module)
+        self.assertIn("body.actions.len() > 24", module)
+        self.assertIn("1 to 24 actions per batch", module)
+        self.assertIn('"local_computer.act"', (ROOT / "hermeyd" / "src" / "audit.rs").read_text())
 
     def test_cli_accepts_a_json_action_batch(self) -> None:
         cli = (ROOT / "Tools/local_computer.py").read_text()

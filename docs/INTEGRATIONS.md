@@ -45,9 +45,9 @@ Disconnecting is per account, by id — never "disconnect gmail", which would ha
 
 ## The services
 
-The list comes from the bridge's own catalogue, so this table cannot drift from the code without a check
+The list comes from the host's own catalogue, so this table cannot drift from the code without a check
 failing (`Tools/site/check_drift.py`, `catalog`). Adding a service to `CATALOG` in
-`Bridge/hermes_bridge/composio.py` adds it to the app and requires a line here.
+`hermeyd/src/integrations.rs` adds it to the app and requires a line here.
 
 | Service | Slug | What it is for |
 |---|---|---|
@@ -120,7 +120,7 @@ hand it straight to the sign-in flow, so you are asked only for your password.
 Integrations will keep growing, so:
 
 - the app's catalogue, this table and the drift check all come from **one** list
-  (`CATALOG` in `Bridge/hermes_bridge/composio.py`);
+  (`CATALOG` in `hermeyd/src/integrations.rs`);
 - `Tools/site/check_drift.py catalog` fails when a catalogue entry is missing from this page, or when this page
   names a service the code no longer has;
 - the nightly audit runs the drift checks and reports, without publishing — you are the publisher.

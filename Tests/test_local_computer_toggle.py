@@ -64,12 +64,16 @@ class LocalComputerPrototype(unittest.TestCase):
         settings = (ROOT / "Apps/HermesMac/Views/MacSettingsView.swift").read_text()
         self.assertIn("LocalComputerSettingsView(store: store)", settings)
 
-    def test_bridge_requires_a_paired_device_and_persists_revocation(self) -> None:
-        module = (ROOT / "Bridge/hermes_bridge/local_computers.py").read_text()
-        self.assertIn("require_device(runtime, authorization)", module)
-        self.assertIn('"revoked-local-computers.json"', module)
-        self.assertIn("await websocket.accept()", module)
-        self.assertIn('runtime.tickets.redeem(ticket)', module)
+    def test_host_requires_a_paired_device_and_revokes_the_socket(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        # hermeyd keeps revocations in memory (`Registry::revoked`) rather than in
+        # `revoked-local-computers.json`, so the "survives a restart" half of the old test has no
+        # subject here; the refusal itself does.
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn("require_device(&st, &headers)?", module)
+        self.assertIn("ws.on_upgrade(move |socket| run_channel(socket, st, q.ticket))", module)
+        self.assertIn("st.tickets.consume_ticket(ticket.trim())", module)
+        self.assertIn("st.local_computers.is_revoked(&device_id)", module)
 
     def test_bots_have_a_host_side_cli(self) -> None:
         cli = (ROOT / "Tools/local_computer.py").read_text()

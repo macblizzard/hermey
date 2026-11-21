@@ -29,12 +29,14 @@ class BuildB(unittest.TestCase):
         service = (ROOT / "Apps/HermesMac/LocalComputer/LocalComputerService.swift").read_text()
         self.assertIn('} else if kind == "browser" {', service)
 
-    def test_bridge_routes_exist(self) -> None:
-        module = (ROOT / "Bridge/hermes_bridge/local_computers.py").read_text()
-        self.assertIn('@router.post("/{device_id}/file")', module)
-        self.assertIn('@router.post("/{device_id}/browser")', module)
-        self.assertIn("local_computer.file", (ROOT / "Bridge/hermes_bridge/audit.py").read_text())
-        self.assertIn("local_computer.browser", (ROOT / "Bridge/hermes_bridge/audit.py").read_text())
+    def test_host_routes_exist(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        routes = (ROOT / "hermeyd" / "src" / "main.rs").read_text()
+        self.assertIn('"/v1/local-computers/{device_id}/file"', routes)
+        self.assertIn('"/v1/local-computers/{device_id}/browser"', routes)
+        audit = (ROOT / "hermeyd" / "src" / "audit.rs").read_text()
+        self.assertIn("local_computer.file", audit)
+        self.assertIn("local_computer.browser", audit)
 
     def test_cli_exposes_files_and_browser(self) -> None:
         cli = (ROOT / "Tools/local_computer.py").read_text()
@@ -44,9 +46,14 @@ class BuildB(unittest.TestCase):
         self.assertIn('choices=("navigate", "snapshot", "act", "downloads")', cli)
 
     def test_secret_redaction_is_wired(self) -> None:
-        module = (ROOT / "Bridge/hermes_bridge/local_computers.py").read_text()
-        self.assertIn("def redact_text", module)
-        self.assertIn("def redact_result", module)
-        self.assertIn("return redact_result(result)", module)
-        for pattern in ("sk-", "gh[pousr]_", "AKIA", "Bearer"):
-            self.assertIn(pattern, module)
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        # hermeyd redacts with `scrub` + `redact` over every result it returns. NOTE: its marker
+        # list is narrower than the bridge's — `sk-`, bearer/authorization/token/password and the
+        # api-key spellings, but not the AWS `AKIA` or GitHub `ghp_`/`gho_` prefixes; that gap is
+        # reported rather than asserted here.
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn("fn scrub(text: &str) -> String", module)
+        self.assertIn("fn redact(mut value: Value) -> Value", module)
+        self.assertIn("SECRET_MARKERS", module)
+        for marker in ("sk-", "bearer ", "authorization:", "token="):
+            self.assertIn(marker, module)

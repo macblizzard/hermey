@@ -14,7 +14,7 @@ Checks
   cli        the verbs the site documents vs the verbs the CLI actually dispatches
   ports      the port numbers on the site vs the installer's defaults
   units      the unit names on the site vs the installer's prefix
-  routes     the endpoints the site documents vs the bridge's actual routes
+  routes     the endpoints the site documents vs hermeyd's actual routes
   stamp      the feed the landing page reads vs the newest release tag
   sections   every heading in a mirrored docs/*.md page should exist on its site page
   assets     (--online) the download URLs the site offers should answer
@@ -36,7 +36,9 @@ _override = os.environ.get("HERMEY_SITE_DIR")
 SITE_DIR = pathlib.Path(_override).resolve() if _override else ROOT.parent / "hermey-pages"
 GENERATOR = ROOT / "Tools" / "site" / "build_docs.py"
 INSTALLER = ROOT / "setup" / "install.sh"
-APP = ROOT / "Bridge" / "hermes_bridge" / "app.py"
+# The host service is part of this repository now: one route table, one integration catalogue.
+APP = ROOT / "hermeyd" / "src" / "main.rs"
+INTEGRATIONS_RS = ROOT / "hermeyd" / "src" / "integrations.rs"
 
 # Markdown page -> (site page, mode). "full" pages must carry every heading of their source; "summary"
 # pages deliberately condense a long document, so they are required to link to it instead of duplicating
@@ -50,10 +52,10 @@ MIRRORED = {
     "docs/SECURITY.md": ("security", "summary"),
 }
 
-# The host service's own defaults. hermeyd's source is not in this repo (it ships as the standalone
-# package), so its documented contract is these constants: the main API on 8788 — the port this repo's
-# tools default to — and the credential-free browser channel on 8790. Loopback only, published at
-# serve-root. The retired Python bridge's 8787 is still read out of the installer, but only as a
+# The host service's own defaults. Its source is `hermeyd/src` in this repo, and its documented
+# contract is these constants: the main API on 8788 — the port this repo's tools default to — and the
+# credential-free browser channel on 8790. Loopback only, published at serve-root. The retired Python
+# bridge's 8787 is still read out of the installer (which refuses to run now), but only as a
 # historical fact the site may keep stating, never as the port a host listens on.
 HERMEYD_API_PORT = "8788"
 HERMEYD_BROWSER_PORT = "8790"
@@ -110,9 +112,14 @@ def installer_defaults() -> dict[str, str]:
     return out
 
 
-def bridge_routes() -> set[str]:
+def host_routes() -> set[str]:
+    """Every path hermeyd mounts, read from its one router.
+
+    Retargeted from `hermes_bridge/app.py` (deleted with the Python bridge): FastAPI decorators are
+    now `.route("/v1/…", …)` calls in `hermeyd/src/main.rs`.
+    """
     text = read(APP)
-    return set(re.findall(r'@app\.(?:get|post|websocket)\("([^"]+)"\)', text))
+    return set(re.findall(r'\.route\(\s*"(/v1/[^"]+)"', text))
 
 
 def site_text() -> str:
@@ -185,9 +192,9 @@ def asset_urls(text: str) -> list[str]:
 
 
 def catalog_services() -> list[tuple[str, str]]:
-    """The integrations the app actually offers, read from the bridge's one list."""
-    text = read(ROOT / "Bridge/hermes_bridge/composio.py")
-    block = re.search(r"CATALOG = \((.*?)\n\)", text, flags=re.S)
+    """The integrations the app actually offers, read from hermeyd's one list."""
+    text = read(INTEGRATIONS_RS)
+    block = re.search(r"const CATALOG: \[.*?\] = \[(.*?)\n\];", text, flags=re.S)
     if not block:
         return []
     return [(slug, name) for slug, name, _ in
@@ -256,9 +263,9 @@ def main() -> int:
                 drift.append({"check": "units", "what": f"{unit} is not mentioned on the site",
                               "where": "docs/install + docs/reference"})
 
-    # routes — what the bridge serves vs what the site promises
-    routes = bridge_routes()
-    checked.append(f"routes: {len(routes)} in the bridge")
+    # routes — what the host serves vs what the site promises
+    routes = host_routes()
+    checked.append(f"routes: {len(routes)} in hermeyd")
     for route in sorted(r for r in routes if r.startswith("/v1/")):
         leaf = route.rstrip("/")
         if leaf not in site:

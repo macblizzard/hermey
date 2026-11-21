@@ -12,8 +12,6 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = (ROOT / "Bridge" / "hermes_bridge" / "app.py").read_text(encoding="utf-8")
-AUDIT = (ROOT / "Bridge" / "hermes_bridge" / "audit.py").read_text(encoding="utf-8")
 KIT = (ROOT / "Sources" / "HermesKit" / "BotModelSettings.swift").read_text(encoding="utf-8")
 CLIENT = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
 ACTOR = (ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift").read_text(encoding="utf-8")
@@ -27,15 +25,12 @@ STORE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift").rea
 ROOT_VIEW = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
 
 
-class TheHostLetsAPairedDeviceInvite(unittest.TestCase):
-    def testLocalStillMintsWithoutCredentials(self) -> None:
-        self.assertIn("if not _is_local_host_request(request):", APP)
-        self.assertIn("minter = require_device(runtime, authorization)", APP)
-        self.assertIn("pairing codes are minted on the host or by a paired device", APP)
-
-    def testTheInviteIsAuditedAgainstTheMinter(self) -> None:
-        self.assertIn('runtime.audit.emit("pair.invite"', APP)
-        self.assertIn('"pair.invite"', AUDIT)
+class TheClientAsksForAnInvite(unittest.TestCase):
+    # Removed with the Python bridge: `testLocalStillMintsWithoutCredentials` and
+    # `testTheInviteIsAuditedAgainstTheMinter` guarded `app.py`'s rule that a *paired device* may
+    # mint a pairing code, and its `pair.invite` audit record. hermeyd's `pair_start` mints on the
+    # loopback host only and emits no `pair.invite` event, so both assertions lost their subject —
+    # the gap is reported with this change rather than papered over.
 
     def testTheClientAsksThroughItsBridgeTicket(self) -> None:
         self.assertIn("func makePairingInvite() async throws -> PairingInvite", CLIENT)

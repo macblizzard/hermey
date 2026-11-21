@@ -7,8 +7,14 @@ can only answer questions the agent asks — never give itself permission.**
 This document states the trust boundaries, the invariants that hold them up, the threats those
 invariants are for, and the evidence (a test, or an explicit gap) for each one.
 
-Scope: `Bridge/hermes_bridge` (the only new server-side code), the `wss://` path into it, and the
-approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
+> **The Python bridge this document was written about has been removed.** Its code lived in
+> `Bridge/hermes_bridge`, which is no longer in this repository. The host service now is `hermeyd/`
+> (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). Everything below
+> describes the trust boundaries the apps still rely on — read "the bridge" as "the host service",
+> and check `hermeyd/src` for what actually enforces each invariant today.
+
+Scope: `hermes_bridge` as it was (the only new server-side code at the time), the `wss://` path into
+it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
 item, or a `0600` file on the unsigned Mac build) is described where it matters, but not audited
 here.
 

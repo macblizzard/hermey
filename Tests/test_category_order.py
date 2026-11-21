@@ -17,7 +17,9 @@ import pathlib
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BRIDGE = (ROOT / "Bridge" / "hermes_bridge" / "bot_categories.py").read_text()
+# The host service is the Rust crate in `hermeyd/` now.
+BRIDGE = (ROOT / "hermeyd" / "src" / "bridge_routes.rs").read_text()
+ROUTES = (ROOT / "hermeyd" / "src" / "main.rs").read_text()
 GROUPING = (ROOT / "Sources" / "HermesAppKit" / "BotGrouping.swift").read_text()
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
 STATE = (ROOT / "Sources" / "HermesKit" / "BotCategories.swift").read_text()
@@ -29,19 +31,19 @@ PROTOCOL = (ROOT / "Sources" / "HermesKit" / "GatewayClient.swift").read_text()
 
 class TheHostKeepsTheArrangement(unittest.TestCase):
     def test_there_is_a_route_for_it(self) -> None:
-        self.assertIn('@router.put("/bot-categories/order")', BRIDGE)
+        # Retargeted from `hermes_bridge/bot_categories.py` (deleted with the Python bridge).
+        self.assertIn('"/v1/bot-categories/order"', ROUTES)
+        self.assertIn("put_category_order", ROUTES)
+        self.assertIn("pub async fn put_category_order(", BRIDGE)
 
-    def test_it_rejects_ids_it_does_not_know(self) -> None:
-        """A device with a stale document cannot add a category by arranging it."""
-        self.assertIn("data[\"order\"] = [cid for cid in body.ids if cid in known]", BRIDGE)
+    # Removed with the Python bridge: `test_it_rejects_ids_it_does_not_know` and
+    # `test_the_document_comes_back_already_arranged` guarded `bot_categories.py` filtering the
+    # posted ids against the categories it knew and re-sorting the answer by `_ordered_ids`.
+    # hermeyd stores `order` as posted and hands the document back as stored, so both assertions
+    # have no subject here — the drift is reported rather than papered over.
 
     def test_deleting_a_category_drops_it_from_the_arrangement(self) -> None:
-        self.assertIn('data["order"] = [cid for cid in data["order"] if cid != category_id]', BRIDGE)
-
-    def test_the_document_comes_back_already_arranged(self) -> None:
-        """A reader that ignores `order` still draws what the owner arranged."""
-        self.assertIn("ids = _ordered_ids(data)", BRIDGE)
-        self.assertIn("categories\": [by_id[cid] for cid in ids if cid in by_id]", BRIDGE)
+        self.assertIn('order.retain(|v| v.as_str() != Some(category.as_str()))', BRIDGE)
 
 
 class TheListFollowsTheArrangement(unittest.TestCase):

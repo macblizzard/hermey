@@ -13,9 +13,10 @@ import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BRIDGE_APP = (ROOT / "Bridge/hermes_bridge/app.py").read_text()
-GENUI = (ROOT / "Bridge/hermes_bridge/genui.py").read_text()
-HOST = (ROOT / "Bridge/hermes_bridge/genui_assets/host.html").read_text()
+# The host service is the Rust crate in `hermeyd/` now, and the shell it serves is an asset there.
+BRIDGE_APP = (ROOT / "hermeyd/src/main.rs").read_text()
+GENUI = (ROOT / "hermeyd/src/genui.rs").read_text()
+HOST = (ROOT / "hermeyd/assets/genui/host.html").read_text()
 KIT = (ROOT / "Sources/HermesKit/GenUIBlocks.swift").read_text()
 CARD = (ROOT / "Sources/HermeyUI/GenUICard.swift").read_text()
 MAC_ROW = (ROOT / "Apps/HermesMac/Conversation/TranscriptRowView.swift").read_text()
@@ -27,36 +28,43 @@ IOS_ENV = (ROOT / "Apps/HermesMobile/App/AppEnvironment.swift").read_text()
 
 class BridgeTests(unittest.TestCase):
     def test_the_router_is_registered(self) -> None:
-        self.assertIn("from .genui import create_genui_router", BRIDGE_APP)
-        self.assertIn("app.include_router(create_genui_router(runtime))", BRIDGE_APP)
+        # Retargeted from `hermes_bridge/app.py` (deleted with the Python bridge): the module is
+        # mounted route by route in `main.rs`.
+        self.assertIn("mod genui;", BRIDGE_APP)
+        for mounted in ('"/v1/genui/session"', '"/v1/genui/host"', '"/v1/genui/plugin.js"'):
+            self.assertIn(mounted, BRIDGE_APP, mounted)
 
     def test_every_route_exists(self) -> None:
-        for route in ('@router.post("/session")', '@router.get("/host")',
-                      '@router.get("/assets/{name}")', '@router.get("/plugin.js")',
-                      '@router.get("/blocks/{block_id}")',
-                      '@router.get("/blocks/{block_id}/state")',
-                      '@router.put("/blocks/{block_id}/state")'):
-            self.assertIn(route, GENUI, route)
+        for route in ('"/v1/genui/session"', '"/v1/genui/host"',
+                      '"/v1/genui/assets/{name}"', '"/v1/genui/plugin.js"',
+                      '"/v1/genui/blocks/{block_id}"',
+                      '"/v1/genui/blocks/{block_id}/state"'):
+            self.assertIn(route, BRIDGE_APP, route)
+        self.assertIn("genui::save_block_state", BRIDGE_APP, "the state write is the PUT")
 
     def test_a_board_id_is_validated_before_the_disk(self) -> None:
-        self.assertIn('ID_PATTERN = re.compile(r"^[0-9a-f]{8}$")', GENUI)
+        self.assertIn("fn valid_block(id: &str) -> bool", GENUI)
+        self.assertIn("id.len() == 8 && id.chars().all(|c| c.is_ascii_hexdigit()", GENUI)
         # A profile name is a directory name, so a path is refused as a name.
-        self.assertIn('"/" in profile', GENUI)
+        self.assertIn("fn valid_bot(name: &str) -> bool", GENUI)
+        self.assertIn("if !valid_block(&block_id) || !valid_bot(&q.bot)", GENUI)
 
     def test_only_allowlisted_assets_are_served(self) -> None:
-        self.assertIn("ASSETS = {", GENUI)
-        for name in ('"app.mjs"', '"jsx.mjs"', '"sdk.mjs"', '"host.html"'):
+        # The allow-list is the `match` arm set: anything else answers 404 rather than the file.
+        for name in ('"app.mjs" =>', '"jsx.mjs" =>', '"sdk.mjs" =>', '"host.html" =>'):
             self.assertIn(name, GENUI, name)
-        self.assertIn('media_type = ASSETS.get(name)', GENUI)
+        self.assertIn("_ => return not_found().into_response()", GENUI)
 
     def test_the_plugin_bundle_is_read_from_the_installed_plugin(self) -> None:
         # Serving a copy would freeze the cards at whatever shipped with the app.
-        self.assertIn('PLUGIN_BUNDLE = ("plugins", "hermes-genui", "desktop", "plugin.js")', GENUI)
+        self.assertIn('.join("plugins")', GENUI)
+        self.assertIn('.join("hermes-genui")', GENUI)
+        self.assertIn('.join("plugin.js")', GENUI)
 
     def test_a_webview_gets_a_session_not_a_device_credential(self) -> None:
-        self.assertIn("SESSION_TTL = 120.0", GENUI)
-        self.assertIn("def _new_session(", GENUI)
-        self.assertIn("def _session_device(", GENUI)
+        self.assertIn("const SESSION_TTL: f64 = 120.0", GENUI)
+        self.assertIn("fn mint_session(", GENUI)
+        self.assertIn("fn session_device(", GENUI)
 
 
 class PageTests(unittest.TestCase):

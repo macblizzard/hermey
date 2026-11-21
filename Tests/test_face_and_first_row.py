@@ -25,7 +25,8 @@ HEADER = source("Apps", "HermesMac", "Conversation", "ConversationHeader.swift")
 SIDEBAR = source("Apps", "HermesMac", "Sidebar", "BotSidebarView.swift")
 ROOTVIEW = source("Apps", "HermesMac", "Workspace", "WorkspaceRoot.swift")
 PANEL = source("Apps", "HermesMac", "Workspace", "MacBotPanel.swift")
-BRIDGE = source("Bridge", "hermes_bridge", "bot_icons.py")
+# The host service is the Rust crate in `hermeyd/` now; faces are stored by `bridge_routes.rs`.
+BRIDGE = source("hermeyd", "src", "bridge_routes.rs")
 
 
 class TheFaceIsAShippedBody(unittest.TestCase):
@@ -50,12 +51,14 @@ class TheFaceIsAShippedBody(unittest.TestCase):
                      "case .pebble", "case .blob", "case .teardrop", "case .cloud"):
             self.assertIn(kind, SHAPES, f"{kind} has no path")
 
-    def test_the_host_accepts_a_face_the_apps_draw(self) -> None:
-        # One string, `#RRGGBB::shape_N`, and the host validates it rather than a pair of names.
-        self.assertIn("AVATAR = re.compile", BRIDGE)
-        self.assertIn("avatar: Optional[str] = None", BRIDGE)
-        # And the pair an older app writes is still accepted, so nobody's face is lost on upgrade.
-        self.assertIn("def face(self) -> tuple[Icon | None, Color | None]:", BRIDGE)
+    def test_the_host_stores_a_face_the_apps_draw(self) -> None:
+        # Retargeted from `hermes_bridge/bot_icons.py` (deleted with the Python bridge): one string,
+        # `#RRGGBB::shape_N`, kept per bot in the host's own document. NOTE: hermeyd stores the
+        # string as sent — it does not re-validate the grammar the way the bridge's `AVATAR` regex
+        # did; that difference is reported with this change.
+        self.assertIn('const DOC_ICONS: &str = "bot_icons"', BRIDGE)
+        self.assertIn('body.get("avatar").and_then(|v| v.as_str())', BRIDGE)
+        self.assertIn("faces.insert(bot, json!({\"avatar\": avatar}))", BRIDGE)
 
     def test_the_picker_offers_eight_bodies_and_the_palette(self) -> None:
         picker = GALLERY.split("public struct BotFacePicker", 1)[1]

@@ -23,8 +23,12 @@ Two processes on the host, one in your pocket.
 | `Sources/HermesRender` | SwiftPM | markdown → block model (tables, code, quotes) |
 | `Sources/HermeyUI` | SwiftPM | the design system and shared screens |
 | `Sources/HermesAppKit` | SwiftPM | shared app state (`AppModel`, refresh, routing) |
-| `Bridge/` | Python 3.11 | host API: pairing, devices, tickets, rooms, attachments, voice |
-| `setup/install.sh` | shell | the one command that puts the bridge on a host |
+| `hermeyd/` | Rust | host service: pairing, devices, tickets, the WS relay, attachments, voice |
+| `setup/install.sh` | shell | **retired** — it installed the Python bridge and now refuses to run |
+
+> The diagram above is the **retired** Python bridge (FastAPI on `8787`). The host service in this
+> repository today is `hermeyd/`, a single Rust binary on `8788` whose contract is
+> [`HERMEYD.md`](HERMEYD.md); its mount points are the `.route(...)` calls in `hermeyd/src/main.rs`.
 
 ## Why a bridge at all
 

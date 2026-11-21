@@ -9,11 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ComputerObserve(unittest.TestCase):
-    def test_bridge_has_a_dedicated_observe_route(self) -> None:
-        module = (ROOT / "Bridge/hermes_bridge/local_computers.py").read_text()
-        self.assertIn('@router.post("/{device_id}/observe")', module)
-        self.assertIn('{"type": "observe"}', module)
-        self.assertIn('"local_computer.observe"', (ROOT / "Bridge/hermes_bridge/audit.py").read_text())
+    def test_host_has_a_dedicated_observe_route(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn('"/v1/local-computers/{device_id}/observe"', (ROOT / "hermeyd" / "src" / "main.rs").read_text())
+        self.assertIn('json!({"type": "observe"})', module)
+        self.assertIn('"local_computer.observe"', (ROOT / "hermeyd" / "src" / "audit.rs").read_text())
 
     def test_cli_saves_the_jpeg_and_prints_metadata(self) -> None:
         cli = (ROOT / "Tools/local_computer.py").read_text()

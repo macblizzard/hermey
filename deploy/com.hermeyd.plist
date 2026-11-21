@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.hermeyd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/opt/hermey/hermeyd/target/release/hermeyd</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HERMEY_HOME</key><string>/usr/local/var/hermeyd</string>
+    <key>HERMEYD_PORT</key><string>8788</string>
+    <!-- What a pairing invite tells the phone. `localhost:8788` is right for a single machine;
+         `tailscale serve` puts a stable HTTPS name in front and this becomes <host>.ts.net:8445. -->
+    <key>HERMEYD_PUBLIC_HOST</key><string>localhost:8788</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/usr/local/var/hermeyd/hermeyd.log</string>
+  <key>StandardErrorPath</key><string>/usr/local/var/hermeyd/hermeyd.log</string>
+</dict>
+</plist>

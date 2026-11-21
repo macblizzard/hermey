@@ -1,0 +1,39 @@
+[package]
+name = "hermeyd"
+version = "0.2.0"
+edition = "2021"
+description = "Hermey host service: pairing, devices, 30s tickets, WS relay front door"
+license = "MIT"
+
+[[bin]]
+name = "hermeyd"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time"] }
+serde = { version = "1", features = ["derive"] }
+# `float_roundtrip` is not a nicety: without it `serde_json` parses a decimal into a double that can
+# land one ULP *below* the nearest one (its fast path accumulates digit by digit). The preview hands
+# the client an epoch timestamp (`at`) in shortest-round-trip form and the client hands that same
+# number back as its read mark; a mark parsed one ULP low is then strictly older than the very
+# message it was taken from, `timestamp > since` stays true for that row, and the badge can never be
+# cleared — "counts come back after mark all as read". Found 2026-11-21 on `1795222533.1375353`
+# (parsed as ...5350, one ULP = 2.4e-7 s at that magnitude).
+serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_yaml = "0.9"
+urlencoding = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+rand = "0.8"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+sha2 = "0.10"
+# Only for DEFLATE: the import route reads zip archives produced by other tools, whose entries are
+# deflated (the bridge's own build_archive uses ZIP_DEFLATED). A hand-rolled inflate is a far larger
+# correctness risk than a pinned, audited crate; rust_backend keeps it dependency-light.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+# `chown`/`chgrp` for the optional group/user access to `local.token` (see `local_token.rs`): std has
+# no ownership API, and shelling out to `chown` would lose the atomic set-then-rename at boot.
+libc = "0.2"

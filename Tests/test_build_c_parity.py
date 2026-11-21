@@ -42,20 +42,22 @@ class BuildCParity(unittest.TestCase):
         reporter = (ROOT / "Apps" / "HermesMac" / "LocalComputer" / "ProgressReporter.swift").read_text()
         self.assertIn("\"type\": \"progress\"", reporter)
 
-    def test_the_bridge_streams_progress_and_hands_control_back(self) -> None:
-        bridge = (ROOT / "Bridge" / "hermes_bridge" / "local_computers.py").read_text()
-        self.assertIn("execute-stream", bridge)
-        self.assertIn("media_type=\"application/x-ndjson\"", bridge)
-        self.assertIn('@router.post("/{device_id}/resume")', bridge)
-        self.assertIn("progress_queue", bridge)
-        self.assertIn("if saw_progress:", bridge)
+    def test_the_host_streams_progress_and_hands_control_back(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
+        bridge = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn('"/v1/local-computers/{device_id}/execute-stream"', (ROOT / "hermeyd" / "src" / "main.rs").read_text())
+        self.assertIn('HeaderValue::from_static("application/x-ndjson")', bridge)
+        self.assertIn('"/v1/local-computers/{device_id}/resume"', (ROOT / "hermeyd" / "src" / "main.rs").read_text())
+        self.assertIn("mod progress {", bridge)
+        self.assertIn("let mut saw_progress = false;", bridge)
 
     def test_ask_user_uses_the_bot_message_route(self) -> None:
-        message = (ROOT / "Bridge" / "hermes_bridge" / "bot_message.py").read_text()
-        self.assertIn("'/{profile}/ask'", message)
-        self.assertIn("def _owner_reply", message)
-        self.assertIn("def _wait_for_owner_reply", message)
-        self.assertIn("'bot_ask'", message)
+        # Retargeted from `hermes_bridge/bot_message.py` (deleted with the Python bridge).
+        message = (ROOT / "hermeyd" / "src" / "bot_message.rs").read_text()
+        self.assertIn('"/v1/bots/{profile}/ask"', (ROOT / "hermeyd" / "src" / "main.rs").read_text())
+        self.assertIn("fn owner_reply(", message)
+        self.assertIn("async fn wait_for_owner_reply(", message)
+        self.assertIn('"bot_ask"', message)
 
     def test_the_cli_exposes_the_new_verbs(self) -> None:
         cli = (ROOT / "Tools" / "local_computer.py").read_text()

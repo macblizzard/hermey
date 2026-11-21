@@ -1,0 +1,29 @@
+[Unit]
+Description=Hermey host service (hermeyd) — pairing, devices, tickets
+Documentation=https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermey
+Group=hermey
+WorkingDirectory=/opt/hermey
+Environment=HERMEY_HOME=/var/lib/hermey
+Environment=HERMEYD_PORT=8788
+ExecStart=/opt/hermey/hermeyd/target/release/hermeyd
+Restart=always
+RestartSec=2
+
+# Same shaping as the bridge it replaced: loopback networking and its own state, nothing else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/hermey
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

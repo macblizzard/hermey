@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# RETIRED 2026-11-21 with the Python bridge. This file still describes the bridge install
+# (`hermey-bridge.service`, `/opt/hermey/venv`, `Bridge/`); the guard below stops it before it can
+# half-install one. Rewriting it around hermeyd is a separate change.
+#
 # Hermey host setup — one command, on a host that already runs Hermes.
 #
 #   curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo bash
@@ -15,6 +19,27 @@
 # Re-running it is an upgrade: same unit names, same state, the package is reinstalled and the
 # services restarted. `--uninstall` reverses all of it.
 set -euo pipefail
+
+# ---------------------------------------------------------------- retired with the Python bridge
+# The host service this repository ships is the Rust binary in `hermeyd/`, not the Python bridge
+# this script installs. Refusing here is deliberate: every path below would either write a unit for
+# a package that no longer exists or die on a confusing `no Bridge/pyproject.toml`. Say what to do
+# instead, in one place.
+cat >&2 <<'MESSAGE'
+hermey setup: the Python bridge was removed from this repository; install hermeyd instead.
+
+  cd hermeyd && cargo build --release
+  install -m 0755 hermeyd/target/release/hermeyd /usr/local/bin/hermeyd
+
+Then run it as a service, with the unit this repository ships:
+
+  deploy/hermeyd.service    systemd  (ExecStart points at .../hermeyd/target/release/hermeyd)
+  deploy/com.hermeyd.plist  launchd  (macOS)
+
+docs/HERMEYD.md is the contract and its environment: HERMEY_HOME, HERMEYD_PORT (8788) and the
+engine it relays to. This installer has not been rewritten for it yet; do not run it.
+MESSAGE
+exit 1
 
 # ---------------------------------------------------------------- knobs (env or flags)
 PREFIX=${HERMEY_PREFIX:-/opt/hermey}

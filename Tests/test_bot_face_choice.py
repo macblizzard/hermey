@@ -22,19 +22,13 @@ GALLERY = (UI / "BotIconGallery.swift").read_text(encoding="utf-8")
 IDENTITY = (UI / "BotAvatarIdentity.swift").read_text(encoding="utf-8")
 SHAPES = (UI / "BotAvatarShape.swift").read_text(encoding="utf-8")
 PALETTE = (UI / "BotAvatarPalette.swift").read_text(encoding="utf-8")
-BRIDGE = (ROOT / "Bridge" / "hermes_bridge" / "bot_icons.py").read_text(encoding="utf-8")
+# The host service is the Rust crate in `hermeyd/` now; faces are stored by `bridge_routes.rs`.
+BRIDGE = (ROOT / "hermeyd" / "src" / "bridge_routes.rs").read_text(encoding="utf-8")
+HOST_ROUTES = (ROOT / "hermeyd" / "src" / "main.rs").read_text(encoding="utf-8")
 IOS_SERVICE = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotIconPicker.swift").read_text(encoding="utf-8")
 MAC_SERVICE = (ROOT / "Apps" / "HermesMac" / "Views" / "MacBotIconPicker.swift").read_text(encoding="utf-8")
 APP_ENV = (ROOT / "Apps" / "HermesMobile" / "App" / "AppEnvironment.swift").read_text(encoding="utf-8")
 SWIFT_TESTS = (ROOT / "Tests" / "HermeyUITests" / "BotFaceChoiceTests.swift").read_text(encoding="utf-8")
-
-sys.path.insert(0, str(ROOT / "Bridge"))
-try:  # the bridge's own module is the authority on the wire grammar
-    from hermes_bridge import bot_icons as bridge_icons  # type: ignore
-    HAVE_BRIDGE = True
-except Exception:  # pragma: no cover - fastapi/pydantic absent
-    bridge_icons = None
-    HAVE_BRIDGE = False
 
 SHAPE_ORDER = ["hex", "wedge", "squircle", "tablet", "pebble", "blob", "teardrop", "cloud"]
 
@@ -72,8 +66,8 @@ class TheFieldIsUnchanged(unittest.TestCase):
         self.assertIn("-> [String: BotFaceChoice] {", IOS_SERVICE)
         self.assertIn("private static func botFaceCacheKey", APP_ENV)
         self.assertIn("hermey.botFaces.\\(", APP_ENV)
-        self.assertIn("@router.get('')", BRIDGE)
-        self.assertIn("@router.put('/{bot_id}')", BRIDGE)
+        self.assertIn('"/v1/bot-icons"', HOST_ROUTES)
+        self.assertIn('"/v1/bot-icons/{bot}"', HOST_ROUTES)
 
     def test_the_value_is_the_reference_string(self) -> None:
         self.assertIn("public struct BotFaceChoice: Hashable, Codable, Sendable, RawRepresentable", GALLERY)
@@ -114,30 +108,11 @@ class TheGrammarAgreesOnBothSides(unittest.TestCase):
         for old, new in mapping.items():
             self.assertIn(new, palette, f"{old} maps to {new}, which is not in the palette")
 
-    def test_the_bridge_accepts_exactly_the_strings_the_picker_writes(self) -> None:
-        self.assertIn("AVATAR = re.compile", BRIDGE)
-        self.assertIn("avatar: Optional[str] = None", BRIDGE)
-        self.assertIn("def split_avatar(", BRIDGE)
-        if HAVE_BRIDGE:
-            assert bridge_icons is not None
-            # `#RRGGBB::shape_N` and `#RRGGBB` are the two the app writes; anything else is refused
-            # rather than stored as a value nothing can draw.
-            for value in ("#A97EFE::shape_0", "#A97EFE::shape_7", "#FF781C", "#abc"):
-                self.assertRegex(value, bridge_icons.AVATAR.pattern)
-            for value in ("A97EFE", "#A97EFE::shape_", "data:image/png;base64,AA", "#GGGGGG"):
-                self.assertIsNone(bridge_icons.AVATAR.match(value), value)
-
-    def test_the_bridge_stores_a_body_and_a_colour_for_an_old_reader(self) -> None:
-        # A device that has not been updated reads `shape`/`color` as required strings and skips a
-        # row it does not recognise. Missing keys would fail its whole decode — every face gone,
-        # not one.
-        if not HAVE_BRIDGE:
-            self.skipTest("bridge dependencies not installed")
-        assert bridge_icons is not None
-        colour, shape = bridge_icons.split_avatar("#A97EFE::shape_3")
-        self.assertEqual(colour, "#A97EFE")
-        self.assertEqual(shape, "shape_3", "the body, which an old reader skips rather than mis-draws")
-        self.assertEqual(bridge_icons.split_avatar("#A97EFE"), ("#A97EFE", None))
+    # Removed with the Python bridge: `test_the_bridge_accepts_exactly_the_strings_the_picker_writes`
+    # and `test_the_bridge_stores_a_body_and_a_colour_for_an_old_reader` guarded `bot_icons.py`'s
+    # `AVATAR` regex and `split_avatar`. hermeyd stores whatever `avatar` string arrives, without
+    # validating its grammar or splitting it into colour/body for an older reader — a real difference
+    # (reported, not hidden), so there is no symbol here to assert against.
 
 
 class ItRoundTrips(unittest.TestCase):

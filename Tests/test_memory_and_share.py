@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MOBILE = ROOT / "Apps" / "HermesMobile"
 MAC = ROOT / "Apps" / "HermesMac"
 KIT = ROOT / "Sources" / "HermesKit"
-BRIDGE = ROOT / "Bridge" / "hermes_bridge"
+# The host service now lives in this repository as the Rust crate in `hermeyd/src`.
+BRIDGE = ROOT / "hermeyd" / "src"
 
 DRAWER = MOBILE / "Views" / "ConversationDrawer.swift"
 SCREEN = MOBILE / "Views" / "ConversationScreen.swift"
@@ -77,11 +78,14 @@ class TheBotKnowsItself(unittest.TestCase):
 
 class TheHostServesMemory(unittest.TestCase):
     def test_the_route_reads_the_two_documents_by_name(self) -> None:
-        source = read(BRIDGE / "bot_memory.py")
+        # Retargeted from `hermes_bridge/bot_memory.py` (deleted with the Python bridge):
+        # hermeyd serves the same two files from `bot_docs.rs`.
+        source = read(BRIDGE / "bot_docs.rs")
         self.assertIn('"MEMORY.md"', source)
         self.assertIn('"USER.md"', source)
-        # Read-only: no writer, no configure call, nothing that could rewrite the agent's own notes.
-        self.assertNotIn("write_text", source)
+        # Read-only: the memory route has no writer, no configure call, nothing that could rewrite
+        # the agent's own notes.
+        self.assertNotIn("set_doc", source.split("memory_get", 1)[1].split("NotesPut", 1)[0])
         self.assertIn("is_symlink()", source, "a link named MEMORY.md must not hand over a host file")
 
     def test_the_kit_model_is_the_wire_shape(self) -> None:

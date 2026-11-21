@@ -48,12 +48,16 @@ class AuditHardening(unittest.TestCase):
         pairing = (ROOT / "Apps" / "HermesMac" / "Pairing" / "PairingAddress.swift").read_text()
         self.assertIn('if scheme == "ws", !["127.0.0.1", "localhost", "[::1]"].contains(host.lowercased())', pairing)
 
-    def test_bridge_registration_is_socket_scoped(self) -> None:
-        bridge = (ROOT / "Bridge" / "hermes_bridge" / "local_computers.py").read_text()
-        self.assertIn("def unregister(self, device_id: str, socket: WebSocket) -> None:", bridge)
-        self.assertIn("if computer and computer.socket is socket:", bridge)
-        self.assertIn('{"type": "file", "op": op, "path": path}', bridge)
-        self.assertIn('{"type": "browser", "op": op}', bridge)
+    def test_host_registration_is_per_device_and_revoke_is_socket_scoped(self) -> None:
+        # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge):
+        # hermeyd's Registry keys one live Mac per device id and drops its sender on revoke, which
+        # is what closes the socket (4403) instead of leaving a half-removed entry behind.
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text()
+        self.assertIn("computers: Mutex<HashMap<String, Computer>>", module)
+        self.assertIn("self.computers.lock().unwrap().remove(device_id).is_some()", module)
+        self.assertIn('close_with(&mut socket, CLOSE_REVOKED, "this computer was revoked")', module)
+        self.assertIn('json!({"type": "file", "op": op, "path": path})', module)
+        self.assertIn('json!({"type": "browser", "op": op})', module)
 
     def test_secret_scan_checks_tracked_names_and_artifacts(self) -> None:
         scan = (ROOT / "Tools" / "ci" / "secret_scan.sh").read_text()
@@ -68,14 +72,20 @@ class AuditHardening(unittest.TestCase):
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
         self.assertIn("python3 -m compileall -q Tools/release", ci)
 
-    def test_bot_admin_no_longer_stalls_the_state_lock_or_drops_partial_writes(self) -> None:
-        module = (ROOT / "Bridge" / "hermes_bridge" / "bot_admin.py").read_text()
-        self.assertIn("REQUEST_TIMEOUT = 10", module)
-        self.assertIn("_PROFILE_OPERATION_LOCKS", module)
-        self.assertIn("with _profile_operation_lock(profile):", module)
-        self.assertIn("outcome[\"partial\"] = True", module)
-        self.assertIn("ARCHIVE_KEEP = 20", module)
-        self.assertIn("def _prune_archives() -> None:", module)
+    def test_bot_admin_archives_before_it_deletes_and_caps_the_archives(self) -> None:
+        # Retargeted from `hermes_bridge/bot_admin.py`: the Python state lock and its `partial`
+        # outcome have no equivalent here (hermeyd never holds a shared file lock — the archive is
+        # built in a temp file and renamed), but the property the test was for — an archive that
+        # did not land refuses the delete, and archives cannot pile up — is kept.
+        module = (ROOT / "hermeyd" / "src" / "bot_admin.rs").read_text()
+        self.assertIn("const ARCHIVE_KEEP: usize = 20", module)
+        self.assertIn("fn prune_archives(archive_dir: &std::path::Path)", module)
+        before_remove = module.split("remove_dir_all", 1)[0]
+        self.assertIn("archive failed", before_remove,
+                      "the archive must fail before the point of no return")
+        purge = module.split("pub async fn purge", 1)[1]
+        self.assertLess(purge.index("std::fs::rename(&tmp, &archive)"),
+                        purge.index("remove_dir_all"))
 
     def test_file_links_reject_path_traversal(self) -> None:
         links = (ROOT / "Sources" / "HermeyUI" / "HermesFileLinkCard.swift").read_text()

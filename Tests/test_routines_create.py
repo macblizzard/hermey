@@ -9,9 +9,11 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-BRIDGE = ROOT / "Bridge" / "hermes_bridge"
-ADMIN = (BRIDGE / "bot_admin.py").read_text(encoding="utf-8")
-AUDIT = (BRIDGE / "audit.py").read_text(encoding="utf-8")
+# The host service is the Rust crate in `hermeyd/` now; schedules are a translator over `cron.manage`.
+BRIDGE = ROOT / "hermeyd" / "src"
+ADMIN = (BRIDGE / "routines.rs").read_text(encoding="utf-8")
+AUDIT = (BRIDGE / "audit.rs").read_text(encoding="utf-8")
+ROUTES = (BRIDGE / "main.rs").read_text(encoding="utf-8")
 POINTER = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
 ROUTINES = (ROOT / "Sources" / "HermesKit" / "Routines.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
@@ -30,46 +32,37 @@ def block(source: str, start: str, end: str) -> str:
     return tail.split(end, 1)[0]
 
 
-class TheBridgeCreatesARoutine(unittest.TestCase):
+class TheHostCreatesARoutine(unittest.TestCase):
+    """Retargeted from `hermes_bridge/bot_admin.py` (deleted with the Python bridge)."""
+
     def setUp(self) -> None:
-        self.route = block(ADMIN, '@router.post("/{profile}/routines")\n    def create_routine',
-                           '@router.post("/{profile}/routines/{job_id}/state")')
+        self.route = block(ADMIN, "pub async fn create_routine(", "pub async fn set_routine_state(")
 
     def test_there_is_a_create_route_and_it_is_audited(self) -> None:
-        self.assertIn("def create_routine(", ADMIN)
-        self.assertIn("bots.routine_create", self.route)
+        self.assertIn('"/v1/bots/{profile}/routines"', ROUTES)
+        self.assertIn("routines::create_routine", ROUTES)
+        self.assertIn("pub async fn create_routine(", ADMIN)
         self.assertIn('"bots.routine_create"', AUDIT,
                       "an unaudited write is a write nobody can prove happened")
 
-    def test_the_rule_is_the_forms_rule_word_for_word(self) -> None:
-        self.assertIn(NEEDS_CONTENT, self.route)
+    def test_a_routine_with_nothing_to_do_is_refused(self) -> None:
+        # The bridge refused with the form's own sentence. hermeyd can schedule a prompt only, so
+        # its refusal names that rule instead; both sides still refuse rather than creating a job
+        # that fires and does nothing.
+        self.assertIn("this host can only schedule a prompt", self.route)
         self.assertIn(NEEDS_CONTENT, ROUTINES,
-                      "the form and the server must refuse with the same sentence")
+                      "the form still refuses a draft with a skill or a script and no prompt")
 
     def test_an_empty_schedule_is_refused_first(self) -> None:
-        self.assertIn("This routine needs a schedule.", self.route)
+        self.assertIn("if schedule.is_empty()", self.route)
+        self.assertIn("a schedule is required", self.route)
 
-    def test_a_script_with_no_prompt_runs_without_an_agent(self) -> None:
-        # The host's script-only shape: stdout is delivered verbatim. Sending no_agent false there
-        # would pay for a model call the routine never asked for.
-        self.assertIn('payload["no_agent"] = True', self.route)
-        self.assertIn("if not prompt:", self.route)
-
-    def test_the_dashboard_is_posted_json_not_queried(self) -> None:
-        self.assertIn('_dashboard("POST", f"/api/cron/jobs?profile={profile}", body=payload)',
-                      self.route)
-        helper = block(ADMIN, "def _dashboard(", "def _cron_jobs(")
-        self.assertIn('headers["Content-Type"] = "application/json"', helper)
-        self.assertIn("json.dumps(body).encode", helper)
-
-    def test_the_new_row_comes_back_in_the_lists_shape(self) -> None:
-        self.assertIn('return {"routine": _routine_row(created)}', self.route,
-                      "one shape for a row, whether it was listed or just created")
-
-    def test_a_bad_schedule_is_a_422_not_a_502(self) -> None:
-        helper = block(ADMIN, "def _dashboard(", "def _cron_jobs(")
-        self.assertIn("if error.code in (400, 422):", helper)
-        self.assertIn("status_code=422", helper)
+    # Removed with the Python bridge: `test_a_script_with_no_prompt_runs_without_an_agent`,
+    # `test_the_dashboard_is_posted_json_not_queried`, `test_the_new_row_comes_back_in_the_lists_shape`
+    # and `test_a_bad_schedule_is_a_422_not_a_502` guarded `bot_admin.py`'s HTTP call to the Hermes
+    # dashboard (`_dashboard`, `no_agent`, `status_code=422`). hermeyd has no dashboard client: it
+    # speaks JSON-RPC `cron.manage` to the engine (`routines.rs`), where a bad schedule is the
+    # engine's own error, and the answer is built by `routines.rs` rather than proxied.
 
 
 class TheClientCanCreateOne(unittest.TestCase):
@@ -233,26 +226,8 @@ class TheFormMatchesTheReference(unittest.TestCase):
         self.assertIn("the host resolves them in the profile's timezone", EDITOR)
 
 
-class TheBridgeStillCompiles(unittest.TestCase):
-    """A syntax check over every bridge module.
-
-    The redaction that tool output applies to `str | None` (it arrives as `str *** None`) once got
-    pasted back into this file's neighbours by hand. `grep`ing for a feature does not notice that; a
-    parse does, and a bridge that does not import fails every route at once, not just the new one.
-    """
-
-    def test_every_module_parses(self) -> None:
-        import ast
-        offenders = []
-        for module in sorted(BRIDGE.glob("*.py")):
-            try:
-                ast.parse(module.read_text(encoding="utf-8"))
-            except SyntaxError as error:
-                offenders.append(f"{module.name}:{error.lineno}: {error.msg}")
-        self.assertEqual(offenders, [])
-
-    def test_no_redacted_annotation_survives(self) -> None:
-        offenders = [module.name for module in BRIDGE.glob("*.py")
-                     if "***" in module.read_text(encoding="utf-8")]
-        self.assertEqual(offenders, [], "a `str | None` came back as `str *** None`")
+# Removed with the Python bridge: `TheBridgeStillCompiles` ast-parsed every `.py` file in
+# `Bridge/hermes_bridge/` and refused a `***` that had replaced `str | None`. There are no Python
+# modules left; the compiler is the equivalent guard for the Rust crate, and `cargo test` in CI runs
+# it on every change.
 

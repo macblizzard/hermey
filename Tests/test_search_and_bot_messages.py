@@ -4,8 +4,8 @@ Asked for 2026-11-15: "search in bot list should search for all the items on all
 and list the findings rather than just bot names", and a bot-to-bot exchange should read
 `Messaged <face> Aria` / `Message from <face> Cody` rather than a bare text prefix.
 
-These are source-shape tests: the bridge behaviour itself is covered by
-`Bridge/tests/test_bot_search.py` and `Bridge/tests/test_bot_transfers.py`.
+These are source-shape tests. The host behaviour itself is covered by the Rust tests beside it in
+`hermeyd/src/search.rs` and `hermeyd/src/transfers.rs` (`cargo test` in `hermeyd/`).
 """
 
 from __future__ import annotations
@@ -17,11 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PAIR = (ROOT / "Sources" / "HermeyUI" / "BotPairSheet.swift").read_text(encoding="utf-8")
 IOS_SCREEN = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text(encoding="utf-8")
 MAC_SCROLL = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptScroll.swift").read_text(encoding="utf-8")
-BRIDGE = ROOT / "Bridge" / "hermes_bridge"
-SEARCH = (BRIDGE / "bot_search.py").read_text(encoding="utf-8")
-TRANSFERS = (BRIDGE / "bot_transfers.py").read_text(encoding="utf-8")
-MESSAGE = (BRIDGE / "bot_message.py").read_text(encoding="utf-8")
-APP_PY = (BRIDGE / "app.py").read_text(encoding="utf-8")
+# The host service is the Rust crate in `hermeyd/` now.
+BRIDGE = ROOT / "hermeyd" / "src"
+SEARCH = (BRIDGE / "search.rs").read_text(encoding="utf-8")
+TRANSFERS = (BRIDGE / "transfers.rs").read_text(encoding="utf-8")
+MESSAGE = (BRIDGE / "bot_message.rs").read_text(encoding="utf-8")
+APP_PY = (BRIDGE / "main.rs").read_text(encoding="utf-8")
 
 KIT_SEARCH = (ROOT / "Sources" / "HermesKit" / "BotSearch.swift").read_text(encoding="utf-8")
 POINTER = (ROOT / "Sources" / "HermesKit" / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
@@ -50,25 +51,27 @@ class TheRelayStampIsAHeader(unittest.TestCase):
 
 class TheHostSearchesTranscripts(unittest.TestCase):
     def test_the_route_exists_and_is_mounted(self) -> None:
-        self.assertIn('@router.get("/search")', SEARCH)
-        self.assertIn("create_bot_search_router(runtime)", APP_PY)
+        # Retargeted from `hermes_bridge/bot_search.py` (deleted with the Python bridge).
+        self.assertIn('"/v1/search"', APP_PY)
+        self.assertIn("search::search", APP_PY)
+        self.assertIn("pub async fn search(", SEARCH)
 
     def test_it_reads_each_profile_read_only(self) -> None:
         # A search must never block a bot's own writes, and must not need write access at all.
-        self.assertIn("mode=ro", SEARCH)
-        self.assertIn('directory / "state.db"', SEARCH)
+        self.assertIn("OpenFlags::SQLITE_OPEN_READ_ONLY", SEARCH)
+        self.assertIn('"state.db"', SEARCH)
 
     def test_one_character_is_not_a_search(self) -> None:
-        self.assertIn("MIN_QUERY = 2", SEARCH)
-        self.assertIn('if len(needle) < MIN_QUERY:', SEARCH)
+        self.assertIn("const MIN_QUERY: usize = 2", SEARCH)
+        self.assertIn("if needle.chars().count() < MIN_QUERY", SEARCH)
 
     def test_a_bot_cannot_fill_the_page_by_itself(self) -> None:
-        self.assertIn("PER_BOT = 20", SEARCH)
-        self.assertIn("LIMIT ?", SEARCH)
+        self.assertIn("const PER_BOT: usize = 20", SEARCH)
+        self.assertIn("LIMIT ?2", SEARCH)
 
     def test_the_answer_is_a_snippet_not_a_transcript(self) -> None:
-        self.assertIn("SNIPPET_PAD = 80", SEARCH)
-        self.assertIn('"snippet": snippet', SEARCH)
+        self.assertIn("const SNIPPET_PAD: usize = 80", SEARCH)
+        self.assertIn('"snippet": snip', SEARCH)
 
 
 class TheAppsAskForFindings(unittest.TestCase):
@@ -177,19 +180,20 @@ class TheMacPanelSearchesEveryConversation(unittest.TestCase):
 class ABotMessageReadsAsAPerson(unittest.TestCase):
     def test_the_label_names_the_sender_when_the_caller_knows_it(self) -> None:
         self.assertIn("sender_profile", MESSAGE)
-        self.assertIn('f"{sender.title()} ({sender_profile})"', MESSAGE)
+        self.assertIn('format!("{} ({profile})", python_title(sender))', MESSAGE)
 
     def test_every_exchange_is_recorded(self) -> None:
-        self.assertIn("record_transfer(runtime", MESSAGE)
+        self.assertIn("fn record_transfer(", MESSAGE)
         self.assertIn('"bot-transfers.jsonl"', TRANSFERS)
         # Append-only, and rotated so a long-lived host does not fill its disk.
-        self.assertIn('path.open("a"', TRANSFERS)
-        self.assertIn("MAX_BYTES = 4 * 1024 * 1024", TRANSFERS)
+        self.assertIn("OpenOptions::new()", TRANSFERS)
+        self.assertIn("const MAX_BYTES: u64 = 4 * 1024 * 1024", TRANSFERS)
 
     def test_the_pair_can_be_read_back(self) -> None:
-        self.assertIn('@router.get("/bot-transfers")', TRANSFERS)
-        self.assertIn("{first, second} <= pair", TRANSFERS)
-        self.assertIn("create_bot_transfers_router(runtime)", APP_PY)
+        self.assertIn('"/v1/bot-transfers"', APP_PY)
+        self.assertIn("transfers::list_transfers", APP_PY)
+        self.assertIn("pub between: String", TRANSFERS)
+        self.assertIn('json!({ "between": [first, second], "entries": entries })', TRANSFERS)
 
     def test_the_parser_understands_both_labels(self) -> None:
         # "Assistant (cody) → Ops: …" and the legacy "Assistant → Ops: …" — old rows keep their

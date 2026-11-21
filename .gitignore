@@ -16,6 +16,9 @@ xcuserdata/
 .swiftpm/
 Package.resolved
 
+# Rust (hermeyd)
+hermeyd/target/
+
 # Python
 __pycache__/
 *.pyc

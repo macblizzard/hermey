@@ -153,10 +153,13 @@ class ApprovalsDefaultAndLayout(unittest.TestCase):
         self.assertIn(".formStyle(.grouped)", tab)
         self.assertIn(".scrollContentBackground(.hidden)", tab)
 
-    def test_bridge_skips_reserved_profile_names(self) -> None:
-        admin = (ROOT / "Bridge/hermes_bridge/bot_admin.py").read_text(encoding="utf-8")
-        self.assertIn('RESERVED_PROFILE_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo"})',
-                      admin)
+    def test_host_refuses_to_purge_the_installs_own_profile(self) -> None:
+        # Retargeted from `hermes_bridge/bot_admin.py` (deleted with the Python bridge). The bridge
+        # reserved six names; hermeyd protects only the install's own profile, `default` — the wider
+        # list did not come across, and that difference is reported with this change.
+        admin = (ROOT / "hermeyd/src/bot_admin.rs").read_text(encoding="utf-8")
+        self.assertIn('const PROTECTED: [&str; 1] = ["default"]', admin)
+        self.assertIn("this bot cannot be deleted", admin)
 
 class ApprovalsWriteFeedback(unittest.TestCase):
     def test_mac_rows_do_not_show_a_focus_ring_and_show_progress(self) -> None:
@@ -166,7 +169,11 @@ class ApprovalsWriteFeedback(unittest.TestCase):
         self.assertIn("Applying \\(applying.title) to every bot…", tab)
 
     def test_the_write_answer_is_in_the_get_shape(self) -> None:
-        admin = (ROOT / "Bridge/hermes_bridge/bot_admin.py").read_text(encoding="utf-8")
-        self.assertIn('"profiles": states,', admin)
-        self.assertIn('"unset": unset,', admin)
+        # Retargeted from `hermes_bridge/bot_admin.py` (deleted with the Python bridge): approvals
+        # are one document in `bridge_routes.rs`, and the PUT answers with that document.
+        routes = (ROOT / "hermeyd/src/bridge_routes.rs").read_text(encoding="utf-8")
+        self.assertIn('"profiles": {}, "unset": [], "updated": [], "failed": {}', routes)
+        put = routes.split("pub async fn put_approvals(", 1)[1]
+        self.assertIn("st.store.set_doc(DOC_APPROVALS, &doc)", put)
+        self.assertIn("Ok(Json(doc))", put, "the write answers in the read's shape")
 

@@ -1,9 +1,9 @@
 """The bot's workspace, as a place to read: the list, the viewer, and how the app asks for them.
 
-The host side is `Bridge/tests/test_workspace_api.py`, which runs the route against a real bridge. This
-file guards the three things a source scan can catch and a screenshot cannot: that the ⋯ menu offers
-the workspace, that the app asks the route the bridge actually serves, and that the viewer does not
-pretend to render formats it cannot.
+The host is hermeyd (`hermeyd/src/workspace.rs`), which is part of this repository now; its own Rust
+tests run beside the handlers. This file guards the three things a source scan can catch and a
+screenshot cannot: that the ⋯ menu offers the workspace, that the app asks the route the host actually
+serves, and that the viewer does not pretend to render formats it cannot.
 """
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ SHEET = ROOT / "Apps" / "HermesMobile" / "Views" / "WorkspaceSheet.swift"
 SCREEN = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift"
 DRAWER = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationDrawer.swift"
 ENV = ROOT / "Apps" / "HermesMobile" / "App" / "AppEnvironment.swift"
-BRIDGE = ROOT / "Bridge" / "hermes_bridge" / "workspace.py"
+HOST = ROOT / "hermeyd" / "src"
+BRIDGE = HOST / "workspace.rs"
+ROUTES = HOST / "main.rs"
 
 
 def read(path: Path) -> str:
@@ -51,16 +53,16 @@ class ItSpeaksTheRouteTheBridgeServes(unittest.TestCase):
         self.assertIn('"v1/workspace/\\(profile)/file"', kit)
         self.assertIn("queryItems = [URLQueryItem(name: \"path\"", kit)
 
-    def test_the_bridge_serves_exactly_those(self) -> None:
-        bridge = read(BRIDGE)
-        self.assertIn("APIRouter(prefix='/v1/workspace'", bridge)
-        self.assertIn("@router.get('/{profile}')", bridge)
-        self.assertIn("@router.get('/{profile}/file')", bridge)
+    def test_the_host_serves_exactly_those(self) -> None:
+        # Retargeted from `hermes_bridge/workspace.py` (deleted with the Python bridge).
+        routes = read(ROUTES)
+        self.assertIn('"/v1/workspace/{profile}"', routes)
+        self.assertIn('"/v1/workspace/{profile}/file"', routes)
 
     def test_the_payload_fields_are_the_ones_decoded(self) -> None:
         bridge, kit = read(BRIDGE), read(KIT)
         for field in ("name", "path", "source", "kind", "size", "modified", "previewable"):
-            self.assertIn(f"'{field}':", bridge, f"the host must send {field}")
+            self.assertIn(f'"{field}":', bridge, f"the host must send {field}")
             self.assertIn(f"public let {field}", kit, f"the client decodes {field}")
 
 
@@ -86,10 +88,12 @@ class TheWorkspaceCannotBeUsedAsAFileManager(unittest.TestCase):
         for verb in ("delete(", "rename(", "move(", "write(to:"):
             self.assertNotIn(verb, kit, f"a viewer must not {verb}")
 
-    def test_the_bridge_follows_no_links(self) -> None:
+    def test_the_host_follows_no_links(self) -> None:
+        # Retargeted from `hermes_bridge/workspace.py` — same two guards, Rust spelling: a symlink
+        # entry is skipped on the way out, and the resolved path must still start with the root.
         bridge = read(BRIDGE)
-        self.assertIn("if item.is_symlink():", bridge)
-        self.assertIn("is_relative_to", bridge)
+        self.assertIn("meta.file_type().is_symlink()", bridge)
+        self.assertIn("Component::ParentDir", bridge)
 
 
 if __name__ == "__main__":

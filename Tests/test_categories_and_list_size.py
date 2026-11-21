@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BRIDGE = ROOT / "Bridge" / "hermes_bridge" / "bot_categories.py"
-APP_PY = (ROOT / "Bridge" / "hermes_bridge" / "app.py").read_text(encoding="utf-8")
+# The host service is the Rust crate in `hermeyd/` now; categories are a document there.
+BRIDGE = ROOT / "hermeyd" / "src" / "bridge_routes.rs"
+APP_PY = (ROOT / "hermeyd" / "src" / "main.rs").read_text(encoding="utf-8")
 GROUPING = (ROOT / "Sources" / "HermesAppKit" / "BotGrouping.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
 IOS_LIST = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotListScreen.swift").read_text(encoding="utf-8")
@@ -31,33 +32,22 @@ MAC_STORE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift")
 
 class TheHostOwnsTheGroups(unittest.TestCase):
     def test_the_routes_exist_and_are_mounted(self) -> None:
+        # Retargeted from `hermes_bridge/bot_categories.py` (deleted with the Python bridge):
+        # hermeyd mounts each verb explicitly on one path.
         source = BRIDGE.read_text(encoding="utf-8")
-        for route in ['@router.get("/bot-categories")',
-                      '@router.post("/bot-categories")',
-                      '@router.patch("/bot-categories/{category_id}")',
-                      '@router.delete("/bot-categories/{category_id}")',
-                      '@router.put("/bots/{profile}/category")']:
-            self.assertIn(route, source)
-        self.assertIn("create_bot_categories_router(runtime)", APP_PY)
+        for handler in ("get_categories", "post_categories", "patch_category",
+                        "delete_category", "put_bot_category", "put_category_order"):
+            self.assertIn(f"pub async fn {handler}(", source, handler)
+        self.assertIn('"/v1/bot-categories"', APP_PY)
+        self.assertIn('"/v1/bot-categories/{category}"', APP_PY)
+        self.assertIn('"/v1/bots/{profile}/category"', APP_PY)
 
-    def test_every_mutation_is_one_locked_read_modify_write(self) -> None:
-        """A phone and a Mac write the same file; two requests must not build on one read."""
-        source = BRIDGE.read_text(encoding="utf-8")
-        self.assertIn("def mutate(runtime, change", source)
-        self.assertIn("with _lock_for(path):", source)
-        # Each route goes through `mutate` — a bare load/save pair in a route is the race back.
-        routes = source.split("def create_bot_categories_router", 1)[1]
-        self.assertEqual(routes.count("mutate(runtime, change)"), 5,
-                         "create, rename, delete, assign and arrange are all one locked mutation")
-        for name in ("create_category", "rename_category", "delete_category", "assign_category"):
-            body = routes.split(f"def {name}(", 1)[1]
-            self.assertIn("mutate(runtime, change)", body.split("@router", 1)[0],
-                          f"{name} must not read and write the file unlocked")
-
-    def test_last_write_wins_is_the_documented_rule(self) -> None:
-        source = BRIDGE.read_text(encoding="utf-8")
-        self.assertIn("Last write wins, whole file", source)
-        self.assertIn("later request wins", source)
+    # Removed with the Python bridge: `test_every_mutation_is_one_locked_read_modify_write`
+    # guarded `bot_categories.py`'s file lock (`_lock_for(path)` / `mutate(runtime, change)`) and
+    # `test_last_write_wins_is_the_documented_rule` guarded its docstring. hermeyd has no file to
+    # lock: the document is a row in the service's SQLite store, read and written under one
+    # connection, so the race those tests existed for cannot take that shape. Nothing in this
+    # repository can assert it without inventing a symbol.
 
     def test_the_client_contract_is_read_on_connect_and_after_a_write(self) -> None:
         # The Mac read the roster on connect and never the groups: creating one on the phone was
@@ -81,16 +71,15 @@ class TheHostOwnsTheGroups(unittest.TestCase):
 
     def test_deleting_a_group_never_deletes_a_bot(self) -> None:
         source = BRIDGE.read_text(encoding="utf-8")
-        body = source.split('@router.delete("/bot-categories/{category_id}")', 1)[1]
+        body = source.split("pub async fn delete_category(", 1)[1].split("pub async fn ", 1)[0]
         # The assignment is what is dropped, and the bot falls to Uncategorized by having none.
-        self.assertIn("data[\"assignments\"] = {profile: category", body)
-        self.assertNotIn("deleteBot", body)
+        self.assertIn('map.retain(|_, v| v.as_str() != Some(category.as_str()))', body)
         self.assertNotIn("purge", body)
+        self.assertNotIn("remove_dir_all", body)
 
-    def test_the_file_lives_beside_the_bridge_database(self) -> None:
-        source = BRIDGE.read_text(encoding="utf-8")
-        self.assertIn('FILENAME = "bot-categories.json"', source)
-        self.assertIn("Path(runtime.config.db_path).parent", source)
+    # Removed with the Python bridge: `test_the_file_lives_beside_the_bridge_database` pinned
+    # `bot-categories.json` next to the bridge's SQLite file. hermeyd keeps the same document in its
+    # own `documents` table (`DOC_CATEGORIES`), so there is no second file to point at.
 
     def test_the_client_speaks_all_five_verbs(self) -> None:
         for call in ['"v1/bot-categories"', 'bridgePATCH("v1/bot-categories/', 'bridgeDELETE("v1/bot-categories/',
