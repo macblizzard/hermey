@@ -5,7 +5,7 @@ Bots run on the hermes host, so they reach the host service over loopback. The s
 (127.0.0.1:8788 by default); it refuses an unauthenticated call, so this script sends the service's
 local bearer — `$HERMEYD_LOCAL_TOKEN`, else the file `$HERMEYD_LOCAL_TOKEN_FILE` names, else
 `local.token` in the service's state directory (`$HERMEY_HOME`, normally `~/.hermey`). A host that
-still runs the retired Python bridge on 8787 works with one override: `HERMES_BRIDGE_URL` (or
+still runs the retired Python bridge works with one override: `HERMES_BRIDGE_URL` (or
 `HERMEYD_API_URL`), which also switches the bearer off-required. Examples:
 
     python3 Tools/local_computer.py -- sw_vers
@@ -32,22 +32,36 @@ import urllib.request
 
 # --- where this host is, and who we are to it -------------------------------------------------
 #
-# hermeyd serves the main API on 8788 (the second listener, 8790, carries only `/v1/browser/*` and
-# needs no credential; this tool does not touch it). The retired Python bridge answered the same
-# routes on 8787 with no credential at all, so an explicit URL is also the signal that a credential
-# is not required: the default endpoint demands one, because a bearer hermeyd will not accept is
-# indistinguishable from "there are no computers" once it comes back as 401.
+# hermeyd serves the main API on 8788 and the browser channel on 8790 (the second listener carries
+# only `/v1/browser/*` and needs no credential; this tool does not touch it, but it exports the pair
+# so every installed script answers the same question the same way). The retired Python bridge
+# answered the same routes on its own port with no credential at all, so an explicit URL is also the
+# signal that a credential is not required: the default endpoint demands one, because a bearer
+# hermeyd will not accept is indistinguishable from "there are no computers" once it comes back 401.
 DEFAULT_API = "http://127.0.0.1:8788"
+DEFAULT_BROWSER = "http://127.0.0.1:8790"
 API_ENV = "HERMEYD_API_URL"
 #: What the same override was called when the bridge was the host. Still honoured, both ways.
 COMPAT_ENV = "HERMES_BRIDGE_URL"
+#: The browser channel, when a caller needs to name it separately from the main API.
+BROWSER_ENV = "HERMEYD_BROWSER_URL"
 #: The service's state directory (hermeyd's own `HERMEY_HOME`, else `~/.hermey`).
 STATE_ENV = "HERMEY_HOME"
 #: The token itself wins over the file, so a caller can pass one without a readable state dir.
 TOKEN_ENV = "HERMEYD_LOCAL_TOKEN"
 TOKEN_FILE_ENV = "HERMEYD_LOCAL_TOKEN_FILE"
 
-API = (os.environ.get(API_ENV) or os.environ.get(COMPAT_ENV) or DEFAULT_API).rstrip("/")
+
+def endpoints(bridge: str | None = None, browser: str | None = None) -> tuple[str, str]:
+    """(main API, browser channel). An explicit `bridge` governs both, as it did on the bridge."""
+    api = (bridge or os.environ.get(API_ENV) or os.environ.get(COMPAT_ENV)
+           or DEFAULT_API).rstrip("/")
+    compat = bridge or os.environ.get(COMPAT_ENV)
+    channel = browser or os.environ.get(BROWSER_ENV) or compat or DEFAULT_BROWSER
+    return api, channel.rstrip("/")
+
+
+API, _BROWSER = endpoints()
 #: True when the caller named the endpoint — that host may still be the bridge, so no bearer.
 NAMED_ENDPOINT = bool(os.environ.get(API_ENV) or os.environ.get(COMPAT_ENV))
 
@@ -78,7 +92,7 @@ def local_token() -> str:
         raise AuthError(
             f"no local bearer for {API}: set {TOKEN_ENV}, or point {TOKEN_FILE_ENV} at a readable "
             f"token file ({path}: {exc.strerror}). On a host still running the Python bridge, set "
-            f"{COMPAT_ENV}=http://127.0.0.1:8787 instead."
+            f"{COMPAT_ENV} to that bridge's URL instead."
         ) from None
     if not token:
         raise AuthError(f"the local bearer file {path} is empty — restart hermeyd to mint a new one")
@@ -282,7 +296,7 @@ def main() -> int:
         return 3
     except urllib.error.URLError as exc:
         # A dead port is the one failure worth naming: on a migrated host it means the caller still
-        # has the bridge's 8787 written down somewhere.
+        # has the bridge's port written down somewhere.
         print(f"local_computer: cannot reach {API} ({exc.reason}) — is hermeyd running, and is "
               f"{API_ENV} or {COMPAT_ENV} pointing at the right host?", file=sys.stderr)
         return 4

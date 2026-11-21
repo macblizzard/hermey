@@ -394,8 +394,13 @@ class NoLiveDocPointsAtTheOldBridge(unittest.TestCase):
 
 
 class TheReleaseWorkflowPublishesThoseAssets(unittest.TestCase):
-    def test_it_runs_on_a_version_tag(self) -> None:
-        self.assertIn('tags: ["v*"]', WORKFLOW)
+    def test_it_runs_on_the_hermeyd_tag_series(self) -> None:
+        # hermeyd has its own tag series so a host-service release does not collide with an app
+        # release. The publish step must accept the same prefix as the trigger: it validates the tag
+        # name in a `case` before anything is uploaded, so a workflow that triggers on `hermeyd-v*`
+        # while validating `v*` builds all four binaries and then publishes none of them.
+        self.assertIn('tags: ["hermeyd-v*"]', WORKFLOW)
+        self.assertIn("hermeyd-v*)", WORKFLOW)
 
     def test_it_builds_all_four_targets(self) -> None:
         for asset in ASSETS:

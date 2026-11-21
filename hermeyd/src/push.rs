@@ -507,8 +507,8 @@ mod tests {
     #[test]
     fn bark_urls_split_into_server_and_key() {
         assert_eq!(
-            split_bark_url("http://100.86.19.1:8081/AbCdEf123").unwrap(),
-            ("http://100.86.19.1:8081".to_string(), "AbCdEf123".to_string())
+            split_bark_url("http://10.1.2.3:8081/AbCdEf123").unwrap(),
+            ("http://10.1.2.3:8081".to_string(), "AbCdEf123".to_string())
         );
         assert_eq!(
             split_bark_url("https://bark.example.com/K-1_x").unwrap(),
