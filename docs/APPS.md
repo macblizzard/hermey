@@ -92,6 +92,10 @@ Dark palettes are unchanged by any of this: they say "dark" and get dark.
 Right-click a group's heading in the Mac's sidebar to **Move … Up** or **Move … Down**. The menu
 items grey out at the ends of the list.
 
+On the phone the same two verbs are on a category heading: long-press it, or tap the **⋯** at its
+right edge — the visible door, since a long press on a heading is not something a person finds. The
+phone has no **Pinned** or **Uncategorized** menu, because those two headings cannot move.
+
 The arrangement is the host's, not the window's: it is stored beside the categories and both apps
 read it, so a group moved on the Mac is in the same place on the phone. Until you move something the
 list is alphabetical, which is how it has always been — so nothing has to be rearranged to look

@@ -537,16 +537,12 @@ struct SidebarBotList: View {
                 Divider()
                 // Moving a group is the one thing here that changes the list's shape, so it is
                 // greyed out where there is nowhere to go rather than failing silently.
-                Button {
-                    Task { try? await model.moveBotCategory(id: category.id, by: -1) }
-                } label: {
+                Button { move(category, by: -1) } label: {
                     Label("Move “\(category.name)” Up", systemImage: "arrow.up")
                 }
                 .disabled(!model.canMoveBotCategory(id: category.id, by: -1))
 
-                Button {
-                    Task { try? await model.moveBotCategory(id: category.id, by: 1) }
-                } label: {
+                Button { move(category, by: 1) } label: {
                     Label("Move “\(category.name)” Down", systemImage: "arrow.down")
                 }
                 .disabled(!model.canMoveBotCategory(id: category.id, by: 1))
@@ -930,6 +926,22 @@ private struct HoverRow<Content: View>: View {
             return nil
         } catch {
             return "The host did not rename it: \(sentence(for: error))"
+        }
+    }
+
+    /// One step up or down, from the heading's menu.
+    ///
+    /// The arrangement is the host's, so this is a write like any other and its refusal is kept on
+    /// screen (`failure`, drawn by the alert above) — `try?` here would have moved a group on this
+    /// Mac alone, which is the exact desync the category document exists to prevent. The ends are
+    /// disabled by `canMoveBotCategory`, which applies the model's own Pinned/Uncategorized rule.
+    private func move(_ category: BotCategory, by offset: Int) {
+        Task { @MainActor in
+            do {
+                try await model.moveBotCategory(id: category.id, by: offset)
+            } catch {
+                failure = "The host did not move “\(category.name)”: \(sentence(for: error))"
+            }
         }
     }
 

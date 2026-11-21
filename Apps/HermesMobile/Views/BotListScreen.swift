@@ -656,29 +656,84 @@ struct BotListScreen: View {
         }
     }
 
-    private func groupHeader(_ group: BotGroup) -> some View {
-        Button {
-            toggleCollapsed(group)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isCollapsed(group) ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Tokens.textDim)
-                Text(group.name.uppercased())
-                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
-                    .foregroundStyle(Tokens.textMuted)
-                Text("\(group.bots.count)")
-                    .font(TypeScale.font(metrics.metaSize))
-                    .foregroundStyle(Tokens.textDim)
-                    .monospacedDigit()
-                Spacer(minLength: 0)
+    /// The category behind a heading, or `nil` for Pinned and Uncategorized.
+    ///
+    /// The model's own rule, written once more where the UI can see it: those two headings are the
+    /// app's, not the owner's, so they are not part of the arrangement. Any control that moved one
+    /// would send the host an id its document never holds — so the UI asks this, not the reverse.
+    private func arrangeableCategory(_ group: BotGroup) -> BotCategory? {
+        guard !group.isPinned, !group.isUncategorized else { return nil }
+        return model.botCategories.first { $0.id == group.id }
+    }
+
+    /// Move a category one step. `AppModel.moveBotCategory` computes the arrangement from what is
+    /// drawn, filters Pinned and Uncategorized itself, and sends the whole order; through
+    /// `writeCategories` a refusal stays on screen instead of the group moving on this phone alone.
+    private func move(_ category: BotCategory, by offset: Int) {
+        writeCategories { try await model.moveBotCategory(id: category.id, by: offset) }
+    }
+
+    /// The two verbs, shared by the heading's long press and its ⋯. Ends are greyed out by the same
+    /// predicate the Mac uses, so the two surfaces cannot disagree about where a group can go.
+    @ViewBuilder
+    private func categoryArrangeItems(_ group: BotGroup) -> some View {
+        if let category = arrangeableCategory(group) {
+            Button { move(category, by: -1) } label: {
+                Label("Move “\(category.name)” Up", systemImage: "arrow.up")
             }
-            .contentShape(Rectangle())
+            .disabled(!model.canMoveBotCategory(id: category.id, by: -1))
+
+            Button { move(category, by: 1) } label: {
+                Label("Move “\(category.name)” Down", systemImage: "arrow.down")
+            }
+            .disabled(!model.canMoveBotCategory(id: category.id, by: 1))
         }
-        .buttonStyle(.plain)
+    }
+
+    private func groupHeader(_ group: BotGroup) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                toggleCollapsed(group)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isCollapsed(group) ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Tokens.textDim)
+                    Text(group.name.uppercased())
+                        .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                        .foregroundStyle(Tokens.textMuted)
+                    Text("\(group.bots.count)")
+                        .font(TypeScale.font(metrics.metaSize))
+                        .foregroundStyle(Tokens.textDim)
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(group.name), \(group.bots.count) bots")
+            .accessibilityHint(isCollapsed(group) ? "Expand" : "Collapse")
+            // A long press is where the phone keeps the verbs a row has; an empty builder for
+            // Pinned and Uncategorized presents nothing rather than a menu with nothing in it.
+            .contextMenu { categoryArrangeItems(group) }
+
+            // And the visible door, because a long press on a heading is not something a person
+            // finds. Only categories get it: Pinned and Uncategorized cannot move (2026-11-21).
+            if arrangeableCategory(group) != nil {
+                Menu {
+                    categoryArrangeItems(group)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Tokens.textDim)
+                        .frame(width: 26, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .menuIndicator(.hidden)
+                .accessibilityLabel("Arrange \(group.name)")
+            }
+        }
         .textCase(nil)
-        .accessibilityLabel("\(group.name), \(group.bots.count) bots")
-        .accessibilityHint(isCollapsed(group) ? "Expand" : "Collapse")
     }
 
     private var collapsedGroups: [String: Bool] {

@@ -264,6 +264,50 @@ final class BotCategoryOrderTests: XCTestCase {
         await model.stop()
     }
 
+    /// Pinned and Uncategorized are the app's headings, not the owner's categories: a control that
+    /// could move one would send the host an id its document never holds. Both the gate the menu
+    /// greys out with and the write itself have to agree about that.
+    func testTheAppsOwnHeadingsAreNotInTheArrangement() async throws {
+        let host = hostName("reserved")
+        defer { UserDefaults.standard.removeObject(forKey: cacheKey(host)) }
+        let scripted = ScriptedHost(session: "s1")
+        scripted.categoryState = state(["Alpha", "Beta"])
+        let model = AppModel(client: scripted, hostName: host)
+        await model.start()
+
+        XCTAssertFalse(model.canMoveBotCategory(id: BotGrouping.uncategorizedID, by: -1))
+        XCTAssertFalse(model.canMoveBotCategory(id: BotGrouping.pinnedID, by: 1))
+
+        try await model.moveBotCategory(id: BotGrouping.uncategorizedID, by: -1)
+        try await model.moveBotCategory(id: BotGrouping.pinnedID, by: 1)
+
+        XCTAssertTrue(scripted.categoryWrites.isEmpty,
+                      "the host was asked to arrange a heading it does not own: \(scripted.categoryWrites)")
+        await model.stop()
+    }
+
+    /// A move is a host write. When it is refused the arrangement must not appear to have changed,
+    /// and the error has to reach the view — the Mac's menu used to swallow it with `try?`.
+    func testARefusedMoveThrowsAndTheOrderStands() async throws {
+        let host = hostName("refused-move")
+        defer { UserDefaults.standard.removeObject(forKey: cacheKey(host)) }
+        let scripted = ScriptedHost(session: "s1")
+        scripted.categoryState = state(["Alpha", "Beta"])
+        let model = AppModel(client: scripted, hostName: host)
+        await model.start()
+
+        scripted.categoryError = URLError(.cannotConnectToHost)
+        do {
+            try await model.moveBotCategory(id: "cat-2", by: -1)
+            XCTFail("a refused move must throw, so the app can say so")
+        } catch {
+            XCTAssertEqual(categoryNames(model), ["Alpha", "Beta"],
+                           "a move the host never took must not appear on screen")
+        }
+        XCTAssertTrue(scripted.categoryWrites.isEmpty)
+        await model.stop()
+    }
+
     func testCachedDocumentsFromBeforeOrderingStillLoad() throws {
         // The apps cache the document on disk; a cache written before `order` existed has no key.
         let json = #"{"categories":[{"id":"cat-1","name":"Work","createdAt":null}],"assignments":{}}"#
