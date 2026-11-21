@@ -17,8 +17,7 @@ a thing you can actually do.
 
 Checks
   cli        the verbs the site documents vs the verbs the CLI actually dispatches
-  ports      the port numbers on the site vs the installer's defaults
-  units      the unit names on the site vs the installer's prefix
+  ports      the port numbers on the site vs the ones hermeyd actually binds
   routes     the endpoints the site documents vs hermeyd's actual routes
   stamp      the feed the landing page reads vs the newest release tag
   sections   every heading in a mirrored docs/*.md page should exist on its site page
@@ -101,24 +100,6 @@ def cli_verbs() -> set[str]:
         if match:
             verbs.add(match.group(1))
     return verbs
-
-
-def installer_defaults() -> dict[str, str]:
-    """Default port and unit prefix, read from the installer's own assignments.
-
-    These are the **bridge** installer's numbers: 8787 on loopback. A hermeyd host does not read them,
-    which is why the ports check below treats them as history. The shell variables are named
-    differently from the env knobs they read (`BRIDGE_PORT=${HERMEY_PORT:-8787}`), so the pattern
-    matches on the env knob and takes the fallback.
-    """
-    text = read(INSTALLER)
-    out = {}
-    for key, knob in (("bridge_port", "HERMEY_PORT"), ("https_port", "HERMEY_HTTPS_PORT"),
-                      ("unit_prefix", "HERMEY_UNIT_PREFIX")):
-        match = re.search(rf"^\w+=\$\{{{knob}:-([^}}]+)\}}", text, flags=re.M)
-        if match:
-            out[key] = match.group(1)
-    return out
 
 
 def host_routes() -> set[str]:
@@ -243,12 +224,9 @@ def main() -> int:
                 drift.append({"check": "cli", "what": f"`hermey {extra}` is documented but not dispatched",
                               "where": "docs/reference"})
 
-    # ports and units — the live host is hermeyd, and the *published* page has to say so
-    defaults = installer_defaults()
-    bridge_port = defaults.get("bridge_port")
+    # ports — the live host is hermeyd, and the *published* page has to say so
     published = published_text()
-    checked.append(f"ports: hermeyd {HERMEYD_API_PORT}/{HERMEYD_BROWSER_PORT}, "
-                   f"installer (bridge-only) defaults {defaults}")
+    checked.append(f"ports: hermeyd {HERMEYD_API_PORT}/{HERMEYD_BROWSER_PORT}")
     for live_port, label in ((HERMEYD_API_PORT, "the host API port"),
                              (HERMEYD_BROWSER_PORT, "the browser channel port")):
         if live_port not in published:
@@ -265,19 +243,6 @@ def main() -> int:
                       "what": f"the built site tells readers to call the API but never mentions "
                               f"{HERMEYD_TOKEN_NAME}, the bearer hermeyd requires",
                       "where": "docs/agents + docs/reference"})
-    # Only when the site still carries the bridge's own instructions do the installer's numbers have
-    # to agree with them; a page that has dropped the bridge must not be nagged about its port.
-    if bridge_port and "hermey-bridge.service" in site and bridge_port not in site:
-        drift.append({"check": "ports",
-                      "what": f"bridge port {bridge_port} from the installer is not on the site while "
-                              f"the bridge is still documented", "where": "docs/reference + docs/install"})
-    prefix = defaults.get("unit_prefix")
-    if prefix:
-        for unit in (f"{prefix}-bridge.service", f"{prefix}-gateway.service"):
-            if unit not in site:
-                drift.append({"check": "units", "what": f"{unit} is not mentioned on the site",
-                              "where": "docs/install + docs/reference"})
-
     # routes — what the host serves vs what the site promises
     routes = host_routes()
     checked.append(f"routes: {len(routes)} in hermeyd")

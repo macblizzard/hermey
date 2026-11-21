@@ -19,7 +19,7 @@ left skipping:
 
 | Deleted | What it guarded | Where that lives now |
 |---|---|---|
-| `test_bridge_deploy.py` | `deploy_bridge.sh`: pip-installing the checkout into a venv, restarting the bridge unit, following a running predecessor unit, and `setup/bot-browser.sh`'s drop-in for it | the script and the unit are gone; `deploy/hermeyd.service` and `deploy/com.hermeyd.plist` are static files installed by hand until the installer is rewritten |
+| `test_bridge_deploy.py` | `deploy_bridge.sh`: pip-installing the checkout into a venv, restarting the bridge unit, following a running predecessor unit, and the systemd drop-in that `setup/bot-browser.sh` wrote for it (both scripts are deleted with the bridge) | the scripts and the unit are gone; `deploy/hermeyd.service` and `deploy/com.hermeyd.plist` are static files installed by hand until the installer is rewritten |
 | `test_audit_stream.py` | `app.py` never writing prose through the `hermes_bridge.audit` logger, and reporting a failed best-effort install through the app logger | `hermeyd/src/audit.rs` writes one JSON record per event; its Rust tests cover the record shape and that `/v1/health` is not logged |
 
 Everything else that read `Bridge/hermes_bridge/*.py` was retargeted at `hermeyd/src/*.rs`; the test

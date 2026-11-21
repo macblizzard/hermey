@@ -107,12 +107,12 @@ url, formPresent, usernameFields, passwordFields, otpBoxes, submitLabel, buttons
 curl -s -X POST @@BROWSER@@/v1/browser/act -H 'content-type: application/json' -d '{"type":"probe"}'
 ```
 
-## The bot browser is pinned to Chrome for Testing
+## The bot browser must load a command-line extension
 
 Stable Google Chrome 137+ accepts `--load-extension` and loads **nothing**, silently — the sign-in extension
-never attaches and every fill reports "no browser could take it". `setup/bot-browser.sh` provisions Chrome for
-Testing under `/opt/hermes-chromium` and the launcher points at it. If a login suddenly stops filling after a
-browser change, check which binary is running before anything else.
+never attaches and every fill reports "no browser could take it". Run the bot's browser as Chrome for Testing
+or Chromium, never stable Chrome; the extension's source is `browser-extension/` in this repository. If a login
+suddenly stops filling after a browser change, check which binary is running before anything else.
 
 The browser also never offers to save a password: it types the owner's credentials by design, and a prompt
 over the page hides the field it is about to fill. The launcher writes that preference with the browser
