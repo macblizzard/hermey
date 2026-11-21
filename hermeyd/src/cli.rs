@@ -61,6 +61,7 @@ FLAGS
 
 ENVIRONMENT
   HERMEYD_HOME                       State directory: token, salt, database (default ~/.hermey).
+                                     HERMEY_HOME is read too (the unit and a full install set it).
   HERMEYD_PORT                       Service port (default 8788); pair/status dial this port.
   HERMEYD_BIND                       Bind address, loopback only (default 127.0.0.1).
   HERMEYD_BROWSER_PORT               Sign-in / browser channel port (default 8790).
@@ -86,15 +87,16 @@ USAGE
   hermeyd pair [--json] [--host HOST]
 
 Mints a code through POST /v1/pair/start on the running service (loopback only), authenticating
-with the local token at <state>/local.token. Prints the code, when it expires, and a ready-to-paste
-pairing URL: https://<host>/?code=<code>
+with the local token at <state>/local.token. Prints the code, when it expires, a ready-to-paste
+pairing URL (https://<host>/?code=<code>), and a QR of that same URL for the app's scanner.
 
   --json        Print the route's JSON object verbatim, for scripts.
   --host HOST   Override the host in the pairing URL (the service reports HERMEYD_PUBLIC_HOST).
 
 ENVIRONMENT
   HERMEYD_PORT               Port the service is listening on (default 8788).
-  HERMEYD_HOME               State directory holding local.token (default ~/.hermey).
+  HERMEYD_HOME               State directory holding local.token (default ~/.hermey; HERMEY_HOME
+                             is read too).
   HERMEYD_LOCAL_TOKEN_FILE   Read the token from this path instead.
 "
     )
@@ -107,9 +109,13 @@ fn status_usage() -> String {
 USAGE
   hermeyd status [--json]
 
-Checks, each on its own line with an ok / warn / fail marker: the service answers, the engine's
-WebSocket port accepts connections, the pairing host, the local token file and whether it is
-readable, the browser channel port, paired devices, and the gateway guard's decision.
+Checks, each on its own line with an ok / warn / fail marker: which state directory it read and
+where the token came from, the service answers, the engine's WebSocket port accepts connections,
+the pairing host, the local token file and whether it is readable, whether the service ACCEPTS that
+token, the browser channel port, paired devices, and the gateway guard's decision.
+
+Exit status is 0 only when the service answers AND a request was authenticated with its token; a
+token refused with 401 is reported as a failure, naming the file that was sent.
 
   --json        Print the same facts as one JSON object, for scripts.
 
@@ -243,21 +249,37 @@ impl Target {
         local_token::token_path(&self.home)
     }
 
-    /// The local CLI bearer, when it can be read. Its absence is not fatal: `pair/start` is loopback
-    /// only, so an unreadable token still mints — but sending it is what a bearer-checked route in
-    /// front would need, and it costs one `read_to_string`.
-    pub fn token(&self) -> Option<String> {
+    /// The local CLI bearer and where it came from, when it can be read. `None` is not fatal:
+    /// `pair/start` is loopback only, so an unreadable token still mints — but sending it is what a
+    /// bearer-checked route in front would need, and it costs one `read_to_string`.
+    pub fn token_choice(&self) -> Option<TokenChoice> {
         if let Ok(value) = std::env::var(local_token::TOKEN_ENV) {
             let value = value.trim();
             if !value.is_empty() {
-                return Some(value.to_string());
+                return Some(TokenChoice {
+                    value: value.to_string(),
+                    origin: local_token::TOKEN_ENV.to_string(),
+                });
             }
         }
-        std::fs::read_to_string(self.token_path())
+        let path = self.token_path();
+        std::fs::read_to_string(&path)
             .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .map(|value| TokenChoice { value, origin: path.display().to_string() })
     }
+
+    pub fn token(&self) -> Option<String> {
+        self.token_choice().map(|choice| choice.value)
+    }
+}
+
+/// A bearer and the thing that named it, so a rejection can say which credential was refused
+/// without ever printing the credential itself.
+pub struct TokenChoice {
+    pub value: String,
+    pub origin: String,
 }
 
 fn epoch_now() -> f64 {
@@ -383,19 +405,27 @@ pub async fn run_pair(target: &Target, json_out: bool, host_override: Option<Str
         .clone()
         .or_else(|| value.get("host").and_then(Value::as_str).map(str::to_string))
         .unwrap_or_else(|| "localhost".to_string());
-    let protocol = value
-        .get("protocol_version")
-        .and_then(Value::as_u64)
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "?".to_string());
 
     // Rounded, not floored: a code just minted with a 600 s TTL is "10 min left", not "9".
     let minutes = ((expires_at - epoch_now()) / 60.0).max(0.0);
-    let encoded = urlencoding::encode(code);
+    let pairing_url = pairing_url(&host, code);
+    // Only what a person minting a code can act on: the code, its lifetime, the URL, the QR.
+    // `protocol_version` is the app's problem (and stays in `--json`, verbatim).
     println!("pairing code  {code}");
     println!("expires       {} ({minutes:.0} min left)", clock(expires_at));
-    println!("pairing URL   https://{host}/?code={encoded}");
-    println!("protocol      {protocol}");
+    println!("pairing URL   {pairing_url}");
+    println!();
+    // The QR is the same string as the `pairing URL` line, so a scanner and an eyeball cannot
+    // disagree. It goes after the text block: every line above stays where a parser expects it.
+    println!("Scan with the Hermey app's QR scanner:");
+    match crate::qr::lines(&pairing_url) {
+        Ok(lines) => {
+            for line in lines {
+                println!("{line}");
+            }
+        }
+        Err(e) => eprintln!("(could not draw the QR — use the URL above: {e})"),
+    }
     println!();
     println!("Open Hermey, or open that URL on a device on the same tailnet. The code is single-use.");
     0
@@ -447,9 +477,86 @@ fn socket_of(url: &str) -> String {
     }
 }
 
+/// The host the running service would put in a pairing URL.
+///
+/// `pair` prints the host `/v1/pair/start` reports, and that route reads the *service's* environment.
+/// `status`'s own shell usually has no `HERMEYD_PUBLIC_HOST` at all (systemd owns it), so asking
+/// here instead of reading `std::env` is the difference between "localhost — only this host" and the
+/// tailnet name the service actually hands out.
+async fn service_pairing_host(http: &reqwest::Client, target: &Target) -> Result<String, String> {
+    let mut request = http.get(format!("{}/v1/pair/host", target.base()));
+    if let Some(token) = target.token() {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("/v1/pair/host answered {status}"));
+    }
+    let value: Value = response.json().await.map_err(|e| format!("unreadable body: {e}"))?;
+    value
+        .get("host")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "/v1/pair/host answered without a `host`".to_string())
+}
+
+/// A host that only resolves on this machine is not a pairing URL for a phone.
+fn only_this_host(host: &str) -> bool {
+    let host = host.trim();
+    host.is_empty()
+        || host.eq_ignore_ascii_case("localhost")
+        || host.starts_with("127.")
+        || host == "::1"
+        || host == "[::1]"
+}
+
+/// The one URL `pair` prints and encodes: the text line and the QR are the same string by
+/// construction, so a scanner and an eyeball cannot disagree.
+fn pairing_url(host: &str, code: &str) -> String {
+    format!("https://{host}/?code={}", urlencoding::encode(code))
+}
+
+/// What `/v1/devices` said about the bearer this command sent.
+///
+/// Only `Accepted` means a request was authenticated, and only then may the screen say `ok` about
+/// it. The failure this replaces printed `ok` for the service while the token came from a *different*
+/// state directory, so the one answer it could not honestly give — "everything is fine" — was the
+/// one it gave.
+enum Auth {
+    Accepted { total: usize, active: usize },
+    /// 401: a real token, but not this service's — almost always the wrong state directory.
+    Refused { origin: String },
+    /// Sent, answered, but nothing that proves the token was accepted.
+    Unconfirmed { origin: String, reason: String },
+    /// The service is up and there was no token to send.
+    NoToken { path: PathBuf, exists: bool },
+    /// The service is not answering, so nothing was asked.
+    NotAsked,
+}
+
+/// Name the credential without printing it: a path, or the environment variable when the value came
+/// from there.
+fn token_where(origin: &str) -> String {
+    if origin == local_token::TOKEN_ENV {
+        format!("${}", local_token::TOKEN_ENV)
+    } else {
+        origin.to_string()
+    }
+}
+
 /// `hermeyd status` — one line per fact, with a marker a person can scan.
+///
+/// The first two lines are the command's own inputs: which state directory it read and where the
+/// token came from. Without them a mismatch is invisible — the service answers, a token exists, and
+/// nothing says the two belong to different installs.
 pub async fn run_status(target: &Target, json_out: bool) -> i32 {
     let http = client();
+    let home_source = crate::state_home_source();
+    let token_path = target.token_path();
+    let token_choice = target.token_choice();
 
     // 1. The service itself. Unauthenticated by design; says only that it is alive.
     let health = http.get(format!("{}/v1/health", target.base())).send().await;
@@ -477,53 +584,68 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
         ),
     };
 
-    // A pairing URL naming `localhost` is only useful on the host itself.
-    let pairing_host = target.public_host.clone();
-    let pairing_mark = if pairing_host == "localhost" || pairing_host.is_empty() {
-        Mark::Warn
+    // 3. What pairing will actually print. Ask the service — it owns HERMEYD_PUBLIC_HOST — and only
+    //    fall back to this shell's environment when it cannot answer, saying so if it does.
+    let (pairing_host, pairing_asked) = if service.failed() {
+        (target.public_host.clone(), Err("the service is not answering".to_string()))
     } else {
-        Mark::Ok
+        match service_pairing_host(&http, target).await {
+            Ok(host) => (host, Ok(())),
+            Err(e) => (target.public_host.clone(), Err(e)),
+        }
     };
-    let pairing_detail = if pairing_host == "localhost" {
-        "— URLs will only work on this host; set HERMEYD_PUBLIC_HOST to the tailnet name".to_string()
+    let pairing_mark = if only_this_host(&pairing_host) { Mark::Warn } else { Mark::Ok };
+    let pairing_detail = if only_this_host(&pairing_host) {
+        let mut detail =
+            "— URLs will only work on this host; set HERMEYD_PUBLIC_HOST to the tailnet name".to_string();
+        // Say why this is this shell's value and not the service's: an old build answers 404 here,
+        // and that is a different remedy from a service that really is configured with `localhost`.
+        if let Err(e) = &pairing_asked {
+            detail.push_str(&format!(" (the service could not be asked: {e})"));
+        }
+        detail
     } else {
-        format!("— https://{pairing_host}/?code=…")
+        match &pairing_asked {
+            Ok(()) => format!("— https://{pairing_host}/?code=…"),
+            // A confirmed name needs no story; an unconfirmed one must not look confirmed.
+            Err(e) => format!(
+                "— https://{pairing_host}/?code=… (this shell's HERMEYD_PUBLIC_HOST; \
+                 the service was not asked: {e})"
+            ),
+        }
     };
 
-    // 3. The credential the shell and the bundled scripts use.
-    let token_path = target.token_path();
-    let token_readable = std::fs::read_to_string(&token_path)
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
+    // 4. The credential the shell and the bundled scripts use, and where it came from.
+    let token_readable = token_choice.is_some();
     let token_mark = if token_readable { Mark::Ok } else { Mark::Warn };
-    let token_detail = if token_readable {
-        format!("{} (readable)", token_path.display())
-    } else if token_path.exists() {
-        format!("{} exists but is empty or unreadable (run as the service's user)", token_path.display())
-    } else {
-        format!("{} not found — minted at the first boot", token_path.display())
+    let token_detail = match (&token_choice, token_path.exists()) {
+        (Some(choice), _) if choice.origin == local_token::TOKEN_ENV => format!(
+            "${} (from the environment; {} was not read)",
+            local_token::TOKEN_ENV,
+            token_path.display()
+        ),
+        (Some(_), _) => format!("{} (readable)", token_path.display()),
+        (None, true) => format!(
+            "{} exists but is empty or unreadable (run as the service's user)",
+            token_path.display()
+        ),
+        (None, false) => format!(
+            "{} not found — minted at the first boot (HERMEYD_HOME or HERMEY_HOME names the state dir)",
+            token_path.display()
+        ),
     };
 
-    // 4. The browser channel: separate listener, loopback only, no credential.
-    let browser_addr = format!("127.0.0.1:{}", target.browser_port);
-    let browser = match listening(&browser_addr).await {
-        Ok(()) => Mark::Ok,
-        Err(_) => Mark::Warn,
-    };
-    let browser_detail = if matches!(browser, Mark::Ok) {
-        format!("{browser_addr} accepts connections")
+    // 5. Authenticate one request with that credential. Everything below this point is a claim about
+    //    a request, so a token that was not accepted must never read as healthy.
+    let auth = if service.failed() {
+        Auth::NotAsked
     } else {
-        format!("nothing listening on {browser_addr} (HERMEYD_BROWSER_PORT)")
-    };
-
-    // 5. Devices, if the token lets us ask. `devices` needs a bearer; a missing one costs a line, not
-    //    the whole screen.
-    let (device_mark, device_detail, devices_total, devices_active) =
-        match (!service.failed(), target.token()) {
-            (true, Some(token)) => {
+        match token_choice.as_ref() {
+            None => Auth::NoToken { path: token_path.clone(), exists: token_path.exists() },
+            Some(choice) => {
                 let response = http
                     .get(format!("{}/v1/devices", target.base()))
-                    .bearer_auth(token)
+                    .bearer_auth(&choice.value)
                     .send()
                     .await;
                 match response {
@@ -538,53 +660,168 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
                                         .unwrap_or(false)
                                 })
                                 .count();
-                            (
-                                if active > 0 { Mark::Ok } else { Mark::Warn },
-                                format!("{active} active, {total} total"),
-                                Some(total),
-                                Some(active),
-                            )
+                            Auth::Accepted { total, active }
                         }
-                        Ok(other) => (
-                            Mark::Warn,
-                            format!("unexpected /v1/devices body: {other}"),
-                            None,
-                            None,
-                        ),
-                        Err(e) => (Mark::Warn, format!("unreadable /v1/devices body: {e}"), None, None),
+                        Ok(other) => Auth::Unconfirmed {
+                            origin: choice.origin.clone(),
+                            reason: format!("unexpected /v1/devices body: {other}"),
+                        },
+                        Err(e) => Auth::Unconfirmed {
+                            origin: choice.origin.clone(),
+                            reason: format!("unreadable /v1/devices body: {e}"),
+                        },
                     },
-                    Ok(r) => (Mark::Warn, format!("/v1/devices answered {}", r.status()), None, None),
-                    Err(e) => (Mark::Warn, format!("/v1/devices failed: {e}"), None, None),
+                    // The answer that is about the token itself: name the file (never the secret)
+                    // that was refused, because the remedy is a different state directory.
+                    Ok(r) if r.status() == reqwest::StatusCode::UNAUTHORIZED => {
+                        Auth::Refused { origin: choice.origin.clone() }
+                    }
+                    Ok(r) => Auth::Unconfirmed {
+                        origin: choice.origin.clone(),
+                        reason: format!("/v1/devices answered {}", r.status()),
+                    },
+                    Err(e) => Auth::Unconfirmed {
+                        origin: choice.origin.clone(),
+                        reason: format!("/v1/devices failed: {e}"),
+                    },
                 }
             }
-            (true, None) => (
-                Mark::Warn,
-                "not asked — no local token to authenticate with".to_string(),
-                None,
-                None,
-            ),
-            (false, _) => (Mark::Warn, "not asked — the service is not answering".to_string(), None, None),
-        };
-
-    // 6. Exactly what `--gateway-check` decides, for the home a boot would use. `evaluate`, not
-    //    `check`: the decision is this command's output, so it must not also be logged to stderr.
-    let decision = gateway_guard::evaluate(&target.engine_home, true);
-    let gateway = if decision.refused() { Mark::Fail } else { Mark::Ok };
-    let gateway_detail = format!("{} for {}", decision.as_str(), target.engine_home.display());
-    let gateway_explain = match &decision {
-        gateway_guard::Decision::Refuse(owners) => {
-            Some(gateway_guard::refusal_message(&target.engine_home, owners))
         }
+    };
+    let authenticated = matches!(auth, Auth::Accepted { .. });
+    let (auth_mark, auth_detail) = match &auth {
+        Auth::Accepted { .. } => (
+            Mark::Ok,
+            format!(
+                "the service accepted the token at {}",
+                token_where(token_choice.as_ref().map(|c| c.origin.as_str()).unwrap_or_default())
+            ),
+        ),
+        Auth::Refused { origin } => (
+            Mark::Fail,
+            format!(
+                "the service is running, but the token at {} was refused — that is not the service's \
+                 token; point HERMEYD_HOME at the running service's state",
+                token_where(origin)
+            ),
+        ),
+        Auth::Unconfirmed { origin, reason } => (
+            Mark::Fail,
+            format!(
+                "the service is running, but the token at {} was not confirmed as accepted: {reason}",
+                token_where(origin)
+            ),
+        ),
+        Auth::NoToken { path, exists } if *exists => (
+            Mark::Fail,
+            format!(
+                "the service is running, but the token at {} could not be read (run as the service's \
+                 user) — nothing was authenticated",
+                path.display()
+            ),
+        ),
+        Auth::NoToken { path, .. } => (
+            Mark::Fail,
+            format!(
+                "the service is running, but there is no token at {} — nothing was authenticated; \
+                 restart hermeyd there to mint one, or point HERMEYD_HOME at the running service's state",
+                path.display()
+            ),
+        ),
+        Auth::NotAsked => (Mark::Warn, "not asked — the service is not answering".to_string()),
+    };
+
+    let (device_mark, device_detail, devices_total, devices_active) = match &auth {
+        Auth::Accepted { total, active } => (
+            if *active > 0 { Mark::Ok } else { Mark::Warn },
+            format!("{active} active, {total} total"),
+            Some(*total),
+            Some(*active),
+        ),
+        Auth::Refused { .. } => (Mark::Warn, "not asked — the token was refused".to_string(), None, None),
+        Auth::Unconfirmed { .. } => (
+            Mark::Warn,
+            "not asked — the token could not be confirmed".to_string(),
+            None,
+            None,
+        ),
+        Auth::NoToken { .. } => (Mark::Warn, "not asked — there is no token".to_string(), None, None),
+        Auth::NotAsked => (
+            Mark::Warn,
+            "not asked — the service is not answering".to_string(),
+            None,
+            None,
+        ),
+    };
+
+    // 6. The browser channel: separate listener, loopback only, no credential.
+    let browser_addr = format!("127.0.0.1:{}", target.browser_port);
+    let browser = match listening(&browser_addr).await {
+        Ok(()) => Mark::Ok,
+        Err(_) => Mark::Warn,
+    };
+    let browser_detail = if matches!(browser, Mark::Ok) {
+        format!("{browser_addr} accepts connections")
+    } else {
+        format!("nothing listening on {browser_addr} (HERMEYD_BROWSER_PORT)")
+    };
+
+    // 7. Exactly what `--gateway-check` decides, for the home a boot would use. `evaluate`, not
+    //    `check`: the decision is this command's output, so it must not also be logged to stderr.
+    //    A refusal is not a fault: hermeyd serves fine next to another gateway — it must only never
+    //    spawn a second ticker. Only a check that could not be evaluated at all is a `fail`.
+    let decision = gateway_guard::evaluate(&target.engine_home, true);
+    let (gateway, gateway_detail) = match &decision {
+        gateway_guard::Decision::Refuse(owners) => (
+            Mark::Warn,
+            format!(
+                "refused for {} — {} other gateway process{} already ticks it; hermeyd serves beside \
+                 it, it just must not spawn a second ticker",
+                target.engine_home.display(),
+                owners.len(),
+                if owners.len() == 1 { "" } else { "es" }
+            ),
+        ),
+        other => (Mark::Ok, format!("{} for {}", other.as_str(), target.engine_home.display())),
+    };
+    // The pids are the value of the check — "routines will not fire twice because *this* process
+    // already ticks them" — so they are printed, one line each. The refusal verdict itself stays
+    // out: nothing here was asked to spawn, and this command must not read like a failure.
+    let gateway_explain = match &decision {
+        gateway_guard::Decision::Refuse(owners) => Some(
+            owners
+                .iter()
+                .map(|owner| {
+                    format!(
+                        "pid {} (HERMES_HOME={}, via {}): {}",
+                        owner.pid,
+                        owner.home.display(),
+                        owner.via,
+                        owner.cmdline
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
         _ => None,
     };
 
-    let failed = service.failed() || gateway.failed();
+    // A service that answers is not enough: a request this command could not authenticate leaves the
+    // screen saying so, and the exit code non-zero.
+    let failed = service.failed() || !authenticated;
+    let token_source = token_choice.as_ref().map(|c| c.origin.clone());
 
     if json_out {
         let facts = json!({
             "version": crate::VERSION,
             "ok": !failed,
             "port": target.port,
+            "state_dir": {
+                "path": target.home.display().to_string(),
+                "source": home_source,
+                "token_path": token_path.display().to_string(),
+                "token_source": token_source,
+            },
             "service": {
                 "reachable": !service.failed(),
                 "url": target.base(),
@@ -597,9 +834,16 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
                 "detail": engine_detail,
             },
             "pairing_host": pairing_host,
+            "pairing_host_source": if pairing_asked.is_ok() { "service" } else { "environment" },
             "token": {
                 "path": token_path.display().to_string(),
                 "readable": token_readable,
+                "source": token_source,
+            },
+            "authenticated": authenticated,
+            "auth": {
+                "authenticated": authenticated,
+                "detail": auth_detail,
             },
             "browser_channel": {
                 "addr": browser_addr,
@@ -622,6 +866,9 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
         let line = |mark: &Mark, label: &str, detail: &str| {
             println!("{:<5} {:<16} {}", mark.word(), label, detail);
         };
+        // The command's own inputs, first, unmarked: a path and the variable that produced it. Every
+        // line after this one can then be read against them.
+        println!("{:<5} {:<16} {} ({home_source})", "", "state dir", target.home.display());
         // The protocol only means something when the service answered with one.
         let service_line = match protocol {
             Some(p) => format!("{service_detail} (protocol {p})"),
@@ -631,6 +878,7 @@ pub async fn run_status(target: &Target, json_out: bool) -> i32 {
         line(&engine, "engine", &engine_detail);
         line(&pairing_mark, "pairing host", &format!("{pairing_host} {pairing_detail}"));
         line(&token_mark, "local token", &token_detail);
+        line(&auth_mark, "authentication", &auth_detail);
         line(&browser, "browser channel", &browser_detail);
         line(&device_mark, "devices", &device_detail);
         line(&gateway, "gateway-check", &gateway_detail);
@@ -672,7 +920,7 @@ pub fn target(home: PathBuf, engine_home: PathBuf) -> Target {
 
 /// Paths as `pair`/`status` should discover them, without the side effects of boot.
 pub fn resolve_paths() -> (PathBuf, PathBuf) {
-    let home = crate::hermes_home();
+    let home = crate::state_home();
     let engine_home = std::env::var("HERMEYD_ENGINE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| crate::default_engine_home(&home));
@@ -758,6 +1006,24 @@ mod tests {
         }
         assert!(pair_usage().contains("--json"));
         assert!(status_usage().contains("--json"));
+    }
+
+    #[test]
+    fn the_pairing_url_is_the_string_the_qr_encodes() {
+        let url = pairing_url("hermes.corvus-vibes.ts.net", "012345");
+        assert_eq!(url, "https://hermes.corvus-vibes.ts.net/?code=012345");
+        // The QR is drawn from this exact string, so escaping has to happen here and only here.
+        assert_eq!(pairing_url("host", "a b&c"), "https://host/?code=a%20b%26c");
+    }
+
+    #[test]
+    fn a_host_that_only_resolves_on_this_machine_is_called_out() {
+        for host in ["localhost", "LOCALHOST", " localhost ", "", "127.0.0.1", "::1", "[::1]"] {
+            assert!(only_this_host(host), "{host:?} cannot be opened from a phone");
+        }
+        for host in ["hermes.corvus-vibes.ts.net", "mac-mini.local", "192.168.1.4"] {
+            assert!(!only_this_host(host), "{host:?} is a real pairing host");
+        }
     }
 
     #[test]

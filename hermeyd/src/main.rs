@@ -39,6 +39,8 @@ mod engine_client;
 mod model_settings;
 mod pairing;
 mod parity_gaps;
+mod preflight;
+mod qr;
 mod previews;
 mod providers;
 mod push;
@@ -61,12 +63,39 @@ use std::sync::Arc;
 const TICKET_TTL_SECONDS: f64 = 30.0;
 const ACCESS_TTL_SECONDS: f64 = 300.0;
 
-fn hermes_home() -> PathBuf {
-    if let Ok(v) = std::env::var("HERMEY_HOME") {
-        return PathBuf::from(v);
+/// The service's state directory — one resolution for boot, `pair` and `status`.
+///
+/// `HERMEYD_HOME` is what this binary's own help documents and what an operator types at a shell;
+/// `HERMEY_HOME` is what the systemd unit and a full install set, and what the service has always
+/// read. Both are accepted, `HERMEYD_HOME` first. The bug this replaces: the CLI read only one of
+/// them, so `status` reported a token in a directory the service never wrote and the device count
+/// answered 401.
+pub fn state_home() -> PathBuf {
+    for key in ["HERMEYD_HOME", "HERMEY_HOME"] {
+        if let Ok(value) = std::env::var(key) {
+            let value = value.trim();
+            if !value.is_empty() {
+                return PathBuf::from(value);
+            }
+        }
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home).join(".hermey")
+}
+
+/// How [`state_home`] decided, in the words `status` and the first-run line print. A path alone is
+/// not enough to debug the failure this exists for: two directories, one token, and no way to tell
+/// from the output which one was read.
+pub fn state_home_source() -> String {
+    for key in ["HERMEYD_HOME", "HERMEY_HOME"] {
+        if let Ok(value) = std::env::var(key) {
+            let value = value.trim();
+            if !value.is_empty() {
+                return format!("{key}={value}");
+            }
+        }
+    }
+    format!("no HERMEYD_HOME or HERMEY_HOME set, so $HOME/.hermey")
 }
 
 /// The engine's home (profiles, memories, skills). Beside this service's own state when both are
@@ -146,13 +175,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cli::Command::Serve | cli::Command::GatewayCheck => {}
     }
 
-    let home = hermes_home();
-    std::fs::create_dir_all(&home)?;
+    let home = state_home();
+    let home_source = state_home_source();
 
     // The engine's home decides three things this process must get right before it serves: the
     // `.env` it reads, whether a cron ticker is already running for it, and — further down — which
     // profiles' skills it installs. Resolve it once, first, so an early exit (`--gateway-check`)
-    // answers about the same home a real boot would use.
+    // answers about the same home a real boot would use. Resolution stats, it never creates.
     let engine_home = std::env::var("HERMEYD_ENGINE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| default_engine_home(&home));
@@ -168,14 +197,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         std::process::exit(if decision.refused() { 75 } else { 0 });
     }
-
-    // Named once at boot, so "integrations are not configured" always has the file it looked for
-    // next to it in the log.
-    host_env::log_choice_once(&host_env::select_from_process(&engine_home));
-    // Detection only: this service does not own a gateway process, but a duplicate cron ticker is
-    // exactly the failure a `--force` launch causes, and boot is where it can still be reported
-    // before anything fires twice.
-    gateway_guard::check(&engine_home, gateway_guard::spawn_requested());
 
     let port: u16 = std::env::var("HERMEYD_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(8788);
     // The browser channel's own listener. Separate because the routes below carry no credential and
@@ -196,6 +217,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("hermeyd refuses to bind {bind}: loopback only. Expose it with `tailscale serve`.");
         std::process::exit(1);
     }
+
+    // Pre-flight, before the first byte is written: the bind that used to fail *after* creating a
+    // state directory, minting a token and installing skills is the cheap question, so it is asked
+    // first. A refusal here leaves the filesystem exactly as it found it, including a state dir that
+    // would have been stranded by the failed bind.
+    let ports = preflight::Ports { bind: bind.clone(), port, browser_port };
+    if let Err(refusal) = preflight::check(&home, &ports, &home_source) {
+        eprintln!("{refusal}");
+        std::process::exit(1);
+    }
+
+    // Say what is about to happen, and where, before it happens: one line, not a prompt.
+    if !home.is_dir() {
+        eprintln!(
+            "hermeyd: first run — creating state directory {} ({home_source}); local.token, \
+             bridge.salt and bridge.db will live there. Set HERMEYD_HOME to use another directory.",
+            home.display()
+        );
+    }
+
+    std::fs::create_dir_all(&home)?;
+
+    // Named once at boot, so "integrations are not configured" always has the file it looked for
+    // next to it in the log.
+    host_env::log_choice_once(&host_env::select_from_process(&engine_home));
+    // Detection only: this service does not own a gateway process, but a duplicate cron ticker is
+    // exactly the failure a `--force` launch causes, and boot is where it can still be reported
+    // before anything fires twice.
+    gateway_guard::check(&engine_home, gateway_guard::spawn_requested());
 
     let salt = auth::load_or_create_salt(&home.join("bridge.salt"))?;
     // The bearer the bundled skill scripts send. Created here, once per boot: deleting the file and
@@ -277,6 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/v1/health", get(routes::health))
         .route("/v1/pair/start", post(routes::pair_start))
+        .route("/v1/pair/host", get(routes::pair_host))
         .route("/v1/pair/claim", post(routes::pair_claim))
         .route("/v1/token", post(routes::token))
         .route("/v1/devices", get(routes::devices))
