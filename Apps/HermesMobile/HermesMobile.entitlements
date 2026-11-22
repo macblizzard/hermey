@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The handoff for the share sheet. The app writes the bot snapshot the picker reads and drains
+	     payloads the extension leaves behind; the extension writes payloads and reads the snapshot.
+	     Must be the same string as HermeyShareExtension.entitlements and
+	     ShareInboxStorage.appGroupIdentifier — three places, one value.
+
+	     On a sideloaded install this capability has to survive re-signing: FlareStore's certificate
+	     carries app groups, but if its profile does not provision this exact group the container is
+	     simply absent, and the extension says so ("Hermey has no shared storage yet") instead of
+	     failing silently. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.dev.hermey.app</string>
+	</array>
+</dict>
+</plist>

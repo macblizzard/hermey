@@ -39,6 +39,10 @@ container and sends through its normal path.
     platform: iOS
     sources:
       - path: Apps/HermeyShareExtension
+        # `INFOPLIST_FILE` supplies the plist; adding it as a resource would bundle a second copy.
+        excludes:
+          - "Info.plist"
+          - "README.md"
       # The same three files the app compiles: one schema, no drift.
       - path: Apps/HermesShare
     settings:

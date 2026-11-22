@@ -141,6 +141,8 @@ targets:
       # The Live Activity's attributes, compiled into the app as well as the widget so both sides
       # agree on the payload the system is handed.
       - path: Apps/HermesLiveActivity/HermeyTurnAttributes.swift
+      # The share payload types, compiled into the app as well as the extension.
+      - path: Apps/HermesShare
     dependencies:
       - package: HermesApps
         product: HermesKit
@@ -155,6 +157,8 @@ targets:
       # Embedded, not just linked: an App Extension that is not copied into the app bundle makes
       # `Activity.request` fail at runtime while the build stays perfectly green.
       - target: HermesLiveActivity
+        embed: true
+      - target: HermeyShareExtension
         embed: true
     info:
       path: Apps/HermesMobile/Info.plist
@@ -216,8 +220,33 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile
         PRODUCT_NAME: Hermey
+        CODE_SIGN_ENTITLEMENTS: Apps/HermesMobile/HermesMobile.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  # The share sheet: pick a bot, hand it text/links/images. It talks to the app only through the
+  # App Group container, never to the host — the extension has no pairing token and must not get one.
+  HermeyShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Apps/HermeyShareExtension
+        excludes:
+          - "Info.plist"
+          - "README.md"
+      # The payload types, compiled into both binaries so the two ends agree on the schema.
+      - path: Apps/HermesShare
+    # No `info:` block on purpose: XcodeGen would regenerate the plist from properties and drop the
+    # NSExtension dictionary the share sheet is discovered through.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile.share
+        PRODUCT_NAME: HermeyShareExtension
+        INFOPLIST_FILE: Apps/HermeyShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Apps/HermeyShareExtension/HermeyShareExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+        GENERATE_INFOPLIST_FILE: "NO"
+        SKIP_INSTALL: "YES"
 
   # The widget extension that draws the bot-is-working card and the Dynamic Island.
   HermesLiveActivity:
