@@ -877,3 +877,17 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   and returning to a chat resumes when the host may know more than the cache — "resuming: the host's newest message
   is not known yet" — instead of showing a cache it cannot prove is current.
 
+## [0.1.615] — 2026-11-22
+
+### Added
+- **Agent-driven UI draws in the transcript, on both clients.** A reply that carries an A2UI surface is rendered as
+  the surface instead of its raw JSON, with a runtime switch to fall back to text if anything looks wrong.
+
+### Fixed
+- **Returning to a chat no longer reloads a conversation the cache already holds.** A captured thread carries the host
+  stamp its rows were read at but none of its own, so the sweep read "the host has written since" and forced a resume —
+  the "it preloads, then loads again" case, in its real order. The guard now compares the line the host names against
+  what the thread actually holds.
+- **The Mac build validates the A2UI build plugin non-interactively.** The package ships an SPM build-tool plugin, and
+  without `-skipPackagePluginValidation` the macOS build stopped before compiling anything.
+
