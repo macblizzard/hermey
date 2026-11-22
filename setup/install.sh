@@ -221,7 +221,7 @@ require_engine_home() {
         "pass --engine-home with the directory Hermes uses (it must contain profiles/)."
     [ -d "$ENGINE_HOME/profiles" ] || fail "engine home $ENGINE_HOME has no profiles/" \
         "that is not a Hermes engine home — pass the directory Hermes itself uses," \
-        "the one that contains profiles/ (e.g. --engine-home /root/.hermes)."
+        "the one that contains profiles/ (e.g. --engine-home ~/.hermes)."
 }
 
 # ---------------------------------------------------------------- filesystem

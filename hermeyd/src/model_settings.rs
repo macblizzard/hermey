@@ -247,7 +247,7 @@ mod tests {
         dir
     }
 
-    /// The shipped shape (`/root/.hermes/profiles/cody/config.yaml`): nested provider/model.
+    /// The shipped shape (`<engine-home>/profiles/<profile>/config.yaml`): nested provider/model.
     /// Before this fix the row read the flat pair, found nothing, and said "auto" forever.
     #[test]
     fn the_nested_vision_pair_is_what_the_app_shows() {
