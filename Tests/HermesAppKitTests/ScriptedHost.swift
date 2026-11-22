@@ -74,8 +74,20 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     var profileSessions: [SessionSummary]?
 
     func listSessions(limit: Int, profile: String?, includeHidden: Bool) async throws -> [SessionSummary] {
-        profileSessions ?? [summary]
+        // A test that models a host whose roster *changes* between two reads (a conversation
+        // re-minted between this launch and the last) queues its answers here; the last one stands.
+        // Only the wide reads take from the queue: the list's third line asks for one row, and a
+        // preview request must not eat an answer the identity lookup is waiting for.
+        if limit > 1, !profileSessionsByCall.isEmpty {
+            let answer = profileSessionsByCall.removeFirst()
+            if profileSessionsByCall.isEmpty { profileSessions = answer }
+            return answer
+        }
+        return profileSessions ?? [summary]
     }
+
+    /// Successive `session.list` answers, consumed one per call.
+    var profileSessionsByCall: [[SessionSummary]] = []
 
     private var summary: SessionSummary {
         SessionSummary(id: session, title: "test thread")
@@ -98,6 +110,66 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         if let resumeError { throw resumeError }
         if staleIDs.contains(id) { throw GatewayError.rpc(RPCError(code: 4007, message: "session not found")) }
         return resume()
+    }
+
+    // MARK: The launch sweep's warm (session.resume without taking the client)
+
+    /// Every `warmResume` that crossed the boundary, with the bot it named — the sweep must scope the
+    /// resume to the bot that owns the conversation, and must never warm through `history`.
+    private(set) var warmed: [(id: SessionID, profile: String)] = []
+    /// Ids this host refuses to warm, modelling a conversation it re-minted or never had.
+    var warmStaleIDs: Set<SessionID> = []
+    /// Failures that are not about the id: a host that cannot answer for one bot at all.
+    var warmErrorByProfile: [String: Error] = [:]
+    /// Runtime ids this host is already holding live — the sweep must not close these.
+    var liveSessions: Set<SessionID> = []
+    /// Every runtime id the sweep released, so a test can prove the release happened (and the leak
+    /// it prevents).
+    private(set) var closedSessions: [SessionID] = []
+    /// Why a release fails, when a test wants one that does.
+    var closeError: Error?
+    /// How many `session.active_list` reads were made — one per sweep, before the first resume.
+    private(set) var liveSessionReads = 0
+    /// The runtime ids this host answers with, one per warm, in order. Deterministic so a test can
+    /// assert which id was released without depending on a random one.
+    var runtimeIDPrefix = "rt"
+
+    func warmResume(_ id: SessionID, profile: String) async throws -> SessionResume {
+        warmed.append((id, profile))
+        if let resumeError { throw resumeError }
+        if let error = warmErrorByProfile[profile] { throw error }
+        if warmStaleIDs.contains(id) || staleIDs.contains(id) {
+            throw GatewayError.rpc(RPCError(code: 4007, message: "session not found"))
+        }
+        // A resume that reuses a live session answers with THAT session's id; only a cold one mints
+        // a new runtime id. `entriesByRequestedID` wins, like the ordinary resume.
+        let runtimeID = liveRuntimeID(for: id) ?? "\(runtimeIDPrefix)-\(warmed.count)"
+        if let rows = entriesByRequestedID[id] {
+            return SessionResume(id: runtimeID, entries: rows, inflight: nil, openRequests: [],
+                                 earlierCursor: nil, historyTotal: rows.count,
+                                 storedSessionID: id)
+        }
+        let base = resume(sessionByProfile[profile] ?? session, profile: profile)
+        return SessionResume(id: runtimeID, entries: base.entries, inflight: nil, openRequests: [],
+                             earlierCursor: earlierCursor, historyTotal: historyTotal,
+                             storedSessionID: id)
+    }
+
+    /// Which stored id a live runtime id stands for, if any. Empty by default.
+    var storedByLiveID: [SessionID: SessionID] = [:]
+    private func liveRuntimeID(for stored: SessionID) -> SessionID? {
+        liveSessions.first { storedByLiveID[$0] == stored }
+    }
+
+    func liveSessionIDs() async throws -> Set<SessionID> {
+        liveSessionReads += 1
+        return liveSessions
+    }
+
+    func closeSession(_ id: SessionID) async throws {
+        if let closeError { throw closeError }
+        closedSessions.append(id)
+        liveSessions.remove(id)
     }
 
     /// Two bots can be two sessions, for the tests that need an event aimed at the one nobody is
@@ -161,9 +233,31 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
     }
     /// How many times a page was read, so a test can prove a sweep skipped a bot.
     private(set) var historyReads = 0
+    /// Which profile each read carried, in order. `nil` is the unscoped call the app used to make.
+    private(set) var historyProfiles: [String?] = []
+    /// Ids this host refuses to answer `session.history` for, with the real code (4007, "session
+    /// not found") — a conversation the host re-minted, while the other ids still resolve.
+    var historyStaleIDs: Set<SessionID> = []
+    /// Every id `session.history` was asked about, in order.
+    private(set) var historyIDs: [SessionID] = []
 
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry] {
         historyReads += 1
+        historyProfiles.append(nil)
+        historyIDs.append(id)
+        if historyStaleIDs.contains(id) {
+            throw GatewayError.rpc(RPCError(code: 4007, message: "session not found"))
+        }
+        return entries
+    }
+
+    func history(_ id: SessionID, limit: Int, profile: String?) async throws -> [TranscriptEntry] {
+        historyReads += 1
+        historyProfiles.append(profile)
+        historyIDs.append(id)
+        if historyStaleIDs.contains(id) {
+            throw GatewayError.rpc(RPCError(code: 4007, message: "session not found"))
+        }
         return entries
     }
 

@@ -472,6 +472,15 @@ enum GatewayPayloadDecoder {
         return limit > 0 ? Array(entries.suffix(limit)) : entries
     }
 
+    /// The **runtime** ids `session.active_list` reports (`sessions[].id`).
+    ///
+    /// The row also carries `session_key`, the stored id. The sweep needs the runtime one: that is
+    /// what a resume answers with and what `session.close` takes, and comparing a stored id against
+    /// this set would never match (the two namespaces look alike and are not interchangeable).
+    static func liveSessionIDs(_ result: JSONValue?) -> Set<SessionID> {
+        Set((result?["sessions"]?.arrayValue ?? []).compactMap { $0["id"]?.stringValue })
+    }
+
     static func modelOptions(_ result: JSONValue?) throws -> [ModelOption] {
         guard let providers = result?["providers"]?.arrayValue else {
             throw GatewayError.malformedResponse(method: "model.options")

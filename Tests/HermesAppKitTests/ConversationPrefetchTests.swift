@@ -65,7 +65,7 @@ final class ConversationPrefetchTests: XCTestCase {
         }
     }
 
-    func testAWarmBotIsNotReadAgain() async {
+    func testAWarmBotIsNotResumedAgain() async {
         let (model, client) = await opened(entries: [line("one")])
         let cody = bot("warm")
         defer { forget([cody]) }
@@ -73,11 +73,11 @@ final class ConversationPrefetchTests: XCTestCase {
         await model.loadBots()
 
         await model.prefetchConversations()
-        let readsAfterFirst = client.historyReads
+        let warmsAfterFirst = client.warmed.count
         await model.prefetchConversations()
 
-        XCTAssertEqual(client.historyReads, readsAfterFirst,
-                       "a second sweep re-read a bot that was warmed seconds ago")
+        XCTAssertEqual(client.warmed.count, warmsAfterFirst,
+                       "a second sweep resumed a bot that was warmed seconds ago")
     }
 
     func testTheOpenBotIsLeftAlone() async {
@@ -88,11 +88,11 @@ final class ConversationPrefetchTests: XCTestCase {
         await model.loadBots()
 
         await model.endlessSession(for: cody)
-        let readsBefore = client.historyReads
+        let warmsBefore = client.warmed.count
         await model.prefetchConversations()
 
-        XCTAssertEqual(client.historyReads, readsBefore + 1,
-                       "exactly one read: for the bot that is not on screen")
+        XCTAssertEqual(client.warmed.count, warmsBefore + 1,
+                       "exactly one warm: for the bot that is not on screen")
         XCTAssertEqual(model.transcript.map(\.text), ["open"],
                        "the open conversation must not be replaced by the sweep")
     }
@@ -126,9 +126,9 @@ final class ConversationPrefetchTests: XCTestCase {
         await model.loadBots()
         // No `start()`: the transport was never dialled, so `connection.isLive` is false and the
         // sweep has nothing to read through.
-        let readsBefore = client.historyReads
+        let warmsBefore = client.warmed.count
         await model.prefetchConversations()
-        XCTAssertEqual(client.historyReads, readsBefore)
+        XCTAssertEqual(client.warmed.count, warmsBefore)
     }
 
     func testAStaleIdIsReportedAsForgotten() async {
@@ -252,6 +252,125 @@ final class ConversationPrefetchTests: XCTestCase {
         XCTAssertEqual(model.transcript.map(\.text), codyLines,
                        "returning to a bot shows that bot's conversation, never the one just left")
         XCTAssertEqual(model.selectedBotID, cody)
+    }
+
+    // MARK: The launch sweep (build 0.1.612)
+
+    /// The failure the owner's log names: `cache prefetch of tinker failed: session not found`, once
+    /// per bot, every launch.
+    ///
+    /// `session.history` resolves only sessions the host is *holding live* — `_sess_nowait` is a plain
+    /// `_sessions.get(sid)` — so every bot answer was refused and nothing was ever pre-warmed. The
+    /// sweep asks for a **resume** now, scoped to the bot that owns the conversation.
+    func testThePrefetchResumesScopedToTheBotAndNeverReadsHistory() async {
+        let (model, client) = await opened(entries: [line("one")])
+        let cody = bot("scoped")
+        let selected = bot("scoped-selected")
+        defer { forget([cody]) }
+        client.bots = [Bot(id: selected), Bot(id: cody)]
+        // Covered by the bridge, so the list's own third-line read does not add a call of its own.
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "one", role: "assistant"),
+            selected: BotConversationPreview(text: "one", role: "assistant"),
+        ])
+        await model.loadBots()
+
+        await model.prefetchConversations()
+
+        XCTAssertEqual(client.warmed.map { $0.profile }, [cody],
+                       "the sweep resumed a conversation without naming the bot it belongs to")
+        XCTAssertEqual(client.warmed.map { $0.id }, [Self.sessionID])
+        XCTAssertEqual(client.historyReads, 0,
+                       "session.history is for a session the host already holds live; a sweep is not")
+        XCTAssertTrue(model.restoreConversation(for: cody), "and the page the resume carried was filed")
+    }
+
+    /// A stale id is a signal, not a report: the conversation was re-minted, so this device's id is
+    /// dropped and the host is asked which one this bot has now.
+    func testAStalePrefetchIDIsResolvedAgainInsteadOfReported() async {
+        let client = ScriptedHost(session: Self.sessionID, entries: [line("warm")])
+        client.hostPointer = Self.sessionID
+        let stale = "20260101_000004_stale"
+        let selected = bot("stale-selected")
+        client.previewFeed = BotPreviewFeed(previews: [
+            selected: BotConversationPreview(text: "x", role: "assistant"),
+        ])
+        // First identity read: the row this device remembered. Second: the one the host kept.
+        client.profileSessionsByCall = [
+            [SessionSummary(id: stale, title: CanonicalBotChat.title)],
+            [SessionSummary(id: Self.sessionID, title: CanonicalBotChat.title)],
+        ]
+        client.warmStaleIDs = [stale]
+        let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
+        await model.start()
+        let cody = bot("stale")
+        defer { forget([cody]) }
+        client.bots = [Bot(id: selected), Bot(id: cody)]
+        await model.loadBots()
+
+        await model.prefetchConversations()
+
+        XCTAssertEqual(client.warmed.map { $0.id }, [stale, Self.sessionID],
+                       "the stale id is asked once, then the conversation the host names now")
+        XCTAssertEqual(client.createdSessions.count, 0,
+                       "a stale id must never be answered by minting a blank conversation")
+        XCTAssertTrue(model.restoreConversation(for: cody))
+        XCTAssertEqual(model.transcript.count, 1)
+    }
+
+    /// A warm resume registers a **live session** on the host, attached to this connection's
+    /// transport — and a session on a live transport is never reaped or LRU-evicted. Nineteen
+    /// resumes a launch would pin nineteen idle records, each scheduling an agent build, for as long
+    /// as the app is connected. So the sweep releases each one it minted, by the **runtime** id the
+    /// resume answered with (a stored id is not a key in the host's registry).
+    func testTheSweepReleasesEveryRuntimeSessionItMinted() async {
+        let (model, client) = await opened(entries: [line("one")])
+        let cody = bot("released"), atlas = bot("also-released")
+        defer { forget([cody, atlas]) }
+        client.bots = [Bot(id: bot("selected")), Bot(id: cody), Bot(id: atlas)]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "one", role: "assistant"),
+            atlas: BotConversationPreview(text: "one", role: "assistant"),
+            bot("selected"): BotConversationPreview(text: "one", role: "assistant"),
+        ])
+        await model.loadBots()
+
+        await model.prefetchConversations()
+
+        XCTAssertEqual(client.liveSessionReads, 1,
+                       "the sweep must ask the host what it already holds, once, before warming")
+        XCTAssertEqual(client.closedSessions, ["rt-1", "rt-2"],
+                       "the runtime ids the resumes answered with are the ones that must be released")
+        XCTAssertTrue(client.closedSessions.allSatisfy { $0 != Self.sessionID },
+                      "a release is addressed by the runtime id, never the stored one")
+        XCTAssertTrue(model.restoreConversation(for: cody), "and the rows are still filed")
+        XCTAssertTrue(model.restoreConversation(for: atlas))
+    }
+
+    /// The other half of the release rule: a conversation the host was already holding live belongs
+    /// to a pane — this device's other window, or another device's — and closing it ends their turn.
+    /// Measured on the live host: `session.close` waits 5 s for the turn thread, then tears the agent
+    /// down. The sweep must leave those alone.
+    func testASessionThatWasAlreadyLiveIsNotClosed() async {
+        let (model, client) = await opened(entries: [line("one")])
+        let cody = bot("live-elsewhere")
+        defer { forget([cody]) }
+        client.bots = [Bot(id: bot("selected")), Bot(id: cody)]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "one", role: "assistant"),
+            bot("selected"): BotConversationPreview(text: "one", role: "assistant"),
+        ])
+        // The host is already holding this conversation's runtime session, and says so.
+        client.liveSessions = ["rt-already"]
+        client.storedByLiveID = ["rt-already": Self.sessionID]
+        await model.loadBots()
+
+        await model.prefetchConversations()
+
+        XCTAssertEqual(client.warmed.count, 1, "the bot is still warmed — its transcript is a read")
+        XCTAssertEqual(client.closedSessions, [],
+                       "the sweep closed a session somebody else was holding")
+        XCTAssertTrue(model.restoreConversation(for: cody))
     }
 }
 #endif

@@ -431,6 +431,17 @@ public final class AppModel: ObservableObject {
     /// honest answer.
     private var conversationCacheHostStamp: [String: Date] = [:]
 
+    /// Whether each snapshot was read off the host (the launch sweep) rather than captured from a
+    /// transcript already on screen.
+    ///
+    /// The difference is what licenses keeping a cached conversation without a resume. A sweep read
+    /// is the host's state at the moment it was taken, so an unreported preview stamp does not mean
+    /// "something new". A captured transcript carries only the stamp of the rows it contains, so an
+    /// unknown host stamp means the host *may* have written since — and a reply that arrived while
+    /// the owner was away then stays invisible for the whole freshness window, which is the reported
+    /// "message arrived, the thread does not show it until I switch away and back".
+    private var conversationCacheReadFromHost: [String: Bool] = [:]
+
     /// The host's newest-message stamp the transcript on screen already contains, per bot.
     ///
     /// The same fact for the open conversation: the re-read in `reconcileOpenChatWithHost` happens
@@ -1043,15 +1054,36 @@ public final class AppModel: ObservableObject {
     /// when i go to each bot it doesnt have to load it fresh every single time after bootup".
     ///
     /// This is a *read*, not an open: it resolves the same conversation id `endlessSession` would
-    /// (`CanonicalBotChat.plan`, the one authority for that question) and fetches its newest page with
-    /// `session.history`, which attaches no transport and cannot move the client's bound profile. A bot
-    /// whose plan says `create` is skipped on purpose — a background sweep must never mint a session
-    /// the person has not asked for.
+    /// (`CanonicalBotChat.plan`, the one authority for that question) and asks the host to **resume**
+    /// it. A bot whose plan says `create` is skipped on purpose — a background sweep must never mint
+    /// a session the person has not asked for.
     ///
-    /// What it stores is deliberately marked `.distantPast` on the host stamp, so opening the bot still
-    /// resumes: the snapshot is there to be *painted* while that round trip runs, not to stand in for
-    /// it. Freshness would otherwise let a warm cache skip the read and leave paging on a cursor this
-    /// prefetch never had.
+    /// **Resolve, then resume.** `session.resume` is the only call that turns a stored id into rows
+    /// for a conversation nothing is attached to. `session.history` looks like the read for this and
+    /// is not: it resolves in-memory live sessions only (`session_registry.py::_sess_nowait` is
+    /// `_sessions.get(sid)`; the `4001` says "client should resume the stored session"), so it
+    /// answered "session not found" for every bot — with a `profile` and without one — and the sweep
+    /// warmed nothing at all (build 0.1.612). A resume answers in 0.03–0.7 s and returns the messages
+    /// itself, so one call per bot is the whole warm.
+    ///
+    /// The id is still asked of the host for *this bot* first: the id this device remembered is a
+    /// hint at best, and when the host re-mints a bot's conversation the resume answers `4001`/`4007`
+    /// — treated as a *stale id*, dropped, re-resolved once, resumed again — not as a per-bot error
+    /// printed on every launch.
+    ///
+    /// **What is released, and why.** A resume registers a live session on the host attached to this
+    /// connection's transport, and a session on a live transport is never reaped or LRU-evicted
+    /// (`session_reaper.py::_session_is_lru_evictable` returns `_transport_is_dead(...)`), so eighteen
+    /// warm resumes would pin eighteen idle records *and* schedule eighteen agent builds. Each one
+    /// this sweep minted is therefore closed again straight away; one the host was already holding is
+    /// left alone, because that is somebody's open pane and closing it ends their turn. A live-session
+    /// read taken before the sweep is what tells the two apart.
+    ///
+    /// What it stores carries the moment it was read as the host stamp, so a return visit inside the
+    /// freshness window may keep it without a resume: this is the one path where "the host has
+    /// nothing newer" is a fact rather than a hope. Only a *complete* transcript is allowed to stand
+    /// in for that resume — a paged one (`earlierCursor != nil`) has its older half still on the host,
+    /// and its paging copy died with the release, so opening it resumes as it always did.
     public func prefetchConversations() async {
         // `connection.isLive` is the pairing answer that matters here: an unpaired model has no
         // transport, and the socket is the thing this sweep reads through.
@@ -1059,8 +1091,17 @@ public final class AppModel: ObservableObject {
         isPrefetching = true
         defer { isPrefetching = false }
 
-        let pageSize = 40
+        // The host's own view of what it is holding, taken before the sweep: a runtime id here is a
+        // pane somebody has attached, and the sweep must never close it. Unknown (a client with no
+        // registry, a failed read) means "nothing is live", which is the safe direction — the sweep
+        // then releases everything it resumes, and a fresh resume of a live session simply reattaches.
+        let alreadyLive = (try? await client.liveSessionIDs()) ?? []
+
         var warmed = 0
+        var attempted = 0
+        var resumeSeconds: [Double] = []
+        var failures: [String] = []
+        var stranded: [String] = []
         for bot in bots.prefix(Self.conversationCacheLimit) {
             guard connection.isLive else { break }
             // The conversation on screen has its own lifecycle; the sweep must not touch it.
@@ -1071,64 +1112,177 @@ public final class AppModel: ObservableObject {
                conversationCache[bot.id]?.entries.isEmpty == false {
                 continue
             }
+            attempted += 1
 
-            // The host's own Bot Chat first — the identity that opening a bot uses — so the sweep
-            // fills both the transcript cache and the identity cache in one pass. Then the sweep's
-            // first switch already has the answer and costs a resume and nothing more.
-            let stored: SessionID
-            if let canonical = await canonicalChatIdentity(for: bot.id) {
-                stored = canonical
-            } else {
-                let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: bot.id),
-                                                legacy: await bridgePointerID(for: bot.id),
-                                                local: Self.defaults.string(forKey: Self.endlessKey(bot.id)))
-                switch plan.step {
-                case .resume(let id), .adopt(let id):
-                    stored = id
-                case .create:
-                    // Nothing to read yet, and minting one here would be the sweep inventing a
-                    // conversation. It stays empty until the person opens it.
-                    continue
+            // One resolve, one resume. A stale id earns exactly one second attempt with everything
+            // this device remembered about that bot forgotten first; a second failure is the only
+            // thing that becomes a report.
+            var attempt = 0
+            var warmedThisBot = false
+            var lastError: Error?
+            while attempt < 2 {
+                guard let stored = await resolvedConversationID(for: bot.id,
+                                                                forgettingStale: attempt > 0)
+                else { break }
+                do {
+                    let started = Date()
+                    // The resume's answer *is* the transcript, and its `id` is the runtime id this
+                    // warm minted — the only id `session.close` below will accept.
+                    let resumed = try await client.warmResume(stored, profile: bot.id)
+                    let seconds = Date().timeIntervalSince(started)
+                    warmedThisBot = warmConversation(bot.id, session: stored, resumed: resumed)
+                    if warmedThisBot { resumeSeconds.append(seconds) }
+                    // Released before the next bot: one at a time is the whole point. A session that
+                    // was already live answers with *its* runtime id and is not ours to close, and a
+                    // turn in flight is never closed either — the cache is a read, not an interrupt.
+                    if mayReleaseWarmSession(resumed, alreadyLive: alreadyLive, for: bot.id) {
+                        do { try await client.closeSession(resumed.id) }
+                        catch { stranded.append("\(bot.id): \(error.localizedDescription)") }
+                    }
+                    break
+                } catch {
+                    lastError = error
+                    guard attempt == 0, Self.isStaleSessionError(error) else { break }
+                    // The host has never seen that id *for this bot*: it re-minted the bot's
+                    // conversation. Say so once, quietly, and let the second resolve answer.
+                    ClientLog.note("prefetch: \(bot.id)'s conversation id was stale; asking the "
+                                   + "host for the current one", level: .info, category: "cache")
+                    attempt += 1
                 }
             }
-
-            do {
-                let entries = try await client.history(stored, limit: pageSize)
-                guard !entries.isEmpty else { continue }
-                conversationCache[bot.id] = ConversationSnapshot(
-                    sessionID: stored,
-                    entries: SentAttachmentVault.decorate(entries, sessionID: stored),
-                    earlierCursor: nil,
-                    historyTotal: entries.count,
-                    openRequests: [],
-                    contextUsed: nil,
-                    contextMax: nil)
-                conversationCacheStamp[bot.id] = Date()
-                // The sweep read this page from the host seconds ago, so it IS the host's current state
-                // as of now. Recording a fake distant-past stamp made `latestHostStamp` look newer for
-                // every bot and forced a full resume the moment the person opened one — the visible
-                // "it preloads, then loads again" (reported 2026-11-17).
-                conversationCacheHostStamp[bot.id] = Date()
-                conversationCacheOrder.removeAll { $0 == bot.id }
-                conversationCacheOrder.append(bot.id)
-                while conversationCacheOrder.count > Self.conversationCacheLimit {
-                    let evicted = conversationCacheOrder.removeFirst()
-                    conversationCache.removeValue(forKey: evicted)
-                    conversationCacheStamp.removeValue(forKey: evicted)
-                    conversationCacheHostStamp.removeValue(forKey: evicted)
-                }
+            if warmedThisBot {
                 warmed += 1
-            } catch {
-                ClientLog.note("prefetch of \(bot.id) failed: \(error.localizedDescription)",
-                               level: .info, category: "cache")
+            } else if let lastError {
+                failures.append("\(bot.id): \(lastError.localizedDescription)")
             }
             // Sequential and gentle: this runs behind a screen the person is already using, and a
-            // burst of eight reads is what makes a host feel slow.
+            // burst of resume calls is what makes a host feel slow.
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
-        if warmed > 0 {
-            ClientLog.note("prefetched \(warmed) conversation(s) at launch", level: .info, category: "cache")
+        // One line for the whole sweep, with the count it affected and what a warm cost, so the
+        // report is "17 of 18 in 0.1 s each" rather than nothing until the first switch.
+        if attempted > 0 {
+            let average: Double? = resumeSeconds.isEmpty
+                ? nil : resumeSeconds.reduce(0, +) / Double(resumeSeconds.count)
+            let timing = average.map { String(format: " (resume %.1fs avg)", $0) } ?? ""
+            // A sweep that warmed something is a fact; one that warmed nothing is only a warning
+            // when something actually failed (a roster of empty chats warms nothing, by design).
+            ClientLog.note("cache prefetched \(warmed) of \(attempted) conversation(s) at launch"
+                           + timing,
+                           level: failures.isEmpty ? .info : .warning, category: "cache")
         }
+        // One line for the whole sweep, with the count it affected: eighteen identical
+        // "session not found" lines is a log nobody can read, and a per-bot error is a fact about
+        // one conversation rather than a failure of the launch.
+        if !failures.isEmpty {
+            ClientLog.note("cache prefetch could not warm \(failures.count) of \(attempted): "
+                           + Self.summarise(failures), level: .warning, category: "cache")
+        }
+        // The release half is a different failure from the warm half and gets its own line: the
+        // transcript is cached, but the host is still holding a session this sweep minted.
+        if !stranded.isEmpty {
+            ClientLog.note("cache prefetch left \(stranded.count) runtime session(s) on the host: "
+                           + Self.summarise(stranded), level: .warning, category: "cache")
+        }
+    }
+
+    /// Whether a warm resume's runtime session is the sweep's to release.
+    ///
+    /// Three separate reasons to leave it alone, and each one is a real session somebody is using:
+    /// the host was already holding it (a pane, in this app or another device), a turn is running on
+    /// it (`inflight` — closing it is an interrupt), or the person switched to that bot while the
+    /// sweep was mid-walk (their pane resume has just reattached the same runtime id).
+    private func mayReleaseWarmSession(_ resumed: SessionResume, alreadyLive: Set<SessionID>,
+                                       for botID: String) -> Bool {
+        !alreadyLive.contains(resumed.id) && !resumed.isStreaming && selectedBotID != botID
+    }
+
+    /// Up to four named failures, then a count — one line, and never eighteen of them.
+    private static func summarise(_ entries: [String], limit: Int = 4) -> String {
+        let shown = entries.prefix(limit).joined(separator: "; ")
+        return entries.count > limit ? shown + "; and \(entries.count - limit) more" : shown
+    }
+
+    /// The conversation the host says this bot has right now, or `nil` when it has none yet.
+    ///
+    /// `forgettingStale` is the stale-id half of the sweep: the identity this device cached, and the
+    /// id it remembered across launches, are both dropped before the host is asked again. Anything
+    /// remembered is a hint; the host's own Bot Chat is the authority.
+    private func resolvedConversationID(for botID: String, forgettingStale: Bool) async -> SessionID? {
+        if forgettingStale {
+            canonicalChatIDCache.removeValue(forKey: botID)
+            canonicalChatIDStamp.removeValue(forKey: botID)
+            Self.defaults.removeObject(forKey: Self.endlessKey(botID))
+        }
+        // The host's own Bot Chat first — the identity that opening a bot uses — so the sweep
+        // fills both the transcript cache and the identity cache in one pass. Then the sweep's
+        // first switch already has the answer and costs a resume and nothing more.
+        if let canonical = await canonicalChatIdentity(for: botID) { return canonical }
+        let plan = CanonicalBotChat.plan(host: await canonicalChatState(for: botID),
+                                        legacy: await bridgePointerID(for: botID),
+                                        local: Self.defaults.string(forKey: Self.endlessKey(botID)))
+        switch plan.step {
+        case .resume(let id), .adopt(let id):
+            return id
+        case .create:
+            // Nothing to read yet, and minting one here would be the sweep inventing a
+            // conversation. It stays empty until the person opens it.
+            return nil
+        }
+    }
+
+    /// File a warm resume's rows as this bot's snapshot.
+    ///
+    /// The **stored** id is what is filed, never `resumed.id`: that is the runtime id the warm
+    /// minted, it is released a line later, and after that the host refuses it (`4007`). Every user
+    /// of a snapshot — `restoreConversation`, a re-open, the session list, the bridge pointer —
+    /// addresses the conversation by its durable id, which is the only one a later resume accepts.
+    ///
+    /// `false` when the host holds no rows: an empty answer is not a failure, it is a conversation
+    /// with nothing in it yet.
+    @discardableResult
+    private func warmConversation(_ botID: String, session: SessionID,
+                                  resumed: SessionResume) -> Bool {
+        let entries = resumed.entries
+        guard !entries.isEmpty else { return false }
+        conversationCache[botID] = ConversationSnapshot(
+            sessionID: session,
+            entries: SentAttachmentVault.decorate(entries, sessionID: session),
+            // No cursor, and deliberately: paging is answered from the bridge's copy of *this*
+            // connection's resume, and this one is closed before the next bot. "Load earlier"
+            // therefore waits for the real resume on open — which a paged snapshot always gets,
+            // because it is not allowed to stand in for one (see the flag below).
+            earlierCursor: nil,
+            historyTotal: resumed.historyTotal > 0 ? resumed.historyTotal : entries.count,
+            openRequests: [],
+            contextUsed: nil,
+            contextMax: nil)
+        conversationCacheStamp[botID] = Date()
+        // The sweep read this page from the host seconds ago, so it IS the host's current state
+        // as of now. Recording a fake distant-past stamp made `latestHostStamp` look newer for
+        // every bot and forced a full resume the moment the person opened one — the visible
+        // "it preloads, then loads again" (reported 2026-11-17).
+        conversationCacheHostStamp[botID] = Date()
+        // Read off the wire just now, which is the only way this app can *know* the host has
+        // nothing newer without being told: a captured transcript's stamp is about the rows it
+        // contains, not about the moment it was taken.
+        //
+        // …but only a COMPLETE transcript may stand in for a resume. `earlierCursor != nil` means the
+        // host shipped the newest page of a long conversation, so the older half is still over there
+        // and this snapshot has no way to page to it (the release took the paging copy with it).
+        // Keeping that one without a resume would show a conversation starting mid-thread with a dead
+        // "load earlier"; leaving the flag false brings the resume that fills it in.
+        conversationCacheReadFromHost[botID] = resumed.earlierCursor == nil
+        conversationCacheOrder.removeAll { $0 == botID }
+        conversationCacheOrder.append(botID)
+        while conversationCacheOrder.count > Self.conversationCacheLimit {
+            let evicted = conversationCacheOrder.removeFirst()
+            conversationCache.removeValue(forKey: evicted)
+            conversationCacheStamp.removeValue(forKey: evicted)
+            conversationCacheHostStamp.removeValue(forKey: evicted)
+            conversationCacheReadFromHost.removeValue(forKey: evicted)
+        }
+        return true
     }
 
     /// Remember what is on screen for the bot being left.
@@ -1150,6 +1304,9 @@ public final class AppModel: ObservableObject {
         // conversation was open cannot make a stale snapshot look current. Unknown is `.distantPast`
         // — the eager direction, one resume at worst, never a reply shown as missing.
         conversationCacheHostStamp[botID] = transcriptHostStamp[botID] ?? .distantPast
+        // Captured, not read: these rows are what was on screen, and nothing here knows what the
+        // host wrote after them.
+        conversationCacheReadFromHost[botID] = false
         ClientLog.note("cached \(transcript.count) rows for \(botID) before switching away",
                        level: .info, category: "cache")
         conversationCacheOrder.removeAll { $0 == botID }
@@ -1158,6 +1315,7 @@ public final class AppModel: ObservableObject {
             let evicted = conversationCacheOrder.removeFirst()
             conversationCache.removeValue(forKey: evicted)
             conversationCacheHostStamp.removeValue(forKey: evicted)
+            conversationCacheReadFromHost.removeValue(forKey: evicted)
         }
     }
 
@@ -2132,26 +2290,63 @@ public final class AppModel: ObservableObject {
         let restored = restoreConversation(for: botID)
         isOpeningConversation = !restored
         defer { isOpeningConversation = false }
-        // A chat you left seconds ago is already on screen, so asking the host again only reloads
-        // what the person is reading — **unless something arrived since**, which the cache cannot
-        // know and the socket may not have said: a reply to a bot that was not on screen is dropped
-        // by every branch of `apply(_:)`, not buffered. The row and the banner learn about it from
-        // the sweep, so a pane opened on the strength of that banner used to paint the reply's
-        // absence and make no host read at all for up to two minutes.
+        // A cache is only allowed to stand in for a host read when the app can *prove* the host has
+        // written nothing since. Three independent facts say otherwise, and any one of them means
+        // the resume runs (the cached rows stay on screen while it does, so the pane is never
+        // blank):
         //
-        // Two facts, both already in hand, decide it: `unseenSessions` (the socket named a session
-        // that is not the one on screen) and the host's own newest stamp for this bot against the
-        // stamp this snapshot contained. Neither compares the host's clock with ours.
-        let hostIsAhead = latestHostStamp(for: botID) > (conversationCacheHostStamp[botID] ?? .distantPast)
-        let socketSaidSo = selectedSessionID.map { unseenSessions.contains($0) } ?? false
+        //   - the bot's unread badge is up: something arrived after the snapshot was taken;
+        //   - the host's own newest stamp for this bot is newer than the stamp the snapshot
+        //     contains (`botPreviewTimes`, a *host* stamp, compared only with another host stamp,
+        //     so no device clock is involved);
+        //   - the socket named a session for this bot that is not the one on screen.
+        //
+        // An **unknown** host stamp is not proof of quiet. A preview the sweep has not delivered
+        // yet leaves `botPreviewTimes` nil, and reading that as "nothing new" is exactly how a reply
+        // stayed invisible for the whole freshness window — reported as "a message arrives but the
+        // thread does not show it until you switch away and back", with the sweep finding the newer
+        // message a moment later. So the cache is kept only when the newest stamp is known to be no
+        // newer, or when the snapshot itself was read off the host during this launch's sweep.
+        let cachedHost = conversationCacheHostStamp[botID] ?? .distantPast
+        let hostNewest = botPreviewTimes[botID]
+        let hostIsAhead = (hostNewest ?? .distantPast) > cachedHost
+        // A sweep read is the host's own state as of that moment, so an unreported stamp adds
+        // nothing to it; a captured transcript needs the stamp before it can be called current.
+        let hostIsKnown = hostNewest != nil || conversationCacheReadFromHost[botID] == true
+        let hostKnownQuiet = hostIsKnown && !hostIsAhead
+        let unread = unreadBots.contains(botID) || (unreadCounts[botID] ?? 0) > 0
+        // The session this bot's snapshot holds, not whichever id the *previous* bot left selected:
+        // the comparison used to be made against the old window's session, which is never in
+        // `unseenSessions`, so a moved conversation read as "the socket said nothing".
+        let cachedSession = conversationCache[botID]?.sessionID ?? selectedSessionID
+        let socketSaidSo = unseenSessions.contains { $0 == cachedSession || sessionBots[$0] == botID }
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
            Date().timeIntervalSince(stamp) < conversationCacheFreshness,
-           !hostIsAhead, !socketSaidSo {
+           hostKnownQuiet, !unread, !socketSaidSo {
             ClientLog.note("returned to \(botID) from cache "
-                           + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume",
+                           + "(\(Int(Date().timeIntervalSince(stamp)))s old), no resume: the cache "
+                           + "already holds the host's newest message",
                            level: .info, category: "cache")
             return selectedSessionID
+        }
+        // The mirror of that line, so a resume the cache made necessary is never silent either: it
+        // names which fact overruled the snapshot.
+        if restored, let stamp = conversationCacheStamp[botID],
+           Date().timeIntervalSince(stamp) < conversationCacheFreshness,
+           pinnedSessionPicks[botID] == nil, connection.isLive,
+           (!hostKnownQuiet || unread || socketSaidSo) {
+            var reasons: [String] = []
+            if unread { reasons.append("the bot has unread activity since the snapshot") }
+            if hostIsAhead { reasons.append("the host's newest message is newer than the snapshot") }
+            if hostNewest == nil && conversationCacheReadFromHost[botID] != true {
+                reasons.append("the host's newest message is not known yet")
+            }
+            if socketSaidSo { reasons.append("the socket named a newer session for this bot") }
+            ClientLog.note("returned to \(botID) from cache "
+                           + "(\(Int(Date().timeIntervalSince(stamp)))s old), resuming: "
+                           + reasons.joined(separator: "; "),
+                           level: .info, category: "cache")
         }
         // A pick made in All Sessions outranks the canonical chat exactly once, and it is checked
         // after the cached paint (a pick may have nothing cached, and the pane must not flash
@@ -2579,6 +2774,8 @@ public final class AppModel: ObservableObject {
         // the user keep typing into a session nothing will reopen.
         conversationCache.removeValue(forKey: botID)
         conversationCacheOrder.removeAll { $0 == botID }
+        conversationCacheHostStamp.removeValue(forKey: botID)
+        conversationCacheReadFromHost.removeValue(forKey: botID)
         selectedSessionID = nil
         transcript = []
         transcriptOwner = nil
@@ -2833,6 +3030,16 @@ public final class AppModel: ObservableObject {
     private static func isForgottenSession(_ error: GatewayError) -> Bool {
         guard let rpc = error.rpcError else { return false }
         return rpc.code == 4001 || rpc.code == 4007
+    }
+
+    /// The same two codes, from an untyped catch: a session id the host has never seen.
+    ///
+    /// The prefetch leans on this to tell "this bot's conversation was re-minted, so the id this
+    /// device remembered is stale" from "this bot's transcript cannot be read". Only the first is
+    /// worth re-resolving; only the second is worth a line in the log.
+    private static func isStaleSessionError(_ error: Error) -> Bool {
+        guard let gateway = error as? GatewayError else { return false }
+        return isForgottenSession(gateway)
     }
 
     /// Read the host's current model for the header chip.

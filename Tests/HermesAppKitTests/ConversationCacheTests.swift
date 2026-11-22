@@ -82,7 +82,7 @@ final class ConversationCacheTests: XCTestCase {
                        "the cached conversation is painted before the host answers")
         _ = await switching.value
         XCTAssertEqual(model.transcript.count, 3,
-                       "inside the freshness window the cache answers: no resume, no reload")
+                       "the host's page merges into the painted rows instead of replacing them")
 
         // Past the window the host is asked again, and its answer replaces the snapshot.
         model.conversationCacheFreshness = 0
@@ -159,6 +159,129 @@ final class ConversationCacheTests: XCTestCase {
                        "the oldest was visited \(overshoot) bots ago and must be evicted")
         XCTAssertTrue(model.restoreConversation(for: bots[overshoot - 1]))
         await model.stop()
+    }
+
+    // MARK: A cached thread is only current when the host says so
+
+    /// Build 0.1.612: "a message arrives but the thread does not show it until you switch away and
+    /// back".
+    ///
+    /// The host's newest-message stamp had not reached this device yet (the previews sweep had not
+    /// run), so `botPreviewTimes` was nil; the cache shortcut read that as "nothing new" and skipped
+    /// the resume. An unknown stamp is not proof of quiet — the return visit must read the host, and
+    /// it must still paint first so the pane is never blank.
+    func testReturningResumesWhenTheHostsNewestMessageIsUnknown() async {
+        let (model, client) = await opened("unknown", entries: [line("old reply")])
+        let cody = bot("unknown-cody"), atlas = bot("unknown-atlas")
+        defer { forget([cody, atlas]) }
+        await model.endlessSession(for: cody)
+        await model.endlessSession(for: atlas)
+
+        // The reply landed on the host while the owner was looking at atlas, and no previews sweep
+        // has reported it yet.
+        client.entries = [line("old reply"), line("reply nobody saw")]
+        let resumesBefore = client.resumed.count
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.count, resumesBefore + 1,
+                       "a cache with no known host stamp cannot stand in for a host read")
+        XCTAssertEqual(model.transcript.map(\.text), ["old reply", "reply nobody saw"],
+                       "the reply is on screen without switching away and back")
+    }
+
+    /// The same fact arriving by the other door: the sweep reported a newer host message (which is
+    /// what lights the row's badge), and the return visit must act on it.
+    func testReturningResumesWhenTheHostReportedANewerMessage() async {
+        let (model, client) = await opened("newer", entries: [line("old reply")])
+        let cody = bot("newer-cody"), atlas = bot("newer-atlas")
+        defer { forget([cody, atlas]) }
+        let seen = Date(timeIntervalSince1970: 1_700_000_000)
+        client.bots = [Bot(id: cody), Bot(id: atlas)]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "old reply", role: "assistant",
+                                         timestamp: seen.timeIntervalSince1970),
+            atlas: BotConversationPreview(text: "old reply", role: "assistant",
+                                          timestamp: seen.timeIntervalSince1970),
+        ])
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+        await model.endlessSession(for: atlas)
+
+        // A reply lands on cody: the host's own stamp moves, and the sweep says so.
+        client.entries = [line("old reply"), line("reply nobody saw")]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "reply nobody saw", role: "assistant",
+                                         timestamp: seen.addingTimeInterval(60).timeIntervalSince1970),
+        ])
+        await model.loadBotPreviews(force: true)
+        let resumesBefore = client.resumed.count
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.count, resumesBefore + 1,
+                       "the host has a message the snapshot does not contain")
+        XCTAssertEqual(model.transcript.map(\.text), ["old reply", "reply nobody saw"])
+    }
+
+    /// The unread door: the badge is up, so something arrived after the snapshot — even when the
+    /// host's stamp this device last heard is the one the snapshot holds.
+    func testReturningResumesWhenTheBotHasUnreadActivity() async {
+        let (model, client) = await opened("unread", entries: [line("old reply")])
+        let cody = bot("unread-cody"), atlas = bot("unread-atlas")
+        defer { forget([cody, atlas]) }
+        let seen = Date(timeIntervalSince1970: 1_700_000_000)
+        client.bots = [Bot(id: cody), Bot(id: atlas)]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "old reply", role: "assistant",
+                                         timestamp: seen.timeIntervalSince1970),
+            atlas: BotConversationPreview(text: "old reply", role: "assistant",
+                                          timestamp: seen.timeIntervalSince1970),
+        ])
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+        await model.endlessSession(for: atlas)
+        await model.loadBotPreviews(force: true)
+        // The badge is what the person acts on; the thread must agree with it.
+        client.entries = [line("old reply"), line("reply nobody saw")]
+        model.markUnread(cody)
+        let resumesBefore = client.resumed.count
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.count, resumesBefore + 1,
+                       "an unread bot cannot open onto a thread that does not contain the unread")
+        XCTAssertEqual(model.transcript.map(\.text), ["old reply", "reply nobody saw"])
+    }
+
+    /// And the other half of the rule: when the host's own stamp says the snapshot already contains
+    /// its newest message, the cache answers and the thread is not reloaded.
+    func testACacheTheHostConfirmsIsCurrentIsNotReloaded() async {
+        let (model, client) = await opened("quiet", entries: [line("only reply")])
+        let cody = bot("quiet-cody"), atlas = bot("quiet-atlas")
+        defer { forget([cody, atlas]) }
+        let seen = Date(timeIntervalSince1970: 1_700_000_000)
+        client.bots = [Bot(id: cody), Bot(id: atlas)]
+        client.previewFeed = BotPreviewFeed(previews: [
+            cody: BotConversationPreview(text: "only reply", role: "assistant",
+                                         timestamp: seen.timeIntervalSince1970),
+            atlas: BotConversationPreview(text: "only reply", role: "assistant",
+                                          timestamp: seen.timeIntervalSince1970),
+        ])
+        await model.loadBots()
+
+        await model.endlessSession(for: cody)
+        await model.endlessSession(for: atlas)
+        await model.loadBotPreviews(force: true)
+        let resumesBefore = client.resumed.count
+
+        await model.endlessSession(for: cody)
+
+        XCTAssertEqual(client.resumed.count, resumesBefore,
+                       "the host's newest message is the one the snapshot holds: no reload")
+        XCTAssertEqual(model.transcript.map(\.text), ["only reply"])
     }
 }
 #endif

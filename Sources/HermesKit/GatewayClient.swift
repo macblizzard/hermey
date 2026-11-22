@@ -112,6 +112,56 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func archiveSession(_ session: SessionID, profile: String?) async throws
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry]
 
+    /// The same read, scoped to the bot that owns the conversation.
+    ///
+    /// `session.history` resolves a session id **only in the host's in-memory registry**
+    /// (`session_registry.py::_sess_nowait` is a plain `_sessions.get(sid)`, and its `4001` carries the
+    /// comment "client should resume the stored session"). A stored id for a conversation nobody has
+    /// attached therefore answers `session not found` — *with or without* a `profile`, which is what
+    /// the launch prefetch's eighteen failures actually were (build 0.1.612). This call is for a
+    /// conversation that already has a live pane, addressed by the **runtime** id a resume returned;
+    /// warming an unseen bot is `warmResume`, never this.
+    ///
+    /// A client with a single profile to resolve against has nothing to scope, so the default below
+    /// forwards to the unscoped read.
+    func history(_ id: SessionID, limit: Int, profile: String?) async throws -> [TranscriptEntry]
+
+    /// Warm one bot's conversation **without opening it**.
+    ///
+    /// `session.resume` is the only call that turns a *stored* id into rows for a conversation no
+    /// transport is attached to, and it answers with the messages itself — measured on the live host:
+    /// `{profile, session_id}` in, `session_id` (runtime), `resumed` (the stored id), `message_count`
+    /// and `messages` back, in 0.03–0.7 s. One call is the whole warm.
+    ///
+    /// Deliberately **not** `resumeSession`: that one binds the connection to the profile and adopts
+    /// the runtime id as *the* attached session, which is the open pane's own state. Eighteen of those
+    /// at launch would leave the socket bound to whichever bot was warmed last, and every subsequent
+    /// session-scoped call would be addressed with a stranger's runtime id (`4001`). A sweep is a
+    /// read; it must not take the socket away from the chat on screen.
+    ///
+    /// A resume registers a **live session on the host**, attached to this connection's transport, and
+    /// a session on a live transport is never reaped or LRU-evicted — so a client that warms must also
+    /// `closeSession` the runtime id it minted, or it pins one idle agent per bot for the life of the
+    /// connection. `liveSessionIDs` is how it tells what it minted from what was already there.
+    ///
+    /// A client that cannot separate warming from attaching answers with the ordinary resume.
+    func warmResume(_ id: SessionID, profile: String) async throws -> SessionResume
+
+    /// The runtime ids the host is holding live right now (`session.active_list`).
+    ///
+    /// Needed because releasing a warm resume is only safe for a session the sweep *created*: an id
+    /// that was already here belongs to somebody's pane, and closing it ends their turn (measured —
+    /// it waits 5 s for the turn thread, then tears the agent down). There is no other way to tell the
+    /// two apart: a resume that reuses a live session answers with that session's id, not a new one.
+    func liveSessionIDs() async throws -> Set<SessionID>
+
+    /// Release one **runtime** session a warm resume created (`session.close`, which takes the runtime
+    /// id and not the stored one).
+    ///
+    /// Idempotent from the caller's point of view: a session that is already gone is not an error
+    /// worth reporting.
+    func closeSession(_ id: SessionID) async throws
+
     /// One page of rows older than the transcript a resume already delivered.
     ///
     /// A long conversation does not fit in one WebSocket message: iOS refuses to deliver a
@@ -358,6 +408,26 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
 }
 
 extension GatewayClientProtocol {
+    /// A client with one profile to resolve against answers the scoped read with the unscoped one.
+    /// Declared as a default so every stub conformance stays valid while the real client's own
+    /// three-argument `history` dispatches dynamically.
+    public func history(_ id: SessionID, limit: Int, profile: String?) async throws -> [TranscriptEntry] {
+        try await history(id, limit: limit)
+    }
+
+    /// A client with one shape of resume has to give the sweep the same call: the rows still arrive,
+    /// only the client-side bookkeeping that this default cannot fake is skipped.
+    public func warmResume(_ id: SessionID, profile: String) async throws -> SessionResume {
+        try await resumeSession(id, profile: profile)
+    }
+
+    /// A client with no live-session registry — the unpaired one, a fixture, a preview — knows of
+    /// nothing already held, so every warm resume it is asked for counts as its own to release.
+    public func liveSessionIDs() async throws -> Set<SessionID> { [] }
+
+    /// A client with no registry of runtime sessions has nothing to release.
+    public func closeSession(_ id: SessionID) async throws {}
+
     /// A client with no reconnect ladder — the unpaired one, a fixture, a preview — has nothing to
     /// bring forward: there is no scheduled attempt to end. Declared as a default so every stub
     /// conformance stays valid while the real client's own `retryNow` dispatches dynamically.

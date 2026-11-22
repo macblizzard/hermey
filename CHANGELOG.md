@@ -67,6 +67,32 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **The launch sweep actually pre-warms the chats.** The sweep read every bot's transcript with
+  `session.history`, and that call resolves **only sessions the host is already holding live**
+  (`_sess_nowait` is a plain `_sessions.get(sid)`; its `4001` says "client should resume the stored
+  session"). A `profile` did not help — measured on the live host, a stored id is refused with one
+  and without one — so the sweep failed for every bot, eighteen times a launch, and nothing was ever
+  warm. Warming is a **resume** now: `session.resume {profile, session_id}` answers in 0.03–0.7 s and
+  carries the `messages` itself, one call per bot, walked one bot at a time. A resume registers a live
+  session on the host attached to this connection, and such a session is never reaped or LRU-evicted,
+  so each one the sweep minted is closed again by the **runtime** id the resume answered with — while
+  a session the host was already holding (another window, another device) is left alone, and a turn
+  in flight is never closed. The sweep also resolves the conversation from the host *before* resuming
+  it, and treats `session not found` as what it is — a stale id, because the host re-minted that
+  bot's conversation — by dropping the remembered id and asking once more. What it reports is two
+  lines at most: `cache prefetched 17 of 18 conversation(s) at launch (resume 0.1s avg)`, and one
+  warning naming the few that failed with their reason
+  (`Sources/HermesKit/GatewayClient.swift`, `Sources/HermesKit/GatewayClientActor.swift`,
+  `Sources/HermesAppKit/AppModel.swift`).
+- **A reply that arrives while you are away is in the thread when you come back.** Returning to a
+  conversation inside the cache window kept the cached rows and skipped the resume whenever the
+  host's newest-message stamp had not reached the device yet — `nil` compared as "nothing new" — so
+  a message the badge already knew about stayed invisible until something else forced a re-read. The
+  cache is now kept only when the host is *proven* quiet: its newest stamp is known and no newer than
+  the snapshot's, the bot has no unread activity, and the socket named no other session for it.
+  Otherwise the snapshot still paints first and the resume runs. A skipped resume says why
+  (`no resume: the cache already holds the host's newest message`), and so does one the cache made
+  necessary (`resuming: the host's newest message is newer than the snapshot`).
 - **View log can be copied, counted and sent.** The Mac sheet's Copy, Share and Clear buttons were
   `ToolbarItem`s, and the system's sheet chrome dropped them: the owner was looking at a sheet whose
   only buttons were *Close* and *Refresh* while the copy code sat in the file. Copy, share and clear
@@ -829,4 +855,16 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   sheet presentation drew only Close and Refresh there, so the sheet showed no copy at all. Copy and Share are
   now in the sheet body beside the entry count: *Copy shown*, *Copy all* (including lines a paused tail is
   holding back) and *Share log*, each with a receipt that says how much was copied — "Copied 214 lines shown".
+
+## [0.1.613] — 2026-11-22
+
+### Fixed
+- **Prewarm works again.** At launch the app fetched every bot's transcript through `session.history`, which the host
+  only answers for a conversation already attached in memory — so all 18 bots failed with "session not found" and the
+  list stayed cold until each chat was opened. Warming now resumes each bot's stored conversation, keeps the messages
+  and releases the runtime session it minted, so a launch warms the whole roster without leaving agents behind.
+- **A reply that arrives while you are in another chat now shows up when you return.** The cache painted first and then
+  skipped the resume, on the strength of a timestamp that is simply unknown before the first sweep — unknown was read as
+  "nothing new". Returning now resumes whenever the host may know more than the cache does, and says why: "resuming:
+  the host's newest message is not known yet".
 
