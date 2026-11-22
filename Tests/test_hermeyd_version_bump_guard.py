@@ -63,6 +63,7 @@ class TheGuardRefusesADrift(unittest.TestCase):
         self.repo.manifest("0.2.0")
         self.repo.write("hermeyd/src/main.rs", "fn main() {}\n")
         self.repo.write("README.md", "readme\n")
+        self.repo.write("CHANGELOG.md", "## [0.1.615] — 2026-11-22\n\n- something\n")
         self.base = self.repo.commit("initial")
 
     def tearDown(self) -> None:
@@ -76,9 +77,26 @@ class TheGuardRefusesADrift(unittest.TestCase):
         self.repo.commit("change the program")
         result = self.guard(self.base)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("source changed but the version did not", result.stdout)
+        self.assertIn("hermeyd source changed", result.stdout)
         self.assertIn("hermeyd/src/main.rs", result.stdout)
         self.assertIn("Cargo.toml", result.stdout)
+
+    def test_a_new_release_without_a_bump_fails(self) -> None:
+        # The owner's standing instruction: the host-service number moves with every app release, so a
+        # build can always be traced to the service deployed beside it.
+        self.repo.write("CHANGELOG.md", "## [0.1.616] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
+        self.repo.commit("changelog for a release")
+        result = self.guard(self.base)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("a new app release was cut (0.1.615 → 0.1.616)", result.stdout)
+
+    def test_a_new_release_with_a_bump_passes(self) -> None:
+        self.repo.write("CHANGELOG.md", "## [0.1.616] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
+        self.repo.manifest("0.2.2")
+        self.repo.commit("release, with the service bumped")
+        result = self.guard(self.base)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("release 0.1.615 → 0.1.616", result.stdout)
 
     def test_a_bundled_asset_change_also_needs_a_bump(self) -> None:
         # The bundled agent skills are part of the deployed program: a host can run new behaviour
