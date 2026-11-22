@@ -238,6 +238,10 @@ jobs:
     # thing here, and a 15-minute default would cancel it on a busy pool rather than report.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The version-bump guard diffs against the PR base, so this job cannot work on a
+          # shallow clone — the ref it compares to simply is not there.
+          fetch-depth: 0
       # rustup ships on the ubuntu images, so this needs no marketplace action — and a toolchain
       # fetched by a third-party action is one more supply chain in a job that compiles the code
       # guarding the host's credentials.
@@ -251,6 +255,13 @@ jobs:
       # `cargo build` here is ~6 minutes of runner time; a cached `target` is hundreds of megabytes
       # of storage. See Tests/test_actions_storage.py, which refuses any cache that is not the
       # SwiftPM resolver's.
+      - name: Refuse a source change without a version bump
+        # `hermeyd --version` is the only way to tell which build a host is running, and it lies the
+        # moment the version stops tracking the code. Cheap check, placed before the slow compile.
+        run: |
+          python3 Tools/check_hermeyd_version_bump.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before }}" \
+            --head HEAD
       - name: Test
         run: cargo test
         working-directory: hermeyd
