@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.619",
-          "buildVersion": "619",
-          "date": "2026-11-22T21:02:36Z",
-          "localizedDescription": "### Fixed\n- **The Mac conversation no longer slides while you read history.** Loading older messages inserts rows above the\n  viewport, and the Mac transcript did nothing about it, so everything under the pointer moved down by the height of\n  the page. It now holds the clip view's origin across the merge \u2014 no animation, released the moment you drag or jump\n  to the bottom.\n- **The Dynamic Island fits.** The pill spanned two-thirds of the screen and covered the clock: a `.timer` text fills\n  the width it is offered, and a compact slot offers all of it. Every compact slot is now size-pinned, the bot's name\n  is shortened in code, and a finished turn shows a clipped line of what the bot actually said.\n- **The share sheet carries plain files.** A file from Files was refused as \"too large\" without its size ever being\n  read, because the size probe ran before the security scope was opened. Files are carried now, and a refusal names\n  the file and the reason.\n- **The share sheet says which problem it has.** \"Open Hermey once\" no longer stands in for \"this build has no app\n  group\" \u2014 no shared storage, no bot list yet, and a stale list are three distinct messages, with a Reload button.\n- **A reply named by a session the app cannot place re-reads the chat** instead of vanishing until you switch away and\n  back.\n- **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.619/Hermey-0.1.619-b619.ipa",
-          "size": 5197318,
+          "version": "0.1.620",
+          "buildVersion": "620",
+          "date": "2026-11-22T21:26:43Z",
+          "localizedDescription": "### Changed\n- **No share-sheet entry.** It cannot work on a sideloaded install: a third-party signing certificate can carry\n  an app-group entitlement but cannot provision the group id the extension needs, so the sheet could only ever say\n  \"no shared storage yet\". The extension, the entitlement and the wiring are removed.\n\n### Fixed\n- **The expanded Live Activity is no longer an empty black bar.** The expanded island's minimum height is 84 pt,\n  which fits one row; asking for a second row while a turn runs collapsed the lower region and left the pill with\n  nothing but the bot's name. The bottom row now appears only when the turn has finished \u2014 status and a clipped\n  line of the reply \u2014 so a running turn is name plus timer, and a finished one is name, elapsed and what was said.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.620/Hermey-0.1.620-b620.ipa",
+          "size": 5024668,
           "minOSVersion": "17.0",
-          "sha256": "6a80549ae34118fb06fb920afce82951e03bd04306e55acac436f0e31f4ee47f"
+          "sha256": "d9ae030d547e5828f7d438fb61d97f1f4a01f329298116cedcc1efd2423c6d85"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.619 (619)",
-      "identifier": "hermes-0.1.619-619",
-      "caption": "### Fixed\n- **The Mac conversation no longer slides while you read history.** Loading older messages inserts rows above the\n  viewport, and the Mac transcript did nothing about it, so everything under the pointer moved down by the height of\n  the page. It now holds the clip view's origin across the merge \u2014 no animation, released the moment you drag or jump\n  to the bottom.\n- **The Dynamic Island fits.** The pill spanned two-thirds of the screen and covered the clock: a `.timer` text fills\n  the width it is offered, and a compact slot offers all of it. Every compact slot is now size-pinned, the bot's name\n  is shortened in code, and a finished turn shows a clipped line of what the bot actually said.\n- **The share sheet carries plain files.** A file from Files was refused as \"too large\" without its size ever being\n  read, because the size probe ran before the security scope was opened. Files are carried now, and a refusal names\n  the file and the reason.\n- **The share sheet says which problem it has.** \"Open Hermey once\" no longer stands in for \"this build has no app\n  group\" \u2014 no shared storage, no bot list yet, and a stale list are three distinct messages, with a Reload button.\n- **A reply named by a session the app cannot place re-reads the chat** instead of vanishing until you switch away and\n  back.\n- **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.",
-      "date": "2026-11-22T21:02:36Z",
+      "title": "Hermes 0.1.620 (620)",
+      "identifier": "hermes-0.1.620-620",
+      "caption": "### Changed\n- **No share-sheet entry.** It cannot work on a sideloaded install: a third-party signing certificate can carry\n  an app-group entitlement but cannot provision the group id the extension needs, so the sheet could only ever say\n  \"no shared storage yet\". The extension, the entitlement and the wiring are removed.\n\n### Fixed\n- **The expanded Live Activity is no longer an empty black bar.** The expanded island's minimum height is 84 pt,\n  which fits one row; asking for a second row while a turn runs collapsed the lower region and left the pill with\n  nothing but the bot's name. The bottom row now appears only when the turn has finished \u2014 status and a clipped\n  line of the reply \u2014 so a running turn is name plus timer, and a finished one is name, elapsed and what was said.",
+      "date": "2026-11-22T21:26:43Z",
       "tintColor": "#9A9AA0"
     }
   ],
