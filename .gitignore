@@ -45,10 +45,6 @@ bridge.env
 
 # XcodeGen writes these on every generate
 Apps/*/Info.plist
-# …except the share extension's, which is hand-written because XcodeGen would regenerate it from
-# `properties` and drop the NSExtension dictionary iOS discovers the share sheet through. Ignoring
-# it meant the target referenced a file that never reached the repo.
-!Apps/HermeyShareExtension/Info.plist
 *.xcresult
 Payload/
 
