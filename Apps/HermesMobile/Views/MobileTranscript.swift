@@ -4,6 +4,7 @@ import UIKit
 import HermesKit
 import HermesRender
 import HermeyUI
+import HermesA2UI
 
 /// One row of the conversation.
 ///
@@ -522,9 +523,21 @@ struct MobileTranscriptRow: View {
 
     private var assistant: some View {
         VStack(alignment: .leading, spacing: 2) {
-            // A `::blocks{id="…"}` line is a directive, not prose: the plugin's board is drawn in
-            // its place, and the tag itself never appears in the transcript.
-            if let boardID = GenUITag.boardID(in: entry.text) {
+            // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
+            // the plugin produced. The prose around it is the reply; the surface is drawn in its
+            // place. Turning `a2ui.surfaces.disabled` on falls through to the `::blocks` card.
+            if A2UISurfaceSettings.isEnabled, let surface = A2UIMarker.surfaces(in: entry.text).first {
+                let prose = A2UIMarker.textWithoutMarkers(entry.text)
+                if !prose.isEmpty {
+                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
+                        .accessibilityLabel(prose)
+                        .padding(.vertical, 4)
+                }
+                A2UISurfaceView(payload: surface)
+                    .padding(.vertical, 2)
+            } else if let boardID = GenUITag.boardID(in: entry.text) {
+                // A `::blocks{id="…"}` line is a directive, not prose: the plugin's board is drawn in
+                // its place, and the tag itself never appears in the transcript.
                 let prose = GenUITag.textWithoutTags(entry.text)
                 if !prose.isEmpty {
                     MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)

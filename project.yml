@@ -55,6 +55,8 @@ targets:
         product: HermesRender
       - package: HermesApps
         product: HermesAppKit
+      - package: HermesApps
+        product: HermesA2UI
       # macOS only: iOS cannot replace its own bundle, so the phone's notifier opens a URL instead
       # (HermesAppKit/Updates). Nothing here reaches the HermesMobile target.
       - package: Sparkle
@@ -145,6 +147,8 @@ targets:
         product: HermesRender
       - package: HermesApps
         product: HermesAppKit
+      - package: HermesApps
+        product: HermesA2UI
     info:
       path: Apps/HermesMobile/Info.plist
       properties:
