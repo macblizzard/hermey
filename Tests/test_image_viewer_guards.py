@@ -44,13 +44,15 @@ class ImageViewerGuards(unittest.TestCase):
         self.assertIn("plus.magnifyingglass", VIEWER)
 
     def test_the_mac_thumbnail_opens_the_viewer(self) -> None:
-        self.assertIn("ImageViewer(data: item.data, title: item.name, canExport: false)", MAC_ROW)
-        self.assertIn("viewingImage = ViewedImage(", MAC_ROW)
+        self.assertIn("ImageViewer(items: gallery.items", MAC_ROW)
+        self.assertIn("startIndex: gallery.startIndex", MAC_ROW)
+        self.assertIn("viewingImage = ViewedGallery(", MAC_ROW)
         self.assertIn(".sheet(item: $viewingImage)", MAC_ROW)
 
     def test_the_phone_thumbnail_opens_the_viewer(self) -> None:
-        self.assertIn("ImageViewer(data: item.data, title: item.name, canExport: false)", IOS_ROW)
-        self.assertIn("viewingImage = ViewedAttachment(", IOS_ROW)
+        self.assertIn("ImageViewer(items: gallery.items", IOS_ROW)
+        self.assertIn("startIndex: gallery.startIndex", IOS_ROW)
+        self.assertIn("viewingImage = ViewedGallery(", IOS_ROW)
         self.assertIn(".fullScreenCover(item: $viewingImage)", IOS_ROW)
 
 

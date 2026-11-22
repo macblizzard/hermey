@@ -138,6 +138,9 @@ targets:
       # Same reason as the Mac: a folder reference keeps noVNC's relative module imports working.
       - path: Apps/HermesMobile/Resources/novnc
         type: folder
+      # The Live Activity's attributes, compiled into the app as well as the widget so both sides
+      # agree on the payload the system is handed.
+      - path: Apps/HermesLiveActivity/HermeyTurnAttributes.swift
     dependencies:
       - package: HermesApps
         product: HermesKit
@@ -149,6 +152,10 @@ targets:
         product: HermesAppKit
       - package: HermesApps
         product: HermesA2UI
+      # Embedded, not just linked: an App Extension that is not copied into the app bundle makes
+      # `Activity.request` fail at runtime while the build stays perfectly green.
+      - target: HermesLiveActivity
+        embed: true
     info:
       path: Apps/HermesMobile/Info.plist
       properties:
@@ -202,12 +209,41 @@ targets:
           - fetch
         BGTaskSchedulerPermittedIdentifiers:
           - dev.hermey.app.mobile.refresh
+        # The bot-is-working Live Activity (lock screen card + Dynamic Island). Without this key iOS
+        # accepts the request and shows nothing, which looks exactly like a bug in the activity itself.
+        NSSupportsLiveActivities: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile
         PRODUCT_NAME: Hermey
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  # The widget extension that draws the bot-is-working card and the Dynamic Island.
+  HermesLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Apps/HermesLiveActivity
+        excludes:
+          - "Info.plist"
+      # No BrandAssets: the island is black in both appearances and an asset catalog here would be a
+      # second palette to keep in sync for no visible gain.
+    info:
+      path: Apps/HermesLiveActivity/Info.plist
+      properties:
+        CFBundleDisplayName: Hermey
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.LiveActivity
+        PRODUCT_NAME: HermeyLiveActivity
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # An extension is a second process with a smaller budget; linking the app's frameworks here
+        # would either fail to build or be rejected at load.
+        APPLICATION_EXTENSION_API_ONLY: "YES"
+        SKIP_INSTALL: "YES"
 
 schemes:
   HermesMac:

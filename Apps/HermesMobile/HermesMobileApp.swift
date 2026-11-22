@@ -17,6 +17,9 @@ import HermeyUI
 @main
 struct HermesMobileApp: App {
     @StateObject private var app = AppEnvironment()
+    /// The lock-screen card and Dynamic Island for a turn in progress. A coordinator of its own rather
+    /// than a property on the model: ActivityKit is an iOS surface, and the model is shared with the Mac.
+    @StateObject private var liveActivity = LiveActivityCoordinator()
 
     /// Background-refresh registration has to happen before the app finishes launching, or iOS
     /// drops the request and a suspended app never learns that a bot replied.
@@ -45,6 +48,9 @@ struct HermesMobileApp: App {
                 .task {
                     ThemeRuntime.restoreFromDefaults()
                     TypeScale.restoreScale()
+                    // Attached before `start()` so the first turn is already watched, and it sweeps any
+                    // activity orphaned by a previous launch that died mid-turn.
+                    liveActivity.attach(to: app.model)
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()

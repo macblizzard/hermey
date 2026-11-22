@@ -39,13 +39,15 @@ struct TranscriptRowView: View {
     @State private var hoveredAction: String?
     /// The attachment whose viewer is open. Held here rather than in the transcript so a scroll
     /// cannot take the sheet's data away with it.
-    @State private var viewingImage: ViewedImage?
+    /// Every picture this message carries, and which one was clicked — `ImageViewer` pages through
+    /// the rest, so a message with three screenshots no longer means closing and reopening.
+    @State private var viewingImage: ViewedGallery?
 
-    /// One decoded attachment, ready for `ImageViewer`.
-    struct ViewedImage: Identifiable {
+    /// The pictures a message carried, ready for `ImageViewer`, and where the viewer opens.
+    struct ViewedGallery: Identifiable {
         let id = UUID()
-        let name: String
-        let data: Data
+        let items: [ImageViewer.Item]
+        let startIndex: Int
     }
 
     private var reactionKey: String? {
@@ -168,9 +170,9 @@ struct TranscriptRowView: View {
                 // attachment metadata, so a message's own memory is all there is to draw.
                 if !bubbleAttachments.isEmpty {
                     HStack(spacing: 6) {
-                        ForEach(bubbleAttachments.filter { $0.isImage && $0.imageData != nil }) { attachment in
+                        ForEach(viewablePictures) { attachment in
                             if let data = attachment.imageData, let image = NSImage(data: data) {
-                                imageThumbnail(attachment, data: data, image: image)
+                                imageThumbnail(attachment, image: image)
                             }
                         }
                         ForEach(bubbleAttachments.filter { !$0.isImage || $0.imageData == nil }) { attachment in
@@ -222,10 +224,12 @@ struct TranscriptRowView: View {
             }
             .onHover { isHovered = $0 }
             .animation(.easeOut(duration: 0.12), value: isHovered)
-            // The picture, at its own size, with Save and Copy — the same viewer a generated
-            // artifact opens.
-            .sheet(item: $viewingImage) { item in
-                ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
+            // The pictures, at their own size, with Save and Copy — the same viewer a generated
+            // artifact opens, and one that pages through every picture of the message.
+            .sheet(item: $viewingImage) { gallery in
+                ImageViewer(items: gallery.items,
+                            startIndex: gallery.startIndex,
+                            canExport: false) { viewingImage = nil }
                     .frame(minWidth: 640, minHeight: 460)
                 .hermesSheetChrome()
             }
@@ -248,10 +252,11 @@ struct TranscriptRowView: View {
     /// The pictures that went with the words, each of them a door to the viewer.
     ///
     /// A thumbnail is a promise that the picture is here: clicking it opens `ImageViewer` rather than
-    /// doing nothing, and the corner glyph says so before the cursor tries.
-    private func imageThumbnail(_ attachment: SentAttachment, data: Data, image: NSImage) -> some View {
+    /// doing nothing, and the corner glyph says so before the cursor tries. Clicking one of several
+    /// opens the viewer on that one, with the others a keystroke away.
+    private func imageThumbnail(_ attachment: SentAttachment, image: NSImage) -> some View {
         Button {
-            viewingImage = ViewedImage(name: attachment.name, data: data)
+            openImage(attachment)
         } label: {
             Image(nsImage: image)
                 .resizable()
@@ -281,6 +286,20 @@ struct TranscriptRowView: View {
     /// Pictures the row remembers, or the host's references looked up in the image cache.
     private var bubbleAttachments: [SentAttachment] {
         entry.attachments.isEmpty ? entry.referenceAttachments : entry.attachments
+    }
+
+    /// The pictures of this message the row can actually draw, in the order they were attached.
+    private var viewablePictures: [SentAttachment] {
+        bubbleAttachments.filter { $0.isImage && $0.imageData != nil }
+    }
+
+    /// Open the viewer on this picture, with the rest of the message's pictures behind it.
+    private func openImage(_ attachment: SentAttachment) {
+        let pictures = viewablePictures
+        let start = pictures.firstIndex { $0.id == attachment.id } ?? 0
+        viewingImage = ViewedGallery(items: pictures.compactMap { picture in
+            picture.imageData.map { ImageViewer.Item(data: $0, name: picture.name) }
+        }, startIndex: start)
     }
 
     // MARK: Assistant

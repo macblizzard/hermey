@@ -19,17 +19,35 @@ import AppKit
 ///
 /// Zoom is a control as well as a gesture: +/−, `Fit`, and a pinch. The bytes drawn are the bytes that
 /// arrived, never a re-encoding.
+///
+/// A message can carry several pictures. The viewer is then a small gallery: it opens on the one that
+/// was tapped and pages through the rest — a horizontal swipe and a counter on the phone, the arrow
+/// keys and chevrons on the Mac — so looking at the second picture no longer means closing the first.
 public struct ImageViewer: View {
-    /// The encoded bytes, as they arrived.
-    public let data: Data
-    /// The file's name: the caption, and the name a save starts from.
-    public let title: String
+    /// One picture of the message: the bytes, and the name they were saved under.
+    public struct Item: Identifiable {
+        public let id = UUID()
+        /// The encoded bytes, as they arrived.
+        public let data: Data
+        /// The file's name: the caption, and the name a save starts from.
+        public let name: String
+
+        public init(data: Data, name: String) {
+            self.data = data
+            self.name = name
+        }
+    }
+
+    /// Every picture on offer, in the order the message carries them.
+    public let items: [Item]
     /// Whether the picture can leave the viewer (Save on the Mac, Share on the phone). Off for a
     /// picture the person already owns.
     public let canExport: Bool
     /// Called by Close, Esc, or Done.
     public let onClose: () -> Void
 
+    /// The picture on screen. The chrome — name, size, Copy, Save, Share — reads the current one.
+    @State private var index: Int
     @State private var zoom: CGFloat = 1
     /// The zoom a pinch started from, so a gesture multiplies rather than jumps.
     @State private var pinchBase: CGFloat?
@@ -37,16 +55,36 @@ public struct ImageViewer: View {
     /// the buttons out of the way on a phone.
     @State private var notice: String?
     #if os(iOS)
-    /// Where `Share` reads from: the bytes written once, on demand.
+    /// Where `Share` reads from: the bytes of the current page, written once, on demand.
     @State private var sharedFile: URL?
     #endif
+    #if os(macOS)
+    /// Arrow keys are the Mac's swipe. Focus is taken when the viewer opens, so the keys land here
+    /// and not on a control behind it — and a focused text field anywhere else keeps its own arrows.
+    @FocusState private var keyboardFocused: Bool
+    #endif
 
+    /// One picture, under its own name. Every transcript used this before a message could carry more.
     public init(data: Data, title: String, canExport: Bool = true, onClose: @escaping () -> Void) {
-        self.data = data
-        self.title = title
+        self.init(items: [Item(data: data, name: title)], canExport: canExport, onClose: onClose)
+    }
+
+    /// Every picture that came with one message, opening at the one that was tapped.
+    public init(items: [Item], startIndex: Int = 0, canExport: Bool = true, onClose: @escaping () -> Void) {
+        self.items = items
         self.canExport = canExport
         self.onClose = onClose
+        // A stale index from a message that changed underneath us opens the nearest picture
+        // rather than nothing at all.
+        let opening = items.isEmpty ? 0 : min(max(startIndex, 0), items.count - 1)
+        _index = State(initialValue: opening)
     }
+
+    /// The bytes on screen. Kept as the viewer's public face so a caller holding an `ImageViewer`
+    /// reads what is drawn, not what it was made with.
+    public var data: Data { current?.data ?? Data() }
+    /// The name on screen.
+    public var title: String { current?.name ?? "" }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -58,8 +96,114 @@ public struct ImageViewer: View {
         }
         .frame(minWidth: 320, minHeight: 240)
         .background(Tokens.canvas)
+        .onChange(of: index) { _, _ in
+            // A page opens fit — the zoom of the last picture would crop this one — and Share must
+            // follow the page, or it hands over the bytes the previous picture wrote.
+            zoom = 1
+            pinchBase = nil
+            #if os(iOS)
+            sharedFile = nil
+            #endif
+        }
+        #if os(macOS)
+        .focusable()
+        .focused($keyboardFocused)
+        .focusEffectDisabled()
+        .onAppear {
+            keyboardFocused = true
+            // The focus a window takes on its first layout pass can be dropped again a runloop
+            // later; asking twice is what makes the arrows work without a click first.
+            DispatchQueue.main.async { keyboardFocused = true }
+        }
+        .onKeyPress(.leftArrow, phases: .down) { _ in
+            guard canPage, index > 0 else { return .ignored }
+            index -= 1
+            return .handled
+        }
+        .onKeyPress(.rightArrow, phases: .down) { _ in
+            guard canPage, index < items.count - 1 else { return .ignored }
+            index += 1
+            return .handled
+        }
+        #endif
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Image viewer: \(title)")
+    }
+
+    // MARK: The gallery
+
+    private var current: Item? {
+        guard !items.isEmpty else { return nil }
+        return items[min(max(index, 0), items.count - 1)]
+    }
+
+    private var canPage: Bool { items.count > 1 }
+
+    /// "2 of 5": the one fact a gallery owes the reader, on both platforms.
+    private var counter: String { "\(index + 1) of \(items.count)" }
+
+    private func step(_ delta: Int) {
+        guard canPage else { return }
+        index = min(max(index + delta, 0), items.count - 1)
+    }
+
+    /// Every picture, one at a time.
+    ///
+    /// Nothing is decoded up front: the phone's `TabView` holds the page on screen and its immediate
+    /// neighbours and decodes each one as it comes into view; the Mac draws only the current page.
+    @ViewBuilder
+    private func pages(size: CGSize) -> some View {
+        #if os(iOS)
+        if canPage {
+            TabView(selection: $index) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { offset, item in
+                    page(item, size: size)
+                        .tag(offset)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            // VoiceOver's swipe is the rotor's, not the pager's: the pages need a named action.
+            .accessibilityAction(named: "Next image") { step(1) }
+            .accessibilityAction(named: "Previous image") { step(-1) }
+        } else if let item = current {
+            page(item, size: size)
+        }
+        #else
+        if let item = current {
+            page(item, size: size)
+                // A fresh identity per picture: the zoom of the last one is not this one's.
+                .id(item.id)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func page(_ item: Item, size: CGSize) -> some View {
+        ZStack {
+            Tokens.frame
+            if let image = Self.image(from: item.data) {
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .scaleEffect(zoom, anchor: .center)
+                    .frame(width: size.width, height: size.height)
+                    .gesture(pinch)
+            } else {
+                // A file the decoder cannot read is still worth naming: a corrupt or exotic
+                // format should not look like a broken viewer.
+                VStack(spacing: 6) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.system(size: 22))
+                    Text("This image cannot be previewed")
+                        .font(TypeScale.font(TypeScale.label))
+                }
+                .foregroundStyle(Tokens.textMuted)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .accessibilityLabel("The image \(item.name)")
     }
 
     // MARK: Chrome
@@ -78,6 +222,18 @@ public struct ImageViewer: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
+            if canPage {
+                // Where you are in the message's pictures, next to the name of the one you are on.
+                Text(counter)
+                    .font(.system(size: TypeScale.label, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(Tokens.textSecondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Tokens.control, in: Capsule())
+                    .fixedSize()
+                    .accessibilityLabel("Image \(index + 1) of \(items.count)")
+            }
             Button { onClose() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .medium))
@@ -106,25 +262,7 @@ public struct ImageViewer: View {
         GeometryReader { geometry in
             ZStack {
                 Tokens.frame
-                if let image = Self.image(from: data) {
-                    image
-                        .resizable()
-                        .interpolation(.high)
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(zoom, anchor: .center)
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .gesture(pinch)
-                } else {
-                    // A file the decoder cannot read is still worth naming: a corrupt or exotic
-                    // format should not look like a broken viewer.
-                    VStack(spacing: 6) {
-                        Image(systemName: "photo.badge.exclamationmark")
-                            .font(.system(size: 22))
-                        Text("This image cannot be previewed")
-                            .font(TypeScale.font(TypeScale.label))
-                    }
-                    .foregroundStyle(Tokens.textMuted)
-                }
+                pages(size: geometry.size)
                 if let notice {
                     Text(notice)
                         .font(TypeScale.font(TypeScale.label, weight: .medium))
@@ -139,12 +277,14 @@ public struct ImageViewer: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
-            .accessibilityLabel("The image \(title)")
         }
     }
 
     private var footer: some View {
         HStack(spacing: Self.footerGap) {
+            #if os(macOS)
+            pageControls
+            #endif
             zoomControls
             Spacer(minLength: 4)
             exportControls
@@ -155,6 +295,17 @@ public struct ImageViewer: View {
         .padding(.horizontal, Self.footerPadding)
         .padding(.vertical, 9)
     }
+
+    #if os(macOS)
+    /// The Mac has no swipe: the same pages, with buttons beside the arrow keys.
+    @ViewBuilder
+    private var pageControls: some View {
+        if canPage {
+            iconButton("chevron.left", enabled: index > 0, label: "Previous image") { step(-1) }
+            iconButton("chevron.right", enabled: index < items.count - 1, label: "Next image") { step(1) }
+        }
+    }
+    #endif
 
     private var zoomControls: some View {
         HStack(spacing: Self.footerGap) {
@@ -232,6 +383,8 @@ public struct ImageViewer: View {
 
     // MARK: Gestures
 
+    /// Pinch to zoom the page on screen. The phone's pager is a `TabView` page swipe, which is a
+    /// different gesture: this one stays on the picture and never fights the page turn.
     private var pinch: some Gesture {
         MagnificationGesture()
             .onChanged { value in

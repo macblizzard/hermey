@@ -29,8 +29,8 @@ struct MobileTranscriptRow: View {
     @State private var showingSelection = false
     /// Pictures fetched back from the host, by attachment name.
     @State private var fetchedImages: [String: Data] = [:]
-    /// The picture the viewer is showing, if any.
-    @State private var viewingImage: ViewedAttachment?
+    /// The pictures the viewer is showing, if any.
+    @State private var viewingImage: ViewedGallery?
     /// This row's markdown, parsed once per text rather than once per body pass.
     ///
     /// A body pass happens every time the model publishes — every 40 ms while a turn streams — and
@@ -42,11 +42,12 @@ struct MobileTranscriptRow: View {
     /// The other bot, when the pair sheet is open.
     @State private var pairPeer: String?
 
-    /// One decoded attachment, ready for `ImageViewer`.
-    struct ViewedAttachment: Identifiable {
+    /// Every picture this message carries, and which one was tapped — `ImageViewer` pages through
+    /// the rest, so a message with three photographs no longer means closing and reopening.
+    struct ViewedGallery: Identifiable {
         let id = UUID()
-        let name: String
-        let data: Data
+        let items: [ImageViewer.Item]
+        let startIndex: Int
     }
     /// The compact action card, raised by a long press on a message.
     @State private var showingActions = false
@@ -116,8 +117,10 @@ struct MobileTranscriptRow: View {
                 .presentationCompactAdaptation(.popover)
         }
         // The viewer fills the screen: a picture at 132 pt is a preview, not the picture.
-        .fullScreenCover(item: $viewingImage) { item in
-            ImageViewer(data: item.data, title: item.name, canExport: false) { viewingImage = nil }
+        .fullScreenCover(item: $viewingImage) { gallery in
+            ImageViewer(items: gallery.items,
+                        startIndex: gallery.startIndex,
+                        canExport: false) { viewingImage = nil }
                 .preferredColorScheme(.dark)
             .hermesSheetChrome()
         }
@@ -437,8 +440,9 @@ struct MobileTranscriptRow: View {
             ForEach(bubbleAttachments.filter { $0.isImage }) { attachment in
                 if let data = attachment.imageData ?? fetchedImages[attachment.name] {
                     // A tap on a picture opens it: the thumbnail promises the full image is here.
+                    // The whole message's pictures go with it, so the viewer can page.
                     Button {
-                        viewingImage = ViewedAttachment(name: attachment.name, data: data)
+                        openImage(attachment)
                     } label: {
                         AttachmentThumbnail(data: data, size: 132)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -469,6 +473,27 @@ struct MobileTranscriptRow: View {
                 attachmentChip(attachment.name)
             }
         }
+    }
+
+    /// Every picture of this message that has bytes on the device, in attachment order.
+    ///
+    /// What is missing is being fetched from the host: a picture with no bytes is a chip, not a
+    /// thumbnail, so it is not in the gallery either — the pages are only the pictures that are here.
+    private var viewableImages: [(attachment: SentAttachment, data: Data)] {
+        bubbleAttachments
+            .filter { $0.isImage }
+            .compactMap { attachment in
+                guard let data = attachment.imageData ?? fetchedImages[attachment.name] else { return nil }
+                return (attachment: attachment, data: data)
+            }
+    }
+
+    /// Open the viewer on this picture, with its neighbours behind it.
+    private func openImage(_ attachment: SentAttachment) {
+        let pictures = viewableImages
+        let start = pictures.firstIndex { $0.attachment.id == attachment.id } ?? 0
+        viewingImage = ViewedGallery(items: pictures.map { ImageViewer.Item(data: $0.data, name: $0.attachment.name) },
+                                     startIndex: start)
     }
 
     /// One file named, for a bubble that has no picture to draw.

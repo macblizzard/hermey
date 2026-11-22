@@ -215,8 +215,11 @@ class TheCacheIsOnlyKeptWhenTheHostIsProvenQuiet(unittest.TestCase):
         self.assertIn("let cachedSession = conversationCache[botID]?.sessionID ?? selectedSessionID",
                       self.branch,
                       "the old comparison read whichever id the previous bot left selected")
-        self.assertIn("unseenSessions.contains { $0 == cachedSession || sessionBots[$0] == botID }",
-                      self.branch)
+        # The announced id is translated through the runtime→stored alias first: after the host service
+        # move every attach mints a new runtime id, and comparing those raw made every return look like
+        # a moved conversation (content shifting while scrolling).
+        self.assertIn("let known = sessionAliases[announced] ?? announced", self.branch)
+        self.assertIn("return known == cachedSession || sessionBots[known] == botID", self.branch)
 
     def test_the_skip_needs_all_three_facts_to_be_quiet(self) -> None:
         skip = self.branch.split("if restored, pinnedSessionPicks[botID] == nil", 1)[1]
