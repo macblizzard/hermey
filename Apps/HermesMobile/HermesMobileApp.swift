@@ -54,12 +54,6 @@ struct HermesMobileApp: App {
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()
-                    // And after the roster, for the two halves of the share sheet: the picker gets
-                    // the bots this launch just learned, then anything shared while the app was not
-                    // running is delivered. Order matters — publishing first means a share made in
-                    // the next few seconds already names a real bot.
-                    await ShareWiring.publishBots(from: app.model)
-                    await ShareWiring.drain(app.model)
                 }
                 // Its own task, not a step inside `start()`: the feed is a public URL and the app
                 // must be usable before it answers. An unreachable feed is a no-op (see
