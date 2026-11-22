@@ -28,6 +28,10 @@ let package = Package(
         .target(name: "HermesRender", dependencies: ["HermesKit"], path: "Sources/HermesRender"),
         // Shared application state consumed by both app shells.
         .target(name: "HermesAppKit", dependencies: ["HermesKit"], path: "Sources/HermesAppKit"),
+        // Native agent cards (`card.v1`): the third renderer, preferred only when its own marker is
+        // present. Foundation + SwiftUI, HermesKit only — the theme is injected, so it never imports
+        // the design system and can be tested without an app.
+        .target(name: "HermesCards", dependencies: ["HermesKit"], path: "Sources/HermesCards"),
         // Native agent-driven UI: decodes the inline A2UI surface a reply carries and draws it
         // with the official SDK's SwiftUI catalog. Isolated in its own target so the parser is
         // testable without a simulator and the app shells only depend on it where they draw.
@@ -54,6 +58,7 @@ let package = Package(
 
         .testTarget(name: "HermesKitTests", dependencies: ["HermesKit"], path: "Tests/HermesKitTests"),
         .testTarget(name: "HermesAppKitTests", dependencies: ["HermesAppKit"], path: "Tests/HermesAppKitTests"),
+        .testTarget(name: "HermesCardsTests", dependencies: ["HermesCards"], path: "Tests/HermesCardsTests"),
         .testTarget(name: "HermesRenderTests", dependencies: ["HermesRender"], path: "Tests/HermesRenderTests"),
         // The design system's own tests: the bot-avatar artwork, geometry and activity rules.
         .testTarget(name: "HermeyUITests", dependencies: ["HermeyUI"], path: "Tests/HermeyUITests"),

@@ -33,6 +33,13 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
+/// One card's JSON, capped at the card contract's own ceiling (32 KB).
+const CARD_SNAPSHOT_MAX_BYTES: u64 = 32 * 1024;
+
+/// Six months. Long enough that "reopen the thread next week" is never a 404, short enough that
+/// the table is bounded by recent conversation rather than by all of it.
+const CARD_SNAPSHOT_RETENTION_SECONDS: f64 = 180.0 * 86_400.0;
+
 impl Store {
     pub fn open(path: &Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
@@ -94,7 +101,24 @@ impl Store {
                  profile      TEXT PRIMARY KEY,
                  at           REAL NOT NULL,
                  source       TEXT NOT NULL
-             );",
+             );
+             -- Per-message snapshots of an agent card (`/v1/cards/{id}`). The file the marker names
+             -- lives in the bot's working directory and can be cleaned up or rewritten by a later
+             -- turn, so the first successful read is kept here and a reopened thread draws it.
+             -- Message-addressed on purpose: two messages naming the same file never collide, and a
+             -- later rewrite cannot change what an earlier message showed. `json` is capped at the
+             -- card contract's 32 KB by the writer.
+             CREATE TABLE IF NOT EXISTS card_snapshots (
+                 session_id TEXT NOT NULL,
+                 message_id TEXT NOT NULL,
+                 card_id    TEXT NOT NULL,
+                 json       TEXT NOT NULL,
+                 mtime      TEXT NOT NULL,
+                 updated_at REAL NOT NULL,
+                 PRIMARY KEY (session_id, message_id, card_id)
+             );
+             CREATE INDEX IF NOT EXISTS idx_card_snapshots_updated
+                 ON card_snapshots(updated_at);",
         )?;
         restrict_db_permissions(path);
         Ok(Self { conn: Mutex::new(conn) })
@@ -415,6 +439,54 @@ impl Store {
         .optional()
         .ok()
         .flatten()
+    }
+
+    // ---- card snapshots ----------------------------------------------------------
+    // One row per `(session, message, card)`: what that message showed the last time the card was
+    // readable. See `cards.rs` for the route that writes and reads these.
+
+    /// The last state a reader of this message saw, or `None` when no read has succeeded yet.
+    pub fn card_snapshot(&self, session: &str, message: &str, card_id: &str) -> Option<(String, String)> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT json, mtime FROM card_snapshots
+             WHERE session_id = ?1 AND message_id = ?2 AND card_id = ?3",
+            params![session, message, card_id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
+    /// Insert the first read, then move it forward on every poll. A card larger than the contract's
+    /// 32 KB is not stored at all — the route refuses it before reaching here, and this is the
+    /// belt-and-braces cap on what the table can grow to.
+    pub fn put_card_snapshot(
+        &self,
+        session: &str,
+        message: &str,
+        card_id: &str,
+        json: &str,
+        mtime: &str,
+    ) {
+        if json.len() as u64 > CARD_SNAPSHOT_MAX_BYTES {
+            return;
+        }
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO card_snapshots (session_id, message_id, card_id, json, mtime, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(session_id, message_id, card_id) DO UPDATE SET
+                 json = excluded.json, mtime = excluded.mtime, updated_at = excluded.updated_at",
+            params![session, message, card_id, json, mtime, now()],
+        );
+        // Retention, not a quota: a week-old thread still draws its cards, a season-old one may
+        // not. Without this the table is the one piece of state that only ever grows.
+        let _ = conn.execute(
+            "DELETE FROM card_snapshots WHERE updated_at < ?1",
+            params![now() - CARD_SNAPSHOT_RETENTION_SECONDS],
+        );
     }
 
     /// Written by whatever knows a prompt came from a human. Nothing in this service does yet —

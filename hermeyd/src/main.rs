@@ -21,6 +21,7 @@ mod bot_message;
 mod bot_sessions;
 mod browser;
 mod bridge_routes;
+mod cards;
 mod backup;
 mod cli;
 mod credentials;
@@ -469,6 +470,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/genui/blocks/{block_id}/state",
             get(genui::block_state).put(genui::save_block_state),
         )
+        // Agent cards (`card.v1`): a third renderer, preferred only when its own marker is present.
+        // The bot writes the file; the app sends the id from the marker and gets the JSON back.
+        .route("/v1/cards/{card_id}", get(cards::get_card))
         .route("/v1/search", get(search::search))
         .route("/v1/bot-transfers", get(transfers::list_transfers))
         .route("/v1/backup", get(backup::export))
