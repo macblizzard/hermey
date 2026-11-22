@@ -39,6 +39,15 @@ public struct A2UISurfaceView: View {
             }
         }
         .accessibilityElement(children: .contain)
+        // Report the frame so a tap inside the surface is not read as a tap outside the composer.
+        .background(
+            GeometryReader { geometry in
+                Color.clear.preference(
+                    key: A2UISurfaceFrameKey.self,
+                    value: [geometry.frame(in: .global)]
+                )
+            }
+        )
     }
 }
 
