@@ -9,7 +9,8 @@ irreversible, and a rollback that is configuration only.
 |---|---|---|
 | Agent | `hermes-a2ui` plugin (`/root/.hermes/plugins/hermes-a2ui`) — compiles A2UI Express with the pinned SDK, validates against the Basic catalog, writes `::a2ui{…}` markers | remove it from `plugins.enabled` |
 | Agent | `hermes-genui` plugin — **untouched and still enabled** | nothing to do |
-| Client | `Sources/HermesA2UI` — decodes the inline surface, draws it with `A2UISwiftUI` | not referenced by the app shells yet |
+| Client | `Sources/HermesA2UI` — decodes the inline surface, draws it with `A2UISwiftUI` | `defaults write dev.hermey.app a2ui.surfaces.disabled -bool YES` |
+| Client | transcript both platforms — A2UI branch first, `::blocks` branch still compiled | same defaults key |
 | Client | `HermesKit/GenUIBlocks.swift` — the `::blocks` + WebView card path | **kept**; it is the fallback while A2UI coverage grows |
 
 The surface rides inside the message (`::a2ui{"surface":…,"messages":[…]}`), so a transcript
@@ -17,18 +18,22 @@ reopened later still draws: no card session, no bridge fetch, nothing to expire.
 
 ## Turning A2UI on
 
-1. `/root/.hermes/config.yaml` → `plugins.enabled`: add `hermes-a2ui`, remove `hermes-genui`.
-2. Restart the engine (the plugin registers a tool and a hook at startup).
-3. `hermes plugins list` shows `hermes-a2ui`; a drawing turn carries `::a2ui{ … }`.
+1. Ship a client built after the wiring (macOS + iOS both compile with `HermesA2UI`; CI's Apps
+   job is the proof). An older build shows the marker as raw text, so the order matters.
+2. `/root/.hermes/config.yaml` → `plugins.enabled`: add `hermes-a2ui`, remove `hermes-genui`.
+3. Restart the engine (the plugin registers a tool and a hook at startup).
+4. `hermes plugins list` shows `hermes-a2ui`; a drawing turn carries `::a2ui{ … }`.
 
 ## Rolling back (target: under a minute, no data loss)
 
-1. `plugins.enabled`: remove `hermes-a2ui`, add `hermes-genui` back.
-2. Restart the engine. `::blocks` cards draw again — the client path was never removed.
-3. Client, if a release already shipped `HermesA2UI`: `git checkout genui-baseline-20261121`.
+Either half alone is a complete rollback of drawing:
 
-Nothing in SQLite, no migration, no board data touched: `hermes-genui`'s boards were never
-modified, and A2UI surfaces live in the message text.
+- **Client only, no rebuild:** `defaults write dev.hermey.app a2ui.surfaces.disabled -bool YES`
+  — every reply falls back to the `::blocks` WebView card.
+- **Server only:** `plugins.enabled`: remove `hermes-a2ui`, add `hermes-genui` back; restart.
+- **Both:** as above, and `git checkout genui-baseline-20261121` for the client.
+
+Nothing in SQLite, no migration, no board data touched.
 
 ## Verified so far
 
@@ -41,13 +46,11 @@ modified, and A2UI surfaces live in the message text.
 
 ## Known gaps before this can replace genui
 
-1. **Client wiring** — `A2UISurfaceView` is not yet used by the transcript renderer, so nothing
-   draws natively until `HermesRender`/the app shell calls it for a message that has a surface.
-2. **Actions** — a tapped `Button` is not sent back yet (`outboundListener` +
-   `ActionHandling`); the SDK API is identified, the send path is not wired.
-3. **Coverage** — the Basic catalog is 18 components; `hermes-genui` had 36 blocks. Charts,
+1. **Actions** — a tapped `Button` is not sent back yet (`outboundListener` +
+   `ActionHandling`); the SDK API is identified, the send path is not wired. Cards draw, buttons
+   are inert.
+2. **Coverage** — the Basic catalog is 18 components; `hermes-genui` had 36 blocks. Charts,
    tables as a type, timelines, flows and calculators need a custom Hermey catalog before
    `hermes-genui` can be deleted rather than disabled.
-4. **Build** — the Swift target has never been compiled (no toolchain on the Linux box). The
-   dependency needs a Swift 6.1 toolchain; `Package.swift` here is `5.9`. First build decides
-   whether the manifest needs bumping.
+3. **Seen on a screen** — the wiring compiles and both apps build on CI, but no surface has been
+   drawn in front of a human yet. That is the trial.
