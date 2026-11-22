@@ -23,7 +23,7 @@ echo "== macOS app =="
 # the active arch alone and shipped 0.1.575 as arm64-only (half the size, and an Intel Mac cannot run
 # it), while earlier builds happened to come out fat. `ARCHS_STANDARD` is Xcode's default but is not
 # reliable when a concrete `-destination` is given, so both settings are stated.
-xcodebuild -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
+xcodebuild -skipPackagePluginValidation -project HermesApps.xcodeproj -scheme HermesMac -configuration Release \
   -destination 'platform=macOS' -derivedDataPath build/dd \
   ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
@@ -52,7 +52,7 @@ rm -rf dist/dmg-root
 hdiutil verify "dist/Hermey-macOS-$VERSION.dmg"
 
 echo "== iOS app =="
-xcodebuild -project HermesApps.xcodeproj -scheme HermesMobile -configuration Release \
+xcodebuild -skipPackagePluginValidation -project HermesApps.xcodeproj -scheme HermesMobile -configuration Release \
   -destination 'generic/platform=iOS' -archivePath build/HermesMobile.xcarchive \
   -derivedDataPath build/ipa-dd \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
