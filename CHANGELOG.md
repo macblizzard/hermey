@@ -891,3 +891,10 @@ clear button, approvals, attachments, and the three-pane macOS shell.
 - **The Mac build validates the A2UI build plugin non-interactively.** The package ships an SPM build-tool plugin, and
   without `-skipPackagePluginValidation` the macOS build stopped before compiling anything.
 
+## [0.1.616] — 2026-11-22
+
+### Fixed
+- **Every A2UI surface in a reply is drawn, not just the first.** A reply carrying several surfaces showed the first
+  card and silently dropped the rest, because the text fallback strips every marker — so the surfaces after the first
+  had nothing left to render. Both transcript views now place them in order.
+
