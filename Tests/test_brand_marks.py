@@ -1,4 +1,4 @@
-"""Every integration the bridge offers needs a mark, in the one catalog both apps compile.
+"""Every integration the host offers needs a mark, in the one catalog both apps compile.
 
 The phone showed six logos while the Mac showed thirteen: the marks existed twice — once in the Mac catalog and
 an older copy in the phone's — so adding a service to one of them was invisible on the other. The catalogs now
@@ -22,13 +22,21 @@ APP_CATALOGS = [
 
 
 def catalogue_slugs() -> list[str]:
-    """The services the bridge actually offers, from the one list that drives the screen."""
-    text = (ROOT / "Bridge" / "hermes_bridge" / "composio.py").read_text(encoding="utf-8")
-    block = re.search(r"CATALOG = \((.*?)\n\)", text, flags=re.S)
+    """The services the host actually offers, from the one list that drives the screen.
+
+    The list moved with the service: it lived in the Python bridge's `composio.py`, and reading that
+    path after the bridge was removed made this guard a `FileNotFoundError` rather than a check.
+    """
+    text = (ROOT / "hermeyd" / "src" / "integrations.rs").read_text(encoding="utf-8")
+    block = re.search(r"CATALOG: \[\(&str, &str, &str\); (\d+)\] = \[(.*?)\n\];", text, flags=re.S)
     if not block:
         return []
-    return [slug for slug, _name, _blurb in
-            re.findall(r'\("([^"]+)",\s*"([^"]+)",\s*"([^"]*)"\)', block.group(1))]
+    rows = re.findall(r'\("([^"]+)",\s*"([^"]+)",\s*"([^"]*)"\)', block.group(2))
+    if len(rows) != int(block.group(1)):
+        # The declared arity is a second opinion on the parse: a regex that half-reads the table must
+        # not turn into a silent pass on a shorter list.
+        return []
+    return [slug for slug, _name, _blurb in rows]
 
 
 def test_every_offered_service_has_a_mark() -> None:
