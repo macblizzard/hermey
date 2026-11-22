@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.615",
-          "buildVersion": "615",
-          "date": "2026-11-22T18:04:55Z",
-          "localizedDescription": "### Added\n- **Agent-driven UI draws in the transcript, on both clients.** A reply that carries an A2UI surface is rendered as\n  the surface instead of its raw JSON, with a runtime switch to fall back to text if anything looks wrong.\n\n### Fixed\n- **Returning to a chat no longer reloads a conversation the cache already holds.** A captured thread carries the host\n  stamp its rows were read at but none of its own, so the sweep read \"the host has written since\" and forced a resume \u2014\n  the \"it preloads, then loads again\" case, in its real order. The guard now compares the line the host names against\n  what the thread actually holds.\n- **The Mac build validates the A2UI build plugin non-interactively.** The package ships an SPM build-tool plugin, and\n  without `-skipPackagePluginValidation` the macOS build stopped before compiling anything.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.615/Hermey-0.1.615-b615.ipa",
-          "size": 4955399,
+          "version": "0.1.616",
+          "buildVersion": "616",
+          "date": "2026-11-22T18:54:13Z",
+          "localizedDescription": "### Fixed\n- **Every A2UI surface in a reply is drawn, not just the first.** A reply carrying several surfaces showed the first\n  card and silently dropped the rest, because the text fallback strips every marker \u2014 so the surfaces after the first\n  had nothing left to render. Both transcript views now place them in order.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.616/Hermey-0.1.616-b616.ipa",
+          "size": 4959360,
           "minOSVersion": "17.0",
-          "sha256": "0a1fc1fcfb9fff6eeada1fa7e84e2a21058dd4da5c6168c86e5a9fdb68c0a677"
+          "sha256": "44530daa1f350acf51bb76d800a28340f095f7a330fdb8b1c1bc020b7f411256"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.615 (615)",
-      "identifier": "hermes-0.1.615-615",
-      "caption": "### Added\n- **Agent-driven UI draws in the transcript, on both clients.** A reply that carries an A2UI surface is rendered as\n  the surface instead of its raw JSON, with a runtime switch to fall back to text if anything looks wrong.\n\n### Fixed\n- **Returning to a chat no longer reloads a conversation the cache already holds.** A captured thread carries the host\n  stamp its rows were read at but none of its own, so the sweep read \"the host has written since\" and forced a resume \u2014\n  the \"it preloads, then loads again\" case, in its real order. The guard now compares the line the host names against\n  what the thread actually holds.\n- **The Mac build validates the A2UI build plugin non-interactively.** The package ships an SPM build-tool plugin, and\n  without `-skipPackagePluginValidation` the macOS build stopped before compiling anything.",
-      "date": "2026-11-22T18:04:55Z",
+      "title": "Hermes 0.1.616 (616)",
+      "identifier": "hermes-0.1.616-616",
+      "caption": "### Fixed\n- **Every A2UI surface in a reply is drawn, not just the first.** A reply carrying several surfaces showed the first\n  card and silently dropped the rest, because the text fallback strips every marker \u2014 so the surfaces after the first\n  had nothing left to render. Both transcript views now place them in order.",
+      "date": "2026-11-22T18:54:13Z",
       "tintColor": "#9A9AA0"
     }
   ],
