@@ -70,6 +70,21 @@ Why server-side resolution:
 Rejected alternative: inlining the card JSON in the marker (as A2UI surfaces do). Simpler,
 but it cannot honour the 3-second task updates — those need re-reads.
 
+### The card must still draw a week later
+
+The skill keeps its file in the chat's working directory, which can be cleaned up, rewritten
+by a later turn, or simply gone when the transcript is reopened. So the first successful read
+is **snapshotted**, and replay draws the snapshot:
+
+- On the first `GET /v1/cards/{id}`, the engine stores the resolved JSON against
+  `(session, message id, card id)` — message-addressed, so two messages naming the same file
+  never collide, and a later turn rewriting that file cannot retroactively change history.
+- Live polling moves the snapshot forward with each read, so the last state a reader saw is
+  the state a later reader sees.
+- File gone, snapshot present → draw the snapshot with its last known status. "Card not
+  available" is reserved for a marker whose file was already missing on *first* read.
+- Storage: one row per message+card in the profile database, capped at the card's own 32 KB.
+
 ## Client design
 
 New target **`HermesCards`** (Foundation + SwiftUI, depends on `HermesKit` only):
@@ -142,10 +157,20 @@ that matters most.
 - **E2E**: a bot writes `cards/c-…json` + the marker; the card appears, a tap sends the
   `send` text, the bot rewrites with `resolved`, the buttons lock.
 
-## Open questions
+## Decisions (settled 2026-11-22)
 
-1. Hidden action sends — worth an engine flag? (Nice-to-have; v1 shows the terse turn.)
-2. `session.cwd` for sessions opened from iOS: does the host always have one? If not, the
-   route needs a per-profile fallback.
-3. Do we want the card to survive a transcript reload — i.e. is the file still there when the
-   thread is reopened a week later? The skill keeps files in the chat's working directory.
+1. **Action sends are visible.** A tap sends `action.send` as a normal user turn
+   (`APPROVE c-9b book the cabin`); no hidden-message flag. The strings are short by design,
+   and a visible record of "I approved this" is the better audit trail.
+2. **Working directory falls back per profile.** The route resolves `<session.cwd>/cards/…`
+   first; when a session has no cwd it falls back to the bot's own profile directory
+   (`profiles/<name>/`) before giving up. One code path, no client involvement.
+3. **Cards must survive.** Snapshots per message (see "The card must still draw a week
+   later"), so a thread reopened next week still draws its approval, task and email cards.
+
+Still open (smaller):
+
+1. A snapshot only moves forward while a chat is live — a file rewritten later, with no live
+   reader, does not update history. Accepted for now.
+2. Should a resolved card stay full-size forever, or collapse to one line ("Approved: book
+   the cabin") after a day? Leaning to collapse for approvals only.
