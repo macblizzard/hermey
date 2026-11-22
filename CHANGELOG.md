@@ -941,3 +941,16 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   back.
 - **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.
 
+## [0.1.620] — 2026-11-22
+
+### Changed
+- **No share-sheet entry.** It cannot work on a sideloaded install: a third-party signing certificate can carry
+  an app-group entitlement but cannot provision the group id the extension needs, so the sheet could only ever say
+  "no shared storage yet". The extension, the entitlement and the wiring are removed.
+
+### Fixed
+- **The expanded Live Activity is no longer an empty black bar.** The expanded island's minimum height is 84 pt,
+  which fits one row; asking for a second row while a turn runs collapsed the lower region and left the pill with
+  nothing but the bot's name. The bottom row now appears only when the turn has finished — status and a clipped
+  line of the reply — so a running turn is name plus timer, and a finished one is name, elapsed and what was said.
+

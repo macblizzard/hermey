@@ -90,17 +90,20 @@ struct HermeyTurnLiveActivity: Widget {
                     HermeyTurnClock(state: context.state, tone: .island)
                         .padding(.trailing, 4)
                 }
-                // Bottom: the state in words, plus what the tick/timer means — and, once the turn
-                // is over, the first line of what the bot actually said.
+                // Bottom: only when there is something to say. The expanded island's minimum height is
+                // 84 pt, which fits the name row and nothing else — asking for a second row while a
+                // turn is merely running is what collapsed this region and left the pill looking empty.
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HermeyTurnStatusLine(state: context.state,
-                                             botName: context.attributes.botName,
-                                             isStale: context.isStale,
-                                             tone: .island)
-                        HermeyTurnSnippet(state: context.state, tone: .island)
+                    if state.phase == .done || context.isStale {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HermeyTurnStatusLine(state: context.state,
+                                                 botName: context.attributes.botName,
+                                                 isStale: context.isStale,
+                                                 tone: .island)
+                            HermeyTurnSnippet(state: context.state, tone: .island)
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 2)
                 }
             } compactLeading: {
                 // A glyph and a handful of letters: enough to answer "which bot" at a glance,
