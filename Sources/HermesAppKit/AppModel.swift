@@ -1607,6 +1607,12 @@ public final class AppModel: ObservableObject {
 
     /// Remember that a session moved while it was not the one on screen.
     private func noteUnseen(_ session: SessionID) {
+        // A runtime id is not a second conversation. Since the host service hands out a fresh runtime id
+        // every time a session is attached (and the prefetch sweep attaches many), treating each one as
+        // "a session moved" made every return to a bot look like news: the transcript resumed, replaced
+        // its rows, and the content shifted under the reader's hands. `sessionAliases` carries the
+        // runtime→stored mapping, so an aliased id is a session we already know by its stored name.
+        guard sessionAliases[session] == nil else { return }
         guard unseenSessions.insert(session).inserted else { return }
         unseenSessionOrder.append(session)
         while unseenSessionOrder.count > Self.unseenSessionLimit {
@@ -2363,7 +2369,13 @@ public final class AppModel: ObservableObject {
         // the comparison used to be made against the old window's session, which is never in
         // `unseenSessions`, so a moved conversation read as "the socket said nothing".
         let cachedSession = conversationCache[botID]?.sessionID ?? selectedSessionID
-        let socketSaidSo = unseenSessions.contains { $0 == cachedSession || sessionBots[$0] == botID }
+        // Translate before comparing: an id the socket announced may be a *runtime* id for a session we
+        // already hold, and comparing it raw read as "the socket named a newer session" on every return
+        // (see `noteUnseen`), which resumed and re-painted the transcript for no reason.
+        let socketSaidSo = unseenSessions.contains { announced in
+            let known = sessionAliases[announced] ?? announced
+            return known == cachedSession || sessionBots[known] == botID
+        }
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
            Date().timeIntervalSince(stamp) < conversationCacheFreshness,
