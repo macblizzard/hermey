@@ -49,7 +49,10 @@ final class ShareViewController: UIViewController {
     /// has returned false since iOS 13 in more than one case — closing the sheet is still correct
     /// and the app drains the same file the next time it launches.
     private func handOff() {
-        let finish = { [weak self] in self?.complete() }
+        // Typed explicitly: `self?.complete()` returns `Void?`, and an inferred closure of type
+        // `() -> ()?` cannot be handed to `DispatchQueue.async(execute:)`, which wants a `DispatchWorkItem`
+        // — the two errors that stopped this target's first build.
+        let finish: () -> Void = { [weak self] in self?.complete() }
         guard let context = extensionContext else {
             finish()
             return
