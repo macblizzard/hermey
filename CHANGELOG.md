@@ -868,3 +868,12 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   "nothing new". Returning now resumes whenever the host may know more than the cache does, and says why: "resuming:
   the host's newest message is not known yet".
 
+## [0.1.614] — 2026-11-22
+
+### Fixed
+- **The prefetch and resume fixes are actually in this build.** 0.1.613 was published from `main` while the work sat
+  on a side branch, so its release notes promised warming and returning-to-chat fixes it did not contain. This build
+  has them: launch warms every bot by resuming its stored conversation and releasing the runtime session it minted,
+  and returning to a chat resumes when the host may know more than the cache — "resuming: the host's newest message
+  is not known yet" — instead of showing a cache it cannot prove is current.
+
