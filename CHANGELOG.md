@@ -922,3 +922,22 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   rows and moved the content under your hands. Announced ids are translated through the runtime→stored alias before
   being compared.
 
+## [0.1.619] — 2026-11-22
+
+### Fixed
+- **The Mac conversation no longer slides while you read history.** Loading older messages inserts rows above the
+  viewport, and the Mac transcript did nothing about it, so everything under the pointer moved down by the height of
+  the page. It now holds the clip view's origin across the merge — no animation, released the moment you drag or jump
+  to the bottom.
+- **The Dynamic Island fits.** The pill spanned two-thirds of the screen and covered the clock: a `.timer` text fills
+  the width it is offered, and a compact slot offers all of it. Every compact slot is now size-pinned, the bot's name
+  is shortened in code, and a finished turn shows a clipped line of what the bot actually said.
+- **The share sheet carries plain files.** A file from Files was refused as "too large" without its size ever being
+  read, because the size probe ran before the security scope was opened. Files are carried now, and a refusal names
+  the file and the reason.
+- **The share sheet says which problem it has.** "Open Hermey once" no longer stands in for "this build has no app
+  group" — no shared storage, no bot list yet, and a stale list are three distinct messages, with a Reload button.
+- **A reply named by a session the app cannot place re-reads the chat** instead of vanishing until you switch away and
+  back.
+- **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.
+
