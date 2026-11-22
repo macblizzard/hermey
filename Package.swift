@@ -9,6 +9,14 @@ let package = Package(
         .library(name: "HermeyUI", targets: ["HermeyUI"]),
         .library(name: "HermesRender", targets: ["HermesRender"]),
         .library(name: "HermesAppKit", targets: ["HermesAppKit"]),
+        .library(name: "HermesA2UI", targets: ["HermesA2UI"]),
+    ],
+    dependencies: [
+        // Agent-driven UI: the official A2UI Swift renderer. Pinned to the last Swift release
+        // (v0.11.0+swift); the protocol version we validate against is v1.0 on both sides.
+        // Its manifest is swift-tools-version 6.1, so the build Mac and CI need a 6.1 toolchain
+        // (Xcode 16.3+; the macos-26 runners already have it).
+        .package(url: "https://github.com/a2ui-project/a2ui", .upToNextMinor(from: "0.11.0")),
     ],
     targets: [
         // Wire protocol, transport, stores. No UI, no SwiftUI.
@@ -20,6 +28,18 @@ let package = Package(
         .target(name: "HermesRender", dependencies: ["HermesKit"], path: "Sources/HermesRender"),
         // Shared application state consumed by both app shells.
         .target(name: "HermesAppKit", dependencies: ["HermesKit"], path: "Sources/HermesAppKit"),
+        // Native agent-driven UI: decodes the inline A2UI surface a reply carries and draws it
+        // with the official SDK's SwiftUI catalog. Isolated in its own target so the parser is
+        // testable without a simulator and the app shells only depend on it where they draw.
+        .target(name: "HermesA2UI",
+                dependencies: [
+                    "HermesKit",
+                    .product(name: "A2UISwiftCore", package: "a2ui"),
+                    .product(name: "A2UISwiftUI", package: "a2ui"),
+                    .product(name: "BasicCatalog", package: "a2ui"),
+                    .product(name: "BasicCatalogSwiftUI", package: "a2ui"),
+                ],
+                path: "Sources/HermesA2UI"),
         // The phone's bridge voice client, compiled here (Foundation only, no SwiftUI)
         // so it can be unit-tested without an iOS simulator. The iOS target compiles
         // the same two files as part of the app module.
@@ -39,5 +59,7 @@ let package = Package(
         .testTarget(name: "HermeyUITests", dependencies: ["HermeyUI"], path: "Tests/HermeyUITests"),
         .testTarget(name: "HermesVoiceTests", dependencies: ["HermesVoiceCore"], path: "Tests/HermesVoiceTests"),
         .testTarget(name: "HermesAttachmentTests", dependencies: ["HermesAttachmentCore"], path: "Tests/HermesAttachmentTests"),
+        // The surface parser: pure Foundation, so it runs without a simulator or a GPU.
+        .testTarget(name: "HermesA2UITests", dependencies: ["HermesA2UI"], path: "Tests/HermesA2UITests"),
     ]
 )
