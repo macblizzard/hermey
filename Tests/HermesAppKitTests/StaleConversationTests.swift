@@ -194,9 +194,20 @@ final class StaleConversationTests: XCTestCase {
 
     // MARK: - What must not change
 
-    func testNothingNewStillComesFromTheCache() async {
-        // The reason the shortcut exists: returning to a chat you just left must be instant and must
-        // not reload what is already on screen. Nothing arrived, so nothing is asked.
+    func testNothingNewStillPaintsFromTheCacheBeforeTheOneHonestRead() async {
+        // The reason the shortcut exists: returning to a chat you just left must be instant — the
+        // snapshot is on screen before the host is asked anything, and the answer merges into it
+        // instead of replacing it.
+        //
+        // What it must *not* promise is that no read happens. Nothing here has reported the host's
+        // newest message, and an unknown stamp is not proof of quiet — inferring quiet from it is
+        // exactly what hid a reply for the whole freshness window (0.1.612: "a message arrives but
+        // the thread does not show it until you switch away and back"), and
+        // `ConversationCacheTests.testReturningResumesWhenTheHostsNewestMessageIsUnknown` pins the
+        // same inference from the other side. This test used to assert zero resumes, which the
+        // `hostIsKnown` rule added with the prefetch sweep cannot satisfy: the two scenarios are
+        // indistinguishable from here. So the contract is now "paint first, then exactly one read"
+        // — never a blank pane, never a second round trip.
         let cody = bot("stale-quiet-cody"), atlas = bot("stale-quiet-atlas")
         defer { forget([cody, atlas]) }
         let (model, client) = await opened("quiet", entries: [line("one"), line("two")],
@@ -207,8 +218,10 @@ final class StaleConversationTests: XCTestCase {
         let before = client.resumed.count
         await model.endlessSession(for: cody)
         XCTAssertEqual(model.transcript.count, 2, "the snapshot painted")
-        XCTAssertEqual(client.resumed.count, before,
-                       "inside the window, with nothing new, the cache is the answer")
+        XCTAssertEqual(client.resumed.count, before + 1,
+                       "with no host stamp known, the return visit reads the host — once")
+        XCTAssertEqual(model.transcript.map(\.text), ["one", "two"],
+                       "and the host's answer merges into the painted rows")
         await model.stop()
     }
 }
