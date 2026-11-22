@@ -87,7 +87,7 @@ pub fn lines(text: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
 
-    const URL: &str = "https://hermes.corvus-vibes.ts.net/?code=123456";
+    const URL: &str = "https://hermes.example.ts.net/?code=123456";
 
     /// The decoder is a real QR reader (a port of quirc), fed the matrix as a grayscale image four
     /// pixels per module — so "a phone can read it" is asserted rather than assumed.

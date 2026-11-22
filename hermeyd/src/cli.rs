@@ -1073,8 +1073,8 @@ mod tests {
 
     #[test]
     fn the_pairing_url_is_the_string_the_qr_encodes() {
-        let url = pairing_url("hermes.corvus-vibes.ts.net", "012345");
-        assert_eq!(url, "https://hermes.corvus-vibes.ts.net/?code=012345");
+        let url = pairing_url("hermes.example.ts.net", "012345");
+        assert_eq!(url, "https://hermes.example.ts.net/?code=012345");
         // The QR is drawn from this exact string, so escaping has to happen here and only here.
         assert_eq!(pairing_url("host", "a b&c"), "https://host/?code=a%20b%26c");
     }
@@ -1084,7 +1084,7 @@ mod tests {
         for host in ["localhost", "LOCALHOST", " localhost ", "", "127.0.0.1", "::1", "[::1]"] {
             assert!(only_this_host(host), "{host:?} cannot be opened from a phone");
         }
-        for host in ["hermes.corvus-vibes.ts.net", "mac-mini.local", "192.168.1.4"] {
+        for host in ["hermes.example.ts.net", "mac-mini.local", "192.168.1.4"] {
             assert!(!only_this_host(host), "{host:?} is a real pairing host");
         }
     }
