@@ -266,7 +266,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.LiveActivity
+        PRODUCT_BUNDLE_IDENTIFIER: dev.hermey.app.mobile.liveActivity
         PRODUCT_NAME: HermeyLiveActivity
         TARGETED_DEVICE_FAMILY: "1,2"
         # An extension is a second process with a smaller budget; linking the app's frameworks here
