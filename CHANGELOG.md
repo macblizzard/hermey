@@ -906,3 +906,19 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   events itself on macOS, and the phone never had the problem because its inner scroller is switched off.
   The Mac card now hands the wheel to the transcript, which is where it belongs.
 
+## [0.1.618] — 2026-11-22
+
+### Added
+- **Share sheet.** Share text, links and images from any app on the phone straight into a bot: pick the bot in
+  the share sheet, and it arrives as a message with the files attached, the same way a chosen photo does.
+- **Dynamic Island and lock-screen card.** While a bot works on your message an activity shows Hermey, the bot's
+  name and a running timer; it closes when the reply lands, and a launch sweeps anything orphaned by a crash.
+- **Gallery in the image viewer.** A message with several images opens at the one you tapped and pages through the
+  rest — swipe on the phone, arrow keys and chevrons on the Mac — with a "2 of 5" counter.
+
+### Fixed
+- **The conversation no longer shifts while you scroll.** Since the host service move, every session attach minted a
+  fresh *runtime* id, and the app treated each one as "a session moved": returning to a chat resumed it, replaced its
+  rows and moved the content under your hands. Announced ids are translated through the runtime→stored alias before
+  being compared.
+

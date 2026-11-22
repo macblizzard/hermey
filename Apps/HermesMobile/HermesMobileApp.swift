@@ -54,6 +54,12 @@ struct HermesMobileApp: App {
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()
+                    // And after the roster, for the two halves of the share sheet: the picker gets
+                    // the bots this launch just learned, then anything shared while the app was not
+                    // running is delivered. Order matters — publishing first means a share made in
+                    // the next few seconds already names a real bot.
+                    await ShareWiring.publishBots(from: app.model)
+                    await ShareWiring.drain(app.model)
                 }
                 // Its own task, not a step inside `start()`: the feed is a public URL and the app
                 // must be usable before it answers. An unreachable feed is a no-op (see
@@ -104,6 +110,15 @@ struct RootView: View {
                 MobileReplyNotifier.shared.updateBadge(count)
             }
             .onChange(of: scenePhase) { phase in
+                // A share made while the app was away is delivered the moment it is back. The
+                // extension's `hermey://share` only arrives when it can foreground the app; a
+                // payload whose open was refused would otherwise wait for the next launch.
+                if phase == .active {
+                    Task {
+                        await ShareWiring.publishBots(from: app.model)
+                        await ShareWiring.drain(app.model)
+                    }
+                }
                 // A phone comes back from the background with a dead socket; reconnect once
                 // rather than waiting for the user to shake it. A host the user disconnected on
                 // purpose stays disconnected — that is a choice, not a dropped socket.
@@ -129,6 +144,19 @@ struct RootView: View {
             .onChange(of: app.model.connection.isLive) { _, live in
                 guard live else { return }
                 Task { await app.model.prefetchConversations() }
+            }
+            // The picker is only as current as the last write. Every roster change — a bot added,
+            // renamed or removed on the host — republishes it; the write is off the main thread and
+            // an unchanged roster is skipped, so the 25 s preview sweep costs nothing here.
+            .onChange(of: app.model.bots) { _, _ in
+                Task { await ShareWiring.publishBots(from: app.model) }
+            }
+            // `hermey://share` is the extension handing over: it wrote the payload into the App
+            // Group and is already gone, so the URL is the entire event. `hermey://bot/<profile>`
+            // is handled where the list lives and is left alone here.
+            .onOpenURL { url in
+                guard ShareInboxReceiver.isShareInboxURL(url) else { return }
+                Task { await ShareWiring.drain(app.model) }
             }
     }
 }
