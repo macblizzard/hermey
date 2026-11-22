@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.616",
-          "buildVersion": "616",
-          "date": "2026-11-22T18:54:13Z",
-          "localizedDescription": "### Fixed\n- **Every A2UI surface in a reply is drawn, not just the first.** A reply carrying several surfaces showed the first\n  card and silently dropped the rest, because the text fallback strips every marker \u2014 so the surfaces after the first\n  had nothing left to render. Both transcript views now place them in order.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.616/Hermey-0.1.616-b616.ipa",
-          "size": 4959360,
+          "version": "0.1.617",
+          "buildVersion": "617",
+          "date": "2026-11-22T19:36:08Z",
+          "localizedDescription": "### Fixed\n- **A genui card no longer swallows the Mac's scroll wheel.** Scrolling the conversation stopped dead while\n  the pointer sat over a card and only resumed once the cursor left it: the card's web view handles scroll\n  events itself on macOS, and the phone never had the problem because its inner scroller is switched off.\n  The Mac card now hands the wheel to the transcript, which is where it belongs.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.617/Hermey-0.1.617-b617.ipa",
+          "size": 4959361,
           "minOSVersion": "17.0",
-          "sha256": "44530daa1f350acf51bb76d800a28340f095f7a330fdb8b1c1bc020b7f411256"
+          "sha256": "31c2d2e390d504e08accfe340be1ad4a33dbe8a3e65ef843458aeabb96b69cf8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.616 (616)",
-      "identifier": "hermes-0.1.616-616",
-      "caption": "### Fixed\n- **Every A2UI surface in a reply is drawn, not just the first.** A reply carrying several surfaces showed the first\n  card and silently dropped the rest, because the text fallback strips every marker \u2014 so the surfaces after the first\n  had nothing left to render. Both transcript views now place them in order.",
-      "date": "2026-11-22T18:54:13Z",
+      "title": "Hermes 0.1.617 (617)",
+      "identifier": "hermes-0.1.617-617",
+      "caption": "### Fixed\n- **A genui card no longer swallows the Mac's scroll wheel.** Scrolling the conversation stopped dead while\n  the pointer sat over a card and only resumed once the cursor left it: the card's web view handles scroll\n  events itself on macOS, and the phone never had the problem because its inner scroller is switched off.\n  The Mac card now hands the wheel to the transcript, which is where it belongs.",
+      "date": "2026-11-22T19:36:08Z",
       "tintColor": "#9A9AA0"
     }
   ],
