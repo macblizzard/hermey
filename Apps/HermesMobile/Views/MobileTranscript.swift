@@ -5,6 +5,7 @@ import HermesKit
 import HermesRender
 import HermeyUI
 import HermesA2UI
+import HermesCards
 
 /// One row of the conversation.
 ///
@@ -37,6 +38,11 @@ struct MobileTranscriptRow: View {
     /// parsing every visible row's markdown on each of those was the single most expensive thing the
     /// phone did while reading a conversation (the jitter reported 2026-11-14).
     @State private var markdownCache = RowMarkdownCache()
+    /// What the card markers in this row resolved to, keyed by card id.
+    ///
+    /// The shared `CardLoader` is the fetch-once cache; this is the copy the row repaints from,
+    /// because a row inside a lazy stack is torn down long before the cache is.
+    @State private var cardStates: [String: CardLoader.State] = [:]
     /// The bot whose conversation this row is in — the near side of a bot-to-bot exchange.
     var botID: String = ""
     /// The other bot, when the pair sheet is open.
@@ -549,6 +555,42 @@ struct MobileTranscriptRow: View {
     /// Every A2UI surface this reply carries, in order.
     private var surfacePayloads: [A2UISurfacePayload] { A2UIMarker.surfaces(in: entry.text) }
 
+    /// Every native card marker this reply carries, and the prose with those lines taken out.
+    ///
+    /// Parsed before the genui check below on purpose: a reply carries a card, a `::blocks` board
+    /// or neither, and only the card path knows which of its own lines to strip.
+    private var cardScan: CardScan { CardMarker.scan(entry.text) }
+
+    /// `cards.enabled`, read per body pass. Off is today's behaviour: the marker line stays text,
+    /// nothing is stripped and nothing is fetched.
+    private var cardsEnabled: Bool { CardsSettings.isEnabled }
+
+    /// Whether this row can actually draw: the flag on, and a session to resolve the files in.
+    private var cardsActive: Bool { cardsEnabled && !(app.model.selectedSessionID ?? "").isEmpty }
+
+    /// The app's palette for the card renderer, mapped here because `HermesCards` must not import
+    /// `HermeyUI` — the values travel in, never the module.
+    private var cardTheme: CardTheme {
+        CardTheme(canvas: Tokens.canvas,
+                  surface: Tokens.surface,
+                  ink: Tokens.textPrimary,
+                  mutedInk: Tokens.textMuted,
+                  accent: Tokens.accent,
+                  accentInk: Tokens.textPrimary,
+                  danger: Tokens.danger,
+                  border: Tokens.border,
+                  radiusCard: Tokens.radiusCard,
+                  radiusControl: Tokens.radiusControl)
+    }
+
+    /// Changes when the cards (or their session) do, so the reads are asked for once the markers
+    /// exist. Never a timer: P1 does not poll.
+    private var cardTaskKey: String {
+        guard cardsActive else { return "" }
+        let session = app.model.selectedSessionID ?? ""
+        return ([session] + cardScan.refs.map(\.id)).joined(separator: "\u{1F}")
+    }
+
     private var assistant: some View {
         VStack(alignment: .leading, spacing: 2) {
             // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
@@ -566,6 +608,10 @@ struct MobileTranscriptRow: View {
                     A2UISurfaceView(payload: payload)
                         .padding(.vertical, 2)
                 }
+            } else if cardsActive, !cardScan.refs.isEmpty {
+                // A `::card{…}` line is a reference, not prose: the line goes, the card draws under
+                // the words, and a card that cannot be read says so without touching the prose.
+                cardBubble(cardScan)
             } else if let boardID = GenUITag.boardID(in: entry.text) {
                 // A `::blocks{id="…"}` line is a directive, not prose: the plugin's board is drawn in
                 // its place, and the tag itself never appears in the transcript.
@@ -587,6 +633,62 @@ struct MobileTranscriptRow: View {
             messageTime
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: cardTaskKey) { await loadCards() }
+    }
+
+    // MARK: Native cards
+
+    /// The reply's prose, then one card per marker, in the order they appear.
+    @ViewBuilder
+    private func cardBubble(_ scan: CardScan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !scan.prose.isEmpty {
+                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(scan.prose)), rawText: scan.prose)
+                    .accessibilityLabel(scan.prose)
+                    .padding(.vertical, 4)
+            }
+            // Offsets, not refs: two identical markers are still two cards.
+            ForEach(Array(scan.refs.enumerated()), id: \.offset) { _, ref in
+                cardView(ref)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cardView(_ ref: CardRef) -> some View {
+        switch cardStates[ref.id] ?? .idle {
+        case .loaded(let model):
+            CardView(model: model, theme: cardTheme) { action in
+                choose(action, ref: ref)
+            }
+            .padding(.vertical, 2)
+        case .unavailable:
+            CardView(model: .unavailable(CardModel.unavailableMessage), theme: cardTheme)
+                .padding(.vertical, 2)
+        case .idle, .loading:
+            // Nothing while the read is in the air: the prose above is already the whole message,
+            // and a flash of "Card not available" is a lie about a card that is on its way.
+            EmptyView()
+        }
+    }
+
+    private func loadCards() async {
+        guard cardsActive, let session = app.model.selectedSessionID else { return }
+        for ref in cardScan.refs where cardStates[ref.id] == nil {
+            cardStates[ref.id] = .loading
+            cardStates[ref.id] = await CardLoader.shared.load(ref, session: session) { id, cardSession in
+                try await app.model.fetchCard(id: id, session: cardSession)
+            }
+        }
+    }
+
+    /// A tap answers the card: the tick is immediate and the rest lock, then the action's text goes
+    /// out as the owner's next message through the composer's own send path.
+    private func choose(_ action: Card.Action, ref: CardRef) {
+        guard let session = app.model.selectedSessionID else { return }
+        cardStates[ref.id] = CardLoader.shared.choose(action, cardID: ref.id, session: session)
+        NotificationCenter.default.post(name: .genUICardSend, object: nil,
+                                        userInfo: ["text": action.send, "bot": botID])
     }
 
     /// When it was sent, dim and small: something to check, not something to read.

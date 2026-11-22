@@ -34,13 +34,15 @@ def imports(source: str) -> set[str]:
 
 class TargetTests(unittest.TestCase):
     def test_the_target_is_foundation_and_swiftui_only(self) -> None:
-        for name in ("CardMarker", "CardModel", "CardTheme", "CardView", "CardsSettings"):
+        for name in ("CardMarker", "CardModel", "CardTheme", "CardView", "CardsSettings", "CardLoader"):
             self.assertTrue((TARGET / f"{name}.swift").is_file(), name)
 
         imported: set[str] = set()
         for path in TARGET.glob("*.swift"):
             imported |= imports(path.read_text())
-        self.assertEqual(imported, {"Foundation", "SwiftUI"})
+        # `HermesKit` is the client (and `CardFetch`); nothing else. A design system, a transport of
+        # its own or an app module here would make the target untestable without one.
+        self.assertEqual(imported, {"Foundation", "SwiftUI", "HermesKit"})
 
     def test_the_design_system_is_not_imported(self) -> None:
         # HermesCards depends on HermesKit only. Colours arrive through CardTheme, never through

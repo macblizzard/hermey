@@ -492,6 +492,20 @@ public actor GatewayClient: GatewayClientProtocol {
         return try GatewayPayloadDecoder.historyPage(result)
     }
 
+    /// `GET /v1/cards/{id}?session=…` — one card a `::card{…}` line names.
+    ///
+    /// Not a JSON-RPC method: the card is a file on the host's disk, and the bridge is the only
+    /// thing that knows where a session's working directory is. It therefore rides the pointer
+    /// store with the other `/v1` reads, where a single-use ticket is minted per request. A client
+    /// built without bridge credentials has nothing to ask, and answers with the same
+    /// `CardFetchError` the transcript already draws as `Card not available`.
+    public func card(id: String, session: SessionID) async throws -> CardFetch {
+        guard let sessionPointer else {
+            throw CardFetchError.unreachable("this connection has no bridge to read cards from")
+        }
+        return try await sessionPointer.card(id: id, session: session)
+    }
+
     // MARK: Shared conversation pointer
 
     /// The bridge's answer, not the gateway's: the pointer is HTTP on the bridge surface, so it
