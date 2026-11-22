@@ -42,7 +42,12 @@ ROOT = Path(__file__).resolve().parents[1]
 EXT = ROOT / "Apps" / "HermesLiveActivity"
 ATTRIBUTES = (EXT / "HermeyTurnAttributes.swift").read_text(encoding="utf-8")
 WIDGET = (EXT / "HermeyTurnLiveActivity.swift").read_text(encoding="utf-8")
-PLIST = (EXT / "Info.plist").read_text(encoding="utf-8")
+PLIST_PATH = EXT / "Info.plist"
+# XcodeGen writes the extension's Info.plist from project.yml on every generate, and .gitignore keeps
+# it out of the tree — so it is absent in a fresh worktree and in CI. The assertions that need it fall
+# back to project.yml, which is the source it is generated from.
+PLIST = PLIST_PATH.read_text(encoding="utf-8") if PLIST_PATH.exists() else ""
+PROJECT = (ROOT / "project.yml").read_text(encoding="utf-8")
 COORDINATOR = (ROOT / "Apps" / "HermesMobile" / "Views" / "LiveActivityCoordinator.swift").read_text(encoding="utf-8")
 APP_MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
 
@@ -301,21 +306,29 @@ class ItDegradesInsteadOfCrashing(unittest.TestCase):
 
 
 class TheExtensionIsItsOwnBundle(unittest.TestCase):
+    # Asserted against project.yml, which is what XcodeGen generates the plist from — the generated
+    # file is gitignored, so a fresh worktree (and CI) has no plist to read.
     def test_it_declares_the_widgetkit_extension_point(self) -> None:
-        self.assertIn("com.apple.widgetkit-extension", PLIST)
-        self.assertIn("<key>NSExtension</key>", PLIST)
-        self.assertIn("<string>Hermey</string>", PLIST)
+        self.assertIn("com.apple.widgetkit-extension", PROJECT)
+        self.assertIn("HermesLiveActivity:", PROJECT)
+        self.assertIn("type: app-extension", PROJECT)
+        if PLIST:
+            self.assertIn("com.apple.widgetkit-extension", PLIST)
 
     def test_it_shares_no_app_group(self) -> None:
         # Prefer attributes only. A group would mean an entitlement, a provisioning profile that
-        # carries it, and a second place for state to live.
+        # carries it, and a second place for state to live — and on this project's signing it does
+        # not provision at all (which is why the share sheet was removed).
         self.assertEqual(list(EXT.glob("*.entitlements")), [])
-        self.assertNotIn("application-groups", PLIST)
+        self.assertNotIn("application-groups", PROJECT)
+        if PLIST:
+            self.assertNotIn("application-groups", PLIST)
 
     def test_its_bundle_id_is_recorded_for_the_project_file(self) -> None:
-        # The target id is the parent's to write in project.yml; the file states which one, so the
-        # requirement cannot drift out of the artifact.
-        self.assertIn("dev.hermey.app.LiveActivity", PLIST)
+        # An embedded extension's id must be prefixed by the app's (dev.hermey.app.mobile), or the
+        # build fails with "Embedded binary's bundle identifier is not prefixed with the parent app's".
+        self.assertIn("dev.hermey.app.mobile.liveActivity", PROJECT)
+        self.assertNotIn("dev.hermey.app.LiveActivity", PROJECT)
 
 
 class TheIslandStaysSmall(unittest.TestCase):
