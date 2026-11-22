@@ -618,7 +618,7 @@ enum Failure: Error, Equatable, LocalizedError {
     /// it builds a path, which is the whole reason the client is not asked for one. A refusal is
     /// kept typed — `no_such_card` and `outside_base` are different answers, and only one of them
     /// means "this bot never wrote the card".
-    public func card(id: String, sessionID: SessionID) async throws -> CardFetch {
+    public func card(id: String, session sessionID: SessionID) async throws -> CardFetch {
         // Checked here as well as on the route: an id with a slash in it would reshape the path and
         // could reach a route this call never meant to touch.
         guard CardFetchError.isValidID(id) else { throw CardFetchError.badId }

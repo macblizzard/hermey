@@ -48,10 +48,12 @@ class GatewayReadTests(unittest.TestCase):
         self.assertIn("sessionPointer.card(id: id, session: session)", ACTOR)
 
     def test_the_bridge_builds_the_cards_route_with_the_session_parameter(self) -> None:
-        route = body(BRIDGE, "public func card(id: String, session: SessionID)", "public func approvalSettings")
+        route = body(BRIDGE, "public func card(id: String, session sessionID: SessionID)", "public func approvalSettings")
         self.assertIn('.appendingPathComponent("cards")', route)
         self.assertIn('.appendingPathComponent(id)', route)
-        self.assertIn('URLQueryItem(name: "session", value: session)', route)
+        # `sessionID`, not `session`: a parameter called `session` shadows the URLSession in scope and
+        # `session.data(for:)` then resolves against a String (that is exactly how it broke once).
+        self.assertIn('URLQueryItem(name: "session", value: sessionID)', route)
         # Same credential shape as its neighbours: one ticket per request, on the Authorization header.
         self.assertIn('request.setValue("Bearer \\(endpoint.ticket)"', route)
         # The id is checked before a path is built, so a caller that skipped the parser cannot
