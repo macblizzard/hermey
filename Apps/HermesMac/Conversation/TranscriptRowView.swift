@@ -2,6 +2,7 @@ import AppKit
 import HermesKit
 import HermesRender
 import HermeyUI
+import HermesA2UI
 import SwiftUI
 
 /// One transcript entry, drawn by role.
@@ -286,9 +287,20 @@ struct TranscriptRowView: View {
 
     private var assistantRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // A `::blocks{id="…"}` line is not prose: the plugin's board is drawn in its place, and
-            // the directive itself must never be read as text.
-            if let boardID = GenUITag.boardID(in: entry.text) {
+            // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
+            // the plugin produced. The prose around it is the reply; the surface is drawn in its
+            // place. Turning `a2ui.surfaces.disabled` on falls through to the `::blocks` card.
+            if A2UISurfaceSettings.isEnabled, let surface = A2UIMarker.surfaces(in: entry.text).first {
+                let prose = A2UIMarker.textWithoutMarkers(entry.text)
+                if !prose.isEmpty {
+                    MarkdownTextView(text: prose)
+                        .accessibilityLabel("Hermes said: \(prose)")
+                }
+                A2UISurfaceView(payload: surface)
+                    .padding(.vertical, 2)
+            } else if let boardID = GenUITag.boardID(in: entry.text) {
+                // A `::blocks{id="…"}` line is not prose: the plugin's board is drawn in its place, and
+                // the directive itself must never be read as text.
                 let prose = GenUITag.textWithoutTags(entry.text)
                 if !prose.isEmpty {
                     MarkdownTextView(text: prose)
