@@ -94,7 +94,7 @@ struct HermeyTurnLiveActivity: Widget {
                 // 84 pt, which fits the name row and nothing else — asking for a second row while a
                 // turn is merely running is what collapsed this region and left the pill looking empty.
                 DynamicIslandExpandedRegion(.bottom) {
-                    if state.phase == .done || context.isStale {
+                    if context.state.phase == .done || context.isStale {
                         VStack(alignment: .leading, spacing: 2) {
                             HermeyTurnStatusLine(state: context.state,
                                                  botName: context.attributes.botName,
