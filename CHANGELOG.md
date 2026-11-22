@@ -898,3 +898,11 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   card and silently dropped the rest, because the text fallback strips every marker — so the surfaces after the first
   had nothing left to render. Both transcript views now place them in order.
 
+## [0.1.617] — 2026-11-22
+
+### Fixed
+- **A genui card no longer swallows the Mac's scroll wheel.** Scrolling the conversation stopped dead while
+  the pointer sat over a card and only resumed once the cursor left it: the card's web view handles scroll
+  events itself on macOS, and the phone never had the problem because its inner scroller is switched off.
+  The Mac card now hands the wheel to the transcript, which is where it belongs.
+

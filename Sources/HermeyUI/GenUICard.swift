@@ -161,6 +161,19 @@ public extension Notification.Name {
 // MARK: - The web view
 
 #if os(macOS)
+/// A card's web view must not eat the transcript's scroll wheel.
+///
+/// iOS says this in one line — `scrollView.isScrollEnabled = false` — because a card is sized to the
+/// height its page reports and never scrolls inside itself. macOS has no such switch, and `WKWebView`
+/// handles `scrollWheel` on its own, so with the pointer over a card the conversation stopped
+/// scrolling entirely; moving the cursor off the card was the only way to keep reading. Forwarding the
+/// event down the responder chain hands it to the transcript's scroll view, which is where it belongs.
+final class PassthroughScrollWebView: WKWebView {
+    override func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
+    }
+}
+
 private struct GenUIWebView: NSViewRepresentable {
     let url: URL
     let onHeight: (CGFloat) -> Void
@@ -173,7 +186,7 @@ private struct GenUIWebView: NSViewRepresentable {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.userContentController.add(context.coordinator, name: "hermes")
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view = PassthroughScrollWebView(frame: .zero, configuration: configuration)
         // The card is part of the transcript, not a panel laid over it. The page paints the app's
         // canvas itself, so there is nothing to see even if this colour is ever ignored: a webview
         // has an under-page colour of its own (a system grey), and a transparent page shows it as a
