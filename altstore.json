@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.618",
-          "buildVersion": "618",
-          "date": "2026-11-22T20:20:55Z",
-          "localizedDescription": "### Added\n- **Share sheet.** Share text, links and images from any app on the phone straight into a bot: pick the bot in\n  the share sheet, and it arrives as a message with the files attached, the same way a chosen photo does.\n- **Dynamic Island and lock-screen card.** While a bot works on your message an activity shows Hermey, the bot's\n  name and a running timer; it closes when the reply lands, and a launch sweeps anything orphaned by a crash.\n- **Gallery in the image viewer.** A message with several images opens at the one you tapped and pages through the\n  rest \u2014 swipe on the phone, arrow keys and chevrons on the Mac \u2014 with a \"2 of 5\" counter.\n\n### Fixed\n- **The conversation no longer shifts while you scroll.** Since the host service move, every session attach minted a\n  fresh *runtime* id, and the app treated each one as \"a session moved\": returning to a chat resumed it, replaced its\n  rows and moved the content under your hands. Announced ids are translated through the runtime\u2192stored alias before\n  being compared.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.618/Hermey-0.1.618-b618.ipa",
-          "size": 5161438,
+          "version": "0.1.619",
+          "buildVersion": "619",
+          "date": "2026-11-22T21:02:36Z",
+          "localizedDescription": "### Fixed\n- **The Mac conversation no longer slides while you read history.** Loading older messages inserts rows above the\n  viewport, and the Mac transcript did nothing about it, so everything under the pointer moved down by the height of\n  the page. It now holds the clip view's origin across the merge \u2014 no animation, released the moment you drag or jump\n  to the bottom.\n- **The Dynamic Island fits.** The pill spanned two-thirds of the screen and covered the clock: a `.timer` text fills\n  the width it is offered, and a compact slot offers all of it. Every compact slot is now size-pinned, the bot's name\n  is shortened in code, and a finished turn shows a clipped line of what the bot actually said.\n- **The share sheet carries plain files.** A file from Files was refused as \"too large\" without its size ever being\n  read, because the size probe ran before the security scope was opened. Files are carried now, and a refusal names\n  the file and the reason.\n- **The share sheet says which problem it has.** \"Open Hermey once\" no longer stands in for \"this build has no app\n  group\" \u2014 no shared storage, no bot list yet, and a stale list are three distinct messages, with a Reload button.\n- **A reply named by a session the app cannot place re-reads the chat** instead of vanishing until you switch away and\n  back.\n- **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.619/Hermey-0.1.619-b619.ipa",
+          "size": 5197318,
           "minOSVersion": "17.0",
-          "sha256": "b7562a8c41bb68aa2a82d8a3f9c2a1fd8e4276b6d865a994474f42b065af2517"
+          "sha256": "6a80549ae34118fb06fb920afce82951e03bd04306e55acac436f0e31f4ee47f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.618 (618)",
-      "identifier": "hermes-0.1.618-618",
-      "caption": "### Added\n- **Share sheet.** Share text, links and images from any app on the phone straight into a bot: pick the bot in\n  the share sheet, and it arrives as a message with the files attached, the same way a chosen photo does.\n- **Dynamic Island and lock-screen card.** While a bot works on your message an activity shows Hermey, the bot's\n  name and a running timer; it closes when the reply lands, and a launch sweeps anything orphaned by a crash.\n- **Gallery in the image viewer.** A message with several images opens at the one you tapped and pages through the\n  rest \u2014 swipe on the phone, arrow keys and chevrons on the Mac \u2014 with a \"2 of 5\" counter.\n\n### Fixed\n- **The conversation no longer shifts while you scroll.** Since the host service move, every session attach minted a\n  fresh *runtime* id, and the app treated each one as \"a session moved\": returning to a chat resumed it, replaced its\n  rows and moved the content under your hands. Announced ids are translated through the runtime\u2192stored alias before\n  being compared.",
-      "date": "2026-11-22T20:20:55Z",
+      "title": "Hermes 0.1.619 (619)",
+      "identifier": "hermes-0.1.619-619",
+      "caption": "### Fixed\n- **The Mac conversation no longer slides while you read history.** Loading older messages inserts rows above the\n  viewport, and the Mac transcript did nothing about it, so everything under the pointer moved down by the height of\n  the page. It now holds the clip view's origin across the merge \u2014 no animation, released the moment you drag or jump\n  to the bottom.\n- **The Dynamic Island fits.** The pill spanned two-thirds of the screen and covered the clock: a `.timer` text fills\n  the width it is offered, and a compact slot offers all of it. Every compact slot is now size-pinned, the bot's name\n  is shortened in code, and a finished turn shows a clipped line of what the bot actually said.\n- **The share sheet carries plain files.** A file from Files was refused as \"too large\" without its size ever being\n  read, because the size probe ran before the security scope was opened. Files are carried now, and a refusal names\n  the file and the reason.\n- **The share sheet says which problem it has.** \"Open Hermey once\" no longer stands in for \"this build has no app\n  group\" \u2014 no shared storage, no bot list yet, and a stale list are three distinct messages, with a Reload button.\n- **A reply named by a session the app cannot place re-reads the chat** instead of vanishing until you switch away and\n  back.\n- **Gallery** closes with a downward swipe on iOS, without disturbing the page swipe or pinch.",
+      "date": "2026-11-22T21:02:36Z",
       "tintColor": "#9A9AA0"
     }
   ],
