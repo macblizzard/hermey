@@ -3,6 +3,7 @@ import UIKit
 import UniformTypeIdentifiers
 import HermesKit
 import HermesAppKit
+import HermesA2UI
 import HermeyUI
 
 /// The conversation with one bot — one endless thread, always.
@@ -22,6 +23,8 @@ struct ConversationScreen: View {
 
     /// Grouping is memoised: see `TranscriptRowCache`.
     @State private var rowCache = TranscriptRowCache()
+    /// Where the drawn A2UI surfaces are, so a tap on one does not resign the keyboard.
+    @State private var surfaceFrames: [CGRect] = []
     @State private var sessionID: SessionID?
     @State private var isOpening = true
     @State private var showApprovalSheet = false
@@ -735,7 +738,14 @@ struct ConversationScreen: View {
             // A tap on the transcript is a tap outside the box: put the keyboard away. UIKit owns the
             // first responder here, so this asks for resignation rather than chasing a focus flag
             // that lives inside the composer.
-            .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
+            //
+            // Unless the tap landed on a drawn A2UI surface: a text field inside one has to take
+            // focus, and resigning first responder in the same gesture closed the keyboard before
+            // it could open. The surface publishes its frame; a tap inside it belongs to the surface.
+            .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { value in
+                guard !surfaceFrames.contains(where: { $0.contains(value.location) }) else { return }
+                dismissKeyboard()
+            })
             // A swipe in from the trailing edge belongs to the drawer. It is a *second* gesture on
             // the same view, so vertical scrolling is untouched: only a mostly-horizontal drag that
             // started inside the edge band is taken.
@@ -804,6 +814,9 @@ struct ConversationScreen: View {
             }
             .onChange(of: model.reasoningText) {
                 followStreaming(proxy)
+            }
+            .onPreferenceChange(A2UISurfaceFrameKey.self) { frames in
+                surfaceFrames = frames
             }
             .onPreferenceChange(BottomDistanceKey.self) { distance in
                 // Before the first layout pass the key holds its default; a sentinel nobody has
