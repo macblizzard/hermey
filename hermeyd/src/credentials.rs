@@ -16,6 +16,13 @@
 //! * Cards expire (default 15 minutes). An expired card cannot be answered or consumed, so a forgotten
 //!   prompt does not sit in the database as a live secret forever.
 //! * Consuming marks the card `consumed` and keeps no answer, so a replay finds nothing.
+//! * Every step writes one audit record — `credentials.requested`/`answered`/`consumed`/`cancelled`
+//!   — carrying the site, the kind and the outcome. That is the whole record: the scalar-only
+//!   `audit::Event` has no field a value could travel in, so "what was typed" is not filtered out,
+//!   it has nowhere to go.
+//! * Usable cards are pruned a while after they are spent or expired, so the document cannot grow
+//!   without bound. The grace window keeps a just-consumed card readable, which is the difference
+//!   between a caller hearing "already used" and "no such card".
 //!
 //! Storage is the service's own SQLite `documents` table, one JSON document for the whole card set —
 //! the volume is a handful of pending prompts, and it needs no schema of its own. The database file is
@@ -37,6 +44,9 @@ const DEFAULT_TTL_SECONDS: f64 = 900.0; // 15 minutes
 const MAX_TTL_SECONDS: f64 = 86_400.0;
 const MAX_PENDING: usize = 32;
 const MAX_FIELD_NAME: usize = 64;
+/// How long a spent or expired card is kept before it is pruned. Long enough that a caller which
+/// lost the reply still hears "already used"/"expired" instead of "no such card".
+const SWEEP_GRACE_SECONDS: f64 = 600.0;
 
 fn bad(status: StatusCode, msg: impl Into<String>) -> Fail {
     (status, Json(json!({"detail": msg.into()})))
@@ -81,6 +91,49 @@ fn view(card: &Value) -> Value {
         "state": card.get("state").cloned().unwrap_or_else(|| json!("pending")),
         "expires_at": card.get("expires_at").cloned().unwrap_or(json!(0)),
     })
+}
+
+/// Drop cards that stopped mattering a while ago: spent, cancelled, or expired and past the grace
+/// window. Called on the way in to `create_card`, so the set is bounded by `MAX_PENDING` plus the
+/// recent past rather than by every card this host ever issued.
+fn sweep(cards: &mut Map<String, Value>) {
+    let cutoff = now() - SWEEP_GRACE_SECONDS;
+    cards.retain(|_, card| {
+        // The latest thing that happened to the card decides how long it is kept. A pending card
+        // only has `expires_at`, so it lives until its expiry plus the grace window.
+        let at = card
+            .get("consumed_at")
+            .or_else(|| card.get("answered_at"))
+            .or_else(|| card.get("expires_at"))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        at > cutoff
+    });
+}
+
+/// One audit record for a card step. Site and kind only — the value is not passed in, so no later
+/// edit can leak it, and `audit::Event` has no field wide enough to hold one anyway.
+fn audit(st: &AppState, event: &str, device: &str, card: &Value, outcome: &str) {
+    let kind = card.get("kind").and_then(|k| k.as_str()).unwrap_or("login");
+    let method = format!("credentials.{kind}");
+    let site = card.get("site").and_then(|s| s.as_str()).unwrap_or("");
+    let asked_by = card.get("asked_by").and_then(|s| s.as_str()).unwrap_or("");
+    let path = format!(
+        "/v1/credentials/cards/{}",
+        card.get("id").and_then(|v| v.as_str()).unwrap_or("")
+    );
+    st.audit.emit(
+        event,
+        crate::audit::Event {
+            device: Some(device),
+            method: Some(&method),
+            path: Some(&path),
+            outcome: Some(outcome),
+            reason: Some(site),
+            profile: Some(asked_by),
+            ..crate::audit::Event::default()
+        },
+    );
 }
 
 pub async fn list_cards(
@@ -143,7 +196,7 @@ pub async fn create_card(
     headers: HeaderMap,
     Json(body): Json<CreateCard>,
 ) -> Result<Json<Value>, Fail> {
-    require_device(&st, &headers)?;
+    let device = require_device(&st, &headers)?;
     let site = body.site.trim().to_string();
     if site.is_empty() {
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "a site is required"));
@@ -162,6 +215,7 @@ pub async fn create_card(
     }
 
     let mut cards = load(&st);
+    sweep(&mut cards);
     let pending = cards
         .values()
         .filter(|c| c.get("state").and_then(|s| s.as_str()) == Some("pending") && !expired(c))
@@ -186,6 +240,7 @@ pub async fn create_card(
     });
     cards.insert(id.clone(), card.clone());
     save(&st, cards);
+    audit(&st, "credentials.requested", &device, &card, "open");
     Ok(Json(view(&card)))
 }
 
@@ -201,7 +256,7 @@ pub async fn answer_card(
     Path(card_id): Path<String>,
     Json(body): Json<AnswerCard>,
 ) -> Result<Json<Value>, Fail> {
-    require_device(&st, &headers)?;
+    let device = require_device(&st, &headers)?;
     let mut cards = load(&st);
     let Some(card) = cards.get_mut(&card_id) else {
         return Err(bad(StatusCode::NOT_FOUND, "no such card"));
@@ -239,7 +294,11 @@ pub async fn answer_card(
     card["values"] = Value::Object(values);
     card["state"] = json!("answered");
     card["answered_at"] = json!(now());
+    // The record is taken from the card as it now stands, and the audit helper reads only the
+    // site/kind — `values` is present on it and still goes nowhere.
+    let record = card.clone();
     save(&st, cards);
+    audit(&st, "credentials.answered", &device, &record, "answered");
     // The answer is acknowledged by state only; it is never echoed back.
     Ok(Json(json!({"id": card_id, "state": "answered"})))
 }
@@ -249,14 +308,16 @@ pub async fn cancel_card(
     headers: HeaderMap,
     Path(card_id): Path<String>,
 ) -> Result<Json<Value>, Fail> {
-    require_device(&st, &headers)?;
+    let device = require_device(&st, &headers)?;
     let mut cards = load(&st);
     let Some(card) = cards.get_mut(&card_id) else {
         return Err(bad(StatusCode::NOT_FOUND, "no such card"));
     };
     card["state"] = json!("cancelled");
     card["values"] = Value::Null;
+    let record = card.clone();
     save(&st, cards);
+    audit(&st, "credentials.cancelled", &device, &record, "cancelled");
     Ok(Json(json!({"id": card_id, "state": "cancelled"})))
 }
 
@@ -265,7 +326,7 @@ pub async fn consume_card(
     headers: HeaderMap,
     Path(card_id): Path<String>,
 ) -> Result<Json<Value>, Fail> {
-    require_device(&st, &headers)?;
+    let device = require_device(&st, &headers)?;
     let mut cards = load(&st);
     let Some(card) = cards.get_mut(&card_id) else {
         return Err(bad(StatusCode::NOT_FOUND, "no such card"));
@@ -283,6 +344,233 @@ pub async fn consume_card(
     card["state"] = json!("consumed");
     card["values"] = Value::Null;
     card["consumed_at"] = json!(now());
+    // Taken after the values are gone, so the record cannot carry them even by accident. The fill
+    // happens where the values were handed over (the sign-in skill), so this step honestly says
+    // "consumed", not "filled": the host has not touched a page.
+    let record = card.clone();
     save(&st, cards);
+    audit(&st, "credentials.consumed", &device, &record, "consumed");
     Ok(Json(json!({"id": card_id, "values": values})))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use axum::http::header::AUTHORIZATION;
+    use std::path::{Path, PathBuf};
+
+    /// Same shape as the router's own test principal: `require_device` accepts this bearer and
+    /// reports `local_token::LOCAL_PRINCIPAL`, which is what the audit record names as `device`.
+    const LOCAL: &str = "local-cli-token-0123456789abcdef0123456789abcdef";
+    const SECRET: &str = "hunter2-not-a-real-password";
+
+    fn scratch(tag: &str) -> PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "hermeyd-credentials-{tag}-{}-{nanos}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    /// The fields the routes touch. Everything else is the engine/display wiring, which a card
+    /// route never reaches; the `display` hub is spawned and simply dials a port nothing serves.
+    fn state(dir: &Path) -> Arc<AppState> {
+        let engine_ws = "ws://127.0.0.1:9121/api/ws".to_string();
+        let token_file = dir.join("engine.token");
+        Arc::new(AppState {
+            store: crate::store::Store::open(&dir.join("bridge.db")).expect("store"),
+            pairing: crate::pairing::Pairing::new(600.0),
+            tickets: crate::auth::Tickets::new(30.0, 300.0),
+            limiter: crate::auth::RateLimiter::new(30, 60.0),
+            salt: "salt-".repeat(8),
+            public_host: "localhost".to_string(),
+            engine_ws: engine_ws.clone(),
+            engine_token_file: token_file.clone(),
+            engine_auth: crate::engine_auth::EngineAuth::Required,
+            engine_home: dir.join("engine"),
+            attachments_dir: dir.join("attachments"),
+            local_token: Arc::new(crate::local_token::LocalToken::from_value(
+                LOCAL,
+                dir.join("local.token"),
+            )),
+            local_computers: Default::default(),
+            browsers: Default::default(),
+            display: crate::display::DisplayHub::spawn(engine_ws, Some(token_file)),
+            relay_sockets: Default::default(),
+            audit: Arc::new(crate::audit::AuditLog::in_dir(dir)),
+        })
+    }
+
+    fn auth() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            format!("Bearer {LOCAL}").parse().unwrap(),
+        );
+        headers
+    }
+
+    fn ask(kind: &str, fields: &[&str]) -> Json<CreateCard> {
+        Json(CreateCard {
+            kind: Some(kind.to_string()),
+            site: "example.test".to_string(),
+            fields: fields.iter().map(|f| f.to_string()).collect(),
+            options: Vec::new(),
+            note: None,
+            asked_by: Some("cody".to_string()),
+            ttl_seconds: None,
+        })
+    }
+
+    fn answers(pairs: &[(&str, &str)]) -> Json<AnswerCard> {
+        let mut values = Map::new();
+        for (field, value) in pairs {
+            values.insert(field.to_string(), json!(value));
+        }
+        Json(AnswerCard { values })
+    }
+
+    /// The promise, in one test: every step is in the audit stream, each record names the site and
+    /// the kind, and no record — in any state — carries what the owner typed.
+    #[tokio::test]
+    async fn every_step_is_audited_with_the_site_and_never_the_value() {
+        let dir = scratch("audit");
+        let st = state(&dir);
+
+        let created = create_card(
+            State(Arc::clone(&st)),
+            auth(),
+            ask("secret", &["password"]),
+        )
+        .await
+        .expect("ask")
+        .0;
+        let id = created["id"].as_str().expect("id").to_string();
+        assert!(
+            created.get("values").is_none(),
+            "no value exists at ask time, so the card must not carry one: {created}"
+        );
+
+        answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("password", SECRET)]),
+        )
+        .await
+        .expect("answer");
+
+        // Readable in every state, and never with the answer in it.
+        let seen = get_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("read")
+            .0;
+        let listed = list_cards(State(Arc::clone(&st)), auth()).await.expect("list").0;
+        assert_eq!(seen["state"], "answered");
+        assert!(!seen.to_string().contains(SECRET), "the read must not carry the value");
+        assert!(!listed.to_string().contains(SECRET), "the list must not carry the value");
+
+        let collected = consume_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("consume")
+            .0;
+        assert_eq!(collected["values"]["password"], SECRET, "the owner's answer reaches its one caller");
+
+        let requested = st.audit.all("credentials.requested");
+        let answered = st.audit.all("credentials.answered");
+        let consumed = st.audit.all("credentials.consumed");
+        assert_eq!(requested.len(), 1, "one ask, one record");
+        assert_eq!(answered.len(), 1);
+        assert_eq!(consumed.len(), 1);
+
+        assert_eq!(requested[0]["method"], "credentials.secret");
+        assert_eq!(requested[0]["reason"], "example.test");
+        assert_eq!(requested[0]["outcome"], "open");
+        assert_eq!(requested[0]["path"], format!("/v1/credentials/cards/{id}"));
+        // `device` is the 8-character hint `audit::device_hint` keeps, not the whole principal.
+        assert_eq!(requested[0]["device"], "local-cl", "the record names who asked");
+        assert_eq!(requested[0]["profile"], "cody");
+        assert_eq!(consumed[0]["outcome"], "consumed");
+
+        for event in ["credentials.requested", "credentials.answered", "credentials.consumed"] {
+            for record in st.audit.all(event) {
+                let text = record.to_string();
+                assert!(
+                    !text.contains(SECRET),
+                    "{event} carried the value: {text}"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Cancel is a step too, and it is the one that must leave nothing behind to fill.
+    #[tokio::test]
+    async fn cancelling_is_audited_and_keeps_no_answer() {
+        let dir = scratch("cancel");
+        let st = state(&dir);
+
+        let id = create_card(State(Arc::clone(&st)), auth(), ask("choice", &[]))
+            .await
+            .expect("ask")
+            .0["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
+        let cancelled = cancel_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("cancel")
+            .0;
+        assert_eq!(cancelled["state"], "cancelled");
+
+        // A cancelled card cannot be answered, so no value can arrive after the owner said no.
+        let refused = answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("password", SECRET)]),
+        )
+        .await
+        .expect_err("a cancelled card cannot be answered");
+        assert_eq!(refused.0, StatusCode::CONFLICT);
+
+        let records = st.audit.all("credentials.cancelled");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0]["outcome"], "cancelled");
+        assert_eq!(records[0]["reason"], "example.test");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The document is pruned, but not so eagerly that a caller which lost the reply is told the
+    /// card never existed. Spent/expired cards survive the grace window, then go.
+    #[test]
+    fn a_spent_card_is_pruned_after_the_grace_window_and_not_before() {
+        let mut cards = Map::new();
+        cards.insert(
+            "waiting".to_string(),
+            json!({"id": "waiting", "state": "pending", "expires_at": now() + 60.0}),
+        );
+        cards.insert(
+            "just-spent".to_string(),
+            json!({"id": "just-spent", "state": "consumed",
+                   "expires_at": now() + 60.0, "consumed_at": now() - 5.0}),
+        );
+        cards.insert(
+            "long-gone".to_string(),
+            json!({"id": "long-gone", "state": "consumed",
+                   "expires_at": now() - 7200.0, "consumed_at": now() - 7200.0}),
+        );
+        sweep(&mut cards);
+        assert!(cards.contains_key("waiting"), "a live card is never swept");
+        assert!(cards.contains_key("just-spent"), "a just-spent card still answers \"already used\"");
+        assert!(!cards.contains_key("long-gone"), "a card from hours ago must not accumulate");
+    }
 }
