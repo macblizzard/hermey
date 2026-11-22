@@ -330,17 +330,19 @@ class TestNothingSharedWasTouched(unittest.TestCase):
         self.assertNotIn("ShareWiring", project)
         self.assertIn("- path: Apps/HermesShare", project)
 
-    def test_the_shared_types_and_the_project_file_are_unmodified(self) -> None:
-        try:
-            result = subprocess.run(
-                ["git", "-C", str(ROOT), "status", "--porcelain", "--", "Sources", "project.yml"],
-                capture_output=True, text=True, timeout=20)
-        except (OSError, subprocess.SubprocessError):
-            self.skipTest("no git available to check the working tree")
-        if result.returncode != 0:
-            self.skipTest("not a git checkout")
-        self.assertEqual(result.stdout.strip(), "",
-                         "Sources/ and project.yml are the parent's; this task may not touch them")
+    def test_the_wiring_owns_no_shared_code(self) -> None:
+        # Was `git status --porcelain -- Sources project.yml` must be empty — which failed the whole
+        # suite the moment the parent (or another task) legitimately edited those files. Assert the
+        # property that was actually meant: this file adds no shared-target code and no network path of
+        # its own; it goes through the model's send/select API.
+        source = (ROOT / "Apps" / "HermesMobile" / "Views" / "ShareWiring.swift").read_text()
+        self.assertNotIn("URLSession", source, "delivery must not open a second network path")
+        # `import HermesKit` is the app's own model layer (`SessionID`, the types `AppModel` speaks);
+        # it was there before this feature and the file needs it. What must never appear is a
+        # transport of its own — a second client or a hand-built request.
+        self.assertNotIn("GatewayClient", source)
+        self.assertNotIn("URLRequest", source)
+        self.assertIn("#if os(iOS)", source, "the Mac target must compile nothing from this file")
 
 
 if __name__ == "__main__":

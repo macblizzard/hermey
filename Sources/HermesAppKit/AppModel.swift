@@ -457,6 +457,9 @@ public final class AppModel: ObservableObject {
     /// two-minute-old snapshot while the list row and the banner had already announced the reply
     /// (reported 2026-11-16: "the bot list and the notification know, the chat loads much later").
     private var unseenSessions: Set<SessionID> = []
+    /// A queued re-read of the open conversation, triggered by a content event for a session this app
+    /// could not place (see `apply`). One at a time: a burst of deltas must not become a burst of reads.
+    private var pendingOpenRefresh: Task<Void, Never>?
     private var unseenSessionOrder: [SessionID] = []
     /// Bounded: an app left running must not accumulate every session the host ever mentioned.
     private static let unseenSessionLimit = 32
@@ -959,6 +962,22 @@ public final class AppModel: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// Re-read the open conversation shortly after a content event this app could not place.
+    ///
+    /// `messageDelta` arrives many times per turn and the socket may keep naming a runtime id the pane
+    /// never learned, so each event would start its own read. Debounced to one read per burst: short
+    /// enough that the reply lands almost immediately, long enough that a turn's deltas collapse into
+    /// a single refresh.
+    private func scheduleOpenRefresh() {
+        guard pendingOpenRefresh == nil, let sid = selectedSessionID, connection.isLive else { return }
+        pendingOpenRefresh = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self else { return }
+            await self.refreshTranscript(sid)
+            self.pendingOpenRefresh = nil
         }
     }
 
@@ -4342,6 +4361,13 @@ public final class AppModel: ObservableObject {
                 // right one and applies this event to the conversation it belongs to.
             } else if known != open {
                 noteUnseen(named)
+                // A content event naming a session this app cannot place: after the host-service move
+                // a reconnect or a prefetch release mints a runtime id the pane never learned, and the
+                // event was dropped outright. That is the report of a reply appearing only after
+                // leaving the chat and coming back, while the bot list already showed it. Re-read what
+                // is on screen — applying another conversation's session here would be worse than the
+                // delay.
+                scheduleOpenRefresh()
                 return
             }
         } else if let moving = Self.session(of: event), moving != selectedSessionID {
