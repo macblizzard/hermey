@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.612",
-          "buildVersion": "612",
-          "date": "2026-11-22T13:38:21Z",
-          "localizedDescription": "### Fixed\n- **The log sheet has visible copy and share controls.** They existed but lived in a toolbar, and macOS's\n  sheet presentation drew only Close and Refresh there, so the sheet showed no copy at all. Copy and Share are\n  now in the sheet body beside the entry count: *Copy shown*, *Copy all* (including lines a paused tail is\n  holding back) and *Share log*, each with a receipt that says how much was copied \u2014 \"Copied 214 lines shown\".",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.612/Hermey-0.1.612-b612.ipa",
-          "size": 3700088,
+          "version": "0.1.613",
+          "buildVersion": "613",
+          "date": "2026-11-22T14:16:27Z",
+          "localizedDescription": "### Fixed\n- **Prewarm works again.** At launch the app fetched every bot's transcript through `session.history`, which the host\n  only answers for a conversation already attached in memory \u2014 so all 18 bots failed with \"session not found\" and the\n  list stayed cold until each chat was opened. Warming now resumes each bot's stored conversation, keeps the messages\n  and releases the runtime session it minted, so a launch warms the whole roster without leaving agents behind.\n- **A reply that arrives while you are in another chat now shows up when you return.** The cache painted first and then\n  skipped the resume, on the strength of a timestamp that is simply unknown before the first sweep \u2014 unknown was read as\n  \"nothing new\". Returning now resumes whenever the host may know more than the cache does, and says why: \"resuming:\n  the host's newest message is not known yet\".",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.613/Hermey-0.1.613-b613.ipa",
+          "size": 3700087,
           "minOSVersion": "17.0",
-          "sha256": "e702fc49ac4c68de5cf93b534a1ef2cf1531b6d64877064d3d85417e8d8e5bbc"
+          "sha256": "f26d9d1b6e7b4e2c78587ec4f578655e1612ebeb7f51cc3992a392d5932f4f18"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.612 (612)",
-      "identifier": "hermes-0.1.612-612",
-      "caption": "### Fixed\n- **The log sheet has visible copy and share controls.** They existed but lived in a toolbar, and macOS's\n  sheet presentation drew only Close and Refresh there, so the sheet showed no copy at all. Copy and Share are\n  now in the sheet body beside the entry count: *Copy shown*, *Copy all* (including lines a paused tail is\n  holding back) and *Share log*, each with a receipt that says how much was copied \u2014 \"Copied 214 lines shown\".",
-      "date": "2026-11-22T13:38:21Z",
+      "title": "Hermes 0.1.613 (613)",
+      "identifier": "hermes-0.1.613-613",
+      "caption": "### Fixed\n- **Prewarm works again.** At launch the app fetched every bot's transcript through `session.history`, which the host\n  only answers for a conversation already attached in memory \u2014 so all 18 bots failed with \"session not found\" and the\n  list stayed cold until each chat was opened. Warming now resumes each bot's stored conversation, keeps the messages\n  and releases the runtime session it minted, so a launch warms the whole roster without leaving agents behind.\n- **A reply that arrives while you are in another chat now shows up when you return.** The cache painted first and then\n  skipped the resume, on the strength of a timestamp that is simply unknown before the first sweep \u2014 unknown was read as\n  \"nothing new\". Returning now resumes whenever the host may know more than the cache does, and says why: \"resuming:\n  the host's newest message is not known yet\".",
+      "date": "2026-11-22T14:16:27Z",
       "tintColor": "#9A9AA0"
     }
   ],
