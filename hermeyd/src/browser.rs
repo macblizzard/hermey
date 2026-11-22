@@ -44,7 +44,7 @@ fn bad(status: StatusCode, msg: impl Into<String>) -> Fail {
     (status, Json(json!({"detail": msg.into()})))
 }
 
-/// A fill must be quick: the card expires in two minutes and a human is watching the page.
+/// A fill must be quick: a human is watching the page, and the card is counting down its own TTL.
 const FILL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// One connected browser tab-set, by its own id.
