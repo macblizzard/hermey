@@ -94,21 +94,29 @@ not filled — no browser connected: waited 20s for the sign-in extension and ht
 not filled — a browser is connected but its page has no field matching password: <url> — the probe saw
               input_:r0: [text/username]; buttons: Zurück, Weiter
 not filled — the fill was sent but the value did not land: the password field on <url> now reads empty
+filled (the DevTools port; no extension was connected)
+not filled — the DevTools browser is showing <url>, not <site>: nothing was typed
 not filled — the owner did not answer in time
 not filled — no sign-in page at <url> (0 text field(s), no password field); nothing was asked of you
 ```
 
-`filled` means the values reached the page (and, where the page can be asked, still holds them). `signed in`
+`filled` means the values reached the page (and, where the page can be asked, still holds them). When no
+extension is connected, the fill goes through the bot screen's DevTools port instead — the browser the dock
+launched — and the line says so in brackets so you can tell which path was used. That path fills one card's
+fields into the form already showing; `login`'s step-by-step driving still needs the extension. `signed in`
 means the final page no longer shows a sign-in form — confirm before promising it. The three `not filled`
 lines above name different faults: nothing was connected, a browser was connected but the page had no such
-field (the line lists what the probe did see), or the value was written and the page dropped it. Act on the
+field (the line lists what the probe did see), or the value was written and the page dropped it. The
+DevTools line naming another page is the same second fault on the fallback path: the browser is on
+`<url>`, not the site the card names, and **nothing was typed** — navigate to the site and ask again. Act on the
 difference — reconnect for the first, re-open the form for the second, retry once for the third — and never
 ask the owner to paste the password instead.
 
 ## Rules
 
 - Never ask for a password, a code or a card number in the conversation. There is no exception.
-- One card at a time. Do not fire two asks and hope one lands. Cards last 10 minutes for a login, 2 otherwise.
+- One card at a time. Do not fire two asks and hope one lands. `login` asks for 10 minutes; `ask` takes the
+  service's own default (15 minutes, `ttl_seconds` 30 s – 24 h).
 - The `--site` is the origin you are actually on. It is what the owner sees, so make it the real one.
 - `--note` is one short line saying what you are doing. It is the only context the owner gets.
 - Never fill a login form yourself, by typing into the page or writing to a field. That is what the card
@@ -123,6 +131,10 @@ ask the owner to paste the password instead.
 - **"no browser connected"** — the desktop slept or the worker was suspended. The CLI already pings and
   waits two 20 s windows before saying this; if it does, run `hermey_browser.py open` again (it wakes the
   desktop and waits for the extension) or set `HERMEY_BROWSER_WAIT_SECONDS` to wait longer.
+- **"the DevTools browser is showing <url>, not <site>"** — no extension is connected, and the only browser
+  with a debugging port is on another page. Nothing was typed: navigate it to the site, then ask again.
+- **"no extension is connected, so `login` cannot drive the page step by step"** — the dock browser is there
+  but the extension is not. Open the sign-in form and use `ask` for that one page, or restore the extension.
 - **"no field matching X"** — a browser is connected and its page is the one printed. Re-enter the sign-in
   form (`login` does this), then ask again; the line names the fields the probe saw, so compare them.
 - **A card is raised but nothing lands** — the page moved. Check with `probe` (see the `bot-desktop` skill):

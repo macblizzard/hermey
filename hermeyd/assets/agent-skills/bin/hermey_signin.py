@@ -139,7 +139,7 @@ def ask(bridge: str, channel: str, kind: str, site: str, fields: list[str], opti
             # The old code read an `ok` this route never returns, so every answered card ended in
             # "not filled" — that, not a stale page, is why the value never appeared.
             values = outcome.get("values") or {}
-            print(_deliver(channel, values, fields or list(values)))
+            print(_deliver(channel, values, fields or list(values), site))
             return 0
     print("not filled — the owner did not answer in time")
     return 0
@@ -310,10 +310,25 @@ def _cdp_port_files() -> list[str]:
     return files[:4]
 
 
+def _devtools_alive(base: str) -> bool:
+    """Is something really answering on that port?
+
+    `DevToolsActivePort` outlives the browser that wrote it — this host had one nine days old
+    pointing at a port nothing listened on. The file is a hint; `/json/version` is the proof, so a
+    fill can never attach to an unrelated process that happened to take the number.
+    """
+    try:
+        with urllib.request.urlopen(f"{base}/json/version", timeout=2) as reply:
+            return reply.status == 200
+    except Exception:  # noqa: BLE001 — nothing answering is the ordinary case
+        return False
+
+
 def _cdp_base() -> str | None:
     port = os.environ.get("HERMEY_CDP_PORT", "").strip()
     if port.isdigit():
-        return f"http://127.0.0.1:{port}"
+        candidate = f"http://127.0.0.1:{port}"
+        return candidate if _devtools_alive(candidate) else None
     explicit = os.environ.get("HERMEY_CDP_FILE", "").strip()
     for path in ([explicit] if explicit else []) + _cdp_port_files():
         try:
@@ -322,7 +337,9 @@ def _cdp_base() -> str | None:
         except OSError:
             continue
         if first.isdigit():
-            return f"http://127.0.0.1:{first}"
+            candidate = f"http://127.0.0.1:{first}"
+            if _devtools_alive(candidate):
+                return candidate
     return None
 
 
@@ -468,7 +485,109 @@ def _fill(bridge: str, values: dict, wanted: list[str]) -> dict | None:
     return _act(bridge, {"type": "fill", "fields": fields}, wait=False)
 
 
-def _deliver(channel: str, values: dict, wanted: list[str]) -> str:
+# --- filling through the DevTools port ----------------------------------------------------------
+#
+# The extension is the first choice; this is the fallback `docs/CREDENTIALS.md` promises for a
+# browser the dock started with `--remote-debugging-port=0` on a host where no extension is loaded.
+# The rules are the extension's, repeated here so the two paths cannot drift: the native value
+# setter plus input/change events (a plain `.value =` leaves React believing the field is empty — a
+# silent failure that looks exactly like "the site rejected my password"), and an answer of field
+# names and booleans, never a value.
+
+_CDP_FILL_JS = """
+(() => {
+  const wanted = __PAYLOAD__;
+  const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const out = {filled: [], missing: []};
+  for (const item of wanted) {
+    if (item.name === "choice") {
+      const nodes = Array.from(document.querySelectorAll('button, a, [role=button], input[type=submit]')).filter(visible);
+      const hit = nodes.find((el) => (el.innerText || el.value || "").toLowerCase().includes(item.value.toLowerCase()));
+      if (!hit) { out.missing.push(item.name); continue; }
+      hit.click();
+      out.filled.push(item.name);
+      continue;
+    }
+    const el = Array.from(document.querySelectorAll(item.selector)).filter(visible)[0];
+    if (!el) { out.missing.push(item.name); continue; }
+    const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, item.value);
+    el.dispatchEvent(new Event("input", {bubbles: true}));
+    el.dispatchEvent(new Event("change", {bubbles: true}));
+    el.focus();
+    out.filled.push(item.name);
+  }
+  return out;
+})()
+"""
+
+
+def _fill_payload(values: dict, wanted: list[str]) -> list[dict]:
+    """What to put where: a name, its value, and the selector the extension would use for it."""
+    payload = []
+    for name in wanted:
+        if not values.get(name):
+            continue
+        payload.append({"name": name, "value": str(values[name]),
+                        "selector": PICKERS.get(name, "input[type=text]")})
+    return payload
+
+
+def _fill_js(payload: list[dict]) -> str:
+    """The script, with the payload as one JSON literal: a quoted value cannot break out of it."""
+    return _CDP_FILL_JS.replace("__PAYLOAD__", json.dumps(payload))
+
+
+def _cdp_pages(base: str) -> list:
+    """The page targets at a DevTools endpoint. A browser-level socket cannot run script."""
+    try:
+        with urllib.request.urlopen(f"{base}/json/list", timeout=2) as reply:
+            targets = json.loads(reply.read() or b"[]")
+    except Exception:  # noqa: BLE001 — an unreadable target list is "no fill", not a crash
+        return []
+    return [t for t in targets if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+
+
+def _cdp_fill(site: str, values: dict, wanted: list[str]) -> str | None:
+    """Fill through the DevTools port when no extension took the answer.
+
+    None means there is no live endpoint — the ordinary case on a host with no dock-launched
+    browser — and the caller reports "no browser connected". Otherwise the line says whether it
+    landed, naming the field and never the value. The page must belong to the site the card names:
+    typing a password into whatever tab happens to be frontmost is the failure this refuses.
+    """
+    base = _cdp_base()
+    if not base:
+        return None
+    pages = _cdp_pages(base)
+    if not pages:
+        return None
+    match = next((p for p in pages if site and site in (p.get("url") or "")), None)
+    if match is None:
+        shown = (pages[0].get("url") or "?")[:90]
+        return (f"not filled — the DevTools browser is showing {shown}, not {site or 'the site'}: "
+                f"nothing was typed")
+    payload = _fill_payload(values, wanted)
+    if not payload:
+        return "not filled — the answer came back empty; nothing was filled"
+    answer = _ws_eval(match["webSocketDebuggerUrl"], _fill_js(payload))
+    if not isinstance(answer, dict):
+        return "not filled — the DevTools fill did not answer; nothing was typed"
+    missing = answer.get("missing") or []
+    if missing:
+        return (f"not filled — the DevTools browser had no visible field for {', '.join(missing)} "
+                f"on {(match.get('url') or '?')[:90]}")
+    # The extension path verifies with one evaluated question; so does this one, on the same target,
+    # so "filled" means the page still holds it rather than that a script ran. A choice click has no
+    # text field to read back, so it keeps the script's own word.
+    if any(name in PICKERS for name in wanted):
+        state, name = _field_state({"url": match.get("url") or ""}, wanted)
+        if state == "empty":
+            return _did_not_land(match, name, state)
+    return "filled (the DevTools port; no extension was connected)"
+
+
+def _deliver(channel: str, values: dict, wanted: list[str], site: str = "") -> str:
     """Wake the browser, fill the answer, and say which of the three things went wrong if it did not.
 
     `filled` means the value reached the page and, where the page can be asked, it still holds it.
@@ -483,7 +602,9 @@ def _deliver(channel: str, values: dict, wanted: list[str]) -> str:
         if _await_browser(channel):
             break
     else:
-        return _no_browser(channel, time.time() - started)
+        # No extension took it. A browser the dock started exposes its DevTools port, and the fill
+        # still goes from here into the page — never back through the bot.
+        return _cdp_fill(site, values, wanted) or _no_browser(channel, time.time() - started)
     page = _probe(channel)
     if not page:
         # A probe with no page behind it is a browser that left between the wait and the ask.
@@ -630,8 +751,23 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
         _act(browser, {"type": "goto", "url": url})
         time.sleep(4)
 
+    # Say which fault it is before probing a page that will answer nothing: with no browser at all,
+    # "no sign-in page" described a page that was never read.
+    started = time.time()
+    if not (_await_browser(browser) or _cdp_base()):
+        print(_no_browser(browser, time.time() - started))
+        return 0
+
     page = _find_login_form(browser)
     if not _looks_like_login(page):
+        if not page.get("url") and _cdp_base():
+            # A dock-launched browser with no extension: it can take one card's values into the form
+            # in front of it, but it cannot be probed or advanced step by step. Say so, and name the
+            # verb that does work rather than blaming the page.
+            print("not filled — no extension is connected, so `login` cannot drive the page step by "
+                  "step; open the sign-in form and use `ask --fields username password`, which the "
+                  "DevTools port can fill")
+            return 0
         shown = page.get("url") or "the page"
         print(f"not filled — no sign-in page at {shown} "
               f"({page.get('textFields', 0)} text field(s), no password field); nothing was asked of you")
@@ -639,7 +775,8 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
 
     wanted = fields or ["username", "password"]
     created = _call(bridge, "POST", "/v1/credentials/cards",
-                    {"kind": "secret", "site": site, "fields": wanted, "note": note, "ttl": 600})
+                    {"kind": "secret", "site": site, "fields": wanted, "note": note,
+                     "ttl_seconds": 600})
     card_id = created["id"]
     expires = float(created.get("expires_at") or (time.time() + 120))
     print(f"asked the owner for {site}: {', '.join(wanted)}", file=sys.stderr)
@@ -671,17 +808,17 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
         if page.get("passwordFields") and "password" in wanted and "password" not in used:
             _await_browser(browser)
             page = _ensure_form(browser, url, _probe(browser))
-            print(f"  {_deliver(browser, values, ['password'])}", file=sys.stderr)
+            print(f"  {_deliver(browser, values, ['password'], site)}", file=sys.stderr)
             used.append("password")
         elif (page.get("usernameFields") or page.get("textFields")) and "username" in wanted \
                 and "username" not in used:
             _await_browser(browser)
             page = _ensure_form(browser, url, _probe(browser))
-            print(f"  {_deliver(browser, values, ['username'])}", file=sys.stderr)
+            print(f"  {_deliver(browser, values, ['username'], site)}", file=sys.stderr)
             used.append("username")
         elif page.get("otpBoxes"):
             if otp:
-                _deliver(browser, {"one-time code": otp}, ["one-time code"])
+                _deliver(browser, {"one-time code": otp}, ["one-time code"], site)
             else:
                 code_card = _call(bridge, "POST", "/v1/credentials/cards",
                                   {"kind": "secret", "site": site, "fields": ["one-time code"],
@@ -693,7 +830,7 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
                     time.sleep(POLL_SECONDS)
                 code = _call(bridge, "POST", f"/v1/credentials/cards/{code_id}/consume",
                              {}).get("values") or {}
-                _deliver(browser, code, ["one-time code"])
+                _deliver(browser, code, ["one-time code"], site)
         label = _advance(browser)
         time.sleep(3)
         after = _probe(browser)
