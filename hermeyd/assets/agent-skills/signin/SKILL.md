@@ -89,15 +89,21 @@ Use the newest message only, and only the code from this site. Never read other 
 ```
 filled
 signed in (https://www.doctolib.de/)
-not filled — the browser did not take it: either it is not connected, or the page in front of it has no
-              field matching what was asked for
+not filled — no browser connected: waited 20s for the sign-in extension and http://127.0.0.1:8790 still
+              lists no target (the worker is asleep and its socket is closed); nothing was filled
+not filled — a browser is connected but its page has no field matching password: <url> — the probe saw
+              input_:r0: [text/username]; buttons: Zurück, Weiter
+not filled — the fill was sent but the value did not land: the password field on <url> now reads empty
 not filled — the owner did not answer in time
 not filled — no sign-in page at <url> (0 text field(s), no password field); nothing was asked of you
 ```
 
-`filled` means the values reached the page. `signed in` means the final page no longer shows a sign-in form —
-confirm before promising it. On anything else, stop and tell the owner plainly; never ask them to paste the
-password instead.
+`filled` means the values reached the page (and, where the page can be asked, still holds them). `signed in`
+means the final page no longer shows a sign-in form — confirm before promising it. The three `not filled`
+lines above name different faults: nothing was connected, a browser was connected but the page had no such
+field (the line lists what the probe did see), or the value was written and the page dropped it. Act on the
+difference — reconnect for the first, re-open the form for the second, retry once for the third — and never
+ask the owner to paste the password instead.
 
 ## Rules
 
@@ -114,8 +120,11 @@ password instead.
 
 ## When it does not work
 
-- **"no browser connected"** — the desktop slept or the worker was suspended. Run `hermey_browser.py open`
-  again; it wakes the desktop and waits for the extension.
+- **"no browser connected"** — the desktop slept or the worker was suspended. The CLI already pings and
+  waits two 20 s windows before saying this; if it does, run `hermey_browser.py open` again (it wakes the
+  desktop and waits for the extension) or set `HERMEY_BROWSER_WAIT_SECONDS` to wait longer.
+- **"no field matching X"** — a browser is connected and its page is the one printed. Re-enter the sign-in
+  form (`login` does this), then ask again; the line names the fields the probe saw, so compare them.
 - **A card is raised but nothing lands** — the page moved. Check with `probe` (see the `bot-desktop` skill):
   if there is no sign-in form, `login` re-enters it; if the browser is on a search page, the site redirected.
 - **The extension is stale after an update** — Chrome binds an unpacked extension to its **path**, so new

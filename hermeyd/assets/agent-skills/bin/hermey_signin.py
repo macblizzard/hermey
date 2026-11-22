@@ -6,21 +6,25 @@
     hermey_signin.py ask --site doctolib.de --kind secret --fields "one-time code"
     hermey_signin.py ask --site doctolib.de --kind confirm --options "Google — mo@example.com"
 
-`ask` blocks until the owner answers (or the card expires), then asks the browser to fill it, and prints
-one line: `filled` or `not filled — <reason>`. That line is all a bot ever learns. There is no verb here
-that prints a value, because the service never returns one.
+`ask` blocks until the owner answers (or the card expires), wakes the browser, fills the answer into the
+page and prints one line: `filled`, or `not filled — <which failure>`. That line is all a bot ever learns:
+no verb here prints a value, and nothing logs one.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import os
+import socket
+import struct
+import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-
-import os
 
 
 # --- where this host is ------------------------------------------------------------------------
@@ -72,6 +76,10 @@ def endpoints(bridge: str | None = None, browser: str | None = None) -> tuple[st
 
 
 POLL_SECONDS = 1.5
+#: How long a fill will wait for the sign-in extension after the owner answers. An MV3 worker is
+#: suspended between events and its loopback socket goes with it — exactly when an answer arrives. Its
+#: own reconnect backoff tops out at 30 s, so the wait is bounded and generous, not instant.
+BROWSER_WAIT_SECONDS = float(os.environ.get("HERMEY_BROWSER_WAIT_SECONDS") or 20.0)
 
 
 def _call(bridge: str, method: str, path: str, body: dict | None = None,
@@ -94,7 +102,8 @@ def _call(bridge: str, method: str, path: str, body: dict | None = None,
         raise
 
 
-def ask(bridge: str, kind: str, site: str, fields: list[str], options: list[str], note: str) -> int:
+def ask(bridge: str, channel: str, kind: str, site: str, fields: list[str], options: list[str],
+        note: str) -> int:
     try:
         created = _call(bridge, "POST", "/v1/credentials/cards",
                         {"kind": kind, "site": site, "fields": fields,
@@ -126,9 +135,11 @@ def ask(bridge: str, kind: str, site: str, fields: list[str], options: list[str]
             except urllib.error.HTTPError as exc:
                 print(f"not filled — HTTP {exc.code}")
                 return 0
-            print("filled" if outcome.get("ok") else
-                  "not filled — the browser did not take it: either it is not connected, or the page "
-                  "in front of it has no field matching what was asked for")
+            # `consume` hands the answer over exactly once and keeps nothing; the fill is ours to do.
+            # The old code read an `ok` this route never returns, so every answered card ended in
+            # "not filled" — that, not a stale page, is why the value never appeared.
+            values = outcome.get("values") or {}
+            print(_deliver(channel, values, fields or list(values)))
             return 0
     print("not filled — the owner did not answer in time")
     return 0
@@ -137,34 +148,380 @@ def ask(bridge: str, kind: str, site: str, fields: list[str], options: list[str]
 CONTINUE_WORDS = ("weiter", "continue", "einloggen", "log in", "anmelden", "sign in", "bestätigen", "verify")
 
 
-def _act(bridge: str, payload: dict) -> dict:
-    _await_browser(bridge, seconds=30)
+def _ping(bridge: str) -> bool:
+    """Wake the extension's worker and prove its socket and listener are alive.
+
+    A ping is answered before the worker touches the page, so it separates "nothing is connected" from
+    "the page is wrong" — and sending one is what brings a suspended MV3 worker back.
+    """
     try:
-        return _call(bridge, "POST", "/v1/browser/act", payload, timeout=40)
-    except urllib.error.HTTPError:
-        return {}
+        reply = _call(bridge, "POST", "/v1/browser/act", {"type": "ping"}, timeout=10)
+    except Exception:  # noqa: BLE001 — no browser connected is the ordinary case here
+        return False
+    return bool(reply.get("ready") or reply.get("ok"))
 
 
-def _await_browser(bridge: str, seconds: float = 90) -> bool:
-    """Wait until a browser is registered, before every action that needs one.
+def _targets(bridge: str) -> list:
+    try:
+        return _call(bridge, "GET", "/v1/browser/targets", timeout=10).get("browsers") or []
+    except Exception:  # noqa: BLE001
+        return []
 
-    The MV3 worker sleeps between events, so a multi-step login loses its socket between the email step and
-    the password step. Waiting only at the first fill left the later ones racing a sleeping worker.
+
+def _await_browser(bridge: str, seconds: float = BROWSER_WAIT_SECONDS) -> bool:
+    """Wake the worker and wait for a registered target before every instruction that needs one.
+
+    The worker sleeps between events and its socket closes with it, so `/targets` is empty exactly when
+    an answer lands and the fill that follows is refused — `no browser connected`. A ping wakes it and
+    polling `/targets` says when it is back. Filling on the first attempt without this is what made the
+    owner's answer arrive, get consumed, and go nowhere.
     """
     deadline = time.time() + seconds
-    while time.time() < deadline:
-        try:
-            rows = _call(bridge, "GET", "/v1/browser/targets", timeout=10).get("browsers") or []
-        except Exception:  # noqa: BLE001
-            rows = []
-        if rows:
+    started = time.time()
+    announced = False
+    while True:
+        if _ping(bridge) or _targets(bridge):
+            if announced:
+                print(f"  the sign-in extension is back after {time.time() - started:.1f}s",
+                      file=sys.stderr)
             return True
-        time.sleep(2)
-    return False
+        if time.time() >= deadline:
+            return False
+        if not announced:
+            print(f"  waiting up to {seconds:.0f}s for the sign-in extension to reconnect…",
+                  file=sys.stderr)
+            announced = True
+        time.sleep(1.5)
+
+
+def _act(bridge: str, payload: dict, wait: bool = True) -> dict | None:
+    """One instruction for the browser. None means no browser took it: asleep, closed, or silent."""
+    if wait and not _await_browser(bridge):
+        return None
+    try:
+        return _call(bridge, "POST", "/v1/browser/act", payload, timeout=40)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+        # 409 `no browser connected` when the worker slept between our probe and this call; a timeout
+        # when it went away mid-instruction. Both mean the same thing to the caller: nothing happened.
+        return None
+
+
+def _acted(bridge: str, payload: dict) -> bool:
+    return bool((_act(bridge, payload) or {}).get("ok"))
 
 
 def _probe(bridge: str) -> dict:
+    """The page in front of the browser: field counts and labels, never a value."""
     return (_act(bridge, {"type": "probe"}) or {}).get("page") or {}
+
+
+# --- what went wrong, said precisely ------------------------------------------------------------
+#
+# One sentence used to cover three different faults — no browser, no matching field, a fill the page
+# threw away — and the bot could do nothing with it. Each now has its own line and its own evidence.
+
+def _href(page: dict, limit: int = 120) -> str:
+    return (page.get("url") or "?")[:limit]
+
+
+def _seen(page: dict, limit: int = 6) -> str:
+    """The probe's own words for what the page offered: field names by kind, then its buttons."""
+    rows = []
+    for field in (page.get("fields") or [])[:limit]:
+        kind = field.get("type") or "text"
+        if field.get("autocomplete"):
+            kind += f"/{field['autocomplete']}"
+        rows.append(f"{field.get('name') or '?'} [{kind}]")
+    buttons = ", ".join((page.get("buttons") or [])[:4])
+    parts = [", ".join(rows) or "no fields"]
+    if buttons:
+        parts.append(f"buttons: {buttons}")
+    if not page:
+        parts = ["the page could not be read"]
+    return "; ".join(parts)
+
+
+def _no_browser(channel: str, seconds: float) -> str:
+    return (f"not filled — no browser connected: waited {seconds:.0f}s for the sign-in extension and "
+            f"{channel} still lists no target (the worker is asleep and its socket is closed); "
+            f"nothing was filled")
+
+
+def _no_field(page: dict, wanted: list[str]) -> str:
+    asked = ", ".join(wanted) or "the answer"
+    return (f"not filled — a browser is connected but its page has no field matching {asked}: "
+            f"{_href(page)} — the probe saw {_seen(page)}")
+
+
+def _did_not_land(page: dict, name: str, state: str) -> str:
+    return (f"not filled — the fill was sent but the value did not land: the {name} field on "
+            f"{_href(page, 90)} now reads {state}")
+
+
+# --- did it land? asked of the page, never of the value ------------------------------------------
+#
+# The extension answers with counts and never a value, so "the fill was sent but the page dropped it"
+# is invisible to a probe. A browser this host started exposes its DevTools endpoint on loopback, and
+# one evaluated question — does the field hold anything — answers `set`, `empty` or `absent` and
+# nothing else. When no endpoint is discoverable (the extension may live on another machine) the check
+# is skipped and the extension's own `ok` stands.
+
+PICKERS = {
+    "password": "input[type=password]",
+    "username": ("input[type=text], input[type=email], input[name*=user i], input[name*=email i],"
+                 " input[id*=user i], input[id*=email i]"),
+    "one-time code": ("input[autocomplete*=one-time-code i], input[name*=code i], input[name*=otp i],"
+                      " input[id*=token i]"),
+}
+
+#: Answers with `set` / `empty` / `absent` per field. Lengths and booleans only — never the text.
+_STATE_JS = """
+(() => {
+  const vis = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  const pickers = %s;
+  const out = {};
+  for (const name of %s) {
+    const el = Array.from(document.querySelectorAll(pickers[name] || "input[type=text]"))
+      .filter(vis)[0];
+    out[name] = !el ? "absent" : (el.value ? "set" : "empty");
+  }
+  return out;
+})()
+"""
+
+
+def _cdp_port_files() -> list[str]:
+    """Where browsers on this host wrote their chosen DevTools port.
+
+    `--remote-debugging-port=0` means Chrome picked a port at random and recorded it beside its
+    profile, so there is no number to guess at: the process list names the profile directory.
+    """
+    files: list[str] = []
+    try:
+        listing = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True,
+                                 timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return files
+    for line in listing.splitlines():
+        if "remote-debugging-port" not in line or "user-data-dir=" not in line:
+            continue
+        profile = line.split("user-data-dir=", 1)[1].split(" ", 1)[0]
+        files.append(os.path.join(profile, "DevToolsActivePort"))
+    return files[:4]
+
+
+def _cdp_base() -> str | None:
+    port = os.environ.get("HERMEY_CDP_PORT", "").strip()
+    if port.isdigit():
+        return f"http://127.0.0.1:{port}"
+    explicit = os.environ.get("HERMEY_CDP_FILE", "").strip()
+    for path in ([explicit] if explicit else []) + _cdp_port_files():
+        try:
+            with open(path, encoding="utf-8") as handle:
+                first = handle.readline().strip()
+        except OSError:
+            continue
+        if first.isdigit():
+            return f"http://127.0.0.1:{first}"
+    return None
+
+
+def _ws_frame(payload: bytes) -> bytes:
+    """One masked client text frame — the only thing this needs to send."""
+    mask = os.urandom(4)
+    head = bytearray([0x81])
+    size = len(payload)
+    if size < 126:
+        head.append(0x80 | size)
+    elif size < 65536:
+        head.append(0x80 | 126)
+        head += struct.pack(">H", size)
+    else:
+        head.append(0x80 | 127)
+        head += struct.pack(">Q", size)
+    head += mask
+    return bytes(head) + bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+
+
+def _ws_read(sock: socket.socket, buffered: bytes) -> tuple[bytes | None, bytes]:
+    """Read whole frames until one carries text; returns (payload, leftover)."""
+    while True:
+        while len(buffered) < 2:
+            chunk = sock.recv(65536)
+            if not chunk:
+                return None, b""
+            buffered += chunk
+        first, second = buffered[0], buffered[1]
+        offset, size = 2, second & 0x7F
+        if size == 126:
+            while len(buffered) < 4:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    return None, b""
+                buffered += chunk
+            size, offset = struct.unpack(">H", buffered[2:4])[0], 4
+        elif size == 127:
+            while len(buffered) < 10:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    return None, b""
+                buffered += chunk
+            size, offset = struct.unpack(">Q", buffered[2:10])[0], 10
+        while len(buffered) < offset + size:
+            chunk = sock.recv(65536)
+            if not chunk:
+                return None, b""
+            buffered += chunk
+        payload, rest = buffered[offset:offset + size], buffered[offset + size:]
+        if first & 0x0F == 0x1:
+            return payload, rest
+        buffered = rest  # ping / pong / close / binary: not an answer, keep reading
+
+
+def _ws_eval(ws_url: str, expression: str, timeout: float = 3.0):
+    """One `Runtime.evaluate` over a bare WebSocket: enough for a DevTools question, no dependency."""
+    parts = urllib.parse.urlsplit(ws_url)
+    host, port = parts.hostname or "127.0.0.1", parts.port or 80
+    path = parts.path + (f"?{parts.query}" if parts.query else "")
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return None
+    try:
+        # No Origin header: Chrome refuses a DevTools handshake that carries one.
+        sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nUpgrade: websocket\r\n"
+                      f"Connection: Upgrade\r\nSec-WebSocket-Key: {base64.b64encode(os.urandom(16)).decode()}\r\n"
+                      f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = sock.recv(4096)
+            if not chunk:
+                return None
+            head += chunk
+        if b" 101 " not in head.split(b"\r\n", 1)[0]:
+            return None
+        buffered = head.split(b"\r\n\r\n", 1)[1]
+        request = {"id": 1, "method": "Runtime.evaluate",
+                   "params": {"expression": expression, "returnByValue": True}}
+        sock.sendall(_ws_frame(json.dumps(request).encode()))
+        for _ in range(20):
+            frame, buffered = _ws_read(sock, buffered)
+            if frame is None:
+                return None
+            if not frame:
+                continue
+            try:
+                message = json.loads(frame)
+            except ValueError:
+                continue
+            if message.get("id") == 1:
+                return ((message.get("result") or {}).get("result") or {}).get("value")
+        return None
+    except (OSError, ValueError):
+        return None
+    finally:
+        sock.close()
+
+
+def _field_state(page: dict, wanted: list[str]) -> tuple[str | None, str]:
+    """('set'|'empty'|None, field) for the fields just filled — never the value behind them."""
+    base = _cdp_base()
+    if not base:
+        return None, ""
+    try:
+        with urllib.request.urlopen(f"{base}/json/list", timeout=2) as reply:
+            tabs = json.loads(reply.read() or b"[]")
+    except Exception:  # noqa: BLE001 — no endpoint is not a failure of the fill
+        return None, ""
+    pages = [t for t in tabs if t.get("type") == "page" and t.get("webSocketDebuggerUrl")]
+    if not pages:
+        return None, ""
+    here = (page.get("url") or "").split("?")[0][:80]
+    match = next((t for t in pages if (t.get("url") or "").split("?")[0][:80] == here), pages[0])
+    names = [name for name in wanted if name in PICKERS] or wanted
+    answer = _ws_eval(match["webSocketDebuggerUrl"],
+                      _STATE_JS % (json.dumps(PICKERS), json.dumps(names)))
+    if not isinstance(answer, dict):
+        return None, ""
+    if any(answer.get(name) == "empty" for name in names):
+        return "empty", next(name for name in names if answer.get(name) == "empty")
+    if any(answer.get(name) == "set" for name in names):
+        return "set", next(name for name in names if answer.get(name) == "set")
+    return None, ""
+
+
+def _field_matches(page: dict, name: str) -> bool:
+    """Would the extension find a field for this name on this page? Same rules it fills by."""
+    if name == "password":
+        return bool(page.get("passwordFields"))
+    if name == "username":
+        return bool(page.get("usernameFields"))
+    if name == "one-time code":
+        return bool(page.get("otpBoxes"))
+    if name == "choice":
+        return bool(page.get("buttons"))
+    return bool(page.get("fields"))
+
+
+def _fill(bridge: str, values: dict, wanted: list[str]) -> dict | None:
+    fields = [{"name": name, "value": values[name]} for name in wanted if values.get(name)]
+    return _act(bridge, {"type": "fill", "fields": fields}, wait=False)
+
+
+def _deliver(channel: str, values: dict, wanted: list[str]) -> str:
+    """Wake the browser, fill the answer, and say which of the three things went wrong if it did not.
+
+    `filled` means the value reached the page and, where the page can be asked, it still holds it.
+    """
+    wanted = [name for name in (wanted or list(values)) if values.get(name)]
+    if not wanted:
+        return "not filled — the answer came back empty; nothing was filled"
+    started = time.time()
+    # Two windows, not one: the extension's own reconnect backoff alone can eat 30 s, and a fill that
+    # arrives a few seconds later is worth far more than a bot that has to ask the owner again.
+    for _ in range(2):
+        if _await_browser(channel):
+            break
+    else:
+        return _no_browser(channel, time.time() - started)
+    page = _probe(channel)
+    if not page:
+        # A probe with no page behind it is a browser that left between the wait and the ask.
+        if not _await_browser(channel):
+            return _no_browser(channel, time.time() - started)
+        page = _probe(channel)
+    missing = [name for name in wanted if not _field_matches(page, name)]
+    if missing:
+        # The SPA paints its form a beat after the URL settles: one re-probe covers that race.
+        time.sleep(1.5)
+        page = _probe(channel) or page
+        if [name for name in wanted if not _field_matches(page, name)]:
+            return _no_field(page, wanted)
+    here = page.get("url") or ""
+    reply = None
+    for attempt in (1, 2):
+        reply = _fill(channel, values, wanted)
+        if (reply or {}).get("ok"):
+            break
+        if attempt == 2:
+            break
+        time.sleep(1.5)
+        after = _probe(channel)
+        if not after or (after.get("url") or "") != here:
+            # It navigated under us: a second fill would land on a different page, so stop here.
+            return _no_field(after or page, wanted)
+        page = after
+    if reply is None:
+        # The socket went away mid-fill: that is the first failure, not the second, and saying "no
+        # field matched" here would send the bot looking at a page that was never the problem.
+        _await_browser(channel)
+        return _no_browser(channel, time.time() - started)
+    if not reply.get("ok"):
+        return _no_field(page, wanted)
+    state, name = _field_state(page, wanted)
+    if state == "empty":
+        return _did_not_land(page, name, state)
+    return "filled"
 
 
 def _ensure_form(bridge: str, url: str, page: dict) -> dict:
@@ -188,12 +545,12 @@ def _advance(bridge: str) -> str:
     """Advance the form: its own submit control, not a label we guessed at."""
     page = _probe(bridge)
     if page.get("submitLabel"):
-        if _act(bridge, {"type": "submit"}).get("ok"):
+        if _acted(bridge, {"type": "submit"}):
             return page["submitLabel"]
     for label in page.get("buttons", []):
         low = label.lower()
         if any(word in low for word in CONTINUE_WORDS):
-            if _act(bridge, {"type": "click", "match": label}).get("ok"):
+            if _acted(bridge, {"type": "click", "match": label}):
                 return label
     return ""
 
@@ -301,6 +658,11 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
         print("not filled — the owner did not answer")
         return 0
 
+    # Consume once: the route hands the answer over a single time. Reading it per step — which is what
+    # this did — meant every step after the first asked a spent card for its values and filled nothing.
+    values = (_call(bridge, "POST", f"/v1/credentials/cards/{card_id}/consume", {})
+              .get("values") or {})
+
     steps = 0
     used: list[str] = []
     while steps < 6:
@@ -309,17 +671,17 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
         if page.get("passwordFields") and "password" in wanted and "password" not in used:
             _await_browser(browser)
             page = _ensure_form(browser, url, _probe(browser))
-            _call(bridge, "POST", f"/v1/credentials/cards/{card_id}/consume", {"only": ["password"]})
+            print(f"  {_deliver(browser, values, ['password'])}", file=sys.stderr)
             used.append("password")
         elif (page.get("usernameFields") or page.get("textFields")) and "username" in wanted \
                 and "username" not in used:
             _await_browser(browser)
             page = _ensure_form(browser, url, _probe(browser))
-            _call(bridge, "POST", f"/v1/credentials/cards/{card_id}/consume", {"only": ["username"]})
+            print(f"  {_deliver(browser, values, ['username'])}", file=sys.stderr)
             used.append("username")
         elif page.get("otpBoxes"):
             if otp:
-                _act(browser, {"type": "fill", "fields": [{"name": "one-time code", "value": otp}]})
+                _deliver(browser, {"one-time code": otp}, ["one-time code"])
             else:
                 code_card = _call(bridge, "POST", "/v1/credentials/cards",
                                   {"kind": "secret", "site": site, "fields": ["one-time code"],
@@ -329,7 +691,9 @@ def cmd_login(bridge: str, browser: str, url: str, site: str, fields: list[str],
                     if _call(bridge, "GET", f"/v1/credentials/cards/{code_id}").get("state") == "answered":
                         break
                     time.sleep(POLL_SECONDS)
-                _call(bridge, "POST", f"/v1/credentials/cards/{code_id}/consume", {})
+                code = _call(bridge, "POST", f"/v1/credentials/cards/{code_id}/consume",
+                             {}).get("values") or {}
+                _deliver(browser, code, ["one-time code"])
         label = _advance(browser)
         time.sleep(3)
         after = _probe(browser)
@@ -364,7 +728,7 @@ def main() -> int:
     bridge, browser = endpoints(args.bridge, args.browser)
     if args.verb == "login":
         return cmd_login(bridge, browser, args.url, args.site, args.fields, args.otp, args.note)
-    return ask(bridge, args.kind, args.site, args.fields, args.options, args.note)
+    return ask(bridge, browser, args.kind, args.site, args.fields, args.options, args.note)
 
 
 if __name__ == "__main__":
