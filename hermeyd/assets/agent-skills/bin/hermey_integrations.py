@@ -109,6 +109,13 @@ def cmd_list(bridge: str) -> int:
     if not state.get("configured"):
         print("integrations are not set up on this host: no Composio key")
         return 0
+    # A host that could not ask Composio knows nothing about what is connected. Saying "nothing
+    # connected yet" here was the lie that made this look like the owner's fault.
+    error = state.get("error")
+    if error:
+        print(f"could not ask Composio ({error}) — this says nothing about what is connected; "
+              f"check the key and this host's network, then run list again", file=sys.stderr)
+        return 2
     rows = state.get("services", [])
     connected = [r for r in rows if r.get("connected")]
     if not connected:

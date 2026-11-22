@@ -147,13 +147,19 @@ impl Composio {
         Ok(items.as_array().cloned().unwrap_or_default())
     }
 
-    async fn accounts(&self, slug: Option<&str>) -> Vec<Value> {
+    /// Active accounts, or the reason they could not be read.
+    ///
+    /// This used to answer `[]` on any failure, which made a Composio that was unreachable or had
+    /// refused the key look exactly like an owner who had connected nothing — and every caller
+    /// downstream ("nothing is connected for that service") repeated that guess as fact.
+    async fn accounts(&self, slug: Option<&str>) -> Result<Vec<Value>, String> {
         let mut path = format!("/connected_accounts?user_id={}", urlencoding::encode(&self.user));
         if let Some(slug) = slug {
             path.push_str(&format!("&toolkit_slug={}", urlencoding::encode(slug)));
         }
-        let rows = self.items(&path).await.unwrap_or_default();
-        rows.into_iter()
+        let rows = self.items(&path).await?;
+        Ok(rows
+            .into_iter()
             .filter(|row| {
                 // More than one account per toolkit is normal once a second Gmail exists.
                 row.get("status").and_then(|s| s.as_str()).map(|s| s.eq_ignore_ascii_case("active")).unwrap_or(false)
@@ -162,7 +168,7 @@ impl Composio {
                 None => true,
                 Some(slug) => toolkit_of(row) == slug,
             })
-            .collect()
+            .collect())
     }
 
     async fn auth_config_id(&self, slug: &str) -> Option<String> {
@@ -362,7 +368,20 @@ pub async fn list(
 ) -> Result<Json<Value>, Fail> {
     require_device(&st, &headers)?;
     let api = composio(&st);
-    let all = api.accounts(None).await;
+    Ok(Json(services(api.accounts(None).await, api.configured(), &api.user)))
+}
+
+/// The Integrations screen's payload, from one account read — or from the reason there was none.
+///
+/// `available` means "this host could ask", so a Composio that is unreachable or refusing the key
+/// renders as unavailable with the cause in `error`, not as eight services the owner has simply not
+/// connected. Everything else about the shape is unchanged, because the apps already decode it.
+fn services(rows: Result<Vec<Value>, String>, configured: bool, user: &str) -> Value {
+    let (all, error) = match rows {
+        Ok(rows) => (rows, None),
+        Err(reason) => (Vec::new(), Some(reason)),
+    };
+    let available = configured && error.is_none();
     let mut services = Vec::new();
     for (slug, name, blurb) in CATALOG {
         let rows: Vec<&Value> = all.iter().filter(|r| toolkit_of(r) == slug).collect();
@@ -377,18 +396,22 @@ pub async fn list(
             "blurb": blurb,
             "connected": !accounts.is_empty(),
             "account_id": rows.first().and_then(|r| account_id(r)),
-            "available": api.configured(),
+            "available": available,
             // The app draws the key form only for services it is told are key-based; without this
             // flag every row looked OAuth-only and Cloudflare/Vercel opened the browser flow.
             "key_based": key_based(slug),
             "accounts": accounts,
         }));
     }
-    Ok(Json(json!({
-        "configured": api.configured(),
-        "user": api.user,
+    let mut body = json!({
+        "configured": configured,
+        "user": user,
         "services": services,
-    })))
+    });
+    if let Some(error) = error {
+        body["error"] = json!(error);
+    }
+    body
 }
 
 #[derive(Deserialize)]
@@ -462,12 +485,16 @@ pub async fn set_alias(
     let api = composio(&st);
     let id = match body.account_id.filter(|i| !i.trim().is_empty()) {
         Some(id) => id,
-        None => api
-            .accounts(Some(&slug))
-            .await
-            .first()
-            .and_then(account_id)
-            .ok_or_else(|| bad(StatusCode::CONFLICT, "nothing is connected for that service"))?,
+        None => {
+            // A lookup that failed is not "nothing connected": say which one it was.
+            let rows = api
+                .accounts(Some(&slug))
+                .await
+                .map_err(|e| bad(StatusCode::CONFLICT, e))?;
+            rows.first()
+                .and_then(account_id)
+                .ok_or_else(|| bad(StatusCode::CONFLICT, "nothing is connected for that service"))?
+        }
     };
     let alias = body.alias.trim().chars().take(40).collect::<String>();
     if alias.is_empty() {
@@ -500,12 +527,15 @@ pub async fn disconnect(
     let requested = body.and_then(|Json(b)| b.account_id).filter(|i| !i.trim().is_empty());
     let id = match requested {
         Some(id) => id,
-        None => api
-            .accounts(Some(&slug))
-            .await
-            .first()
-            .and_then(account_id)
-            .ok_or_else(|| bad(StatusCode::CONFLICT, "nothing is connected for that service"))?,
+        None => {
+            let rows = api
+                .accounts(Some(&slug))
+                .await
+                .map_err(|e| bad(StatusCode::CONFLICT, e))?;
+            rows.first()
+                .and_then(account_id)
+                .ok_or_else(|| bad(StatusCode::CONFLICT, "nothing is connected for that service"))?
+        }
     };
     let path = format!("/connected_accounts/{}", urlencoding::encode(&id));
     api.call("DELETE", &path, None)
@@ -638,5 +668,79 @@ pub async fn key_connect(
             eprintln!("integrations: key-connect {slug} -> refused");
             Err(bad(StatusCode::BAD_GATEWAY, e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn service<'a>(body: &'a Value, slug: &str) -> &'a Value {
+        body["services"]
+            .as_array()
+            .expect("services")
+            .iter()
+            .find(|s| s["slug"] == slug)
+            .unwrap_or_else(|| panic!("{slug} is missing from the catalog"))
+    }
+
+    /// The bug this closes: a Composio that could not be reached answered with an empty account
+    /// list, so the screen said "nothing connected" and the phone's error said "could not reach the
+    /// host" — two descriptions of a fault neither of them named.
+    #[test]
+    fn an_unreachable_composio_is_named_not_rendered_as_nothing_connected() {
+        let body = services(
+            Err("Composio unreachable: connection refused".to_string()),
+            true,
+            "hermey-owner",
+        );
+        assert_eq!(body["error"], "Composio unreachable: connection refused");
+        assert_eq!(body["configured"], true, "the key is still on this host");
+        for row in body["services"].as_array().expect("services") {
+            assert_eq!(row["available"], false, "{} still claims Composio answered", row["slug"]);
+            assert_eq!(row["connected"], false);
+        }
+        assert_eq!(
+            body["services"].as_array().expect("services").len(),
+            CATALOG.len(),
+            "every row is still drawn, so the screen keeps its shape"
+        );
+    }
+
+    #[test]
+    fn a_working_read_marks_every_service_available() {
+        let body = services(Ok(Vec::new()), true, "hermey-owner");
+        assert!(body.get("error").is_none(), "a successful read has nothing to report");
+        for row in body["services"].as_array().expect("services") {
+            assert_eq!(row["available"], true);
+            assert_eq!(row["connected"], false, "nobody has connected anything yet");
+        }
+    }
+
+    #[test]
+    fn an_active_account_connects_only_its_own_service() {
+        let rows = vec![json!({
+            "id": "acc-1",
+            "status": "ACTIVE",
+            "alias": "work",
+            "toolkit": {"slug": "gmail"},
+        })];
+        let body = services(Ok(rows), true, "hermey-owner");
+        assert_eq!(service(&body, "gmail")["connected"], true);
+        assert_eq!(service(&body, "gmail")["account_id"], "acc-1");
+        assert_eq!(service(&body, "gmail")["accounts"][0]["label"], "work");
+        assert_eq!(
+            service(&body, "googlecalendar")["connected"],
+            false,
+            "one Gmail must not light up the calendar"
+        );
+    }
+
+    #[test]
+    fn a_keyless_host_says_so_once() {
+        let body = services(Err("no Composio key on this host".to_string()), false, "hermey-owner");
+        assert_eq!(body["configured"], false);
+        assert_eq!(body["error"], "no Composio key on this host");
+        assert_eq!(service(&body, "gmail")["available"], false);
     }
 }

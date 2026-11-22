@@ -23,6 +23,10 @@ googlecalendar	Google Calendar
 Nothing listed means nothing is connected: say so and stop. Do not try to work around a missing account,
 and never ask for a password or a token.
 
+If the command exits non-zero saying it **could not ask Composio**, this host learned nothing — that is a
+key or network fault on the host, not an empty account list. Say which one, and do not tell the owner
+nothing is connected.
+
 ## The exact tool names
 
 ```bash
