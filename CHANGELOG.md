@@ -67,6 +67,16 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **View log can be copied, counted and sent.** The Mac sheet's Copy, Share and Clear buttons were
+  `ToolbarItem`s, and the system's sheet chrome dropped them: the owner was looking at a sheet whose
+  only buttons were *Close* and *Refresh* while the copy code sat in the file. Copy, share and clear
+  are now controls in the sheet's own body, under the filter row, as *Copy shown*, *Copy all*,
+  *Share log* and *Clear* — one row on the phone and on the Mac. *Copy all* reads the log itself
+  rather than the feed, so the lines a paused tail is holding back go with it; the entry count is
+  replaced for 1.6 seconds by what actually happened (*Copied 214 lines shown*), and never by a bare
+  *Copied* when nothing was written. Log rows are selectable, and *Share log* hands the same text to
+  the system share sheet so the phone can send it to Messages or Mail
+  (`Sources/HermeyUI/ClientLogView.swift`).
 - **The service stops reading a dashboard flag as a statement about its own socket.** `hermeyd` asked
   `/api/health` whether the engine wanted a token and read `auth_required: false` as "none needed".
   That flag describes the dashboard's OAuth gate: a loopback `hermes serve` answers `false` while its
@@ -811,4 +821,12 @@ clear button, approvals, attachments, and the three-pane macOS shell.
 - **The vision model row shows the configured model instead of "auto".** Hermey read the flat
   `auxiliary.vision_provider` key while the engine and both shipped configs use the nested
   `auxiliary.vision.provider`, so the setting always looked unset.
+
+## [0.1.612] — 2026-11-22
+
+### Fixed
+- **The log sheet has visible copy and share controls.** They existed but lived in a toolbar, and macOS's
+  sheet presentation drew only Close and Refresh there, so the sheet showed no copy at all. Copy and Share are
+  now in the sheet body beside the entry count: *Copy shown*, *Copy all* (including lines a paused tail is
+  holding back) and *Share log*, each with a receipt that says how much was copied — "Copied 214 lines shown".
 

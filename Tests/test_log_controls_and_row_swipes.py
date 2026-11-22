@@ -67,7 +67,10 @@ class TheLogCanBeReReadAndReversed(unittest.TestCase):
         self.assertIn('TextField("Search the log"', LOG)
         self.assertIn('Text("All levels")', LOG)
         self.assertIn('Text("All categories")', LOG)
-        self.assertIn("Text(countLine)", LOG)
+        # The count line is also where a copy's receipt appears, and where it reverts to the count:
+        # one 1.6-second message in a spot the sheet already has, not a row that appears and pushes
+        # the list down.
+        self.assertIn("Text(copiedNotice ?? countLine)", LOG)
 
     def test_both_apps_present_the_same_view(self) -> None:
         # The parity fix: one presentation, reached from two places. A second, Mac-only log list is

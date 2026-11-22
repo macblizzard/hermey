@@ -1,0 +1,181 @@
+"""Getting the log out of the app: selectable rows, two copy actions, and a share sheet.
+
+Reported twice by the owner: "in View log I cannot select multiple lines", and then — with a
+screenshot of build 0.1.611 on macOS — a sheet whose only buttons were *Close* and *Refresh*, while
+the Copy, Share and Clear `ToolbarItem`s sat in the source. A test that only reads the file cannot
+tell the difference between a control that exists and a control the sheet draws, so these pin
+*where* each control lives, not merely that its name appears somewhere in `ClientLogView.swift`.
+
+The shapes, then: the row's own `Text` is selectable; the two copy actions take different lists and
+serialise through one formatter; the share affordance hands that same text to the system; the
+confirmation carries a count; and every one of them sits inside `controls` — the block that also
+holds the entry count, which the Mac sheet has always drawn.
+"""
+
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LOG = (ROOT / "Sources" / "HermeyUI" / "ClientLogView.swift").read_text(encoding="utf-8")
+
+# The sheet's body: everything above the toolbar declaration. A control that appears down here is
+# rendered by the content; one that appears below it is at the mercy of the sheet's toolbar.
+BODY = LOG.split("// MARK: Toolbar", 1)[0]
+# Just the toolbar block itself, so "not in the toolbar" means exactly that.
+TOOLBAR = LOG.split("private var toolbar", 1)[1].split("// MARK: Behaviour", 1)[0]
+
+
+def block(source: str, start: str, end: str) -> str:
+    """The text between two markers, with a failure that names the missing marker."""
+    if start not in source:
+        raise AssertionError(f"expected to find {start!r}")
+    return source.split(start, 1)[1].split(end, 1)[0]
+
+
+class TheRowsCanBeSelected(unittest.TestCase):
+    def setUp(self) -> None:
+        self.row = block(LOG, "private func row(_ entry: ClientLogEntry) -> some View {",
+                         "private var emptyState")
+
+    def test_the_row_text_is_selectable(self) -> None:
+        # SwiftUI's only selection story for a `Text` run. Per row, because a `LazyVStack` of `Text`
+        # cannot be dragged across — which is what "Copy shown" is for.
+        self.assertIn("Text(entry.line)", self.row)
+        self.assertIn(".textSelection(.enabled)", self.row)
+
+    def test_selecting_a_row_does_not_fight_the_row(self) -> None:
+        # Nothing the reader drags over should also be a button: no row-level tap to swallow the
+        # long-press, and no gesture that would end the selection on lift.
+        self.assertNotIn(".onTapGesture", self.row)
+        self.assertNotIn("TapGesture(", self.row)
+
+    def test_the_list_inherits_selection_too(self) -> None:
+        # A future row built from more than one view should inherit the ability to be read rather
+        # than silently lose it.
+        self.assertIn(".textSelection(.enabled)", block(BODY, "LazyVStack(alignment: .leading",
+                                                        ".scrollDismissesKeyboard"))
+
+
+class CopyHasTwoScopes(unittest.TestCase):
+    def setUp(self) -> None:
+        self.shown = block(LOG, "private var copyShownButton", "/// The whole buffer")
+        self.everything = block(LOG, "private var copyAllButton", "/// The same text as Copy shown")
+
+    def test_copy_shown_takes_the_filtered_list(self) -> None:
+        self.assertIn("copy(shown, scope: .shown)", self.shown)
+        self.assertIn('handoffLabel("Copy shown"', self.shown)
+        self.assertIn(".disabled(shown.isEmpty)", self.shown)
+
+    def test_copy_all_takes_the_whole_buffer_not_the_feed(self) -> None:
+        # `feed.entries` holds back what a paused tail has not taken up, so "all" reads the log
+        # itself — and applies the reader's order without the reader's filter.
+        self.assertIn("copyAll()", self.everything)
+        self.assertIn('handoffLabel("Copy all"', self.everything)
+        self.assertIn(".disabled(feed.entries.isEmpty)", self.everything)
+        all_entries = block(LOG, "private func allEntries()", "private func copyAll()")
+        self.assertIn("ClientLog.shared.snapshot()", all_entries)
+        self.assertIn("ClientLogQuery(order: order).apply(to: buffer)", all_entries)
+
+    def test_the_two_actions_hand_over_different_lists(self) -> None:
+        # Not two labels on one behaviour: the scopes are passed to the same entry point and the
+        # receipt says which one was kept.
+        self.assertIn("copy(allEntries(), scope: .all)", LOG)
+        self.assertIn("scope: .shown", LOG)
+        self.assertNotEqual(self.shown, self.everything)
+
+    def test_there_is_still_one_formatter(self) -> None:
+        self.assertEqual(LOG.count("ClientLog.text(of:"), 1)
+        self.assertIn("private func exportText(_ entries: [ClientLogEntry]) -> String", LOG)
+        # Both actions go through it — one call site for the list on screen, one for the buffer —
+        # and neither builds its own string on the way.
+        self.assertEqual(LOG.count("exportText(shown)"), 1)
+        self.assertEqual(LOG.count("exportText(entries)"), 1)
+        self.assertNotIn("map(\\.line)", LOG)
+
+    def test_a_copy_of_nothing_is_not_announced(self) -> None:
+        body = block(LOG, "private func copy(_ entries: [ClientLogEntry]", "private func write(")
+        self.assertIn("guard !entries.isEmpty else { return }", body)
+        self.assertIn("write(exportText(entries))", body)
+
+
+class TheReceiptSaysHowMuchWasCopied(unittest.TestCase):
+    def test_the_confirmation_carries_a_count(self) -> None:
+        self.assertIn(r'"Copied \(copied.count) \(noun) shown"', LOG)
+        self.assertIn(r'"Copied all \(copied.count) \(noun)"', LOG)
+        self.assertIn('let noun = copied.count == 1 ? "line" : "lines"', LOG)
+
+    def test_no_bare_copied_label_survives(self) -> None:
+        # "Copied" alone was both uninformative and able to stand for a write that never happened.
+        self.assertNotIn('Label("Copied"', LOG)
+        self.assertNotIn('Text("Copied")', LOG)
+        self.assertNotIn('copied ? "Copied"', LOG)
+
+    def test_the_count_line_carries_the_receipt(self) -> None:
+        # The same spot the entry count lives in, so the sheet does not grow a row for a message
+        # that lasts 1.6 seconds.
+        self.assertIn("Text(copiedNotice ?? countLine)", LOG)
+
+    def test_the_receipt_expires_without_clearing_a_newer_one(self) -> None:
+        announce = block(LOG, "private func announce(", "private func tint(")
+        self.assertIn("copySequence += 1", announce)
+        self.assertIn("guard sequence == copySequence else { return }", announce)
+        self.assertIn("copied = nil", announce)
+
+
+class TheControlsAreInTheSheetsBody(unittest.TestCase):
+    """Build 0.1.611: the Mac sheet drew Close and Refresh, and nothing else.
+
+    A `ToolbarItemGroup` is not a promise. These assert the copy, share and clear controls are in
+    `controls` — the same block as the entry count, which the photographed sheet did draw — and
+    that the toolbar no longer carries a second, invisible copy of them.
+    """
+
+    def setUp(self) -> None:
+        self.controls = block(LOG, "private var controls: some View {", "private var searchField")
+
+    def test_the_handoff_row_is_part_of_the_controls(self) -> None:
+        self.assertIn("handoffControls", self.controls)
+
+    def test_every_action_is_a_word_in_the_body(self) -> None:
+        for label in ('handoffLabel("Copy shown"', 'handoffLabel("Copy all"',
+                      'handoffLabel("Share log"', 'handoffLabel("Clear"'):
+            self.assertIn(label, BODY)
+            # A title and a glyph: an icon alone is what the owner could not find.
+            self.assertIn("Label(title, systemImage: symbol)", LOG)
+
+    def test_the_toolbar_does_not_hide_a_copy_again(self) -> None:
+        self.assertNotIn("Copy shown", TOOLBAR)
+        self.assertNotIn("Share log", TOOLBAR)
+        self.assertNotIn("ShareLink", TOOLBAR)
+        # Refresh is the one action the photographed Mac sheet did draw, so it stays.
+        self.assertIn('Label("Refresh", systemImage: "arrow.clockwise")', TOOLBAR)
+
+    def test_the_row_is_not_platform_specific(self) -> None:
+        # One row for both apps: a `#if os(` inside it is how the two presentations drift.
+        handoff = block(BODY, "private var handoffControls", "private var copyShownButton")
+        self.assertNotIn("#if os(", handoff)
+
+    def test_each_action_explains_itself(self) -> None:
+        for help_text in ("Copy the lines on screen",
+                          "Copy every line in the log, including lines a paused tail is holding back",
+                          "Send the lines on screen to another app",
+                          "Delete the entries on this device"):
+            self.assertIn(f'.help("{help_text}")', LOG)
+
+
+class TheLogCanBeSentToAnotherApp(unittest.TestCase):
+    def test_share_hands_over_the_same_text(self) -> None:
+        # One formatter, so what Share sends is exactly what Copy shown writes.
+        self.assertIn("ShareLink(item: exportText(shown))", LOG)
+
+    def test_share_has_a_visible_label_and_an_empty_state(self) -> None:
+        share = block(LOG, "private var shareButton", "private var clearButton")
+        self.assertIn('handoffLabel("Share log", "square.and.arrow.up")', share)
+        self.assertIn(".disabled(shown.isEmpty)", share)
+        self.assertNotIn("#if os(", share)
+
+
+if __name__ == "__main__":
+    unittest.main()

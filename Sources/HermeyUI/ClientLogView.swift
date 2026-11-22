@@ -7,6 +7,20 @@ import UIKit
 import AppKit
 #endif
 
+/// Which list a copy handed over. The two are different promises, and the confirmation names
+/// which one was kept: what the filter admits, or everything the log still holds.
+private enum ClientLogCopyScope {
+    case shown
+    case all
+}
+
+/// A copy that actually happened, so the sheet can say how much of the log left it rather than
+/// claiming a success it cannot measure.
+private struct ClientLogCopyReceipt {
+    let count: Int
+    let scope: ClientLogCopyScope
+}
+
 /// Settings → View log.
 ///
 /// The app's own memory of what it did and where it failed, in the one place a user can reach it
@@ -20,6 +34,11 @@ import AppKit
 /// phone's: two copies of a toolbar are two chances to disagree, and a Mac sheet's toolbar is also
 /// the first place macOS hides a button it thinks does not fit (the chevron that swallowed the
 /// order control). Controls inside the content cannot be swallowed, so the two apps cannot drift.
+///
+/// Build 0.1.611 proved the point again from the other side: the Copy, Share and Clear buttons were
+/// `ToolbarItem`s, and the owner photographed a Mac sheet whose only buttons were Close and
+/// Refresh. Copy, share and clear now sit in the body beside the entry count, where the filter
+/// controls have always been — so they are visible however the sheet is presented.
 public struct ClientLogView: View {
     private let title: String
     private let header: String
@@ -39,7 +58,13 @@ public struct ClientLogView: View {
     @State private var categoryFilter: String?
     @State private var search = ""
 
-    @State private var copied = false
+    /// What the last copy wrote, and which list it came from. A count, not a flag: "Copied" alone
+    /// leaves the reader unsure whether the filter narrowed the export, or whether the lines a
+    /// paused tail was holding back went with it. `nil` means nothing was written, or the
+    /// confirmation has expired.
+    @State private var copied: ClientLogCopyReceipt?
+    /// Bumped on every copy so an earlier confirmation's timer cannot clear a newer one.
+    @State private var copySequence = 0
     @State private var confirmingClear = false
     /// Bumped when the reader asks to be taken back to the newest line (resuming a paused tail, or
     /// flipping the order). A counter rather than a Bool so two requests in a row both land.
@@ -140,8 +165,9 @@ public struct ClientLogView: View {
     // MARK: Controls
     //
     // Every option the two apps have, in the sheet rather than in a toolbar: search, level,
-    // category, order, live pause, entry count, and (in the toolbar) refresh, copy, share, clear.
-    // The count and the pause state are always phrased in words, not only in a highlight.
+    // category, order, live pause, entry count, and — in their own row under it — copy shown, copy
+    // all, share and clear. The count and the pause state are always phrased in words, not only in
+    // a highlight.
 
     private var controls: some View {
         VStack(spacing: 6) {
@@ -163,13 +189,14 @@ public struct ClientLogView: View {
                 levelPicker
                 categoryPicker
                 Spacer(minLength: 4)
-                Text(countLine)
+                Text(copiedNotice ?? countLine)
                     .font(.system(size: 9.5, design: .monospaced))
-                    .foregroundStyle(Tokens.textDim)
+                    .foregroundStyle(copied == nil ? Tokens.textDim : Tokens.accentText)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .accessibilityLabel(countLine)
+                    .accessibilityLabel(copiedNotice ?? countLine)
             }
+            handoffControls
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -301,6 +328,126 @@ public struct ClientLogView: View {
         return "\(total) \(total == 1 ? "entry" : "entries")"
     }
 
+    /// What the count line says for a moment after a copy: the number is the point. "Copied" on its
+    /// own cannot tell the reader whether the filter went with it, and a bare "Copied" is also how a
+    /// sheet lies about an export it never wrote.
+    private var copiedNotice: String? {
+        guard let copied else { return nil }
+        let noun = copied.count == 1 ? "line" : "lines"
+        switch copied.scope {
+        case .shown: return "Copied \(copied.count) \(noun) shown"
+        // Short enough to survive a narrow phone at one line: the entry count is the other half of
+        // this column, and a message that truncates is a message that did not say what happened.
+        case .all: return "Copied all \(copied.count) \(noun)"
+        }
+    }
+
+    // MARK: Handing the log to someone else
+
+    /// Copy shown, copy all, share and clear — in the sheet's body, not its toolbar.
+    ///
+    /// They were toolbar items until build 0.1.611, where the Mac sheet drew Close and Refresh and
+    /// dropped the rest; a control the sheet cannot show is not a control. These sit under the
+    /// filter row, in the same column as the entry count, and both platforms get this one row.
+    private var handoffControls: some View {
+        // One row when the sheet is wide enough, two when it is not: an iPhone in portrait with a
+        // Dynamic Type bump should wrap rather than clip a word off "Copy shown".
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                copyShownButton
+                copyAllButton
+                shareButton
+                Spacer(minLength: 4)
+                clearButton
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    copyShownButton
+                    copyAllButton
+                    Spacer(minLength: 4)
+                    clearButton
+                }
+                shareButton
+            }
+        }
+    }
+
+    /// The lines on screen, in the reader's order: what the old single Copy button wrote.
+    private var copyShownButton: some View {
+        Button {
+            copy(shown, scope: .shown)
+        } label: {
+            handoffLabel("Copy shown", "doc.on.doc")
+        }
+        .buttonStyle(.plain)
+        .disabled(shown.isEmpty)
+        .opacity(shown.isEmpty ? 0.45 : 1)
+        .help("Copy the lines on screen")
+        .accessibilityLabel("Copy shown")
+        .accessibilityHint("Puts the lines on screen on the clipboard")
+    }
+
+    /// The whole buffer, paused-held lines included, with the order kept and the filter dropped.
+    private var copyAllButton: some View {
+        Button {
+            copyAll()
+        } label: {
+            handoffLabel("Copy all", "doc.on.doc.fill")
+        }
+        .buttonStyle(.plain)
+        .disabled(feed.entries.isEmpty)
+        .opacity(feed.entries.isEmpty ? 0.45 : 1)
+        .help("Copy every line in the log, including lines a paused tail is holding back")
+        .accessibilityLabel("Copy all")
+        .accessibilityHint("Puts every line in the log on the clipboard")
+    }
+
+    /// The same text as Copy shown, handed to the system's share sheet — the phone's route to
+    /// Messages or Mail instead of only to the clipboard.
+    private var shareButton: some View {
+        ShareLink(item: exportText(shown)) {
+            handoffLabel("Share log", "square.and.arrow.up")
+        }
+        .buttonStyle(.plain)
+        .disabled(shown.isEmpty)
+        .opacity(shown.isEmpty ? 0.45 : 1)
+        .help("Send the lines on screen to another app")
+        .accessibilityLabel("Share log")
+    }
+
+    private var clearButton: some View {
+        Button {
+            confirmingClear = true
+        } label: {
+            handoffLabel("Clear", "trash")
+        }
+        .buttonStyle(.plain)
+        .disabled(feed.entries.isEmpty)
+        .opacity(feed.entries.isEmpty ? 0.45 : 1)
+        .help("Delete the entries on this device")
+        .accessibilityLabel("Clear log")
+    }
+
+    /// One look for every control in that row: a small capsule in the app's control colour with a
+    /// word on it. Icons alone are exactly what the owner could not find.
+    private func handoffLabel(_ title: String, _ symbol: String) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.system(size: 10.5, weight: .medium))
+            .foregroundStyle(Tokens.textSecondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
+                    .fill(Tokens.control)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
+                    .strokeBorder(Tokens.border, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+    }
+
     // MARK: Content
 
     @ViewBuilder
@@ -320,6 +467,9 @@ public struct ClientLogView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    // Selection is set on every row *and* here, so a future row built from more than
+                    // one `Text` inherits it rather than silently losing the ability to be read.
+                    .textSelection(.enabled)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 // Flipping the order is a request to read from the other end: follow the newest
@@ -341,6 +491,11 @@ public struct ClientLogView: View {
             .foregroundStyle(tint(entry.level))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // A row is a `Text`, so this is the only selection SwiftUI offers here: a long-press
+            // picks the run up with the system's own select/copy menu, and a drag inside a wrapped
+            // line selects part of it. Selection within a row does not stop the scroll from
+            // working, and the row has no tap of its own, so nothing competes with it. For more
+            // than one row, "Copy shown" is the answer.
             .textSelection(.enabled)
     }
 
@@ -413,26 +568,8 @@ public struct ClientLogView: View {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .help("Read the log again")
-
-            Button {
-                copy()
-            } label: {
-                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-            }
-            .disabled(shown.isEmpty)
-            .help("Copy the lines on screen")
-
-            ShareLink(item: exportText()) {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .disabled(shown.isEmpty)
-
-            Button {
-                confirmingClear = true
-            } label: {
-                Label("Clear", systemImage: "trash")
-            }
-            .disabled(feed.entries.isEmpty)
+            // Copy, share and clear are deliberately *not* here: see `handoffControls`. On the Mac
+            // this group is exactly what the sheet dropped in build 0.1.611.
         }
     }
 
@@ -467,23 +604,56 @@ public struct ClientLogView: View {
     /// What Copy and Share hand over: the header, then the lines *as the reader is reading them*.
     /// A log copied in newest-first order pastes into a message newest-first, which is the order
     /// the person on the other end will look for the failure in.
-    private func exportText() -> String {
-        ClientLog.text(of: shown, header: header)
+    ///
+    /// The one formatter. Both copy actions call it with a different list; neither builds its own
+    /// string, so the two can only differ in *which* lines they hand over.
+    private func exportText(_ entries: [ClientLogEntry]) -> String {
+        ClientLog.text(of: entries, header: header)
     }
 
-    private func copy() {
+    /// Every line the log holds, in the reader's order and with no filter applied.
+    ///
+    /// Read from the log rather than from `feed.entries` because a paused tail holds new lines back
+    /// in the feed — and "all" is the one action whose meaning includes them. Copying is not a
+    /// request to resume, so the tail stays paused.
+    private func allEntries() -> [ClientLogEntry] {
         ClientLog.shared.flushNow()
-        let text = exportText()
+        let buffer = ClientLog.shared.snapshot()
+        return ClientLogQuery(order: order).apply(to: buffer)
+    }
+
+    private func copyAll() {
+        copy(allEntries(), scope: .all)
+    }
+
+    private func copy(_ entries: [ClientLogEntry], scope: ClientLogCopyScope) {
+        // Never claim a copy that wrote nothing. The buttons are already disabled on an empty
+        // source; this is the second lock on the same door, because a receipt is a promise.
+        guard !entries.isEmpty else { return }
+        ClientLog.shared.flushNow()
+        write(exportText(entries))
+        announce(ClientLogCopyReceipt(count: entries.count, scope: scope))
+    }
+
+    private func write(_ text: String) {
         #if os(iOS)
         UIPasteboard.general.string = text
         #else
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         #endif
-        copied = true
+    }
+
+    /// Show what was written, then put the count back. The sequence number is what keeps a second
+    /// copy's receipt from being cleared by the first copy's timer.
+    private func announce(_ receipt: ClientLogCopyReceipt) {
+        copySequence += 1
+        let sequence = copySequence
+        copied = receipt
         Task {
             try? await Task.sleep(nanoseconds: 1_600_000_000)
-            copied = false
+            guard sequence == copySequence else { return }
+            copied = nil
         }
     }
 }
