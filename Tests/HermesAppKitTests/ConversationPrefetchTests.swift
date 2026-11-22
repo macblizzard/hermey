@@ -292,10 +292,16 @@ final class ConversationPrefetchTests: XCTestCase {
         client.hostPointer = Self.sessionID
         let stale = "20260101_000004_stale"
         let selected = bot("stale-selected")
+        let cody = bot("stale")
+        defer { forget([cody]) }
         client.previewFeed = BotPreviewFeed(previews: [
             selected: BotConversationPreview(text: "x", role: "assistant"),
         ])
         // First identity read: the row this device remembered. Second: the one the host kept.
+        // Scoped to `cody`, because the launch's own `loadSessions` (for the selected bot) is a
+        // wide read too and would otherwise eat the first answer — which made the sweep warm
+        // `Self.sessionID` straight away and never exercise the stale-id retry at all.
+        client.profileSessionsByCallProfile = cody
         client.profileSessionsByCall = [
             [SessionSummary(id: stale, title: CanonicalBotChat.title)],
             [SessionSummary(id: Self.sessionID, title: CanonicalBotChat.title)],
@@ -303,8 +309,6 @@ final class ConversationPrefetchTests: XCTestCase {
         client.warmStaleIDs = [stale]
         let model = AppModel(client: client, hostName: "prefetch-\(UUID().uuidString)")
         await model.start()
-        let cody = bot("stale")
-        defer { forget([cody]) }
         client.bots = [Bot(id: selected), Bot(id: cody)]
         await model.loadBots()
 

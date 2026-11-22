@@ -906,7 +906,8 @@ public final class AppModel: ObservableObject {
         if !fromBridge.isEmpty {
             for (bot, preview) in fromBridge where ids.contains(bot) {
                 covered.insert(bot)
-                if let line = Self.previewLine(preview.text) { botPreviews[bot] = line }
+                let line = Self.previewLine(preview.text)
+                if let line { botPreviews[bot] = line }
                 // The host's own timestamp for the newest message, so both devices order the list
                 // the same way. Ordering by local activity meant a reply read on the phone never
                 // moved that bot up on the Mac.
@@ -914,6 +915,15 @@ public final class AppModel: ObservableObject {
                     recordActivity(for: bot, at: at)
                     noteRemoteActivity(for: bot, at: at)
                     botPreviewTimes[bot] = at
+                    // The message this stamp belongs to is the one this device already holds
+                    // (`line` is the last row of the thread on screen or of its snapshot): that is
+                    // a confirmation, not news, so record what the rows now stand for. Without it
+                    // a captured thread keeps `.distantPast` and the next open re-reads a
+                    // conversation that has not moved — "it preloads, then loads again".
+                    if let line, holdsNewestLine(line, for: bot) {
+                        conversationCacheHostStamp[bot] = at
+                        if bot == transcriptOwner { transcriptHostStamp[bot] = at }
+                    }
                 }
             }
         }
@@ -1429,6 +1439,34 @@ public final class AppModel: ObservableObject {
     /// `transcriptHostStamp`, never with the device's clock.
     private func latestHostStamp(for botID: String) -> Date {
         botPreviewTimes[botID] ?? .distantPast
+    }
+
+    /// Whether the newest message this device holds for `botID` is the one `line` names.
+    ///
+    /// `line` is the host's newest message as the bot list renders it (normalised by
+    /// `previewLine`, the same projection both sides use), so an equal pair means the host has
+    /// *confirmed what is already held* rather than announced something new.
+    ///
+    /// It is the one current-ness fact a **captured** snapshot can offer. A capture records the
+    /// stamp the rows on screen were read at, and those rows carry no host stamp of their own — so
+    /// when the sweep's stamp arrives *after* the capture it is compared against `.distantPast` and
+    /// reads as "the host has written since" for a thread whose last row *is* the host's newest
+    /// message. That is the redundant reload reported as "it preloads, then loads again"
+    /// (2026-11-17). The trade this makes: a newer message that repeats the previous line verbatim
+    /// is indistinguishable from the one already held, so it is treated as held — the unread badge
+    /// (`noteRemoteActivity`) is the second witness that something arrived.
+    private func holdsNewestLine(_ line: String, for botID: String) -> Bool {
+        if botID == transcriptOwner, let onScreen = Self.newestLine(in: transcript) {
+            return onScreen == line
+        }
+        guard let snapshot = conversationCache[botID] else { return false }
+        return Self.newestLine(in: snapshot.entries) == line
+    }
+
+    /// The last row of a thread as the list would print it.
+    private static func newestLine(in entries: [TranscriptEntry]) -> String? {
+        // Reasoning is a client-side row the host never lists, so it cannot be the newest message.
+        entries.last { $0.role != .reasoning }.flatMap { previewLine($0.text) }
     }
 
     /// The transcript on screen now contains the host's newest message for this bot.
@@ -2309,7 +2347,13 @@ public final class AppModel: ObservableObject {
         // newer, or when the snapshot itself was read off the host during this launch's sweep.
         let cachedHost = conversationCacheHostStamp[botID] ?? .distantPast
         let hostNewest = botPreviewTimes[botID]
-        let hostIsAhead = (hostNewest ?? .distantPast) > cachedHost
+        // A newer stamp is only news when the message it belongs to is one the snapshot does not
+        // already hold. The list's third line *is* that message, projected the same way, so when
+        // the snapshot's last row reads as that line the host has confirmed the snapshot rather
+        // than outrun it. This is the fact a capture cannot record (see `holdsNewestLine`), and
+        // without it every return visit inside the window re-read a thread that had not moved.
+        let listNamesSomethingNew = botPreviews[botID].map { !holdsNewestLine($0, for: botID) } ?? true
+        let hostIsAhead = (hostNewest ?? .distantPast) > cachedHost && listNamesSomethingNew
         // A sweep read is the host's own state as of that moment, so an unreported stamp adds
         // nothing to it; a captured transcript needs the stamp before it can be called current.
         let hostIsKnown = hostNewest != nil || conversationCacheReadFromHost[botID] == true

@@ -258,6 +258,12 @@ final class ConversationCacheTests: XCTestCase {
 
     /// And the other half of the rule: when the host's own stamp says the snapshot already contains
     /// its newest message, the cache answers and the thread is not reloaded.
+    ///
+    /// The confirmation may land *after* the snapshot was captured (this is the common order: open
+    /// the bot, leave it, the sweep then reports the message that was already on screen). A capture
+    /// cannot record a host stamp, so the stamp alone reads as "the host has written since" — the
+    /// list's third line names the message, and the snapshot's last row is that message, which is
+    /// what makes the visit quiet (`AppModel.holdsNewestLine`).
     func testACacheTheHostConfirmsIsCurrentIsNotReloaded() async {
         let (model, client) = await opened("quiet", entries: [line("only reply")])
         let cody = bot("quiet-cody"), atlas = bot("quiet-atlas")

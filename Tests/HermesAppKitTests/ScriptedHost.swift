@@ -78,7 +78,13 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
         // re-minted between this launch and the last) queues its answers here; the last one stands.
         // Only the wide reads take from the queue: the list's third line asks for one row, and a
         // preview request must not eat an answer the identity lookup is waiting for.
-        if limit > 1, !profileSessionsByCall.isEmpty {
+        //
+        // `profileSessionsByCallProfile` narrows the queue to one bot. The launch's own
+        // `loadSessions` (one wide read, for whichever bot is selected) is not the identity lookup
+        // a test is sequencing, and without the filter it ate that test's first answer.
+        let queueIsForThisRead = profileSessionsByCallProfile == nil
+            || profileSessionsByCallProfile == profile
+        if limit > 1, queueIsForThisRead, !profileSessionsByCall.isEmpty {
             let answer = profileSessionsByCall.removeFirst()
             if profileSessionsByCall.isEmpty { profileSessions = answer }
             return answer
@@ -88,6 +94,9 @@ final class ScriptedHost: GatewayClientProtocol, @unchecked Sendable {
 
     /// Successive `session.list` answers, consumed one per call.
     var profileSessionsByCall: [[SessionSummary]] = []
+
+    /// When set, only reads scoped to this profile consume `profileSessionsByCall`.
+    var profileSessionsByCallProfile: String?
 
     private var summary: SessionSummary {
         SessionSummary(id: session, title: "test thread")
