@@ -189,6 +189,18 @@ async fn run_channel(mut socket: WebSocket, st: Arc<AppState>) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
     let id = st.browsers.register(&label, tx);
     eprintln!("browser connected: {id} ({label})");
+    // Who is available to fill a card, and when they left: the same two events the bridge wrote,
+    // and the label is the only descriptive field they carry.
+    st.audit.emit(
+        "browser.connected",
+        crate::audit::Event {
+            method: Some("browser"),
+            path: Some("/v1/browser/ws"),
+            outcome: Some("connected"),
+            profile: Some(&label),
+            ..crate::audit::Event::default()
+        },
+    );
 
     loop {
         tokio::select! {
@@ -214,6 +226,16 @@ async fn run_channel(mut socket: WebSocket, st: Arc<AppState>) {
 
     st.browsers.unregister(&id);
     eprintln!("browser disconnected: {id}");
+    st.audit.emit(
+        "browser.disconnected",
+        crate::audit::Event {
+            method: Some("browser"),
+            path: Some("/v1/browser/ws"),
+            outcome: Some("closed"),
+            profile: Some(&label),
+            ..crate::audit::Event::default()
+        },
+    );
 }
 
 /// `POST /v1/browser/act` — one instruction for the browser: probe the page, click a button, or
@@ -245,4 +267,68 @@ pub async fn act(
 /// `GET /v1/browser/targets` — what the app shows: is a browser available to receive a sign-in?
 pub async fn targets(State(st): State<Arc<AppState>>) -> Result<Json<Value>, Fail> {
     Ok(Json(json!({ "browsers": st.browsers.list() })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn channel() -> tokio::sync::mpsc::UnboundedSender<Value> {
+        tokio::sync::mpsc::unbounded_channel().0
+    }
+
+    /// The lesson that cost weeks on the computer-use socket: only the socket that owns a
+    /// registration may remove it. Registrations are keyed by a fresh id, so a handler that wakes
+    /// up late cannot take its own replacement with it.
+    #[test]
+    fn a_late_unregister_cannot_evict_the_replacement() {
+        let registry = Registry::default();
+        let first = registry.register("bot screen", channel());
+        let second = registry.register("bot screen", channel()); // a reconnect replaces the entry
+        registry.unregister(&first); // the old handler wakes up after the new socket is in
+        let live = registry.list();
+        assert_eq!(live.len(), 1, "exactly one browser is registered");
+        assert_eq!(live[0]["id"], json!(second), "and it is the new one, not the dead one");
+    }
+
+    /// A browser that leaves fails its pending fill instead of letting the caller sit out the
+    /// timeout and then report a login that never happened.
+    #[tokio::test]
+    async fn a_browser_that_leaves_fails_its_pending_fill() {
+        let registry = Registry::default();
+        let id = registry.register("bot screen", channel());
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        {
+            let browsers = registry.browsers.lock().unwrap();
+            let browser = browsers.get(&id).expect("registered");
+            browser.pending.lock().unwrap().insert("call-1".to_string(), reply_tx);
+        }
+        registry.unregister(&id);
+        assert!(
+            matches!(reply_rx.await, Ok(Value::Null)),
+            "a pending fill must be failed at once, not left to time out"
+        );
+    }
+
+    /// Empty is a normal state: a fill with nobody listening answers immediately.
+    #[tokio::test]
+    async fn a_fill_with_nobody_listening_answers_at_once() {
+        let registry = Registry::default();
+        assert!(registry.command(json!({"type": "fill", "fields": []})).await.is_none());
+    }
+
+    /// A browser that is registered but silent must not turn one instruction into a hung request:
+    /// the timeout is the same 10 s the card's own fill budget uses.
+    #[tokio::test]
+    async fn a_silent_browser_times_out_into_no_answer() {
+        let registry = Registry::default();
+        let _id = registry.register("bot screen", channel());
+        let started = std::time::Instant::now();
+        assert!(registry.command(json!({"type": "probe"})).await.is_none());
+        assert!(
+            started.elapsed() <= FILL_TIMEOUT + std::time::Duration::from_secs(2),
+            "a silent browser waited {:?}",
+            started.elapsed()
+        );
+    }
 }
