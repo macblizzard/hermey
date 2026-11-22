@@ -100,20 +100,43 @@ pub fn state_home_source() -> String {
     format!("no HERMEYD_HOME or HERMEY_HOME set, so $HOME/.hermey")
 }
 
-/// The engine's home (profiles, memories, skills). Beside this service's own state when both are
-/// installed under one HERMEY_HOME, else the development sibling (`var/hermeyd` next to `var/hermey`).
+/// The engine's home (profiles, memories, skills): the directory Hermes itself uses.
+///
+/// Resolution order, each candidate accepted only when it really holds `profiles/`:
+///   1. beside this service's state (`$HERMEY_HOME/engine`) — a dev checkout beside `var/hermeyd`;
+///   2. the development sibling (`var/hermey/engine`);
+///   3. `~/.hermes` — where a normal Hermes install lives.
+///
+/// The old order returned the first *existing* directory without checking it was an engine home,
+/// so a user who never set `HERMEYD_ENGINE_HOME` could be served from an empty folder and only
+/// notice when their bots had no history. Resolving to the wrong home is exactly how a host ends
+/// up with two fleets, so nothing is guessed: a candidate without `profiles/` is not a home.
 fn default_engine_home(home: &std::path::Path) -> PathBuf {
-    let beside = home.join("engine");
-    if beside.is_dir() {
-        return beside;
-    }
+    let mut candidates: Vec<PathBuf> = vec![home.join("engine")];
     if let Some(parent) = home.parent() {
-        let sibling = parent.join("hermey").join("engine");
-        if sibling.is_dir() {
-            return sibling;
+        candidates.push(parent.join("hermey").join("engine"));
+    }
+    if let Some(user_home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.push(user_home.join(".hermes"));
+    }
+    for candidate in &candidates {
+        if candidate.join("profiles").is_dir() {
+            return candidate.clone();
         }
     }
-    beside
+    // Nothing usable: say so loudly rather than serving an empty home. The caller keeps the
+    // path (so `--gateway-check` and the status screen still answer), but the operator is told
+    // what to do instead of silently getting bots with no profiles.
+    eprintln!(
+        "hermeyd: no Hermes engine home found — looked for profiles/ in {}. \
+         Set HERMEYD_ENGINE_HOME to the directory Hermes uses (the one containing profiles/).",
+        candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    home.join("engine")
 }
 
 /// Where the engine writes its per-boot token. Prefers a token beside this service's state, then the
