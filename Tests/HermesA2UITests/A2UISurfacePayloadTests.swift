@@ -26,9 +26,21 @@ final class A2UISurfacePayloadTests: XCTestCase {
 
     func testTextLosesTheMarkerAndKeepsItsParagraphs() {
         let reply = "First paragraph.\n::a2ui\(wire)\nSecond paragraph."
-        // A marker sat between two paragraphs: no blank hole where it was.
-        XCTAssertEqual(A2UIMarker.textWithoutMarkers(reply), "First paragraph.\nSecond paragraph.")
+        // The marker sat on its own line, so removing it leaves exactly one blank line: that is
+        // the paragraph break the author wrote, not a hole.
+        XCTAssertEqual(A2UIMarker.textWithoutMarkers(reply), "First paragraph.\n\nSecond paragraph.")
         XCTAssertFalse(A2UIMarker.textWithoutMarkers(reply).contains("::a2ui"))
+    }
+
+    /// The cases a regex could not survive: quotes and braces inside a string value.
+    func testEscapedQuotesAndStrayBracesDoNotEndTheMarker() {
+        let tricky = """
+        {"surface":"deadbeef","messages":[{"version":"1.0","createSurface":{"surfaceId":"main",\
+        "components":[{"id":"root","component":"Text","text":"he said \\"hi\\" } {"}]}}]}
+        """
+        let reply = "before\n::a2ui\(tricky)\nafter"
+        XCTAssertEqual(A2UIMarker.surfaces(in: reply).map(\.surface), ["deadbeef"])
+        XCTAssertEqual(A2UIMarker.textWithoutMarkers(reply), "before\n\nafter")
     }
 
     func testAMalformedSurfaceIsSkippedNotThrown() {
