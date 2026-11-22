@@ -136,7 +136,7 @@ Three things that cause almost every setup problem:
 
 ## Troubleshooting
 
-See [Troubleshooting](troubleshooting.html). The two failures worth knowing before you start:
+See [Troubleshooting](TROUBLESHOOTING.md). The two failures worth knowing before you start:
 
 - **401 on every call** — no bearer. `local.token` is minted at boot, `0600`, owner-only; if the bots run as a
   different user than the service, grant that one principal `0640` via `HERMEYD_LOCAL_TOKEN_GROUP`.
