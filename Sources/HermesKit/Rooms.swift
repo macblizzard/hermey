@@ -199,6 +199,16 @@ extension BridgeBotSessionPointer {
         _ = try await bridgePOST("v1/rooms/\(roomID)/disband", body: [:])
     }
 
+    /// `POST /v1/rooms/{id}/rename` — `{"name": …}`.
+    ///
+    /// The protocol's default for this is `{}`, an empty body, so the sidebar's Rename item closed its
+    /// inline editor and changed nothing: `groups.rename` was never sent. The host validates the name
+    /// (non-empty, ≤80 characters) and rejects both with 422, so the UI shows the server's reason
+    /// rather than pretending it worked.
+    public func renameRoom(_ roomID: String, name: String) async throws {
+        _ = try await bridgePOST("v1/rooms/\(roomID)/rename", body: ["name": name])
+    }
+
     // MARK: Decoding
 
     private static func room(from row: [String: Any]) -> RoomSummary? {
