@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.613",
-          "buildVersion": "613",
-          "date": "2026-11-22T14:16:27Z",
-          "localizedDescription": "### Fixed\n- **Prewarm works again.** At launch the app fetched every bot's transcript through `session.history`, which the host\n  only answers for a conversation already attached in memory \u2014 so all 18 bots failed with \"session not found\" and the\n  list stayed cold until each chat was opened. Warming now resumes each bot's stored conversation, keeps the messages\n  and releases the runtime session it minted, so a launch warms the whole roster without leaving agents behind.\n- **A reply that arrives while you are in another chat now shows up when you return.** The cache painted first and then\n  skipped the resume, on the strength of a timestamp that is simply unknown before the first sweep \u2014 unknown was read as\n  \"nothing new\". Returning now resumes whenever the host may know more than the cache does, and says why: \"resuming:\n  the host's newest message is not known yet\".",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.613/Hermey-0.1.613-b613.ipa",
-          "size": 3700087,
+          "version": "0.1.614",
+          "buildVersion": "614",
+          "date": "2026-11-22T14:25:38Z",
+          "localizedDescription": "### Fixed\n- **The prefetch and resume fixes are actually in this build.** 0.1.613 was published from `main` while the work sat\n  on a side branch, so its release notes promised warming and returning-to-chat fixes it did not contain. This build\n  has them: launch warms every bot by resuming its stored conversation and releasing the runtime session it minted,\n  and returning to a chat resumes when the host may know more than the cache \u2014 \"resuming: the host's newest message\n  is not known yet\" \u2014 instead of showing a cache it cannot prove is current.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.614/Hermey-0.1.614-b614.ipa",
+          "size": 3710842,
           "minOSVersion": "17.0",
-          "sha256": "f26d9d1b6e7b4e2c78587ec4f578655e1612ebeb7f51cc3992a392d5932f4f18"
+          "sha256": "18e4afc077cb651382074fda80ee3e762bbd96ac2eeb84b0f10ed077e80bf072"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.613 (613)",
-      "identifier": "hermes-0.1.613-613",
-      "caption": "### Fixed\n- **Prewarm works again.** At launch the app fetched every bot's transcript through `session.history`, which the host\n  only answers for a conversation already attached in memory \u2014 so all 18 bots failed with \"session not found\" and the\n  list stayed cold until each chat was opened. Warming now resumes each bot's stored conversation, keeps the messages\n  and releases the runtime session it minted, so a launch warms the whole roster without leaving agents behind.\n- **A reply that arrives while you are in another chat now shows up when you return.** The cache painted first and then\n  skipped the resume, on the strength of a timestamp that is simply unknown before the first sweep \u2014 unknown was read as\n  \"nothing new\". Returning now resumes whenever the host may know more than the cache does, and says why: \"resuming:\n  the host's newest message is not known yet\".",
-      "date": "2026-11-22T14:16:27Z",
+      "title": "Hermes 0.1.614 (614)",
+      "identifier": "hermes-0.1.614-614",
+      "caption": "### Fixed\n- **The prefetch and resume fixes are actually in this build.** 0.1.613 was published from `main` while the work sat\n  on a side branch, so its release notes promised warming and returning-to-chat fixes it did not contain. This build\n  has them: launch warms every bot by resuming its stored conversation and releasing the runtime session it minted,\n  and returning to a chat resumes when the host may know more than the cache \u2014 \"resuming: the host's newest message\n  is not known yet\" \u2014 instead of showing a cache it cannot prove is current.",
+      "date": "2026-11-22T14:25:38Z",
       "tintColor": "#9A9AA0"
     }
   ],
