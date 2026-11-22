@@ -81,22 +81,23 @@ class TheGuardRefusesADrift(unittest.TestCase):
         self.assertIn("hermeyd/src/main.rs", result.stdout)
         self.assertIn("Cargo.toml", result.stdout)
 
-    def test_a_new_release_without_a_bump_fails(self) -> None:
-        # The owner's standing instruction: the host-service number moves with every app release, so a
-        # build can always be traced to the service deployed beside it.
-        self.repo.write("CHANGELOG.md", "## [0.1.616] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
+    def test_a_release_alone_does_not_need_a_bump(self) -> None:
+        # The owner's decision, after living with the stricter rule for one release: a client release
+        # does not move the host service's number. `hermeyd` moves only when its own program changes,
+        # so the two numbers keep meaning different things.
+        self.repo.write("CHANGELOG.md", "## [0.1.617] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
         self.repo.commit("changelog for a release")
         result = self.guard(self.base)
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-        self.assertIn("a new app release was cut (0.1.615 → 0.1.616)", result.stdout)
-
-    def test_a_new_release_with_a_bump_passes(self) -> None:
-        self.repo.write("CHANGELOG.md", "## [0.1.616] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
-        self.repo.manifest("0.2.2")
-        self.repo.commit("release, with the service bumped")
-        result = self.guard(self.base)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("release 0.1.615 → 0.1.616", result.stdout)
+        self.assertIn("no hermeyd source change", result.stdout)
+
+    def test_a_release_together_with_a_source_change_still_needs_a_bump(self) -> None:
+        # The exemption is for releases that touch nothing in the service — a release that also ships
+        # service code is a source change like any other.
+        self.repo.write("CHANGELOG.md", "## [0.1.617] — 2026-11-23\n\n- a fix\n\n## [0.1.615] — 2026-11-22\n\n- something\n")
+        self.repo.write("hermeyd/src/main.rs", "fn main() { println!(\"z\"); }\n")
+        self.repo.commit("release carrying service code")
+        self.assertEqual(self.guard(self.base).returncode, 1)
 
     def test_a_bundled_asset_change_also_needs_a_bump(self) -> None:
         # The bundled agent skills are part of the deployed program: a host can run new behaviour
