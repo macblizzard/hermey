@@ -31,6 +31,14 @@ public struct HermeyTurnAttributes: ActivityAttributes {
             case done
         }
 
+        /// How much of the reply a card may show, in characters.
+        ///
+        /// The lock screen gives a card two lines and the island gives it less; a message pasted
+        /// whole into a snapshot is both unreadable and wasteful, because the whole state is copied
+        /// into the system's activity store on every update. One hundred and twenty characters is
+        /// roughly the two lines the card draws.
+        public static let snippetLimit = 120
+
         public var phase: Phase
 
         /// When the turn began, not how long it has run.
@@ -45,10 +53,52 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// finished card can say "just now" without a second round trip.
         public var finishedAt: Date?
 
-        public init(phase: Phase, startedAt: Date, finishedAt: Date? = nil) {
+        /// The first line or two of what the bot actually said.
+        ///
+        /// Empty while the turn runs, and empty when the coordinator had no reply text to hand
+        /// over — an empty string is the honest value, and the views draw nothing for it rather
+        /// than inventing a sentence. Assigning through `init` is what enforces the cap and the
+        /// single line, so a long or multi-paragraph reply cannot reach the card unflattened.
+        public var replySnippet: String
+
+        public init(phase: Phase,
+                    startedAt: Date,
+                    finishedAt: Date? = nil,
+                    replySnippet: String = "") {
             self.phase = phase
             self.startedAt = startedAt
             self.finishedAt = finishedAt
+            self.replySnippet = Self.clipped(replySnippet)
+        }
+
+        /// One line, at most `snippetLimit` characters.
+        ///
+        /// Newlines are the reason this exists: a reply is markdown with paragraphs, lists and
+        /// fenced code in it, and a card that keeps the newlines draws one blank line and a
+        /// paragraph break instead of words. Splitting on whitespace and re-joining with one space
+        /// also folds the indentation a code block carries, which is what a two-line card needs.
+        public static func clipped(_ text: String) -> String {
+            let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            guard flat.count > snippetLimit else { return flat }
+            return String(flat.prefix(snippetLimit))
+        }
+
+        // Written out because the decoder below is hand-written: with one requirement implemented
+        // by hand it is clearer to name the keys than to lean on which half the compiler still
+        // synthesises.
+        private enum CodingKeys: String, CodingKey {
+            case phase, startedAt, finishedAt, replySnippet
+        }
+
+        // Decoded by hand for one reason: an activity requested by the previous build has no
+        // `replySnippet` key, and the synthesised decoder would throw and drop a card the owner is
+        // still looking at. A missing key is an empty snippet, not a failure.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            phase = try container.decode(Phase.self, forKey: .phase)
+            startedAt = try container.decode(Date.self, forKey: .startedAt)
+            finishedAt = try container.decodeIfPresent(Date.self, forKey: .finishedAt)
+            replySnippet = Self.clipped(try container.decodeIfPresent(String.self, forKey: .replySnippet) ?? "")
         }
     }
 

@@ -151,13 +151,18 @@ class TestImageBytesAreCopiedNotReferenced(unittest.TestCase):
 
     def test_every_branch_of_the_importer_copies_into_the_container(self) -> None:
         source = EXTENSION_SWIFT["ShareItemImporter.swift"]
-        # image, file-url (a PDF from Files) and generic file all reach the same copy path.
-        self.assertGreaterEqual(source.count("storage.importAttachment("), 3)
-        self.assertIn("kind: .image", source)
-        self.assertIn("Data(contentsOf: file, options: .mappedIfSafe)", source,
+        # One file-URL branch and one data branch, and every provider path ends in one of them: an
+        # image from Photos, a PDF from Files and an unknown document all reach `importAttachment`.
+        self.assertGreaterEqual(source.count("storage.importAttachment("), 2)
+        self.assertIn("kind: isImage ? .image : .file", source,
+                      "a picture shared from Files is an image; anything else is a file")
+        self.assertIn("readFile(located)", source,
                       "a file URL must be read to bytes while it is still valid")
         self.assertNotIn("draft.attachments.append(file)", source,
                          "a file URL must never be kept as an attachment")
+        self.assertNotIn("skipped", "\n".join(line for line in source.splitlines()
+                                               if not line.strip().startswith("//")),
+                         "a refused item is named with its reason, never counted")
 
     def test_a_file_url_is_not_mistaken_for_a_web_link(self) -> None:
         source = EXTENSION_SWIFT["ShareItemImporter.swift"]
@@ -264,12 +269,15 @@ class TestTheExtensionCannotReachTheHost(unittest.TestCase):
 
     def test_a_missing_or_stale_snapshot_becomes_an_instruction_not_an_empty_list(self) -> None:
         composer = EXTENSION_SWIFT["ShareComposer.swift"]
-        self.assertIn("Open Hermey once so it can list your bots here.", composer)
-        self.assertIn("The bot list is out of date. Open Hermey to refresh it, then share again.",
-                      composer)
+        self.assertIn("Open Hermey once to fetch your bot list.", composer)
+        self.assertIn("The bot list is", composer)
+        self.assertIn("out of date", composer)
         self.assertIn("No bots yet. Add one in Hermey, then share again.", composer)
         self.assertIn("case .missing", composer)
         self.assertIn("case .stale", composer)
+        self.assertIn("case .noStorage", composer)
+        self.assertNotIn("Open Hermey once so it can list your bots here", composer,
+                         "that sentence is only true when a container exists and the app never wrote one")
 
     def test_the_picker_is_offered_before_send_is_enabled(self) -> None:
         composer = EXTENSION_SWIFT["ShareComposer.swift"]
@@ -329,6 +337,18 @@ class TestTheInfoPlistIsAShareExtension(unittest.TestCase):
         self.assertGreaterEqual(rule.get("NSExtensionActivationSupportsWebURLWithMaxCount", 0), 1)
         self.assertGreaterEqual(rule.get("NSExtensionActivationSupportsImageWithMaxCount", 0), 1)
 
+    def test_the_activation_rule_admits_a_plain_file(self) -> None:
+        """A share target that appears for links and not for files is half a feature.
+
+        Files.app offers one document as a `public.file-url` provider, so the sheet only lists
+        Hermey for it if `NSExtensionActivationSupportsFileWithMaxCount` is declared. Without this
+        key the extension is missing from exactly the share the owner tried first.
+        """
+        info = plistlib.loads(EXTENSION_INFO.read_bytes())
+        rule = info["NSExtension"]["NSExtensionAttributes"]["NSExtensionActivationRule"]
+        self.assertGreaterEqual(rule.get("NSExtensionActivationSupportsFileWithMaxCount", 0), 1,
+                                "a file shared from Files would not offer Hermey at all")
+
     def test_the_display_name_is_the_apps_name(self) -> None:
         info = plistlib.loads(EXTENSION_INFO.read_bytes())
         self.assertEqual(info["CFBundleDisplayName"], "Hermey",
@@ -339,6 +359,214 @@ class TestTheInfoPlistIsAShareExtension(unittest.TestCase):
         self.assertEqual(info["CFBundlePackageType"], "XPC!")
         # project.yml owns the identifier; the plist must defer to it rather than hard-code one.
         self.assertEqual(info["CFBundleIdentifier"], "$(PRODUCT_BUNDLE_IDENTIFIER)")
+
+
+class TestAGenericFileIsAccepted(unittest.TestCase):
+    """The first real share: one file from Files, and the sheet called it too large.
+
+    A Files share is a security-scoped `public.file-url` with no image type on it. Asking that URL
+    for its size before opening the scope returns nothing, and the old importer read that `nil` as
+    a refusal — so a small document became "1 item was too large to add". What is pinned here is
+    that the scope opens first, the bytes decide, and any type is carried.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.importer = EXTENSION_SWIFT["ShareItemImporter.swift"]
+        cls.read_file = function_body(cls.importer,
+                                      "private static func readFile(_ url: URL) throws -> Data {")
+
+    def test_a_file_url_is_read_inside_its_security_scope(self) -> None:
+        self.assertLess(self.read_file.index("startAccessingSecurityScopedResource()"),
+                        self.read_file.index("Data(contentsOf: url)"),
+                        "reading a Files URL without its scope open fails, scope or not")
+        self.assertIn("stopAccessingSecurityScopedResource", self.read_file)
+
+    def test_the_scope_closes_on_every_path(self) -> None:
+        self.assertIn("defer", self.read_file,
+                      "an early throw must not leave the scope open")
+        self.assertIn("if scoped { url.stopAccessingSecurityScopedResource() }", self.read_file)
+
+    def test_a_url_that_needs_no_scope_is_still_read(self) -> None:
+        # `startAccessingSecurityScopedResource` returns false for a path that needs no scope; a
+        # guard on that value would refuse every file handed over inside the extension's container.
+        self.assertNotIn("guard scoped", self.read_file)
+        self.assertIn("defer { if scoped { url.stopAccessingSecurityScopedResource() } }", self.read_file)
+
+    def test_no_size_is_demanded_before_the_bytes_exist(self) -> None:
+        """"Too large" may only follow a measurement, so the read comes before the byte ceiling."""
+        self.assertIn("if let size = values?.fileSize, size > maximumAttachmentBytes", self.read_file,
+                      "a metadata size may reject early, but only when it is actually there")
+        self.assertIn("data.count <= maximumAttachmentBytes", self.read_file)
+        self.assertLess(self.read_file.index("Data(contentsOf: url)"),
+                        self.read_file.index("data.count <= maximumAttachmentBytes"))
+        self.assertNotIn("size <= maximumAttachmentBytes", self.importer,
+                         "the old gate turned an unreadable size into a refusal")
+
+    def test_any_file_the_person_chose_is_carried(self) -> None:
+        self.assertIn("case .rawFile", self.importer,
+                      "a provider with an unrecognised type is still a file the person picked")
+        self.assertIn("provider.registeredTypeIdentifiers.first", self.importer)
+        # A picture shared from Files is a picture; everything else is a file. Neither is refused.
+        self.assertIn("kind: isImage ? .image : .file", self.importer)
+        self.assertIn("resolvedType(of: located, provider: provider)", self.importer)
+        self.assertIn("UTType(filenameExtension: file.pathExtension)", self.importer,
+                      "the file's own extension decides what it is")
+
+    def test_a_true_size_limit_is_measured_in_bytes_and_named(self) -> None:
+        self.assertIn("data.count <= maximumAttachmentBytes", self.read_file)
+        self.assertIn("ShareImportError.tooLarge(byteCount: data.count, maximumBytes: maximumAttachmentBytes)",
+                      self.read_file,
+                      "the number in the message is the number that was over the limit")
+
+    def test_a_file_that_cannot_be_read_is_named_with_the_reason(self) -> None:
+        message = function_body(self.importer, "var message: String {")
+        self.assertIn('"Could not read \\(name)', message)
+        self.assertIn("trimmed.isEmpty", message,
+                      "a system error with no text still has to produce a sentence")
+        self.assertIn("let detail = (error as NSError).localizedDescription", self.importer,
+                      "the system's own words are what the unexpected failures carry")
+        self.assertIn("displayName(for: provider, file: file)", self.importer,
+                      "the refusal names the person's own file, not 'this item'")
+
+    def test_an_empty_file_says_so_rather_than_vanishing(self) -> None:
+        self.assertIn('"the file is empty."', self.read_file,
+                      "an empty attachment is a refusal with a reason, not a silent drop")
+
+    def test_a_folder_is_refused_by_name_not_by_size(self) -> None:
+        self.assertIn("values?.isDirectory == true", self.read_file)
+        self.assertIn('"that is a folder, not a file."', self.read_file)
+
+
+class TestTheThreeContainerStatesAreDistinct(unittest.TestCase):
+    """Three different causes, three different fixes, three different sentences.
+
+    "Open Hermey once so it can list your bots here" was shown to a person who had opened the app:
+    the snapshot lived in a container the extension could not see. The state now says which of the
+    three it is, and the store can only report `noStorage` when there is genuinely no container.
+    """
+
+    NO_STORAGE = "Hermey has no shared storage yet — this build's signing may not include app groups."
+    MISSING = "Open Hermey once to fetch your bot list."
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.composer = EXTENSION_SWIFT["ShareComposer.swift"]
+
+    def test_each_cause_has_its_own_sentence(self) -> None:
+        for sentence in (self.NO_STORAGE, self.MISSING):
+            self.assertEqual(self.composer.count(sentence), 1,
+                             f"expected exactly one place to say: {sentence}")
+        self.assertNotEqual(self.NO_STORAGE, self.MISSING)
+        self.assertIn("out of date", self.composer)
+
+    def test_the_container_case_names_signing_not_the_app(self) -> None:
+        self.assertIn("signing may not include app groups", self.NO_STORAGE)
+        self.assertNotIn("Open Hermey", self.NO_STORAGE,
+                         "opening an app cannot create a container the build never asked for")
+
+    def test_the_missing_snapshot_case_is_the_only_one_that_asks_for_the_app(self) -> None:
+        self.assertIn("Open Hermey once", self.MISSING)
+        self.assertNotIn("signing", self.MISSING)
+
+    def test_the_branch_order_reports_the_container_before_the_file(self) -> None:
+        body = function_body(self.composer, "private func loadBots() {")
+        self.assertLess(body.index("case .noStorage"), body.index("case .missing"),
+                        "the container case must be decided before the snapshot is looked for")
+        for case in ("case .noStorage", "case .missing", "case .stale", "case .ready"):
+            self.assertIn(case, body)
+
+    def test_a_stale_list_says_how_stale_it_is(self) -> None:
+        stale = function_body(self.composer, "private static func staleNotice(")
+        self.assertIn("timeIntervalSince(snapshot.generatedAt)", stale)
+        self.assertIn("days", stale, "an age, not just the word 'stale'")
+        self.assertIn("Reload", stale, "the sentence names the control that fixes it in place")
+
+    def test_no_storage_is_reported_only_when_there_is_no_container(self) -> None:
+        load = function_body(SNAPSHOT, "public static func load(from storage: ShareInboxStorage,")
+        self.assertLess(load.index("guard storage.isAvailable else { return .noStorage }"),
+                        load.index("botSnapshotURL"),
+                        "a nil container must be recognised before a missing file is reported")
+        self.assertIn("case noStorage", SNAPSHOT)
+        # The app's comparison path uses `.ready` with an infinite age; the new case must not
+        # change what a fresh snapshot means there.
+        self.assertIn("maximumAge: TimeInterval.infinity", (APP / "Views" / "ShareWiring.swift")
+                      .read_text(encoding="utf-8"))
+
+    def test_the_app_still_compiles_against_the_enum(self) -> None:
+        wiring = (APP / "Views" / "ShareWiring.swift").read_text(encoding="utf-8")
+        self.assertIn("if case .ready(let snapshot) = ShareBotSnapshotStore.load", wiring,
+                      "the new case is an addition, not a rewrite of the app's path")
+
+
+class TestNothingClaimsTooLargeWithoutALimit(unittest.TestCase):
+    """A false "too large" is worse than a refusal: it tells the person to make a small file smaller."""
+
+    def test_the_sheet_never_prints_a_size_verdict_of_its_own(self) -> None:
+        root = EXTENSION_SWIFT["ShareRootView.swift"]
+        self.assertNotIn("too large", root)
+        self.assertNotIn("skipped", root)
+        self.assertIn("composer.draft.issueSummary", root,
+                      "the preview shows the importer's own sentences")
+
+    def test_no_source_says_too_large_outside_a_measured_limit(self) -> None:
+        # Code, not prose: the doc comments are allowed to explain the old defect.
+        self.assertNotIn("too large to add", EXTENSION_TEXT)
+        for name, source in EXTENSION_SWIFT.items():
+            for line in source.splitlines():
+                if line.strip().startswith("//"):
+                    continue
+                self.assertNotIn("too large", line.lower(),
+                                 f"{name} says it in code: {line.strip()}")
+
+    def test_the_sentence_only_carries_a_number_in_the_too_large_case(self) -> None:
+        message = function_body(EXTENSION_SWIFT["ShareItemImporter.swift"], "var message: String {")
+        too_large = message[message.index("case .tooLarge"):message.index("case .unreadable")]
+        unreadable = message[message.index("case .unreadable"):message.index("case .unsupported")]
+        self.assertIn("Self.size(maximumBytes)", too_large)
+        self.assertIn("Self.size(byteCount)", too_large)
+        self.assertNotIn("limit", unreadable)
+        self.assertNotIn("MB", unreadable)
+
+    def test_an_empty_draft_prefers_the_specific_reason(self) -> None:
+        prepare = function_body(EXTENSION_SWIFT["ShareComposer.swift"], "func prepare(items: [NSExtensionItem]) async {")
+        self.assertIn("draft.issueSummary", prepare)
+        self.assertLess(prepare.index("draft.issueSummary"), prepare.index("Nothing to send"),
+                        "a named refusal must win over the generic sentence")
+        self.assertIn("no text, link or file", prepare)
+
+    def test_a_refused_item_does_not_count_as_a_successful_share(self) -> None:
+        composer = EXTENSION_SWIFT["ShareComposer.swift"]
+        self.assertIn("!draft.isEmpty", composer,
+                      "Send stays disabled when nothing could be carried")
+
+
+class TestTheSheetCanBeRescuedWithoutStartingOver(unittest.TestCase):
+    """A person who opened the app while the sheet was up should not have to share again."""
+
+    def test_there_is_a_reload_affordance(self) -> None:
+        self.assertIn("func reloadBots()", EXTENSION_SWIFT["ShareComposer.swift"])
+        root = EXTENSION_SWIFT["ShareRootView.swift"]
+        self.assertIn("composer.reloadBots()", root)
+        self.assertIn('Label("Reload"', root)
+
+    def test_reload_re_reads_the_snapshot_rather_than_guessing(self) -> None:
+        reload = function_body(EXTENSION_SWIFT["ShareComposer.swift"], "func reloadBots() {")
+        self.assertIn("loadBots()", reload)
+        self.assertNotIn("ShareBot(", reload, "reload must not invent a bot list")
+
+    def test_reload_keeps_a_destination_that_still_exists(self) -> None:
+        reload = function_body(EXTENSION_SWIFT["ShareComposer.swift"], "func reloadBots() {")
+        self.assertIn("bots.contains(where: { $0.id == previous })", reload)
+
+    def test_reload_lives_with_the_notice_so_it_is_only_offered_when_it_helps(self) -> None:
+        root = EXTENSION_SWIFT["ShareRootView.swift"]
+        notice_branch = root[root.index("if let notice = composer.notice"):]
+        self.assertLess(notice_branch.index("composer.reloadBots()"),
+                        notice_branch.index("else {"),
+                        "the button belongs to the no-destination state, not the picker")
+        self.assertIn(".disabled(!composer.canSend)", root,
+                      "Reload must not enable Send without a destination")
 
 
 class TestTheAppGroupIsNamedOnce(unittest.TestCase):

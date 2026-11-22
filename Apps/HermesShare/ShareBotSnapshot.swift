@@ -48,6 +48,11 @@ public enum ShareBotSnapshotState: Equatable {
     case ready(ShareBotSnapshot)
     case stale(ShareBotSnapshot?)
     case missing
+    /// The App Group container itself is absent, so there is no directory a snapshot could be in.
+    /// Distinct from `.missing` on purpose: "the app never wrote the list" is fixed by opening the
+    /// app, and this is fixed by signing the build with the app-group entitlement. Telling a person
+    /// to open an app they have opened is the kind of instruction that makes a feature look broken.
+    case noStorage
 }
 
 public enum ShareBotSnapshotStore {
@@ -71,6 +76,9 @@ public enum ShareBotSnapshotStore {
     public static func load(from storage: ShareInboxStorage,
                             now: Date = Date(),
                             maximumAge: TimeInterval = ShareBotSnapshotStore.maximumAge) -> ShareBotSnapshotState {
+        // Asked first: with no container every path below is `nil`, and reporting that as "the app
+        // has not written the list yet" would send the person to an app that already did.
+        guard storage.isAvailable else { return .noStorage }
         guard let url = storage.botSnapshotURL,
               let data = try? Data(contentsOf: url) else { return .missing }
         guard let probe = try? JSONDecoder().decode(VersionProbe.self, from: data),

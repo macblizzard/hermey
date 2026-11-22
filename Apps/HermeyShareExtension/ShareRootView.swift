@@ -77,16 +77,27 @@ struct ShareRootView: View {
                             .lineLimit(1)
                     }
                     if composer.draft.text == nil && composer.draft.urlString == nil {
-                        Text(composer.draft.files.first?.originalName ?? "Attachment")
-                            .font(.callout)
-                            .lineLimit(2)
+                        if let file = composer.draft.files.first {
+                            Label(file.originalName ?? "File", systemImage: "doc")
+                                .font(.callout)
+                                .lineLimit(2)
+                            Text(ShareImportIssue.size(file.byteCount))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Attachment")
+                                .font(.callout)
+                        }
                     }
-                    if composer.draft.skipped > 0 {
-                        Text(composer.draft.skipped == 1
-                             ? "1 item was too large to add."
-                             : "\(composer.draft.skipped) items were too large to add.")
+                    if !composer.draft.isEmpty, let issues = composer.draft.issueSummary {
+                        // One line per refused item, naming it and why — the importer's sentence,
+                        // never a count of items the sheet could not identify. When nothing at all
+                        // was carried the same sentence is already the red line above; this is for
+                        // the partial case, so a share of three files cannot hide a fourth.
+                        Text(issues)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
@@ -129,10 +140,24 @@ struct ShareRootView: View {
     private var destinations: some View {
         Group {
             if let notice = composer.notice {
-                Text(notice)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(notice)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // Send stays disabled while there is no destination — a share has to go
+                    // somewhere real. Reload re-reads the snapshot, so a person who opened the app
+                    // (or fixed the signing) mid-share does not have to pick the item again.
+                    Button {
+                        composer.reloadBots()
+                    } label: {
+                        Label("Reload", systemImage: "arrow.clockwise")
+                            .font(.footnote)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityHint("Reads the bot list Hermey left for this sheet again.")
+                }
             } else {
                 ScrollView {
                     VStack(spacing: 0) {

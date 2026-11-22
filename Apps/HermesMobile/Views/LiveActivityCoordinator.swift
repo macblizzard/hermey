@@ -54,6 +54,19 @@ final class LiveActivityCoordinator: ObservableObject {
     /// When the current turn started, kept so the `.done` update can still say how long it ran.
     private var startedAt: Date?
 
+    /// The tail of what the bot is saying, kept while it streams.
+    ///
+    /// `finish` runs when `isStreaming` flips back, and by then the model has already emptied
+    /// `streamingText` — the live bubble is what clears it. So the words are read as they arrive and
+    /// the tail is held here; the card's own cap is 120 characters, and this keeps the few hundred
+    /// before it, so the snippet is cut from real text and not from a sentence that starts mid-word
+    /// because the stream was joined late.
+    private var replyTail: String = ""
+
+    /// How much of the stream is kept for the snippet. Generous next to the card's 120 characters,
+    /// small enough that a long answer is not held a second time in an observer.
+    private static let replyTailLimit = 400
+
     /// Reasons already written to the log, so a per-turn path cannot flood a 400-line ring.
     private var logged: Set<String> = []
 
@@ -86,6 +99,19 @@ final class LiveActivityCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // Second, and after the turn subscription on purpose: the card's snippet is the reply, and
+        // the reply only exists in the model while it streams. This is a passive copy — it starts
+        // no work, and the sink is one string assignment per publish (the model already coalesces
+        // tokens to a 40 ms beat).
+        model.$streamingText
+            .removeDuplicates()
+            .sink { [weak self] text in
+                guard let self else { return }
+                let tail = String(text.suffix(Self.replyTailLimit))
+                if !tail.isEmpty { self.replyTail = tail }
+            }
+            .store(in: &cancellables)
     }
 
     /// Stop observing and take the card down. Called by `attach` when a different model arrives.
@@ -103,6 +129,7 @@ final class LiveActivityCoordinator: ObservableObject {
     /// both callers are saying "this turn is not running any more" — there is nothing left to show.
     func endAll() {
         startedAt = nil
+        replyTail = ""
         isShowing = false
         activity = nil
         let leftovers = Activity<HermeyTurnAttributes>.activities
@@ -142,8 +169,10 @@ final class LiveActivityCoordinator: ObservableObject {
 
         if let activity {
             // Same card, new turn: re-point the state rather than requesting a second activity.
-            // `startedAt` resets so the elapsed timer counts this message, not the last one.
+            // `startedAt` resets so the elapsed timer counts this message, not the last one, and
+            // the previous turn's reply is dropped rather than shown against this one.
             startedAt = now
+            replyTail = ""
             let state = HermeyTurnAttributes.ContentState(phase: .working, startedAt: now)
             Task {
                 await activity.update(ActivityContent(state: state,
@@ -152,6 +181,7 @@ final class LiveActivityCoordinator: ObservableObject {
             return
         }
 
+        replyTail = ""
         do {
             let attributes = HermeyTurnAttributes(botName: name)
             let state = HermeyTurnAttributes.ContentState(phase: .working, startedAt: now)
@@ -180,9 +210,11 @@ final class LiveActivityCoordinator: ObservableObject {
         let state = HermeyTurnAttributes.ContentState(
             phase: .done,
             startedAt: startedAt ?? Date(),
-            finishedAt: Date()
+            finishedAt: Date(),
+            replySnippet: replySnippet()
         )
         startedAt = nil
+        replyTail = ""
         // Cleared before the end is awaited, so a turn that starts immediately after this one is not
         // blocked on the dismissal. The overlap is a few seconds at most and the old card has
         // already been told to go.
@@ -192,6 +224,24 @@ final class LiveActivityCoordinator: ObservableObject {
                 dismissalPolicy: .after(Date().addingTimeInterval(Self.doneLinger))
             )
         }
+    }
+
+    // MARK: The snippet
+
+    /// What the bot said, or nothing.
+    ///
+    /// Two sources, in order: the tail kept while the reply streamed, then the transcript's last
+    /// assistant row — the fallback matters for a turn that was already running when the
+    /// coordinator attached, and for one whose answer arrived entirely as sealed rows rather than
+    /// as streamed tokens. Neither source is ever synthesised: if both are empty the card gets an
+    /// empty string and draws no snippet, which is the truth ("a turn ended and there was no text").
+    ///
+    /// No trimming happens here. `ContentState` flattens and caps what it is given, so the rule for
+    /// what a card may show lives in one place, next to the field.
+    private func replySnippet() -> String {
+        if !replyTail.isEmpty { return replyTail }
+        guard let model else { return "" }
+        return model.transcript.last(where: { $0.role == .assistant })?.text ?? ""
     }
 
     // MARK: Logging

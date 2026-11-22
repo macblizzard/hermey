@@ -14,9 +14,22 @@ shells are:
 * **nothing is unguarded.** The Mac and any SDK without ActivityKit must keep compiling, and a
   phone with the feature switched off must log one reason instead of 400.
 
+And two rules that came from the owner's screenshot of 0.1.618 — a black pill two-thirds of the
+phone wide, covering the status bar, saying nothing but an icon and `1:06`:
+
+* **a compact slot owns no width.** The island sizes itself from what `compactLeading`,
+  `compactTrailing` and `minimal` *report*, so a `Spacer()`, an `.frame(maxWidth: .infinity)` or —
+  what actually happened — a plain `Text` measuring against the full proposal widens the pill until
+  it sits on top of the clock and the battery. Every compact view is pinned to its intrinsic size,
+  and the bot's name is shortened in code so that size is small;
+* **a glance answers "which bot" and "what did it say".** Compact carries the bot's name; the
+  expanded island and the lock-screen card carry the first line or two of the reply, which is a
+  field on `ContentState` and is flattened and capped by the type, not by each view.
+
 What a real device has to confirm (it cannot be asserted here): that the extension is embedded and
-signed, that the island's compact trailing timer is not clipped, and that ending with
-`.after(6s)` is long enough to read "Replied" on the lock screen.
+signed, that the compact pill sits inside the notch's width instead of over the status bar, that the
+island's compact trailing timer is not clipped, and that ending with `.after(6s)` is long enough to
+read "Replied" and a snippet on the lock screen.
 """
 
 from __future__ import annotations
@@ -63,6 +76,16 @@ def section(heading: str) -> str:
     start = WIDGET.index(heading)
     end = WIDGET.find("// MARK: -", start + len(heading))
     return WIDGET[start:end if end != -1 else len(WIDGET)]
+
+
+def compact(name: str) -> str:
+    """The view body of one Dynamic Island compact presentation."""
+    return braced(WIDGET, WIDGET.index(f"{name}: {{"))
+
+
+def piece(declaration: str) -> str:
+    """The body of one private view or enum in the widget file."""
+    return braced(WIDGET, WIDGET.index(declaration))
 
 
 class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
@@ -162,7 +185,10 @@ class ThePaletteIsTheApps(unittest.TestCase):
         # is what keeps one palette legible on both surfaces.
         island = WIDGET[WIDGET.index("} dynamicIsland:"):WIDGET.index("// MARK: - Pieces")]
         self.assertNotIn("HermeyTurnInk.ink", island)
-        self.assertEqual(island.count("tone: .island"), 3)
+        # Clock (expanded trailing), the status line and the snippet (expanded bottom), and the
+        # compact trailing clock: every island piece that prints names a tone, and each one is the
+        # island's own.
+        self.assertEqual(island.count("tone: .island"), 4)
         self.assertIn("case island", WIDGET)
         self.assertIn(".white", WIDGET)
 
@@ -290,6 +316,123 @@ class TheExtensionIsItsOwnBundle(unittest.TestCase):
         # The target id is the parent's to write in project.yml; the file states which one, so the
         # requirement cannot drift out of the artifact.
         self.assertIn("dev.hermey.app.LiveActivity", PLIST)
+
+
+class TheIslandStaysSmall(unittest.TestCase):
+    """Compact slots report their size; the island widens to whatever comes back."""
+
+    def test_no_compact_slot_proposes_a_width(self) -> None:
+        # 0.1.618's pill was 249 pt of black over the status bar. These three slots are the only
+        # places that can ask for that, so none of them may contain something that stretches.
+        for name in ("compactLeading", "compactTrailing", "minimal"):
+            content = compact(name)
+            for forbidden in ("Spacer", "maxWidth: .infinity", "GeometryReader",
+                              "frame(width:", "frame(minWidth:", "frame(idealWidth:"):
+                self.assertNotIn(forbidden, content, f"{name} proposes a width: {forbidden}")
+
+    def test_every_compact_view_pins_its_intrinsic_size(self) -> None:
+        # `.fixedSize()` is the modifier that stops a `Text` filling the island's proposal; without
+        # it the trailing timer was measured against the whole compact width and the island obeyed.
+        self.assertIn(".fixedSize()", compact("minimal"))
+        lead = piece("private struct HermeyTurnCompactLead: View")
+        self.assertIn(".fixedSize()", lead)
+        self.assertNotIn("Spacer", lead)
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)",
+                      piece("private struct HermeyTurnClock: View"))
+
+    def test_compact_leading_names_the_bot(self) -> None:
+        # A glance has to answer "which bot"; the screenshot answered nothing.
+        self.assertIn("HermeyTurnCompactLead(", compact("compactLeading"))
+        self.assertIn("botName", compact("compactLeading"))
+        lead = piece("private struct HermeyTurnCompactLead: View")
+        self.assertIn("HermeyTurnNames.compact(botName)", lead)
+
+    def test_the_name_is_short_before_it_is_drawn(self) -> None:
+        # Truncating in code, not with `lineLimit`: a `Text` still reports the whole string's width
+        # to the layout before it truncates what it draws, which is how the pill got wide.
+        names = piece("private enum HermeyTurnNames")
+        self.assertIn("static let compactLimit = 8", names)
+        self.assertIn("prefix(compactLimit)", names)
+        self.assertIn('"\u2026"', names)
+        self.assertIn("whereSeparator: \\.isWhitespace", names)
+
+    def test_compact_trailing_is_only_the_clock(self) -> None:
+        # The trailing slot holds a few monospaced digits and nothing that can grow.
+        content = compact("compactTrailing")
+        self.assertIn("HermeyTurnClock(state: context.state, compact: true, tone: .island)", content)
+        self.assertNotIn("botName", content)
+        self.assertNotIn("replySnippet", content)
+
+    def test_the_expanded_island_cannot_stretch_either(self) -> None:
+        # The expanded island is the system's to size, but a spacer in it is still a view whose only
+        # job is to take room the card does not need.
+        island = WIDGET[WIDGET.index("} dynamicIsland:"):WIDGET.index("// MARK: - Pieces")]
+        self.assertNotIn("Spacer", island)
+
+
+class TheReplyHasItsOwnField(unittest.TestCase):
+    def test_the_state_carries_the_snippet(self) -> None:
+        self.assertIn("public var replySnippet: String", ATTRIBUTES)
+        self.assertIn("public static let snippetLimit = 120", ATTRIBUTES)
+
+    def test_the_type_enforces_the_cap_and_the_single_line(self) -> None:
+        # One place decides what a card may show: the field's own initialiser. A view-side cap would
+        # be a second rule that drifts, and the state travels to *two* processes.
+        init = ATTRIBUTES[ATTRIBUTES.index("public init(phase: Phase"):ATTRIBUTES.index("// Decoded by hand")]
+        self.assertIn('replySnippet: String = ""', init)
+        self.assertIn("self.replySnippet = Self.clipped(replySnippet)", init)
+        clip = body("public static func clipped", ATTRIBUTES)
+        # Splitting on whitespace and re-joining is what strips the newlines a markdown reply is
+        # full of, and what folds a code block's indentation.
+        self.assertIn("whereSeparator: \\.isWhitespace", clip)
+        self.assertIn('joined(separator: " ")', clip)
+        self.assertIn("prefix(snippetLimit)", clip)
+
+    def test_an_activity_from_the_previous_build_still_decodes(self) -> None:
+        # 0.1.618 requested cards with no `replySnippet` key. A synthesised decoder would throw and
+        # drop a card the owner is looking at; a missing key is an empty snippet.
+        self.assertIn("decodeIfPresent(String.self, forKey: .replySnippet)", ATTRIBUTES)
+
+    def test_the_card_draws_it_only_when_there_is_one(self) -> None:
+        snippet = piece("private struct HermeyTurnSnippet: View")
+        self.assertIn("state.replySnippet", snippet)
+        self.assertIn("phase == .done", snippet)
+        self.assertIn("lineLimit(2)", snippet)
+        self.assertIn("truncationMode(.tail)", snippet)
+        # Nothing is invented when the string is empty: no placeholder line.
+        self.assertNotIn("Working", snippet)
+
+    def test_both_surfaces_show_it(self) -> None:
+        self.assertIn("HermeyTurnSnippet(state: context.state, tone: .island)",
+                      region("bottom"))
+        self.assertIn("HermeyTurnSnippet(state: state, tone: .card)",
+                      piece("private struct HermeyTurnLockScreen: View"))
+
+
+class TheCoordinatorHandsTheReplyOver(unittest.TestCase):
+    def test_the_snippet_is_passed_when_the_card_ends(self) -> None:
+        finish = body("private func finish()")
+        self.assertIn("replySnippet: replySnippet()", finish)
+        self.assertLess(finish.index("replySnippet: replySnippet()"), finish.index("activity.end("))
+
+    def test_the_reply_is_read_while_it_streams(self) -> None:
+        # `finish` runs after the model has emptied `streamingText`, so the words have to be copied
+        # as they arrive or the card has nothing to show.
+        self.assertIn("model.$streamingText", COORDINATOR)
+        self.assertIn("replyTail", COORDINATOR)
+        self.assertIn("String(text.suffix(Self.replyTailLimit))", COORDINATOR)
+
+    def test_it_never_invents_a_sentence(self) -> None:
+        helper = body("private func replySnippet()")
+        self.assertIn('return ""', helper)
+        # The only two sources: the streamed tail, and the transcript's last assistant row.
+        self.assertIn("if !replyTail.isEmpty { return replyTail }", helper)
+        self.assertIn("$0.role == .assistant", helper)
+        self.assertNotIn("Replied", helper)
+
+    def test_the_name_is_short_before_it_is_drawn_here_too(self) -> None:
+        # The island's own shortening is a display rule; the coordinator still sends the real name.
+        self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
 
 
 if __name__ == "__main__":

@@ -147,18 +147,39 @@ the file in `Share/Inbox/Rejected/` rather than guessing at its fields.
 | Situation | Text |
 | --- | --- |
 | Sheet title | **Send to Hermey** |
-| No snapshot yet | "Open Hermey once so it can list your bots here." |
-| Snapshot older than 7 days | "The bot list is out of date. Open Hermey to refresh it, then share again." |
+| No container at all (App Group not provisioned) | "Hermey has no shared storage yet — this build's signing may not include app groups." |
+| Container present, no snapshot in it | "Open Hermey once to fetch your bot list." |
+| Snapshot older than 7 days | "The bot list is 9 days out of date. Open Hermey to refresh it, or tap Reload." |
 | Snapshot with no bots | "No bots yet. Add one in Hermey, then share again." |
-| Nothing shareable | "Nothing to send: this item has no text, link or image." |
-| Container write failed | "Hermey has no shared storage yet. Open Hermey once, then share again." |
-| Oversized item | "1 item was too large to add." |
+| Nothing shareable at all | "Nothing to send: this item has no text, link or file." |
+| An item that could not be read | "Could not read notes.txt: …" — the item's own name and the system's reason. |
+| An item over the ceiling | "clip.mov is 42 MB — over the 20 MB limit for one share." |
+| Container write failed | "Hermey has no shared storage yet — this build's signing may not include app groups." |
 
-Buttons: **Cancel**, **Send** (disabled until a bot is selected and something is present).
+A refusal names the item and the reason, and "too large" only ever comes from a measured byte count
+with the limit in the sentence. A share from Files is a security-scoped `public.file-url` and is
+read inside its scope before anything is decided about it; the file's own bytes decide whether it is
+an image or a file, and any type at all is carried.
+
+Buttons: **Cancel**, **Send** (disabled until a bot is selected and something is present), and
+**Reload** wherever there is no destination — it re-reads the snapshot in place so a person who just
+opened the app does not have to cancel and share the item again.
+
+### Two ceilings, and only one of them is this target's
+
+`ShareInboxStorage.maximumAttachmentBytes` (20 MB) is what may sit in the group container. The app's
+composer has its own, smaller budget (`AppModel.maxAttachmentBytes`, 8 MB) and refuses anything above
+it at delivery time; `ShareWiring` then names the file in the message text ("Shared with this message
+but not attached: …") rather than dropping it. A share between the two ceilings is therefore
+accepted here and reported there. Making them one number is a change to the app's send path, not to
+this extension.
 
 ## Only a device can confirm
 
 - The extension appearing in the system share sheet for Safari / Photos / Files.
+- A file shared from Files being read while its security scope is open — the URL Files hands over is
+  only readable inside `startAccessingSecurityScopedResource`, and a device is the only place that
+  can prove it. On the simulator the same share arrives as a plain path and would pass either way.
 - The picker rendering at the sheet's real height, and the share sheet's own chrome above it.
 - `extensionContext.open("hermey://share")` actually foregrounding the app. On refusal the payload
   is still queued and delivers on the next launch — the code treats that as success, not failure.

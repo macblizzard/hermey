@@ -23,6 +23,9 @@ import AppKit
 /// A message can carry several pictures. The viewer is then a small gallery: it opens on the one that
 /// was tapped and pages through the rest — a horizontal swipe and a counter on the phone, the arrow
 /// keys and chevrons on the Mac — so looking at the second picture no longer means closing the first.
+///
+/// On the phone a downward swipe puts the gallery away as well, the way every photo viewer there
+/// does: the picture follows the finger, and letting go either closes it or springs it back.
 public struct ImageViewer: View {
     /// One picture of the message: the bytes, and the name they were saved under.
     public struct Item: Identifiable {
@@ -57,6 +60,12 @@ public struct ImageViewer: View {
     #if os(iOS)
     /// Where `Share` reads from: the bytes of the current page, written once, on demand.
     @State private var sharedFile: URL?
+    /// How far the viewer has been pulled down under the finger, in points — swipe-to-dismiss.
+    /// Zero unless a downward drag is under way, and back to zero the moment it ends.
+    @State private var pull: CGFloat = 0
+    /// True once the drag in progress has proved itself a downward swipe. A drag that has not
+    /// claimed the gesture moves nothing: the horizontal page turn still belongs to the pager.
+    @State private var pulling = false
     #endif
     #if os(macOS)
     /// Arrow keys are the Mac's swipe. Focus is taken when the viewer opens, so the keys land here
@@ -96,6 +105,20 @@ public struct ImageViewer: View {
         }
         .frame(minWidth: 320, minHeight: 240)
         .background(Tokens.canvas)
+        #if os(iOS)
+        // Swipe down to put the picture away — the gesture every photo viewer on the phone has,
+        // and the one the owner asked for ("let me close the gallery with a swipe down"). The
+        // whole viewer follows the finger as one piece and thins a little as it goes, so the drag
+        // uncovers what is behind the cover instead of sliding an unchanged screen.
+        .offset(y: pull)
+        .opacity(pullOpacity)
+        .simultaneousGesture(dismissSwipe)
+        // Nothing here opts out of the presentation's own drag, deliberately. The phone presents
+        // this viewer in a `fullScreenCover` (`MobileTranscript`), which has no system drag of its
+        // own for this gesture to fight — and the house rule is that no sheet in either app refuses
+        // the drag (pinned by `test_approvals_and_sheets`). Because the gesture is *simultaneous*
+        // rather than high-priority, a presentation that does have a drag keeps it.
+        #endif
         .onChange(of: index) { _, _ in
             // A page opens fit — the zoom of the last picture would crop this one — and Share must
             // follow the page, or it hands over the bytes the previous picture wrote.
@@ -394,6 +417,66 @@ public struct ImageViewer: View {
             }
             .onEnded { _ in pinchBase = nil }
     }
+
+    #if os(iOS)
+    /// Swipe down to put the gallery away.
+    ///
+    /// It runs *beside* the pager rather than over it: `simultaneousGesture` leaves the `TabView`'s
+    /// page turn alone and `isDownward` decides which of the two a drag is, so a horizontal swipe is
+    /// never claimed and still turns the page. A pinch is two fingers and no translation, so it
+    /// never starts this either.
+    ///
+    /// Letting go decides: far enough down, or a shorter drag with the momentum to carry on, and the
+    /// viewer closes through the same `onClose` as Close and Done; anything less springs back.
+    private var dismissSwipe: some Gesture {
+        DragGesture(minimumDistance: Self.dismissDragArm)
+            .onChanged { value in
+                if !pulling {
+                    // The first samples of a horizontal swipe carry a little height too: nothing
+                    // moves until the drag is downward by a clear margin.
+                    guard Self.isDownward(value) else { return }
+                    pulling = true
+                }
+                pull = max(0, value.translation.height)
+            }
+            .onEnded { value in
+                let wasPulling = pulling
+                pulling = false
+                guard wasPulling else { return }
+                let tossed = value.translation.height > Self.dismissThreshold
+                    || value.predictedEndTranslation.height > Self.dismissFlick
+                if tossed {
+                    // Cleared before the cover goes: a spring-back must never run against a view
+                    // that is already leaving.
+                    pull = 0
+                    onClose()
+                } else {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { pull = 0 }
+                }
+            }
+    }
+
+    /// A drag that is predominantly vertical, and downward. The margin on the width is what keeps a
+    /// slightly-diagonal page turn from being taken for a dismissal.
+    private static func isDownward(_ value: DragGesture.Value) -> Bool {
+        let dy = value.translation.height
+        return dy > 0 && dy > abs(value.translation.width) * 1.4
+    }
+
+    /// How much of the viewer is left as it is pulled away: it thins with the drag, far short of
+    /// invisible — a picture that fades out under the finger reads as broken, not dismissed.
+    private var pullOpacity: Double {
+        1 - min(Double(pull) / 520, 0.55)
+    }
+
+    /// A tap and a small slip stay taps: the drag must travel before it can mean anything.
+    private static let dismissDragArm: CGFloat = 12
+    /// Far enough down that letting go puts the picture away…
+    private static let dismissThreshold: CGFloat = 90
+    /// …or a shorter drag travelling fast enough to carry on. The same pair the house
+    /// swipe-to-dismiss uses (`SheetLanguage`), so both gestures let go at the same point.
+    private static let dismissFlick: CGFloat = 160
+    #endif
 
     // MARK: Plumbing
 
