@@ -20,6 +20,23 @@ private enum HermeyTurnAccent {
     static let amber = Color(.sRGB, red: 204 / 255, green: 101 / 255, blue: 67 / 255, opacity: 1)
 }
 
+/// How much room the words get, and how much lift the glass gets.
+///
+/// The owner's report was that the text sat almost on the card's border and that the card read as a
+/// solid slab rather than the Lock Screen's glass. Both are one number each: the card takes real
+/// margins instead of the couple of points the system's default leaves at the corners, and the tint
+/// is a whisper of white over the system's material — enough to see the wallpaper through it on a
+/// dark photo, not enough to become a panel of its own.
+private enum HermeyTurnGlass {
+    /// Card content margins, horizontal and vertical.
+    static let cardHorizontal: CGFloat = 8
+    static let cardVertical: CGFloat = 8
+    /// The island's leading/trailing regions, off the pill's rounded edge.
+    static let islandInset: CGFloat = 8
+    /// The white lift over the Lock Screen material. Not a fill: the blur still shows.
+    static let lift: Double = 0.10
+}
+
 /// Where a piece is being drawn.
 ///
 /// The two surfaces do not share an ink: the Lock Screen card is the system's glass, which is light
@@ -70,13 +87,17 @@ struct HermeyTurnLiveActivity: Widget {
             HermeyTurnLockScreen(state: context.state,
                                  botName: context.attributes.botName,
                                  isStale: context.isStale)
+                // Glass, not a slab: the Lock Screen's own material stays, and a barely-there white
+                // lift keeps it from reading as solid black over a dark wallpaper. It is a tint,
+                // not a fill — the blur and the wallpaper still show through.
+                .activityBackgroundTint(Color.white.opacity(HermeyTurnGlass.lift))
                 .activitySystemActionForegroundColor(HermeyTurnAccent.amber)
         } dynamicIsland: { context in
             DynamicIsland {
                 // Leading: the app's mark, so the island says *Hermey* before it says anything else.
                 DynamicIslandExpandedRegion(.leading) {
                     HermeyTurnMark(phase: context.state.phase)
-                        .padding(.leading, 4)
+                        .padding(.leading, HermeyTurnGlass.islandInset)
                 }
                 // Centre: which bot has the message, and what it is doing — the step line belongs
                 // here rather than in `.bottom`. The expanded island's floor is 84 pt, which fits
@@ -90,7 +111,7 @@ struct HermeyTurnLiveActivity: Widget {
                 // Trailing: the elapsed number, balanced against the mark on the left.
                 DynamicIslandExpandedRegion(.trailing) {
                     HermeyTurnElapsedLabel(state: context.state, tone: .island)
-                        .padding(.trailing, 4)
+                        .padding(.trailing, HermeyTurnGlass.islandInset)
                 }
                 // Bottom: the reply's first lines, and only once there is a reply to quote.
                 DynamicIslandExpandedRegion(.bottom) {
@@ -368,7 +389,8 @@ private struct HermeyTurnLockScreen: View {
             Spacer(minLength: 8)
             HermeyTurnElapsedLabel(state: state, tone: .card)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, HermeyTurnGlass.cardVertical)
+        .padding(.horizontal, HermeyTurnGlass.cardHorizontal)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLine)
     }
