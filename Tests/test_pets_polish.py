@@ -3,9 +3,10 @@
 Four changes the owner asked for after using 0.1.626/0.1.627, each pinned here as a source guard,
 because CI is the only Swift compiler this repo has:
 
-* the balloon is a semi-transparent *white callout* with a tail that points at the pet — not the
-  theme-coloured rounded rect it shipped as, and not a white rect that would take its text colour
-  from the app's dark theme;
+* the balloon is a semi-transparent *frosted callout* — the desktop's colour through it, a curved
+  tail that points at the pet — not the theme-coloured rounded rect it shipped as, nor the solid
+  light panel the 0.82 tint made of it, and not a white rect that would take its text colour from
+  the app's dark theme;
 * the icon carries its own drop shadow, so it reads as floating, and the shadow is not hit area;
 * the pet blinks on its own 3–9 s clock as a vertical squash, gentled under Reduce Motion;
 * a click hops and double-blinks *as* the balloon opens — never before it, never delaying it.
@@ -36,19 +37,50 @@ def _tap_branch() -> str:
     return ended.split("isDragging = false", 1)[0]
 
 
-class TheBalloonIsAWhiteCallout(unittest.TestCase):
-    """Semi-transparent white over the desktop, with the wallpaper showing through it."""
+class TheBalloonIsFrostedGlass(unittest.TestCase):
+    """A frosted callout: the desktop's own colour through it, dark ink on top of it."""
 
-    def test_the_sheet_is_white_at_eighty_two_per_cent(self):
-        self.assertIn("static let body = Color.white.opacity(0.82)", BALLOON,
-                      "the bubble is off-white, not the theme's sheet colour")
+    @staticmethod
+    def _opacity(constant: str) -> float:
+        """The number in `static let <constant> = Color.white.opacity(<n>)`."""
+        tail = BALLOON.split(f"static let {constant} = Color.white.opacity(", 1)[1]
+        return float(tail.split(")", 1)[0])
 
-    def test_the_wallpaper_shows_through(self):
-        self.assertIn(".fill(.ultraThinMaterial)", BALLOON,
-                      "the material blurs what is behind the window; the white sits on top of it")
+    def test_the_white_tint_is_low_and_the_material_does_the_frosting(self):
+        self.assertIn("static let body = Color.white.opacity(0.38)", BALLOON,
+                      "the tint that sits over the material")
+        self.assertLess(self._opacity("body"), 0.5,
+                        "at 0.82 the bubble was a solid light panel on a dark desktop; the "
+                        "desktop's colour has to come through")
+        self.assertNotIn("Color.white.opacity(0.82)", BALLOON)
+
+    def test_the_material_is_raised_to_regular_and_still_shows_the_wallpaper(self):
+        self.assertIn(".fill(.regularMaterial)", BALLOON,
+                      "the frost carries the contrast, so the tint can stay thin")
+        self.assertNotIn(".fill(.ultraThinMaterial)", BALLOON,
+                         "the owner asked for the material's opacity role to go up, not down")
         self.assertIn(".overlay(silhouette.fill(PetBalloonInk.body))", BALLOON,
-                      "the white and the material have to be the same silhouette, or the tail "
+                      "the tint and the material have to be the same silhouette, or the tail "
                       "blurs differently from the card")
+
+    def test_the_glass_edge_is_a_light_inner_rim(self):
+        self.assertIn("static let highlight = Color.white.opacity(0.18)", BALLOON)
+        self.assertIn(
+            "silhouette.inset(by: 1).strokeBorder(PetBalloonInk.highlight, lineWidth: 1)",
+            BALLOON, "one point inside the hairline: a rim, not a second outline")
+        self.assertIn("silhouette.strokeBorder(PetBalloonInk.edge, lineWidth: 1)", BALLOON,
+                      "the hairline still holds the shape against a bright desktop")
+
+    def test_contrast_never_comes_from_thickening_the_sheet(self):
+        # The owner's rule for a very dark wallpaper: a faint layer under the text block, never a
+        # more opaque bubble.
+        self.assertIn("static let backdropContrast = Color.black.opacity(0.07)", BALLOON)
+        self.assertIn(".shadow(color: PetBalloonInk.backdropContrast", BALLOON)
+        for opaque in ("Color.white.opacity(0.6", "Color.white.opacity(0.7",
+                       "Color.white.opacity(0.8", "Color.white.opacity(0.9",
+                       ".fill(Color.white)", ".fill(.background)"):
+            self.assertNotIn(opaque, BALLOON,
+                             f"{opaque} is the solid panel this bubble is not allowed to be")
 
     def test_the_old_theme_tinted_fill_is_gone(self):
         self.assertNotIn("Tokens.sheet.opacity(0.72)", BALLOON,
@@ -57,7 +89,7 @@ class TheBalloonIsAWhiteCallout(unittest.TestCase):
 
     def test_the_balloon_forces_a_light_scheme_inside_itself(self):
         self.assertIn(".environment(\\.colorScheme, .light)", BALLOON,
-                      "the app's theme is dark; the bubble is white paper and has to say so")
+                      "the app's theme is dark; the bubble is a light frost and has to say so")
         self.assertIn("appearance = NSAppearance(named: .aqua)", BALLOON,
                       "the field's insertion point and scrollers are drawn by AppKit for the "
                       "window's appearance, not by SwiftUI")
@@ -83,8 +115,119 @@ class TheBalloonIsAWhiteCallout(unittest.TestCase):
         self.assertIn(".fixedSize(horizontal: false, vertical: true)", BALLOON)
 
 
+class TheAnswerGrowsToACapAndThenScrolls(unittest.TestCase):
+    """A two-line reply makes a small bubble; a thirty-line reply stops at 240 pt and scrolls.
+
+    The bubble is sized by `fittingSize` on the hosting view, so anything flexible measures as
+    nothing — which is what hid the answer once already. Both branches therefore have a definite
+    height: the text's own, or the cap, written down.
+    """
+
+    @staticmethod
+    def _answer_body() -> str:
+        """`answerBody`, from its signature to the text it shares."""
+        return (BALLOON.split("private func answerBody(_ answer: String) -> some View {", 1)[1]
+                       .split("/// The answer's words", 1)[0])
+
+    @staticmethod
+    def _answer_text() -> str:
+        """`answerText`: the one rendering both branches draw."""
+        return (BALLOON.split("private func answerText(_ answer: String) -> some View {", 1)[1]
+                       .split("private var header", 1)[0])
+
+    def test_the_cap_is_240_points_beside_the_tail(self):
+        metrics = BALLOON.split("enum PetCalloutMetrics {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("static let answerCap: CGFloat = 240", metrics,
+                      "one number, in the metrics enum, so the guard can hold it")
+        self.assertIn("static let tailHeight: CGFloat = 13", metrics)
+        self.assertIn("static let tailWidth: CGFloat = 26", metrics)
+
+    def test_the_answer_is_measured_at_the_width_it_is_drawn_at(self):
+        self.assertIn("static var answerWidth: CGFloat { PetBalloonView.width - contentInset * 2 }",
+                      BALLOON, "320 pt less the bubble's own padding, not a guessed column count")
+        self.assertIn("static let contentInset: CGFloat = 14", BALLOON)
+        self.assertIn(".padding(PetCalloutMetrics.contentInset)", BALLOON,
+                      "the measured width and the laid-out width have to be the same padding")
+
+    def test_the_height_is_measured_with_the_face_and_size_it_is_drawn_in(self):
+        self.assertIn("static func answerHeight(of answer: String) -> CGFloat", BALLOON)
+        self.assertIn(
+            "NSFont.systemFont(ofSize: TypeScale.pointSize(Tokens.textSM), weight: .regular)",
+            BALLOON,
+            "the same face TypeScale.font(.system) resolves to, at the same hinted size — so a "
+            "⌘+/⌘- step is measured too")
+        self.assertIn("NSAttributedString(", BALLOON)
+        self.assertIn("with: NSSize(width: answerWidth, height: .greatestFiniteMagnitude)", BALLOON)
+        self.assertIn(".usesLineFragmentOrigin", BALLOON)
+        self.assertIn("return ceil(bounds.height)", BALLOON,
+                      "a fractional height compared against an integer cap must not round down")
+
+    def test_nothing_estimates_the_height_from_the_length_of_the_string(self):
+        for guess in ("charactersPerLine", "charsPerLine", "estimatedLines", "count / 4",
+                      "lineLimit(40)"):
+            self.assertNotIn(guess, BALLOON,
+                             "the cap is decided by measuring the text, not by dividing its length")
+
+    def test_the_branch_is_the_measured_height_against_the_cap(self):
+        body = self._answer_body()
+        self.assertIn(
+            "if PetCalloutMetrics.answerHeight(of: answer) > PetCalloutMetrics.answerCap {", body,
+            "at or under the cap it draws exactly as before; only over it does it scroll")
+
+    def test_the_scroll_view_has_an_explicit_fixed_height_of_the_cap(self):
+        body = self._answer_body()
+        self.assertIn("ScrollView(.vertical, showsIndicators: true)", body,
+                      "a long answer gets a scroller the owner can see")
+        scroll_branch = body.split("} else {", 1)[0]
+        self.assertIn(".frame(height: PetCalloutMetrics.answerCap)", scroll_branch,
+                      "the height is the cap in points, never a flexible one")
+        self.assertNotIn("maxHeight", scroll_branch,
+                         "a flexible height is exactly what collapsed the answer to zero")
+        self.assertNotIn("minHeight", scroll_branch)
+        self.assertNotIn("Spacer", scroll_branch)
+
+    def test_it_is_the_only_scroll_view_in_the_balloon(self):
+        self.assertEqual(BALLOON.count("ScrollView("), 1,
+                         "the scroll branch and the plain branch are the only two renderings; a "
+                         "second, unfixed scroll view would be the old bug again")
+
+    def test_both_branches_draw_the_same_selectable_text(self):
+        body = self._answer_body()
+        self.assertEqual(body.count("answerText(answer)"), 2,
+                         "one rendering, two sizes — short and long answers read the same")
+        text = self._answer_text()
+        self.assertIn(".textSelection(.enabled)", text, "the answer is selectable in both branches")
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", text,
+                      "under the cap it is the self-sizing Text it always was")
+        self.assertIn(".multilineTextAlignment(.leading)", text)
+
+    def test_copy_still_copies_the_whole_answer(self):
+        # The scroll branch shows a window onto the string; Copy is not limited by it.
+        self.assertIn("setString(text, forType: .string)", BALLOON)
+        self.assertIn('CalloutButton(copied ? "Copied" : "Copy")', BALLOON)
+
+
 class TheTailPointsAtThePet(unittest.TestCase):
-    """A triangle, part of the card's own outline, aimed at the icon under it."""
+    """A curved tail, part of the card's own outline, aimed at the icon under it."""
+
+    @staticmethod
+    def _flat(text: str) -> str:
+        """The Swift source with its wrapping collapsed, so a multi-line call reads as one line."""
+        return " ".join(text.split())
+
+    @staticmethod
+    def _path() -> str:
+        return BALLOON.split("func path(in rect: CGRect) -> Path", 1)[1]
+
+    @staticmethod
+    def _tail_path() -> str:
+        """The path from the bottom edge into the tail and back: the only curved part that matters."""
+        path = TheTailPointsAtThePet._path()
+        # Past the travel along the bottom edge, up to the return to the bottom-left corner.
+        start = path.index("path.addLine(to: CGPoint(x: rootRight, y: bottom))")
+        start = path.index("\n", start)
+        end = path.index("path.addLine(to: CGPoint(x: box.minX + radius, y: bottom))")
+        return TheTailPointsAtThePet._flat(path[start:end])
 
     def test_the_shape_is_one_closed_outline(self):
         tail = BALLOON.split("struct PetBalloonShape", 1)[1].split("// MARK: - The balloon", 1)[0]
@@ -95,17 +238,47 @@ class TheTailPointsAtThePet(unittest.TestCase):
         self.assertIn("InsettableShape", BALLOON, "`strokeBorder` needs the inset, not a centred "
                                                   "stroke that would hang off the edge")
 
-    def test_the_tail_hangs_below_the_card_and_narrows_to_a_point(self):
-        tail = BALLOON.split("func path(in rect: CGRect) -> Path", 1)[1]
-        self.assertIn("let bottom = box.maxY - tail", tail,
-                      "everything below the card's bottom edge is the point")
-        self.assertIn("path.addLine(to: CGPoint(x: centre, y: box.maxY))", tail,
-                      "the point is the lowest thing in the view, which is toward the pet")
-        self.assertIn("var tailHeight: CGFloat = PetCalloutMetrics.tailHeight", BALLOON)
-        self.assertIn("static let tailHeight: CGFloat = 9", BALLOON)
-        self.assertIn("static let tailWidth: CGFloat = 18", BALLOON)
+    def test_the_tail_is_a_pair_of_quad_curves_leaving_the_bottom_edge(self):
+        tail = self._tail_path()
+        self.assertEqual(tail.count("addQuadCurve"), 3,
+                         "two curves for the sides and one small arc for the tip")
+        self.assertNotIn("addLine", tail,
+                         "a straight line is the triangle the owner asked to replace")
+        # Each side's control point sits on the card's bottom edge, so the curve leaves the body
+        # horizontally instead of in a notch.
+        self.assertIn("control: CGPoint(x: rootRight - half * PetCalloutMetrics.tailFlare, "
+                      "y: bottom)", tail)
+        self.assertIn("control: CGPoint(x: rootLeft + half * PetCalloutMetrics.tailFlare, "
+                      "y: bottom)", tail)
 
-    def test_the_content_leaves_room_for_the_point(self):
+    def test_the_tip_is_rounded_rather_than_a_sharp_point(self):
+        tail = self._tail_path()
+        self.assertIn("control: CGPoint(x: centre, y: box.maxY)", tail,
+                      "the point is still the lowest ink, which is toward the pet")
+        self.assertIn("static let tailTipRadius: CGFloat = 2.4", BALLOON)
+        self.assertIn("let tipRadius = min(PetCalloutMetrics.tailTipRadius, half * 0.4)", BALLOON,
+                      "the arc has to stay smaller than the tail's own half-width")
+        self.assertNotIn("path.addLine(to: CGPoint(x: centre, y: box.maxY))", BALLOON,
+                         "the old sharp point is gone")
+
+    def test_the_tail_root_is_26_wide_and_13_long(self):
+        metrics = BALLOON.split("enum PetCalloutMetrics {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("static let tailHeight: CGFloat = 13", metrics)
+        self.assertIn("static let tailWidth: CGFloat = 26", metrics)
+        self.assertIn("let rootRight = centre + half", BALLOON)
+        self.assertIn("let rootLeft = centre - half", BALLOON)
+        self.assertIn("var tailHeight: CGFloat = PetCalloutMetrics.tailHeight", BALLOON)
+        self.assertIn("var tailWidth: CGFloat = PetCalloutMetrics.tailWidth", BALLOON)
+
+    def test_the_corner_is_a_bubble_not_a_card(self):
+        metrics = BALLOON.split("enum PetCalloutMetrics {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("static let cornerRadius: CGFloat = 26", metrics)
+        radius = int(metrics.split("static let cornerRadius: CGFloat = ", 1)[1].split("\n", 1)[0])
+        self.assertGreaterEqual(radius, 24, "16 read as a rounded rectangle")
+        self.assertLessEqual(radius, 28)
+        self.assertIn("var cornerRadius: CGFloat = PetCalloutMetrics.cornerRadius", BALLOON)
+
+    def test_the_content_leaves_room_for_the_tail(self):
         self.assertIn(".padding(.bottom, PetCalloutMetrics.tailHeight)", BALLOON,
                       "text must not run into the tail")
 
@@ -118,7 +291,7 @@ class TheTailPointsAtThePet(unittest.TestCase):
         self.assertIn("anchorModel.petCentre = min(max(fraction, 0), 1)", place)
 
     def test_the_tail_is_kept_clear_of_the_rounded_corners(self):
-        tail = BALLOON.split("func path(in rect: CGRect) -> Path", 1)[1]
+        tail = self._path()
         self.assertIn("let centre = min(max(box.minX + box.width * tailCentre", tail)
         self.assertIn("box.minX + radius + half", tail)
         self.assertIn("box.maxX - radius - half", tail)

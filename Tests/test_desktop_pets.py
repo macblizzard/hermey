@@ -255,10 +255,10 @@ class WiredExactlyOnce(unittest.TestCase):
     def test_the_balloon_is_a_separate_window_above_the_pet(self):
         self.assertIn("NSWindow.Level.floating.rawValue + 1", BALLOON)
         self.assertIn("PetGeometry.above(", BALLOON)
-        self.assertIn(".fixedSize(horizontal: false, vertical: true)", BALLOON,
-                      "the answer sizes itself; a scroll view measured as nothing inside a fitting-size panel")
-        self.assertNotIn("ScrollView(.vertical, showsIndicators: true)", BALLOON,
-                         "the collapsed scroll view is what hid the answer")
+        self.assertIn("PetCalloutMetrics.answerHeight(of: answer)", BALLOON,
+                      "the answer's height is measured before the bubble settles on its size")
+        self.assertIn("hosting.sizingOptions = [.preferredContentSize]", BALLOON,
+                      "the window is still only as big as the view that fills it")
         self.assertIn("setString(text, forType: .string)", BALLOON)
         self.assertIn("event.keyCode == 53", BALLOON, "Escape dismisses even with the field focused")
 
