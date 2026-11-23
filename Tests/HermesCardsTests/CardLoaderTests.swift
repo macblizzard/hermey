@@ -2,11 +2,14 @@ import XCTest
 @testable import HermesCards
 import HermesKit
 
-/// The loader is the transcript's whole fetch policy, so these pin the four promises it makes:
-/// one read per `(session, card)`, a failure remembered rather than retried, a tap that ticks the
-/// chosen button and locks the rest, and prose that does not depend on any of it.
+/// The loader is the transcript's whole fetch policy, so these pin the promises it makes:
+/// one read per `(session, message, card)`, a failure remembered rather than retried, a tap that
+/// ticks the chosen button and locks the rest, and prose that does not depend on any of it.
 @MainActor
 final class CardLoaderTests: XCTestCase {
+
+    private let session = "20261122_120000_abcdef"
+    private let message = "row:42"
 
     private func cardJSON(title: String = "Book the cabin") -> Data {
         Data("""
@@ -32,12 +35,12 @@ final class CardLoaderTests: XCTestCase {
     func testACardIsFetchedOnceAndRemembered() async {
         let loader = CardLoader()
         var calls = 0
-        let fetch: CardLoader.Fetch = { _, _ in
+        let fetch: CardLoader.Fetch = { _, _, _ in
             calls += 1
             return CardFetch(card: self.cardJSON(), mtime: "2026-11-22T21:04:06.120Z", final: false)
         }
 
-        let first = await loader.load(ref(), session: "20261122_120000_abcdef", using: fetch)
+        let first = await loader.load(ref(), session: session, message: message, using: fetch)
         guard case .loaded(.available(let card)) = first else {
             return XCTFail("a valid document is a card, got \(first)")
         }
@@ -45,38 +48,72 @@ final class CardLoaderTests: XCTestCase {
         XCTAssertEqual(card.actions.count, 2)
 
         // The same read twice is still one request: a body pass per frame must not be a round trip.
-        let second = await loader.load(ref(), session: "20261122_120000_abcdef", using: fetch)
+        let second = await loader.load(ref(), session: session, message: message, using: fetch)
         XCTAssertEqual(second, first)
         XCTAssertEqual(calls, 1)
-        XCTAssertEqual(loader.state(cardID: "c-9b", session: "20261122_120000_abcdef"), first)
+        XCTAssertEqual(loader.state(cardID: "c-9b", session: session, message: message), first)
     }
 
     func testASecondSessionIsItsOwnRead() async {
         let loader = CardLoader()
         var calls = 0
-        let fetch: CardLoader.Fetch = { _, _ in
+        let fetch: CardLoader.Fetch = { _, _, _ in
             calls += 1
             return CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
 
-        _ = await loader.load(ref(), session: "20261122_120000_abcdef", using: fetch)
-        _ = await loader.load(ref(), session: "20261123_090000_123456", using: fetch)
+        _ = await loader.load(ref(), session: session, message: message, using: fetch)
+        _ = await loader.load(ref(), session: "20261123_090000_123456", message: message, using: fetch)
         XCTAssertEqual(calls, 2, "two sessions may hold two different files with one id")
+    }
+
+    /// The reason the message id is threaded at all: the host snapshots a card per
+    /// `(session, message, card)`, so two replies naming one file are two cards. Sharing a cache
+    /// entry would draw the first message's card in the second message's bubble.
+    func testTwoMessagesNamingOneCardAreTwoReads() async {
+        let loader = CardLoader()
+        var calls = 0
+        let fetch: CardLoader.Fetch = { _, _, _ in
+            calls += 1
+            return CardFetch(card: self.cardJSON(), mtime: "", final: false)
+        }
+
+        _ = await loader.load(ref(), session: session, message: "row:42", using: fetch)
+        _ = await loader.load(ref(), session: session, message: "row:43", using: fetch)
+        XCTAssertEqual(calls, 2, "one file, two messages, two snapshots")
+        XCTAssertNotNil(loader.state(cardID: "c-9b", session: session, message: "row:42").card)
+        XCTAssertNotNil(loader.state(cardID: "c-9b", session: session, message: "row:43").card)
+        XCTAssertEqual(loader.state(cardID: "c-9b", session: session, message: "row:44"), .idle,
+                       "a message that never asked has read nothing")
+    }
+
+    /// The transport is told which message it is reading for: a loader that keyed correctly but
+    /// dropped the id on the way out would still ask the host for the wrong snapshot.
+    func testTheFetchCarriesTheMessagesID() async {
+        let loader = CardLoader()
+        var asked: [String] = []
+        let fetch: CardLoader.Fetch = { _, _, message in
+            asked.append(message)
+            return CardFetch(card: self.cardJSON(), mtime: "", final: false)
+        }
+
+        _ = await loader.load(ref(), session: session, message: "row:7", using: fetch)
+        XCTAssertEqual(asked, ["row:7"])
     }
 
     func testAFailureIsRememberedAndIsNotRetried() async {
         let loader = CardLoader()
         var calls = 0
-        let fetch: CardLoader.Fetch = { _, _ in
+        let fetch: CardLoader.Fetch = { _, _, _ in
             calls += 1
             throw CardFetchError.noSuchCard
         }
 
-        let first = await loader.load(ref(), session: "s1", using: fetch)
+        let first = await loader.load(ref(), session: "s1", message: "row:1", using: fetch)
         XCTAssertEqual(first, .unavailable(.noSuchCard))
         XCTAssertNil(first.card)
 
-        let second = await loader.load(ref(), session: "s1", using: fetch)
+        let second = await loader.load(ref(), session: "s1", message: "row:1", using: fetch)
         XCTAssertEqual(second, .unavailable(.noSuchCard))
         XCTAssertEqual(calls, 1, "a refusal is an answer, not a reason to ask again on every frame")
     }
@@ -84,7 +121,7 @@ final class CardLoaderTests: XCTestCase {
     func testANonRouteErrorStillDegradesInsteadOfThrowing() async {
         let loader = CardLoader()
         struct Whoops: Error {}
-        let state = await loader.load(ref(), session: "s1") { _, _ in throw Whoops() }
+        let state = await loader.load(ref(), session: "s1", message: "row:1") { _, _, _ in throw Whoops() }
         guard case .unavailable(.unreachable(let why)) = state else {
             return XCTFail("expected an unreachable answer, got \(state)")
         }
@@ -95,7 +132,7 @@ final class CardLoaderTests: XCTestCase {
 
     func testABrokenDocumentIsUnavailableNotACrash() async {
         let loader = CardLoader()
-        let state = await loader.load(ref(), session: "s1") { _, _ in
+        let state = await loader.load(ref(), session: "s1", message: "row:1") { _, _, _ in
             CardFetch(card: Data("{not a card".utf8), mtime: "", final: false)
         }
         XCTAssertEqual(state, .loaded(.unavailable(CardModel.unavailableMessage)))
@@ -107,13 +144,13 @@ final class CardLoaderTests: XCTestCase {
 
     func testChoosingAnActionTicksItAndLocksTheRest() async throws {
         let loader = CardLoader()
-        _ = await loader.load(ref(), session: "s1") { _, _ in
+        _ = await loader.load(ref(), session: "s1", message: message) { _, _, _ in
             CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
-        let card = loader.state(cardID: "c-9b", session: "s1").card
+        let card = loader.state(cardID: "c-9b", session: "s1", message: message).card
         let approve = try XCTUnwrap(card?.actions.first)
 
-        let ticked = loader.choose(approve, cardID: "c-9b", session: "s1")
+        let ticked = loader.choose(approve, cardID: "c-9b", session: "s1", message: message)
         guard case .loaded(.available(let answered)) = ticked else {
             return XCTFail("a tap keeps the card, got \(ticked)")
         }
@@ -123,17 +160,19 @@ final class CardLoaderTests: XCTestCase {
             XCTAssertEqual(answered.state(of: other), .locked, other.label)
         }
         // The cache holds the tick too, so scrolling the row away does not undo the answer.
-        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1"), ticked)
+        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1", message: message), ticked)
     }
 
     func testASecondTapCannotAnswerTwice() async throws {
         let loader = CardLoader()
-        _ = await loader.load(ref(), session: "s1") { _, _ in
+        _ = await loader.load(ref(), session: "s1", message: message) { _, _, _ in
             CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
-        let actions = try XCTUnwrap(loader.state(cardID: "c-9b", session: "s1").card?.actions)
-        _ = loader.choose(actions[0], cardID: "c-9b", session: "s1")
-        let again = loader.choose(actions[1], cardID: "c-9b", session: "s1")
+        let actions = try XCTUnwrap(
+            loader.state(cardID: "c-9b", session: "s1", message: message).card?.actions
+        )
+        _ = loader.choose(actions[0], cardID: "c-9b", session: "s1", message: message)
+        let again = loader.choose(actions[1], cardID: "c-9b", session: "s1", message: message)
         guard case .loaded(.available(let answered)) = again else {
             return XCTFail("still the card, got \(again)")
         }
@@ -144,8 +183,8 @@ final class CardLoaderTests: XCTestCase {
     func testAChoiceOnACardThatNeverLoadedChangesNothing() {
         let loader = CardLoader()
         let action = Card.Action(label: "Approve", send: "APPROVE c-9b")
-        XCTAssertEqual(loader.choose(action, cardID: "c-9b", session: "s1"), .idle)
-        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1"), .idle)
+        XCTAssertEqual(loader.choose(action, cardID: "c-9b", session: "s1", message: message), .idle)
+        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1", message: message), .idle)
     }
 
     /// The prose is the message; a card is an extra. Stripping happens in the parser, and nothing a
@@ -167,11 +206,11 @@ final class CardLoaderTests: XCTestCase {
 
     func testResetForgetsEveryRead() async {
         let loader = CardLoader()
-        _ = await loader.load(ref(), session: "s1") { _, _ in
+        _ = await loader.load(ref(), session: "s1", message: message) { _, _, _ in
             CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
         loader.reset()
-        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1"), .idle)
+        XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1", message: message), .idle)
     }
 }
 

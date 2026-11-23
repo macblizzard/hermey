@@ -30,8 +30,9 @@ struct TranscriptRowView: View {
     /// (the sheet lives there: a row is torn down as it scrolls and a sheet it owns goes with it).
     var onOpenPair: ((String) -> Void)? = nil
     /// Where a native card is read from (`GET /v1/cards/{id}`). A closure, not the model: a row in
-    /// a lazy stack must not reach for a store, and the pane already holds the connection.
-    var fetchCard: ((String, SessionID) async throws -> CardFetch)? = nil
+    /// a lazy stack must not reach for a store, and the pane already holds the connection. The
+    /// third argument is this row's message id — the host snapshots a card per message.
+    var fetchCard: ((String, SessionID, String) async throws -> CardFetch)? = nil
     @State private var showingReactions = false
     @AppStorage("mac.messageReactions.v1") private var storedReactions = "{}"
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
@@ -446,8 +447,12 @@ struct TranscriptRowView: View {
         guard cardsActive, let fetchCard, let session else { return }
         for ref in cardScan.refs where cardStates[ref.id] == nil {
             cardStates[ref.id] = .loading
-            cardStates[ref.id] = await CardLoader.shared.load(ref, session: session) { id, cardSession in
-                try await fetchCard(id, cardSession)
+            // The row's own message id travels with every read: two replies naming one card file
+            // are two snapshots on the host, and one cache entry here would show the wrong one.
+            cardStates[ref.id] = await CardLoader.shared.load(ref,
+                                                              session: session,
+                                                              message: entry.messageID) { id, cardSession, message in
+                try await fetchCard(id, cardSession, message)
             }
         }
     }
@@ -459,7 +464,10 @@ struct TranscriptRowView: View {
     /// second delivery path to keep honest.
     private func choose(_ action: Card.Action, ref: CardRef) {
         guard let session else { return }
-        cardStates[ref.id] = CardLoader.shared.choose(action, cardID: ref.id, session: session)
+        cardStates[ref.id] = CardLoader.shared.choose(action,
+                                                     cardID: ref.id,
+                                                     session: session,
+                                                     message: entry.messageID)
         NotificationCenter.default.post(name: .genUICardSend, object: nil,
                                         userInfo: ["text": action.send, "bot": bot])
     }

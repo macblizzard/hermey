@@ -198,13 +198,14 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
-    /// `GET /v1/cards/{id}?session=<session id>` — the card file a `::card{…}` marker names.
+    /// `GET /v1/cards/{id}?session=<session id>&message=<message id>` — the card file a `::card{…}`
+    /// marker names.
     ///
     /// Here rather than on a store of its own because the route is device-authenticated exactly
     /// like the rest of `/v1`, and this is where a single-use ticket is minted. A bridge that
     /// predates the route refuses with a typed `CardFetchError`, which is what the transcript draws
     /// as `Card not available`.
-    func card(id: String, session: SessionID) async throws -> CardFetch
+    func card(id: String, session: SessionID, message: String) async throws -> CardFetch
 
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
@@ -346,7 +347,7 @@ public extension BotSessionPointerStore {
     /// A store that predates the card route cannot resolve a card file. Failing with the card's own
     /// error (rather than `BotAdminUnavailable`) keeps the transcript's message to one line:
     /// `Card not available`, not an upgrade prompt over a reply.
-    func card(id: String, session: SessionID) async throws -> CardFetch {
+    func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         throw CardFetchError.refused(status: 404, code: nil)
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
@@ -612,13 +613,15 @@ enum Failure: Error, Equatable, LocalizedError {
         return Set(names)
     }
 
-    /// `GET /v1/cards/{id}?session=<session id>` — one `card.v1` document.
+    /// `GET /v1/cards/{id}?session=<session id>&message=<message id>` — one `card.v1` document.
     ///
     /// The id travels, never the marker's `file`: the route matches `^[A-Za-z0-9_-]{1,40}$` before
-    /// it builds a path, which is the whole reason the client is not asked for one. A refusal is
-    /// kept typed — `no_such_card` and `outside_base` are different answers, and only one of them
-    /// means "this bot never wrote the card".
-    public func card(id: String, session sessionID: SessionID) async throws -> CardFetch {
+    /// it builds a path, which is the whole reason the client is not asked for one. The message id
+    /// travels with it because the host keeps one snapshot per `(session, message, card)` — with it
+    /// omitted, two messages naming one file would share the row. A refusal is kept typed —
+    /// `no_such_card` and `outside_base` are different answers, and only one of them means "this bot
+    /// never wrote the card".
+    public func card(id: String, session sessionID: SessionID, message: String) async throws -> CardFetch {
         // Checked here as well as on the route: an id with a slash in it would reshape the path and
         // could reach a route this call never meant to touch.
         guard CardFetchError.isValidID(id) else { throw CardFetchError.badId }
@@ -631,7 +634,10 @@ enum Failure: Error, Equatable, LocalizedError {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw CardFetchError.unreachable("the host address is not a URL")
         }
-        components.queryItems = [URLQueryItem(name: "session", value: sessionID)]
+        // `session` first, then `message`: the route reads both, and the order is the one its
+        // documentation and the server's own tests use.
+        components.queryItems = [URLQueryItem(name: "session", value: sessionID),
+                                 URLQueryItem(name: "message", value: message)]
         guard let requestURL = components.url else {
             throw CardFetchError.unreachable("the card request could not be built")
         }

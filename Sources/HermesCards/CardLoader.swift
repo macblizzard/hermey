@@ -1,7 +1,8 @@
 import Foundation
 import HermesKit
 
-/// The transcript's card lookups: one fetch per `(session, card id)`, cached, and never polled.
+/// The transcript's card lookups: one fetch per `(session, message, card id)`, cached, and never
+/// polled.
 ///
 /// P1 draws a card once. A marker is a reference to a file the bot wrote; the file may already be
 /// gone (the snapshot route answers that), the host may refuse it, and the reply must still read as
@@ -12,6 +13,9 @@ import HermesKit
 /// * **A remembered failure.** `unavailable` is cached like a success. Retrying on every body pass
 ///   is how a bubble ends up flickering between a card and its apology.
 /// * **No clock.** Polling (`final`, `mtime`) is P3; nothing here starts a timer.
+/// * **The message's own row.** The key carries the message id as well as the session, because the
+///   host snapshots a card per `(session, message, card)`: two messages naming one file are two
+///   cards, and sharing a cache entry would show one message's card in the other's bubble.
 ///
 /// It is `@MainActor` because everything it holds is view state: a row reads it, and a row is main
 /// thread by definition. The network call itself suspends, so nothing blocks.
@@ -45,12 +49,13 @@ public final class CardLoader {
         }
     }
 
-    /// One card read: `(card id, session id)`. The caller owns the transport — this type never
-    /// knows whether the answer came from a bridge, a preview or a test.
-    public typealias Fetch = (_ id: String, _ session: String) async throws -> CardFetch
+    /// One card read: `(card id, session id, message id)`. The caller owns the transport — this
+    /// type never knows whether the answer came from a bridge, a preview or a test.
+    public typealias Fetch = (_ id: String, _ session: String, _ message: String) async throws -> CardFetch
 
     private struct Key: Hashable {
         let session: String
+        let message: String
         let cardID: String
     }
 
@@ -70,17 +75,20 @@ public final class CardLoader {
     public init() {}
 
     /// What is already known, without touching the network.
-    public func state(cardID: String, session: String) -> State {
-        states[Key(session: session, cardID: cardID)] ?? .idle
+    public func state(cardID: String, session: String, message: String) -> State {
+        states[Key(session: session, message: message, cardID: cardID)] ?? .idle
     }
 
-    /// The card a marker names, fetched at most once per `(session, card id)`.
+    /// The card a marker names, fetched at most once per `(session, message, card id)`.
     ///
     /// Never throws: every failure is a `State`, because a card is an extra under a reply and the
     /// reply has already been delivered by the time this runs.
     @discardableResult
-    public func load(_ ref: CardRef, session: String, using fetch: @escaping Fetch) async -> State {
-        let key = Key(session: session, cardID: ref.id)
+    public func load(_ ref: CardRef,
+                     session: String,
+                     message: String,
+                     using fetch: @escaping Fetch) async -> State {
+        let key = Key(session: session, message: message, cardID: ref.id)
         // Settled already — including a failure. One read, one answer.
         if let known = states[key], known.isSettled { return known }
         // A call already on its way is the answer for every row showing this card.
@@ -90,7 +98,7 @@ public final class CardLoader {
         states[key] = .loading
         let task = Task { () -> State in
             do {
-                let answer = try await fetch(ref.id, session)
+                let answer = try await fetch(ref.id, session, message)
                 // `CardModel.decode` never throws: a document this client cannot draw is
                 // `.unavailable`, which the row shows as the same one-line apology.
                 return .loaded(CardModel.decode(answer.card))
@@ -112,8 +120,11 @@ public final class CardLoader {
     /// This changes only what the card draws. The message itself goes out through the transcript's
     /// ordinary send path, so a tap invents no second network call and no second delivery.
     @discardableResult
-    public func choose(_ action: Card.Action, cardID: String, session: String) -> State {
-        let key = Key(session: session, cardID: cardID)
+    public func choose(_ action: Card.Action,
+                       cardID: String,
+                       session: String,
+                       message: String) -> State {
+        let key = Key(session: session, message: message, cardID: cardID)
         guard let known = states[key],
               case .loaded(.available(let card)) = known,
               !card.isResolved else {
@@ -127,7 +138,8 @@ public final class CardLoader {
                           status: card.status,
                           body: card.body,
                           actions: card.actions,
-                          resolved: Card.Resolved(action: action.send))
+                          resolved: Card.Resolved(action: action.send),
+                          email: card.email)
         let state = State.loaded(.available(ticked))
         states[key] = state
         return state

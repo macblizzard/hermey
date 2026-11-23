@@ -499,11 +499,11 @@ public actor GatewayClient: GatewayClientProtocol {
     /// store with the other `/v1` reads, where a single-use ticket is minted per request. A client
     /// built without bridge credentials has nothing to ask, and answers with the same
     /// `CardFetchError` the transcript already draws as `Card not available`.
-    public func card(id: String, session: SessionID) async throws -> CardFetch {
+    public func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         guard let sessionPointer else {
             throw CardFetchError.unreachable("this connection has no bridge to read cards from")
         }
-        return try await sessionPointer.card(id: id, session: session)
+        return try await sessionPointer.card(id: id, session: session, message: message)
     }
 
     // MARK: Shared conversation pointer

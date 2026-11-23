@@ -23,6 +23,18 @@ public struct Card: Sendable, Equatable {
         case done
         case error
         case awaitingApproval = "awaiting-approval"
+
+        /// The state in words — what the chip shows and what VoiceOver reads, so a chip is never
+        /// only a colour.
+        public var chipText: String {
+            switch self {
+            case .pending: return "Pending"
+            case .running: return "Running"
+            case .done: return "Done"
+            case .error: return "Error"
+            case .awaitingApproval: return "Awaiting approval"
+            }
+        }
     }
 
     public enum ActionStyle: String, Sendable, Equatable {
@@ -67,12 +79,42 @@ public struct Card: Sendable, Equatable {
 
     public struct Status: Sendable, Equatable {
         public let state: StatusState
-        /// The chip's text override. P1's approval layout hides the chip; kept for P3.
+        /// The chip's text override: a bot that knows better than the state's own word writes it.
         public let label: String?
 
         public init(state: StatusState, label: String? = nil) {
             self.state = state
             self.label = label
+        }
+
+        /// What the chip reads: the bot's `label` when it wrote one, else the state in words.
+        public var chipText: String {
+            guard let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty else {
+                return state.chipText
+            }
+            return label
+        }
+    }
+
+    /// A `draft-email` card's message: `{to, cc, subject, bodyText}` on the wire, all strings.
+    ///
+    /// Every field is optional here on purpose. A bot that drafted an email with no `cc` has still
+    /// written a draft, and refusing the whole card over one absent recipient would help nobody;
+    /// the layout simply leaves that row out.
+    public struct Email: Sendable, Equatable {
+        public let to: String?
+        public let cc: String?
+        public let subject: String?
+        public let bodyText: String?
+
+        public init(to: String? = nil,
+                    cc: String? = nil,
+                    subject: String? = nil,
+                    bodyText: String? = nil) {
+            self.to = to
+            self.cc = cc
+            self.subject = subject
+            self.bodyText = bodyText
         }
     }
 
@@ -101,6 +143,9 @@ public struct Card: Sendable, Equatable {
     public let body: [BodyBlock]
     public let actions: [Action]
     public let resolved: Resolved?
+    /// The message a `draft-email` carries. `nil` for the other kinds, and for a draft-email whose
+    /// `email` block was absent or unreadable — that card still draws, under its title.
+    public let email: Email?
 
     public init(schema: String = "card.v1",
                 kind: Kind,
@@ -108,7 +153,8 @@ public struct Card: Sendable, Equatable {
                 status: Status,
                 body: [BodyBlock] = [],
                 actions: [Action] = [],
-                resolved: Resolved? = nil) {
+                resolved: Resolved? = nil,
+                email: Email? = nil) {
         self.schema = schema
         self.kind = kind
         self.title = title
@@ -116,10 +162,40 @@ public struct Card: Sendable, Equatable {
         self.body = body
         self.actions = actions
         self.resolved = resolved
+        self.email = email
     }
 
     /// Whether the owner has already chosen.
     public var isResolved: Bool { resolved != nil }
+
+    /// The card's heading: a draft-email draws its subject there (the spec's rule), and every
+    /// other kind draws its title.
+    public var heading: String {
+        guard let subject = Self.trimmed(email?.subject), !subject.isEmpty else { return title }
+        return subject
+    }
+
+    /// The spec's "a body that is one line under 200 characters, with no line breaks" rule: it
+    /// reads as the question under the title rather than as a paragraph of prose.
+    ///
+    /// Only a body that is *exactly* one text block qualifies — anything else is a layout, and a
+    /// layout keeps its own blocks.
+    public var leadText: String? {
+        guard body.count == 1, case .text(let text) = body[0] else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count < 200, !trimmed.contains("\n") else { return nil }
+        return trimmed
+    }
+
+    /// Which action the owner took, spelled as the button they pressed.
+    ///
+    /// The file may name either the label or the `send` text (the skill accepts both), so the
+    /// first matching label wins and an unmatched resolution — a bot that wrote something else —
+    /// is shown verbatim rather than hidden.
+    public var resolvedLabel: String? {
+        guard let resolved = resolved else { return nil }
+        return actions.first { matches($0, resolved) }?.label ?? resolved.action
+    }
 
     /// The state of one button. Before `resolved`, every button is available; after it, the
     /// chosen one is ticked and every other one is locked — "answer once" is the whole point.
@@ -195,8 +271,16 @@ private struct RawCard: Decodable {
     var body: [Failable<RawBlock>]?
     var actions: [Failable<RawAction>]?
     var resolved: Failable<RawResolved>?
-    // `email` is a draft-email field and P1 does not draw that layout. Leaving it undeclared is
-    // how Codable ignores it: unknown keys are already tolerated.
+    /// `draft-email` only. A card of another kind that carries one is not an error — the field is
+    /// read and simply not drawn.
+    var email: Failable<RawEmail>?
+}
+
+private struct RawEmail: Decodable {
+    var to: String?
+    var cc: String?
+    var subject: String?
+    var bodyText: String?
 }
 
 private struct RawStatus: Decodable {
@@ -266,13 +350,27 @@ private extension RawCard {
             resolution = Card.Resolved(action: chosen, at: Card.trimmed(rawResolved.at))
         }
 
+        // An `email` block that is not an object is dropped like any other bad element: the card
+        // still draws, under its title. `bodyText` keeps its own whitespace — a draft's paragraph
+        // breaks are content — but a blank one is no body at all.
+        var email: Card.Email?
+        if let raw = self.email?.value {
+            email = Card.Email(to: Card.trimmed(raw.to),
+                               cc: Card.trimmed(raw.cc),
+                               subject: Card.trimmed(raw.subject),
+                               bodyText: raw.bodyText.flatMap { text -> String? in
+                                   text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+                               })
+        }
+
         return .available(Card(schema: schema,
                                kind: kind,
                                title: title,
                                status: Card.Status(state: state, label: Card.trimmed(rawStatus.label)),
                                body: decodedBody,
                                actions: decodedActions,
-                               resolved: resolution))
+                               resolved: resolution,
+                               email: email))
     }
 }
 

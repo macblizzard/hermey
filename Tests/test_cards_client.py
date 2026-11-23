@@ -2,10 +2,11 @@
 
 The target has no Swift compiler on this box: `swift build --build-tests` on CI is the only
 compiler, so the Python suite guards the parts a tidy-up can silently break — the marker's
-alone-on-line and fence rules, the degradation contract, the approval view's shape, the injected
-theme (the target must not import `HermeyUI`) and the `cards.enabled` default. The behaviour
-itself is pinned by the XCTest cases in `Tests/HermesCardsTests/`, which this file also checks
-for the load-bearing scenarios so they cannot be dropped.
+alone-on-line and fence rules, the degradation contract, the three layouts (approval, task,
+draft-email), the body blocks, the status chip, a resolved card, the injected theme (the target
+must not import `HermeyUI`) and the `cards.enabled` default. The behaviour itself is pinned by the
+XCTest cases in `Tests/HermesCardsTests/`, which this file also checks for the load-bearing
+scenarios so they cannot be dropped.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ SETTINGS = (TARGET / "CardsSettings.swift").read_text()
 
 MARKER_TESTS = (TESTS / "CardMarkerTests.swift").read_text()
 MODEL_TESTS = (TESTS / "CardModelTests.swift").read_text()
+KINDS_TESTS = (TESTS / "CardKindsTests.swift").read_text()
 SETTINGS_TESTS = (TESTS / "CardsSettingsTests.swift").read_text()
 
 
@@ -53,7 +55,7 @@ class TargetTests(unittest.TestCase):
             self.assertNotIn("HermeyUI.", source, path.name)
 
     def test_the_swift_tests_exist_where_ci_will_run_them(self) -> None:
-        for name in ("CardMarkerTests", "CardModelTests", "CardsSettingsTests"):
+        for name in ("CardMarkerTests", "CardModelTests", "CardsSettingsTests", "CardKindsTests"):
             self.assertTrue((TESTS / f"{name}.swift").is_file(), name)
 
 
@@ -148,19 +150,58 @@ class ModelTests(unittest.TestCase):
         ):
             self.assertIn(wire, MODEL, wire)
 
-    def test_unknown_fields_and_bad_elements_degrade_one_at_a_time(self) -> None:
-        # Codable ignores unknown keys; Failable swallows one bad block/action; unknown block
+    def test_every_kind_decodes_and_bad_elements_degrade_one_at_a_time(self) -> None:
+        # Codable ignores unknown keys; Failable swallows one bad block/action/email; unknown block
         # types and styles are dropped, not fatal.
         self.assertIn("private struct Failable<Value: Decodable>: Decodable", MODEL)
         self.assertIn("value = try? Value(from: decoder)", MODEL)
         self.assertIn("var body: [Failable<RawBlock>]?", MODEL)
         self.assertIn("var actions: [Failable<RawAction>]?", MODEL)
+        self.assertIn("var email: Failable<RawEmail>?", MODEL)
         self.assertIn("default:\n            return nil", MODEL)
+
+    def test_the_body_blocks_are_the_three_the_spec_allows(self) -> None:
+        # `text` keeps its paragraph breaks; `kv` rows are [label, value] arrays and `fields` items
+        # are {label, value} objects. Anything else is skipped, never fatal.
+        for block in ('case "text":', 'case "kv":', 'case "fields":'):
+            self.assertIn(block, MODEL, block)
+        self.assertIn("case text(String)", MODEL)
+        self.assertIn("case kv([Row])", MODEL)
+        self.assertIn("case fields([Row])", MODEL)
+        self.assertIn("return rows.isEmpty ? nil : .kv(rows)", MODEL)
+        self.assertIn("return rows.isEmpty ? nil : .fields(rows)", MODEL)
+
+    def test_the_draft_email_is_a_typed_block_not_a_generic_dump(self) -> None:
+        self.assertIn("public struct Email: Sendable, Equatable", MODEL)
+        for field in ("public let to: String?", "public let cc: String?",
+                      "public let subject: String?", "public let bodyText: String?"):
+            self.assertIn(field, MODEL, field)
+        # The subject heads the card, and the title is the fallback when there is none.
+        self.assertIn("public var heading: String", MODEL)
+        self.assertIn("return title", MODEL)
+        # A blank bodyText is no body at all.
+        self.assertIn("isEmpty ? nil : text", MODEL)
+
+    def test_the_status_chip_reads_in_words_and_prefers_the_bots_label(self) -> None:
+        self.assertIn("public var chipText: String", MODEL)
+        for word in ('return "Pending"', 'return "Running"', 'return "Done"',
+                     'return "Error"', 'return "Awaiting approval"'):
+            self.assertIn(word, MODEL, word)
+        # `status.label` overrides the state's own word.
+        self.assertIn("return state.chipText", MODEL)
+
+    def test_a_single_short_line_reads_as_the_question_under_the_title(self) -> None:
+        self.assertIn("public var leadText: String?", MODEL)
+        self.assertIn("trimmed.count < 200", MODEL)
+        self.assertIn('!trimmed.contains("\\n")', MODEL)
 
     def test_resolved_ticks_one_action_and_locks_the_rest(self) -> None:
         self.assertIn("public enum ActionState", MODEL)
         self.assertIn("return matches(action, resolved) ? .chosen : .locked", MODEL)
         self.assertIn("chosen == action.label || chosen == action.send", MODEL)
+        # …and the card can say which action that was, as the label the owner pressed.
+        self.assertIn("public var resolvedLabel: String?", MODEL)
+        self.assertIn("actions.first { matches($0, resolved) }?.label ?? resolved.action", MODEL)
 
     def test_the_model_cases_are_pinned_in_swift(self) -> None:
         for name in (
@@ -177,6 +218,41 @@ class ModelTests(unittest.TestCase):
         ):
             self.assertIn(name, MODEL_TESTS, name)
 
+    def test_the_kind_cases_are_pinned_in_swift(self) -> None:
+        for name in (
+            "testTheThreeKindsAreTheOnesTheSpecNames",
+            "testATaskCardDecodesItsStatusChipAndBody",
+            "testTheStatusChipPrefersTheBotsOwnLabel",
+            "testEveryStatusStateReadsInWords",
+            "testABlankLabelFallsBackToTheStateWord",
+            "testADraftEmailCardDecodesToCcSubjectAndBody",
+            "testADraftWithoutASubjectIsHeadedByItsTitle",
+            "testADraftWhoseEmailBlockIsBrokenStillDraws",
+            "testABlankBodyTextIsNoBodyAtAll",
+            "testAResolvedDraftEmailLocksSendAndDiscard",
+            "testAResolvedTaskNamesTheActionItTook",
+            "testAResolutionThatNamesNoButtonIsStillShown",
+            "testACardWithNoActionsIsStillACard",
+            "testAnUnresolvedCardHasNoResolvedLabel",
+            "testASingleShortLineIsTheLeadLine",
+            "testAMultiLineOrLongBodyIsNotALeadLine",
+            "testAnEmptyBodyDrawsNothingAtAll",
+        ):
+            self.assertIn(name, KINDS_TESTS, name)
+
+    def test_the_fixtures_cover_every_kind_and_the_broken_shapes(self) -> None:
+        # One valid document per kind, plus the shapes a bot actually writes: no subject, no cc,
+        # an `email` that is not an object, no actions, a resolution, a one-line body.
+        for fixture in ("static let approval", "static let task", "static let draftEmail",
+                        "static let draftEmailBare", "static let draftEmailBrokenEmail",
+                        "static let resolvedTask", "static let taskWithoutActions",
+                        "static let oneLineBody", "static let longBody"):
+            self.assertIn(fixture, KINDS_TESTS, fixture)
+        # Broken documents are pinned where they were pinned before, and still must not throw.
+        for name in ("testABadSchemaIsUnavailable", "testAMissingOrEmptyTitleIsUnavailable",
+                     "testAnUnknownKindIsUnavailable", "testAFourthActionIsUnavailable"):
+            self.assertIn(name, MODEL_TESTS, name)
+
 
 class ThemeAndViewTests(unittest.TestCase):
     def test_the_default_palette_is_the_house_light_palette(self) -> None:
@@ -191,13 +267,21 @@ class ThemeAndViewTests(unittest.TestCase):
         self.assertIn("theme: CardTheme = .hermey", VIEW)
         self.assertIn("private let theme: CardTheme", VIEW)
 
-    def test_p1_draws_the_approval_layout_only(self) -> None:
-        self.assertIn("if card.kind == .approval", VIEW)
-        # Task and draft-email are P3/P4: no half-layout is drawn for them.
-        self.assertIn("EmptyView()", VIEW)
+    def test_each_kind_has_its_own_layout(self) -> None:
+        # One switch on the kind, one layout per case — no kind falls through to an empty view.
+        layouts = VIEW[VIEW.index("switch card.kind"):VIEW.index("// MARK: - Unavailable")]
+        for kind, function in (("case .approval:", "surface(card)"),
+                               ("case .task:", "statusChip(card)"),
+                               ("case .draftEmail:", "draftDetails(card)")):
+            self.assertIn(kind, layouts, kind)
+        self.assertLess(layouts.index("case .approval:"), layouts.index("case .task:"))
+        self.assertLess(layouts.index("case .task:"), layouts.index("case .draftEmail:"))
+        self.assertIn("draftDetails(card)", layouts)
+        for function in ("private func surface<", "private func statusChip", "private func draftDetails"):
+            self.assertIn(function, VIEW, function)
 
-    def test_the_approval_surfaces_title_body_and_buttons(self) -> None:
-        self.assertIn("Text(card.title)", VIEW)
+    def test_the_card_surfaces_heading_body_blocks_and_buttons(self) -> None:
+        self.assertIn("Text(card.heading)", VIEW)
         self.assertIn("ForEach(card.body.indices", VIEW)
         self.assertIn("case .text(let text):", VIEW)
         self.assertIn("case .kv(let rows):", VIEW)
@@ -205,17 +289,44 @@ class ThemeAndViewTests(unittest.TestCase):
         self.assertIn("ForEach(card.actions.indices", VIEW)
         self.assertIn("Button {", VIEW)
         self.assertIn("Text(action.label)", VIEW)
+        # An empty body draws nothing: the loop is inside the `else` of the lead-line branch.
+        self.assertIn("ForEach(card.body.indices", VIEW[VIEW.index("if let lead = card.leadText"):])
+
+    def test_the_lead_line_is_the_one_line_rule(self) -> None:
+        self.assertIn("if let lead = card.leadText", VIEW)
+        self.assertIn("Text(lead)", VIEW)
+
+    def test_the_task_card_draws_a_status_chip(self) -> None:
+        self.assertIn("Text(card.status.chipText)", VIEW)
+        self.assertIn("ProgressView()", VIEW)
+        self.assertIn("if state == .running", VIEW)
+        # The chip is words first: VoiceOver must never get a colour and nothing else.
+        self.assertIn('accessibilityLabel("Status: \\(card.status.chipText)")', VIEW)
+
+    def test_the_draft_email_draws_to_cc_and_a_scrolling_body(self) -> None:
+        self.assertIn('row("To", to)', VIEW)
+        self.assertIn('row("Cc", cc)', VIEW)
+        self.assertIn("if let cc = email.cc, !cc.isEmpty", VIEW)
+        self.assertIn("emailBody(text)", VIEW)
+        self.assertIn("ScrollView(.vertical)", VIEW)
+        self.assertIn("previewHeight(for: text)", VIEW)
+
+    def test_a_resolved_card_names_its_action_and_locks_every_button(self) -> None:
+        self.assertIn("if let label = card.resolvedLabel", VIEW)
+        self.assertIn("resolvedNote(label)", VIEW)
+        self.assertIn('Text("Resolved: \\(label)")', VIEW)
+        # Every action is disabled once resolved — the chosen one included.
+        self.assertIn(".disabled(state != .available)", VIEW)
+        self.assertIn(".opacity(state == .locked ? 0.45 : 1)", VIEW)
 
     def test_primary_is_accent_and_danger_is_the_destructive_tint(self) -> None:
         self.assertIn("case .some(.primary): return theme.accent", VIEW)
         self.assertIn("case .some(.danger): return theme.danger.opacity(0.12)", VIEW)
         self.assertIn("case .some(.primary): return theme.accentInk", VIEW)
 
-    def test_a_resolved_action_is_ticked_and_the_rest_disabled(self) -> None:
+    def test_a_resolved_action_is_ticked(self) -> None:
         self.assertIn("if state == .chosen", VIEW)
         self.assertIn('Image(systemName: "checkmark")', VIEW)
-        self.assertIn(".disabled(state != .available)", VIEW)
-        self.assertIn(".opacity(state == .locked ? 0.45 : 1)", VIEW)
 
     def test_the_unavailable_case_draws_the_apology(self) -> None:
         self.assertIn("case .unavailable(let message):", VIEW)
