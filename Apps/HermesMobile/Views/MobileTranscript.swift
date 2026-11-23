@@ -68,40 +68,44 @@ struct MobileTranscriptRow: View {
     /// six reactions vanished and only slivers of colour showed. The side is decided before the
     /// popover is asked for, from the row's own frame.
     @State private var opensAbove = false
-    @AppStorage("mobile.messageReactions.v1") private var storedReactions = "{}"
     private static let speaker = AVSpeechSynthesizer()
 
-    private var reactionKey: String? {
+    /// This message's identity for a reaction, from the one rule both apps share (`ReactionKey`).
+    /// `nil` when no conversation is open: there is nothing to key a reaction by.
+    private var reactionKey: ReactionKey? {
         guard let session = app.model.selectedSessionID else { return nil }
-        // Live messages may not have a durable history row yet; allow a temporary reaction too.
-        // It can only persist across reloads when the host provides a stable row ID.
-        let messageID = entry.rowID.map { "row:\($0)" } ?? "live:\(entry.id)"
-        // Length-prefixed components cannot collide even when identifiers contain separators.
-        return [app.hostLabel, app.model.selectedBotID ?? "", session, messageID]
-            .map { "\($0.utf8.count):\($0)" }.joined()
+        // `app.model.hostName` rather than `app.hostLabel`: the key has to be the one `AppModel`
+        // built its map with, byte for byte, or the lookup misses. (They are the same string — both
+        // come from the pairing — but the model owns the rule, so it is the one asked.)
+        //
+        // A live message may have no durable history row yet; `ReactionKey.message` allows a
+        // temporary reaction too, and it persists across reloads once the host gives the row an id.
+        return ReactionKey(host: app.model.hostName,
+                           bot: app.model.selectedBotID ?? "",
+                           session: session,
+                           message: ReactionKey.message(rowID: entry.rowID, entryID: entry.id))
     }
 
-    private var reactions: [String: String] {
-        guard let data = storedReactions.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        return decoded
+    /// The emoji this message wears, from the conversation's shared state — the host's copy when
+    /// paired, so a reaction set on the Mac is already here.
+    private var currentReaction: String? {
+        guard let key = reactionKey else { return nil }
+        return app.model.reaction(for: key)
     }
 
+    /// One emoji per message: tapping the one already there removes it.
     private func setReaction(_ emoji: String) {
         guard let key = reactionKey else { return }
-        var values = reactions
-        values[key] = values[key] == emoji ? nil : emoji
-        if let data = try? JSONEncoder().encode(values), let encoded = String(data: data, encoding: .utf8) {
-            storedReactions = encoded
-        }
+        let next: String? = currentReaction == emoji ? nil : emoji
+        Task { await app.model.setReaction(next, for: key) }
     }
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             rowContent
-            if let key = reactionKey, let emoji = reactions[key] {
+            if let emoji = currentReaction {
                 Button(emoji) { setReaction(emoji) }
-                    .accessibilityLabel("Remove reaction \(emoji)")
+                    .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
             }
         }
         // A long press raises one small card: the six reactions on top, the verbs under them.
@@ -311,7 +315,7 @@ struct MobileTranscriptRow: View {
     private var actionCard: some View {
         VStack(spacing: 0) {
             if reactionKey != nil {
-                QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
+                QuickReactionRow(selected: currentReaction) { emoji in
                     setReaction(emoji)
                     Haptics.selection()
                     showingActions = false

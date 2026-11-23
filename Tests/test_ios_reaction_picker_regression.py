@@ -29,10 +29,18 @@ class ReactionPickerRegressionTests(unittest.TestCase):
         self.assertIn('"React with \\(emoji)"', ROW)
         self.assertIn('"Select again to remove this reaction"', ROW)
 
-    def test_existing_reaction_storage_and_toggle_remain_wired(self):
-        self.assertIn('@AppStorage("mobile.messageReactions.v1")', SOURCE)
-        self.assertIn('values[key] = values[key] == emoji ? nil : emoji', SOURCE)
-        self.assertIn('.accessibilityLabel("Remove reaction \\(emoji)")', SOURCE)
+    def test_the_reaction_is_shared_rather_than_kept_on_the_device(self):
+        # The storage moved: it used to be this app's `@AppStorage`, which is why a reaction made on
+        # the Mac never appeared here. One key rule (shared with the Mac) and the model's map now.
+        self.assertIn("ReactionKey.message(rowID: entry.rowID, entryID: entry.id)", SOURCE)
+        self.assertIn("app.model.reaction(for: key)", SOURCE)
+        self.assertIn("await app.model.setReaction(next, for: key)", SOURCE)
+        # The toggle is unchanged: tapping the emoji already there clears it.
+        self.assertIn("currentReaction == emoji ? nil : emoji", SOURCE)
+        self.assertIn('.accessibilityLabel("Remove \\(ReactionEmoji.name(emoji)) reaction")', SOURCE)
+        # And the row no longer writes a device-local document of its own.
+        self.assertNotIn('@AppStorage("', SOURCE)
+        self.assertNotIn("storedReactions", SOURCE)
 
 
 if __name__ == "__main__":

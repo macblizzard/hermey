@@ -136,9 +136,49 @@ swap. Shapes were taken from the Swift decoders, not invented.
 | `GET /v1/rooms/{id}/log` · `POST …/send` · `POST …/rename` · `POST …/disband` | room log (`?since_seq=`), a message, a rename, a disband — each an engine `groups.*` call |
 | `POST /v1/push/{presence,register,test}` | `{ok:true}` — no relay, says so plainly |
 | `GET /v1/bots/previews` · `POST /v1/bots/previews` | each bot's newest line, read from its own `state.db` against the conversation the app opens; POST adds `{unread:{profile:n}}`. Best-effort: a locked or missing database yields no row for that bot, never an error for the list |
+| `GET /v1/reactions` · `PUT /v1/reactions` | one emoji per message, shared by every device — see below |
 
 `scripts/smoke-app-routes.sh` replays the app's connect sequence (a fresh single-use ticket per call,
 like the client) and asserts every shape plus persistence across calls.
+
+## Reactions — `GET/PUT /v1/reactions` (shipped in 0.3.8)
+
+The two apps used to keep reactions in their own `@AppStorage`, so the Mac's menu offered to remove a
+"**local** reaction" and the phone never saw it. The host is the only place two devices can meet, so
+it owns them now. One emoji per message, and a new one replaces the old — what both apps already did.
+
+```text
+GET /v1/reactions?bot=<profile>&session=<session id>       (bearer)
+  -> {"reactions": {"row:41": {"emoji": "👍", "by": "Mo's Mac"}}}
+
+PUT /v1/reactions                                           (bearer)
+  {"bot":"cody","session":"20261123_101500_ab12cd","message":"row:41",
+   "emoji":"👍","by":"Mo's Mac"}
+  -> {"message":"row:41","emoji":"👍","by":"Mo's Mac","at":1795…}
+  {"…","emoji":""}                                       -> the reaction is removed, "emoji": null
+  a bad bot/session/message/emoji/by                     -> 422 {"error":"bad_emoji", "detail": …}
+```
+
+`message` is the apps' own message key: `row:<rowID>` for a row the host persisted, `live:<entry.id>`
+for one it has not. The host scopes it by bot and session, so a Mac and a phone whose *host labels*
+differ still agree — the label is only part of each device's local key.
+
+Storage is one JSON document in the state directory, `reactions.json`, written atomically (temp file,
+then `rename`) and capped at 5 000 entries, oldest evicted: a badge on a message nobody has opened in
+a year is not worth an unbounded file. A file that cannot be parsed is reported once and treated as
+empty rather than refusing every later write.
+
+Every change is broadcast on `/v1/ws` as the engine's own event envelope, which is what both apps
+already decode:
+
+```json
+{"jsonrpc":"2.0","method":"event","params":{"type":"reaction.updated","session_id":"<session>",
+ "payload":{"bot":"cody","session":"…","message":"row:41","emoji":"👍","by":"Mo's Mac"}}}
+```
+
+An unpaired app has no host, so it keeps writing its own `@AppStorage` document
+(`mac.messageReactions.v1` / `mobile.messageReactions.v1`) — the behaviour it had before — and hands
+those entries to the host once, the first time it opens that conversation paired.
 
 ## Pitfall that cost the first real device: frames must be NDJSON
 

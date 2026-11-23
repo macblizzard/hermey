@@ -328,6 +328,10 @@ struct TranscriptScroll: View {
                                       onOpenPair: { peer in pairPeer = peer },
                                       fetchCard: { id, session, message in
                                           try await model.fetchCard(id: id, session: session, message: message)
+                                      },
+                                      reaction: { model.reaction(for: $0) },
+                                      onReact: { key, emoji in
+                                          Task { await model.setReaction(emoji, for: key) }
                                       })
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
@@ -343,6 +347,10 @@ struct TranscriptScroll: View {
                                           onOpenPair: { peer in pairPeer = peer },
                                           fetchCard: { id, session, message in
                                               try await model.fetchCard(id: id, session: session, message: message)
+                                          },
+                                          reaction: { model.reaction(for: $0) },
+                                          onReact: { key, emoji in
+                                              Task { await model.setReaction(emoji, for: key) }
                                           })
                             .background(fill([entry.id], among: matched, selected: selected))
                     }

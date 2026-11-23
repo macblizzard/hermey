@@ -509,6 +509,12 @@ class NothingElseWasTouched(unittest.TestCase):
         changed = _changed_files()
         if changed is None:
             self.skipTest("no git base to compare against")
+        # Branch-scoped by nature: the question is "did *the pet* leak out of the Mac app?", so it
+        # only has an opinion on a branch that carries pet work. A branch with nothing to do with it
+        # (reaction sync, say) edits `hermeyd/` and `Sources/HermesKit/` for its own reasons, and
+        # failing here would be a guard against work this file knows nothing about.
+        if not any(path.startswith("Apps/HermesMac/Pets/") for path in changed):
+            self.skipTest("this branch does not carry the desktop pet")
         # The pet itself is macOS-only, but the branch also carries the fix to the host's `ask` path —
         # the role it waits for, the session id it polls, the profiles directory it opens and the
         # timestamp it anchors on. Those are the only host files allowed here; anything else appearing

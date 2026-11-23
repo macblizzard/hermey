@@ -33,8 +33,16 @@ struct TranscriptRowView: View {
     /// a lazy stack must not reach for a store, and the pane already holds the connection. The
     /// third argument is this row's message id — the host snapshots a card per message.
     var fetchCard: ((String, SessionID, String) async throws -> CardFetch)? = nil
+    /// The emoji on this message, and the way to change it — `AppModel`'s map, reached through the
+    /// transcript rather than by handing a row the whole app. Both are closures for the same reason
+    /// `fetchCard` is: a row inside a `LazyVStack` is torn down and rebuilt as it scrolls.
+    ///
+    /// The host owns reactions now (`/v1/reactions`), so this is one conversation's shared state
+    /// rather than this device's private copy — which is what makes a reaction set on the phone
+    /// appear here, live, over `/v1/ws`.
+    var reaction: (ReactionKey) -> String? = { _ in nil }
+    var onReact: (ReactionKey, String?) -> Void = { _, _ in }
     @State private var showingReactions = false
-    @AppStorage("mac.messageReactions.v1") private var storedReactions = "{}"
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
     @ObservedObject private var speech = SpeechReader.shared
@@ -60,34 +68,34 @@ struct TranscriptRowView: View {
         let startIndex: Int
     }
 
-    private var reactionKey: String? {
+    /// This message's identity for a reaction: the one rule both apps share (`ReactionKey`), fed
+    /// from the row and the pane. `nil` for a row with no conversation to belong to.
+    private var reactionKey: ReactionKey? {
         guard let session else { return nil }
-        let message = entry.rowID.map { "row:\($0)" } ?? "live:\(entry.id)"
-        return [host, bot, session, message].map { "\($0.utf8.count):\($0)" }.joined()
+        return ReactionKey(host: host, bot: bot, session: session,
+                           message: ReactionKey.message(rowID: entry.rowID, entryID: entry.id))
     }
 
-    private var reactions: [String: String] {
-        guard let data = storedReactions.data(using: .utf8),
-              let values = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        return values
+    /// The emoji this message wears, from the conversation's shared state.
+    private var currentReaction: String? {
+        guard let key = reactionKey else { return nil }
+        return reaction(key)
     }
 
+    /// One emoji per message: picking the emoji already there removes it, exactly as before — only
+    /// the storage changed (the host, not `@AppStorage`).
     private func toggleReaction(_ emoji: String) {
         guard let key = reactionKey else { return }
-        var values = reactions
-        values[key] = values[key] == emoji ? nil : emoji
-        if let data = try? JSONEncoder().encode(values), let text = String(data: data, encoding: .utf8) {
-            storedReactions = text
-        }
+        onReact(key, currentReaction == emoji ? nil : emoji)
     }
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             content.contextMenu { messageMenu }
-            if let key = reactionKey, let emoji = reactions[key] {
+            if let emoji = currentReaction {
                 Button(emoji) { toggleReaction(emoji) }
                     .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
-                    .accessibilityLabel("Remove local reaction \(emoji)")
+                    .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
             }
         }
     }
@@ -98,7 +106,7 @@ struct TranscriptRowView: View {
             Button(isSpeaking ? "Stop Reading" : "Read Aloud") {
                 speech.toggle(id: entry.id, text: entry.text)
             }
-            if reactionKey != nil { Button("Add Local Reaction…") { showingReactions = true } }
+            if reactionKey != nil { Button("Add Reaction…") { showingReactions = true } }
         }
         ShareLink(item: entry.text) { Label("Share", systemImage: "square.and.arrow.up") }
         Button("Copy Message") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.text, forType: .string) }
@@ -476,11 +484,11 @@ struct TranscriptRowView: View {
 
     private var reactionPicker: some View {
         VStack(spacing: 5) {
-            QuickReactionRow(selected: reactionKey.flatMap { reactions[$0] }) { emoji in
+            QuickReactionRow(selected: currentReaction) { emoji in
                 toggleReaction(emoji)
                 showingReactions = false
             }
-            Text("Saved on this Mac")
+            Text("Shared across your devices")
                 .font(TypeScale.font(10))
                 .foregroundStyle(Tokens.textDim)
         }
@@ -498,8 +506,7 @@ struct TranscriptRowView: View {
                 // wide, pointing its arrow at nothing in particular.
                 actionGlyph("react",
                             systemImage: "face.smiling",
-                            tint: reactionKey.flatMap { reactions[$0] } != nil ? Tokens.accentText
-                                                                                : Tokens.textMuted,
+                            tint: currentReaction != nil ? Tokens.accentText : Tokens.textMuted,
                             help: "React to this message") {
                     showingReactions = true
                 }

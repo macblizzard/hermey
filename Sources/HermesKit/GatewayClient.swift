@@ -188,6 +188,30 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// from sharing a row — and what lets a reply still draw its card after the file is gone.
     func card(id: String, session: SessionID, message: String) async throws -> CardFetch
 
+    /// Whether this connection has the host's `/v1` routes at all.
+    ///
+    /// The one question `AppModel` asks before it lets the host own a device-local thing: an
+    /// unpaired app has no host to agree with, and must keep behaving exactly as it did before
+    /// (reactions in `@AppStorage`). A client that can reach a bridge says so; everything else
+    /// inherits `false` and loses nothing.
+    var bridgeAvailable: Bool { get }
+
+    /// `GET /v1/reactions?bot=<profile>&session=<session id>` — every reaction in one conversation,
+    /// keyed by the message half of ``ReactionKey`` (`row:41`, `live:r3`).
+    ///
+    /// Device-authenticated like every other `/v1` read, so it rides the bridge pointer store. The
+    /// host is the only place a Mac and a phone can meet: asking it is what makes a reaction the
+    /// owner made on one device appear on the other.
+    func reactions(bot: String, session: SessionID) async throws -> [String: Reaction]
+
+    /// `PUT /v1/reactions` — set one reaction, or clear it with `nil`.
+    ///
+    /// One emoji per message, and a new one replaces the old, which is what both apps already did
+    /// locally. The host persists it, then broadcasts `reaction.updated` on `/v1/ws` so the other
+    /// device applies it without polling.
+    func setReaction(bot: String, session: SessionID, message: String,
+                     emoji: String?, by: String) async throws
+
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
@@ -1141,6 +1165,13 @@ public enum ClientEvent: Sendable {
     case request(ServerRequest)
     case requestCancelled(id: ServerRequestID, reason: String?)
     case sessionUpdated(SessionID)
+    /// A reaction another device set or cleared (`reaction.updated`), or the echo of this device's
+    /// own write. The host owns reactions now, so this is how the other app hears about one
+    /// without polling: `emoji` is `nil` when it was removed.
+    ///
+    /// `message` is the message half of ``ReactionKey`` (`row:41`, `live:r3`), which is what the
+    /// host keys its store by; the receiver adds its own host/bot/session to look it up.
+    case reactionUpdated(bot: String, session: SessionID, message: String, emoji: String?, by: String)
     case error(code: Int?, message: String)
     /// Any event we do not model yet. Kept so a Hermes upgrade never breaks the client.
     case unknown(type: String, payload: JSONValue)
@@ -1188,6 +1219,22 @@ public extension GatewayClientProtocol {
     /// the reply; a spinner would be a lie about work that is not happening.
     func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         throw CardFetchError.unreachable("this connection has no bridge to read cards from")
+    }
+
+    /// No bridge, no host to agree with: reactions stay on this device, exactly as they did before
+    /// the host owned them. This is the *unpaired* path, not a failure.
+    var bridgeAvailable: Bool { false }
+
+    /// An unpaired app cannot read the host's reactions. Answering `[:]` would be indistinguishable
+    /// from "nobody has reacted", so this throws and `AppModel` keeps the local document.
+    func reactions(bot: String, session: SessionID) async throws -> [String: Reaction] {
+        throw ReactionSyncError.noBridge
+    }
+
+    func setReaction(bot: String, session: SessionID, message: String,
+                     emoji: String?, by: String) async throws {
+        _ = (bot, session, message, emoji, by)
+        throw ReactionSyncError.noBridge
     }
 
     /// A client with no bridge cannot ask a bot anything. `.unreachable` is the honest refusal and
