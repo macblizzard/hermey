@@ -76,24 +76,23 @@ public enum CardMarker {
         var kept: [String] = []
         var fence: Fence?
 
-        // Split on "\n", not `.newlines`: that character set treats "\r\n" as two separators and
-        // would insert a blank line into every CRLF message. A trailing "\r" is dropped only for
-        // matching and kept in the prose.
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            var line = String(raw)
-            let hadCarriageReturn = line.hasSuffix("\r")
-            if hadCarriageReturn { line.removeLast() }
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+        // Split at the NSString level: `String.split(separator: "\n")` never breaks a CRLF message,
+        // because Swift treats "\r\n" as a single Character. A trailing "\r" is dropped for matching
+        // only and kept in the prose, which has to come back byte-identical.
+        for raw in text.components(separatedBy: "\n") {
+            let hadCarriageReturn = raw.hasSuffix("\r")
+            let trimmed = (hadCarriageReturn ? String(raw.dropLast()) : raw)
+                .trimmingCharacters(in: .whitespaces)
 
             if let open = fence {
-                kept.append(line)
+                kept.append(raw)
                 if closes(trimmed, open) { fence = nil }
                 continue
             }
 
             if let open = openingFence(trimmed) {
                 fence = open
-                kept.append(line)
+                kept.append(raw)
                 continue
             }
 
@@ -102,7 +101,7 @@ public enum CardMarker {
                 continue
             }
 
-            kept.append(line)
+            kept.append(raw)
         }
 
         return CardScan(prose: kept.joined(separator: "\n"), refs: refs)
