@@ -21,17 +21,22 @@ public struct WaitingBot: Identifiable, Equatable, Sendable {
     public let preview: String?
     /// The stored face (`#RRGGBB::shape_N`), so the row draws the same avatar the bot list does.
     public let face: String?
+    /// When the bot last spoke, for the row's stamp. `nil` when the device has no host time for it
+    /// (a bot it has never heard from), and the row simply draws no stamp.
+    public let at: Date?
 
     public init(id: String,
                 name: String,
                 count: Int,
                 preview: String? = nil,
-                face: String? = nil) {
+                face: String? = nil,
+                at: Date? = nil) {
         self.id = id
         self.name = name
         self.count = count
         self.preview = preview
         self.face = face
+        self.at = at
     }
 
     /// What VoiceOver says about the count, so the number is not read as part of the name.
@@ -59,7 +64,8 @@ public enum WaitingBots {
                             counts: [String: Int],
                             names: [String: String],
                             previews: [String: String] = [:],
-                            faces: [String: String] = [:]) -> [WaitingBot] {
+                            faces: [String: String] = [:],
+                            times: [String: Date] = [:]) -> [WaitingBot] {
         var rows: [WaitingBot] = []
         for id in Set(unread).union(counts.keys) {
             // A swept count of zero means "nothing waiting" even if the dot is still up: the dot
@@ -70,7 +76,8 @@ public enum WaitingBots {
                                    name: names[id] ?? id,
                                    count: count,
                                    preview: firstLine(previews[id]),
-                                   face: faces[id]))
+                                   face: faces[id],
+                                   at: times[id]))
         }
         rows.sort { lhs, rhs in
             if lhs.count != rhs.count { return lhs.count > rhs.count }
@@ -116,6 +123,9 @@ public struct WaitingBotsInbox: View {
 
     /// The panel's own inset, so the rows line up with the bot list behind the popover.
     private let inset: CGFloat = 8
+    /// The row's fill is inset this much inside the panel, so the highlight has a margin while the
+    /// avatar, title and preview still share the header's leading edge (`inset`).
+    private static let rowInset: CGFloat = 4
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -130,7 +140,7 @@ public struct WaitingBotsInbox: View {
                 }
             }
             .padding(.horizontal, inset)
-            .padding(.top, 10)
+            .padding(.top, Self.headerTop)
             .padding(.bottom, 2)
 
             if bots.isEmpty {
@@ -142,7 +152,7 @@ public struct WaitingBotsInbox: View {
                             row(bot)
                         }
                     }
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, Self.rowInset)
                 }
                 // The list is as tall as what is waiting, capped: a popover sized from a
                 // `ScrollView`'s ideal height collapses to nothing, and a fixed cap is the one
@@ -150,8 +160,14 @@ public struct WaitingBotsInbox: View {
                 .frame(height: listHeight)
             }
         }
-        .padding(.bottom, 10)
+        .padding(.bottom, Self.bottomInset)
         .frame(maxWidth: .infinity, alignment: .leading)
+        #if os(iOS)
+        // The sheet is content-sized (see `sheetHeight(for:)`), but its stack still pins to the
+        // top: a short list centred in the sheet is the dead space the owner reported above
+        // `WAITING`.
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+        #endif
         .background(fill)
     }
 
@@ -165,10 +181,81 @@ public struct WaitingBotsInbox: View {
         #endif
     }
 
-    /// One row's pitch — avatar, two lines, and the gap above and below it.
-    private static let rowPitch: CGFloat = 42
-    /// The tallest the list grows before it scrolls. Seven rows.
+    /// The header's top padding. On the phone it sits right under the grab handle; on the Mac
+    /// there is a popover arrow's own breathing room to keep.
+    private static var headerTop: CGFloat {
+        #if os(iOS)
+        return 8
+        #else
+        return 10
+        #endif
+    }
+
+    /// One row's pitch — avatar, two lines, and the gap above and below it. The phone draws the
+    /// list's own row (38 pt face, 10 pt vertical padding); the popover is denser.
+    private static var rowPitch: CGFloat {
+        #if os(iOS)
+        return Geometry.rosterRow + 1
+        #else
+        return 37
+        #endif
+    }
+
+    /// The face and the count ride together, at the list's own sizes.
+    private static var avatarSize: CGFloat {
+        #if os(iOS)
+        return Geometry.rosterAvatar
+        #else
+        return 26
+        #endif
+    }
+
+    private static var badgeSize: CGFloat {
+        #if os(iOS)
+        return 19
+        #else
+        return 17
+        #endif
+    }
+
+    private static var badgeNudge: CGFloat {
+        #if os(iOS)
+        return 5
+        #else
+        return 4
+        #endif
+    }
+
+    /// The row's own top and bottom breathing room: the phone uses the list's 10 pt, the denser
+    /// popover keeps 5.
+    private static var rowPadding: CGFloat {
+        #if os(iOS)
+        return 10
+        #else
+        return 5
+        #endif
+    }
+
+    /// The tallest the list grows before it scrolls. Eight Mac rows.
     private static let listCap: CGFloat = 300
+
+    /// Bottom breathing room under the last row.
+    private static let bottomInset: CGFloat = 10
+
+    /// The drag indicator and its inset: part of a `.height` detent's measurement, none of the
+    /// stack's own layout.
+    private static let grabberInset: CGFloat = 24
+
+    /// How tall the phone's sheet should be for `rowCount` rows.
+    ///
+    /// The sheet used to open at `.medium` whatever the list held, so one waiting bot sat under a
+    /// page of empty space. The detent is the header, the rows and the footer, plus the handle;
+    /// a long list still caps and scrolls rather than growing past the screen.
+    public static func sheetHeight(for rowCount: Int) -> CGFloat {
+        let list = min(CGFloat(max(rowCount, 1)) * Self.rowPitch + 4, Self.listCap)
+        let header = Self.headerTop + 12 + 2 + 6
+        return max(header + list + Self.bottomInset + Self.grabberInset, 120)
+    }
 
     private var listHeight: CGFloat {
         min(CGFloat(bots.count) * Self.rowPitch + 4, Self.listCap)
@@ -182,19 +269,39 @@ public struct WaitingBotsInbox: View {
 
     private func row(_ bot: WaitingBot) -> some View {
         Button { onOpen(bot.id) } label: {
-            HStack(spacing: 9) {
+            HStack(alignment: .center, spacing: 10) {
                 BotAvatarView(identity: bot.id,
                               color: bot.face,
                               activity: .idle,
-                              size: 26,
+                              size: Self.avatarSize,
                               // Nothing in this list is on screen as a conversation: a row that
                               // animated would be motion with no meaning.
                               animates: false)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(bot.name)
-                        .font(TypeScale.font(Tokens.rosterName, weight: .medium))
-                        .foregroundStyle(Tokens.textPrimary)
-                        .lineLimit(1)
+                    // The count sits on the face's bottom-right corner, exactly as the bot list
+                    // draws it. At the row's trailing edge it read as a second object — the badge
+                    // the owner saw floating far from the avatar.
+                    .overlay(alignment: .bottomTrailing) {
+                        UnreadBadge(count: bot.count, size: Self.badgeSize)
+                            .offset(x: Self.badgeNudge, y: Self.badgeNudge - 1)
+                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    // Name and stamp on one line, the house row's order; the preview under it.
+                    HStack(spacing: 6) {
+                        Text(bot.name)
+                            .font(TypeScale.font(Tokens.rosterName, weight: .medium))
+                            .foregroundStyle(Tokens.textPrimary)
+                            .lineLimit(1)
+                        Spacer(minLength: 6)
+                        if let at = bot.at {
+                            Text(RelativeTime.stamp(at))
+                                .font(TypeScale.font(Tokens.rosterMeta))
+                                .foregroundStyle(Tokens.textDim)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .layoutPriority(1)
+                                .accessibilityLabel("last message \(RelativeTime.detailed(at))")
+                        }
+                    }
                     if let preview = bot.preview {
                         Text(preview)
                             .font(TypeScale.font(Tokens.rosterMeta))
@@ -202,15 +309,21 @@ public struct WaitingBotsInbox: View {
                             .lineLimit(1)
                     }
                 }
-                Spacer(minLength: 6)
-                UnreadBadge(count: bot.count, size: 17)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Self.rowInset)
+            .padding(.vertical, Self.rowPadding)
+            .frame(maxWidth: .infinity, minHeight: Self.rowPitch - 1, alignment: .leading)
+            .hoverFill(rest: .clear, hover: Tokens.controlHover, radius: Tokens.radiusControl)
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableButtonStyle())
+        // Plain, so the system does not draw its own button chrome over the row's fill.
+        .buttonStyle(.plain)
+        // A popover hands focus to its first control, and macOS drew the blue focus ring around
+        // that row as if it were selected. The ring is suppressed, not the focus: Space/Return on
+        // a focused row still opens it for a keyboard user, and the hover fill is the visible
+        // feedback for everyone else.
+        .focusEffectDisabled()
         .modifier(WaitingRowHint(name: bot.name))
         .accessibilityLabel(bot.preview.map { "\(bot.name), \(bot.waitingLabel), \($0)" }
                             ?? "\(bot.name), \(bot.waitingLabel)")

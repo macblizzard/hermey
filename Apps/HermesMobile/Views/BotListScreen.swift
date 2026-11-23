@@ -111,7 +111,8 @@ struct BotListScreen: View {
                          names: Dictionary(model.bots.map { ($0.id, $0.displayName) },
                                            uniquingKeysWith: { first, _ in first }),
                          previews: model.botPreviews,
-                         faces: app.botFaces.mapValues { $0.raw })
+                         faces: app.botFaces.mapValues { $0.raw },
+                         times: model.botPreviewTimes)
     }
 
     /// Bot settings: the shared door, so this list and a conversation's Edit button cannot drift
@@ -285,7 +286,10 @@ struct BotListScreen: View {
                 }
             }
             .hermesSheetChrome()
-            .presentationDetents([.medium, .large])
+            // The sheet is exactly as tall as what is waiting: the header, one row per bot and
+            // the handle. A mid-height detent was a page of empty space above a single row; a long
+            // list stops at the shared cap and scrolls instead.
+            .presentationDetents([.height(WaitingBotsInbox.sheetHeight(for: waitingBots.count))])
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
@@ -1055,9 +1059,9 @@ struct BotListScreen: View {
                     // *on* a card, so a disc of it on the canvas read as a pale blob with a dim
                     // glyph inside it — the "why does this look off" of the first screenshot.
                     Image(systemName: searchOpen ? "xmark" : "magnifyingglass")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: BarIconScale.of(16), weight: .medium))
                         .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: BarIconScale.of(36), height: BarIconScale.of(36))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -1074,10 +1078,10 @@ struct BotListScreen: View {
                     showWaiting = true
                 } label: {
                     Image(systemName: "bell")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: BarIconScale.of(17), weight: .medium))
                         .foregroundStyle(Tokens.textPrimary)
                         .waitingDot(!waitingBots.isEmpty, size: 6)
-                        .frame(width: 36, height: 36)
+                        .frame(width: BarIconScale.of(36), height: BarIconScale.of(36))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -1094,9 +1098,9 @@ struct BotListScreen: View {
                     showAppSettings = true
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: BarIconScale.of(17), weight: .medium))
                         .foregroundStyle(Tokens.textPrimary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: BarIconScale.of(36), height: BarIconScale.of(36))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -1152,9 +1156,9 @@ struct BotListScreen: View {
                     // surface inside it reads as a box in a circle. The accent tint stays as the
                     // one signal that a filter is on behind it.
                     Image(systemName: "plus")
-                        .font(.system(size: 17, weight: .medium))
+                        .font(.system(size: BarIconScale.of(17), weight: .medium))
                         .foregroundStyle(showHidden ? Tokens.accentText : Tokens.textPrimary)
-                        .frame(width: 36, height: 36)
+                        .frame(width: BarIconScale.of(36), height: BarIconScale.of(36))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
