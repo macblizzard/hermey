@@ -55,7 +55,7 @@ spelled out rather than assumed:
 - No background material, no hairline, no rounded rect behind the icon.
 - The **balloon is a separate window**, so the pet window itself is never large, never opaque, and never
   in the way: it stays icon-sized and the balloon floats above it while it is open.
-- The shadow you see is the icon asset's own alpha, not a window shadow.
+- The floating shadow is drawn *inside* the window by the icon view (`.shadow(radius: 10, y: 6)`), not by AppKit's window shadow — a window shadow would draw a rectangle around a transparent window.
 
 A guard test pins those four window properties, because a borderless-but-opaque panel looks correct in
 code review and wrong on the desktop.
