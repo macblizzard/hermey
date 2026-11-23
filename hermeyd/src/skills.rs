@@ -91,6 +91,12 @@ pub const BUNDLED_SKILLS: &[Skill] = &[
         name: "integrations",
         template: include_str!("../assets/agent-skills/integrations/SKILL.md"),
     },
+    // Cards are the only way a question renders in the native apps: `clarify` draws on Hermes Desktop
+    // and nowhere else, so a bot that asks in prose is a bot the owner cannot answer.
+    Skill {
+        name: "agent-cards",
+        template: include_str!("../assets/agent-skills/agent-cards/SKILL.md"),
+    },
 ];
 
 /// Every script the bundled skills name, byte for byte as the bridge ships it.
