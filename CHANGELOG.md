@@ -1135,3 +1135,23 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   app's bot list clears at the same time, because both read the same count.
 - It stays quiet when you are already looking at the window, and it does not hop for a reply its own
   balloon is showing.
+
+## [0.1.635] — 2026-11-23
+
+### Added
+- **Reactions follow you.** A reaction is kept by the host now, not by the device that made it: react on
+  the Mac and the phone shows it, react on the phone and the Mac shows it — live, while the conversation is
+  open. Reactions you already had on a device are sent to the host once, so nothing is lost. Unpaired, both
+  apps keep working exactly as before, locally.
+- **A bell that says what is waiting.** The bot list's top row is now the bell and the ＋ menu. The bell
+  lists the bots with unread replies, most first, each with the first line of its last message; pick one and
+  it opens with that bot. iOS gets the same bell, right beside Settings.
+
+### Changed
+- **The bot list has a floor bar.** Settings moved to the bottom left; search and the sidebar toggle to the
+  bottom right. The list fades into both ends of the panel over the same 26 pt, so no edge cuts a row.
+- **An empty composer says who you are writing to** — "Message Cody", the same words the phone shows.
+
+### Fixed
+- Two compile-time faults the app build caught before release: the reaction table was cleared with an array
+  literal where Swift needs a dictionary one, and the reaction key took the row id at the wrong width.
