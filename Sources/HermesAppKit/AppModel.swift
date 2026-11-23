@@ -3502,6 +3502,17 @@ public final class AppModel: ObservableObject {
         try await client.cancelCredentialCard(id: id)
     }
 
+    /// One native agent card (`GET /v1/cards/{id}?session=…`) — the document a `::card{…}` line in
+    /// a reply names.
+    ///
+    /// A passthrough on purpose: the transcript's `CardLoader` decides when a card is fetched, how
+    /// long a failure is remembered, and what the bubble draws instead. This only says where the
+    /// client is, so a Mac row (which holds no model, by design) can be handed one closure instead
+    /// of the whole app.
+    public func fetchCard(id: String, session: SessionID) async throws -> CardFetch {
+        try await client.card(id: id, session: session)
+    }
+
     /// The Integrations screen's data (docs/INTEGRATIONS.md).
     public func integrations() async throws -> IntegrationsState {
         try await client.integrations()

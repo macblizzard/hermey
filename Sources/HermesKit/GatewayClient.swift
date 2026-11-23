@@ -171,6 +171,19 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// row begins, so prepending it cannot leave a hole.
     func historyPage(_ id: SessionID, profile: String?, cursor: Int, limit: Int) async throws -> HistoryPage
 
+    /// One native card (`GET /v1/cards/{id}?session=<session id>`) — the document a `::card{…}`
+    /// marker names.
+    ///
+    /// The bridge resolves the file, because the client has the transcript and not the host's
+    /// filesystem: `file` in the marker is relative to the session's working directory, and a path
+    /// from a client is a path the host would have to sanitise. The id is all that travels, and the
+    /// route refuses anything that is not `^[A-Za-z0-9_-]{1,40}$` before a path exists.
+    ///
+    /// Device-authenticated like every other `/v1` read, so it travels over the bridge pointer
+    /// store rather than the JSON-RPC transport. Each refusal is a distinct `CardFetchError`, so a
+    /// transcript can say `Card not available` for the right reason instead of spinning.
+    func card(id: String, session: SessionID) async throws -> CardFetch
+
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
@@ -1148,5 +1161,12 @@ public extension GatewayClientProtocol {
     /// all). Failing honestly keeps "compacted" from being shown over a transcript nothing touched.
     func compress(session: SessionID) async throws {
         throw GatewayError.notConnected
+    }
+
+    /// A client with no bridge (the unpaired app, a preview, a test double) cannot resolve a card
+    /// file, because the file lives on the host. Saying so is what draws `Card not available` under
+    /// the reply; a spinner would be a lie about work that is not happening.
+    func card(id: String, session: SessionID) async throws -> CardFetch {
+        throw CardFetchError.unreachable("this connection has no bridge to read cards from")
     }
 }

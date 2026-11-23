@@ -198,6 +198,14 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/search?q=…` — findings inside every bot's conversation, newest first.
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage
 
+    /// `GET /v1/cards/{id}?session=<session id>` — the card file a `::card{…}` marker names.
+    ///
+    /// Here rather than on a store of its own because the route is device-authenticated exactly
+    /// like the rest of `/v1`, and this is where a single-use ticket is minted. A bridge that
+    /// predates the route refuses with a typed `CardFetchError`, which is what the transcript draws
+    /// as `Card not available`.
+    func card(id: String, session: SessionID) async throws -> CardFetch
+
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
 
@@ -333,6 +341,13 @@ public extension BotSessionPointerStore {
     }
     func searchTranscripts(_ query: String, limit: Int, offset: Int) async throws -> BotSearchPage {
         throw BotAdminUnavailable()
+    }
+
+    /// A store that predates the card route cannot resolve a card file. Failing with the card's own
+    /// error (rather than `BotAdminUnavailable`) keeps the transcript's message to one line:
+    /// `Card not available`, not an upgrade prompt over a reply.
+    func card(id: String, session: SessionID) async throws -> CardFetch {
+        throw CardFetchError.refused(status: 404, code: nil)
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
@@ -595,6 +610,56 @@ enum Failure: Error, Equatable, LocalizedError {
               let names = object["disabled"] as? [String]
         else { return [] }
         return Set(names)
+    }
+
+    /// `GET /v1/cards/{id}?session=<session id>` — one `card.v1` document.
+    ///
+    /// The id travels, never the marker's `file`: the route matches `^[A-Za-z0-9_-]{1,40}$` before
+    /// it builds a path, which is the whole reason the client is not asked for one. A refusal is
+    /// kept typed — `no_such_card` and `outside_base` are different answers, and only one of them
+    /// means "this bot never wrote the card".
+    public func card(id: String, session sessionID: SessionID) async throws -> CardFetch {
+        // Checked here as well as on the route: an id with a slash in it would reshape the path and
+        // could reach a route this call never meant to touch.
+        guard CardFetchError.isValidID(id) else { throw CardFetchError.badId }
+
+        let endpoint = try await endpoint()
+        let url = endpoint.baseURL
+            .appendingPathComponent("v1")
+            .appendingPathComponent("cards")
+            .appendingPathComponent(id)
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw CardFetchError.unreachable("the host address is not a URL")
+        }
+        components.queryItems = [URLQueryItem(name: "session", value: sessionID)]
+        guard let requestURL = components.url else {
+            throw CardFetchError.unreachable("the card request could not be built")
+        }
+
+        var request = URLRequest(url: requestURL)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CardFetchError.unreachable("the host's card answer was not HTTP")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            // The route names its refusal in the body; the status alone is the fallback.
+            throw CardFetchError(status: http.statusCode, body: data)
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let card = object["card"],
+              JSONSerialization.isValidJSONObject(card),
+              let cardData = try? JSONSerialization.data(withJSONObject: card)
+        else {
+            throw CardFetchError.unreachable("the host's card answer carried no card")
+        }
+        return CardFetch(card: cardData,
+                         mtime: (object["mtime"] as? String) ?? "",
+                         final: (object["final"] as? Bool) ?? false)
     }
 
     public func approvalSettings() async throws -> ApprovalSettings {

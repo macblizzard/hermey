@@ -57,6 +57,9 @@ targets:
         product: HermesAppKit
       - package: HermesApps
         product: HermesA2UI
+      # Native agent cards (`card.v1`): the third renderer, after A2UI and before genui.
+      - package: HermesApps
+        product: HermesCards
       # macOS only: iOS cannot replace its own bundle, so the phone's notifier opens a URL instead
       # (HermesAppKit/Updates). Nothing here reaches the HermesMobile target.
       - package: Sparkle
@@ -152,6 +155,9 @@ targets:
         product: HermesAppKit
       - package: HermesApps
         product: HermesA2UI
+      # Native agent cards (`card.v1`): the third renderer, after A2UI and before genui.
+      - package: HermesApps
+        product: HermesCards
       # Embedded, not just linked: an App Extension that is not copied into the app bundle makes
       # `Activity.request` fail at runtime while the build stays perfectly green.
       - target: HermesLiveActivity

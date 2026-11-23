@@ -3,6 +3,7 @@ import HermesKit
 import HermesRender
 import HermeyUI
 import HermesA2UI
+import HermesCards
 import SwiftUI
 
 /// One transcript entry, drawn by role.
@@ -28,6 +29,9 @@ struct TranscriptRowView: View {
     /// The attribution line on a bot-to-bot message asks the transcript to open the pair's exchange
     /// (the sheet lives there: a row is torn down as it scrolls and a sheet it owns goes with it).
     var onOpenPair: ((String) -> Void)? = nil
+    /// Where a native card is read from (`GET /v1/cards/{id}`). A closure, not the model: a row in
+    /// a lazy stack must not reach for a store, and the pane already holds the connection.
+    var fetchCard: ((String, SessionID) async throws -> CardFetch)? = nil
     @State private var showingReactions = false
     @AppStorage("mac.messageReactions.v1") private var storedReactions = "{}"
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
@@ -42,6 +46,11 @@ struct TranscriptRowView: View {
     /// Every picture this message carries, and which one was clicked — `ImageViewer` pages through
     /// the rest, so a message with three screenshots no longer means closing and reopening.
     @State private var viewingImage: ViewedGallery?
+    /// What the marker parser found and what each card's read came back as, keyed by card id.
+    ///
+    /// Held here rather than in `CardLoader` because this is what makes the row repaint: the
+    /// loader is the shared, fetch-once cache, and a row is torn down long before the cache is.
+    @State private var cardStates: [String: CardLoader.State] = [:]
 
     /// The pictures a message carried, ready for `ImageViewer`, and where the viewer opens.
     struct ViewedGallery: Identifiable {
@@ -307,6 +316,44 @@ struct TranscriptRowView: View {
     /// Every A2UI surface this reply carries, in order. Parsed once per body evaluation.
     private var surfacePayloads: [A2UISurfacePayload] { A2UIMarker.surfaces(in: entry.text) }
 
+    /// Every native card marker this reply carries, and the prose with those lines taken out.
+    ///
+    /// The parser runs before the genui check below, which is the whole order: a reply may carry a
+    /// card, a `::blocks` board or neither, and only the card path knows how to strip its own lines.
+    private var cardScan: CardScan { CardMarker.scan(entry.text) }
+
+    /// `cards.enabled`, read per body pass. Off is the old behaviour — the marker line stays as
+    /// text, nothing is stripped and nothing is fetched (the rollback switch is `defaults write`).
+    private var cardsEnabled: Bool { CardsSettings.isEnabled }
+
+    /// Whether this row can actually draw: the flag on, and a session to resolve the files in.
+    /// Without a session the marker would be stripped and nothing could replace it, so the line
+    /// stays as text instead.
+    private var cardsActive: Bool { cardsEnabled && !(session ?? "").isEmpty }
+
+    /// The app's palette, handed to the card renderer. `HermesCards` never imports `HermeyUI`:
+    /// the values are mapped here, where both modules already are.
+    private var cardTheme: CardTheme {
+        CardTheme(canvas: Tokens.canvas,
+                  surface: Tokens.surface,
+                  ink: Tokens.textPrimary,
+                  mutedInk: Tokens.textMuted,
+                  accent: Tokens.accent,
+                  accentInk: Tokens.textPrimary,
+                  danger: Tokens.danger,
+                  border: Tokens.border,
+                  radiusCard: Tokens.radiusCard,
+                  radiusControl: Tokens.radiusControl)
+    }
+
+    /// Changes when the set of cards (or the session they belong to) does, so a finished turn —
+    /// whose markers arrive last — is the moment the reads are asked for. Never a timer: P1 does
+    /// not poll.
+    private var cardTaskKey: String {
+        guard cardsActive else { return "" }
+        return ([session ?? ""] + cardScan.refs.map(\.id)).joined(separator: "\u{1F}")
+    }
+
     private var assistantRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
@@ -324,6 +371,11 @@ struct TranscriptRowView: View {
                     A2UISurfaceView(payload: payload)
                         .padding(.vertical, 2)
                 }
+            } else if cardsActive, !cardScan.refs.isEmpty {
+                // A `::card{…}` line is a reference, not prose: the line is taken out and the card
+                // is drawn under the words. A card that cannot be read says so and leaves the prose
+                // exactly as the bot wrote it.
+                cardBubble(cardScan)
             } else if let boardID = GenUITag.boardID(in: entry.text) {
                 // A `::blocks{id="…"}` line is not prose: the plugin's board is drawn in its place, and
                 // the directive itself must never be read as text.
@@ -349,6 +401,67 @@ struct TranscriptRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
+        .task(id: cardTaskKey) { await loadCards() }
+    }
+
+    // MARK: Native cards
+
+    /// The reply's prose, then one card per marker, in the order the bot wrote them.
+    @ViewBuilder
+    private func cardBubble(_ scan: CardScan) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !scan.prose.isEmpty {
+                MarkdownTextView(text: scan.prose)
+                    .accessibilityLabel("Hermes said: \(scan.prose)")
+            }
+            // The offset, not the ref: two identical markers in one reply are still two cards, and
+            // `CardRef` would give them one identity.
+            ForEach(Array(scan.refs.enumerated()), id: \.offset) { _, ref in
+                cardView(ref)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cardView(_ ref: CardRef) -> some View {
+        switch cardStates[ref.id] ?? .idle {
+        case .loaded(let model):
+            CardView(model: model, theme: cardTheme) { action in
+                choose(action, ref: ref)
+            }
+            .padding(.vertical, 2)
+        case .unavailable:
+            // The one apology the contract allows, shaped like a card so the bubble does not look
+            // like it is still loading.
+            CardView(model: .unavailable(CardModel.unavailableMessage), theme: cardTheme)
+                .padding(.vertical, 2)
+        case .idle, .loading:
+            // Nothing yet. Drawing "Card not available" while the read is in the air is a lie that
+            // would flash on every scroll; the prose above is already the whole message.
+            EmptyView()
+        }
+    }
+
+    private func loadCards() async {
+        guard cardsActive, let fetchCard, let session else { return }
+        for ref in cardScan.refs where cardStates[ref.id] == nil {
+            cardStates[ref.id] = .loading
+            cardStates[ref.id] = await CardLoader.shared.load(ref, session: session) { id, cardSession in
+                try await fetchCard(id, cardSession)
+            }
+        }
+    }
+
+    /// A tap sends the action's text as the owner's next message, through the composer's own path.
+    ///
+    /// The tick is optimistic: the card is answered the instant it is tapped, and every other button
+    /// locks with it. The send is the same notification a genui board's button posts, so there is no
+    /// second delivery path to keep honest.
+    private func choose(_ action: Card.Action, ref: CardRef) {
+        guard let session else { return }
+        cardStates[ref.id] = CardLoader.shared.choose(action, cardID: ref.id, session: session)
+        NotificationCenter.default.post(name: .genUICardSend, object: nil,
+                                        userInfo: ["text": action.send, "bot": bot])
     }
 
     // MARK: Actions

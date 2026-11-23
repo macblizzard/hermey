@@ -325,7 +325,10 @@ struct TranscriptScroll: View {
                                       userBubbleTint: userBubbleTint,
                                       onSelectText: { selectionText = $0 },
                                       onReply: { model.reply(to: $0) },
-                                      onOpenPair: { peer in pairPeer = peer })
+                                      onOpenPair: { peer in pairPeer = peer },
+                                      fetchCard: { id, session in
+                                          try await model.fetchCard(id: id, session: session)
+                                      })
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
                 case .toolRun(let run):
@@ -337,7 +340,10 @@ struct TranscriptScroll: View {
                                           userBubbleTint: userBubbleTint,
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) },
-                                      onOpenPair: { peer in pairPeer = peer })
+                                          onOpenPair: { peer in pairPeer = peer },
+                                          fetchCard: { id, session in
+                                              try await model.fetchCard(id: id, session: session)
+                                          })
                             .background(fill([entry.id], among: matched, selected: selected))
                     }
                     .id(run.id)
