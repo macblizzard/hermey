@@ -261,14 +261,17 @@ the unread counts themselves come from the host, so they survive a reinstall.
 
 While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
 card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how
-long it has been running. When the turn ends the same card holds for about six seconds saying "Done"
-with the first ~120 characters of the reply, then goes.
+long it has been running. When the turn ends the card stays and says "Done" with the first ~120
+characters of the reply.
 
+- **It stays until you remove it.** The card is never dismissed by the app: it keeps its place in the
+  Dynamic Island and on the lock screen until it is swiped away (or the system's own eight-hour limit is
+  reached), so an answer you asked for is still there when you pick the phone up.
 - **One card per turn.** A second turn updates the card that is already up instead of stacking another.
 - **Leftovers are swept.** A card outlives the process that made it, so one left by a quit mid-turn is
-  cleared the next time the app launches.
-- **A stalled turn stops claiming to work.** A card that goes half an hour without an update greys out;
-  the next update brings it back.
+  turned into "Done" the next time the app launches rather than left claiming to work.
+- **Glass, not a panel.** The card carries no fill of ours: the lock screen's own material shows through,
+  with the bot's accent on the mark and the status line.
 - **iOS only.** The Mac has notifications and the badge instead. A phone with Live Activities switched
   off keeps working normally — the app records why no card appeared once in its client log (feature
   off, no ActivityKit, no turn running) rather than on every turn.

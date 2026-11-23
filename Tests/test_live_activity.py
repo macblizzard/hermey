@@ -1,4 +1,5 @@
-"""The Live Activity: a card that says a bot is working on the message, and gets out of the way.
+"""The Live Activity: a card that says a bot is working on the message, and stays there until the
+owner takes it away.
 
 This is Swift that cannot run here — ActivityKit only exists on an iOS device, and the widget is a
 second process — so the contract is pinned from source, the way the rest of the cross-platform
@@ -18,10 +19,11 @@ And two rules that came from the owner's screenshot of 0.1.618 — a black pill 
 phone wide, covering the status bar, saying nothing but an icon and `1:06`:
 
 * **a compact slot owns no width.** The island sizes itself from what `compactLeading`,
-  `compactTrailing` and `minimal` *report*, so a `Spacer()`, an `.frame(maxWidth: .infinity)` or —
-  what actually happened — a plain `Text` measuring against the full proposal widens the pill until
-  it sits on top of the clock and the battery. Every compact view is pinned to its intrinsic size,
-  and the bot's name is shortened in code so that size is small;
+  `compactTrailing` and `minimal` *report*, so a `Spacer()`, an `.frame(maxWidth: .infinity)` or a
+  `Text` measuring against the full proposal widens the pill until it sits on top of the clock and
+  the battery. Every compact view is pinned to its intrinsic size, and the bot's name is shortened in
+  code so that size is small. Pinning was not enough on its own: the one view that has no ideal size
+  to pin is a live timer, and that is the third block below;
 * **a glance answers "which bot" and "what did it say".** Compact carries the bot's name; the
   expanded island and the lock-screen card carry the first line or two of the reply, which is a
   field on `ContentState` and is flattened and capped by the type, not by each view.
@@ -36,10 +38,30 @@ And one rule from the screenshot after it — a lock-screen card that was a pale
   `streamingText`, `update` is called when it changes, and both the initialiser and the decoder end
   at a neutral word so no caller and no older activity can put a blank line on the lock screen.
 
+And three rules from the screenshots after that — a pill again two-thirds of the phone wide, a card
+that vanished seconds after it appeared, and a blank gold panel while the turn ran:
+
+* **no clock in this feature is a live timer.** `Text(date, style: .timer)` is the one view that
+  cannot be pinned: it has to be able to render any elapsed value, so the layout hands it the width
+  it proposed and `.fixedSize(horizontal:)` pins a size the text does not have. In the compact
+  trailing slot that widened the island to ~82% of the screen — the mark and the name hugged at the
+  leading edge of a mostly empty pill — and on the Lock Screen the same view took the row's width and
+  squeezed the name and the step line to nothing, which is the blank panel. `HermeyTurnElapsed`
+  formats the number; a formatted string's width is its digits;
+* **the card stays until the owner removes it.** `end(_:dismissalPolicy:)` is the only call that can
+  take a card away, and even `.default` clears the Dynamic Island and keeps only the Lock Screen copy.
+  So the coordinator has no `end(` at all: a finished turn is an update to `.done`, `staleAfter` is
+  the system's own eight-hour ceiling rather than thirty minutes, and a new turn re-points the card
+  that is already up. A leftover from a dead process is told the truth (retired to `Done`), not yanked;
+* **the card is the system's glass, with words on it from the first frame.** No
+  `activityBackgroundTint` — that tint was the gold panel — and the ink is the system's
+  `.primary`/`.secondary` so it is legible on glass in either appearance, with amber only on the
+  glyph. The step line is drawn for *every* phase, not only once the reply lands.
+
 What a real device has to confirm (it cannot be asserted here): that the extension is embedded and
 signed, that the compact pill sits inside the notch's width instead of over the status bar, that the
-island's compact trailing timer is not clipped, and that ending with `.after(6s)` is long enough to
-read "Done" and a snippet on the lock screen.
+card reads as glass rather than a filled panel, and that the finished card is still there after the
+phone has been locked and unlocked an hour later.
 """
 
 from __future__ import annotations
@@ -60,6 +82,8 @@ PLIST = PLIST_PATH.read_text(encoding="utf-8") if PLIST_PATH.exists() else ""
 PROJECT = (ROOT / "project.yml").read_text(encoding="utf-8")
 COORDINATOR = (ROOT / "Apps" / "HermesMobile" / "Views" / "LiveActivityCoordinator.swift").read_text(encoding="utf-8")
 APP_MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
+# The shell that owns the coordinator. Read only to prove it does nothing else with it.
+SHELL = (ROOT / "Apps" / "HermesMobile" / "HermesMobileApp.swift").read_text(encoding="utf-8")
 
 
 def braced(source: str, start: int) -> str:
@@ -103,6 +127,20 @@ def piece(declaration: str) -> str:
     return braced(WIDGET, WIDGET.index(declaration))
 
 
+def code(source: str) -> str:
+    """A Swift source with its `//` comments stripped.
+
+    Every guard here is about what *runs*: the file's comments name the very modifiers the guards
+    forbid (`.timer`, `activityBackgroundTint`), because the reason a rule exists belongs next to the
+    rule. Stripping comments is what lets both be true.
+    """
+    kept = []
+    for line in source.splitlines():
+        marker = line.find("//")
+        kept.append(line if marker == -1 else line[:marker])
+    return "\n".join(kept)
+
+
 class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
     def test_the_attributes_are_declared_once(self) -> None:
         # The app asks for an activity and the extension draws it, so both must compile the *same*
@@ -122,10 +160,14 @@ class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
         self.assertEqual(len(re.findall(r"\bcase \w+", phase)), 2)
 
     def test_elapsed_time_is_a_date_not_a_measured_number(self) -> None:
-        # A stored duration freezes at whatever the app last sent; a date lets the system's own
-        # clock count, which is why the app sends one update per turn instead of one per second.
+        # A stored duration freezes at whatever the app last sent, so the state carries the date the
+        # turn began and the view formats the difference.
         self.assertIn("public var startedAt: Date", ATTRIBUTES)
-        self.assertIn("Text(state.startedAt, style: .timer)", WIDGET)
+        label = piece("private struct HermeyTurnElapsedLabel: View")
+        self.assertIn("HermeyTurnElapsed.short(from: state.startedAt", label)
+        # …and not with `Text(_, style: .timer)`, which is the width bug: a live timer is offered
+        # the proposal and reports it back, pinning nothing.
+        self.assertNotIn(".timer", code(WIDGET))
 
     def test_the_bot_name_travels_in_the_attributes(self) -> None:
         # One turn belongs to one bot from start to finish, so the name is fixed at request time.
@@ -166,8 +208,10 @@ class EveryPresentationHasAView(unittest.TestCase):
     def test_the_lock_screen_card_is_the_content_builder(self) -> None:
         content = WIDGET[WIDGET.index("ActivityConfiguration(for:"):WIDGET.index("} dynamicIsland:")]
         self.assertIn("HermeyTurnLockScreen(", content)
-        # A tint on the canvas, not a colour of its own: the lock-screen card is the app's paper.
-        self.assertIn(".activityBackgroundTint(HermeyTurnInk.canvas)", content)
+        # No fill of ours: the card is the system's glass, and the tint that was here was the gold
+        # panel the owner screenshotted. Amber survives only as the system-action accent.
+        self.assertNotIn("activityBackgroundTint", code(WIDGET))
+        self.assertIn(".activitySystemActionForegroundColor(HermeyTurnAccent.amber)", content)
 
     def test_the_state_picks_the_glyph_and_the_sentence(self) -> None:
         # Working → an in-progress bubble and a tick when it is over. The words are the state's now
@@ -185,33 +229,41 @@ class EveryPresentationHasAView(unittest.TestCase):
         self.assertIn('"Still waiting on \\(botName)"', WIDGET)
 
 
-class ThePaletteIsTheApps(unittest.TestCase):
-    def test_only_the_theme_s_two_colours_and_its_ink(self) -> None:
-        # `Theme.carbon`: accent #CC6543, canvas #FAF9F5, ink #141413. The extension cannot import
-        # `HermeyUI` (see above), so the values are restated — the same values, not a second palette.
+class ThePaletteIsTheAccentAndTheSystemsInk(unittest.TestCase):
+    def test_the_only_literal_colour_is_the_theme_s_accent(self) -> None:
+        # `Theme.carbon`: accent #CC6543. The extension cannot import `HermeyUI` (see above), so the
+        # value is restated — one value, and it is an *accent*: the glyph, the keyline, the system
+        # action tint. Nothing in this feature paints a background any more.
         self.assertIn("0xCC6543", WIDGET)
-        self.assertIn("0xFAF9F5", WIDGET)
         found = set(re.findall(
             r"Color\(\.sRGB, red: (\d+) / 255, green: (\d+) / 255, blue: (\d+) / 255", WIDGET))
-        self.assertEqual(found, {("204", "101", "67"), ("250", "249", "245"), ("20", "20", "19")})
+        self.assertEqual(found, {("204", "101", "67")})
 
-    def test_the_island_borrows_none_of_the_cards_ink(self) -> None:
-        # The island is near-black in *both* appearances while the lock-screen card is pinned to
-        # light paper, so a shared text colour is dark-on-dark in one of the two places. The tone
-        # is what keeps one palette legible on both surfaces.
+    def test_the_card_has_no_fill_of_its_own(self) -> None:
+        # The pale gold panel was `activityBackgroundTint` — a pinned light canvas painted over the
+        # system's glass — and the near-black-on-paper ink that only made sense on top of it. Both
+        # are gone: the card is glass, and its words are the system's own ink.
+        body = code(WIDGET)
+        for gone in ("activityBackgroundTint", "HermeyTurnInk", "0xFAF9F5"):
+            self.assertNotIn(gone, body, f"the card still paints {gone}")
+
+    def test_every_word_on_the_glass_is_the_systems_own_ink(self) -> None:
+        tone = piece("private enum HermeyTurnTone")
+        self.assertIn("case .card: return .primary", tone)
+        self.assertIn("case .card: return .secondary", tone)
+        # …while the island, black in both appearances, is pinned white: `primary`/`secondary` on it
+        # resolve to the system's dark-on-dark pair.
+        self.assertIn("case .island: return Color.white", tone)
+        self.assertIn("Color.white.opacity(0.72)", tone)
+        # Centre (name + step), trailing (elapsed) and the bottom snippet: every island piece that
+        # prints names the island's tone.
         island = WIDGET[WIDGET.index("} dynamicIsland:"):WIDGET.index("// MARK: - Pieces")]
-        self.assertNotIn("HermeyTurnInk.ink", island)
-        # Clock (expanded trailing), the status line and the snippet (expanded bottom), and the
-        # compact trailing clock: every island piece that prints names a tone, and each one is the
-        # island's own.
-        self.assertEqual(island.count("tone: .island"), 4)
-        self.assertIn("case island", WIDGET)
-        self.assertIn(".white", WIDGET)
+        self.assertEqual(island.count("tone: .island"), 3)
 
     def test_no_asset_catalogue_or_remote_image_is_involved(self) -> None:
         # Live Activity snapshots get a small memory budget and no async image loading worth the
         # complexity; the card is text and SF Symbols.
-        for forbidden in ("Image(\"", "AsyncImage", "UIImage", "Image(uiImage"):
+        for forbidden in ('Image("', "AsyncImage", "UIImage", "Image(uiImage"):
             self.assertNotIn(forbidden, WIDGET, forbidden)
 
 
@@ -231,27 +283,59 @@ class TheCoordinatorRidesTheModelsExistingState(unittest.TestCase):
         self.assertLess(sink.index("self.begin()"), sink.index("self.finish()"))
 
     def test_a_second_turn_updates_instead_of_stacking(self) -> None:
-        # `Activity.request` stacks a second island happily, and the one nobody ended is a leak on
-        # the owner's lock screen until it goes stale.
+        # `Activity.request` stacks a second island happily. A turn that begins while a card is up —
+        # a working one, or the `Done` card the last turn left showing — re-points that card.
         begin = body("private func begin()")
-        self.assertIn("if let activity {", begin)
-        self.assertIn("await activity.update(", begin)
+        self.assertIn("if let current = activity,", begin)
+        self.assertIn("current.activityState == .active || current.activityState == .stale", begin)
+        self.assertIn("push(content, to: current)", begin)
+        # A card the owner swiped away is not a card to update: the handle is dropped, and the one
+        # `request` in this file makes a fresh one.
+        self.assertIn("activity = nil", begin)
         self.assertEqual(COORDINATOR.count("Activity.request("), 1)
 
-    def test_it_ends_the_card_with_the_reply(self) -> None:
+    def test_a_card_left_by_another_process_is_adopted_not_stacked(self) -> None:
+        # After a relaunch the handle is gone but the card may still be on screen; adopting it is the
+        # difference between one island and two.
+        begin = body("private func begin()")
+        self.assertIn("Activity<HermeyTurnAttributes>.activities.first", begin)
+        self.assertIn("$0.attributes.botName == name", begin)
+        self.assertIn("push(content, to: lingering)", begin)
+
+    def test_it_finishes_the_card_with_the_reply_and_leaves_it_up(self) -> None:
         finish = body("private func finish()")
         self.assertIn("phase: .done", finish)
-        self.assertIn("dismissalPolicy: .after(", finish)
-        self.assertIn("Self.doneLinger", finish)
+        self.assertIn("replySnippet: replySnippet()", finish)
+        self.assertIn("step: Self.doneWords", finish)
+        self.assertIn("staleDate: nil", finish)
+        # Not ended: `end` is what removes a card from the island, and the island keeps saying
+        # "Done" until the owner takes it away.
+        self.assertNotIn(".end(", finish)
+        # The handle survives the turn, so the next one re-points this same card.
+        self.assertNotIn("activity = nil", finish)
 
-    def test_termination_leaves_nothing_behind(self) -> None:
-        # Activities outlive the process. `endAll` is the sweep at attach, and the same verb a shell
-        # calls from a termination callback; `.immediate` because no turn is behind the card.
-        sweep = body("func endAll()")
+    def test_termination_retires_rather_than_ends(self) -> None:
+        # Activities outlive the process. The sweep at attach names every card of this type and
+        # *updates* it to a finished state — it never ends one, so a launch cannot take a card the
+        # owner is looking at off his Lock Screen.
+        sweep = body("func retireLeftovers()")
         self.assertIn("Activity<HermeyTurnAttributes>.activities", sweep)
-        self.assertIn("dismissalPolicy: .immediate", sweep)
+        self.assertIn("await leftover.update(content)", sweep)
+        self.assertIn("phase: .done", sweep)
+        self.assertNotIn(".end(", sweep)
         attach = body("func attach(to model: AppModel)")
-        self.assertIn("endAll()", attach)
+        self.assertIn("retireLeftovers()", attach)
+
+    def test_a_new_turn_waits_for_the_sweep(self) -> None:
+        # The sweep at attach is asynchronous, so a turn that begins in the same launch waits for
+        # it: otherwise a `Done` write could land on top of the new turn's `Working` and the whole
+        # turn would read as finished.
+        push = body("private func push(")
+        self.assertIn("let pending = retirement", push)
+        self.assertIn("await pending?.value", push)
+        self.assertIn("await card.update(content)", push)
+        for transition in ("private func begin()", "private func finish()", "private func progress()"):
+            self.assertIn("push(content, to: ", body(transition), transition)
 
     def test_the_name_is_the_selected_bots(self) -> None:
         self.assertIn("model?.selectedBot?.displayName", body("private func begin()"))
@@ -312,7 +396,7 @@ class ItDegradesInsteadOfCrashing(unittest.TestCase):
     def test_another_platform_gets_a_silent_stub(self) -> None:
         stub = COORDINATOR[COORDINATOR.index("#else"):]
         self.assertIn("final class LiveActivityCoordinator: ObservableObject", stub)
-        self.assertIn("func endAll()", stub)
+        self.assertIn("func retireLeftovers()", stub)
         self.assertIn("not available on this platform", stub)
 
 
@@ -346,23 +430,40 @@ class TheIslandStaysSmall(unittest.TestCase):
     """Compact slots report their size; the island widens to whatever comes back."""
 
     def test_no_compact_slot_proposes_a_width(self) -> None:
-        # 0.1.618's pill was 249 pt of black over the status bar. These three slots are the only
-        # places that can ask for that, so none of them may contain something that stretches.
+        # These three slots are the only places that can ask for the pill's width, so none of them
+        # may contain something that stretches: a `Spacer` or an infinite frame here is the whole
+        # 323 pt pill, and the content that hugs the leading edge of it is what the owner saw.
         for name in ("compactLeading", "compactTrailing", "minimal"):
             content = compact(name)
-            for forbidden in ("Spacer", "maxWidth: .infinity", "GeometryReader",
+            for forbidden in ("Spacer", "maxWidth", "GeometryReader",
                               "frame(width:", "frame(minWidth:", "frame(idealWidth:"):
                 self.assertNotIn(forbidden, content, f"{name} proposes a width: {forbidden}")
 
+    def test_no_presentation_draws_a_live_timer(self) -> None:
+        # The finding behind the 323 pt pill: `Text(_, style: .timer)` cannot be pinned, because it
+        # must be able to render any elapsed value — it takes the proposal it is offered, and the
+        # island (and the Lock Screen row) obey. `.fixedSize(horizontal:)` does not help a view that
+        # has no fixed size to pin. The elapsed number is a formatted string here instead.
+        self.assertNotIn(".timer", code(WIDGET))
+        self.assertIn("HermeyTurnElapsed.short(from: state.startedAt", WIDGET)
+        # …and the formatter is the same one the finished card freezes with.
+        elapsed = piece("private enum HermeyTurnElapsed")
+        self.assertIn("String(format:", elapsed)
+        self.assertIn("finishedAt ?? Date()", piece("private struct HermeyTurnElapsedLabel: View"))
+
     def test_every_compact_view_pins_its_intrinsic_size(self) -> None:
-        # `.fixedSize()` is the modifier that stops a `Text` filling the island's proposal; without
-        # it the trailing timer was measured against the whole compact width and the island obeyed.
+        # `.fixedSize()` is the modifier that stops a `Text` filling the island's proposal — and it
+        # belongs on the *region's* outermost view, not only inside the piece it draws: a `Group`
+        # with a branch is not a size, and a slot cannot see through one.
         self.assertIn(".fixedSize()", compact("minimal"))
+        self.assertIn(".fixedSize()", compact("compactTrailing"))
+        self.assertIn(".fixedSize()", compact("compactLeading"))
         lead = piece("private struct HermeyTurnCompactLead: View")
         self.assertIn(".fixedSize()", lead)
         self.assertNotIn("Spacer", lead)
-        self.assertIn(".fixedSize(horizontal: true, vertical: false)",
-                      piece("private struct HermeyTurnClock: View"))
+        label = piece("private struct HermeyTurnElapsedLabel: View")
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)", label)
+        self.assertIn(".monospacedDigit()", label)
 
     def test_compact_leading_names_the_bot(self) -> None:
         # A glance has to answer "which bot"; the screenshot answered nothing.
@@ -380,18 +481,32 @@ class TheIslandStaysSmall(unittest.TestCase):
         self.assertIn('"\u2026"', names)
         self.assertIn("whereSeparator: \\.isWhitespace", names)
 
-    def test_compact_trailing_is_only_the_clock(self) -> None:
-        # The trailing slot holds a few monospaced digits and nothing that can grow.
+    def test_compact_trailing_is_the_elapsed_number_and_nothing_else(self) -> None:
+        # The trailing slot holds a few monospaced digits and nothing that can grow: no name, no
+        # snippet, no stack that could take the proposal.
         content = compact("compactTrailing")
-        self.assertIn("HermeyTurnClock(state: context.state, compact: true, tone: .island)", content)
+        self.assertIn("HermeyTurnElapsedLabel(state: context.state, tone: .island)", content)
         self.assertNotIn("botName", content)
         self.assertNotIn("replySnippet", content)
+        self.assertNotIn("HStack", content)
+        self.assertNotIn("VStack", content)
 
     def test_the_expanded_island_cannot_stretch_either(self) -> None:
-        # The expanded island is the system's to size, but a spacer in it is still a view whose only
-        # job is to take room the card does not need.
+        # The expanded island is the system's to size, but a spacer or an infinite frame in it is
+        # still a view whose only job is to take room the card does not need.
         island = WIDGET[WIDGET.index("} dynamicIsland:"):WIDGET.index("// MARK: - Pieces")]
         self.assertNotIn("Spacer", island)
+        self.assertNotIn("maxWidth", code(island))
+
+    def test_the_expanded_island_balances_its_content(self) -> None:
+        # Left: the mark. Centre: the bot and the step. Trailing: the elapsed number. Bottom: the
+        # reply, once there is one. Three pieces of content, one at each edge, and nothing that
+        # asks the island to be wider than the three of them.
+        self.assertIn("HermeyTurnExpandedCenter(state: context.state", region("center"))
+        self.assertIn("HermeyTurnElapsedLabel(state: context.state, tone: .island)", region("trailing"))
+        for name in ("leading", "center", "trailing"):
+            self.assertNotIn("Spacer", region(name))
+            self.assertNotIn("maxWidth", region(name))
 
 
 class TheReplyHasItsOwnField(unittest.TestCase):
@@ -434,10 +549,13 @@ class TheReplyHasItsOwnField(unittest.TestCase):
 
 
 class TheCoordinatorHandsTheReplyOver(unittest.TestCase):
-    def test_the_snippet_is_passed_when_the_card_ends(self) -> None:
+    def test_the_snippet_is_passed_when_the_card_finishes(self) -> None:
         finish = body("private func finish()")
         self.assertIn("replySnippet: replySnippet()", finish)
-        self.assertLess(finish.index("replySnippet: replySnippet()"), finish.index("activity.end("))
+        # Handed to the same update that carries the `Done` state, and before it: the snippet is
+        # built from the stream the model has already cleared, so it has to be read here.
+        self.assertLess(finish.index("replySnippet: replySnippet()"),
+                        finish.index("push(content, to: activity)"))
 
     def test_the_reply_is_read_while_it_streams(self) -> None:
         # `finish` runs after the model has emptied `streamingText`, so the words have to be copied
@@ -457,6 +575,99 @@ class TheCoordinatorHandsTheReplyOver(unittest.TestCase):
     def test_the_name_is_short_before_it_is_drawn_here_too(self) -> None:
         # The island's own shortening is a display rule; the coordinator still sends the real name.
         self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
+
+
+class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
+    """The blank gold panel: a fill of ours, and no legible line on it until the reply landed.
+
+    Two things made it blank, and both are pinned here. The card painted
+    `activityBackgroundTint(canvas)` — a pinned light paper — and its ink was pinned to match
+    (`HermeyTurnInk`, near-black on cream), so the panel was the palette rather than the system's
+    glass. And the row's trailing number was a live `Text(_, style: .timer)`, the one view that takes
+    the width it is offered: it took the row, and the name and the step line were squeezed out of it
+    until the turn ended and a formatted string replaced it.
+    """
+
+    def test_the_working_card_draws_the_step_line(self) -> None:
+        card = piece("private struct HermeyTurnLockScreen: View")
+        self.assertIn(
+            "HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
+            card)
+        # Unconditionally: nothing in the card's body branches on the phase, so the sentence saying
+        # what the bot is doing is drawn from the first second of the turn, not only at `Done`.
+        self.assertNotIn("phase == .done", card)
+        self.assertNotIn("if state.", card)
+
+    def test_the_step_line_keeps_its_height_and_its_width(self) -> None:
+        status = piece("private struct HermeyTurnStatusLine: View")
+        # Vertical fixed size: the row can never be compressed to a height of nothing.
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", status)
+        card = piece("private struct HermeyTurnLockScreen: View")
+        # …and the column of words outranks the trailing number for width.
+        self.assertIn(".layoutPriority(1)", card)
+        self.assertLess(card.index(".layoutPriority(1)"), card.index("Spacer(minLength: 8)"))
+
+    def test_no_tint_and_no_light_paper_ink(self) -> None:
+        body = code(WIDGET)
+        for gone in ("activityBackgroundTint", "HermeyTurnInk"):
+            self.assertNotIn(gone, body, f"the card still paints {gone}")
+        # Amber survives only where it is an accent: the mark and the status symbol.
+        self.assertIn("foregroundStyle(HermeyTurnAccent.amber)", WIDGET)
+
+    def test_the_expanded_island_says_what_the_bot_is_doing_too(self) -> None:
+        center = piece("private struct HermeyTurnExpandedCenter: View")
+        self.assertIn(
+            "HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .island)",
+            center)
+
+
+class ItStaysUntilTheOwnerRemovesIt(unittest.TestCase):
+    """`end(_:dismissalPolicy:)` is the only call that takes a card away — and it is not called.
+
+    The old `finish` ended with `.after(Date() + 6)`, which is exactly "it disappears seconds after
+    it appears", and `endAll` ended leftovers with `.immediate`, which is a launch taking the card
+    out from under him. Even `.default` would clear the Dynamic Island immediately and keep only the
+    Lock Screen copy, so the card is never ended at all: the turn's last word is an *update*.
+    """
+
+    def test_nothing_in_the_coordinator_ends_a_card(self) -> None:
+        body = code(COORDINATOR)
+        for forbidden in (".end(", "dismissalPolicy", ".immediate", "doneLinger"):
+            self.assertNotIn(forbidden, body, f"the coordinator still ends the card: {forbidden}")
+
+    def test_any_end_call_site_would_have_to_be_default(self) -> None:
+        # The shape a future removal must take, if one is ever added: `.default`, never `.immediate`
+        # and never a short `.after`. Today there are no call sites, which is the strongest form.
+        self.assertEqual(re.findall(r"dismissalPolicy: ([^\n)]+)", code(COORDINATOR)), [])
+
+    def test_the_stale_date_is_the_systems_own_ceiling(self) -> None:
+        found = re.search(r"static let staleAfter: TimeInterval = ([0-9 *]+)", COORDINATOR)
+        if found is None:
+            self.fail("staleAfter is gone, so nothing bounds a dead card")
+        expression = found.group(1).strip()
+        self.assertGreaterEqual(eval(expression, {"__builtins__": {}}), 8 * 60 * 60)
+
+    def test_a_finished_card_is_never_stale(self) -> None:
+        finish = body("private func finish()")
+        self.assertIn("ActivityContent(state: state, staleDate: nil)", finish)
+
+    def test_no_scene_or_background_path_touches_the_card(self) -> None:
+        # A card must not go away because the phone was locked, the app was backgrounded or the
+        # socket reconnected: those are the moments a turn most needs to stay readable.
+        body = code(COORDINATOR)
+        for forbidden in ("scenePhase", "didEnterBackground", "willResignActive",
+                          "didBecomeActive", "onDisappear", "reconnect", "suspend"):
+            self.assertNotIn(forbidden, body, f"the card is touched on {forbidden}")
+
+    def test_the_shell_only_ever_attaches_it(self) -> None:
+        # The coordinator is the card's whole lifecycle. A second entry point in the shell — a
+        # termination callback, a scene change — is a second way for the card to disappear.
+        self.assertEqual(re.findall(r"liveActivity\.\w+", SHELL), ["liveActivity.attach"])
+
+    def test_a_turn_that_never_started_never_creates_one(self) -> None:
+        self.assertIn("guard ActivityAuthorizationInfo().areActivitiesEnabled else", COORDINATOR)
+        self.assertIn("note(\"no card: Live Activities are turned off for Hermey in Settings\")", COORDINATOR)
+        self.assertEqual(COORDINATOR.count("Activity.request("), 1)
 
 
 class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
@@ -481,7 +692,10 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         # turn whose first token is slow would otherwise be a wordless card for its whole run.
         self.assertIn("let startStep = normalisedStep()", begin)
         self.assertLess(begin.index("let startStep"), begin.index("Activity.request("))
-        self.assertEqual(begin.count("step: startStep"), 2)  # the request, and the re-point update
+        # One state for every path — the request, the re-point of a live card, and the adoption of
+        # one left by another process — so no branch can push a wordless frame.
+        self.assertEqual(begin.count("step: startStep"), 1)
+        self.assertIn("let content = ActivityContent(state: state,", begin)
         # …and the type cannot be handed an empty one: `stepLine` ends at the neutral word.
         init = ATTRIBUTES[ATTRIBUTES.index("public init(phase: Phase"):ATTRIBUTES.index("/// The step, flattened")]
         self.assertIn("self.step = Self.stepLine(step, phase: phase)", init)
@@ -539,7 +753,7 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
             self.assertIn(source, attach)
         self.assertIn("self.progress()", attach)
         progress = body("private func progress()")
-        self.assertIn("await activity.update(", progress)
+        self.assertIn("push(content, to: activity)", progress)
         self.assertIn("phase: .working", progress)
         # Normalised before it is compared, so a token that does not change the line is not an
         # update — otherwise a streaming reply costs one activity write per token.
