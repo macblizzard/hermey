@@ -210,8 +210,9 @@ host, so they survive a reinstall.
 ## Live Activity and the Dynamic Island
 
 While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
-card naming the bot and how long it has been running. When the turn ends the same card holds for about
-six seconds with the first ~120 characters of the reply, then goes.
+card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how
+long it has been running. When the turn ends the same card holds for about six seconds saying "Done"
+with the first ~120 characters of the reply, then goes.
 
 - **One card per turn.** A second turn updates the card that is already up instead of stacking another.
 - **Leftovers are swept.** A card outlives the process that made it, so one left by a quit mid-turn is
