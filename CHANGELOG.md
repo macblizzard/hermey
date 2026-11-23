@@ -1097,3 +1097,20 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Added
 - **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,
   so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.
+
+## [0.1.631] — 2026-11-23
+
+### Changed
+- **The pet's balloon keeps the conversation.** Closing it no longer throws the last question and answer
+  away: reopen and it is still there, selectable and copyable. A **New** button sits beside **Copy** — only
+  when there is something to clear — and starts a fresh ask.
+- **It no longer covers the pet.** The bubble seats above-right of the icon, falls back to above-left and
+  then above, and never overlaps the pet; the tail root lands on the pet's edge rather than the bubble's
+  middle.
+- **Eyes.** The face gets pupils that drift left and right every few seconds and a blink whose eyelid band
+  closes over the shipped eye bars — on its own cycle and when you click the pet. Reduce Motion stops the
+  drift and gentles the rest.
+- **Dragging tracks the cursor.** The window follows each mouse-drag event directly instead of animating,
+  so it no longer lags behind the pointer.
+- **Much more see-through.** The callout is now 70% transparent — a thin material with white at 0.16 over
+  it — with a faint text shadow so the ink still reads on a busy wallpaper.
