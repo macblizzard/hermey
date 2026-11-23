@@ -142,9 +142,17 @@ struct PetBalloonView: View {
         }
         .padding(14)
         .frame(width: Self.width)
+        // Translucent on purpose: the balloon sits over whatever the desktop happens to be — a photo,
+        // a dark editor, a bright page — and a solid sheet looks pasted on. The material blurs what is
+        // behind it, the theme colour tints it just enough to keep the text readable, and the stroke
+        // stays the only hard edge.
         .background(
             RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                .fill(Tokens.sheet)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                        .fill(Tokens.sheet.opacity(0.72))
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
