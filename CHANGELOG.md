@@ -1013,3 +1013,19 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   document itself changes, so a redraw cannot eat what you are writing.
 - A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no
   `email` block renders exactly as before.
+
+## [0.1.624] — 2026-11-23
+
+### Fixed
+- **The Mac's conversation pane stops fighting the reader.** Two faults in the code that holds your
+  place while older messages load:
+  - the position was armed whenever the transcript merely *grew and its first row changed* — which is
+    what a resume looks like — so the pane scrolled although nothing had been inserted above you. The
+    guess is gone; only a real "load earlier" arms it now.
+  - one page could move the pane several times, because the lazy list re-measures itself as it lays
+    out and every re-measure applied the correction again. A prepend now corrects once.
+- **If it still moves, the log says why.** New `paging · anchor …` lines record when the hold was armed
+  (and from which signal), corrected by how much, released, or — the important one — that a size change
+  happened with no hold at all.
+
+iPhone was never affected: it has no such hold, which is exactly why it felt smooth.
