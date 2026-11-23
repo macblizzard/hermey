@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "HermesRender", targets: ["HermesRender"]),
         .library(name: "HermesAppKit", targets: ["HermesAppKit"]),
         .library(name: "HermesA2UI", targets: ["HermesA2UI"]),
+        .library(name: "HermesCards", targets: ["HermesCards"]),
     ],
     dependencies: [
         // Agent-driven UI: the official A2UI Swift renderer. Pinned to the last Swift release
