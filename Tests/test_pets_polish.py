@@ -346,14 +346,19 @@ class ThePetFloats(unittest.TestCase):
         self.assertIn("backgroundColor = .clear", PANEL)
 
     def test_the_shadow_is_not_hit_area(self):
-        # The mask decides, and it knows nothing about anything drawn outside the ink.
+        # The mask decides — and now the badge box with it — and neither knows anything about the
+        # shadow: a picture around the pet is not the pet.
         hit = PANEL.split("override func hitTest", 1)[1].split("override func acceptsFirstMouse", 1)[0]
         self.assertIn("guard let iconMask", hit)
-        self.assertIn("iconMask.hasInk(at: iconPoint)", hit)
+        self.assertIn("hasTarget(at: iconPoint)", hit)
         self.assertNotIn("shadow", hit.lower(),
                          "the hit test cannot know the shadow exists")
-        self.assertIn("pet.hitView.iconMask?.hasInk(at: local) == true", CONTROLLER,
-                      "the window-level pass-through still asks the alpha mask")
+        shape = PANEL.split("func hasTarget(at iconPoint: CGPoint) -> Bool {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("iconMask.hasInk(at: iconPoint)", shape,
+                      "the icon's alpha is still the boundary between the pet and the desktop")
+        self.assertNotIn("shadow", shape.lower())
+        self.assertIn("pet.hitView.hasTarget(at: local)", CONTROLLER,
+                      "the window-level pass-through asks the same shape the view answers")
         self.assertNotIn("DragGesture", VIEW,
                          "the drag is AppKit's now, so the view has no gesture shape to declare")
         self.assertIn("contentShape(RoundedRectangle(cornerRadius: Tokens.radiusControl",

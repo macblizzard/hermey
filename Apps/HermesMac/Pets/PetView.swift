@@ -20,6 +20,13 @@ final class PetModel: ObservableObject {
     /// can move the window with no layout pass); this counter is how that event reaches the view's
     /// own state without the panel knowing anything about SwiftUI.
     @Published var taps = 0
+    /// How many of this bot's turns are waiting: `AppModel`'s own count, shown. Zero means no badge
+    /// at all, which is the same thing the app's list means by zero.
+    @Published private(set) var unread = 0
+    /// Bumped when the badge appeared while the owner could not see the window: one hop, the move a
+    /// pet already makes for an answer. A counter for the same reason `celebrations` is one — two
+    /// replies in a row are two hops, not one.
+    @Published private(set) var notices = 0
 
     /// The answer landed: hop, unless Reduce Motion says otherwise (checked by the view).
     func celebrate() {
@@ -29,6 +36,20 @@ final class PetModel: ObservableObject {
     /// The pet was clicked: blink, look, and hop.
     func tap() {
         taps += 1
+    }
+
+    /// Take the bot's unread count, and hop once if it grew while the window was away.
+    ///
+    /// The decision is made by the caller (the controller knows the window; this model does not),
+    /// so the two facts are passed together and the count is never applied without one. Returns
+    /// true only for the case that hops, which is what the controller logs.
+    @discardableResult
+    func setUnread(_ count: Int, hopWhenAway: Bool) -> Bool {
+        let grew = count > unread
+        unread = count
+        guard grew, hopWhenAway else { return false }
+        notices += 1
+        return true
     }
 
     init(botID: String, botName: String, face: String?) {
@@ -45,8 +66,12 @@ final class PetModel: ObservableObject {
 /// from its own pixels, so a transparent PNG is honoured the same way a drawn body is.
 struct PetIconMask {
     private let test: (CGPoint) -> Bool
+    /// The icon's side, kept so a caller can place something on the icon's own box: the badge's
+    /// geometry is in this space, and the hit test has to ask the same question the drawing did.
+    let side: CGFloat
 
     init(identity: String, face: String?, side: CGFloat) {
+        self.side = side
         let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: face)
         if resolved.isImage,
            let data = Self.imageData(face),
@@ -188,9 +213,17 @@ struct PetView: View {
     var body: some View {
         BotAvatarStill(identity: pet.botID, color: pet.face, size: side)
             .frame(width: side, height: side)
+            // The unread badge sits on the icon's own box, inside the transforms below: a hop
+            // carries it, and the hit test is told the same box (`PetBadge.rect`) so the dot is
+            // part of the pet rather than a picture of one.
+            .overlay(alignment: .topTrailing) {
+                if pet.unread > 0 {
+                    PetUnreadBadge(count: pet.unread)
+                }
+            }
             // It floats. The shadow is drawn inside the clear window's motion ring, under the icon's
-            // own alpha — and it is *not* hit area: clicks are decided by `PetIconMask` in
-            // `PetHitTestView`, which knows nothing about anything drawn around the ink.
+            // own alpha — and it is *not* hit area: clicks are decided by `PetIconMask` plus the
+            // badge box in `PetHitTestView`, which knows nothing about anything drawn outside both.
             .brightness(lid.lift)
             .shadow(color: .black.opacity(0.28), radius: 10, x: 0, y: 6)
             // No drawn eyes. The shipped faces already have their own — a cloud with two vertical bars
@@ -209,6 +242,7 @@ struct PetView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(pet.botName), a desktop pet")
             .accessibilityHint("Click to ask this bot a question")
+            .accessibilityValue(pet.unread > 0 ? "\(pet.unread) waiting" : "")
             .accessibilityAddTraits(.isButton)
             // The pet takes a drag with the pointer; the menu is the one thing SwiftUI still owns.
             .contextMenu {
@@ -224,6 +258,13 @@ struct PetView: View {
             .task(id: pet.isVisible) { await gazeLoop() }
             // An answer is worth a hop — the one move the pet makes on someone else's cue.
             .onChange(of: pet.celebrations) { _, _ in
+                guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+                Task { await play(.hop) }
+            }
+            // A reply that landed while the window was minimised or hidden: the same hop the pet
+            // already makes for an answer, because the same thing happened. It is the only reaction
+            // the badge gets — the balloon waits for the click, and nothing pops by itself.
+            .onChange(of: pet.notices) { _, _ in
                 guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
                 Task { await play(.hop) }
             }
