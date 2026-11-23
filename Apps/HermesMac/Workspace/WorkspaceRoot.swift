@@ -172,6 +172,11 @@ struct WorkspaceRoot: View {
                 BotNotesSheet(botName: bot.displayName,
                               load: { try await store.model.notes(for: bot.id) },
                               save: { try await store.model.saveNotes($0, for: bot.id) })
+            case .soul(let bot):
+                SoulEditorSheet(
+                    botName: bot.displayName,
+                    load: { try await store.model.describeBot(bot.id).soul },
+                    save: { try await store.model.saveSoul($0, for: bot.id) })
             case .model(let bot):
                 MacModelSheet(model: store.model,
                               store: store,
@@ -232,6 +237,7 @@ struct WorkspaceRoot: View {
         case routines(Bot)
         case model(Bot)
         case notes(Bot)
+        case soul(Bot)
         case botSettings(Bot)
         case logs
         case pairInvite
@@ -245,6 +251,7 @@ struct WorkspaceRoot: View {
             case .routines(let bot): return "routines:\(bot.id)"
             case .model(let bot): return "model:\(bot.id)"
             case .notes(let bot): return "notes:\(bot.id)"
+            case .soul(let bot): return "soul:\(bot.id)"
             case .botSettings(let bot): return "bot-settings:\(bot.id)"
             case .logs: return "logs"
             case .pairInvite: return "pair-invite"
@@ -267,6 +274,7 @@ struct WorkspaceRoot: View {
                 if let bot = store.routinesBot { return .routines(bot) }
                 if let bot = store.modelBot { return .model(bot) }
                 if let bot = store.notesBot { return .notes(bot) }
+                if let bot = store.soulBot { return .soul(bot) }
                 if let bot = store.botSettingsBot { return .botSettings(bot) }
                 return nil
             },
@@ -281,6 +289,7 @@ struct WorkspaceRoot: View {
                 store.routinesBot = nil
                 store.modelBot = nil
                 store.notesBot = nil
+                store.soulBot = nil
                 store.botSettingsBot = nil
             }
         )
