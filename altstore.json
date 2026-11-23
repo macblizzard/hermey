@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.625",
-          "buildVersion": "625",
-          "date": "2026-11-23T10:28:23Z",
-          "localizedDescription": "### Added\n- **\u2318K opens this bot's soul.** The command palette has \"Edit this bot's soul\": one verb, one sheet, for\n  the bot on screen \u2014 no detour through settings to find the tab. Saving writes to the host, and the editor\n  still says the thing that matters: a conversation already open keeps the soul it started with until it is\n  reset.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.625/Hermey-0.1.625-b625.ipa",
-          "size": 5142785,
+          "version": "0.1.626",
+          "buildVersion": "626",
+          "date": "2026-11-23T11:31:25Z",
+          "localizedDescription": "### Added\n- **Desktop pets.** Each bot can put itself on your desktop: in that bot's settings, turn on *Show on the\n  desktop* and its own picture appears \u2014 no frame, no window background, just the icon on your wallpaper.\n  It bobs, tilts and occasionally hops; drag it anywhere and it remembers where you left it, per screen.\n- **Ask it something.** Click the pet and a balloon opens with a field. Type, press Return, and the balloon\n  shows it is thinking, then the answer \u2014 scrollable, with Copy. Escape or a click away dismisses it.\n- **Right-click \u2192 Close pet** takes it off the desktop and switches the setting off, so it is the same one\n  switch that brings it back.\n- Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a\n  rectangle of your screen.\n- Reduce Motion is respected \u2014 no hops, and a much gentler bob.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.626/Hermey-0.1.626-b626.ipa",
+          "size": 5150824,
           "minOSVersion": "17.0",
-          "sha256": "ae55775cd6d48dbfdf3677350e591a75b5e07cf9ab239a607bf959cb69ef0f06"
+          "sha256": "ae318bc3efe6b2cfd10a34e69b71d98f30b5f7419eae6cab6e3c708d1922fef8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.625 (625)",
-      "identifier": "hermes-0.1.625-625",
-      "caption": "### Added\n- **\u2318K opens this bot's soul.** The command palette has \"Edit this bot's soul\": one verb, one sheet, for\n  the bot on screen \u2014 no detour through settings to find the tab. Saving writes to the host, and the editor\n  still says the thing that matters: a conversation already open keeps the soul it started with until it is\n  reset.",
-      "date": "2026-11-23T10:28:23Z",
+      "title": "Hermes 0.1.626 (626)",
+      "identifier": "hermes-0.1.626-626",
+      "caption": "### Added\n- **Desktop pets.** Each bot can put itself on your desktop: in that bot's settings, turn on *Show on the\n  desktop* and its own picture appears \u2014 no frame, no window background, just the icon on your wallpaper.\n  It bobs, tilts and occasionally hops; drag it anywhere and it remembers where you left it, per screen.\n- **Ask it something.** Click the pet and a balloon opens with a field. Type, press Return, and the balloon\n  shows it is thinking, then the answer \u2014 scrollable, with Copy. Escape or a click away dismisses it.\n- **Right-click \u2192 Close pet** takes it off the desktop and switches the setting off, so it is the same one\n  switch that brings it back.\n- Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a\n  rectangle of your screen.\n- Reduce Motion is respected \u2014 no hops, and a much gentler bob.",
+      "date": "2026-11-23T11:31:25Z",
       "tintColor": "#9A9AA0"
     }
   ],
