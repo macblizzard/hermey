@@ -208,9 +208,11 @@ class EveryPresentationHasAView(unittest.TestCase):
     def test_the_lock_screen_card_is_the_content_builder(self) -> None:
         content = WIDGET[WIDGET.index("ActivityConfiguration(for:"):WIDGET.index("} dynamicIsland:")]
         self.assertIn("HermeyTurnLockScreen(", content)
-        # No fill of ours: the card is the system's glass, and the tint that was here was the gold
-        # panel the owner screenshotted. Amber survives only as the system-action accent.
-        self.assertNotIn("activityBackgroundTint", code(WIDGET))
+        # No fill of ours: the gold panel was a pinned canvas. What is allowed now is a whisper of
+        # white over the system's material — the owner asked for glass he can see the wallpaper
+        # through, and the tint is the only lever a Live Activity has for that.
+        self.assertNotIn("activityBackgroundTint(canvas)", code(WIDGET))
+        self.assertIn("activityBackgroundTint(Color.white.opacity(HermeyTurnGlass.lift))", code(WIDGET))
         self.assertIn(".activitySystemActionForegroundColor(HermeyTurnAccent.amber)", content)
 
     def test_the_state_picks_the_glyph_and_the_sentence(self) -> None:
@@ -244,8 +246,12 @@ class ThePaletteIsTheAccentAndTheSystemsInk(unittest.TestCase):
         # system's glass — and the near-black-on-paper ink that only made sense on top of it. Both
         # are gone: the card is glass, and its words are the system's own ink.
         body = code(WIDGET)
-        for gone in ("activityBackgroundTint", "HermeyTurnInk", "0xFAF9F5"):
+        for gone in ("HermeyTurnInk", "0xFAF9F5", ".background(Color", ".fill(Color.black"):
             self.assertNotIn(gone, body, f"the card still paints {gone}")
+        # A tint is allowed; a slab is not. The lift must stay a whisper of white over the material.
+        lift = float(WIDGET.split("static let lift: Double = ", 1)[1].split("\n", 1)[0])
+        self.assertGreater(lift, 0, "no tint at all reads as a solid dark slab on a dark wallpaper")
+        self.assertLessEqual(lift, 0.15, "more than a whisper stops being glass and becomes a panel")
 
     def test_every_word_on_the_glass_is_the_systems_own_ink(self) -> None:
         tone = piece("private enum HermeyTurnTone")
@@ -607,10 +613,13 @@ class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
         self.assertIn(".layoutPriority(1)", card)
         self.assertLess(card.index(".layoutPriority(1)"), card.index("Spacer(minLength: 8)"))
 
-    def test_no_tint_and_no_light_paper_ink(self) -> None:
+    def test_no_light_paper_ink(self) -> None:
         body = code(WIDGET)
-        for gone in ("activityBackgroundTint", "HermeyTurnInk"):
+        for gone in ("HermeyTurnInk", "0xFAF9F5"):
             self.assertNotIn(gone, body, f"the card still paints {gone}")
+        # A whisper of white over the material is allowed — the owner asked to see the wallpaper
+        # through the card — but nothing opaque may be painted under the words.
+        self.assertNotIn("activityBackgroundTint(canvas)", body)
         # Amber survives only where it is an accent: the mark and the status symbol.
         self.assertIn("foregroundStyle(HermeyTurnAccent.amber)", WIDGET)
 
