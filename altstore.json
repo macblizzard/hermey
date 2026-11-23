@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.631",
-          "buildVersion": "631",
-          "date": "2026-11-23T14:02:36Z",
-          "localizedDescription": "### Changed\n- **The pet's balloon keeps the conversation.** Closing it no longer throws the last question and answer\n  away: reopen and it is still there, selectable and copyable. A **New** button sits beside **Copy** \u2014 only\n  when there is something to clear \u2014 and starts a fresh ask.\n- **It no longer covers the pet.** The bubble seats above-right of the icon, falls back to above-left and\n  then above, and never overlaps the pet; the tail root lands on the pet's edge rather than the bubble's\n  middle.\n- **Eyes.** The face gets pupils that drift left and right every few seconds and a blink whose eyelid band\n  closes over the shipped eye bars \u2014 on its own cycle and when you click the pet. Reduce Motion stops the\n  drift and gentles the rest.\n- **Dragging tracks the cursor.** The window follows each mouse-drag event directly instead of animating,\n  so it no longer lags behind the pointer.\n- **Much more see-through.** The callout is now 70% transparent \u2014 a thin material with white at 0.16 over\n  it \u2014 with a faint text shadow so the ink still reads on a busy wallpaper.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.631/Hermey-0.1.631-b631.ipa",
-          "size": 5151445,
+          "version": "0.1.632",
+          "buildVersion": "632",
+          "date": "2026-11-23T14:42:38Z",
+          "localizedDescription": "### Fixed\n- **No more eyes drawn over the faces that already have them.** The pet's own icon carries its eyes \u2014 the\n  cloud's two vertical bars \u2014 and an overlay of horizontal eyelid shapes crossed them into a doubled,\n  T-shaped face. Nothing is painted on the art now.\n- **The blink is the body.** A deeper squash (0.74) of the whole icon, which is what a cartoon face does\n  when it blinks.\n- **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by\n  the picture itself. Reduce Motion still stops the drift.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.632/Hermey-0.1.632-b632.ipa",
+          "size": 5151446,
           "minOSVersion": "17.0",
-          "sha256": "16eebcc4218bd958a3033689cab14b240c057c8b208ca2113866e86ece024173"
+          "sha256": "00cd2846595d4eef3bf0c9076970f41c667c977acaf6103f37baeb91105247f7"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.631 (631)",
-      "identifier": "hermes-0.1.631-631",
-      "caption": "### Changed\n- **The pet's balloon keeps the conversation.** Closing it no longer throws the last question and answer\n  away: reopen and it is still there, selectable and copyable. A **New** button sits beside **Copy** \u2014 only\n  when there is something to clear \u2014 and starts a fresh ask.\n- **It no longer covers the pet.** The bubble seats above-right of the icon, falls back to above-left and\n  then above, and never overlaps the pet; the tail root lands on the pet's edge rather than the bubble's\n  middle.\n- **Eyes.** The face gets pupils that drift left and right every few seconds and a blink whose eyelid band\n  closes over the shipped eye bars \u2014 on its own cycle and when you click the pet. Reduce Motion stops the\n  drift and gentles the rest.\n- **Dragging tracks the cursor.** The window follows each mouse-drag event directly instead of animating,\n  so it no longer lags behind the pointer.\n- **Much more see-through.** The callout is now 70% transparent \u2014 a thin material with white at 0.16 over\n  it \u2014 with a faint text shadow so the ink still reads on a busy wallpaper.",
-      "date": "2026-11-23T14:02:36Z",
+      "title": "Hermes 0.1.632 (632)",
+      "identifier": "hermes-0.1.632-632",
+      "caption": "### Fixed\n- **No more eyes drawn over the faces that already have them.** The pet's own icon carries its eyes \u2014 the\n  cloud's two vertical bars \u2014 and an overlay of horizontal eyelid shapes crossed them into a doubled,\n  T-shaped face. Nothing is painted on the art now.\n- **The blink is the body.** A deeper squash (0.74) of the whole icon, which is what a cartoon face does\n  when it blinks.\n- **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by\n  the picture itself. Reduce Motion still stops the drift.",
+      "date": "2026-11-23T14:42:38Z",
       "tintColor": "#9A9AA0"
     }
   ],
