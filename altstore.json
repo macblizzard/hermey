@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.622",
-          "buildVersion": "622",
-          "date": "2026-11-23T08:33:54Z",
-          "localizedDescription": "### Added\n- **Every card kind draws now, not just approvals.** A bot's mail draft arrives as `draft-email` and used\n  to fall back to plain text, because only `approval` had a layout. Drafts now show the subject as the\n  heading, `To` and `Cc`, and a scrollable preview of the body; `task` cards show a status chip\n  (pending, running, done, error, awaiting approval \u2014 `status.label` wins when the card sets it) above\n  the body and its actions. All three kinds share the same `body[]` blocks: plain text, key/value rows\n  and labelled fields, with an empty body drawing nothing.\n- **A resolved card says what was chosen.** Once `resolved` is set, the chosen action keeps its tick, a\n  \"Resolved: \u2026\" line names it, and every other button is disabled.\n\n### Fixed\n- **A photo from the camera roll attaches.** The host's image route refuses extensions outside its own\n  list (png, jpg, jpeg, gif, webp, bmp), and an iPhone shoots HEIC \u2014 so picking a photo failed after the\n  preview with \"unsupported image extension: .heic\". HEIC and HEIF are now decoded and re-encoded as\n  JPEG at quality 0.85 before upload, ahead of the 8 MB check so the limit applies to what actually\n  travels. Anything undecodable passes through untouched, so the host's own reason is what you see.\n\n### Changed\n- **Card reads are keyed to their message.** The read now carries the message id as well as the session,\n  so two messages that name the same card keep their own snapshot instead of sharing one row.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.622/Hermey-0.1.622-b622.ipa",
-          "size": 5202222,
+          "version": "0.1.623",
+          "buildVersion": "623",
+          "date": "2026-11-23T09:19:26Z",
+          "localizedDescription": "### Changed\n- **A mail draft card is editable the moment it arrives.** No Edit step: `To`, `Cc`, `Subject` and the body\n  are fields straight away, and the card carries exactly two buttons \u2014 **Send** and **Discard**.\n- **Send posts what you typed.** The turn carries the edited headers and body, so the bot acts on your\n  version rather than the file's original. `Cc` is omitted when you leave it empty.\n- **Discard is local.** It dims the card and sends nothing; the bot's own card file is never touched.\n- **Your typing is not overwritten.** Edits live in the card's own state and are only reseeded when the\n  document itself changes, so a redraw cannot eat what you are writing.\n- A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no\n  `email` block renders exactly as before.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.623/Hermey-0.1.623-b623.ipa",
+          "size": 5142779,
           "minOSVersion": "17.0",
-          "sha256": "abf0ffa04f0f5e24f584ad8fc54c673d3b80fb63890f06eff931d4e420116cbc"
+          "sha256": "544f88aa2faed29a7743f4f9a86cfc20f00e85cfaf7238e0b3f2525b7f5033f3"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.622 (622)",
-      "identifier": "hermes-0.1.622-622",
-      "caption": "### Added\n- **Every card kind draws now, not just approvals.** A bot's mail draft arrives as `draft-email` and used\n  to fall back to plain text, because only `approval` had a layout. Drafts now show the subject as the\n  heading, `To` and `Cc`, and a scrollable preview of the body; `task` cards show a status chip\n  (pending, running, done, error, awaiting approval \u2014 `status.label` wins when the card sets it) above\n  the body and its actions. All three kinds share the same `body[]` blocks: plain text, key/value rows\n  and labelled fields, with an empty body drawing nothing.\n- **A resolved card says what was chosen.** Once `resolved` is set, the chosen action keeps its tick, a\n  \"Resolved: \u2026\" line names it, and every other button is disabled.\n\n### Fixed\n- **A photo from the camera roll attaches.** The host's image route refuses extensions outside its own\n  list (png, jpg, jpeg, gif, webp, bmp), and an iPhone shoots HEIC \u2014 so picking a photo failed after the\n  preview with \"unsupported image extension: .heic\". HEIC and HEIF are now decoded and re-encoded as\n  JPEG at quality 0.85 before upload, ahead of the 8 MB check so the limit applies to what actually\n  travels. Anything undecodable passes through untouched, so the host's own reason is what you see.\n\n### Changed\n- **Card reads are keyed to their message.** The read now carries the message id as well as the session,\n  so two messages that name the same card keep their own snapshot instead of sharing one row.",
-      "date": "2026-11-23T08:33:54Z",
+      "title": "Hermes 0.1.623 (623)",
+      "identifier": "hermes-0.1.623-623",
+      "caption": "### Changed\n- **A mail draft card is editable the moment it arrives.** No Edit step: `To`, `Cc`, `Subject` and the body\n  are fields straight away, and the card carries exactly two buttons \u2014 **Send** and **Discard**.\n- **Send posts what you typed.** The turn carries the edited headers and body, so the bot acts on your\n  version rather than the file's original. `Cc` is omitted when you leave it empty.\n- **Discard is local.** It dims the card and sends nothing; the bot's own card file is never touched.\n- **Your typing is not overwritten.** Edits live in the card's own state and are only reseeded when the\n  document itself changes, so a redraw cannot eat what you are writing.\n- A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no\n  `email` block renders exactly as before.",
+      "date": "2026-11-23T09:19:26Z",
       "tintColor": "#9A9AA0"
     }
   ],
