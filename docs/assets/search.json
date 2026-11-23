@@ -138,6 +138,30 @@
 "b": "First run Add a server: paste https://<host>.<tailnet>.ts.net \u2014 serve-root, no port. Enter the pairing code minted on the host: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
 },
 {
+"h": "The bell, and what is waiting",
+"p": "The apps",
+"u": "apps.html#the-bell-and-what-is-waiting",
+"b": "The bell, and what is waiting The top row of the bot list holds the bell and the \uff0b. The bell wears a dot, not a number, when any bot has replies this device has not read: something is waiting is what the dot says, and the list behind it is where the names and counts live. One row per bot that spoke , most waiting first"
+},
+{
+"h": "Updating from the app",
+"p": "The apps",
+"u": "apps.html#updating-from-the-app",
+"b": "Updating from the app The app checks once when it opens and does not put a window in front of you with the answer. When a newer build exists, a \u2193 button appears on the bot list's bottom bar, immediately left of search; press it and the normal download-and-install window opens. Nothing installs without that press. A ski"
+},
+{
+"h": "Reactions \u2014 one emoji, both devices",
+"p": "The apps",
+"u": "apps.html#reactions--one-emoji-both-devices",
+"b": "Reactions \u2014 one emoji, both devices A reaction is kept by the host now, not by the device that made it: react on the Mac and the phone shows it, react on the phone and the Mac shows it, live while the conversation is open. One emoji per message, stored by the host and served by GET / PUT /v1/reactions . Scoped, not glo"
+},
+{
+"h": "Desktop pets",
+"p": "The apps",
+"u": "apps.html#desktop-pets",
+"b": "Desktop pets On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon on your wallpaper, bobbing, tilting and occasionally hopping. Click it and a balloon opens with a field \u2014 type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy but"
+},
+{
 "h": "Pictures in a message",
 "p": "The apps",
 "u": "apps.html#pictures-in-a-message",
@@ -183,7 +207,7 @@
 "h": "Live Activity and the Dynamic Island",
 "p": "The apps",
 "u": "apps.html#live-activity-and-the-dynamic-island",
-"b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot and how long it has been running. When the turn ends the same card holds for about six seconds with the first ~120 characters of the reply, then goes. One card per "
+"b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how long it has been running. When the turn ends the same card holds for about six sec"
 },
 {
 "h": "How it works",
@@ -645,7 +669,7 @@
 "h": "Every route",
 "p": "Reference",
 "u": "reference.html#every-route",
-"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 98 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
+"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 99 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
 },
 {
 "h": "Versions",

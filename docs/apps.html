@@ -104,6 +104,58 @@ when the Mac wakes, which is a different thing.</p>
 <li>The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
 three-dot menu.</li>
 </ul>
+<h2 id="the-bell-and-what-is-waiting">The bell, and what is waiting</h2>
+<p>The top row of the bot list holds the bell and the ＋. The bell wears a dot, not a number, when any bot
+has replies this device has not read: <em>something is waiting</em> is what the dot says, and the list behind
+it is where the names and counts live.</p>
+<ul>
+<li><strong>One row per bot that spoke</strong>, most waiting first, each with the bot's picture, its name, how many
+replies are waiting, and the first line of its newest message. A bot with nothing waiting is not a
+row.</li>
+<li><strong>Opening a row is reading it.</strong> Picking a bot from the list opens that conversation and clears its
+badge through the same call the bot's own dot uses, so the count, the dot and the list cannot
+disagree.</li>
+<li><strong>The phone has the same bell</strong>, beside Settings, in a sheet sized to the rows it holds; the Mac draws
+it in a popover, from the bell or from ⇧⌘N.</li>
+<li><strong>The bars sit at the edges.</strong> Settings is bottom left, search and the sidebar toggle bottom right,
+and the list fades into both ends over the same 26 points so no edge cuts a row.</li>
+</ul>
+<h2 id="updating-from-the-app">Updating from the app</h2>
+<p>The app checks once when it opens and does not put a window in front of you with the answer. When a
+newer build exists, a <strong>↓</strong> button appears on the bot list's bottom bar, immediately left of search;
+press it and the normal download-and-install window opens. Nothing installs without that press.</p>
+<ul>
+<li><strong>A skipped update stays quiet.</strong> Choose Skip and the button stays away until the next launch, which
+checks again.</li>
+<li><strong>Asking for a check is unchanged.</strong> Settings → <strong>About</strong> → <em>Check for Updates…</em> goes straight to the
+same window, as does the menu bar's own item: a check you asked for is never turned into a button
+instead.</li>
+<li><strong>The launch check never opens anything.</strong> It reports the version to the bar and stops there, which
+is the window the button replaces.</li>
+</ul>
+<h2 id="reactions--one-emoji-both-devices">Reactions — one emoji, both devices</h2>
+<p>A reaction is kept by the host now, not by the device that made it: react on the Mac and the phone shows
+it, react on the phone and the Mac shows it, live while the conversation is open. One emoji per message,
+stored by the host and served by <code>GET</code> / <code>PUT /v1/reactions</code>.</p>
+<ul>
+<li><strong>Scoped, not global.</strong> The host stores a reaction under the host, the bot and the session, so the
+same message in two bots is two reactions, and one host's bots are never confused with another's.</li>
+<li><strong>What a device already had goes up once.</strong> Reactions kept locally before the host owned them are
+sent on the first run after the upgrade, so nothing is lost.</li>
+<li><strong>Unpaired, nothing changes.</strong> With no host to ask, both apps keep using their local copy exactly as
+before.</li>
+<li><strong>Drafts and pins are still per-device.</strong> Only reactions moved to the host.</li>
+</ul>
+<h2 id="desktop-pets">Desktop pets</h2>
+<p>On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon
+on your wallpaper, bobbing, tilting and occasionally hopping. Click it and a balloon opens with a field
+— type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button.
+Escape or a click elsewhere dismisses it. Drag the pet anywhere and it remembers where you left it, per
+screen; right-click → <strong>Close pet</strong> takes it off the desktop and switches off the same setting that
+brought it back. Off by default, one switch per bot in that bot's settings, and Reduce Motion is
+respected — no hops, and a gentler bob.</p>
+<p><a href="https://github.com/macblizzard/hermey/blob/main/docs/DESKTOP-PETS.md"><code>docs/DESKTOP-PETS.md</code></a> is the design it was built from: the window behaviour, the
+decisions worth stating, and the corrections the build forced.</p>
 <h2 id="pictures-in-a-message">Pictures in a message</h2>
 <p>Tapping an image in a reply opens it with every other image attached to that same message: the viewer
 opens on the one you tapped and pages to its neighbours.</p>
@@ -212,12 +264,13 @@ screen, and your own reply never rings.</li>
 <li>If a banner never appears, the first thing to check is the system permission: the app reports
 &quot;Turned off in System Settings&quot; (macOS) or offers a link straight to its iOS Settings page.</li>
 </ul>
-<p>Reactions, drafts, pins and this switch are per-device; the unread counts themselves come from the
-host, so they survive a reinstall.</p>
+<p>Drafts, pins and this switch are per-device; reactions are the host's now (see <strong>Reactions</strong> above), and
+the unread counts themselves come from the host, so they survive a reinstall.</p>
 <h2 id="live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</h2>
 <p>While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
-card naming the bot and how long it has been running. When the turn ends the same card holds for about
-six seconds with the first ~120 characters of the reply, then goes.</p>
+card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how
+long it has been running. When the turn ends the same card holds for about six seconds saying &quot;Done&quot;
+with the first ~120 characters of the reply, then goes.</p>
 <ul>
 <li><strong>One card per turn.</strong> A second turn updates the card that is already up instead of stacking another.</li>
 <li><strong>Leftovers are swept.</strong> A card outlives the process that made it, so one left by a quit mid-turn is
@@ -238,7 +291,7 @@ integers would only make it slow to launch.</p>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
+    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#the-bell-and-what-is-waiting">The bell, and what is waiting</a></li><li><a href="#updating-from-the-app">Updating from the app</a></li><li><a href="#reactions--one-emoji-both-devices">Reactions — one emoji, both devices</a></li><li><a href="#desktop-pets">Desktop pets</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
   </nav>
 </div>
 
