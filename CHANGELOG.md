@@ -954,3 +954,26 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   nothing but the bot's name. The bottom row now appears only when the turn has finished — status and a clipped
   line of the reply — so a running turn is name plus timer, and a finished one is name, elapsed and what was said.
 
+
+## [0.1.621] — 2026-11-23
+
+### Added
+- **Agent cards draw natively, on both apps.** A reply that carries a `::card{id="…" kind="…" file="…"}`
+  line now draws the card instead of describing it: an approval layout with up to three actions, where a tap
+  sends that action as an ordinary turn. The marker line is taken out of the prose, marker examples inside
+  fenced code blocks are left alone, and a card that cannot be read says "Card not available" with the
+  reply's text still shown. Cards sit after A2UI markers and before genui blocks, and `cards.enabled`
+  turns the whole thing off so the marker stays plain text.
+
+### Fixed
+- **A reply with CRLF line endings no longer hides its card markers.** Swift treats `"\r\n"` as a single
+  character, so splitting on `"\n"` never broke such a message: every marker stayed buried inside one
+  enormous line and the prose lost its carriage returns.
+
+### Changed
+- **One engine home.** `hermeyd` now resolves the Hermes home that actually holds `profiles/` — `~/.hermes`
+  first — instead of adopting the first directory that exists and silently serving a second fleet.
+- **Docs, site and README say what the code does.** The bridge era, the removed share extension and scripts
+  that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the
+  two-number version policy are documented; two routes that were documented as stubs are described as the
+  implemented routes they are.
