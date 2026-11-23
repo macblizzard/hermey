@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.637",
-          "buildVersion": "637",
-          "date": "2026-11-23T16:52:41Z",
-          "localizedDescription": "### Changed\n- **Bigger bar icons.** Every icon in the bot list's top and bottom bars is 25% larger, glyph and click area\n  together \u2014 the bell, \uff0b, Settings, update, search and sidebar toggle on the Mac, and the bell, gear and \uff0b\n  on the phone.\n- **The waiting list looks like the list it belongs to.** On the phone the sheet now opens at the height its\n  rows need instead of a mostly empty panel, its header sits just under the grabber, and each row carries\n  the unread badge on the avatar's corner \u2014 with the bot's name, time and last line aligned the same way as\n  the bot list.\n\n### Fixed\n- **No more blue ring around a waiting row on the Mac.** That outline was the system's keyboard-focus ring;\n  rows show a hover highlight now and are still usable from the keyboard.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.637/Hermey-0.1.637-b637.ipa",
-          "size": 5198309,
+          "version": "0.1.638",
+          "buildVersion": "638",
+          "date": "2026-11-23T17:48:36Z",
+          "localizedDescription": "### Changed\n- **The phone's toolbar is back to its own size.** The 25% icon growth you asked for was for the Mac, so\n  the iPhone's bell, gear, \uff0b and search return to the size they shipped with. The Mac's top and bottom\n  bars keep the larger icons.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.638/Hermey-0.1.638-b638.ipa",
+          "size": 5284712,
           "minOSVersion": "17.0",
-          "sha256": "5c8e13039f2ecaebe7f30d40a90e6b3e28c942bd8418d13be956a263ae616c61"
+          "sha256": "be8c22b7531d8e4f4257c311219eac4d85d8bac9843a22faf48cc2c77189a677"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.637 (637)",
-      "identifier": "hermes-0.1.637-637",
-      "caption": "### Changed\n- **Bigger bar icons.** Every icon in the bot list's top and bottom bars is 25% larger, glyph and click area\n  together \u2014 the bell, \uff0b, Settings, update, search and sidebar toggle on the Mac, and the bell, gear and \uff0b\n  on the phone.\n- **The waiting list looks like the list it belongs to.** On the phone the sheet now opens at the height its\n  rows need instead of a mostly empty panel, its header sits just under the grabber, and each row carries\n  the unread badge on the avatar's corner \u2014 with the bot's name, time and last line aligned the same way as\n  the bot list.\n\n### Fixed\n- **No more blue ring around a waiting row on the Mac.** That outline was the system's keyboard-focus ring;\n  rows show a hover highlight now and are still usable from the keyboard.",
-      "date": "2026-11-23T16:52:41Z",
+      "title": "Hermes 0.1.638 (638)",
+      "identifier": "hermes-0.1.638-638",
+      "caption": "### Changed\n- **The phone's toolbar is back to its own size.** The 25% icon growth you asked for was for the Mac, so\n  the iPhone's bell, gear, \uff0b and search return to the size they shipped with. The Mac's top and bottom\n  bars keep the larger icons.",
+      "date": "2026-11-23T17:48:36Z",
       "tintColor": "#9A9AA0"
     }
   ],
