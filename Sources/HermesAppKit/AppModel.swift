@@ -1485,7 +1485,7 @@ public final class AppModel: ObservableObject {
         // A badge belongs to the conversation it was put on: the previous bot's must not survive
         // the switch even for the frame it takes to load the new one.
         reactionsTask?.cancel()
-        reactions = []
+        reactions = [:]
     }
 
     /// The host's own timestamp for the newest message it holds for a bot.
