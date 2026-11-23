@@ -1164,3 +1164,18 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   bottom bar, just left of search: press it and the normal download-and-install window opens. Skip an update
   and the button stays away until the next launch.
 - Settings ▸ About ▸ Check for Updates… works exactly as before, and nothing installs without a press.
+
+## [0.1.637] — 2026-11-23
+
+### Changed
+- **Bigger bar icons.** Every icon in the bot list's top and bottom bars is 25% larger, glyph and click area
+  together — the bell, ＋, Settings, update, search and sidebar toggle on the Mac, and the bell, gear and ＋
+  on the phone.
+- **The waiting list looks like the list it belongs to.** On the phone the sheet now opens at the height its
+  rows need instead of a mostly empty panel, its header sits just under the grabber, and each row carries
+  the unread badge on the avatar's corner — with the bot's name, time and last line aligned the same way as
+  the bot list.
+
+### Fixed
+- **No more blue ring around a waiting row on the Mac.** That outline was the system's keyboard-focus ring;
+  rows show a hover highlight now and are still usable from the keyboard.
