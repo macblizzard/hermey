@@ -133,6 +133,28 @@ fn unix_now() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// Loopback, **or** a call that carries a real device ticket.
+///
+/// `require_loopback` alone made `ask` unusable from the apps: the phone and the Mac reach the host
+/// through tailscale serve, every proxied request is refused by design ("not found"), and the pet could
+/// therefore never ask anything — it showed the host's own "not found" in its balloon. A device that
+/// already holds a ticket can do exactly this by typing in a conversation, so the ticket is the honest
+/// boundary here; an unauthenticated proxied call still gets the same "not found" as an unknown route.
+fn require_loopback_or_device(
+    st: &AppState,
+    peer: &SocketAddr,
+    headers: &HeaderMap,
+) -> Result<(), Fail> {
+    if require_loopback(peer, headers).is_ok() {
+        return Ok(());
+    }
+    match crate::routes::require_device(st, headers) {
+        Ok(_) => Ok(()),
+        // Same answer as an unknown route: nothing here is advertised to a caller without a ticket.
+        Err(_) => Err(bad(StatusCode::NOT_FOUND, "not found")),
+    }
+}
+
 /// `is_local_host_request`: direct loopback only, never a proxied one.
 fn require_loopback(peer: &SocketAddr, headers: &HeaderMap) -> Result<(), Fail> {
     let proxied = PROXY_HEADERS.iter().any(|name| headers.contains_key(*name));
@@ -799,7 +821,7 @@ pub async fn post_ask(
     Path(profile): Path<String>,
     body: Bytes,
 ) -> Result<Json<Value>, Fail> {
-    require_loopback(&peer, &headers)?;
+    require_loopback_or_device(&st, &peer, &headers)?;
     let engine = LiveEngine::new(&st);
     let record = record_transfer(&st);
     run_ask(&st, &profile, &body, &engine, &record).await.map(Json)
