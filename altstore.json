@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.621",
-          "buildVersion": "621",
-          "date": "2026-11-23T05:11:07Z",
-          "localizedDescription": "### Added\n- **Agent cards draw natively, on both apps.** A reply that carries a `::card{id=\"\u2026\" kind=\"\u2026\" file=\"\u2026\"}`\n  line now draws the card instead of describing it: an approval layout with up to three actions, where a tap\n  sends that action as an ordinary turn. The marker line is taken out of the prose, marker examples inside\n  fenced code blocks are left alone, and a card that cannot be read says \"Card not available\" with the\n  reply's text still shown. Cards sit after A2UI markers and before genui blocks, and `cards.enabled`\n  turns the whole thing off so the marker stays plain text.\n\n### Fixed\n- **A reply with CRLF line endings no longer hides its card markers.** Swift treats `\"\\r\\n\"` as a single\n  character, so splitting on `\"\\n\"` never broke such a message: every marker stayed buried inside one\n  enormous line and the prose lost its carriage returns.\n\n### Changed\n- **One engine home.** `hermeyd` now resolves the Hermes home that actually holds `profiles/` \u2014 `~/.hermes`\n  first \u2014 instead of adopting the first directory that exists and silently serving a second fleet.\n- **Docs, site and README say what the code does.** The bridge era, the removed share extension and scripts\n  that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the\n  two-number version policy are documented; two routes that were documented as stubs are described as the\n  implemented routes they are.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.621/Hermey-0.1.621-b621.ipa",
-          "size": 5172504,
+          "version": "0.1.622",
+          "buildVersion": "622",
+          "date": "2026-11-23T08:33:54Z",
+          "localizedDescription": "### Added\n- **Every card kind draws now, not just approvals.** A bot's mail draft arrives as `draft-email` and used\n  to fall back to plain text, because only `approval` had a layout. Drafts now show the subject as the\n  heading, `To` and `Cc`, and a scrollable preview of the body; `task` cards show a status chip\n  (pending, running, done, error, awaiting approval \u2014 `status.label` wins when the card sets it) above\n  the body and its actions. All three kinds share the same `body[]` blocks: plain text, key/value rows\n  and labelled fields, with an empty body drawing nothing.\n- **A resolved card says what was chosen.** Once `resolved` is set, the chosen action keeps its tick, a\n  \"Resolved: \u2026\" line names it, and every other button is disabled.\n\n### Fixed\n- **A photo from the camera roll attaches.** The host's image route refuses extensions outside its own\n  list (png, jpg, jpeg, gif, webp, bmp), and an iPhone shoots HEIC \u2014 so picking a photo failed after the\n  preview with \"unsupported image extension: .heic\". HEIC and HEIF are now decoded and re-encoded as\n  JPEG at quality 0.85 before upload, ahead of the 8 MB check so the limit applies to what actually\n  travels. Anything undecodable passes through untouched, so the host's own reason is what you see.\n\n### Changed\n- **Card reads are keyed to their message.** The read now carries the message id as well as the session,\n  so two messages that name the same card keep their own snapshot instead of sharing one row.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.622/Hermey-0.1.622-b622.ipa",
+          "size": 5202222,
           "minOSVersion": "17.0",
-          "sha256": "48b0302a7b6ab6085e9f9b4f82d40451e6265c2c79df98bfbeb647c5b95bc6e4"
+          "sha256": "abf0ffa04f0f5e24f584ad8fc54c673d3b80fb63890f06eff931d4e420116cbc"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.621 (621)",
-      "identifier": "hermes-0.1.621-621",
-      "caption": "### Added\n- **Agent cards draw natively, on both apps.** A reply that carries a `::card{id=\"\u2026\" kind=\"\u2026\" file=\"\u2026\"}`\n  line now draws the card instead of describing it: an approval layout with up to three actions, where a tap\n  sends that action as an ordinary turn. The marker line is taken out of the prose, marker examples inside\n  fenced code blocks are left alone, and a card that cannot be read says \"Card not available\" with the\n  reply's text still shown. Cards sit after A2UI markers and before genui blocks, and `cards.enabled`\n  turns the whole thing off so the marker stays plain text.\n\n### Fixed\n- **A reply with CRLF line endings no longer hides its card markers.** Swift treats `\"\\r\\n\"` as a single\n  character, so splitting on `\"\\n\"` never broke such a message: every marker stayed buried inside one\n  enormous line and the prose lost its carriage returns.\n\n### Changed\n- **One engine home.** `hermeyd` now resolves the Hermes home that actually holds `profiles/` \u2014 `~/.hermes`\n  first \u2014 instead of adopting the first directory that exists and silently serving a second fleet.\n- **Docs, site and README say what the code does.** The bridge era, the removed share extension and scripts\n  that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the\n  two-number version policy are documented; two routes that were documented as stubs are described as the\n  implemented routes they are.",
-      "date": "2026-11-23T05:11:07Z",
+      "title": "Hermes 0.1.622 (622)",
+      "identifier": "hermes-0.1.622-622",
+      "caption": "### Added\n- **Every card kind draws now, not just approvals.** A bot's mail draft arrives as `draft-email` and used\n  to fall back to plain text, because only `approval` had a layout. Drafts now show the subject as the\n  heading, `To` and `Cc`, and a scrollable preview of the body; `task` cards show a status chip\n  (pending, running, done, error, awaiting approval \u2014 `status.label` wins when the card sets it) above\n  the body and its actions. All three kinds share the same `body[]` blocks: plain text, key/value rows\n  and labelled fields, with an empty body drawing nothing.\n- **A resolved card says what was chosen.** Once `resolved` is set, the chosen action keeps its tick, a\n  \"Resolved: \u2026\" line names it, and every other button is disabled.\n\n### Fixed\n- **A photo from the camera roll attaches.** The host's image route refuses extensions outside its own\n  list (png, jpg, jpeg, gif, webp, bmp), and an iPhone shoots HEIC \u2014 so picking a photo failed after the\n  preview with \"unsupported image extension: .heic\". HEIC and HEIF are now decoded and re-encoded as\n  JPEG at quality 0.85 before upload, ahead of the 8 MB check so the limit applies to what actually\n  travels. Anything undecodable passes through untouched, so the host's own reason is what you see.\n\n### Changed\n- **Card reads are keyed to their message.** The read now carries the message id as well as the session,\n  so two messages that name the same card keep their own snapshot instead of sharing one row.",
+      "date": "2026-11-23T08:33:54Z",
       "tintColor": "#9A9AA0"
     }
   ],
