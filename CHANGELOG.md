@@ -1061,3 +1061,21 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is
   now a translucent material with the theme colour over it, so the wallpaper and windows show through and the
   text stays readable.
+
+## [0.1.628] — 2026-11-23
+
+### Fixed
+- **The pet's balloon gets its answer.** Four faults stacked in the host's ask path: it waited for the
+  wrong side of the conversation (your message rather than the bot's reply), polled the engine's runtime
+  session id instead of the stored one, opened the retired engine home where no profile database lives,
+  and anchored its search on a timestamp taken *after* the question was delivered. All four are fixed, so
+  a question typed into a balloon now comes back as the answer instead of sitting on "thinking" while the
+  reply appears only in the app.
+- The pet also stops slurring its own fix: the guard tests now allow the ask-path change that ships with it.
+
+### Changed
+- **The balloon is a callout, not a box.** Near-white at 0.82 over a material in both app themes, with a
+  tail that follows the pet even when the bubble has to be nudged back onto the screen.
+- **Pets float.** The icon casts its own soft shadow inside the transparent window.
+- **Pets blink.** A quick squash of the body on a random 3–9 second timer, and clicking a pet adds a hop
+  and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.
