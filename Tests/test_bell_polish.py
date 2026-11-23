@@ -163,23 +163,23 @@ class EveryBarIconIsAQuarterBigger(unittest.TestCase):
             self.assertIn("size: .bar", self.floor[start:start + 260], control)
         self.assertEqual(self.floor.count("size: .bar"), 3)
 
-    def test_the_phone_toolbar_grew_glyphs_and_frames_together(self) -> None:
-        self.assertEqual(self.toolbar.count(".frame(width: BarIconScale.of(36), height: BarIconScale.of(36))"), 4,
-                         "the search, bell, gear and plus must all use the 45 pt frame")
-        self.assertEqual(self.toolbar.count("BarIconScale.of(16)"), 1)
-        self.assertEqual(self.toolbar.count("BarIconScale.of(17)"), 3)
-        # The search button is beside the capsule, so it grew too — or the header would be uneven.
-        search = self.toolbar.split(".topBarLeading", 1)[1].split(".topBarTrailing", 1)[0]
-        self.assertIn("BarIconScale.of(16)", search)
-        self.assertIn("BarIconScale.of(36)", search)
+    def test_the_phone_toolbar_kept_its_size(self) -> None:
+        # The owner asked for the growth on the Mac only: the phone's header is unchanged, at the sizes
+        # it shipped with, so the search button beside the capsule still matches it.
+        self.assertEqual(self.toolbar.count(".frame(width: 36, height: 36)"), 4,
+                         "the search, bell, gear and plus keep their 36 pt frame")
+        self.assertNotIn("BarIconScale", self.toolbar, "no scaling crept into the phone's toolbar")
+        self.assertEqual(self.toolbar.count(".font(.system(size: 16,"), 1)
+        self.assertEqual(self.toolbar.count(".font(.system(size: 17,"), 3)
 
     def test_every_base_is_a_shipped_size(self) -> None:
         # Not one rounded result typed in by hand: each `of(N)` still names the size that shipped,
         # and the multiplier is the only thing that changed.
         import re
-        bases = {int(n) for n in re.findall(r"BarIconScale\.of\((\d+)\)", CONTROLS + MAC + IOS)}
-        self.assertEqual(bases, {7, 11, 12, 16, 17, 24, 34, 36},
+        bases = {int(n) for n in re.findall(r"BarIconScale\.of\((\d+)\)", CONTROLS + MAC)}
+        self.assertEqual(bases, {7, 11, 12, 24, 34},
                          "a hand-tuned size slipped in where a base × 1.25 belongs")
+        self.assertNotIn("BarIconScale.of(", IOS, "the phone does not scale: the owner asked for the Mac only")
 
 
 if __name__ == "__main__":
