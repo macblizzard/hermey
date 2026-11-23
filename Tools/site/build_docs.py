@@ -505,6 +505,7 @@ retired Python bridge. These are the commands a host actually runs; each one is 
   ["<code>/v1/ws</code>", "the device websocket (single-use 30 s ticket, then a session)"],
   ["<code>/v1/local-computers/ws</code>", "the Mac's own outbound socket for computer use — the host pings it and drops a silent one"],
   ["<code>/v1/browser/ws</code>", "the sign-in extension's loopback socket; the host sends it a login card's fill, so values never reach the bot"],
+  ["<code>GET /v1/cards/{card_id}</code>", "an agent card (<code>card.v1</code>) a bot wrote, resolved from its id and snapshotted per message. <strong>In progress</strong> — the route is here, the native renderer ships in the next client, and no release carries it yet"],
 ])}
 
 <h2 id="every-route">Every route</h2>
@@ -513,6 +514,15 @@ retired Python bridge. These are the commands a host actually runs; each one is 
 cannot fall behind the service. <code>/v1/health</code> and <code>/v1/pair/start</code> answer without the
 local bearer; everything else answers <code>401</code> without it.</p>
 {route_table()}
+
+<h2 id="versions">Versions</h2>
+<p>Two numbers, moving for different reasons.</p>
+{table(["", "Number"], [
+  ["Apps", "<code>0.1.&lt;run&gt;</code> — the marketing version defaults to the CI run number; a release tag is <code>v0.1.N</code>. The Mac's About panel and Settings show it as <em>version · build</em>"],
+  ["Host service", "<code>hermeyd</code> carries its own <code>version</code> in <code>hermeyd/Cargo.toml</code>, released separately as tag <code>hermeyd-vX.Y.Z</code>"],
+  ["When it moves", "<code>hermeyd</code>'s version moves only when <code>hermeyd/src/</code> or its bundled skills change. A client release does not bump it, and a CI job (<code>Tools/check_hermeyd_version_bump.py</code>) refuses a source change that leaves it alone"],
+  ["Which build is running", "<code>hermeyd --version</code> on the host; the landing page reads its build line from the published feed"],
+])}
 
 <h2 id="downloads">Download URLs</h2>
 {table(["", "URL"], [

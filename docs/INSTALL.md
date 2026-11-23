@@ -46,9 +46,10 @@ What it does, in order:
 
 1. **Detects the platform** — Linux x86_64/aarch64 or macOS arm64/x86_64 — and refuses anything else
    with the supported list and the from-source alternative.
-2. **Downloads the matching binary** from this repository's GitHub release, plus `SHA256SUMS`, and
-   verifies the **SHA-256 before installing**. A missing or mismatched entry aborts with nothing
-   installed: the checksum is the whole trust anchor for a prebuilt binary.
+2. **Downloads the matching binary** from the newest release of the host service — the `hermeyd-vX.Y.Z`
+   tag series, which is separate from the apps' `v0.1.N` tags — plus `SHA256SUMS`, and verifies the
+   **SHA-256 before installing**. A missing or mismatched entry aborts with nothing installed: the
+   checksum is the whole trust anchor for a prebuilt binary.
 3. **Installs** it to `/opt/hermey/bin/hermeyd`.
 4. **Creates state** at `/var/lib/hermeyd` (`0700`, owned by the service account).
 5. **Writes `/etc/hermey/hermeyd.env`** with the detected engine home, ports, public host and token
@@ -67,6 +68,12 @@ What it does, in order:
 
 Re-running the same command is the **upgrade** path: same paths, same state, new binary, unit and
 plugin replaced, service restarted.
+
+**Versions.** `hermeyd` numbers itself (`0.2.x`) and moves only when `hermeyd/src/` or its bundled
+skills change — a client release does not bump it, and CI refuses a source change that leaves the
+version alone (`Tools/check_hermeyd_version_bump.py`). The apps keep their own `0.1.<run>`. So
+`hermeyd --version` on the host and the build number in the Mac's About panel are two different
+numbers, and neither is stale when they differ.
 
 ## Prebuilt or from source
 
@@ -90,7 +97,7 @@ Flags mirror environment variables, which matters when the script is piped into 
 | Flag | Env | Default | Meaning |
 |---|---|---|---|
 | `--from-source` | — | off | build with cargo instead of downloading |
-| `--version TAG` | `HERMEY_VERSION` | `latest` | release tag to install (`v0.2.0`) or `latest` |
+| `--version TAG` | `HERMEY_VERSION` | `latest` | host release to install: `hermeyd-v0.2.0` (or `0.2.0`), or `latest` — which resolves the newest release of the host service, not the newest release of the apps |
 | `--prefix DIR` | `HERMEY_PREFIX` | `/opt/hermey` | where the binary goes |
 | `--state-dir DIR` | `HERMEY_STATE` | `/var/lib/hermeyd` | state directory (created `0700`) |
 | `--engine-home DIR` | `HERMEYD_ENGINE_HOME` | detect | Hermes engine home (contains `profiles/`) |
@@ -194,7 +201,7 @@ sudo setup/install.sh --uninstall --purge
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `could not download …/hermeyd-linux-aarch64` | no published build for that platform/tag | use a release that has it, or `--from-source` |
+| `could not download …/hermeyd-linux-aarch64` | the tag you pointed at carries no host binary — an app release (`v0.1.N`) never does; only `hermeyd-v*` releases do | install from a `hermeyd-v*` tag, or `--from-source` |
 | `SHA256SUMS has no entry for …` | incomplete release | install a complete release, or build |
 | `checksum mismatch` | corrupt download or a replaced asset | re-run once; if it repeats, do not install that release |
 | `cannot find the Hermes engine home` | detection found no `profiles/` | `--engine-home /path/to/engine` |

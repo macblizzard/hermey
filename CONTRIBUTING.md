@@ -12,16 +12,18 @@ Thanks for taking a look. This is a small project with a strict bar: changes shi
 ## The loop
 
 1. `git checkout -b fix/what-it-fixes`
-2. Make the change **and** a test when the behaviour is testable. The protocol layer
-   (`Sources/HermesKit`) and the bridge have real suites; use them.
+2. Make the change **and** a test when the behaviour is testable. The Swift layer
+   (`Sources/HermesKit`, the app state in `Sources/HermesAppKit`) and the host service
+   (`hermeyd/src`) have real suites; use them.
 3. Run what CI runs, locally where you can:
    ```bash
-   swift build && swift test                     # packages
-   .venv/bin/pytest Bridge/tests                 # bridge
-   bash -n setup/install.sh                      # installer syntax
+   swift build && swift test                               # Swift packages
+   cd hermeyd && cargo test && cargo build --release       # host service
+   bash -n setup/install.sh                                # installer syntax
+   python3 -m unittest discover -s Tests -p 'test_*.py'    # the source guards
    ```
-4. Open a PR. CI must be green: packages, macOS app, iOS app, unsigned `.ipa`, bridge tests, QA
-   harness, secret scan.
+4. Open a PR. CI must be green: Swift packages, both apps (the unsigned `.ipa` and `.dmg`), the
+   `hermeyd` Rust tests with the version-bump guard, the source guards, and the secret and script scan.
 
 ## Style
 
@@ -42,9 +44,16 @@ Thanks for taking a look. This is a small project with a strict bar: changes shi
 
 ## Releasing
 
-Maintainers only: tag `vX.Y.Z`, let CI build the artifacts, then publish with
-`python3 Tools/release/publish_altstore.py --ipa … --mac-dmg …` — it attaches the `.ipa`, the macOS
-`.dmg` and `install.sh` to the release, writes and uploads the AltStore manifest, and stamps the
-README and the landing page in the same run. `sync_store.py --check` proves the source, the Pages copy
-and the pages agree (CI runs it nightly at 03:30, so a stale source cannot survive).
-[`docs/APPS.md`](docs/APPS.md) explains what users do with them.
+Maintainers only, and two separate things to release:
+
+- **The apps** — tag `v0.1.N`. CI builds both apps and the unsigned `.ipa`; then publish with
+  `python3 Tools/release/publish_altstore.py --ipa … --mac-dmg …`, which attaches the `.ipa`, the
+  macOS `.dmg` and `install.sh` to the release, writes and uploads the AltStore manifest, and stamps
+  the landing page's build line. An app tag does not touch `hermeyd`'s version.
+- **The host service** — `hermeyd/Cargo.toml` moves first (only when `hermeyd/src/` or its bundled
+  skills changed), then tag `hermeyd-vX.Y.Z`; `hermeyd-release.yml` publishes the four platform
+  binaries, `SHA256SUMS`, the plugin tarball and `install.sh` the installer expects.
+
+`sync_store.py --check` proves the source, the Pages copy and the served pages agree (CI runs it
+nightly at 03:30, so a stale source cannot survive).
+[`docs/APPS.md`](docs/APPS.md) explains what users do with the apps.

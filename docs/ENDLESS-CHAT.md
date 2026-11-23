@@ -26,7 +26,7 @@ On open (`CanonicalBotChat.plan`, carrying out by `AppModel.endlessSession(for:)
   **live compression tip**, because rotation compaction can leave the registry title on a row that
   is no longer the one moving. Resume it (always with `profile`; a multiplexed gateway cannot
   resolve a stored id without it);
-- the host has no Bot Chat but this bot already has a conversation (bridge pointer, else the local
+- the host has no Bot Chat but this bot already has a conversation (session pointer, else the local
   cache) → resume it and `session.title` it `Bot Chat`: the history the user already has becomes the
   shared chat instead of being stranded behind a fresh empty one;
 - neither → `session.create` with `title: "Bot Chat"`, `hidden: true`, `follow_profile_config: true`
@@ -37,7 +37,7 @@ exists already": a **title conflict** on create re-reads the host and opens the 
 name (never mints a twin next to it — Desktop documents this as "retry, never mint"), and a host too
 old to accept `title`/`hidden` falls back to a plain create.
 
-The bridge pointer (`GET`/`PUT /v1/bots/{profile}/session`, device-authenticated with a freshly
+The session pointer (`GET`/`PUT /v1/bots/{profile}/session`, device-authenticated with a freshly
 minted single-use ticket, body `{"stored_session_id": …}`) is a **cache** now, not the authority: it
 still answers for the bot list's previews and for an older build or an unreadable host, and every
 open publishes to it. Local cache: `UserDefaults`, key `hermes.endlessSession.<botID>`, value = stored
@@ -54,7 +54,7 @@ but stops the host treating it as this bot's chat, so the next open mints a succ
 the name. This is Desktop's retire semantics, not `/new` — a `/new` inside a Bot Chat is rerouted to
 `/compact` there, which is what this app's separate "compact now" affordance already does. Because
 the deployed `PUT` refuses a null (`422`, "never a delete"), the reset device also keeps a local
-tombstone (`hermes.endlessSessionReset.<botID>`) so the bridge's row cannot pull the forgotten
+tombstone (`hermes.endlessSessionReset.<botID>`) so the pointer's row cannot pull the forgotten
 conversation straight back; the tombstone is retired as soon as a replacement is published, and a
 create that finds the tombstoned row holding the name retires it and mints (bounded once, so two
 devices resetting at each other cannot ping-pong).

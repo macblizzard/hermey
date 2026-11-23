@@ -137,9 +137,10 @@ Send the human these, verbatim:
   ([sidestore.io](https://sidestore.io)), then add this source in its *Sources* tab:
   `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json`
   and install **Hermey** from it. Unsigned builds need re-signing every ~7 days with a free Apple ID.
-- **macOS** — download `Hermey-macOS-unsigned.dmg` from
-  <https://github.com/macblizzard/hermey/releases/latest>, move `Hermey.app` to `/Applications`, then
-  right-click → **Open** → **Open**. If macOS still refuses:
+- **macOS** — download the disk image from <https://macblizzard.github.io/hermey-downloads/>
+  (`Hermey-macOS-<version>.dmg`, the newest build; the release page attaches the same file under the
+  versioned name only), open it, drag **Hermey** onto the `Applications` shortcut, then right-click →
+  **Open** → **Open**. If macOS still refuses:
   `xattr -dr com.apple.quarantine /Applications/Hermey.app`.
 - **The host URL to type by hand**, if there is no QR path: `https://<host>.<tailnet>.ts.net` — the
   tailnet name `tailscale serve` publishes, with **no port**.

@@ -116,11 +116,13 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | | |
 |---|---|
 | **Bots first** | The home screen is your bots. Each opens one endless conversation — no session list to manage. |
-| **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. |
+| **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. A room is renamed from its row, on either device. |
+| **Pictures** | An image in a reply opens with every other image on that message: swipe on the phone, arrow keys or chevrons on the Mac, and a swipe down puts it away. |
 | **Approvals in the app** | Tool approvals arrive as cards you can accept or reject, with the payload visible before you decide. |
 | **The Mac as a computer** | Full-screen computer use: a paired Mac runs commands, clicks, types and shares a workspace, with one sorted queue and a per-grant status row. |
 | **Sign-in cards** | When a bot needs a password, it raises a card naming the site and fields; the value goes to the page and never to the model, the transcript or a log. |
 | **Integrations** | Eight services through your own Composio key — Gmail, Calendar, Drive, Docs, Sheets, Maps, Cloudflare, Vercel — with several accounts per service, each named. |
+| **A turn on the lock screen** | While a bot works, an iPhone shows the turn as a Live Activity — lock screen and Dynamic Island — and holds the card with the reply's first line when it ends. |
 | **Routines and notes** | A bot's scheduled jobs and notes are readable and editable from the app, not just from a shell. |
 | **Backup, import and export** | Export every bot's soul, memory, notes and routines as one file; restore additively on another host, or import bots from another platform. |
 | **Voice both ways** | Dictate a prompt, have a reply read aloud — through the host's STT/TTS so it works with the ringer switch off. |
@@ -190,6 +192,7 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 | [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) | Eight services through your own Composio key, several named accounts each |
 | [`docs/IMPORT-FROM-ANOTHER-PLATFORM.md`](docs/IMPORT-FROM-ANOTHER-PLATFORM.md) | Bringing bots in from another platform |
 | [`docs/UI-PITFALLS.md`](docs/UI-PITFALLS.md) | UI rules to follow if you are changing the app |
+| [`docs/QA.md`](docs/QA.md) | What is verified, by which test, and what only a build on a device can prove |
 | [`docs/FOR-AGENTS.md`](docs/FOR-AGENTS.md) | The install as a runbook an agent can execute, end to end |
 | [`llms.txt`](llms.txt) | The repo in the flat, machine-readable index format |
 | [`setup/SKILL.md`](setup/SKILL.md) | The same install packaged as a Hermes agent skill |
@@ -199,7 +202,7 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 Everything builds on GitHub-hosted macOS runners, so no local Xcode is required to validate a change.
 
 ```bash
-# Swift packages (protocol, design system, renderer, app state)
+# Swift packages (protocol, design system, renderer, cards, app state)
 swift build && swift test
 
 # Host service (Rust)
@@ -207,10 +210,30 @@ cd hermeyd && cargo test && cargo build --release
 
 # Generate the Xcode projects (they are never committed)
 brew install xcodegen && xcodegen generate
+
+# Build an app the way CI does
+xcodebuild -skipPackagePluginValidation -project HermesApps.xcodeproj -scheme HermesMac -configuration Release
 ```
 
-CI runs the packages, both apps, the unsigned `.ipa`, the host service's Rust tests and a QA harness
-on every push. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+`-skipPackagePluginValidation` is not optional. The `a2ui` package — which `HermesA2UI` builds on —
+ships an SPM build-tool plugin, and without the flag xcodebuild stops to ask whether to trust it
+before it compiles anything. A CI run has nobody to answer, so it fails there instead.
+
+### Versions
+
+Two numbers, moving for different reasons:
+
+- **The apps** are `0.1.<run>` — the marketing version defaults to the CI run number, a dispatch may
+  name one, and a release tag is `v0.1.N`.
+- **`hermeyd`** has its own `version` in `hermeyd/Cargo.toml`, released as tag `hermeyd-vX.Y.Z`. It
+  moves only when `hermeyd/src/` or its bundled skills change. A client release does **not** bump it:
+  a host-service number dragged along by app builds says nothing about the service. The CI job that
+  builds `hermeyd` runs `Tools/check_hermeyd_version_bump.py` and refuses a source change that leaves
+  the version alone.
+
+CI runs the packages, both apps, the unsigned `.ipa`, the host service's Rust tests and the source
+guards on every push. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the jobs and [`docs/QA.md`](docs/QA.md)
+for what each one can and cannot prove.
 
 ## Status
 
