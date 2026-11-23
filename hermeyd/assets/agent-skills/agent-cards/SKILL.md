@@ -1,6 +1,7 @@
 ---
 name: agent-cards
-description: Show cards in Hermes Desktop chats - question cards for choices, approval cards before outward or irreversible actions, task cards for long jobs.
+description: Cards for questions, approvals, tasks (Hermey + Desktop).
+managed_by: hermey-bridge
 version: 1.0.0
 author: Hermes Bot Kit
 license: MIT
