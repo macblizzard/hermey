@@ -182,7 +182,11 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Device-authenticated like every other `/v1` read, so it travels over the bridge pointer
     /// store rather than the JSON-RPC transport. Each refusal is a distinct `CardFetchError`, so a
     /// transcript can say `Card not available` for the right reason instead of spinning.
-    func card(id: String, session: SessionID) async throws -> CardFetch
+    ///
+    /// `message` is the transcript row's own id. The host snapshots a card per
+    /// `(session, message, card)`, so sending it is what keeps two messages that name one file
+    /// from sharing a row — and what lets a reply still draw its card after the file is gone.
+    func card(id: String, session: SessionID, message: String) async throws -> CardFetch
 
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
@@ -1004,6 +1008,13 @@ public struct TranscriptEntry: Identifiable, Hashable, Sendable {
         role == .user ? MessageRefs.display(text) : text
     }
 
+    /// This row's stable message id, for anything the host keeps per message — a reaction, a card
+    /// snapshot. A host row has one; a message still streaming has only its own id, and the two
+    /// namespaces are kept apart so a live id can never collide with a durable one.
+    public var messageID: String {
+        rowID.map { "row:\($0)" } ?? "live:\(id)"
+    }
+
     /// What travelled with a user message. The host returns no attachment metadata for the
     /// transcript, so this is the client's own memory of the send (see `SentAttachmentVault`).
     public var attachments: [SentAttachment]
@@ -1166,7 +1177,7 @@ public extension GatewayClientProtocol {
     /// A client with no bridge (the unpaired app, a preview, a test double) cannot resolve a card
     /// file, because the file lives on the host. Saying so is what draws `Card not available` under
     /// the reply; a spinner would be a lie about work that is not happening.
-    func card(id: String, session: SessionID) async throws -> CardFetch {
+    func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         throw CardFetchError.unreachable("this connection has no bridge to read cards from")
     }
 }

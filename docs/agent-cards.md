@@ -53,7 +53,7 @@ The file lives on the host in the bot's working directory; the client only has t
 transcript. So the engine resolves it, not the client:
 
 ```
-GET /v1/cards/{id}?session=<session id>      (hermeyd proxies to the engine)
+GET /v1/cards/{id}?session=<session id>&message=<message id>   (hermeyd proxies to the engine)
 → 200 {"card": {...}, "mtime": "...", "final": false}
 → 404 {"error": "no_such_card"}              → the client draws "Card not available"
 ```

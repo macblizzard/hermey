@@ -326,8 +326,8 @@ struct TranscriptScroll: View {
                                       onSelectText: { selectionText = $0 },
                                       onReply: { model.reply(to: $0) },
                                       onOpenPair: { peer in pairPeer = peer },
-                                      fetchCard: { id, session in
-                                          try await model.fetchCard(id: id, session: session)
+                                      fetchCard: { id, session, message in
+                                          try await model.fetchCard(id: id, session: session, message: message)
                                       })
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
@@ -341,8 +341,8 @@ struct TranscriptScroll: View {
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) },
                                           onOpenPair: { peer in pairPeer = peer },
-                                          fetchCard: { id, session in
-                                              try await model.fetchCard(id: id, session: session)
+                                          fetchCard: { id, session, message in
+                                              try await model.fetchCard(id: id, session: session, message: message)
                                           })
                             .background(fill([entry.id], among: matched, selected: selected))
                     }

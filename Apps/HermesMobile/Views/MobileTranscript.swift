@@ -676,8 +676,12 @@ struct MobileTranscriptRow: View {
         guard cardsActive, let session = app.model.selectedSessionID else { return }
         for ref in cardScan.refs where cardStates[ref.id] == nil {
             cardStates[ref.id] = .loading
-            cardStates[ref.id] = await CardLoader.shared.load(ref, session: session) { id, cardSession in
-                try await app.model.fetchCard(id: id, session: cardSession)
+            // This row's message id is part of the read: the host snapshots a card per
+            // `(session, message, card)`, so two replies naming one file keep their own copy.
+            cardStates[ref.id] = await CardLoader.shared.load(ref,
+                                                              session: session,
+                                                              message: entry.messageID) { id, cardSession, message in
+                try await app.model.fetchCard(id: id, session: cardSession, message: message)
             }
         }
     }
@@ -686,7 +690,10 @@ struct MobileTranscriptRow: View {
     /// out as the owner's next message through the composer's own send path.
     private func choose(_ action: Card.Action, ref: CardRef) {
         guard let session = app.model.selectedSessionID else { return }
-        cardStates[ref.id] = CardLoader.shared.choose(action, cardID: ref.id, session: session)
+        cardStates[ref.id] = CardLoader.shared.choose(action,
+                                                     cardID: ref.id,
+                                                     session: session,
+                                                     message: entry.messageID)
         NotificationCenter.default.post(name: .genUICardSend, object: nil,
                                         userInfo: ["text": action.send, "bot": botID])
     }
