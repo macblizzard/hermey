@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.628",
-          "buildVersion": "628",
-          "date": "2026-11-23T12:40:04Z",
-          "localizedDescription": "### Fixed\n- **The pet's balloon gets its answer.** Four faults stacked in the host's ask path: it waited for the\n  wrong side of the conversation (your message rather than the bot's reply), polled the engine's runtime\n  session id instead of the stored one, opened the retired engine home where no profile database lives,\n  and anchored its search on a timestamp taken *after* the question was delivered. All four are fixed, so\n  a question typed into a balloon now comes back as the answer instead of sitting on \"thinking\" while the\n  reply appears only in the app.\n- The pet also stops slurring its own fix: the guard tests now allow the ask-path change that ships with it.\n\n### Changed\n- **The balloon is a callout, not a box.** Near-white at 0.82 over a material in both app themes, with a\n  tail that follows the pet even when the bubble has to be nudged back onto the screen.\n- **Pets float.** The icon casts its own soft shadow inside the transparent window.\n- **Pets blink.** A quick squash of the body on a random 3\u20139 second timer, and clicking a pet adds a hop\n  and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.628/Hermey-0.1.628-b628.ipa",
-          "size": 5151441,
+          "version": "0.1.630",
+          "buildVersion": "630",
+          "date": "2026-11-23T13:08:33Z",
+          "localizedDescription": "### Changed\n- **The balloon is glass now.** It was an opaque near-white sheet; it is a frosted callout \u2014 a material with\n  white at 0.38 and a thin inner rim \u2014 so a dark wallpaper tints it grey-blue and a bright one cream, while\n  the ink stays readable.\n- **A real callout shape.** Corners are 26 pt and the tail is a curved 26\u00d713 shape with a rounded tip instead\n  of a straight triangle, still pointing at the pet wherever the bubble ends up.\n\n### Fixed\n- **The answer is visible again.** It was being drawn into zero height \u2014 the reply arrived, Copy could hand\n  it over, but nothing appeared in the bubble: a `ScrollView` measures as nothing inside a panel sized to fit\n  its content. It is a self-sizing text now.\n\n### Added\n- **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,\n  so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.630/Hermey-0.1.630-b630.ipa",
+          "size": 5151439,
           "minOSVersion": "17.0",
-          "sha256": "59260e2d2df9964cce2f6da36efca066b93eb2ba1f8dd3e38ee4c1361f93f274"
+          "sha256": "8ef3c667bc7c10f4c000c8b6ebca851b480b52413378e061f789d1f3c91e46e8"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.628 (628)",
-      "identifier": "hermes-0.1.628-628",
-      "caption": "### Fixed\n- **The pet's balloon gets its answer.** Four faults stacked in the host's ask path: it waited for the\n  wrong side of the conversation (your message rather than the bot's reply), polled the engine's runtime\n  session id instead of the stored one, opened the retired engine home where no profile database lives,\n  and anchored its search on a timestamp taken *after* the question was delivered. All four are fixed, so\n  a question typed into a balloon now comes back as the answer instead of sitting on \"thinking\" while the\n  reply appears only in the app.\n- The pet also stops slurring its own fix: the guard tests now allow the ask-path change that ships with it.\n\n### Changed\n- **The balloon is a callout, not a box.** Near-white at 0.82 over a material in both app themes, with a\n  tail that follows the pet even when the bubble has to be nudged back onto the screen.\n- **Pets float.** The icon casts its own soft shadow inside the transparent window.\n- **Pets blink.** A quick squash of the body on a random 3\u20139 second timer, and clicking a pet adds a hop\n  and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.",
-      "date": "2026-11-23T12:40:04Z",
+      "title": "Hermes 0.1.630 (630)",
+      "identifier": "hermes-0.1.630-630",
+      "caption": "### Changed\n- **The balloon is glass now.** It was an opaque near-white sheet; it is a frosted callout \u2014 a material with\n  white at 0.38 and a thin inner rim \u2014 so a dark wallpaper tints it grey-blue and a bright one cream, while\n  the ink stays readable.\n- **A real callout shape.** Corners are 26 pt and the tail is a curved 26\u00d713 shape with a rounded tip instead\n  of a straight triangle, still pointing at the pet wherever the bubble ends up.\n\n### Fixed\n- **The answer is visible again.** It was being drawn into zero height \u2014 the reply arrived, Copy could hand\n  it over, but nothing appeared in the bubble: a `ScrollView` measures as nothing inside a panel sized to fit\n  its content. It is a self-sizing text now.\n\n### Added\n- **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,\n  so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.",
+      "date": "2026-11-23T13:08:33Z",
       "tintColor": "#9A9AA0"
     }
   ],
