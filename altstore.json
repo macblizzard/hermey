@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.640",
-          "buildVersion": "640",
-          "date": "2026-11-23T21:43:15Z",
-          "localizedDescription": "### Fixed\n- **The Dynamic Island fits its words.** A running timer with no natural width was shared by the island\n  and the lock-screen card, so the island grew to most of the screen with a name at one end, and the card's\n  text was squeezed away until the turn finished. The island is now just the bot's mark, its name and the\n  elapsed time at their own sizes.\n- **The card stays until you remove it.** It used to end itself a few seconds after the reply. It now stays\n  in the island and on the lock screen \u2014 swipe it away when you are done with it.\n- **Glass, not a yellow panel.** The card no longer paints a tint of its own; the lock screen's material\n  shows through, with the bot's accent kept to the mark and the status line, which is now always visible \u2014\n  including during the first seconds of a turn.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.640/Hermey-0.1.640-b640.ipa",
-          "size": 5288729,
+          "version": "0.1.641",
+          "buildVersion": "641",
+          "date": "2026-11-23T22:34:39Z",
+          "localizedDescription": "### Changed\n- **Room for the words.** The turn card's text sat almost on its own border; it now keeps 8 pt to every\n  edge, and the Dynamic Island's mark and timer sit 8 pt off the pill's rounded ends.\n- **The card reads as glass.** It carries a faint white lift over the lock screen's own material, so a dark\n  wallpaper shows through instead of the card looking like a solid black panel.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.641/Hermey-0.1.641-b641.ipa",
+          "size": 5288984,
           "minOSVersion": "17.0",
-          "sha256": "fdccece086253ac9bbfd245386b6ae3816e7f777526ecbdd82f76a422b847ac0"
+          "sha256": "3b39f341c42ad0b010f909fb538bebdc31d2b8f868efb69e5a2375d6e1ea51d9"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.640 (640)",
-      "identifier": "hermes-0.1.640-640",
-      "caption": "### Fixed\n- **The Dynamic Island fits its words.** A running timer with no natural width was shared by the island\n  and the lock-screen card, so the island grew to most of the screen with a name at one end, and the card's\n  text was squeezed away until the turn finished. The island is now just the bot's mark, its name and the\n  elapsed time at their own sizes.\n- **The card stays until you remove it.** It used to end itself a few seconds after the reply. It now stays\n  in the island and on the lock screen \u2014 swipe it away when you are done with it.\n- **Glass, not a yellow panel.** The card no longer paints a tint of its own; the lock screen's material\n  shows through, with the bot's accent kept to the mark and the status line, which is now always visible \u2014\n  including during the first seconds of a turn.",
-      "date": "2026-11-23T21:43:15Z",
+      "title": "Hermes 0.1.641 (641)",
+      "identifier": "hermes-0.1.641-641",
+      "caption": "### Changed\n- **Room for the words.** The turn card's text sat almost on its own border; it now keeps 8 pt to every\n  edge, and the Dynamic Island's mark and timer sit 8 pt off the pill's rounded ends.\n- **The card reads as glass.** It carries a faint white lift over the lock screen's own material, so a dark\n  wallpaper shows through instead of the card looking like a solid black panel.",
+      "date": "2026-11-23T22:34:39Z",
       "tintColor": "#9A9AA0"
     }
   ],
