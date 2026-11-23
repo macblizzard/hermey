@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.626",
-          "buildVersion": "626",
-          "date": "2026-11-23T11:31:25Z",
-          "localizedDescription": "### Added\n- **Desktop pets.** Each bot can put itself on your desktop: in that bot's settings, turn on *Show on the\n  desktop* and its own picture appears \u2014 no frame, no window background, just the icon on your wallpaper.\n  It bobs, tilts and occasionally hops; drag it anywhere and it remembers where you left it, per screen.\n- **Ask it something.** Click the pet and a balloon opens with a field. Type, press Return, and the balloon\n  shows it is thinking, then the answer \u2014 scrollable, with Copy. Escape or a click away dismisses it.\n- **Right-click \u2192 Close pet** takes it off the desktop and switches the setting off, so it is the same one\n  switch that brings it back.\n- Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a\n  rectangle of your screen.\n- Reduce Motion is respected \u2014 no hops, and a much gentler bob.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.626/Hermey-0.1.626-b626.ipa",
-          "size": 5150824,
+          "version": "0.1.627",
+          "buildVersion": "627",
+          "date": "2026-11-23T11:59:38Z",
+          "localizedDescription": "### Fixed\n- **The pet can ask.** Every question came back as \"not found\": the host's `ask` route only accepted calls\n  from its own machine, and both apps reach it through the tailnet proxy. It now accepts a call that carries\n  your device's ticket \u2014 and still answers an unauthenticated proxy exactly as it answers an unknown route.\n- **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is\n  now a translucent material with the theme colour over it, so the wallpaper and windows show through and the\n  text stays readable.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.627/Hermey-0.1.627-b627.ipa",
+          "size": 5150825,
           "minOSVersion": "17.0",
-          "sha256": "ae318bc3efe6b2cfd10a34e69b71d98f30b5f7419eae6cab6e3c708d1922fef8"
+          "sha256": "fa78dcba6f7f62ad3f7fb39a76c3f6818bc167abc6ed6644ed1ad1c2dc80106d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.626 (626)",
-      "identifier": "hermes-0.1.626-626",
-      "caption": "### Added\n- **Desktop pets.** Each bot can put itself on your desktop: in that bot's settings, turn on *Show on the\n  desktop* and its own picture appears \u2014 no frame, no window background, just the icon on your wallpaper.\n  It bobs, tilts and occasionally hops; drag it anywhere and it remembers where you left it, per screen.\n- **Ask it something.** Click the pet and a balloon opens with a field. Type, press Return, and the balloon\n  shows it is thinking, then the answer \u2014 scrollable, with Copy. Escape or a click away dismisses it.\n- **Right-click \u2192 Close pet** takes it off the desktop and switches the setting off, so it is the same one\n  switch that brings it back.\n- Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a\n  rectangle of your screen.\n- Reduce Motion is respected \u2014 no hops, and a much gentler bob.",
-      "date": "2026-11-23T11:31:25Z",
+      "title": "Hermes 0.1.627 (627)",
+      "identifier": "hermes-0.1.627-627",
+      "caption": "### Fixed\n- **The pet can ask.** Every question came back as \"not found\": the host's `ask` route only accepted calls\n  from its own machine, and both apps reach it through the tailnet proxy. It now accepts a call that carries\n  your device's ticket \u2014 and still answers an unauthenticated proxy exactly as it answers an unknown route.\n- **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is\n  now a translucent material with the theme colour over it, so the wallpaper and windows show through and the\n  text stays readable.",
+      "date": "2026-11-23T11:59:38Z",
       "tintColor": "#9A9AA0"
     }
   ],
