@@ -1125,3 +1125,13 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   when it blinks.
 - **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by
   the picture itself. Reduce Motion still stops the drift.
+
+## [0.1.633] — 2026-11-23
+
+### Added
+- **The pet tells you when a bot answers while you are away.** If Hermey's window is minimised (or the app
+  hidden) and a bot you asked something replies, that bot's pet hops once and wears a small badge with the
+  count. Click the pet and the balloon opens with the reply; the badge clears with it — and the dot in the
+  app's bot list clears at the same time, because both read the same count.
+- It stays quiet when you are already looking at the window, and it does not hop for a reply its own
+  balloon is showing.
