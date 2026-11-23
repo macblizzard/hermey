@@ -217,7 +217,8 @@ class KeyRuleTests(unittest.TestCase):
         self.assertIn(".joined()", KEY)
 
     def test_the_message_half_is_row_or_live(self) -> None:
-        self.assertIn("public static func message(rowID: Int?, entryID: String) -> String", KEY)
+        self.assertIn("public static func message(rowID: Int64?, entryID: String) -> String", KEY,
+                      "the row id is Int64?, and the key rule owns the conversion")
         self.assertIn('return "row:\\(rowID)"', KEY)
         self.assertIn('return "live:\\(entryID)"', KEY)
         self.assertIn("public static func isValidMessage(", KEY)
