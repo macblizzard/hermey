@@ -758,6 +758,199 @@ pub fn install(
     report
 }
 
+// ---- inspection (read only) --------------------------------------------------------------------
+
+/// What one target directory holds, decided exactly as [`write_skill`] would decide it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TargetState {
+    /// The file is there and identical to what an install would write: nothing to do.
+    Current,
+    /// Ours, but an older render: installing would update it.
+    Stale,
+    /// No file at all.
+    Missing,
+    /// A file without our marker — the owner's own skill, which an install leaves alone.
+    Foreign,
+    /// This host cannot host the skill (`platforms:` excludes its OS).
+    NotApplicable,
+    /// Present but unreadable; an install would refuse to replace it, so the reason is reported.
+    Unreadable(String),
+}
+
+/// One target directory and what it holds.
+#[derive(Debug, Clone)]
+pub struct TargetStatus {
+    pub profile: String,
+    pub dir: PathBuf,
+    pub state: TargetState,
+}
+
+/// The answer to `GET /v1/local-computers/skill`: the install's own view of this host, read only.
+///
+/// Nothing here writes. The Mac's row asks on every appearance of Settings and after every press,
+/// so this has to be a read — a status check that *installed* would turn "look at it" into a write.
+#[derive(Debug, Clone, Default)]
+pub struct Status {
+    pub version: String,
+    /// The CLI the skill points at, and whether it is on disk.
+    pub cli: Option<PathBuf>,
+    pub cli_present: bool,
+    pub targets: Vec<TargetStatus>,
+}
+
+impl Status {
+    fn labels(&self, wanted: &[&str]) -> Vec<String> {
+        self.targets
+            .iter()
+            .filter(|t| wanted.contains(&state_token(&t.state)))
+            .map(|t| t.profile.clone())
+            .collect()
+    }
+
+    /// Directories where the skill is on disk — ours or the owner's.
+    pub fn present(&self) -> Vec<String> {
+        self.labels(&["current", "stale", "foreign"])
+    }
+
+    /// Directories with nothing there.
+    pub fn missing(&self) -> Vec<String> {
+        self.labels(&["missing"])
+    }
+
+    /// Directories holding an older render of ours.
+    pub fn stale(&self) -> Vec<String> {
+        self.labels(&["stale"])
+    }
+
+    /// Directories where the owner's own skill by that name is in the way.
+    pub fn foreign(&self) -> Vec<String> {
+        self.labels(&["foreign"])
+    }
+
+    /// Read failures, each `<dir>: <reason>` — the row says these out loud instead of showing a
+    /// cheerful "Installed" over a directory it could not look into.
+    pub fn errors(&self) -> Vec<String> {
+        self.targets
+            .iter()
+            .filter_map(|t| match &t.state {
+                TargetState::Unreadable(reason) => {
+                    Some(format!("{}: {reason}", t.dir.display()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether every directory that can host this skill has the current render and the CLI is in
+    /// place. A directory the host cannot read is not "up to date"; neither is a missing CLI, which
+    /// is what the skill's own commands run through.
+    pub fn up_to_date(&self) -> bool {
+        self.cli_present
+            && !self.targets.is_empty()
+            && self.targets.iter().all(|t| {
+                matches!(t.state, TargetState::Current | TargetState::NotApplicable)
+            })
+    }
+
+    /// The whole picture as the route's JSON body.
+    pub fn body(&self, host_os: &str) -> serde_json::Value {
+        let missing = self.missing();
+        let stale = self.stale();
+        let foreign = self.foreign();
+        serde_json::json!({
+            "host": host_os,
+            "version": self.version,
+            // The Mac's row reads these five. `present` is "on disk somewhere", which is a
+            // different question from "up to date" on purpose: the row has words for both.
+            "present": !self.present().is_empty(),
+            "up_to_date": self.up_to_date(),
+            "owned_by_the_user": foreign,
+            "cli_present": self.cli_present,
+            "cli": self.cli.as_ref().map(|p| p.to_string_lossy().to_string()),
+            "missing": missing,
+            "stale": stale,
+            "errors": self.errors(),
+            "targets": self.targets.iter().map(|t| serde_json::json!({
+                "profile": t.profile,
+                "dir": t.dir.to_string_lossy(),
+                "state": state_token(&t.state),
+                "detail": match &t.state {
+                    TargetState::Unreadable(reason) => Some(reason.clone()),
+                    _ => None,
+                },
+            })).collect::<Vec<_>>(),
+        })
+    }
+}
+
+/// The lowercase token the route publishes; one vocabulary with [`Outcome::as_str`] so the status
+/// and the install report read the same.
+fn state_token(state: &TargetState) -> &'static str {
+    match state {
+        TargetState::Current => "current",
+        TargetState::Stale => "stale",
+        TargetState::Missing => "missing",
+        TargetState::Foreign => "foreign",
+        TargetState::NotApplicable => "platform-skipped",
+        TargetState::Unreadable(_) => "unreadable",
+    }
+}
+
+/// Read this host's install state without touching it.
+///
+/// The Mac's settings row used to get a 404 placeholder here and draw "Unavailable" beside a button
+/// whose writes nobody could see. The decision at each target is [`write_skill`]'s, in the same
+/// order, so what this reports and what a press would do cannot disagree: identical content is
+/// `current`, our marker with older content is `stale`, no marker is `foreign` and stays the
+/// owner's, and a platform the template excludes is skipped rather than "missing".
+pub fn inspect(
+    engine_home: &Path,
+    state_home: &Path,
+    host_os: &str,
+    endpoints: &Endpoints,
+) -> Status {
+    let Some(skill) = BUNDLED_SKILLS.iter().find(|s| s.name == SKILL_NAME) else {
+        return Status::default();
+    };
+    // The same path `install_scripts` hands back, so a status and a press agree about the CLI.
+    let cli = state_home.join("bin").join(CLI_SCRIPT);
+    let cli_present = cli.is_file();
+    // Rendered the way the install would render it: with the CLI's path when the scripts made it
+    // to disk, and with the "no scripts on this host" note when they did not. Comparing against a
+    // body an install could never write would report `stale` for ever.
+    let body = if cli_present {
+        render(skill, Some(cli.as_path()), endpoints)
+    } else {
+        render(skill, None, endpoints)
+    };
+    let mut status = Status {
+        version: version(skill.template),
+        cli: Some(cli),
+        cli_present,
+        targets: Vec::new(),
+    };
+    for (profile, dir) in targets(engine_home) {
+        let path = dir.join(SKILL_NAME).join("SKILL.md");
+        let state = if !applies_on(skill.template, host_os) {
+            TargetState::NotApplicable
+        } else {
+            match read_existing(&path) {
+                Err(reason) => TargetState::Unreadable(reason),
+                Ok(None) => TargetState::Missing,
+                Ok(Some(text)) if text == body => TargetState::Current,
+                Ok(Some(text)) if !text.contains(MANAGED_MARKER) => TargetState::Foreign,
+                Ok(Some(_)) => TargetState::Stale,
+            }
+        };
+        status.targets.push(TargetStatus {
+            profile,
+            dir,
+            state,
+        });
+    }
+    status
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1275,6 +1468,115 @@ print(json.dumps({
             assert!(err.contains("local.token"), "{script} must name the file it looked for: {err}");
             assert!(!err.contains("Traceback"), "{script} printed a traceback: {err}");
         }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ---- the status read (`GET /v1/local-computers/skill`) --------------------------------------
+
+    /// The bug this replaced: a fresh host answered the read with a 404, so the Mac's row said
+    /// "Unavailable" for ever. A host with no install must *say* "nothing here", not stay silent.
+    #[test]
+    fn inspect_on_a_bare_host_reports_nothing_installed() {
+        let root = scratch("inspect-empty");
+        let engine = root.join("engine");
+        let state = root.join("state");
+        std::fs::create_dir_all(&engine).unwrap();
+
+        let status = inspect(&engine, &state, "linux", &endpoints());
+
+        assert!(!status.cli_present);
+        assert!(status.present().is_empty(), "{:?}", status.targets);
+        assert!(!status.up_to_date());
+        assert_eq!(status.missing(), vec!["shared".to_string()]);
+        assert!(status.foreign().is_empty() && status.stale().is_empty());
+        let body = status.body("linux");
+        assert_eq!(body["present"], serde_json::json!(false));
+        assert_eq!(body["up_to_date"], serde_json::json!(false));
+        assert_eq!(body["missing"], serde_json::json!(["shared"]));
+        // And it wrote nothing: the directories it named are still absent.
+        assert!(!engine.join("skills").exists());
+        assert!(!state.join("bin").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The healthy answer a paired Mac has to be able to see, or the row can never leave
+    /// "Unavailable".
+    #[test]
+    fn inspect_after_an_install_is_up_to_date_and_writes_nothing() {
+        let root = scratch("inspect-current");
+        let engine = root.join("engine");
+        let state = root.join("state");
+        std::fs::create_dir_all(&engine).unwrap();
+        let report = install(&engine, &state, "linux", &endpoints());
+        assert_eq!(report.written(), BUNDLED_SKILLS.len());
+
+        let watched = engine.join("skills").join(SKILL_NAME).join("SKILL.md");
+        let before = std::fs::read(&watched).unwrap();
+        // Rebuild the render a second time *by inspecting only*: a status check that installed
+        // would bump this file, and the row would then be reporting on its own side effect.
+        let status = inspect(&engine, &state, "linux", &endpoints());
+
+        assert!(status.cli_present, "the scripts install wrote no CLI");
+        assert_eq!(std::fs::read(&watched).unwrap(), before);
+        assert!(!watched.with_extension("md.previous").exists());
+        assert_eq!(status.version, version(BUNDLED_SKILLS[0].template));
+        assert_eq!(status.missing(), Vec::<String>::new());
+        assert!(status.up_to_date(), "{:?}", status.targets);
+        let body = status.body("linux");
+        assert_eq!(body["present"], serde_json::json!(true));
+        assert_eq!(body["up_to_date"], serde_json::json!(true));
+        assert_eq!(body["owned_by_the_user"], serde_json::json!([]));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// "Yours" and "Update available" are different answers, and the read has to tell them apart
+    /// from the file — the same way `write_skill` does when the button is pressed.
+    #[test]
+    fn inspect_tells_the_owners_skill_apart_from_an_old_render() {
+        let root = scratch("inspect-foreign");
+        let engine = root.join("engine");
+        let state = root.join("state");
+        let mine = engine.join("skills").join(SKILL_NAME);
+        std::fs::create_dir_all(&mine).unwrap();
+        let skill = mine.join("SKILL.md");
+
+        std::fs::write(&skill, "---\nname: mac-local-computer\ndescription: mine\n---\n\n# my own\n").unwrap();
+        let owned = inspect(&engine, &state, "linux", &endpoints());
+        assert_eq!(owned.foreign(), vec!["shared".to_string()]);
+        assert!(owned.present().contains(&"shared".to_string()));
+        assert!(!owned.up_to_date());
+        assert_eq!(owned.body("linux")["owned_by_the_user"], serde_json::json!(["shared"]));
+
+        std::fs::write(
+            &skill,
+            format!("---\nname: mac-local-computer\nversion: 0.9.0\n{MANAGED_MARKER}\n---\n\nold\n"),
+        )
+        .unwrap();
+        let ours = inspect(&engine, &state, "linux", &endpoints());
+        assert!(ours.foreign().is_empty());
+        assert_eq!(ours.stale(), vec!["shared".to_string()]);
+        assert!(!ours.up_to_date());
+        // Nothing was rewritten by asking.
+        assert!(std::fs::read_to_string(&skill).unwrap().contains("old\n"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A directory the host cannot read is named, not silently counted as fine.
+    #[test]
+    fn inspect_reports_a_directory_it_cannot_read() {
+        let root = scratch("inspect-unreadable");
+        let engine = root.join("engine");
+        let state = root.join("state");
+        let dir = engine.join("skills").join(SKILL_NAME);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A directory where the file should be: `read` fails with something that is not NotFound.
+        std::fs::create_dir_all(dir.join("SKILL.md")).unwrap();
+
+        let status = inspect(&engine, &state, "linux", &endpoints());
+        assert_eq!(status.errors().len(), 1, "{:?}", status.targets);
+        assert!(status.errors()[0].contains(SKILL_NAME), "{:?}", status.errors());
+        assert!(!status.up_to_date());
+        assert_eq!(status.body("linux")["errors"].as_array().map(Vec::len), Some(1));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

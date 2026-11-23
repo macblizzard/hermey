@@ -26,10 +26,20 @@ phone wide, covering the status bar, saying nothing but an icon and `1:06`:
   expanded island and the lock-screen card carry the first line or two of the reply, which is a
   field on `ContentState` and is flattened and capped by the type, not by each view.
 
+And one rule from the screenshot after it — a lock-screen card that was a pale tint and no words:
+
+* **every word travels in the state, and the state is never empty.** The card is drawn in a second
+  process that can see nothing of the app's model, so a sentence written as a literal in the view,
+  or a name captured once when the activity is requested, is all the card can ever say — and a card
+  whose only fields are fixed at `request` time never learns anything about the turn it is showing.
+  `ContentState.step` is the line the coordinator fills from `liveTools`/`activity(forBot:)`/
+  `streamingText`, `update` is called when it changes, and both the initialiser and the decoder end
+  at a neutral word so no caller and no older activity can put a blank line on the lock screen.
+
 What a real device has to confirm (it cannot be asserted here): that the extension is embedded and
 signed, that the compact pill sits inside the notch's width instead of over the status bar, that the
 island's compact trailing timer is not clipped, and that ending with `.after(6s)` is long enough to
-read "Replied" and a snippet on the lock screen.
+read "Done" and a snippet on the lock screen.
 """
 
 from __future__ import annotations
@@ -160,12 +170,13 @@ class EveryPresentationHasAView(unittest.TestCase):
         self.assertIn(".activityBackgroundTint(HermeyTurnInk.canvas)", content)
 
     def test_the_state_picks_the_glyph_and_the_sentence(self) -> None:
-        # Working → an in-progress bubble and "Working on your message"; done → a tick and "Replied".
+        # Working → an in-progress bubble and a tick when it is over. The words are the state's now
+        # (see `TheCardAlwaysSaysWhatItIsDoing`); the literals here are the floor a card from a build
+        # with no step field still draws.
         self.assertIn('"ellipsis.bubble"', WIDGET)
         self.assertIn('"checkmark.circle"', WIDGET)
         status = section("// MARK: - Pieces")
-        self.assertIn("Working on your message", status)
-        self.assertIn('return "Replied"', status)
+        self.assertIn('return state.phase == .done ? "Done" : "Working on your message"', status)
 
     def test_a_stale_card_stops_claiming_to_work(self) -> None:
         # `staleDate` fires when the app could not update the card (killed mid-turn). The sentence
@@ -445,6 +456,116 @@ class TheCoordinatorHandsTheReplyOver(unittest.TestCase):
 
     def test_the_name_is_short_before_it_is_drawn_here_too(self) -> None:
         # The island's own shortening is a display rule; the coordinator still sends the real name.
+        self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
+
+
+class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
+    """The card that was a pale tint and no words: the state had nothing in it to draw.
+
+    Everything the extension can print has to arrive in the activity the app hands the system —
+    the widget is a second process with no bot list, no transcript and no stream, so a sentence
+    written in the view is the same sentence for every turn, and a name captured once at `request`
+    time is the only thing the card will ever say about *this* bot. The card therefore carries a
+    `step` (what the bot is doing, in the app's own words), the coordinator pushes it when the turn
+    moves, and both the initialiser and the decoder end at a neutral word — the floor that makes a
+    blank capsule impossible, including for an activity requested by an older build.
+    """
+
+    def test_the_state_carries_the_step_and_its_cap(self) -> None:
+        self.assertIn("public var step: String", ATTRIBUTES)
+        self.assertIn("public static let stepLimit = 48", ATTRIBUTES)
+
+    def test_the_state_pushed_at_start_is_never_empty(self) -> None:
+        begin = body("private func begin()")
+        # Read before the request, and handed to it: the first frame iOS draws is this state, and a
+        # turn whose first token is slow would otherwise be a wordless card for its whole run.
+        self.assertIn("let startStep = normalisedStep()", begin)
+        self.assertLess(begin.index("let startStep"), begin.index("Activity.request("))
+        self.assertEqual(begin.count("step: startStep"), 2)  # the request, and the re-point update
+        # …and the type cannot be handed an empty one: `stepLine` ends at the neutral word.
+        init = ATTRIBUTES[ATTRIBUTES.index("public init(phase: Phase"):ATTRIBUTES.index("/// The step, flattened")]
+        self.assertIn("self.step = Self.stepLine(step, phase: phase)", init)
+        step_line = body("public static func stepLine", ATTRIBUTES)
+        self.assertIn("guard !flat.isEmpty else { return Self.neutral(phase) }", step_line)
+        self.assertIn("prefix(stepLimit)", step_line)
+
+    def test_the_neutral_word_for_each_phase(self) -> None:
+        neutral = body("public static func neutral", ATTRIBUTES)
+        self.assertIn('case .working: return "Working"', neutral)
+        self.assertIn('case .done: return "Done"', neutral)
+
+    def test_an_older_card_gets_the_same_floor(self) -> None:
+        # 0.1.638's activities have no `step` key. A missing key must decode to the neutral word,
+        # not to a blank line and not to a thrown decoder that drops the card being looked at.
+        decoder = ATTRIBUTES[ATTRIBUTES.index("public init(from decoder: Decoder) throws"):]
+        decoder = decoder[:decoder.index("/// What the card calls a bot")]
+        self.assertIn("decodeIfPresent(String.self, forKey: .step)", decoder)
+        self.assertIn("phase: phase", decoder)
+        self.assertIn("case phase, startedAt, finishedAt, replySnippet, step", ATTRIBUTES)
+
+    def test_the_name_line_can_never_be_blank(self) -> None:
+        # The name is the other half of "which bot": `Bot.displayName` always resolves, but the card
+        # must not depend on that, because a blank name line is indistinguishable from no card.
+        self.assertIn('public static let fallbackName = "Hermey"', ATTRIBUTES)
+        self.assertIn("self.botName = Self.displayName(botName)", ATTRIBUTES)
+        display = body("public static func displayName", ATTRIBUTES)
+        self.assertIn("return flat.isEmpty ? fallbackName : flat", display)
+
+    def test_the_lock_screen_prints_the_step(self) -> None:
+        # The complaint was the lock screen, so the layout that failed is the one pinned: the card
+        # draws the named status line, and the line is the state's step when there is one.
+        card = piece("private struct HermeyTurnLockScreen: View")
+        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)", card)
+        self.assertIn("Text(line)", piece("private struct HermeyTurnStatusLine: View"))
+        status = piece("private struct HermeyTurnStatusLine: View")
+        self.assertIn("let step = state.step", status)
+        self.assertIn("guard step.isEmpty else { return step }", status)
+
+    def test_the_end_state_has_words_with_or_without_a_reply(self) -> None:
+        status = piece("private struct HermeyTurnStatusLine: View")
+        self.assertIn('return state.phase == .done ? "Done" : "Working on your message"', status)
+        finish = body("private func finish()")
+        self.assertIn("step: Self.doneWords", finish)
+        # The snippet stays the second line, and stays optional: a cancelled turn has no reply to
+        # quote, so the card says "Done" and the elapsed time rather than inventing words.
+        self.assertIn("replySnippet: replySnippet(),", finish)
+        self.assertIn('static let doneWords = "Done"', COORDINATOR)
+
+    def test_progress_is_pushed_while_the_turn_runs(self) -> None:
+        # The path the feature was missing: `begin` wrote the state once and nothing refreshed it,
+        # so the lock screen held the frame from `request` until the turn ended.
+        attach = body("func attach(to model: AppModel)")
+        for source in ("model.$liveTools", "model.$streamingText", "model.$reasoningText"):
+            self.assertIn(source, attach)
+        self.assertIn("self.progress()", attach)
+        progress = body("private func progress()")
+        self.assertIn("await activity.update(", progress)
+        self.assertIn("phase: .working", progress)
+        # Normalised before it is compared, so a token that does not change the line is not an
+        # update — otherwise a streaming reply costs one activity write per token.
+        self.assertIn("let step = normalisedStep()", progress)
+        self.assertIn("guard step != lastStep else { return }", progress)
+
+    def test_the_step_is_the_apps_own_vocabulary(self) -> None:
+        # Same words the app's working row reads: the tracker's activity, and the tool that is out.
+        step = body("private func stepLine()")
+        self.assertIn("model.liveTools.last(where: { $0.isRunning })", step)
+        self.assertIn("model.activity(forBot: $0)", step)
+        self.assertIn("model.streamingText", step)
+        for phrase in ("Thinking it through", "Using the computer", "Working on your message"):
+            self.assertIn(phrase, step)
+
+    def test_the_widget_draws_the_type_the_coordinator_starts(self) -> None:
+        # One attributes type in two processes: the widget's configuration and every `Activity<>`
+        # the coordinator holds must name the same struct, and no second `ActivityAttributes`
+        # conformance may exist anywhere in the tree to drift from it.
+        conformances = [
+            path for path in sorted(ROOT.glob("Apps/**/*.swift")) + sorted(ROOT.glob("Sources/**/*.swift"))
+            if ": ActivityAttributes" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual([path.name for path in conformances], ["HermeyTurnAttributes.swift"])
+        self.assertIn("ActivityConfiguration(for: HermeyTurnAttributes.self)", WIDGET)
+        self.assertEqual(set(re.findall(r"Activity<(\w+)>", COORDINATOR)), {"HermeyTurnAttributes"})
         self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
 
 

@@ -85,6 +85,13 @@ final class LocalComputerService: ObservableObject {
     @Published private(set) var skill: ComputerSkillStatus?
     @Published private(set) var skillChecked = false
     @Published private(set) var skillBusy = false
+    /// Why the row has no status to show. `skill == nil` alone says "the host did not answer" and
+    /// nothing about which way it failed; this is the sentence the row puts under the button.
+    @Published private(set) var skillUnavailableReason: String?
+    /// Why the last *install* did not do what the button promised. Kept apart from the reason above
+    /// so a failed write is still visible after a readable status, instead of being overwritten by
+    /// the refresh that followed it.
+    @Published private(set) var skillActionError: String?
 
     private let defaults = UserDefaults.standard
     private let enabledKey = "hermey.localComputer.enabled"
@@ -282,34 +289,116 @@ final class LocalComputerService: ObservableObject {
 
     /// Ask the host where the bot instructions are. Read-only on the host by design: looking must
     /// never install anything.
+    ///
+    /// Every way this can fail now leaves a sentence behind. The host used to answer this route
+    /// with a 404 placeholder, and `try?` turned that into `skill = nil` — which the row drew as
+    /// "Unavailable" beside an Install button whose own writes nobody ever saw. "No answer" has to
+    /// say *which* no-answer it was.
     func refreshSkill(address: PairingAddress?) async {
         defer { skillChecked = true }
-        guard let request = await skillRequest(method: "GET", address: address),
-              let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // No answer is not "not installed": the row says unavailable and offers the button.
+        guard let request = await skillRequest(method: "GET", address: address) else {
             skill = nil
+            skillUnavailableReason = address == nil
+                ? "Pair a host first — the instructions are written on the host."
+                : "This host handed out no ticket for the request."
             return
         }
-        skill = ComputerSkillStatus(
-            version: object["version"] as? String ?? "",
-            present: object["present"] as? Bool ?? false,
-            upToDate: object["up_to_date"] as? Bool ?? false,
-            ownedByTheUser: (object["owned_by_the_user"] as? [Any])?.isEmpty == false,
-            cliPresent: object["cli_present"] as? Bool ?? false
-        )
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                skill = nil
+                skillUnavailableReason = "The host's answer was not an HTTP response."
+                return
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                skill = nil
+                skillUnavailableReason = Self.reason(data: data, status: http.statusCode)
+                return
+            }
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                skill = nil
+                skillUnavailableReason = "The host answered \(http.statusCode) with something this app cannot read."
+                return
+            }
+            skill = ComputerSkillStatus(
+                version: object["version"] as? String ?? "",
+                present: object["present"] as? Bool ?? false,
+                upToDate: object["up_to_date"] as? Bool ?? false,
+                ownedByTheUser: (object["owned_by_the_user"] as? [Any])?.isEmpty == false,
+                cliPresent: object["cli_present"] as? Bool ?? false
+            )
+            skillUnavailableReason = Self.readErrors(in: object)
+        } catch {
+            skill = nil
+            skillUnavailableReason = "The host did not answer: \(error.localizedDescription)"
+        }
     }
 
     /// Re-run the host's own installer — the same pass it makes on every start.
+    ///
+    /// The button is only worth having if its outcome is visible: a non-2xx answer, a transport
+    /// error, or a 2xx that names directories it could not write all land in `skillActionError`,
+    /// which the row draws. Silence was the bug.
     func installSkill(address: PairingAddress?) async {
         guard !skillBusy else { return }
+        skillActionError = nil
+        guard let request = await skillRequest(method: "POST", address: address) else {
+            skillActionError = address == nil
+                ? "Pair a host first — the instructions are written on the host."
+                : "This host handed out no ticket for the install."
+            return
+        }
         skillBusy = true
         defer { skillBusy = false }
-        if let request = await skillRequest(method: "POST", address: address) {
-            _ = try? await URLSession.shared.data(for: request)
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                skillActionError = "The host's answer was not an HTTP response."
+                return
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                skillActionError = Self.reason(data: data, status: http.statusCode)
+                return
+            }
+            if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                skillActionError = Self.errors(in: object)
+            }
+        } catch {
+            skillActionError = "The install did not finish: \(error.localizedDescription)"
+            return
         }
         await refreshSkill(address: address)
+    }
+
+    /// The host's own `detail` — the one sentence it wrote for a human — or the status code.
+    private static func reason(data: Data, status: Int) -> String {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let detail = (object["detail"] ?? object["error"]) as? String,
+           !detail.isEmpty {
+            return "The host said \(status): \(detail)"
+        }
+        return "The host answered \(status)."
+    }
+
+    /// Directories the install could not write, and a script it could not place. A 200 is not
+    /// success when the answer names work it skipped; that is exactly what the row has to say.
+    private static func errors(in object: [String: Any]) -> String? {
+        var parts: [String] = []
+        if let script = object["script_error"] as? String, !script.isEmpty {
+            parts.append("its scripts could not be written (\(script))")
+        }
+        if let failed = object["failed"] as? [String], !failed.isEmpty {
+            parts.append("it could not write " + failed.joined(separator: ", "))
+        }
+        return parts.isEmpty ? nil : "The host installed the instructions, but " + parts.joined(separator: "; ") + "."
+    }
+
+    /// Target directories whose `SKILL.md` the host could not even read. The status is still real
+    /// (the other directories said something), but a reader has to be told that one of them is in
+    /// the dark — that is the difference between "installed" and "installed where I could see".
+    private static func readErrors(in object: [String: Any]) -> String? {
+        guard let errors = object["errors"] as? [String], !errors.isEmpty else { return nil }
+        return "Some instructions could not be read: " + errors.joined(separator: "; ") + "."
     }
 
     /// Both skill routes take the same per-call ticket the revoke uses; there is no long-lived token.

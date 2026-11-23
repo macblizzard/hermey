@@ -238,9 +238,18 @@ private enum HermeyTurnElapsed {
     }
 }
 
-/// The state in words. Staleness is not an error: it means the app has not been able to update the
-/// card (it was killed, or the turn is taking longer than the app promised), so the sentence steps
-/// back to what is still true instead of claiming work that may have stopped.
+/// The state in words: what the bot is doing, from the state the app last sent.
+///
+/// This used to be a literal — `"Working on your message"` while running, `"Replied"` when done —
+/// which is why the card could describe a turn it knew nothing about and still have nothing to say
+/// about *this* one. `state.step` is the line the coordinator fills from the model, and it is never
+/// empty (`ContentState.stepLine` ends at a neutral word), so the sentence now varies with the turn.
+///
+/// The literal survives only as the second floor, for a card requested by a build that predates the
+/// field: a redraw of that activity decodes a missing `step`, and this is what it draws instead of a
+/// blank line. Staleness is not an error: it means the app has not been able to update the card (it
+/// was killed, or the turn is taking longer than the app promised), so the sentence steps back to
+/// what is still true instead of claiming work that may have stopped.
 private struct HermeyTurnStatusLine: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
@@ -267,14 +276,12 @@ private struct HermeyTurnStatusLine: View {
     }
 
     private var line: String {
-        switch state.phase {
-        case .done:
-            return "Replied"
-        case .working:
-            // "on your message" is the owner's own wording, and it is what tells him the turn is
-            // *his* rather than some background sweep.
-            return isStale ? "Still waiting on \(botName)" : "Working on your message"
-        }
+        if isStale { return "Still waiting on \(botName)" }
+        let step = state.step
+        guard step.isEmpty else { return step }
+        // Only an activity from a build with no `step` reaches this: the state normalises to the
+        // neutral word at construction and at decode.
+        return state.phase == .done ? "Done" : "Working on your message"
     }
 }
 
@@ -344,13 +351,14 @@ private struct HermeyTurnLockScreen: View {
 
     /// The snippet is read after the sentence rather than as a separate element: VoiceOver announces
     /// the card as one thing, and the words of the reply are the reason the owner raised his phone.
+    /// The step is read too — "which bot" and "doing what" is the whole content of a running turn.
     private var accessibilityLine: String {
         let snippet = state.replySnippet
         let said = snippet.isEmpty ? "" : " \(snippet)"
+        if isStale { return "Hermey. Still waiting on \(botName)." }
         switch state.phase {
-        case .done: return "Hermey. \(botName) replied.\(said)"
-        case .working: return isStale ? "Hermey. Still waiting on \(botName)."
-                                     : "Hermey. \(botName) is working on your message."
+        case .done: return "Hermey. \(botName): \(state.step).\(said)"
+        case .working: return "Hermey. \(botName) is \(state.step)."
         }
     }
 }

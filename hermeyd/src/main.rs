@@ -457,9 +457,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/local-computers/ws", get(local_computers::channel))
         .route(
             "/v1/local-computers/skill",
-            // GET reports; POST is the Mac's Install button. Both exist so the button is answered
-            // by a handler rather than a 405 the app ignores.
-            get(local_computers::skill_placeholder).post(local_computers::skill_install),
+            // GET reports what this host has; POST is the Mac's Install button. Both are real
+            // handlers — a placeholder here left the app's row on "Unavailable" for ever.
+            get(local_computers::skill_status).post(local_computers::skill_install),
         )
         .route("/v1/local-computers/{device_id}", delete(local_computers::revoke))
         .route("/v1/local-computers/{device_id}/enable", post(local_computers::enable))

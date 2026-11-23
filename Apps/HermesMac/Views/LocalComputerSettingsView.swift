@@ -24,6 +24,20 @@ struct LocalComputerSettingsView: View {
         return skill.present ? "Update available" : "Not installed"
     }
 
+    /// Why the Install button is not pressable, in the words the row shows under it.
+    ///
+    /// A disabled button with no explanation was the reported bug: the row said "Unavailable" and
+    /// the Install press did nothing visible. Every state that can disable this control now names
+    /// itself, and a state that cannot be explained does not disable it — the press is allowed and
+    /// its failure is reported instead.
+    private var skillDisabledReason: String? {
+        if service.skillBusy { return "Installing: the host is re-running its own pass." }
+        if pairedAddress == nil {
+            return "Pair a host first: the instructions are written on the host, not on this Mac."
+        }
+        return nil
+    }
+
     private var skillTint: Color {
         guard let skill = service.skill else { return Tokens.textMuted }
         if skill.ownedByTheUser { return Tokens.textMuted }
@@ -147,8 +161,34 @@ struct LocalComputerSettingsView: View {
                         Task { await service.installSkill(address: pairedAddress) }
                     }
                     .controlSize(.small)
-                    .disabled(pairedAddress == nil || service.skillBusy)
-                    .help("Re-run the host's installer for the skill your agents read")
+                    .disabled(skillDisabledReason != nil)
+                    .help(skillDisabledReason
+                          ?? "Re-run the host's installer for the skill your agents read")
+                }
+
+                // The button's own reason, when it cannot be pressed — and, when it can, whatever
+                // the last press or the last read had to say. One of these lines is always present
+                // in a broken state; silence was the bug this row is being fixed for.
+                if let reason = skillDisabledReason {
+                    Text(reason)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 18)
+                } else if let error = service.skillActionError {
+                    Text(error)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 18)
+                } else if let reason = service.skillUnavailableReason {
+                    // A host that did not answer is a warning, not a failure of this Mac; a host
+                    // that answered and could not read one of its own directories is a failure.
+                    Text(reason)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(service.skill == nil ? Tokens.warning : Tokens.danger)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 18)
                 }
 
                 if let skill = service.skill, skill.present, !skill.version.isEmpty {

@@ -1,3 +1,4 @@
+import AppKit
 import HermesAppKit
 import HermeyUI
 import SwiftUI
@@ -46,6 +47,13 @@ struct HermesMacApp: App {
     #endif
 
     init() {
+        // No window in this app is ever a tab, and AppKit still put "Show Tab Bar" and "Show All
+        // Tabs" in the View menu — items that light up, do nothing useful, and sit above the text
+        // size entries the owner actually uses. The switch is process-wide and only honoured when
+        // it is set **before the first window exists**, which is here: `App.init` runs ahead of any
+        // scene's window. `WindowTabMenu.purge()` is the belt for a build that grew one anyway.
+        NSWindow.allowsAutomaticWindowTabbing = false
+
         let store = UITestFixture.storeForLaunch()
         #if canImport(Sparkle)
         // Before the controller exists, so the launch check's first answer has somewhere to land:
@@ -121,6 +129,9 @@ struct HermesMacApp: App {
                 // a pane and a hairline, and a window held to the two-pane sum clipped both edges.
                 .frame(minWidth: store.minimumWindowWidth, minHeight: WindowLayout.heightMin)
                 .hermesThemeChrome()
+                // The View menu is built and shown with this window; anything AppKit inserted on
+                // its own is dropped here, once, so "Show Tab Bar" cannot come back.
+                .onAppear { WindowTabMenu.purge() }
                 // A paired host is dialled at launch: the app opens the last conversation instead
                 // of asking to be connected to one it already knows. `attachFixtureHostIfNeeded`
                 // is a no-op unless the fixture launch argument was given.

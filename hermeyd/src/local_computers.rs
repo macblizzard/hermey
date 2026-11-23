@@ -11,7 +11,8 @@
 //! POST /v1/local-computers/{id}/act         {actions:[…], bot}
 //! POST /v1/local-computers/{id}/file        {op: read|write|list|mkdir, path, content_base64?}
 //! POST /v1/local-computers/{id}/browser     {op: navigate|snapshot|act|downloads, …}
-//! GET  /v1/local-computers/skill            -> what the Mac reports about the computer-use skill
+//! GET  /v1/local-computers/skill            -> what this host installed for its bots (read only)
+//! POST /v1/local-computers/skill            -> re-run this host's own install (the Mac's button)
 //! DELETE /v1/local-computers/{id}           revoke
 //! POST /v1/local-computers/{id}/enable      undo a revoke
 //! ```
@@ -31,7 +32,7 @@ use crate::routes::{require_device, AppState};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -517,9 +518,28 @@ pub async fn enable(
     Ok(Json(json!({"device_id": device_id, "revoked": false, "changed": changed})))
 }
 
-pub async fn skill_placeholder() -> Response {
-    // The skill is installed by the Mac app; this host has nothing to report until one connects.
-    (StatusCode::NOT_FOUND, Json(json!({"detail": "no computer has reported a skill"}))).into_response()
+/// `GET /v1/local-computers/skill` — what this host has, for the Mac's row.
+///
+/// This was a placeholder that answered 404 to every caller. The Mac reads a non-2xx as "the host
+/// did not answer" and drew **Unavailable** for ever, next to an Install button whose own work was
+/// invisible — the reported bug. It is now a real read: `skills::inspect` decides each directory
+/// exactly as `write_skill` would, and writes nothing.
+///
+/// Device-authenticated like its neighbours: the answer names the host's home directories, which is
+/// not something to hand to anything that can reach the port.
+pub async fn skill_status(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Fail> {
+    require_device(&st, &headers)?;
+    let state_home = state_home(&st);
+    let status = crate::skills::inspect(
+        &st.engine_home,
+        &state_home,
+        crate::skills::host_os(),
+        &crate::skills::Endpoints::from_process_env(&state_home),
+    );
+    Ok(Json(status.body(crate::skills::host_os())))
 }
 
 /// `POST /v1/local-computers/skill` — the Mac's *Install* button.
@@ -537,19 +557,27 @@ pub async fn skill_install(
     State(st): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Fail> {
-    require_device(&st, &headers)?;
-    // Scripts live beside this service's own state, the one directory the unit lets it write
-    // (`attachments_dir` is `<state>/attachments`). Same derivation as bot_admin::purge.
-    let state_home = st
-        .attachments_dir
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| st.attachments_dir.clone());
+    let device = require_device(&st, &headers)?;
+    let state_home = state_home(&st);
     let report = crate::skills::install(
         &st.engine_home,
         &state_home,
         crate::skills::host_os(),
         &crate::skills::Endpoints::from_process_env(&state_home),
+    );
+    let failed = report.failed();
+    // Who pressed it, and whether every directory took it: the same shape the neighbouring
+    // `local_computer.*` events use, so one grep reads the whole story of a Mac's session.
+    st.audit.emit(
+        "local_computer.skill",
+        crate::audit::Event {
+            device: Some(&device),
+            method: Some("POST"),
+            path: Some("/v1/local-computers/skill"),
+            outcome: Some(if failed.is_empty() { "ok" } else { "partial" }),
+            reason: if failed.is_empty() { None } else { Some("failed") },
+            ..crate::audit::Event::default()
+        },
     );
     Ok(Json(json!({
         "host": crate::skills::host_os(),
@@ -557,7 +585,7 @@ pub async fn skill_install(
         "installed": report.installed(),
         "written": report.written(),
         "current": report.current(),
-        "failed": report.failed(),
+        "failed": failed,
         "scripts_written": report.scripts_written,
         "script_error": report.script_error,
         "skills": Value::Object(report.skill_outcomes()),
@@ -569,6 +597,15 @@ pub async fn skill_install(
             "failed": p.count(&crate::skills::Outcome::Failed(String::new())),
         })).collect::<Vec<_>>(),
     })))
+}
+
+/// The one writable directory this service owns (`<state>`), derived from `attachments_dir` the way
+/// `bot_admin::purge` does. Both skill routes need it for the scripts and the bearer path.
+fn state_home(st: &AppState) -> std::path::PathBuf {
+    st.attachments_dir
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| st.attachments_dir.clone())
 }
 
 // ---- execute-stream / file / resume -------------------------------------------------------------

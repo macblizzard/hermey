@@ -67,6 +67,11 @@ final class LiveActivityCoordinator: ObservableObject {
     /// small enough that a long answer is not held a second time in an observer.
     private static let replyTailLimit = 400
 
+    /// The step line the card is currently showing, already normalised the way the state normalises
+    /// it. The model publishes tools and tokens as they arrive; this is what stops a token arriving
+    /// every 40 ms from becoming an activity update every 40 ms.
+    private var lastStep: String = ""
+
     /// Reasons already written to the log, so a per-turn path cannot flood a 400-line ring.
     private var logged: Set<String> = []
 
@@ -112,6 +117,22 @@ final class LiveActivityCoordinator: ObservableObject {
                 if !tail.isEmpty { self.replyTail = tail }
             }
             .store(in: &cancellables)
+
+        // Third: what the bot is *doing*, not only that it is running. A card that says "working"
+        // for the whole turn is a card with nothing to say about this one — and one whose input the
+        // system never refreshes is how the lock screen came to show a tint and no words. The four
+        // sources are mapped to a single line before they are compared, so the step is pushed when
+        // it changes (a tool starts, the thinking stream opens, the reply starts streaming) and not
+        // once per token.
+        Publishers.CombineLatest4(model.$liveTools,
+                                  model.$streamingText,
+                                  model.$reasoningText,
+                                  model.$botActivityTracker)
+            .sink { [weak self] _, _, _, _ in
+                guard let self else { return }
+                self.progress()
+            }
+            .store(in: &cancellables)
     }
 
     /// Stop observing and take the card down. Called by `attach` when a different model arrives.
@@ -130,6 +151,7 @@ final class LiveActivityCoordinator: ObservableObject {
     func endAll() {
         startedAt = nil
         replyTail = ""
+        lastStep = ""
         isShowing = false
         activity = nil
         let leftovers = Activity<HermeyTurnAttributes>.activities
@@ -151,7 +173,11 @@ final class LiveActivityCoordinator: ObservableObject {
     /// counting from zero.
     private func begin() {
         let now = Date()
-        let name = model?.selectedBot?.displayName ?? "Hermey"
+        let name = model?.selectedBot?.displayName ?? HermeyTurnAttributes.fallbackName
+        // Read once, before the request: the card is on screen from the moment `request` returns,
+        // and the first frame iOS draws is this state. A start with no step is a card with no words
+        // until the next publish, which for a slow first token is the whole turn.
+        let startStep = normalisedStep()
 
         // 16.2 rather than 16.1 on purpose: this coordinator uses the content-carrying
         // `request`/`update`, which arrived in 16.2 and is the form 16.1's API was deprecated in
@@ -173,7 +199,10 @@ final class LiveActivityCoordinator: ObservableObject {
             // the previous turn's reply is dropped rather than shown against this one.
             startedAt = now
             replyTail = ""
-            let state = HermeyTurnAttributes.ContentState(phase: .working, startedAt: now)
+            lastStep = startStep
+            let state = HermeyTurnAttributes.ContentState(phase: .working,
+                                                          startedAt: now,
+                                                          step: startStep)
             Task {
                 await activity.update(ActivityContent(state: state,
                                                      staleDate: now.addingTimeInterval(Self.staleAfter)))
@@ -182,9 +211,12 @@ final class LiveActivityCoordinator: ObservableObject {
         }
 
         replyTail = ""
+        lastStep = startStep
         do {
             let attributes = HermeyTurnAttributes(botName: name)
-            let state = HermeyTurnAttributes.ContentState(phase: .working, startedAt: now)
+            let state = HermeyTurnAttributes.ContentState(phase: .working,
+                                                          startedAt: now,
+                                                          step: startStep)
             activity = try Activity.request(
                 attributes: attributes,
                 content: ActivityContent(state: state,
@@ -202,6 +234,10 @@ final class LiveActivityCoordinator: ObservableObject {
     }
 
     /// The reply landed — or the run was cancelled. Either way the card is over.
+    ///
+    /// The finished card says `Done` and then, when there is one, the reply's first line: the step
+    /// field is the turn's last word, so the end state cannot fall back to a tint with no text even
+    /// when the turn produced nothing the coordinator caught.
     private func finish() {
         guard let activity else { return }
         self.activity = nil
@@ -211,10 +247,12 @@ final class LiveActivityCoordinator: ObservableObject {
             phase: .done,
             startedAt: startedAt ?? Date(),
             finishedAt: Date(),
-            replySnippet: replySnippet()
+            replySnippet: replySnippet(),
+            step: Self.doneWords
         )
         startedAt = nil
         replyTail = ""
+        lastStep = ""
         // Cleared before the end is awaited, so a turn that starts immediately after this one is not
         // blocked on the dismissal. The overlap is a few seconds at most and the old card has
         // already been told to go.
@@ -223,6 +261,69 @@ final class LiveActivityCoordinator: ObservableObject {
                 ActivityContent(state: state, staleDate: nil),
                 dismissalPolicy: .after(Date().addingTimeInterval(Self.doneLinger))
             )
+        }
+    }
+
+    /// The word a finished turn ends on. One word, because the reply's first line is the sentence
+    /// underneath it — and because "Replied" claimed a reply that a cancelled turn never had.
+    static let doneWords = "Done"
+
+    // MARK: What the bot is doing
+
+    /// The card's one-line status, in the app's own vocabulary.
+    ///
+    /// The words come from the same place the app's working row reads: `BotActivityTracker` through
+    /// `activity(forBot:)`, plus the tool that is actually out. `WorkingStatus` draws kaomoji for
+    /// the chat, which is right in a bubble and wrong on a lock screen, so this maps the same eight
+    /// activities to plain phrases rather than inventing a second notion of what a bot is doing.
+    ///
+    /// A running tool wins over the pose: "Running read_file" is more useful than "Reading", and the
+    /// tool's own name is what the transcript will show afterwards.
+    private func stepLine() -> String {
+        guard let model else { return "" }
+        if let tool = model.liveTools.last(where: { $0.isRunning }) {
+            let name = tool.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            return "Running \(name.isEmpty ? "a tool" : name)"
+        }
+        let activity = model.selectedBotID.map { model.activity(forBot: $0) } ?? .working
+        switch activity {
+        case .thinking: return "Thinking it through"
+        case .reading: return "Reading"
+        case .writing: return "Writing"
+        case .computer: return "Using the computer"
+        case .waiting: return "Waiting on you"
+        case .error: return "Stopped with an error"
+        case .idle, .working: break
+        }
+        if !model.streamingText.isEmpty { return "Streaming the reply" }
+        return "Working on your message"
+    }
+
+    /// The step as the card will store it, so a line that clips to the same 48 characters is not
+    /// counted as progress and does not become an update.
+    private func normalisedStep() -> String {
+        HermeyTurnAttributes.ContentState.stepLine(stepLine(), phase: .working)
+    }
+
+    /// Push the current step, if it changed.
+    ///
+    /// This is the path the card was missing: `begin` set the state once and nothing refreshed it,
+    /// so the lock screen held the frame from the moment the activity was requested — the bot's
+    /// name and a literal, and nothing about what the turn was actually doing. Skipping the update
+    /// when the line is unchanged is what keeps a streaming reply from costing one activity write
+    /// per token: `streamingText` publishes about every 40 ms and the step changes twice.
+    private func progress() {
+        guard let activity, let startedAt else { return }
+        let step = normalisedStep()
+        guard step != lastStep else { return }
+        lastStep = step
+        let now = Date()
+        let state = HermeyTurnAttributes.ContentState(phase: .working,
+                                                      startedAt: startedAt,
+                                                      step: step)
+        Task {
+            await activity.update(ActivityContent(state: state,
+                                                 staleDate: now.addingTimeInterval(Self.staleAfter)))
         }
     }
 

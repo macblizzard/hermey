@@ -67,6 +67,25 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **The View menu no longer offers tabs.** "Show Tab Bar" and "Show All Tabs" were AppKit's automatic
+  window-tabbing items: Hermey has one window per scene and never a tab, so both sat above the
+  Bigger/Smaller/Default Text Size entries as items that could not do anything. `NSWindow
+  .allowsAutomaticWindowTabbing = false` is now set in the app's own `init` — the only place it is
+  honoured, because it has to be decided before the first window exists — and `WindowTabMenu.purge()`
+  drops any item of that family that grew in anyway (by AppKit's selector, with the two titles as a
+  backstop). The text-size commands and Enter Full Screen are untouched.
+- **Settings ▸ Agents ▸ Bot instructions says what the host actually has, and the Install button
+  reports what it did.** The row read `GET /v1/local-computers/skill`, and hermeyd answered that path
+  with a **404 placeholder** — so `refreshSkill` saw a non-2xx, set `skill = nil`, and the row sat on
+  *Unavailable* for ever while the button's own `POST` result was thrown away by `try?`. The GET is a
+  real read now (`skills::inspect`): it decides each target directory exactly as `write_skill` would —
+  `current`, `stale`, `foreign` (the owner's own skill, left alone), `missing`, `platform-skipped`,
+  `unreadable` with its reason — and writes nothing, so the row may ask as often as it likes. The row
+  therefore shows Installed / Not installed / Update available / Yours, `Unavailable` only for a host
+  that did not answer, and a sentence under the button in every other state: why it is disabled
+  ("Pair a host first…", "Installing…"), the host's own `detail` with its status code when a press
+  failed, or the directories an install could not write. The `POST` route reuses boot's install and
+  emits one `local_computer.skill` audit record. `hermeyd` 0.3.9.
 - **The launch sweep actually pre-warms the chats.** The sweep read every bot's transcript with
   `session.history`, and that call resolves **only sessions the host is already holding live**
   (`_sess_nowait` is a plain `_sessions.get(sid)`; its `4001` says "client should resume the stored

@@ -74,8 +74,30 @@ class TheComputerTabShowsIt(unittest.TestCase):
     def test_the_host_serves_both_verbs_on_that_path(self) -> None:
         # Retargeted from `hermes_bridge/local_computers.py` (deleted with the Python bridge).
         self.assertIn('"/v1/local-computers/skill"', ROUTES)
-        self.assertIn("local_computers::skill_placeholder", ROUTES)
+        self.assertIn("local_computers::skill_status", ROUTES)
         self.assertIn("local_computers::skill_install", ROUTES)
+        # The placeholder answered 404 to every GET, and the app reads any non-2xx as "the host did
+        # not answer" — which is exactly the "Unavailable" the owner reported. It must not return.
+        self.assertNotIn("skill_placeholder", ROUTES)
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text(encoding="utf-8")
+        self.assertNotIn("pub async fn skill_placeholder", module)
+
+    def test_the_status_route_reads_and_the_install_route_writes(self) -> None:
+        """The row asks on every appearance of Settings; a status check that installed is a write."""
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text(encoding="utf-8")
+        status = module.split("pub async fn skill_status", 1)[1].split("pub async fn skill_install", 1)[0]
+        self.assertIn("crate::skills::inspect", status)
+        self.assertNotIn("crate::skills::install", status)
+        # Device-authenticated like every neighbour: the answer names the host's directories.
+        self.assertIn("require_device(&st, &headers)?", status)
+
+    def test_the_install_route_reuses_the_boot_writer_and_is_audited(self) -> None:
+        module = (ROOT / "hermeyd" / "src" / "local_computers.rs").read_text(encoding="utf-8")
+        install = module.split("pub async fn skill_install", 1)[1].split("fn state_home", 1)[0]
+        # The same writer boot uses — the template is not duplicated into the route.
+        self.assertIn("crate::skills::install(", install)
+        self.assertIn("Endpoints::from_process_env", install)
+        self.assertIn('"local_computer.skill"', install)
 
 
 if __name__ == "__main__":

@@ -425,6 +425,27 @@ that computer is not connected, 504 when it does not answer, 409 for a Mac-side 
 Mac answered without a `browser` object. Measured against a live simulated Mac: navigate / snapshot /
 act / downloads each 200, not-connected 503, closed socket 503.
 
+## Local computers: the bot-instructions route (`/v1/local-computers/skill`)
+
+Both verbs are device-authenticated (`require_device`, same per-call ticket the revoke uses) and
+write into this host, never into the Mac:
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| GET | `/v1/local-computers/skill` | bearer | read only — `{host, version, present, up_to_date, owned_by_the_user[], cli_present, cli, missing[], stale[], errors[], targets[]}` |
+| POST | `/v1/local-computers/skill` | bearer | re-runs boot's own install (`skills::install`); `{written, current, failed[], installed[], script_error, targets[]}` and one `local_computer.skill` audit record |
+
+GET answers what `skills::write_skill` *would* decide, directory by directory: `current` (identical
+to the render), `stale` (ours by marker, older content), `foreign` (no marker — the owner's, and an
+install leaves it alone), `missing`, `platform-skipped`, `unreadable` (named in `errors[]` with its
+reason). `up_to_date` requires every target current **and** the bundled CLI on disk. Nothing on the
+read path writes, so the Mac's Settings row can ask as often as it likes.
+
+This route used to be a placeholder that answered **404** to GET. The Mac reads any non-2xx as "the
+host did not answer" and drew *Unavailable* beside an Install button whose writes were never
+reported, which is what the owner saw as "the Install button does nothing". A host that has not
+installed yet now answers 200 with `present:false`, and the row says *Not installed*.
+
 ## Providers and a bot's provider+model
 
 Sign-in is **not** a client feature: the owner adds keys on the host with `hermes auth add|refresh|status`.
