@@ -977,3 +977,26 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the
   two-number version policy are documented; two routes that were documented as stubs are described as the
   implemented routes they are.
+
+## [0.1.622] — 2026-11-23
+
+### Added
+- **Every card kind draws now, not just approvals.** A bot's mail draft arrives as `draft-email` and used
+  to fall back to plain text, because only `approval` had a layout. Drafts now show the subject as the
+  heading, `To` and `Cc`, and a scrollable preview of the body; `task` cards show a status chip
+  (pending, running, done, error, awaiting approval — `status.label` wins when the card sets it) above
+  the body and its actions. All three kinds share the same `body[]` blocks: plain text, key/value rows
+  and labelled fields, with an empty body drawing nothing.
+- **A resolved card says what was chosen.** Once `resolved` is set, the chosen action keeps its tick, a
+  "Resolved: …" line names it, and every other button is disabled.
+
+### Fixed
+- **A photo from the camera roll attaches.** The host's image route refuses extensions outside its own
+  list (png, jpg, jpeg, gif, webp, bmp), and an iPhone shoots HEIC — so picking a photo failed after the
+  preview with "unsupported image extension: .heic". HEIC and HEIF are now decoded and re-encoded as
+  JPEG at quality 0.85 before upload, ahead of the 8 MB check so the limit applies to what actually
+  travels. Anything undecodable passes through untouched, so the host's own reason is what you see.
+
+### Changed
+- **Card reads are keyed to their message.** The read now carries the message id as well as the session,
+  so two messages that name the same card keep their own snapshot instead of sharing one row.
