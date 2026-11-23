@@ -82,8 +82,28 @@ class GitHub:
 # --------------------------------------------------------------------------- reading the release
 
 
+def latest_app_release(github: GitHub, repo: str) -> dict:
+    """The newest release that is actually an *app* release.
+
+    `/releases/latest` is whatever GitHub decided to mark latest, and the host service has its own tag
+    series (`hermeyd-vX.Y.Z`). After one was cut, the store resolved to it and failed with
+    `release hermeyd-v0.2.3 has no .ipa asset`. An app release is a non-draft release outside that
+    series that carries an `.ipa`.
+    """
+    releases = github.json(f"{API}/repos/{repo}/releases?per_page=40")
+    for release in releases:
+        tag = str(release.get("tag_name") or "")
+        if release.get("draft") or tag.startswith("hermeyd-v"):
+            continue
+        if asset_named(release, ".ipa"):
+            return release
+    raise SystemExit("sync_store: no app release carrying an .ipa asset was found")
+
+
 def release_for(github: GitHub, repo: str, at: str | None) -> dict:
-    return github.json(f"{API}/repos/{repo}/releases/tags/{at}" if at else f"{API}/repos/{repo}/releases/latest")
+    if at:
+        return github.json(f"{API}/repos/{repo}/releases/tags/{at}")
+    return latest_app_release(github, repo)
 
 
 def asset_named(release: dict, suffix: str) -> dict | None:
