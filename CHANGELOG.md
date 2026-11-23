@@ -1198,3 +1198,18 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **No more blue ring around a waiting row on the Mac.** That outline was the system's keyboard-focus ring;
   rows show a hover highlight now and are still usable from the keyboard.
+
+## [0.1.639] — 2026-11-23
+
+### Fixed
+- **The View menu no longer offers tabs.** "Show Tab Bar" and "Show All Tabs" were the system's window-tab
+  items; Hermey has no tabs, so both were always dead. They are gone — the text-size commands and Enter Full
+  Screen are untouched.
+- **Settings ▸ Agents ▸ Bot instructions tells the truth, and Install works.** The row asked the host for the
+  skill and got an answer that meant "not found", so it sat on *Unavailable* on a healthy host while the
+  button's own result went nowhere. The host now reports what it actually has — installed, out of date, or
+  missing per agent — and the button does the work and says what happened; if it cannot act, the row says
+  why instead of going quiet.
+- **The Live Activity on the Lock Screen has words in it.** It drew a card with no text at all and never
+  refreshed during a turn. It now names the bot and what it is doing — thinking, reading, running a tool,
+  streaming the reply — updates as the turn moves, and ends with *Done* plus the first line of the answer.
