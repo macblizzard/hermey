@@ -103,32 +103,24 @@ press it and the normal download-and-install window opens. Nothing installs with
 - **The launch check never opens anything.** It reports the version to the bar and stops there, which
   is the window the button replaces.
 
-## Reactions — one emoji, both devices
-
-A reaction is kept by the host now, not by the device that made it: react on the Mac and the phone shows
-it, react on the phone and the Mac shows it, live while the conversation is open. One emoji per message,
-stored by the host and served by `GET` / `PUT /v1/reactions`.
-
-- **Scoped, not global.** The host stores a reaction under the host, the bot and the session, so the
-  same message in two bots is two reactions, and one host's bots are never confused with another's.
-- **What a device already had goes up once.** Reactions kept locally before the host owned them are
-  sent on the first run after the upgrade, so nothing is lost.
-- **Unpaired, nothing changes.** With no host to ask, both apps keep using their local copy exactly as
-  before.
-- **Drafts and pins are still per-device.** Only reactions moved to the host.
-
 ## Desktop pets
 
 On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon
-on your wallpaper, bobbing, tilting and occasionally hopping. Click it and a balloon opens with a field
-— type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button.
-Escape or a click elsewhere dismisses it. Drag the pet anywhere and it remembers where you left it, per
-screen; right-click → **Close pet** takes it off the desktop and switches off the same setting that
-brought it back. Off by default, one switch per bot in that bot's settings, and Reduce Motion is
-respected — no hops, and a gentler bob.
+on your wallpaper, moving and blinking on its own. Click it and a frosted balloon opens beside it — type
+a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button, and a
+badge on the icon when a reply lands while Hermey is minimised. Drag it anywhere and it stays there per
+screen; right-click → **Close pet** switches it off again. Off by default, one switch per bot in that
+bot's settings.
 
-[`docs/DESKTOP-PETS.md`](DESKTOP-PETS.md) is the design it was built from: the window behaviour, the
-decisions worth stating, and the corrections the build forced.
+[`docs/PETS.md`](PETS.md) is the reader's page: what a pet is, the switch, the balloon and a
+troubleshooting table. [`docs/DESKTOP-PETS.md`](DESKTOP-PETS.md) is the design it was built from.
+
+## Reactions — one emoji, both devices
+
+A reaction is kept by the host now, not by the device that made it: one emoji per message, stored
+against the host, the bot and the session, so a reaction on one device appears on the other while the
+conversation is open. With no host to ask, both apps keep using their local copy; drafts and pins never
+left the device.
 
 ## Pictures in a message
 

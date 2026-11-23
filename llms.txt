@@ -35,12 +35,14 @@ then install the app on a phone or Mac and pair it with a short code.
 ## Reference
 
 - [docs/INSTALL.md](docs/INSTALL.md): installer flags, environment variables, paths on disk, uninstall.
+- [docs/PETS.md](docs/PETS.md): desktop pets — what a pet is, the per-bot switch, the balloon, the badge,
+  and what to check when one does not appear.
 - [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, the waiting bell, updating from the
-  app, reactions that sync between devices, desktop pets, the Live Activity, unpairing and revocation.
+  app, desktop pets, the Live Activity, reactions that sync between devices, unpairing and revocation.
 - [docs/HERMEYD.md](docs/HERMEYD.md): the host's `/v1` contract, route by route — including
   `GET`/`PUT /v1/reactions`, the reaction the host keeps so both apps show the same one.
-- [docs/DESKTOP-PETS.md](docs/DESKTOP-PETS.md): desktop pets on the Mac — the invisible window, the
-  balloon that asks a bot a question, and the settings that keep it on this desk only.
+- [docs/DESKTOP-PETS.md](docs/DESKTOP-PETS.md): the design the pets were built from — the invisible
+  window, the decisions worth stating, and the corrections the build forced.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom, cause, fix, with real log strings.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how `hermeyd` relays the engine's WebSocket; the protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
@@ -72,6 +74,8 @@ then install the app on a phone or Mac and pair it with a short code.
   release does not bump it; CI enforces that.
 - Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open). Images in a
   message open as a gallery that pages through every attachment on that message. iOS also shows a
-  running turn as a Live Activity (lock screen + Dynamic Island). Reactions are the host's —
+  running turn as a Live Activity (lock screen + Dynamic Island). The Mac puts an enabled bot's picture
+  on the desktop as a pet — icon-only transparent window, off by default, one switch per bot, kept in
+  that Mac's own settings. Reactions are the host's —
   `GET`/`PUT /v1/reactions`, one emoji per message, scoped by bot and session — so a reaction made on
   one device appears on the other; drafts and pins stay per device.

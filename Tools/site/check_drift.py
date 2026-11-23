@@ -52,6 +52,7 @@ MIRRORED = {
     "docs/PREREQUISITES.md": ("prerequisites", "full"),
     "docs/INSTALL.md": ("install", "full"),
     "docs/APPS.md": ("apps", "full"),
+    "docs/PETS.md": ("pets", "full"),
     "docs/TROUBLESHOOTING.md": ("troubleshooting", "full"),
     "docs/FOR-AGENTS.md": ("agents", "summary"),
     "docs/SECURITY.md": ("security", "summary"),

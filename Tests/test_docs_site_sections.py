@@ -25,6 +25,7 @@ MIRRORS = {
     "PREREQUISITES.md": "prerequisites.html",
     "INSTALL.md": "install.html",
     "APPS.md": "apps.html",
+    "PETS.md": "pets.html",
     "TROUBLESHOOTING.md": "troubleshooting.html",
     "FOR-AGENTS.md": "agents.html",
     "SECURITY.md": "security.html",

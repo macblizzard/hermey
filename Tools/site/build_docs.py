@@ -385,6 +385,14 @@ PAGES.append(markdown_page(
     lede="Symptom, cause and fix — with the strings you will actually see.",
     source="TROUBLESHOOTING.md"))
 
+PAGES.append(markdown_page(
+    slug="pets",
+    nav="Desktop pets",
+    group="Using it",
+    lede="A bot's own picture on your Mac's desktop — what it does, what it will not do, and the switch "
+         "that puts it there.",
+    source="PETS.md"))
+
 PAGES.append(dict(
     slug="computer-use",
     nav="Local computer use",
