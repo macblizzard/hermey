@@ -205,6 +205,13 @@ pub(crate) struct AskPlan {
     pub text: String,
     pub message: String,
     pub timeout: f64,
+    /// Which role the answer will be written under.
+    ///
+    /// The route was built for one bot asking another bot's *owner*, so it waited for a `user` row.
+    /// A desktop pet asks the bot itself: the question is delivered as the `user` row and the answer
+    /// arrives as `assistant`, so waiting for `user` meant every pet question timed out while the
+    /// answer sat in the transcript.
+    pub await_role: &'static str,
 }
 
 fn invalid_profile() -> Fail {
@@ -287,7 +294,14 @@ pub(crate) fn plan_ask(profile: &str, body: &Value, is_disabled: bool) -> Result
         _ => return Err(bad_ask_timeout()),
     };
 
+    let await_role = match body.get("await").and_then(|v| v.as_str()) {
+        None | Some("owner") | Some("user") => "user",
+        Some("bot") | Some("assistant") | Some("self") => "assistant",
+        Some(_) => return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "await must be owner or bot")),
+    };
+
     Ok(AskPlan {
+        await_role,
         text: question.trim().to_string(),
         message: label(sender, profile, question, sender_profile.as_deref()),
         sender: sender.to_string(),
@@ -555,43 +569,84 @@ async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) ->
 /// An `ask` writes its question as a user row (that is what the owner reads); the answer is the
 /// *next* user row, which is the owner typing back. Only the stored session is read, because that is
 /// the conversation the app opens.
-fn owner_reply(root: &FsPath, profile: &str, session_id: &str, after: f64) -> Option<String> {
-    let db_path: PathBuf = root.join(profile).join("state.db");
+fn owner_reply(db_path: &FsPath, session_id: &str, after: f64, role: &str) -> Option<String> {
     if !db_path.is_file() {
         return None;
     }
-    let conn = Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
     conn.busy_timeout(Duration::from_secs(2)).ok()?;
     conn.query_row(
         "SELECT content FROM messages \
-         WHERE session_id = ?1 AND role = 'user' \
+         WHERE session_id = ?1 AND role = ?3 \
          AND content IS NOT NULL AND TRIM(content) <> '' \
          AND timestamp > ?2 \
          ORDER BY timestamp ASC, id ASC LIMIT 1",
-        rusqlite::params![session_id, after],
+        rusqlite::params![session_id, after, role],
         |row| row.get::<_, String>(0),
     )
     .ok()
 }
 
 /// Poll the bot's own conversation until the owner answers, or the timeout expires.
+/// When the question landed, as the transcript recorded it.
+///
+/// `unix_now()` after `deliver` was the bug: delivery can take as long as the engine needs, so the
+/// anchor could be *later* than the answer, and `timestamp > anchor` then matched nothing however long
+/// the reply sat there. The question's own row is the only exact anchor.
+fn question_row_time(db_path: &FsPath, session_id: &str, message: &str) -> Option<f64> {
+    if !db_path.is_file() {
+        return None;
+    }
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    conn.busy_timeout(Duration::from_secs(2)).ok()?;
+    conn.query_row(
+        "SELECT timestamp FROM messages \
+         WHERE session_id = ?1 AND role = 'user' AND content = ?2 \
+         ORDER BY timestamp DESC LIMIT 1",
+        rusqlite::params![session_id, message],
+        |row| row.get::<_, f64>(0),
+    )
+    .ok()
+}
+
+/// Every profile database this host could be writing to.
+///
+/// `engine_home` is an operator setting and on a host consolidated onto `~/.hermes` it still names the
+/// old bundled tree, which holds no profiles at all — so a question was answered in the transcript and
+/// never found. The candidates are checked for the profile itself, first match wins.
+fn profile_databases(st: &AppState, profile: &str) -> Vec<PathBuf> {
+    let mut roots = vec![st.engine_home.join("profiles")];
+    if let Some(user_home) = std::env::var_os("HOME").map(PathBuf::from) {
+        roots.push(user_home.join(".hermes").join("profiles"));
+    }
+    roots
+        .into_iter()
+        .map(|root| root.join(profile).join("state.db"))
+        .filter(|db| db.is_file())
+        .collect()
+}
+
 async fn wait_for_owner_reply(
-    root: PathBuf,
-    profile: String,
+    databases: Vec<PathBuf>,
     session_id: String,
     after: f64,
     timeout: f64,
+    role: &'static str,
 ) -> Option<String> {
     let deadline = tokio::time::Instant::now()
         + Duration::from_secs_f64(timeout.clamp(1.0, ASK_TIMEOUT_S));
     while tokio::time::Instant::now() < deadline {
         // The engine owns these databases and may be writing this instant: read off the async
         // runtime so a busy page does not stall other requests.
-        let (root, profile, session_id) = (root.clone(), profile.clone(), session_id.clone());
-        let found = tokio::task::spawn_blocking(move || owner_reply(&root, &profile, &session_id, after))
-            .await
-            .ok()
-            .flatten();
+        let (databases, session_id) = (databases.clone(), session_id.clone());
+        let found = tokio::task::spawn_blocking(move || {
+            databases
+                .iter()
+                .find_map(|db| owner_reply(db, &session_id, after, role))
+        })
+        .await
+        .ok()
+        .flatten();
         if found.is_some() {
             return found;
         }
@@ -768,14 +823,22 @@ pub(crate) async fn run_ask<E: Deliverer + ?Sized, R: RecordTransfer + ?Sized>(
         })
         .await?;
 
-    let asked_at = unix_now();
-    let root = st.engine_home.join("profiles");
+    let databases = profile_databases(st, profile);
+    // The question's own row is the anchor; failing to find it (an engine that has not written yet)
+    // falls back to now, which is only wrong by the delivery time.
+    let asked_at = databases
+        .iter()
+        .find_map(|db| question_row_time(db, &stored, &plan.message))
+        .unwrap_or_else(unix_now);
+    // The stored id, not `delivered.session_id`: the engine hands back a *runtime* id, while the
+    // transcript is written under the stored one. Querying the runtime id found nothing, which is
+    // why a pet's question could sit answered in the chat and still time out.
     let reply = wait_for_owner_reply(
-        root,
-        profile.to_string(),
-        delivered.session_id.clone(),
+        databases,
+        stored.clone(),
         asked_at,
         plan.timeout,
+        plan.await_role,
     )
     .await;
 
@@ -796,7 +859,7 @@ pub(crate) async fn run_ask<E: Deliverer + ?Sized, R: RecordTransfer + ?Sized>(
         plan.message.len(),
         if reply.is_some() { "answered" } else { "timeout" },
     );
-    Ok(ask_body(profile, &plan, &delivered.session_id, reply.as_deref()))
+    Ok(ask_body(profile, &plan, &stored, reply.as_deref()))
 }
 
 /// `POST /v1/bots/{profile}/message` — deliver a message into a bot's canonical conversation.
@@ -1316,13 +1379,21 @@ mod tests {
         }
         drop(conn);
 
-        assert_eq!(owner_reply(&dir, "aria", "s1", 5.0).as_deref(), Some("yes, keep going"));
+        assert_eq!(owner_reply(&dir.join("aria").join("state.db"), "s1", 5.0, "user").as_deref(), Some("yes, keep going"));
         // Nothing newer than the answer: the wait would keep polling.
-        assert_eq!(owner_reply(&dir, "aria", "s1", 20.0), None);
+        assert_eq!(owner_reply(&dir.join("aria").join("state.db"), "s1", 20.0, "user"), None);
         // Another conversation's rows are not this bot's answer.
-        assert_eq!(owner_reply(&dir, "aria", "s2", 0.0), None);
+        assert_eq!(owner_reply(&dir.join("aria").join("state.db"), "s2", 0.0, "user"), None);
         // A profile with no database at all is not an error.
-        assert_eq!(owner_reply(&dir, "ghost", "s1", 0.0), None);
+        assert_eq!(owner_reply(&dir.join("ghost").join("state.db"), "s1", 0.0, "user"), None);
+
+        // A desktop pet asks the bot itself: the bot's own row is the answer there, and the owner's
+        // `user` row is the question. Waiting for the wrong side is what made every pet question time
+        // out while the reply sat in the transcript.
+        assert_eq!(
+            owner_reply(&dir.join("aria").join("state.db"), "s1", 6.5, "assistant").as_deref(),
+            Some("thinking")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
