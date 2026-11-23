@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Native agent cards in Hermey · Hermey docs</title>
+<meta name="description" content="A bot draws an approval, a task or an email draft as a card instead of a paragraph.">
+<meta name="theme-color" content="#faf9f5">
+<link rel="canonical" href="https://macblizzard.github.io/hermey/docs/agent-cards.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Native agent cards in Hermey · Hermey docs">
+<meta property="og:description" content="A bot draws an approval, a task or an email draft as a card instead of a paragraph.">
+<link rel="icon" href="../icon-512.png">
+<link rel="stylesheet" href="assets/docs.css?v=64bb989bfe">
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="../">Hermey<span class="dot">.</span></a>
+  <span class="top-sep" aria-hidden="true">/</span>
+  <a class="top-link" href="index.html">Docs</a>
+  <div class="search">
+    <input type="search" id="q" placeholder="Search the docs  ( / )" aria-label="Search the documentation" autocomplete="off">
+    <div class="results" role="listbox" aria-label="Search results"></div>
+  </div>
+  <a class="top-link gh" href="https://github.com/macblizzard/hermey">GitHub</a>
+</header>
+
+<div class="shell">
+  <details class="side">
+    <summary>Documentation</summary>
+    <div class="side-inner">
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="credentials.html">Sign-in cards</a></li><li><a href="agent-cards.html" aria-current="page">Agent cards</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
+    </div>
+  </details>
+
+  <main class="content" id="content">
+    <p class="crumbs"><a href="index.html">Docs</a> / Agent cards</p>
+    <h1>Native agent cards in Hermey</h1>
+    <p class="lede">A bot draws an approval, a task or an email draft as a card instead of a paragraph.</p>
+    <p>Status: draft spec · owner: Aria · target: Hermey 0.1.616+</p>
+<h2 id="why">Why</h2>
+<p>The <code>agent-cards</code> skill gives a bot three things it currently cannot ask for properly:
+an <strong>approval</strong> before anything outward or irreversible, a <strong>task</strong> card for a job that
+runs for minutes, and a <strong>draft email</strong> the owner edits and sends. It emits a small JSON
+file plus one marker line in the reply.</p>
+<p>Today only <em>Grokbot Override</em> draws those cards, and that is a Hermes Desktop plugin: a JS
+bundle the Electron (or browser-hosted) client loads. Hermey has no plugin host — 126 Swift
+files, no <code>desktop-plugins</code> reference — so for us the marker degrades to plain text.</p>
+<p>Cards are the right shape for the one thing Hermey is still weak at: <strong>letting the owner
+approve an action with the payload in front of them</strong>. This spec renders <code>card.v1</code> natively,
+so any bot that uses the skill works on iPhone and Mac without Electron.</p>
+<h2 id="the-contract-we-must-honour">The contract we must honour</h2>
+<p>The skill's wire form is one line, on its own, outside code fences:</p>
+<div class="code plain"><pre><code>::card{id=&quot;c-9b&quot; kind=&quot;approval&quot; file=&quot;cards/c-9b.json&quot;}</code></pre></div>
+<p><code>file</code> is relative to the <strong>session's working directory</strong>; <code>id</code> and <code>kind</code> must match the
+file. One line per card, never two for the same card.</p>
+<p>The file (<code>cards/&lt;id&gt;.json</code>, ≤ 32 KB):</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema</code></td>
+<td>required, exactly <code>&quot;card.v1&quot;</code></td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>required: <code>approval</code> | <code>task</code> | <code>draft-email</code></td>
+</tr>
+<tr>
+<td><code>title</code></td>
+<td>required, non-empty</td>
+</tr>
+<tr>
+<td><code>status.state</code></td>
+<td>required: <code>pending</code> | <code>running</code> | <code>done</code> | <code>error</code> | <code>awaiting-approval</code></td>
+</tr>
+<tr>
+<td><code>status.label</code></td>
+<td>optional chip text override</td>
+</tr>
+<tr>
+<td><code>body[]</code></td>
+<td>optional: <code>{type:&quot;text&quot;, text}</code> | <code>{type:&quot;kv&quot;, rows:[[label,value]]}</code> | <code>{type:&quot;fields&quot;, items:[{label,value}]}</code></td>
+</tr>
+<tr>
+<td><code>email</code></td>
+<td>for <code>draft-email</code>: <code>{to, cc, subject, bodyText}</code></td>
+</tr>
+<tr>
+<td><code>actions[]</code></td>
+<td>≤ 3: <code>{label, send, style?: &quot;primary&quot;|&quot;danger&quot;}</code></td>
+</tr>
+<tr>
+<td><code>resolved</code></td>
+<td><code>null</code>, or <code>{action, at}</code> once the owner chose</td>
+</tr>
+</tbody>
+</table></div>
+<p>Live behaviour the skill promises: while the chat is open, a card in one of the last eight
+messages re-reads its file every <strong>3 s for up to 30 min</strong>, and stops when the file is final
+(<code>resolved</code> set, or <code>status.state</code> is <code>done</code>/<code>error</code>). To update a card, the bot rewrites the
+same file.</p>
+<h2 id="transport-how-hermey-gets-the-json">Transport: how Hermey gets the JSON</h2>
+<p>The file lives on the host in the bot's working directory; the client only has the
+transcript. So the engine resolves it, not the client:</p>
+<div class="code plain"><pre><code>GET /v1/cards/{id}?session=&lt;session id&gt;&amp;message=&lt;message id&gt;   (hermeyd proxies to the engine)
+→ 200 {&quot;card&quot;: {...}, &quot;mtime&quot;: &quot;...&quot;, &quot;final&quot;: false}
+→ 404 {&quot;error&quot;: &quot;no_such_card&quot;}              → the client draws &quot;Card not available&quot;</code></pre></div>
+<p>Why server-side resolution:</p>
+<ul>
+<li><strong>Path safety</strong> — the client never sends a path, only an id. The engine resolves
+<code>&lt;session.cwd&gt;/cards/&lt;id&gt;.json</code> and refuses anything outside that directory (no <code>..</code>,
+no absolute paths, no symlink escape; <code>id</code> must match <code>^[A-Za-z0-9_-]{1,40}$</code>).</li>
+<li><strong>Remote engines</strong> — Hermey talks to <code>hermeyd</code> over the tailnet; reading host files
+directly was never an option.</li>
+<li><strong>Live updates</strong> — a re-read is a re-fetch; nothing has to be pushed over the socket.</li>
+</ul>
+<p>Rejected alternative: inlining the card JSON in the marker (as A2UI surfaces do). Simpler,
+but it cannot honour the 3-second task updates — those need re-reads.</p>
+<h3 id="the-card-must-still-draw-a-week-later">The card must still draw a week later</h3>
+<p>The skill keeps its file in the chat's working directory, which can be cleaned up, rewritten
+by a later turn, or simply gone when the transcript is reopened. So the first successful read
+is <strong>snapshotted</strong>, and replay draws the snapshot:</p>
+<ul>
+<li>On the first <code>GET /v1/cards/{id}</code>, the engine stores the resolved JSON against
+<code>(session, message id, card id)</code> — message-addressed, so two messages naming the same file
+never collide, and a later turn rewriting that file cannot retroactively change history.</li>
+<li>Live polling moves the snapshot forward with each read, so the last state a reader saw is
+the state a later reader sees.</li>
+<li>File gone, snapshot present → draw the snapshot with its last known status. &quot;Card not
+available&quot; is reserved for a marker whose file was already missing on <em>first</em> read.</li>
+<li>Storage: one row per message+card in the profile database, capped at the card's own 32 KB.</li>
+</ul>
+<h2 id="client-design">Client design</h2>
+<p>New target <strong><code>HermesCards</code></strong> (Foundation + SwiftUI, depends on <code>HermesKit</code> only):</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CardMarker</code></td>
+<td>finds <code>::card{…}</code> lines, returns refs <code>(id, kind, file)</code>; strips the line from prose</td>
+</tr>
+<tr>
+<td><code>CardModel</code></td>
+<td>lenient <code>Decodable</code> for <code>card.v1</code>; unknown fields ignored, a broken file yields <code>.unavailable</code></td>
+</tr>
+<tr>
+<td><code>CardStore</code></td>
+<td>fetch + poll per card: every 3 s while pending/running/awaiting-approval and <code>resolved == nil</code>, stop at 30 min or when final; cache by <code>id</code></td>
+</tr>
+<tr>
+<td><code>CardView</code></td>
+<td>the three layouts, status chip, body blocks, ≤ 3 buttons</td>
+</tr>
+<tr>
+<td>Transcript hook</td>
+<td>same shape as the A2UI branch: if a card marker is present, draw prose then the card</td>
+</tr>
+</tbody>
+</table></div>
+<p>Polling stops when the row scrolls out of the last eight messages, when the app backgrounds,
+and when the file is final. On foreground, one refetch.</p>
+<h3 id="actions">Actions</h3>
+<p>Tapping a button sends <code>action.send</code> as a user turn (that is the value the skill designs for:
+<code>APPROVE c-9b book the cabin</code>). The card ticks the chosen label optimistically and settles on
+the next poll — the bot is expected to rewrite the file with <code>resolved</code>.</p>
+<p>A live draft is the one exception, and only in <em>what</em> the send text is: <strong>Send</strong> posts one
+deterministic block built from the fields as typed — the card's own <code>send</code> token on the first
+line, then <code>send this email exactly as written:</code>, <code>To:</code>, <code>Cc:</code> (omitted when empty), <code>Subject:</code>,
+a <code>---</code> rule, and the body. It goes out through the same path, so nothing downstream changed.
+<strong>Discard</strong> is local: it greys the card and posts nothing at all.</p>
+<p>v1 shows that turn in the transcript. Hiding it (what Grokbot does) needs a per-message
+hidden flag; the engine currently exposes only session-level <code>hidden</code> (<code>session.set_hidden</code>).
+Tracked as an enhancement, not a blocker: the send strings are short by design.</p>
+<h2 id="rendering">Rendering</h2>
+<ul>
+<li><strong>approval</strong> — title, body, buttons. No status chip.</li>
+<li><strong>task</strong> — status chip (<code>running</code> with spinner, <code>done</code>, <code>error</code>), body, optional <code>Stop</code>
+button in <code>danger</code> style.</li>
+<li><strong>draft-email</strong> — a form, not a poster: <code>To</code>/<code>Cc</code>/<code>Subject</code> are text fields and <code>bodyText</code> is
+a multi-line editor, always, with no &quot;Edit&quot; step. The card ends in exactly two buttons, <strong>Send</strong>
+and <strong>Discard</strong>, whatever <code>actions[]</code> the file wrote; an action labelled <code>Edit</code> is not drawn.
+A draft with no <code>email</code> block cannot be typed into and draws as before.</li>
+<li>A resolved card is a receipt: no fields, no buttons, just the facts and the note.</li>
+<li>A body that is one line under 200 characters and has no line breaks reads as the question
+under the title.</li>
+<li>Styling comes from <code>HermeyUI</code> tokens, never from the card: <code>primary</code> maps to the accent
+fill, <code>danger</code> to the destructive tint. No model-chosen colours.</li>
+<li>Text only. No HTML, no markdown injection, no remote images: a card is data.</li>
+</ul>
+<p>Accessibility: the card is one element with <code>children: .contain</code>; each button is labelled by
+its <code>label</code>, not by <code>send</code>; the status chip reads its state in words.</p>
+<h2 id="rollout-and-rollback">Rollout and rollback</h2>
+<ul>
+<li>Flag <code>cards.enabled</code> in Hermey, default <strong>on</strong> since 0.1.621. Off → <code>::card</code> lines render as text.</li>
+<li>No change to genui (<code>::blocks</code>) or A2UI (<code>::a2ui</code>): three independent renderers, each
+preferred only when its own marker is present.</li>
+<li>Server side is read-only: one new GET route. Nothing about the skill changes.</li>
+</ul>
+<h2 id="phases">Phases</h2>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Scope</th>
+<th>State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1</td>
+<td><code>CardMarker</code> + <code>CardModel</code> + approval layout + fetch route + flag</td>
+<td>shipped — 0.1.621</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>actions round-trip (send, optimistic tick, resolved receipt)</td>
+<td>shipped — 0.1.622</td>
+</tr>
+<tr>
+<td>P3a</td>
+<td>task layout, <code>body[]</code> blocks, draft-email layout</td>
+<td>shipped — 0.1.622</td>
+</tr>
+<tr>
+<td>P3b</td>
+<td>an editable draft: fields on arrival, Send and Discard only</td>
+<td>shipped — 0.1.623</td>
+</tr>
+<tr>
+<td>P3c</td>
+<td>task live updates: re-read a card in the last eight messages every 3 s, stop when final</td>
+<td><strong>not built</strong></td>
+</tr>
+<tr>
+<td>P4</td>
+<td>a11y pass, snapshots, e2e with a live bot</td>
+<td>partly — fixtures and guards only</td>
+</tr>
+</tbody>
+</table></div>
+<p>What is on the wire today: <code>GET /v1/cards/{id}?session=&amp;message=</code>, snapshotted per message, one read per
+card per conversation visit. Polling is the remaining piece, and it is deliberately last — it is the only
+part that spends host time while nothing is happening.</p>
+<h2 id="test-plan">Test plan</h2>
+<ul>
+<li><strong>Fixtures</strong>: one valid file per kind, plus broken shapes (bad schema, missing title,
+4 actions, 40 KB body, <code>..</code> id) that must all degrade rather than throw.</li>
+<li><strong>Parser tests</strong>: marker found outside code fences, two markers in one reply, marker with
+an unknown kind.</li>
+<li><strong>Poll logic</strong>: fake clock — stops at final, stops at 30 min, refetches on foreground.</li>
+<li><strong>View snapshots</strong>: three kinds, light/dark, long title, empty body.</li>
+<li><strong>E2E</strong>: a bot writes <code>cards/c-…json</code> + the marker; the card appears, a tap sends the
+<code>send</code> text, the bot rewrites with <code>resolved</code>, the buttons lock.</li>
+</ul>
+<h2 id="decisions-settled-2026-11-22">Decisions (settled 2026-11-22)</h2>
+<ol class="steps-list">
+<li><strong>Action sends are visible.</strong> A tap sends <code>action.send</code> as a normal user turn
+(<code>APPROVE c-9b book the cabin</code>); no hidden-message flag. The strings are short by design,
+and a visible record of &quot;I approved this&quot; is the better audit trail.</li>
+<li><strong>Working directory falls back per profile.</strong> The route resolves <code>&lt;session.cwd&gt;/cards/…</code>
+first; when a session has no cwd it falls back to the bot's own profile directory
+(<code>profiles/&lt;name&gt;/</code>) before giving up. One code path, no client involvement.</li>
+<li><strong>Cards must survive.</strong> Snapshots per message (see &quot;The card must still draw a week
+later&quot;), so a thread reopened next week still draws its approval, task and email cards.</li>
+</ol>
+<p>Still open (smaller):</p>
+<ol class="steps-list">
+<li>A snapshot only moves forward while a chat is live — a file rewritten later, with no live
+reader, does not update history. Accepted for now.</li>
+<li>Should a resolved card stay full-size forever, or collapse to one line (&quot;Approved: book
+the cabin&quot;) after a day? Leaning to collapse for approvals only.</li>
+</ol>
+
+<p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/agent-cards.md">docs/agent-cards.md</a>, rendered at build time. Corrections belong in that file.</p>
+    <nav class="pager" aria-label="Pages"><a href="credentials.html"><span>Previous</span><strong>Sign-in cards</strong></a><a class="next" href="integrations.html"><span>Next</span><strong>Integrations</strong></a></nav>
+  </main>
+
+  <nav class="toc" aria-label="On this page">
+    <h2>On this page</h2>
+    <ul><li><a href="#why">Why</a></li><li><a href="#the-contract-we-must-honour">The contract we must honour</a></li><li><a href="#transport-how-hermey-gets-the-json">Transport: how Hermey gets the JSON</a></li><li><a href="#client-design">Client design</a></li><li><a href="#rendering">Rendering</a></li><li><a href="#rollout-and-rollback">Rollout and rollback</a></li><li><a href="#phases">Phases</a></li><li><a href="#test-plan">Test plan</a></li><li><a href="#decisions-settled-2026-11-22">Decisions (settled 2026-11-22)</a></li></ul>
+  </nav>
+</div>
+
+<footer class="docfoot">
+  <div class="wrap">
+    <p class="disclaimer">Hermey is an independent project — not affiliated with, endorsed by, or supported by the Hermes project or its maintainers. “Hermes” is named only to say what Hermey connects to. <a href="prerequisites.html">Getting Hermey running</a></p>
+    <p>MIT licensed · the source docs in <a href="https://github.com/macblizzard/hermey/tree/main/docs">github.com/macblizzard/hermey/docs</a>
+      are the authority for this site. Found a mistake? <a href="https://github.com/macblizzard/hermey/issues">Open an issue</a>.</p>
+  </div>
+</footer>
+
+<script src="assets/docs.js?v=64bb989bfe"></script>
+</body>
+</html>

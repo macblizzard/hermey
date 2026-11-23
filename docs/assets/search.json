@@ -300,6 +300,60 @@
 "b": "Connecting accounts (Composio, and the same pattern later for others) Connecting happens in the app , once: the owner taps Connect, finishes the provider's own sign-in, and the connection is stored host-side, per owner, not per bot. A bot then only ever gets card 3 to use it. Revoking is a switch in the app. The same s"
 },
 {
+"h": "Why",
+"p": "Agent cards",
+"u": "agent-cards.html#why",
+"b": "Why The agent-cards skill gives a bot three things it currently cannot ask for properly: an approval before anything outward or irreversible, a task card for a job that runs for minutes, and a draft email the owner edits and sends. It emits a small JSON file plus one marker line in the reply. Today only Grokbot Overrid"
+},
+{
+"h": "The contract we must honour",
+"p": "Agent cards",
+"u": "agent-cards.html#the-contract-we-must-honour",
+"b": "The contract we must honour The skill's wire form is one line, on its own, outside code fences: ::card{id=\"c-9b\" kind=\"approval\" file=\"cards/c-9b.json\"} file is relative to the session's working directory ; id and kind must match the file. One line per card, never two for the same card. The file ( cards/<id>.json , \u2264 3"
+},
+{
+"h": "Transport: how Hermey gets the JSON",
+"p": "Agent cards",
+"u": "agent-cards.html#transport-how-hermey-gets-the-json",
+"b": "Transport: how Hermey gets the JSON The file lives on the host in the bot's working directory; the client only has the transcript. So the engine resolves it, not the client: GET /v1/cards/{id}?session=<session id>&message=<message id> (hermeyd proxies to the engine) \u2192 200 {\"card\": {...}, \"mtime\": \"...\", \"final\": false}"
+},
+{
+"h": "Client design",
+"p": "Agent cards",
+"u": "agent-cards.html#client-design",
+"b": "Client design New target HermesCards (Foundation + SwiftUI, depends on HermesKit only): Piece Responsibility CardMarker finds ::card{\u2026} lines, returns refs (id, kind, file) ; strips the line from prose CardModel lenient Decodable for card.v1 ; unknown fields ignored, a broken file yields .unavailable CardStore fetch + "
+},
+{
+"h": "Rendering",
+"p": "Agent cards",
+"u": "agent-cards.html#rendering",
+"b": "Rendering approval \u2014 title, body, buttons. No status chip. task \u2014 status chip ( running with spinner, done , error ), body, optional Stop button in danger style. draft-email \u2014 a form, not a poster: To / Cc / Subject are text fields and bodyText is a multi-line editor, always, with no \"Edit\" step. The card ends in exact"
+},
+{
+"h": "Rollout and rollback",
+"p": "Agent cards",
+"u": "agent-cards.html#rollout-and-rollback",
+"b": "Rollout and rollback Flag cards.enabled in Hermey, default on since 0.1.621. Off \u2192 ::card lines render as text. No change to genui ( ::blocks ) or A2UI ( ::a2ui ): three independent renderers, each preferred only when its own marker is present. Server side is read-only: one new GET route. Nothing about the skill change"
+},
+{
+"h": "Phases",
+"p": "Agent cards",
+"u": "agent-cards.html#phases",
+"b": "Phases Phase Scope State P1 CardMarker + CardModel + approval layout + fetch route + flag shipped \u2014 0.1.621 P2 actions round-trip (send, optimistic tick, resolved receipt) shipped \u2014 0.1.622 P3a task layout, body[] blocks, draft-email layout shipped \u2014 0.1.622 P3b an editable draft: fields on arrival, Send and Discard on"
+},
+{
+"h": "Test plan",
+"p": "Agent cards",
+"u": "agent-cards.html#test-plan",
+"b": "Test plan Fixtures : one valid file per kind, plus broken shapes (bad schema, missing title, 4 actions, 40 KB body, .. id) that must all degrade rather than throw. Parser tests : marker found outside code fences, two markers in one reply, marker with an unknown kind. Poll logic : fake clock \u2014 stops at final, stops at 3"
+},
+{
+"h": "Decisions (settled 2026-11-22)",
+"p": "Agent cards",
+"u": "agent-cards.html#decisions-settled-2026-11-22",
+"b": "Decisions (settled 2026-11-22) Action sends are visible. A tap sends action.send as a normal user turn ( APPROVE c-9b book the cabin ); no hidden-message flag. The strings are short by design, and a visible record of \"I approved this\" is the better audit trail. Working directory falls back per profile. The route resolv"
+},
+{
 "h": "How it works",
 "p": "Integrations",
 "u": "integrations.html#how-it-works",
