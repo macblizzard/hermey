@@ -137,23 +137,25 @@ its `label`, not by `send`; the status chip reads its state in words.
 
 ## Rollout and rollback
 
-- Flag `cards.enabled` in Hermey, default **on** once P1 lands. Off → `::card` lines render
-  as text, which is exactly today's behaviour.
+- Flag `cards.enabled` in Hermey, default **on** since 0.1.621. Off → `::card` lines render as text.
 - No change to genui (`::blocks`) or A2UI (`::a2ui`): three independent renderers, each
   preferred only when its own marker is present.
 - Server side is read-only: one new GET route. Nothing about the skill changes.
 
 ## Phases
 
-| Phase | Scope | Est. |
+| Phase | Scope | State |
 |---|---|---|
-| P1 | `CardMarker` + `CardModel` + approval layout + fetch route + flag | 1 d |
-| P2 | actions round-trip (send, optimistic tick, settle on poll) | 0.5 d |
-| P3 | task live updates (polling discipline), draft-email layout | 1 d |
-| P4 | a11y pass, fixtures/snapshots, e2e with a live bot | 0.5 d |
+| P1 | `CardMarker` + `CardModel` + approval layout + fetch route + flag | shipped — 0.1.621 |
+| P2 | actions round-trip (send, optimistic tick, resolved receipt) | shipped — 0.1.622 |
+| P3a | task layout, `body[]` blocks, draft-email layout | shipped — 0.1.622 |
+| P3b | an editable draft: fields on arrival, Send and Discard only | shipped — 0.1.623 |
+| P3c | task live updates: re-read a card in the last eight messages every 3 s, stop when final | **not built** |
+| P4 | a11y pass, snapshots, e2e with a live bot | partly — fixtures and guards only |
 
-Roughly three days, verifiable incrementally: P1 alone gives approvals, which is the part
-that matters most.
+What is on the wire today: `GET /v1/cards/{id}?session=&message=`, snapshotted per message, one read per
+card per conversation visit. Polling is the remaining piece, and it is deliberately last — it is the only
+part that spends host time while nothing is happening.
 
 ## Test plan
 

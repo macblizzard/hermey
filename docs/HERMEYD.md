@@ -287,7 +287,7 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | `GET /v1/backup`, `POST /v1/backup/restore` | the bridge's document shape (kind/version/bots with soul, memory, notes, routines). Restore is additive and idempotent: identical content is not a write, memory only fills when empty, nothing is deleted, `routines_added` drives `restart_required` |
 | `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded |
 
-## Agent cards — `GET /v1/cards/{card_id}?session=&message=` (in progress, in no release)
+## Agent cards — `GET /v1/cards/{card_id}?session=&message=` (shipped in 0.1.621)
 
 A reply may carry one directive line, `::card{id="c-9b" kind="approval" file="cards/c-9b.json"}`,
 naming a `card.v1` JSON file the bot wrote under its session's working directory. The host resolves

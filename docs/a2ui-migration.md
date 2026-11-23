@@ -55,7 +55,7 @@ Nothing in SQLite, no migration, no board data touched.
 3. **Seen on a screen** — the wiring compiles and both apps build on CI, but no surface has been
    drawn in front of a human yet. That is the trial.
 
-## The third renderer: `::card` (in progress, not in a release)
+## The third renderer: `::card`
 
 A reply can also carry a single directive line — `::card{id="c-9b" kind="approval" file="cards/c-9b.json"}`
 — which names a JSON file (`card.v1`) the bot wrote under its session's working directory. This is

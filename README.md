@@ -119,6 +119,7 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. A room is renamed from its row, on either device. |
 | **Pictures** | An image in a reply opens with every other image on that message: swipe on the phone, arrow keys or chevrons on the Mac, and a swipe down puts it away. |
 | **Approvals in the app** | Tool approvals arrive as cards you can accept or reject, with the payload visible before you decide. |
+| **Agent cards** | A bot can draw an approval, a task with live status, or an email draft as a native card instead of prose. A draft is a form on arrival — edit the recipient, subject and body, then Send or Discard. |
 | **The Mac as a computer** | Full-screen computer use: a paired Mac runs commands, clicks, types and shares a workspace, with one sorted queue and a per-grant status row. |
 | **Sign-in cards** | When a bot needs a password, it raises a card naming the site and fields; the value goes to the page and never to the model, the transcript or a log. |
 | **Integrations** | Eight services through your own Composio key — Gmail, Calendar, Drive, Docs, Sheets, Maps, Cloudflare, Vercel — with several accounts per service, each named. |

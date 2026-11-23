@@ -906,6 +906,13 @@ PAGES.append(markdown_page(
     source="CREDENTIALS.md"))
 
 PAGES.append(markdown_page(
+    slug="agent-cards",
+    nav="Agent cards",
+    group="Using it",
+    lede="A bot draws an approval, a task or an email draft as a card instead of a paragraph.",
+    source="agent-cards.md"))
+
+PAGES.append(markdown_page(
     slug="integrations",
     nav="Integrations",
     group="Using it",

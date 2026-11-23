@@ -40,6 +40,7 @@ then install the app on a phone or Mac and pair it with a short code.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how `hermeyd` relays the engine's WebSocket; the protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
 - [docs/CREDENTIALS.md](docs/CREDENTIALS.md): login cards — a bot signs in without ever seeing the secret.
+- [docs/agent-cards.md](docs/agent-cards.md): agent cards — `::card` + `card.v1`, three kinds (approval, task, draft-email), and the rule that a question with options is always a card.
 - [setup/SKILL.md](setup/SKILL.md): the same install packaged as a Hermes agent skill.
 - [CONTRIBUTING.md](CONTRIBUTING.md): build, test and release from source.
 
