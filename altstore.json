@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.630",
-          "buildVersion": "630",
-          "date": "2026-11-23T13:08:33Z",
-          "localizedDescription": "### Changed\n- **The balloon is glass now.** It was an opaque near-white sheet; it is a frosted callout \u2014 a material with\n  white at 0.38 and a thin inner rim \u2014 so a dark wallpaper tints it grey-blue and a bright one cream, while\n  the ink stays readable.\n- **A real callout shape.** Corners are 26 pt and the tail is a curved 26\u00d713 shape with a rounded tip instead\n  of a straight triangle, still pointing at the pet wherever the bubble ends up.\n\n### Fixed\n- **The answer is visible again.** It was being drawn into zero height \u2014 the reply arrived, Copy could hand\n  it over, but nothing appeared in the bubble: a `ScrollView` measures as nothing inside a panel sized to fit\n  its content. It is a self-sizing text now.\n\n### Added\n- **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,\n  so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.630/Hermey-0.1.630-b630.ipa",
-          "size": 5151439,
+          "version": "0.1.631",
+          "buildVersion": "631",
+          "date": "2026-11-23T14:02:36Z",
+          "localizedDescription": "### Changed\n- **The pet's balloon keeps the conversation.** Closing it no longer throws the last question and answer\n  away: reopen and it is still there, selectable and copyable. A **New** button sits beside **Copy** \u2014 only\n  when there is something to clear \u2014 and starts a fresh ask.\n- **It no longer covers the pet.** The bubble seats above-right of the icon, falls back to above-left and\n  then above, and never overlaps the pet; the tail root lands on the pet's edge rather than the bubble's\n  middle.\n- **Eyes.** The face gets pupils that drift left and right every few seconds and a blink whose eyelid band\n  closes over the shipped eye bars \u2014 on its own cycle and when you click the pet. Reduce Motion stops the\n  drift and gentles the rest.\n- **Dragging tracks the cursor.** The window follows each mouse-drag event directly instead of animating,\n  so it no longer lags behind the pointer.\n- **Much more see-through.** The callout is now 70% transparent \u2014 a thin material with white at 0.16 over\n  it \u2014 with a faint text shadow so the ink still reads on a busy wallpaper.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.631/Hermey-0.1.631-b631.ipa",
+          "size": 5151445,
           "minOSVersion": "17.0",
-          "sha256": "8ef3c667bc7c10f4c000c8b6ebca851b480b52413378e061f789d1f3c91e46e8"
+          "sha256": "16eebcc4218bd958a3033689cab14b240c057c8b208ca2113866e86ece024173"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.630 (630)",
-      "identifier": "hermes-0.1.630-630",
-      "caption": "### Changed\n- **The balloon is glass now.** It was an opaque near-white sheet; it is a frosted callout \u2014 a material with\n  white at 0.38 and a thin inner rim \u2014 so a dark wallpaper tints it grey-blue and a bright one cream, while\n  the ink stays readable.\n- **A real callout shape.** Corners are 26 pt and the tail is a curved 26\u00d713 shape with a rounded tip instead\n  of a straight triangle, still pointing at the pet wherever the bubble ends up.\n\n### Fixed\n- **The answer is visible again.** It was being drawn into zero height \u2014 the reply arrived, Copy could hand\n  it over, but nothing appeared in the bubble: a `ScrollView` measures as nothing inside a panel sized to fit\n  its content. It is a self-sizing text now.\n\n### Added\n- **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,\n  so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.",
-      "date": "2026-11-23T13:08:33Z",
+      "title": "Hermes 0.1.631 (631)",
+      "identifier": "hermes-0.1.631-631",
+      "caption": "### Changed\n- **The pet's balloon keeps the conversation.** Closing it no longer throws the last question and answer\n  away: reopen and it is still there, selectable and copyable. A **New** button sits beside **Copy** \u2014 only\n  when there is something to clear \u2014 and starts a fresh ask.\n- **It no longer covers the pet.** The bubble seats above-right of the icon, falls back to above-left and\n  then above, and never overlaps the pet; the tail root lands on the pet's edge rather than the bubble's\n  middle.\n- **Eyes.** The face gets pupils that drift left and right every few seconds and a blink whose eyelid band\n  closes over the shipped eye bars \u2014 on its own cycle and when you click the pet. Reduce Motion stops the\n  drift and gentles the rest.\n- **Dragging tracks the cursor.** The window follows each mouse-drag event directly instead of animating,\n  so it no longer lags behind the pointer.\n- **Much more see-through.** The callout is now 70% transparent \u2014 a thin material with white at 0.16 over\n  it \u2014 with a faint text shadow so the ink still reads on a busy wallpaper.",
+      "date": "2026-11-23T14:02:36Z",
       "tintColor": "#9A9AA0"
     }
   ],
