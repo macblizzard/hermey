@@ -171,8 +171,10 @@ final class DraftEditingTests: XCTestCase {
         let json = CardFixtures.draftEmail
             .replacingOccurrences(of: "SEND c-7e", with: "APPROVE c-7e")
             .replacingOccurrences(of: "DISCARD c-7e", with: "DROP c-7e")
-        let card = try card(json)
-        XCTAssertEqual(card.draftSendAction?.send, "APPROVE c-7e")
+        // `card` cannot be both the value and the helper that makes it: the local shadows the function,
+        // and the second call in this method reads as a call on the value.
+        let renamed = try card(json)
+        XCTAssertEqual(renamed.draftSendAction?.send, "APPROVE c-7e")
 
         // One action, no style: it is the send.
         let single = try card(CardFixtures.draftEmailBare.replacingOccurrences(
