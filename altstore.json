@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.627",
-          "buildVersion": "627",
-          "date": "2026-11-23T11:59:38Z",
-          "localizedDescription": "### Fixed\n- **The pet can ask.** Every question came back as \"not found\": the host's `ask` route only accepted calls\n  from its own machine, and both apps reach it through the tailnet proxy. It now accepts a call that carries\n  your device's ticket \u2014 and still answers an unauthenticated proxy exactly as it answers an unknown route.\n- **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is\n  now a translucent material with the theme colour over it, so the wallpaper and windows show through and the\n  text stays readable.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.627/Hermey-0.1.627-b627.ipa",
-          "size": 5150825,
+          "version": "0.1.628",
+          "buildVersion": "628",
+          "date": "2026-11-23T12:40:04Z",
+          "localizedDescription": "### Fixed\n- **The pet's balloon gets its answer.** Four faults stacked in the host's ask path: it waited for the\n  wrong side of the conversation (your message rather than the bot's reply), polled the engine's runtime\n  session id instead of the stored one, opened the retired engine home where no profile database lives,\n  and anchored its search on a timestamp taken *after* the question was delivered. All four are fixed, so\n  a question typed into a balloon now comes back as the answer instead of sitting on \"thinking\" while the\n  reply appears only in the app.\n- The pet also stops slurring its own fix: the guard tests now allow the ask-path change that ships with it.\n\n### Changed\n- **The balloon is a callout, not a box.** Near-white at 0.82 over a material in both app themes, with a\n  tail that follows the pet even when the bubble has to be nudged back onto the screen.\n- **Pets float.** The icon casts its own soft shadow inside the transparent window.\n- **Pets blink.** A quick squash of the body on a random 3\u20139 second timer, and clicking a pet adds a hop\n  and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.628/Hermey-0.1.628-b628.ipa",
+          "size": 5151441,
           "minOSVersion": "17.0",
-          "sha256": "fa78dcba6f7f62ad3f7fb39a76c3f6818bc167abc6ed6644ed1ad1c2dc80106d"
+          "sha256": "59260e2d2df9964cce2f6da36efca066b93eb2ba1f8dd3e38ee4c1361f93f274"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.627 (627)",
-      "identifier": "hermes-0.1.627-627",
-      "caption": "### Fixed\n- **The pet can ask.** Every question came back as \"not found\": the host's `ask` route only accepted calls\n  from its own machine, and both apps reach it through the tailnet proxy. It now accepts a call that carries\n  your device's ticket \u2014 and still answers an unauthenticated proxy exactly as it answers an unknown route.\n- **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is\n  now a translucent material with the theme colour over it, so the wallpaper and windows show through and the\n  text stays readable.",
-      "date": "2026-11-23T11:59:38Z",
+      "title": "Hermes 0.1.628 (628)",
+      "identifier": "hermes-0.1.628-628",
+      "caption": "### Fixed\n- **The pet's balloon gets its answer.** Four faults stacked in the host's ask path: it waited for the\n  wrong side of the conversation (your message rather than the bot's reply), polled the engine's runtime\n  session id instead of the stored one, opened the retired engine home where no profile database lives,\n  and anchored its search on a timestamp taken *after* the question was delivered. All four are fixed, so\n  a question typed into a balloon now comes back as the answer instead of sitting on \"thinking\" while the\n  reply appears only in the app.\n- The pet also stops slurring its own fix: the guard tests now allow the ask-path change that ships with it.\n\n### Changed\n- **The balloon is a callout, not a box.** Near-white at 0.82 over a material in both app themes, with a\n  tail that follows the pet even when the bubble has to be nudged back onto the screen.\n- **Pets float.** The icon casts its own soft shadow inside the transparent window.\n- **Pets blink.** A quick squash of the body on a random 3\u20139 second timer, and clicking a pet adds a hop\n  and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.",
+      "date": "2026-11-23T12:40:04Z",
       "tintColor": "#9A9AA0"
     }
   ],
