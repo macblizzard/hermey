@@ -54,6 +54,11 @@ struct MacComposerBar: View {
         }
     }
 
+    /// The same words iOS puts in an empty composer: "Message Cody".
+    private var composerTitle: String {
+        model.selectedBot?.displayName ?? model.hostName
+    }
+
     private var micLabel: String {
         switch voice.state {
         case .recording: return "Stop and transcribe"
@@ -138,9 +143,9 @@ struct MacComposerBar: View {
             Composer(text: $model.draft,
                      // A capsule over the transcript: no bar, no frame at rest.
                      floats: true,
-                     // Nothing in the field until there is something to say: a placeholder is a
-                     // label the composer does not need, and it read as text that had been typed.
-                     placeholder: "",
+                     // The same prompt the phone shows: it names the bot you are about to write to,
+                     // and it vanishes the moment there is something to say.
+                     placeholder: "Message \(composerTitle)",
                      isSending: model.isStreaming,
                      isDisabled: model.selectedSessionID == nil,
                      // Inside the card, immediately left of the send arrow.

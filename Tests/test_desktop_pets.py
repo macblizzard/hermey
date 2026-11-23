@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PETS = ROOT / "Apps" / "HermesMac" / "Pets"
 
 PANEL = (PETS / "DesktopPetPanel.swift").read_text(encoding="utf-8")
+COMPOSER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerBar.swift").read_text(encoding="utf-8")
 VIEW = (PETS / "PetView.swift").read_text(encoding="utf-8")
 BALLOON = (PETS / "PetBalloonView.swift").read_text(encoding="utf-8")
 SETTINGS = (PETS / "PetSettings.swift").read_text(encoding="utf-8")
@@ -560,3 +561,15 @@ class ProjectFilePicksThemUp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheComposerNamesTheBot(unittest.TestCase):
+    """The Mac's empty composer says "Message Cody", the same words the phone shows."""
+
+    def test_the_placeholder_names_the_selected_bot(self):
+        self.assertIn('placeholder: "Message \\(composerTitle)"', COMPOSER)
+        self.assertNotIn('placeholder: ""', COMPOSER,
+                         "an empty placeholder was the complaint: nothing told you who you were writing to")
+
+    def test_the_title_falls_back_to_the_host(self):
+        self.assertIn("model.selectedBot?.displayName ?? model.hostName", COMPOSER)
