@@ -108,7 +108,7 @@ final class CardLoaderTests: XCTestCase {
     func testChoosingAnActionTicksItAndLocksTheRest() async throws {
         let loader = CardLoader()
         _ = await loader.load(ref(), session: "s1") { _, _ in
-            CardFetch(card: cardJSON(), mtime: "", final: false)
+            CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
         let card = loader.state(cardID: "c-9b", session: "s1").card
         let approve = try XCTUnwrap(card?.actions.first)
@@ -129,7 +129,7 @@ final class CardLoaderTests: XCTestCase {
     func testASecondTapCannotAnswerTwice() async throws {
         let loader = CardLoader()
         _ = await loader.load(ref(), session: "s1") { _, _ in
-            CardFetch(card: cardJSON(), mtime: "", final: false)
+            CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
         let actions = try XCTUnwrap(loader.state(cardID: "c-9b", session: "s1").card?.actions)
         _ = loader.choose(actions[0], cardID: "c-9b", session: "s1")
@@ -168,7 +168,7 @@ final class CardLoaderTests: XCTestCase {
     func testResetForgetsEveryRead() async {
         let loader = CardLoader()
         _ = await loader.load(ref(), session: "s1") { _, _ in
-            CardFetch(card: cardJSON(), mtime: "", final: false)
+            CardFetch(card: self.cardJSON(), mtime: "", final: false)
         }
         loader.reset()
         XCTAssertEqual(loader.state(cardID: "c-9b", session: "s1"), .idle)
