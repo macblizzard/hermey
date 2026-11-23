@@ -260,7 +260,9 @@ private struct HermeyTurnExpandedCenter: View {
     let isStale: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        // One line: the bot's name and what it is doing, side by side. Stacked, the shorter status
+        // line hung off the name's left edge and read as a misalignment rather than a subtitle.
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             // No explicit colour: the island's own primary (white) is the legible one.
             Text(botName)
                 .font(.subheadline)
@@ -268,7 +270,9 @@ private struct HermeyTurnExpandedCenter: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .island)
+                .layoutPriority(1)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

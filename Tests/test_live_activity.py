@@ -794,3 +794,22 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheExpandedIslandReadsAsOneLine(unittest.TestCase):
+    """The owner: the name and the status "would look better side by side" — stacked, the shorter line
+    hung off the name's left edge and read as misalignment rather than as a subtitle."""
+
+    def test_name_and_status_share_a_line(self) -> None:
+        center = piece("private struct HermeyTurnExpandedCenter: View")
+        body = center[center.index("var body"):]
+        self.assertIn("HStack(alignment: .firstTextBaseline, spacing: 6)", body)
+        self.assertNotIn("VStack(alignment: .leading, spacing: 1)", body,
+                         "stacking the two lines is what looked misaligned")
+        self.assertLess(body.index("Text(botName)"), body.index("HermeyTurnStatusLine("),
+                        "the name reads first, then what the bot is doing")
+
+    def test_the_line_cannot_be_compressed_away(self) -> None:
+        center = piece("private struct HermeyTurnExpandedCenter: View")
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", center)
+        self.assertIn(".layoutPriority(1)", center)
