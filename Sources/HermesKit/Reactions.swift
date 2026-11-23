@@ -42,7 +42,9 @@ public struct ReactionKey: Hashable, Sendable {
     /// streaming can be reacted to. Both apps already used exactly this, and the host validates the
     /// same two prefixes — a key it cannot place is refused rather than stored under a name nothing
     /// will ever look up.
-    public static func message(rowID: Int?, entryID: String) -> String {
+    /// `Int64?` because that is what the transcript row carries; converting at the call site would put
+    /// a `.map(Int.init)` in two apps and a widening cast in the one place that owns the rule.
+    public static func message(rowID: Int64?, entryID: String) -> String {
         if let rowID { return "row:\(rowID)" }
         return "live:\(entryID)"
     }
