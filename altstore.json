@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.623",
-          "buildVersion": "623",
-          "date": "2026-11-23T09:19:26Z",
-          "localizedDescription": "### Changed\n- **A mail draft card is editable the moment it arrives.** No Edit step: `To`, `Cc`, `Subject` and the body\n  are fields straight away, and the card carries exactly two buttons \u2014 **Send** and **Discard**.\n- **Send posts what you typed.** The turn carries the edited headers and body, so the bot acts on your\n  version rather than the file's original. `Cc` is omitted when you leave it empty.\n- **Discard is local.** It dims the card and sends nothing; the bot's own card file is never touched.\n- **Your typing is not overwritten.** Edits live in the card's own state and are only reseeded when the\n  document itself changes, so a redraw cannot eat what you are writing.\n- A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no\n  `email` block renders exactly as before.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.623/Hermey-0.1.623-b623.ipa",
-          "size": 5142779,
+          "version": "0.1.624",
+          "buildVersion": "624",
+          "date": "2026-11-23T09:54:08Z",
+          "localizedDescription": "### Fixed\n- **The Mac's conversation pane stops fighting the reader.** Two faults in the code that holds your\n  place while older messages load:\n  - the position was armed whenever the transcript merely *grew and its first row changed* \u2014 which is\n    what a resume looks like \u2014 so the pane scrolled although nothing had been inserted above you. The\n    guess is gone; only a real \"load earlier\" arms it now.\n  - one page could move the pane several times, because the lazy list re-measures itself as it lays\n    out and every re-measure applied the correction again. A prepend now corrects once.\n- **If it still moves, the log says why.** New `paging \u00b7 anchor \u2026` lines record when the hold was armed\n  (and from which signal), corrected by how much, released, or \u2014 the important one \u2014 that a size change\n  happened with no hold at all.\n\niPhone was never affected: it has no such hold, which is exactly why it felt smooth.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.624/Hermey-0.1.624-b624.ipa",
+          "size": 5142780,
           "minOSVersion": "17.0",
-          "sha256": "544f88aa2faed29a7743f4f9a86cfc20f00e85cfaf7238e0b3f2525b7f5033f3"
+          "sha256": "91832b683ed1521176d6942aa9d77b5703210dd75abd62716513fde5c5034470"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.623 (623)",
-      "identifier": "hermes-0.1.623-623",
-      "caption": "### Changed\n- **A mail draft card is editable the moment it arrives.** No Edit step: `To`, `Cc`, `Subject` and the body\n  are fields straight away, and the card carries exactly two buttons \u2014 **Send** and **Discard**.\n- **Send posts what you typed.** The turn carries the edited headers and body, so the bot acts on your\n  version rather than the file's original. `Cc` is omitted when you leave it empty.\n- **Discard is local.** It dims the card and sends nothing; the bot's own card file is never touched.\n- **Your typing is not overwritten.** Edits live in the card's own state and are only reseeded when the\n  document itself changes, so a redraw cannot eat what you are writing.\n- A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no\n  `email` block renders exactly as before.",
-      "date": "2026-11-23T09:19:26Z",
+      "title": "Hermes 0.1.624 (624)",
+      "identifier": "hermes-0.1.624-624",
+      "caption": "### Fixed\n- **The Mac's conversation pane stops fighting the reader.** Two faults in the code that holds your\n  place while older messages load:\n  - the position was armed whenever the transcript merely *grew and its first row changed* \u2014 which is\n    what a resume looks like \u2014 so the pane scrolled although nothing had been inserted above you. The\n    guess is gone; only a real \"load earlier\" arms it now.\n  - one page could move the pane several times, because the lazy list re-measures itself as it lays\n    out and every re-measure applied the correction again. A prepend now corrects once.\n- **If it still moves, the log says why.** New `paging \u00b7 anchor \u2026` lines record when the hold was armed\n  (and from which signal), corrected by how much, released, or \u2014 the important one \u2014 that a size change\n  happened with no hold at all.\n\niPhone was never affected: it has no such hold, which is exactly why it felt smooth.",
+      "date": "2026-11-23T09:54:08Z",
       "tintColor": "#9A9AA0"
     }
   ],
