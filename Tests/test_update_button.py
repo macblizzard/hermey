@@ -117,8 +117,9 @@ class TheButtonIsOnlyThereWhenSomethingWaits(unittest.TestCase):
 
     def test_hover_and_press_are_the_bars_own_treatment(self) -> None:
         # Same control as Settings, search and the toggle — not a bespoke button with its own look.
+        # All four wear `.bar`, the 25%-larger bar size.
         glyph = block(self.bar, 'HermeyIconButton("arrow.down.circle"', "            HermeyIconButton(\"magnifyingglass\"")
-        self.assertIn("size: .small", glyph)
+        self.assertIn("size: .bar", glyph)
         self.assertIn("isBusy: store.isInstallingUpdate", glyph)
         self.assertNotIn(".buttonStyle(", glyph)
 

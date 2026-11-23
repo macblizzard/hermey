@@ -194,7 +194,7 @@ struct BotSidebarView: View {
     /// list behind the bell says which bot and how many. The count is already on the rows and in the
     /// bots' own badges; a number here would be the third place to disagree.
     private var notificationsButton: some View {
-        HermeyIconButton("bell", label: "Waiting for you", size: .small) {
+        HermeyIconButton("bell", label: "Waiting for you", size: .bar) {
             showsNotifications.toggle()
         }
         // ⇧⌘N: the ⌘N a Mac user reaches for was freed when "New Session" went away (a bot has one
@@ -212,6 +212,10 @@ struct BotSidebarView: View {
                 self.store.model.markBotRead(botID)
             }
             .frame(width: 300)
+            // A popover hands keyboard focus to its first control, and macOS drew the blue ring
+            // around that row as if it were selected. The rows keep their focus (Space/Return still
+            // opens one) — only the ring is gone, and the hover fill is the feedback.
+            .focusEffectDisabled()
         }
         .accessibilityIdentifier("sidebar.notifications")
     }
@@ -272,9 +276,9 @@ struct BotSidebarView: View {
         HStack(spacing: 2) {
             SettingsLink {
                 Image(systemName: "gearshape")
-                    .font(TypeScale.font(TypeScale.label))
+                    .font(TypeScale.font(BarIconScale.of(TypeScale.label)))
                     .foregroundStyle(Tokens.textMuted)
-                    .frame(width: 24, height: 24)
+                    .frame(width: BarIconScale.of(24), height: BarIconScale.of(24))
                     .hoverFill(rest: .clear, hover: Tokens.controlHover, radius: Tokens.radiusControl)
                     .contentShape(Rectangle())
             }
@@ -297,7 +301,7 @@ struct BotSidebarView: View {
                                  label: store.isInstallingUpdate
                                      ? "Downloading \(version)"
                                      : "Update to \(version) available",
-                                 size: .small,
+                                 size: .bar,
                                  isBusy: store.isInstallingUpdate) {
                     store.installAvailableUpdate()
                 }
@@ -306,14 +310,14 @@ struct BotSidebarView: View {
 
             HermeyIconButton("magnifyingglass",
                              label: isSearching ? "Close search" : "Search bots and messages",
-                             size: .small) {
+                             size: .bar) {
                 if isSearching { closeSearch() } else { isSearching = true }
             }
             .help(isSearching ? "Close search (esc)" : "Search bots and messages")
 
             // The panel's own toggle, where Midnight keeps it. The chat header shows one only
             // while this panel is hidden, so the door is never gone.
-            HermeyIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
+            HermeyIconButton("sidebar.left", label: "Hide the bot panel", size: .bar) {
                 store.toggleSidebar()
             }
             .help("Hide the bot panel")
@@ -336,7 +340,8 @@ struct BotSidebarView: View {
                          counts: store.model.unreadCounts,
                          names: waitingNames,
                          previews: store.model.botPreviews,
-                         faces: waitingFaces)
+                         faces: waitingFaces,
+                         times: store.model.botPreviewTimes)
     }
 
     private var waitingNames: [String: String] {
@@ -484,15 +489,15 @@ struct BotSidebarView: View {
             .disabled(!store.model.hasAnyUnread)
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: BarIconScale.of(11), weight: .semibold))
                 .foregroundStyle(Tokens.textPrimary)
-                .frame(width: 24, height: 24)
+                .frame(width: BarIconScale.of(24), height: BarIconScale.of(24))
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
                         .fill(Tokens.surface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
                         .strokeBorder(Tokens.border, lineWidth: 1)
                 )
                 .contentShape(Rectangle())

@@ -1,5 +1,20 @@
 import SwiftUI
 
+// MARK: - Bar icons
+
+/// The top and bottom bars' icons, one step larger than the rest of the chrome.
+///
+/// The owner asked for every bar icon a quarter bigger (2026-11-23). The glyph and the frame it is
+/// hit-tested in are one measurement — growing only the picture would leave a bigger icon in the old
+/// target — so both are multiplied by this factor. Sizes stay written as `of(base)`, not as the
+/// result, so the shipped value is still legible in the code that changed.
+public enum BarIconScale {
+    /// 1.25: every bar glyph and its tap frame.
+    public static let factor: CGFloat = 1.25
+
+    public static func of(_ base: CGFloat) -> CGFloat { base * factor }
+}
+
 // MARK: - Buttons
 
 /// The only button in the kit.
@@ -20,6 +35,9 @@ public struct HermeyButton: View {
     public enum Size: Equatable {
         case small
         case regular
+        /// A top/bottom bar's control: the small glyph at `BarIconScale` (25% larger), because the
+        /// bars are the one place the owner asked to grow without growing the rest of the chrome.
+        case bar
     }
 
     public enum Corners: Equatable {
@@ -159,11 +177,36 @@ public struct HermeyIconButton: View {
     }
 
     #if os(iOS)
-    private var side: CGFloat { size == .regular ? 44 : 34 }
-    private var glyphSize: CGFloat { size == .regular ? 15 : 12 }
+    private var side: CGFloat {
+        switch size {
+        case .regular: return 44
+        case .small: return 34
+        case .bar: return BarIconScale.of(34)
+        }
+    }
+    private var glyphSize: CGFloat {
+        switch size {
+        case .regular: return 15
+        case .small: return 12
+        case .bar: return BarIconScale.of(12)
+        }
+    }
     #else
-    private var side: CGFloat { size == .regular ? 28 : 24 }
-    private var glyphSize: CGFloat { size == .regular ? 12.5 : 11 }
+    private var side: CGFloat {
+        switch size {
+        case .regular: return 28
+        case .small: return 24
+        // 30 × 30 in a 34 pt bar: the frame grew with the glyph and still clears the bar by 2 pt.
+        case .bar: return BarIconScale.of(24)
+        }
+    }
+    private var glyphSize: CGFloat {
+        switch size {
+        case .regular: return 12.5
+        case .small: return 11
+        case .bar: return BarIconScale.of(11)
+        }
+    }
     #endif
 
     public var body: some View {
