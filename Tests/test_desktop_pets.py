@@ -301,9 +301,19 @@ class NothingElseWasTouched(unittest.TestCase):
         changed = _changed_files()
         if changed is None:
             self.skipTest("no git base to compare against")
+        # The pet itself is macOS-only, but the branch also carries the fix to the host's `ask` path —
+        # the role it waits for, the session id it polls, the profiles directory it opens and the
+        # timestamp it anchors on. Those are the only host files allowed here; anything else appearing
+        # under `hermeyd/` means the pet leaked into the service.
+        host_ask_fix = {
+            "hermeyd/src/bot_message.rs",
+            "hermeyd/Cargo.toml",
+            "hermeyd/Cargo.lock",
+        }
         offending = sorted(
             path for path in changed
-            if path.startswith(("Apps/HermesMobile/", "hermeyd/", "Sources/HermesCards/"))
+            if path.startswith(("Apps/HermesMobile/", "Sources/HermesCards/"))
+            or (path.startswith("hermeyd/") and path not in host_ask_fix)
         )
         self.assertEqual([], offending, "the desktop pet is a macOS feature")
 
