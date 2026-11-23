@@ -44,7 +44,10 @@ public struct BotAnswer: Sendable, Equatable {
         }
         // A reply that is `null`, missing or blank is no reply at all: the pet must not show an
         // empty bubble and call it an answer.
-        let rawReply = object["reply"] as? String
+        // Trimmed, not just checked for empty: the host can return "   " for a turn that produced
+        // nothing readable, and a bubble holding three spaces is an answer the pet never gave.
+        let rawReply = (object["reply"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let reply = (rawReply?.isEmpty == false) ? rawReply : nil
         let answered = (object["answered"] as? Bool) ?? (reply != nil)
         return BotAnswer(profile: (object["profile"] as? String) ?? fallbackProfile,
