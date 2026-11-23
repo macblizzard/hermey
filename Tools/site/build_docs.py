@@ -890,12 +890,6 @@ document.querySelectorAll('.copy').forEach(function (button) {
 
 
 
-PAGES.append(markdown_page(
-    slug="credentials",
-    nav="Sign-in cards",
-    group="Reference",
-    lede="How a bot signs you in to a site without ever being given the password.",
-    source="CREDENTIALS.md"))
 
 PAGES.append(markdown_page(
     slug="importing",
@@ -903,6 +897,13 @@ PAGES.append(markdown_page(
     group="Using it",
     lede="Bring bots in from another platform: paste one prompt into its bot, import the zip it writes.",
     source="IMPORT-FROM-ANOTHER-PLATFORM.md"))
+
+PAGES.append(markdown_page(
+    slug="credentials",
+    nav="Sign-in cards",
+    group="Using it",
+    lede="How a bot signs you in to a site without ever being given the password.",
+    source="CREDENTIALS.md"))
 
 PAGES.append(markdown_page(
     slug="integrations",
