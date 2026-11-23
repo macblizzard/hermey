@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.620",
-          "buildVersion": "620",
-          "date": "2026-11-22T21:26:43Z",
-          "localizedDescription": "### Changed\n- **No share-sheet entry.** It cannot work on a sideloaded install: a third-party signing certificate can carry\n  an app-group entitlement but cannot provision the group id the extension needs, so the sheet could only ever say\n  \"no shared storage yet\". The extension, the entitlement and the wiring are removed.\n\n### Fixed\n- **The expanded Live Activity is no longer an empty black bar.** The expanded island's minimum height is 84 pt,\n  which fits one row; asking for a second row while a turn runs collapsed the lower region and left the pill with\n  nothing but the bot's name. The bottom row now appears only when the turn has finished \u2014 status and a clipped\n  line of the reply \u2014 so a running turn is name plus timer, and a finished one is name, elapsed and what was said.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.620/Hermey-0.1.620-b620.ipa",
-          "size": 5024668,
+          "version": "0.1.621",
+          "buildVersion": "621",
+          "date": "2026-11-23T05:11:07Z",
+          "localizedDescription": "### Added\n- **Agent cards draw natively, on both apps.** A reply that carries a `::card{id=\"\u2026\" kind=\"\u2026\" file=\"\u2026\"}`\n  line now draws the card instead of describing it: an approval layout with up to three actions, where a tap\n  sends that action as an ordinary turn. The marker line is taken out of the prose, marker examples inside\n  fenced code blocks are left alone, and a card that cannot be read says \"Card not available\" with the\n  reply's text still shown. Cards sit after A2UI markers and before genui blocks, and `cards.enabled`\n  turns the whole thing off so the marker stays plain text.\n\n### Fixed\n- **A reply with CRLF line endings no longer hides its card markers.** Swift treats `\"\\r\\n\"` as a single\n  character, so splitting on `\"\\n\"` never broke such a message: every marker stayed buried inside one\n  enormous line and the prose lost its carriage returns.\n\n### Changed\n- **One engine home.** `hermeyd` now resolves the Hermes home that actually holds `profiles/` \u2014 `~/.hermes`\n  first \u2014 instead of adopting the first directory that exists and silently serving a second fleet.\n- **Docs, site and README say what the code does.** The bridge era, the removed share extension and scripts\n  that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the\n  two-number version policy are documented; two routes that were documented as stubs are described as the\n  implemented routes they are.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.621/Hermey-0.1.621-b621.ipa",
+          "size": 5172504,
           "minOSVersion": "17.0",
-          "sha256": "d9ae030d547e5828f7d438fb61d97f1f4a01f329298116cedcc1efd2423c6d85"
+          "sha256": "48b0302a7b6ab6085e9f9b4f82d40451e6265c2c79df98bfbeb647c5b95bc6e4"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.620 (620)",
-      "identifier": "hermes-0.1.620-620",
-      "caption": "### Changed\n- **No share-sheet entry.** It cannot work on a sideloaded install: a third-party signing certificate can carry\n  an app-group entitlement but cannot provision the group id the extension needs, so the sheet could only ever say\n  \"no shared storage yet\". The extension, the entitlement and the wiring are removed.\n\n### Fixed\n- **The expanded Live Activity is no longer an empty black bar.** The expanded island's minimum height is 84 pt,\n  which fits one row; asking for a second row while a turn runs collapsed the lower region and left the pill with\n  nothing but the bot's name. The bottom row now appears only when the turn has finished \u2014 status and a clipped\n  line of the reply \u2014 so a running turn is name plus timer, and a finished one is name, elapsed and what was said.",
-      "date": "2026-11-22T21:26:43Z",
+      "title": "Hermes 0.1.621 (621)",
+      "identifier": "hermes-0.1.621-621",
+      "caption": "### Added\n- **Agent cards draw natively, on both apps.** A reply that carries a `::card{id=\"\u2026\" kind=\"\u2026\" file=\"\u2026\"}`\n  line now draws the card instead of describing it: an approval layout with up to three actions, where a tap\n  sends that action as an ordinary turn. The marker line is taken out of the prose, marker examples inside\n  fenced code blocks are left alone, and a card that cannot be read says \"Card not available\" with the\n  reply's text still shown. Cards sit after A2UI markers and before genui blocks, and `cards.enabled`\n  turns the whole thing off so the marker stays plain text.\n\n### Fixed\n- **A reply with CRLF line endings no longer hides its card markers.** Swift treats `\"\\r\\n\"` as a single\n  character, so splitting on `\"\\n\"` never broke such a message: every marker stayed buried inside one\n  enormous line and the prose lost its carriage returns.\n\n### Changed\n- **One engine home.** `hermeyd` now resolves the Hermes home that actually holds `profiles/` \u2014 `~/.hermes`\n  first \u2014 instead of adopting the first directory that exists and silently serving a second fleet.\n- **Docs, site and README say what the code does.** The bridge era, the removed share extension and scripts\n  that never existed are gone; Live Activity, gallery paging, group-chat rename, the macOS build flag and the\n  two-number version policy are documented; two routes that were documented as stubs are described as the\n  implemented routes they are.",
+      "date": "2026-11-23T05:11:07Z",
       "tintColor": "#9A9AA0"
     }
   ],
