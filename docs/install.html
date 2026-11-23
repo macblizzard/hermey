@@ -99,9 +99,10 @@ it in <code>&lt;engine&gt;/plugins/hermes-genui</code>; without it every generat
 <ol class="steps-list">
 <li><strong>Detects the platform</strong> — Linux x86_64/aarch64 or macOS arm64/x86_64 — and refuses anything else
 with the supported list and the from-source alternative.</li>
-<li><strong>Downloads the matching binary</strong> from this repository's GitHub release, plus <code>SHA256SUMS</code>, and
-verifies the <strong>SHA-256 before installing</strong>. A missing or mismatched entry aborts with nothing
-installed: the checksum is the whole trust anchor for a prebuilt binary.</li>
+<li><strong>Downloads the matching binary</strong> from the newest release of the host service — the <code>hermeyd-vX.Y.Z</code>
+tag series, which is separate from the apps' <code>v0.1.N</code> tags — plus <code>SHA256SUMS</code>, and verifies the
+<strong>SHA-256 before installing</strong>. A missing or mismatched entry aborts with nothing installed: the
+checksum is the whole trust anchor for a prebuilt binary.</li>
 <li><strong>Installs</strong> it to <code>/opt/hermey/bin/hermeyd</code>.</li>
 <li><strong>Creates state</strong> at <code>/var/lib/hermeyd</code> (<code>0700</code>, owned by the service account).</li>
 <li><strong>Writes <code>/etc/hermey/hermeyd.env</code></strong> with the detected engine home, ports, public host and token
@@ -120,6 +121,11 @@ last line of the install says which of those it is. <code>--no-serve</code> skip
 </ol>
 <p>Re-running the same command is the <strong>upgrade</strong> path: same paths, same state, new binary, unit and
 plugin replaced, service restarted.</p>
+<p><strong>Versions.</strong> <code>hermeyd</code> numbers itself (<code>0.2.x</code>) and moves only when <code>hermeyd/src/</code> or its bundled
+skills change — a client release does not bump it, and CI refuses a source change that leaves the
+version alone (<code>Tools/check_hermeyd_version_bump.py</code>). The apps keep their own <code>0.1.&lt;run&gt;</code>. So
+<code>hermeyd --version</code> on the host and the build number in the Mac's About panel are two different
+numbers, and neither is stale when they differ.</p>
 <h2 id="prebuilt-or-from-source">Prebuilt or from source</h2>
 <p>Prebuilt is the default and needs no toolchain. Build from source when the platform is not published,
 when policy forbids running a downloaded binary, or when you are testing a change:</p>
@@ -150,7 +156,7 @@ the same checkout, so a build is self-contained.</p>
 <td><code>--version TAG</code></td>
 <td><code>HERMEY_VERSION</code></td>
 <td><code>latest</code></td>
-<td>release tag to install (<code>v0.2.0</code>) or <code>latest</code></td>
+<td>host release to install: <code>hermeyd-v0.2.0</code> (or <code>0.2.0</code>), or <code>latest</code> — which resolves the newest release of the host service, not the newest release of the apps</td>
 </tr>
 <tr>
 <td><code>--prefix DIR</code></td>
@@ -306,8 +312,8 @@ left in place, and the command says so. <strong>State is kept</strong>, so paire
 <tbody>
 <tr>
 <td><code>could not download …/hermeyd-linux-aarch64</code></td>
-<td>no published build for that platform/tag</td>
-<td>use a release that has it, or <code>--from-source</code></td>
+<td>the tag you pointed at carries no host binary — an app release (<code>v0.1.N</code>) never does; only <code>hermeyd-v*</code> releases do</td>
+<td>install from a <code>hermeyd-v*</code> tag, or <code>--from-source</code></td>
 </tr>
 <tr>
 <td><code>SHA256SUMS has no entry for …</code></td>

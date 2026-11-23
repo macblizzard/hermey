@@ -147,9 +147,10 @@ Revoke a device from the app, or by deleting it there.</p>
 (<a href="https://sidestore.io">sidestore.io</a>), then add this source in its <em>Sources</em> tab:
 <code>https://github.com/macblizzard/hermey/releases/latest/download/altstore.json</code>
 and install <strong>Hermey</strong> from it. Unsigned builds need re-signing every ~7 days with a free Apple ID.</li>
-<li><strong>macOS</strong> — download <code>Hermey-macOS-unsigned.dmg</code> from
-<a href="https://github.com/macblizzard/hermey/releases/latest">https://github.com/macblizzard/hermey/releases/latest</a>, move <code>Hermey.app</code> to <code>/Applications</code>, then
-right-click → <strong>Open</strong> → <strong>Open</strong>. If macOS still refuses:
+<li><strong>macOS</strong> — download the disk image from <a href="https://macblizzard.github.io/hermey-downloads/">https://macblizzard.github.io/hermey-downloads/</a>
+(<code>Hermey-macOS-&lt;version&gt;.dmg</code>, the newest build; the release page attaches the same file under the
+versioned name only), open it, drag <strong>Hermey</strong> onto the <code>Applications</code> shortcut, then right-click →
+<strong>Open</strong> → <strong>Open</strong>. If macOS still refuses:
 <code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code>.</li>
 <li><strong>The host URL to type by hand</strong>, if there is no QR path: <code>https://&lt;host&gt;.&lt;tailnet&gt;.ts.net</code> — the
 tailnet name <code>tailscale serve</code> publishes, with <strong>no port</strong>.</li>
@@ -351,7 +352,7 @@ Do not change anything else on this host, and do not bind hermeyd to a public in
 </table></div>
 
 <p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/FOR-AGENTS.md">docs/FOR-AGENTS.md</a>, rendered at build time. Corrections belong in that file.</p>
-    <nav class="pager" aria-label="Pages"><a href="apps.html"><span>Previous</span><strong>The apps</strong></a><a class="next" href="troubleshooting.html"><span>Next</span><strong>Troubleshooting</strong></a></nav>
+    <nav class="pager" aria-label="Pages"><a href="integrations.html"><span>Previous</span><strong>Integrations</strong></a><a class="next" href="troubleshooting.html"><span>Next</span><strong>Troubleshooting</strong></a></nav>
   </main>
 
   <nav class="toc" aria-label="On this page">

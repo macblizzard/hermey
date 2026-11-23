@@ -136,8 +136,8 @@ answers <code>503</code> on <code>/v1/genui/plugin.js</code> and cards come up b
 <ul>
 <li><strong>401 on every call</strong> — no bearer. <code>local.token</code> is minted at boot, <code>0600</code>, owner-only; if the bots run as a
 different user than the service, grant that one principal <code>0640</code> via <code>HERMEYD_LOCAL_TOKEN_GROUP</code>.</li>
-<li><strong>502 from the tailnet URL</strong> — a leftover <code>:8443</code> mount pointing at the retired Python bridge. Remove it with
-<code>tailscale serve --https=8443 off</code>; the current service is published at serve-root.</li>
+<li><strong>502 from the tailnet URL</strong> — a leftover <code>:8443</code> mount from the old port scheme. Remove it with
+<code>tailscale serve --https=8443 off</code>; hermeyd is published at serve-root, with no port.</li>
 </ul>
 
 <p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/PREREQUISITES.md">docs/PREREQUISITES.md</a>, rendered at build time. Corrections belong in that file.</p>
