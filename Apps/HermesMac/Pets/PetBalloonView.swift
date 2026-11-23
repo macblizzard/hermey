@@ -9,6 +9,13 @@ import SwiftUI
 /// The transitions themselves are `PetBalloonState` (HermesKit, unit-tested); this type owns the
 /// task, the log lines the owner reports bugs from, and the mapping from a thrown error to the
 /// sentence in the bubble.
+///
+/// It also owns something the first version got wrong: **the conversation outlives the window**. A
+/// dismissal is not a reset — the pet keeps its last answer for as long as the pet is on screen
+/// (memory only; nothing is written to disk, because a desktop pet's transcript is not a document),
+/// so reopening the balloon shows what was last asked instead of a blank field. The one thing a
+/// dismissal *does* throw away is a turn that had not landed yet: nothing answered it, so there is
+/// nothing to show. `New` is the explicit reset, and the only one.
 @MainActor
 final class PetBalloonModel: ObservableObject {
     @Published private(set) var state: PetBalloonState = .idle
@@ -22,6 +29,13 @@ final class PetBalloonModel: ObservableObject {
 
     private let ask: @MainActor (String) async throws -> BotAnswer
     private var task: Task<Void, Never>?
+    /// The last exchange that settled — an answer, or a failure. Kept so a dismissal during a turn,
+    /// or a reopening, has something to go back to.
+    private var kept: PetBalloonState?
+
+    /// Whether there is anything on screen for `New` to clear: an answer, or a failure. The button
+    /// is rendered from this and nothing else, so it appears exactly when it would do something.
+    var hasExchange: Bool { state.answer != nil || state.failure != nil }
 
     init(botID: String, ask: @escaping @MainActor (String) async throws -> BotAnswer) {
         self.botID = botID
@@ -49,8 +63,23 @@ final class PetBalloonModel: ObservableObject {
 
     func dismiss() {
         cancel()
-        state.dismiss()
+        // A turn that has not landed has nothing to keep; the exchange before it is still this
+        // pet's answer, so that is what the next open shows.
+        if state.isAsking { state = kept ?? .idle }
         onDismiss?()
+    }
+
+    /// New: an empty field ready for a fresh question.
+    ///
+    /// The explicit reset — it clears what is on screen *and* anything in flight, because a reply
+    /// that lands after the owner asked to start over must not paint itself into the new bubble. The
+    /// window closes nothing here: the balloon stays up, empty, with the field focused.
+    func clear() {
+        cancel()
+        state.dismiss()
+        kept = nil
+        draft = ""
+        ClientLog.note("pet \(botID): cleared for a new question", category: "pets")
     }
 
     /// Cancel the turn without telling the controller anything: used when the window itself is
@@ -68,6 +97,8 @@ final class PetBalloonModel: ObservableObject {
                 let answer = try await ask(question)
                 guard !Task.isCancelled else { return }
                 state.receive(reply: answer.answered ? answer.reply : nil)
+                // Settled: this is now the exchange the pet keeps, whatever it says on the screen.
+                kept = state
                 if let reply = state.answer {
                     ClientLog.note("pet \(botID): answer arrived (\(reply.count) characters)",
                                    category: "pets")
@@ -81,11 +112,13 @@ final class PetBalloonModel: ObservableObject {
                 guard !Task.isCancelled else { return }
                 // The host's own sentence, unchanged, or the fixed line for a dead socket.
                 state.fail(error.localizedDescription)
+                kept = state
                 ClientLog.note("pet \(botID): question failed — \(error.localizedDescription)",
                                category: "pets")
             } catch {
                 guard !Task.isCancelled else { return }
                 state.fail(PetBalloonState.unreachableText)
+                kept = state
                 ClientLog.note("pet \(botID): host unreachable — \(error.localizedDescription)",
                                category: "pets")
             }
@@ -97,10 +130,12 @@ final class PetBalloonModel: ObservableObject {
 
 /// The pet's centre, as a fraction of the balloon's width (`0` is its left edge, `1` its right).
 ///
-/// The bubble is centred over the icon, but `PetGeometry.above` pulls it back onto the display when a
-/// pet sits near an edge — and then the pet is no longer under the middle. The window writes this on
-/// every placement and the tail follows it, which is the difference between a callout that points at
-/// the pet and one that merely hovers near it.
+/// The bubble now sits above and to the *side* of the icon (`PetCalloutPlacement`), so the pet is
+/// almost never under its middle: on the default above-right seat the pet is off the bubble's inner
+/// edge entirely. The window writes this on every placement and the tail follows it; the shape clamps
+/// it clear of the rounded corners, which is what lands the tail's root on the pet's edge rather than
+/// in the bubble's middle. It is the difference between a callout that points at the pet and one that
+/// merely hovers near it.
 @MainActor
 final class PetBalloonAnchor: ObservableObject {
     @Published var petCentre: CGFloat = 0.5
@@ -116,10 +151,12 @@ final class PetBalloonAnchor: ObservableObject {
 /// into it. These are the light palette's warm inks (`ThemeCatalog.parchment`) on glass, spelled
 /// out so the bubble cannot change colour when the owner changes the app's theme.
 enum PetBalloonInk {
-    /// The sheet's tint over the material. Low on purpose: at 0.82 the bubble read as a solid light
-    /// panel on a dark desktop, which is the one thing a callout must not look like. The material
-    /// does the frosting; this only warms it toward paper.
-    static let body = Color.white.opacity(0.38)
+    /// The sheet's tint over the material: 0.16 of white, on the thinnest frost macOS offers, so
+    /// about 30 % of the bubble's surface is visible and the desktop shows through the other 70 %.
+    /// The earlier 0.38 on `.regularMaterial` read as a solid light panel on a dark wallpaper, which
+    /// is the one thing a callout must not look like — the owner asked for a third of the surface,
+    /// and this is it. The material does the frosting; this only warms it toward paper.
+    static let body = Color.white.opacity(0.16)
     static let primary = Color(red: 0.078, green: 0.078, blue: 0.075)     // #141413
     static let secondary = Color(red: 0.24, green: 0.24, blue: 0.235)
     static let muted = Color(red: 0.42, green: 0.416, blue: 0.39)
@@ -128,11 +165,12 @@ enum PetBalloonInk {
     /// The field's well and the tail's inner shading: a black veil, not a theme surface.
     static let well = Color.black.opacity(0.05)
     /// The one hard edge the bubble has: the hairline that holds the silhouette against a bright
-    /// desktop.
+    /// desktop, at 0.14 so it is a line rather than a border.
     static let edge = Color.black.opacity(0.14)
-    /// The glass edge, drawn just inside the hairline. A light rim, not a dark one: that is what
-    /// makes the sheet read as frosted rather than painted.
-    static let highlight = Color.white.opacity(0.18)
+    /// The glass edge, drawn just inside the hairline. Very light on purpose: at a 0.16 tint a
+    /// brighter rim would be the most solid thing on the bubble. It is there to catch the light, not
+    /// to redraw the outline.
+    static let highlight = Color.white.opacity(0.10)
     /// The last-resort backdrop-contrast layer, under the words only.
     ///
     /// Every material is a light frost here because the bubble forces a light appearance, so dark
@@ -325,15 +363,16 @@ struct PetBalloonView: View {
         // no line of text ever reaches down into the curve.
         .padding(.bottom, PetCalloutMetrics.tailHeight)
         .frame(width: Self.width)
-        // A callout, not a card. The material frosts whatever is behind the window and the white
-        // sits on it at 0.38 — enough to warm the frost toward paper, not enough to hide the desktop
-        // behind it: a dark wallpaper tints the bubble grey-blue, a bright one cream. The material is
-        // `.regular` rather than `.ultraThin` because that is where the contrast comes from: the
-        // tint stays low and the frost does the work, which is the difference between a sheet of
-        // glass and a solid light panel.
+        // A callout, not a card — and now a *see-through* one. `.ultraThinMaterial` is the thinnest
+        // frost macOS offers and the white sits on it at 0.16, so roughly a third of the surface is
+        // visible and the desktop reads through the rest. The material still frosts what is behind
+        // the window (which is what keeps dark ink legible on a busy wallpaper), but it no longer
+        // makes a panel: a dark desktop tints the bubble grey-blue through it, a bright one cream.
+        // Anything thicker here — a higher tint, `.regularMaterial` — is the opaque sheet the owner
+        // asked to be rid of.
         .background(
             silhouette
-                .fill(.regularMaterial)
+                .fill(.ultraThinMaterial)
                 .overlay(silhouette.fill(PetBalloonInk.body))
         )
         .overlay(
@@ -406,6 +445,12 @@ struct PetBalloonView: View {
 
             Spacer(minLength: 8)
 
+            // Only when there is something to clear: an answer, or a failure. A `New` beside an
+            // empty field would be a button that does nothing, and the owner asked for it to appear
+            // with the exchange.
+            if model.hasExchange {
+                CalloutButton("New") { model.clear() }
+            }
             if model.state.canRetry {
                 CalloutButton("Retry") { model.retry() }
             }
@@ -499,7 +544,8 @@ final class PetBalloonPanel: NSPanel {
                    defer: false)
         isOpaque = false
         backgroundColor = .clear
-        // The bubble is opaque inside a clear window, so the shadow follows its rounded shape.
+        // The bubble's own outline is the only ink, so the window's shadow follows its rounded
+        // shape and the tail rather than a rectangle.
         hasShadow = true
         isFloatingPanel = true
         level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
@@ -606,20 +652,18 @@ final class PetBalloonWindow {
                 ?? NSScreen.screens.first
         else { return }
         let visible = screen.visibleFrame
-        let pet = PetPlacement(x: anchorFrame.minX, y: anchorFrame.minY, screenID: "")
-        let rect = PetGeometry.above(
-            pet,
-            side: anchorFrame.height,
+        let petRect = PetRect(x: anchorFrame.minX, y: anchorFrame.minY,
+                              width: anchorFrame.width, height: anchorFrame.height)
+        let placed = PetCalloutPlacement.place(
+            pet: petRect,
             balloon: PetRect(x: 0, y: 0, width: panel.frame.width, height: panel.frame.height),
             in: PetRect(x: visible.minX, y: visible.minY,
                         width: visible.width, height: visible.height))
-        panel.setFrameOrigin(NSPoint(x: rect.x, y: rect.y))
-        // The tail points at the pet, wherever the bubble ended up: centred until the display edge
-        // moved it, and following the icon the rest of the way.
-        if rect.width > 0 {
-            let fraction = (anchorFrame.midX - rect.x) / rect.width
-            anchorModel.petCentre = min(max(fraction, 0), 1)
-        }
+        panel.setFrameOrigin(NSPoint(x: placed.rect.x, y: placed.rect.y))
+        // The tail points at the pet, wherever the bubble ended up: the shape clamps this fraction
+        // clear of its own corners, so on a side seat the tail's root lands on the pet's edge.
+        let fraction = PetCalloutPlacement.tailFraction(pet: petRect, balloon: placed.rect)
+        anchorModel.petCentre = CGFloat(fraction)
     }
 
     // MARK: - Dismissal
