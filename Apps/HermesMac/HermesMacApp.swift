@@ -20,21 +20,46 @@ struct HermesMacApp: App {
     /// UI-test launch: a frozen, offline store built by `UITestFixture`, which is only ever
     /// reachable through the two launch arguments it checks (see that file). The store and the
     /// one `.task` below are the entire hook; nothing else about the window changes.
-    @StateObject private var store = UITestFixture.storeForLaunch()
+    ///
+    /// Built in `init` rather than in this property's own initializer for one reason: the updater's
+    /// delegate has to be handed the store before the updater starts, and one stored property cannot
+    /// see another while it is being initialized.
+    @StateObject private var store: WorkspaceStore
+
+    #if canImport(Sparkle)
+    /// The standard user driver's delegate *and* the updater's: the launch check reports what it
+    /// found here instead of opening a window, and the bot panel's floor bar draws it.
+    private let updateReminder: UpdateReminder
 
     /// Sparkle's controller, owned by the app for its whole lifetime: one that falls out of scope
     /// stops its scheduled cycle, and the menu's verb then does nothing. `startingUpdater: true`
     /// begins the daily check declared by `SUFeedURL`/`SUScheduledCheckInterval` in Info.plist.
     ///
-    /// Its prompt is Sparkle's own and it is dismissible, so an available build never blocks or
-    /// gates the workspace — nothing here disables a feature behind "update first". A tampered DMG
-    /// fails the EdDSA check against `SUPublicEDKey` and Sparkle aborts with a visible error; there
-    /// is no installer of ours to get that wrong.
-    #if canImport(Sparkle)
-    private let updater = SPUStandardUpdaterController(startingUpdater: true,
-                                                       updaterDelegate: nil,
-                                                       userDriverDelegate: nil)
+    /// Both delegate slots are `updateReminder`. Its verdict on a *scheduled* check is "no" — the
+    /// panel offers the update on its floor bar, so nothing is drawn at boot — and it has no say on
+    /// a user-initiated one, which the standard driver always handles. Its prompt stays Sparkle's
+    /// own and stays dismissible, so an available build never blocks or gates the workspace; nothing
+    /// here disables a feature behind "update first". A tampered DMG fails the EdDSA check against
+    /// `SUPublicEDKey` and Sparkle aborts with a visible error; there is no installer of ours to get
+    /// that wrong.
+    private let updater: SPUStandardUpdaterController
     #endif
+
+    init() {
+        let store = UITestFixture.storeForLaunch()
+        #if canImport(Sparkle)
+        // Before the controller exists, so the launch check's first answer has somewhere to land:
+        // Sparkle calls this on the main thread, and the store is the panel's one source for
+        // "a version is waiting".
+        let reminder = UpdateReminder()
+        reminder.onUpdate = { [weak store] version in store?.offerUpdate(version) }
+        updateReminder = reminder
+        updater = SPUStandardUpdaterController(startingUpdater: true,
+                                               updaterDelegate: reminder,
+                                               userDriverDelegate: reminder)
+        #endif
+        _store = StateObject(wrappedValue: store)
+    }
 
     /// The one action the menu and Settings → About share. It is a closure rather than the
     /// controller so both callers stay ignorant of Sparkle, and so a tree built without the package
@@ -47,13 +72,6 @@ struct HermesMacApp: App {
         #endif
     }
 
-    /// One background check per launch, whatever Sparkle's own schedule says.
-    ///
-    /// `SUEnableAutomaticChecks` with `SUScheduledCheckInterval: 86400` means "at most once a day",
-    /// so a Mac restarted after a release could sit on the old build until tomorrow. A cold start is
-    /// the moment a person expects to be told, so it asks. `checkForUpdatesInBackground` is the
-    /// silent variant — Sparkle still draws its own dismissible prompt when it finds something, and
-    /// nothing here installs, gates or blocks: the workspace is usable throughout.
     /// Subsystem for the one thing about updates that has to be observable from outside the app.
     ///
     /// `SULastCheckTime` in the app's defaults says *that* a check happened; this says that the launch
@@ -62,6 +80,16 @@ struct HermesMacApp: App {
     /// `log show --last 1h --predicate 'subsystem == "dev.hermey.app.mac" and category == "updates"'`.
     private let updateLog = Logger(subsystem: "dev.hermey.app.mac", category: "updates")
 
+    /// One background check per launch, whatever Sparkle's own schedule says.
+    ///
+    /// `SUEnableAutomaticChecks` with `SUScheduledCheckInterval: 86400` means "at most once a day",
+    /// so a Mac restarted after a release could sit on the old build until tomorrow. A cold start is
+    /// the moment a person expects to be told, so it asks — and now it asks **quietly**. The call is
+    /// the same silent `checkForUpdatesInBackground()` it always was; the change is on the other side
+    /// of it, where `UpdateReminder` answers "no" to showing a scheduled update, so no window opens
+    /// over the workspace at boot. What it finds becomes the bot panel's update glyph, and a check
+    /// that finds nothing leaves the panel exactly as it was. Nothing here installs, gates or
+    /// blocks: the workspace is usable throughout, and no update is installed without a press.
     private func checkForUpdatesAtLaunch() {
         #if canImport(Sparkle)
         updateLog.notice("launch check requested (running \(AppVersion.label, privacy: .public))")

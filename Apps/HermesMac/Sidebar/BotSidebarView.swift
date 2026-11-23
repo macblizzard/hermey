@@ -262,10 +262,10 @@ struct BotSidebarView: View {
         .accessibilityIdentifier("sidebar.searchRow")
     }
 
-    /// Settings on the left; search and the panel's own toggle on the right.
+    /// Settings on the left; a waiting update, search and the panel's own toggle on the right.
     ///
     /// Two groups on two edges because they are two kinds of verb: a destination that leaves the
-    /// panel, and two controls of the panel itself. The bar is the panel's own fill and carries no
+    /// panel, and the controls of the panel itself. The bar is the panel's own fill and carries no
     /// hairline — `bottomDissolve` above it is the separator, the same 26 pt the header draws at the
     /// other end, so the list dissolves into the bar rather than being cut by its top edge.
     private var bottomBar: some View {
@@ -283,6 +283,26 @@ struct BotSidebarView: View {
             .accessibilityLabel("Settings")
 
             Spacer(minLength: 0)
+
+            // A waiting update, where the panel's own verbs are — immediately left of search.
+            //
+            // This glyph is the whole reminder now: the launch check reports what it found here
+            // instead of opening Sparkle's alert over the window (`UpdateReminder`). It exists only
+            // while a version is waiting, and its press runs the same *user-initiated* check the
+            // menu bar and Settings → About run, so Sparkle's own download-and-install UI does the
+            // work. `isInstallingUpdate` latches for the round trip, which is what turns the press
+            // into a spinner rather than a second check.
+            if let version = store.updateAvailable {
+                HermeyIconButton("arrow.down.circle",
+                                 label: store.isInstallingUpdate
+                                     ? "Downloading \(version)"
+                                     : "Update to \(version) available",
+                                 size: .small,
+                                 isBusy: store.isInstallingUpdate) {
+                    store.installAvailableUpdate()
+                }
+                .accessibilityIdentifier("sidebar.updateAvailable")
+            }
 
             HermeyIconButton("magnifyingglass",
                              label: isSearching ? "Close search" : "Search bots and messages",
