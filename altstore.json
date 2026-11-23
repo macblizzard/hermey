@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.632",
-          "buildVersion": "632",
-          "date": "2026-11-23T14:42:38Z",
-          "localizedDescription": "### Fixed\n- **No more eyes drawn over the faces that already have them.** The pet's own icon carries its eyes \u2014 the\n  cloud's two vertical bars \u2014 and an overlay of horizontal eyelid shapes crossed them into a doubled,\n  T-shaped face. Nothing is painted on the art now.\n- **The blink is the body.** A deeper squash (0.74) of the whole icon, which is what a cartoon face does\n  when it blinks.\n- **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by\n  the picture itself. Reduce Motion still stops the drift.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.632/Hermey-0.1.632-b632.ipa",
-          "size": 5151446,
+          "version": "0.1.633",
+          "buildVersion": "633",
+          "date": "2026-11-23T15:19:16Z",
+          "localizedDescription": "### Added\n- **The pet tells you when a bot answers while you are away.** If Hermey's window is minimised (or the app\n  hidden) and a bot you asked something replies, that bot's pet hops once and wears a small badge with the\n  count. Click the pet and the balloon opens with the reply; the badge clears with it \u2014 and the dot in the\n  app's bot list clears at the same time, because both read the same count.\n- It stays quiet when you are already looking at the window, and it does not hop for a reply its own\n  balloon is showing.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.633/Hermey-0.1.633-b633.ipa",
+          "size": 5151074,
           "minOSVersion": "17.0",
-          "sha256": "00cd2846595d4eef3bf0c9076970f41c667c977acaf6103f37baeb91105247f7"
+          "sha256": "38171b3d85923166664f8f81710da259628e5b5a93f40ebfcc02d5cb0c35bd78"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.632 (632)",
-      "identifier": "hermes-0.1.632-632",
-      "caption": "### Fixed\n- **No more eyes drawn over the faces that already have them.** The pet's own icon carries its eyes \u2014 the\n  cloud's two vertical bars \u2014 and an overlay of horizontal eyelid shapes crossed them into a doubled,\n  T-shaped face. Nothing is painted on the art now.\n- **The blink is the body.** A deeper squash (0.74) of the whole icon, which is what a cartoon face does\n  when it blinks.\n- **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by\n  the picture itself. Reduce Motion still stops the drift.",
-      "date": "2026-11-23T14:42:38Z",
+      "title": "Hermes 0.1.633 (633)",
+      "identifier": "hermes-0.1.633-633",
+      "caption": "### Added\n- **The pet tells you when a bot answers while you are away.** If Hermey's window is minimised (or the app\n  hidden) and a bot you asked something replies, that bot's pet hops once and wears a small badge with the\n  count. Click the pet and the balloon opens with the reply; the badge clears with it \u2014 and the dot in the\n  app's bot list clears at the same time, because both read the same count.\n- It stays quiet when you are already looking at the window, and it does not hop for a reply its own\n  balloon is showing.",
+      "date": "2026-11-23T15:19:16Z",
       "tintColor": "#9A9AA0"
     }
   ],
