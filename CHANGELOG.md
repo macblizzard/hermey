@@ -1051,3 +1051,13 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a
   rectangle of your screen.
 - Reduce Motion is respected — no hops, and a much gentler bob.
+
+## [0.1.627] — 2026-11-23
+
+### Fixed
+- **The pet can ask.** Every question came back as "not found": the host's `ask` route only accepted calls
+  from its own machine, and both apps reach it through the tailnet proxy. It now accepts a call that carries
+  your device's ticket — and still answers an unauthenticated proxy exactly as it answers an unknown route.
+- **The balloon blends.** It was an opaque sheet sitting on whatever desktop it happened to open over; it is
+  now a translucent material with the theme colour over it, so the wallpaper and windows show through and the
+  text stays readable.
