@@ -16,8 +16,13 @@ import SwiftUI
 /// the keyboard — findings first, then bots — so Up/Down and Return work without the user having to
 /// know which half a row came from.
 ///
-/// The header is one row of chrome: the bot filter (a field, not an icon that opens one), the
-/// hidden-bots filter and Settings. There is no footer — the list takes the panel's last point.
+/// The panel has two rows of chrome, and the list scrolls between them: an **attention** row at the
+/// top (the bell for everything waiting, then the ＋ that adds and manages), and a **floor** row at
+/// the bottom (Settings on the left; search and the panel's own toggle on the right). The split is
+/// on purpose: the top row is what the panel *is for* — the bots and what they have waiting — and
+/// the bottom row is what the panel *sits in* — the app's settings, the way back to a narrower
+/// list, and the finder. Neither row scrolls away with the list.
+///
 /// Connection, reconnect, latency, pairing and devices live in Settings ▸ Connection, which stays
 /// reachable with no bot selected and no host paired.
 struct BotSidebarView: View {
@@ -35,6 +40,8 @@ struct BotSidebarView: View {
     /// Search is a button, not a box: the field only exists while it is being used, so the row
     /// holds four glyphs and the list gets the width back.
     @State private var isSearching = false
+    /// The bell's popover: everything waiting, drawn from the same unread state the rows are.
+    @State private var showsNotifications = false
     /// Where the keyboard is in the combined answer (findings first, then bots). Owned here because
     /// the keys arrive here; drawn by `SidebarBotList` because the rows live there.
     @State private var searchSelection = SidebarSearchSelection()
@@ -47,16 +54,24 @@ struct BotSidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            // The list takes every point left under the header: on this screen the bots *are*
-            // the panel, not a block above a session list and not a block above a footer chip.
-            content
-                .padding(.horizontal, Geometry.sidebarInset)
-                .padding(.bottom, 8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                // Rows dissolve at both ends instead of being cut off by the header and the floor:
-                // 26 pt of gradient each way, fixed rather than a fraction, so a short list does
-                // not fade away to nothing and a long one does not lose a row to the blur.
-                .mask(listFade)
+            // The list takes every point between the two rows of chrome: on this screen the bots
+            // *are* the panel, and the two bars are its frame rather than blocks above and below it.
+            ZStack(alignment: .bottom) {
+                content
+                    .padding(.horizontal, Geometry.sidebarInset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    // Rows dissolve at both ends instead of being cut off by the header and the
+                    // floor: 26 pt of gradient each way, fixed rather than a fraction, so a short
+                    // list does not fade away to nothing and a long one does not lose a row to the
+                    // blur. The top half is a mask (there is nothing behind the rows but the panel
+                    // itself); the bottom half is the floor's own scrim, drawn as a sibling so it
+                    // can blend the bar's fill upward into the list.
+                    .mask(listFade)
+                bottomDissolve
+                    .frame(height: Self.dissolveHeight)
+                    .allowsHitTesting(false)
+            }
+            bottomChrome
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Tokens.sidebar)
@@ -132,95 +147,184 @@ struct BotSidebarView: View {
 
     // MARK: Header
 
-    /// The panel's chrome row: search, the panel's own toggle, then the verbs and Settings.
+    /// The panel's chrome rows.
     ///
-    /// the house arrangement, and the reason the search box is gone: a permanently open field costs
-    /// the row its whole width for the one moment in ten it is used. The magnifier opens it, the ✕
-    /// or Escape closes it, and the roster gets its width back in between.
+    /// 34 pt tall each — the same height as the chat header's pill — and the list scrolls between
+    /// them. The top one holds two verbs and nothing else: the bell for what is waiting and the ＋
+    /// that adds and manages. Search, the panel's own toggle and Settings are views *of the window*
+    /// rather than of the list, so they live on the floor row, where a hand already is when it has
+    /// reached the end of the roster.
     private var header: some View {
-        VStack(spacing: 0) {
-            // The row of verbs does not change when search opens: the field drops in **under** the
-            // button that asked for it. Opened in place, the field took the row's own line — the
-            // traffic lights' line — and blended into the window's chrome (reported 2026-11-14).
-            HStack(spacing: 2) {
-                // Every control in one cluster on the right, none on the left: the row is a row of
-                // verbs for the list below it, and a verb split across both edges reads as two
-                // groups when it is one.
-                // The empty left half of this row is a title bar, not dead space: drag it to move the
-                // window and double-click it to zoom/restore. The system 6 pt strip above the row works,
-                // but that is a very small target — "I can't double click anywhere on the sidebar top"
-                // (reported 2026-11-17). Buttons stay on top and keep their own clicks.
-                TitlebarDragArea()
-                    .frame(maxWidth: .infinity)
+        // The row of verbs does not change when search opens: the field drops in **above the floor
+        // bar**, under the list. Opened in place, the field took this row's own line — the traffic
+        // lights' line — and blended into the window's chrome (reported 2026-11-14).
+        HStack(spacing: 2) {
+            // Every control in one cluster on the right, none on the left: the row is a row of
+            // verbs for the list below it, and a verb split across both edges reads as two
+            // groups when it is one.
+            // The empty left half of this row is a title bar, not dead space: drag it to move the
+            // window and double-click it to zoom/restore. The system 6 pt strip above the row works,
+            // but that is a very small target — "I can't double click anywhere on the sidebar top"
+            // (reported 2026-11-17). Buttons stay on top and keep their own clicks.
+            TitlebarDragArea()
+                .frame(maxWidth: .infinity)
 
-                HermeyIconButton("magnifyingglass",
-                                  label: isSearching ? "Close search" : "Search bots and messages",
-                                  size: .small) {
-                    if isSearching { closeSearch() } else { isSearching = true }
-                }
-                .help(isSearching ? "Close search (esc)" : "Search bots and messages")
+            notificationsButton
 
-                // The panel's own toggle, where Midnight keeps it. The chat header shows one only
-                // while this panel is hidden, so the door is never gone.
-                HermeyIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
-                    store.toggleSidebar()
-                }
-                .help("Hide the bot panel")
-
-                addMenu
-
-                SettingsLink {
-                    Image(systemName: "gearshape")
-                        .font(TypeScale.font(TypeScale.label))
-                        .foregroundStyle(Tokens.textMuted)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Settings")
-                .accessibilityLabel("Settings")
-            }
-            .padding(.horizontal, Geometry.sidebarInset)
-            // The traffic-light strip: the panel's fill runs to the window's top edge and the row
-            // sits on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the
-            // same line as the chat header's pill.
-            .padding(.top, WorkspaceShell.titlebarStrip)
-            .frame(height: WorkspaceShell.titlebarStrip + 34)
-            // Gaps between the buttons belong to the title bar too — one 38 pt band across the whole
-            // sidebar top, with the controls still hit-tested above it.
-            .background(alignment: .top) {
-                TitlebarDragArea()
-                    .frame(height: WorkspaceShell.titlebarStrip + 34)
-            }
-
-            if isSearching {
-                HStack(spacing: 6) {
-                    MacSidebarSearchField(text: $searchQuery,
-                                          prompt: "Search bots and messages",
-                                          onMoveUp: { moveHighlight(-1) },
-                                          onMoveDown: { moveHighlight(1) },
-                                          onSubmit: { openHighlighted() },
-                                          onEscape: { closeSearch() },
-                                          autofocuses: true)
-                        .onChange(of: searchQuery) { _, typed in searchTranscripts(for: typed) }
-                        .layoutPriority(1)
-                        .accessibilityIdentifier("sidebar.botSearch")
-
-                    HermeyIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
-                        .help("Close search (esc)")
-                }
-                .padding(.horizontal, Geometry.sidebarInset)
-                .padding(.top, 2)
-                .accessibilityIdentifier("sidebar.searchRow")
-            }
+            addMenu
         }
-        .padding(.bottom, 6)
+        .padding(.horizontal, Geometry.sidebarInset)
+        // The traffic-light strip: the panel's fill runs to the window's top edge and the row
+        // sits on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the
+        // same line as the chat header's pill.
+        .padding(.top, WorkspaceShell.titlebarStrip)
+        .frame(height: WorkspaceShell.titlebarStrip + 34)
+        // Gaps between the buttons belong to the title bar too — one 38 pt band across the whole
+        // sidebar top, with the controls still hit-tested above it.
+        .background(alignment: .top) {
+            TitlebarDragArea()
+                .frame(height: WorkspaceShell.titlebarStrip + 34)
+        }
+        .padding(.bottom, 4)
+    }
+
+    /// Everything waiting, one tap away.
+    ///
+    /// The glyph wears a dot, not a number: "something is waiting" is what the row is for, and the
+    /// list behind the bell says which bot and how many. The count is already on the rows and in the
+    /// bots' own badges; a number here would be the third place to disagree.
+    private var notificationsButton: some View {
+        HermeyIconButton("bell", label: "Waiting for you", size: .small) {
+            showsNotifications.toggle()
+        }
+        // ⇧⌘N: the ⌘N a Mac user reaches for was freed when "New Session" went away (a bot has one
+        // conversation), and nothing in the window takes it. It exists only while this panel does —
+        // the bell is the panel's own door.
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .waitingDot(!waitingBots.isEmpty)
+        .help("Waiting for you (⇧⌘N)")
+        .popover(isPresented: $showsNotifications, arrowEdge: .top) {
+            WaitingBotsInbox(bots: waitingBots) { botID in
+                self.showsNotifications = false
+                // Opening the row *is* reading it: the badge goes through the same door the pet and
+                // the row's dot use, so the count, the dot and the read mark move together.
+                self.store.selectBot(botID)
+                self.store.model.markBotRead(botID)
+            }
+            .frame(width: 300)
+        }
+        .accessibilityIdentifier("sidebar.notifications")
+    }
+
+    // MARK: Floor
+
+    /// The panel's floor: the search field while it is open, then the bar. Both are chrome, and both
+    /// stay put while the list scrolls between them. Escape and the keyboard's walk over the search
+    /// rows live here, next to the field they belong to.
+    ///
+    /// The field **expands above the bar** rather than taking part of it: the bar's grouping —
+    /// Settings left, search and the toggle right — is the panel's geometry, and a row that
+    /// re-flowed when someone typed would move the toggle out from under the pointer mid-gesture.
+    private var bottomChrome: some View {
+        VStack(spacing: 0) {
+            if isSearching {
+                searchRow
+            }
+            bottomBar
+        }
         .onExitCommand { if isSearching { closeSearch() } }
         .animation(.easeOut(duration: 0.12), value: isSearching)
         // The keyboard walks the same list the pointer sees. Recomputed whenever a finding or a bot
         // arrives; `SidebarSearchSelection` keeps the cursor on its row, or drops it if that row is
         // gone.
         .onChange(of: searchRows) { _, rows in searchSelection.update(rows: rows) }
+    }
+
+    /// The live field, opened by the magnifier on the bar below it.
+    private var searchRow: some View {
+        HStack(spacing: 6) {
+            MacSidebarSearchField(text: $searchQuery,
+                                  prompt: "Search bots and messages",
+                                  onMoveUp: { moveHighlight(-1) },
+                                  onMoveDown: { moveHighlight(1) },
+                                  onSubmit: { openHighlighted() },
+                                  onEscape: { closeSearch() },
+                                  autofocuses: true)
+                .onChange(of: searchQuery) { _, typed in searchTranscripts(for: typed) }
+                .layoutPriority(1)
+                .accessibilityIdentifier("sidebar.botSearch")
+
+            HermeyIconButton("xmark", label: "Close search", size: .small) { closeSearch() }
+                .help("Close search (esc)")
+        }
+        .padding(.horizontal, Geometry.sidebarInset)
+        .padding(.bottom, 6)
+        .accessibilityIdentifier("sidebar.searchRow")
+    }
+
+    /// Settings on the left; search and the panel's own toggle on the right.
+    ///
+    /// Two groups on two edges because they are two kinds of verb: a destination that leaves the
+    /// panel, and two controls of the panel itself. The bar is the panel's own fill and carries no
+    /// hairline — `bottomDissolve` above it is the separator, the same 26 pt the header draws at the
+    /// other end, so the list dissolves into the bar rather than being cut by its top edge.
+    private var bottomBar: some View {
+        HStack(spacing: 2) {
+            SettingsLink {
+                Image(systemName: "gearshape")
+                    .font(TypeScale.font(TypeScale.label))
+                    .foregroundStyle(Tokens.textMuted)
+                    .frame(width: 24, height: 24)
+                    .hoverFill(rest: .clear, hover: Tokens.controlHover, radius: Tokens.radiusControl)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Settings")
+            .accessibilityLabel("Settings")
+
+            Spacer(minLength: 0)
+
+            HermeyIconButton("magnifyingglass",
+                             label: isSearching ? "Close search" : "Search bots and messages",
+                             size: .small) {
+                if isSearching { closeSearch() } else { isSearching = true }
+            }
+            .help(isSearching ? "Close search (esc)" : "Search bots and messages")
+
+            // The panel's own toggle, where Midnight keeps it. The chat header shows one only
+            // while this panel is hidden, so the door is never gone.
+            HermeyIconButton("sidebar.left", label: "Hide the bot panel", size: .small) {
+                store.toggleSidebar()
+            }
+            .help("Hide the bot panel")
+        }
+        .padding(.horizontal, Geometry.sidebarInset)
+        .frame(height: Self.bottomBarHeight)
+        .background(Tokens.sidebar)
+        .accessibilityIdentifier("sidebar.bottomBar")
+    }
+
+    // MARK: Waiting
+
+    /// The bell's list, built from the model's own unread state and nothing else.
+    ///
+    /// `unreadCounts` / `unreadBots` are the authority (the pets and the row dots read them too), the
+    /// roster supplies the names, the preview cache supplies the line under each name, and the face
+    /// store supplies the avatar. No second counter lives anywhere in this view.
+    private var waitingBots: [WaitingBot] {
+        WaitingBots.rows(unread: store.model.unreadBots,
+                         counts: store.model.unreadCounts,
+                         names: waitingNames,
+                         previews: store.model.botPreviews,
+                         faces: waitingFaces)
+    }
+
+    private var waitingNames: [String: String] {
+        Dictionary(store.model.bots.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private var waitingFaces: [String: String] {
+        store.botFaces.mapValues { $0.raw }
     }
 
     /// The combined answer, in the order the keyboard walks it: findings first, then the bots whose
@@ -384,17 +488,37 @@ struct BotSidebarView: View {
         .accessibilityLabel("Bot list menu")
     }
 
-    /// The list's fade: transparent, solid, transparent, with the solid part taking whatever is
-    /// left. Drawn as a mask so it costs no colour of its own and follows the theme.
+    /// The top of the list's dissolve: transparent at the header's edge, solid 26 pt down.
+    ///
+    /// Drawn as a mask so it costs no colour of its own and follows the theme. The other end of the
+    /// list is `bottomDissolve` — the same 26 pt, mirrored, drawn in the panel's own fill above the
+    /// floor bar.
     private var listFade: some View {
         VStack(spacing: 0) {
             LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: 26)
+                .frame(height: Self.dissolveHeight)
             Color.black
-            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: 26)
         }
     }
+
+    /// The bottom of the same dissolve, mirrored: the bar's fill rising into the list.
+    ///
+    /// Exactly the top fade's height, and its colours in the panel's own terms — `Tokens.sidebar` at
+    /// the bar, fading to nothing upward — so rows approaching the floor dissolve into the bar
+    /// instead of stopping dead at its edge. This is why the bar carries no hairline of its own: the
+    /// gradient *is* the separation, and the two rows of chrome are framed the same way.
+    private var bottomDissolve: some View {
+        LinearGradient(colors: [Tokens.sidebar, Tokens.sidebar.opacity(0)],
+                       startPoint: .bottom,
+                       endPoint: .top)
+            .frame(maxWidth: .infinity)
+    }
+
+    /// The height of one end of the dissolve — 26 pt, the same at the top and the bottom.
+    private static let dissolveHeight: CGFloat = 26
+
+    /// The floor bar's height: the top row's 34 pt, so the two rows of chrome read as one frame.
+    private static let bottomBarHeight: CGFloat = 34
 
     // MARK: Content
 
@@ -598,7 +722,8 @@ private struct BotSidebarFloorPreview: View {
     @StateObject private var store = PreviewWorkspace.store()
 
     var body: some View {
-        // The panel at its 200 pt floor: search field, two buttons, rows.
+        // The panel at its 200 pt floor: the bell and the ＋ above, the floor bar below, the rows
+        // between them.
         BotSidebarView(model: store.model, store: store)
             .frame(width: WorkspaceStore.sidebarFloor, height: 640)
             .task { await store.attachPreviewHost() }

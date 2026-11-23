@@ -45,14 +45,18 @@ class TheSidebarRowIsIcons(unittest.TestCase):
     def test_search_is_a_button_not_a_box(self) -> None:
         self.assertIn("private var isSearching", SIDEBAR)
         self.assertIn('HermeyIconButton("magnifyingglass"', SIDEBAR)
-        # The field is the *second* row, not the first: opened in place it took the traffic lights'
-        # line and blended into the window's chrome (reported 2026-11-14). So the icon row comes
-        # first and always keeps its buttons, and the field appears only while searching, after it.
-        row, rest = SIDEBAR.split("if isSearching {", 1)
-        self.assertNotIn("MacSidebarSearchField", row)
-        self.assertIn("MacSidebarSearchField", rest)
-        self.assertIn('HermeyIconButton("magnifyingglass"', row,
-                      "the button that opens search stays in the row while search is open")
+        # The field is its own row, above the floor bar, and the top row never grows one: opened in
+        # place it took the traffic lights' line and blended into the window's chrome (reported
+        # 2026-11-14). The magnifier that opens it lives on the bar below, and stays there while the
+        # field is open — the bar's grouping never moves.
+        header = SIDEBAR.split("private var header: some View {", 1)[1].split(
+            "private var notificationsButton", 1)[0]
+        bar = SIDEBAR.split("private var bottomBar: some View {", 1)[1].split(
+            "// MARK: Waiting", 1)[0]
+        self.assertNotIn("MacSidebarSearchField", header)
+        self.assertIn("MacSidebarSearchField", SIDEBAR)
+        self.assertIn('HermeyIconButton("magnifyingglass"', bar,
+                      "the button that opens search stays in the bar while search is open")
         self.assertIn("sidebar.searchRow", SIDEBAR)
 
     def test_the_panels_toggle_lives_in_the_panel(self) -> None:
@@ -73,13 +77,21 @@ class TheSidebarRowIsIcons(unittest.TestCase):
 
 
 class TheListFadesAtBothEnds(unittest.TestCase):
-    def test_the_mask_is_fixed_height_and_two_sided(self) -> None:
+    def test_the_fade_is_fixed_height_and_the_bottom_end_is_mirrored(self) -> None:
         self.assertIn(".mask(listFade)", SIDEBAR)
         fade = SIDEBAR.split("private var listFade", 1)[1].split("\n    }", 1)[0]
         self.assertIn("LinearGradient(colors: [.clear, .black]", fade)
-        self.assertIn("LinearGradient(colors: [.black, .clear]", fade)
         # Fixed, not a fraction: a fraction eats a short list and hides a row of a long one.
-        self.assertEqual(fade.count("frame(height: 26)"), 2)
+        self.assertIn("frame(height: Self.dissolveHeight)", fade)
+        self.assertIn("private static let dissolveHeight: CGFloat = 26", SIDEBAR)
+        # The bottom end is not a second mask leg any more: it is the floor bar's own scrim, drawn
+        # in the panel's fill over the list, so the bar's edge is the same dissolve as the top one
+        # rather than a hard cut.
+        scrim = SIDEBAR.split("private var bottomDissolve", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("LinearGradient(colors: [Tokens.sidebar, Tokens.sidebar.opacity(0)]", scrim)
+        self.assertIn("startPoint: .bottom", scrim)
+        self.assertIn("endPoint: .top", scrim)
+        self.assertIn("bottomDissolve\n                    .frame(height: Self.dissolveHeight)", SIDEBAR)
 
 
 class TheComposerIsQuiet(unittest.TestCase):

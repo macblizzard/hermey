@@ -42,6 +42,8 @@ struct BotListScreen: View {
     /// The app's own settings: pairing, theme, notifications. It used to be the second half of the
     /// bottom tab pill, which went the way of the tab bar itself.
     @State private var showAppSettings = false
+    /// Everything waiting, in a sheet — the same list the Mac's bell draws in a popover.
+    @State private var showWaiting = false
     @State private var showGroupChats = false
     @State private var openRoom: RoomSummary?
     @State private var pendingRoomDelete: RoomSummary?
@@ -98,6 +100,18 @@ struct BotListScreen: View {
             bot.displayName.localizedCaseInsensitiveContains(trimmedQuery)
                 || bot.id.localizedCaseInsensitiveContains(trimmedQuery)
         }
+    }
+
+    /// The bell's list: the model's own unread state, the roster's names, the preview cache's lines
+    /// and the face store's avatars — the same four inputs the Mac's popover reads, in the same
+    /// order. No second counter: a row here and a badge on the list can never disagree.
+    private var waitingBots: [WaitingBot] {
+        WaitingBots.rows(unread: model.unreadBots,
+                         counts: model.unreadCounts,
+                         names: Dictionary(model.bots.map { ($0.id, $0.displayName) },
+                                           uniquingKeysWith: { first, _ in first }),
+                         previews: model.botPreviews,
+                         faces: app.botFaces.mapValues { $0.raw })
     }
 
     /// Bot settings: the shared door, so this list and a conversation's Edit button cannot drift
@@ -257,6 +271,21 @@ struct BotListScreen: View {
             // navigation container and SwiftUI drew them disabled.
             SettingsSheet(model: model)
             .hermesSheetChrome()
+        }
+        // The same list the Mac's bell shows, in a sheet: a row is read by opening it — the bot is
+        // marked read through `markBotRead`, exactly as the pet and the row's own dot do, and then
+        // the conversation it was waiting in is pushed. Nothing here is a second unread count.
+        .sheet(isPresented: $showWaiting) {
+            WaitingBotsInbox(bots: waitingBots) { botID in
+                showWaiting = false
+                model.markBotRead(botID)
+                if let bot = model.bots.first(where: { $0.id == botID }) {
+                    recordOpened(bot)
+                    onGraphite(bot)
+                }
+            }
+            .hermesSheetChrome()
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
@@ -1034,10 +1063,29 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(searchOpen ? "Close search" : "Search bots")
             }
-            // One group, because the order inside it is the order on screen: Settings first,
+            // One group, because the order inside it is the order on screen: the bell, Settings,
             // then the create menu. Two separate trailing items would leave the pairing to
             // SwiftUI's own preference, and the gear could land on either side of the plus.
             ToolbarItemGroup(placement: .topBarTrailing) {
+                // Everything waiting, immediately left of Settings: the owner's one mobile change,
+                // and the same behaviour as the Mac's bell — the same rows, the same tap, the same
+                // `markBotRead`. A dot, not a count: the sheet says how many.
+                Button {
+                    showWaiting = true
+                } label: {
+                    Image(systemName: "bell")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Tokens.textPrimary)
+                        .waitingDot(!waitingBots.isEmpty, size: 6)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(waitingBots.isEmpty
+                                    ? "Nothing waiting"
+                                    : "Waiting: \(waitingBots.count) \(waitingBots.count == 1 ? "bot" : "bots")")
+                .accessibilityIdentifier("botList.notifications")
+
                 // Settings used to be the last row of the menu, which is where an app-level
                 // destination goes to be missed: a person looking for theme, pairing or update
                 // checks opens the ⋯ and reads a list of things that add or change bots. It is a
