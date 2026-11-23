@@ -1114,3 +1114,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   so it no longer lags behind the pointer.
 - **Much more see-through.** The callout is now 70% transparent — a thin material with white at 0.16 over
   it — with a faint text shadow so the ink still reads on a busy wallpaper.
+
+## [0.1.632] — 2026-11-23
+
+### Fixed
+- **No more eyes drawn over the faces that already have them.** The pet's own icon carries its eyes — the
+  cloud's two vertical bars — and an overlay of horizontal eyelid shapes crossed them into a doubled,
+  T-shaped face. Nothing is painted on the art now.
+- **The blink is the body.** A deeper squash (0.74) of the whole icon, which is what a cartoon face does
+  when it blinks.
+- **Looking around is the icon drifting.** A few points left and right every two to five seconds, carried by
+  the picture itself. Reduce Motion still stops the drift.
