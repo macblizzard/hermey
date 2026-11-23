@@ -56,7 +56,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use tokio_tungstenite::tungstenite::Message as TgMsg;
 
 use crate::attachments;
@@ -254,9 +254,23 @@ struct Slot {
 /// `MAX_SOCKETS_PER_DEVICE`, the host at most `MAX_SOCKETS_TOTAL`. Unlike the Python bridge, which
 /// refused the upgrade with 4429, the relay *evicts first* — a client whose old socket is a zombie
 /// (half-open, no FIN yet) would otherwise never be able to reconnect, because the zombie counts.
-#[derive(Clone, Default)]
+///
+/// It is also the one place that knows every live app socket, so a **host-originated** frame (a
+/// reaction another device just changed — see `reactions.rs`) is published from here: every relay
+/// subscribes on open and forwards what it hears, and nothing has to enumerate sockets twice.
+#[derive(Clone)]
 pub struct Registry {
     inner: Arc<Mutex<HashMap<String, Vec<Slot>>>>,
+    host_frames: broadcast::Sender<String>,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        // 256 frames of slack: reactions are rare and tiny, and a socket that falls this far behind
+        // is not one whose backlog is worth keeping (`publish` never blocks on it).
+        let (host_frames, _) = broadcast::channel(256);
+        Self { inner: Arc::default(), host_frames }
+    }
 }
 
 static NEXT_SOCKET_ID: AtomicU64 = AtomicU64::new(1);
@@ -390,6 +404,22 @@ impl Registry {
     #[allow(dead_code)] // asserted by the cap tests
     pub fn total(&self) -> usize {
         lock(&self.inner).values().map(Vec::len).sum()
+    }
+
+    /// A receiver for frames the host itself originates (a reaction, so far).
+    ///
+    /// Taken once per connection and held for the socket's lifetime: a broadcast receiver only sees
+    /// what is sent after it subscribes, which is exactly right — an app that was not connected has
+    /// nothing to replay, because it reads the whole conversation when it opens one.
+    pub fn subscribe(&self) -> broadcast::Receiver<String> {
+        self.host_frames.subscribe()
+    }
+
+    /// Send one frame to every open app socket. Never blocks and never fails a caller: a host event
+    /// whose sockets are all gone (or wedged) is still persisted, and the next app that opens the
+    /// conversation reads it from the store.
+    pub fn publish(&self, line: String) -> usize {
+        self.host_frames.send(line).unwrap_or(0)
     }
 }
 
@@ -1756,6 +1786,11 @@ pub async fn relay_guarded(
     };
     let activity = registration.as_ref().map(|registration| registration.activity.clone());
 
+    // Frames the *host* originates (a reaction another device changed) travel down the same app
+    // socket as the engine's. Subscribed once per connection, before the first splice: a receiver
+    // only sees what is sent after it exists.
+    let mut host_frames = registry.subscribe();
+
     let state = Arc::new(ConnectionState::with_audit(audit, device_id.clone()));
     state.note("ws_open", Event::default());
     // Split once: the splice is re-run on the *same* client socket when the engine restarts, and a
@@ -1938,8 +1973,27 @@ pub async fn relay_guarded(
             loop {
                 tokio::select! {
                     // `biased` so a history page the app is waiting on does not queue behind a burst of
-                    // engine events. The branch disables itself once the sender is gone.
+                    // engine events. A host frame is rarer than either and must not wait for a
+                    // transcript to finish streaming, so it is asked first — its queue is tiny.
                     biased;
+                    frame = host_frames.recv() => {
+                        match frame {
+                            Ok(line) => {
+                                if client_tx.send(text_frame(line)).await.is_err() {
+                                    eprintln!("relay: client send failed (host event)");
+                                    return (1001, "client closed");
+                                }
+                                note_activity(&engine_activity);
+                            }
+                            // A socket this far behind has nothing left worth delivering; the app
+                            // re-reads the conversation when it next opens it.
+                            Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                                eprintln!("relay: skipped {skipped} host frame(s) for a slow socket");
+                            }
+                            // The registry outlives every connection, so this never fires.
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
                     Some(answer) = local_rx.recv() => {
                         if client_tx.send(text_frame(answer)).await.is_err() {
                             eprintln!("relay: client send failed (local answer)");
@@ -3326,6 +3380,49 @@ mod tests {
             }
         });
         (addr, engine, heard_rx)
+    }
+
+    /// A frame the *host* originates — a reaction another device changed — reaches an app socket
+    /// on the same wire the engine's events use, without the engine having said anything.
+    ///
+    /// This is the path `reactions::put_reaction` relies on: `Registry::publish` fans out, the
+    /// relay forwards, and the app sees one `method:"event"` frame it already knows how to decode.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_host_originated_frame_reaches_the_app_socket() {
+        let (engine_addr, _engine, _heard) = fake_engine(false).await;
+        let registry = Registry::default();
+        let (addr, server) = serve_relay(
+            format!("ws://{engine_addr}"),
+            Some("device-a".to_string()),
+            registry.clone(),
+            Limits::default(),
+        )
+        .await;
+
+        let (mut client, _) =
+            tokio_tungstenite::connect_async(format!("ws://{addr}/ws")).await.unwrap();
+        // The relay registers the socket before it dials the engine, so this is when a publish can
+        // reach it.
+        for _ in 0..200 {
+            if registry.count("device-a") == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(registry.count("device-a"), 1, "the socket never attached");
+
+        let line = crate::reactions::frame("cody", "20260101_000000_abcdef", "row:41", Some("👍"), "Mo's Mac");
+        assert_eq!(registry.publish(line.clone()), 1, "one live socket, one frame");
+
+        let heard = next_text(&mut client).await;
+        assert_eq!(heard, format!("{line}\n"), "frames are newline-terminated, as the app expects");
+        let value: Value = serde_json::from_str(heard.trim()).unwrap();
+        assert_eq!(value["method"], "event");
+        assert_eq!(value["params"]["type"], "reaction.updated");
+        assert_eq!(value["params"]["payload"]["message"], "row:41");
+
+        // Nothing else was on the wire: the frame above came from the host, not the engine.
+        server.abort();
     }
 
     /// `test_oversized_client_frame_closes_with_1009`.

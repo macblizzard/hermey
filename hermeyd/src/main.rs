@@ -48,6 +48,7 @@ mod providers;
 mod push;
 mod relay;
 mod routines;
+mod reactions;
 mod rooms;
 mod routes;
 mod skills;
@@ -313,6 +314,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         engine_auth: engine_auth.clone(),
         engine_home: engine_home.clone(),
         relay_sockets: relay::Registry::default(),
+        // Reactions live beside `bridge.db` in one JSON document; the relay above is what carries
+        // a change to the other device's open socket.
+        reactions: reactions::Registry::in_dir(home.clone()),
         local_computers: local_computers::Registry::default(),
         // Browser fill targets: the sign-in extension's socket registry (see browser.rs).
         browsers: browser::Registry::default(),
@@ -496,6 +500,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Agent cards (`card.v1`): a third renderer, preferred only when its own marker is present.
         // The bot writes the file; the app sends the id from the marker and gets the JSON back.
         .route("/v1/cards/{card_id}", get(cards::get_card))
+        // Reactions: the host owns them so a Mac and a phone agree. One emoji per message, scoped
+        // by bot and session; a change is published on `/v1/ws` as `reaction.updated`.
+        .route(
+            "/v1/reactions",
+            get(reactions::get_reactions).put(reactions::put_reaction),
+        )
         .route("/v1/search", get(search::search))
         .route("/v1/bot-transfers", get(transfers::list_transfers))
         .route("/v1/backup", get(backup::export))

@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PETS = ROOT / "Apps" / "HermesMac" / "Pets"
 
 PANEL = (PETS / "DesktopPetPanel.swift").read_text(encoding="utf-8")
+COMPOSER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerBar.swift").read_text(encoding="utf-8")
 VIEW = (PETS / "PetView.swift").read_text(encoding="utf-8")
 BALLOON = (PETS / "PetBalloonView.swift").read_text(encoding="utf-8")
 SETTINGS = (PETS / "PetSettings.swift").read_text(encoding="utf-8")
@@ -509,6 +510,12 @@ class NothingElseWasTouched(unittest.TestCase):
         changed = _changed_files()
         if changed is None:
             self.skipTest("no git base to compare against")
+        # Branch-scoped by nature: the question is "did *the pet* leak out of the Mac app?", so it
+        # only has an opinion on a branch that carries pet work. A branch with nothing to do with it
+        # (reaction sync, say) edits `hermeyd/` and `Sources/HermesKit/` for its own reasons, and
+        # failing here would be a guard against work this file knows nothing about.
+        if not any(path.startswith("Apps/HermesMac/Pets/") for path in changed):
+            self.skipTest("this branch does not carry the desktop pet")
         # The pet itself is macOS-only, but the branch also carries the fix to the host's `ask` path —
         # the role it waits for, the session id it polls, the profiles directory it opens and the
         # timestamp it anchors on. Those are the only host files allowed here; anything else appearing
@@ -560,3 +567,15 @@ class ProjectFilePicksThemUp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheComposerNamesTheBot(unittest.TestCase):
+    """The Mac's empty composer says "Message Cody", the same words the phone shows."""
+
+    def test_the_placeholder_names_the_selected_bot(self):
+        self.assertIn('placeholder: "Message \\(composerTitle)"', COMPOSER)
+        self.assertNotIn('placeholder: ""', COMPOSER,
+                         "an empty placeholder was the complaint: nothing told you who you were writing to")
+
+    def test_the_title_falls_back_to_the_host(self):
+        self.assertIn("model.selectedBot?.displayName ?? model.hostName", COMPOSER)

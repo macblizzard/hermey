@@ -439,6 +439,7 @@ mod tests {
             browsers: Default::default(),
             display: crate::display::DisplayHub::spawn(engine_ws, Some(token_file)),
             relay_sockets: Default::default(),
+            reactions: crate::reactions::Registry::in_dir(dir),
             audit: Arc::new(crate::audit::AuditLog::in_dir(dir)),
         })
     }

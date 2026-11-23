@@ -268,8 +268,9 @@ public struct BotActivityTracker: Sendable {
             // Only the *last* request matters: a cancelled one does not mean the rest are answered,
             // so the caller clears the flag when its own request list empties.
             break
-        case .ready, .state, .contextUsage, .sessionUpdated, .error, .unknown:
-            // A transport state is not a bot's state; `error` is the gateway's, not the run's.
+        case .ready, .state, .contextUsage, .sessionUpdated, .reactionUpdated, .error, .unknown:
+            // A transport state is not a bot's state; `error` is the gateway's, not the run's, and
+            // a reaction is somebody's emoji rather than work in flight.
             break
         }
     }

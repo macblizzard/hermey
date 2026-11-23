@@ -96,7 +96,8 @@ class TheListFadesAtBothEnds(unittest.TestCase):
 
 class TheComposerIsQuiet(unittest.TestCase):
     def test_no_placeholder(self) -> None:
-        self.assertIn('placeholder: ""', COMPOSER_BAR)
+        self.assertIn('placeholder: "Message \\(composerTitle)"', COMPOSER_BAR,
+                      "the empty field names the bot it writes to, the same words iOS shows")
 
     def test_the_hint_is_state_only(self) -> None:
         self.assertIn("private var hint: String?", COMPOSER_BAR)
