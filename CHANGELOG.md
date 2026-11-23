@@ -1037,3 +1037,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   the bot on screen — no detour through settings to find the tab. Saving writes to the host, and the editor
   still says the thing that matters: a conversation already open keeps the soul it started with until it is
   reset.
+
+## [0.1.626] — 2026-11-23
+
+### Added
+- **Desktop pets.** Each bot can put itself on your desktop: in that bot's settings, turn on *Show on the
+  desktop* and its own picture appears — no frame, no window background, just the icon on your wallpaper.
+  It bobs, tilts and occasionally hops; drag it anywhere and it remembers where you left it, per screen.
+- **Ask it something.** Click the pet and a balloon opens with a field. Type, press Return, and the balloon
+  shows it is thinking, then the answer — scrollable, with Copy. Escape or a click away dismisses it.
+- **Right-click → Close pet** takes it off the desktop and switches the setting off, so it is the same one
+  switch that brings it back.
+- Clicks on the transparent part of a pet reach whatever is underneath: the pet occupies its icon, not a
+  rectangle of your screen.
+- Reduce Motion is respected — no hops, and a much gentler bob.
