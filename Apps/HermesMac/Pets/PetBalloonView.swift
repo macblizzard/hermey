@@ -110,15 +110,16 @@ final class PetBalloonAnchor: ObservableObject {
 
 /// The balloon's palette, pinned rather than read from `Tokens`.
 ///
-/// The bubble is a sheet of near-white whatever the app's theme is — that is the whole idea: it sits
-/// over a photo, a dark editor or a bright page and still reads as a note stuck to the pet. `Tokens`
-/// follows `ThemeRuntime` instead, so on the app's dark theme `textPrimary` is near-white and would
-/// vanish into it. These are the light palette's warm inks (`ThemeCatalog.parchment`) on paper,
-/// spelled out so the bubble cannot change colour when the owner changes the app's theme.
+/// The bubble is frosted glass: the desktop's own colour comes through it (a dark wallpaper tints
+/// it grey-blue, a bright one cream) while the ink stays dark enough to read. `Tokens` follows
+/// `ThemeRuntime` instead, so on the app's dark theme `textPrimary` is near-white and would vanish
+/// into it. These are the light palette's warm inks (`ThemeCatalog.parchment`) on glass, spelled
+/// out so the bubble cannot change colour when the owner changes the app's theme.
 enum PetBalloonInk {
-    /// The sheet itself: white at 0.82 over the material, so a wallpaper shows through as a tint
-    /// rather than as a picture.
-    static let body = Color.white.opacity(0.82)
+    /// The sheet's tint over the material. Low on purpose: at 0.82 the bubble read as a solid light
+    /// panel on a dark desktop, which is the one thing a callout must not look like. The material
+    /// does the frosting; this only warms it toward paper.
+    static let body = Color.white.opacity(0.38)
     static let primary = Color(red: 0.078, green: 0.078, blue: 0.075)     // #141413
     static let secondary = Color(red: 0.24, green: 0.24, blue: 0.235)
     static let muted = Color(red: 0.42, green: 0.416, blue: 0.39)
@@ -126,31 +127,82 @@ enum PetBalloonInk {
     static let accent = Color(red: 0.659, green: 0.31, blue: 0.196)       // #A84E30
     /// The field's well and the tail's inner shading: a black veil, not a theme surface.
     static let well = Color.black.opacity(0.05)
-    /// The one hard edge the bubble has.
+    /// The one hard edge the bubble has: the hairline that holds the silhouette against a bright
+    /// desktop.
     static let edge = Color.black.opacity(0.14)
+    /// The glass edge, drawn just inside the hairline. A light rim, not a dark one: that is what
+    /// makes the sheet read as frosted rather than painted.
+    static let highlight = Color.white.opacity(0.18)
+    /// The last-resort backdrop-contrast layer, under the words only.
+    ///
+    /// Every material is a light frost here because the bubble forces a light appearance, so dark
+    /// ink reads on a dark wallpaper already. This is the belt to that braces: a faint shade behind
+    /// the text block keeps a busy or very dark backdrop from reaching the glyphs. It is deliberately
+    /// **not** a thicker sheet — the answer to weak contrast is never a more opaque bubble.
+    static let backdropContrast = Color.black.opacity(0.07)
 }
 
 /// The callout's fixed sizes, so the shape and the content agree about how much of the box the tail
-/// takes.
+/// takes — and about how tall the answer may grow before it scrolls.
 enum PetCalloutMetrics {
-    /// How far the point hangs below the card. The content's bottom inset is this plus its padding.
-    static let tailHeight: CGFloat = 9
-    /// How wide the point is at the card's edge.
-    static let tailWidth: CGFloat = 18
-    static let cornerRadius: CGFloat = 16
+    /// How far the tail hangs below the card, root to tip. The content's bottom inset is this plus
+    /// its padding.
+    static let tailHeight: CGFloat = 13
+    /// How wide the tail is where it leaves the card's bottom edge.
+    static let tailWidth: CGFloat = 26
+    /// How round the tip is: the arc's radius, so the point is soft rather than drawn with a pin.
+    static let tailTipRadius: CGFloat = 2.4
+    /// How far the tail's side curves are pulled in toward the centre, as a fraction of the root's
+    /// half-width. The control point sits on the bottom edge, which is what makes the tail leave the
+    /// card horizontally instead of in a notch.
+    static let tailFlare: CGFloat = 0.62
+    /// A speech bubble's corner, not a card's: continuous, and generous enough that the outline
+    /// reads as a bubble at a glance.
+    static let cornerRadius: CGFloat = 26
+    /// The bubble's padding, on all four sides; the answer is laid out at `answerWidth`.
+    static let contentInset: CGFloat = 14
+    /// The most the answer may draw before it scrolls inside the bubble instead of growing it.
+    ///
+    /// One number, in points, beside the tail's: a two-line reply never comes near it and the bubble
+    /// ends where the text does; a thirty-line reply stops here and scrolls.
+    static let answerCap: CGFloat = 240
+    /// The width the answer's `Text` lays out at: the balloon's width less the inset on each side.
+    static var answerWidth: CGFloat { PetBalloonView.width - contentInset * 2 }
+
+    /// How tall the answer's own `Text` is at `answerWidth` — measured, not estimated.
+    ///
+    /// The same face at the same hinted size `TypeScale.font` resolves to (the system font at
+    /// `TypeScale.pointSize`, so a ⌘+/⌘- step is measured too), laid into the same width with the
+    /// same word wrapping. A hidden copy of the `Text` reporting its height through a preference
+    /// would be the other way, and it has to be laid out before it can report: the window would size
+    /// itself to the uncapped answer for a frame and then snap down to the cap, a visible jump on
+    /// every long reply. This runs in the body's own pass, so the branch is decided before the
+    /// bubble is first sized.
+    static func answerHeight(of answer: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: TypeScale.pointSize(Tokens.textSM), weight: .regular)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        let measured = NSAttributedString(
+            string: answer,
+            attributes: [.font: font, .paragraphStyle: paragraph])
+        let bounds = measured.boundingRect(
+            with: NSSize(width: answerWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading])
+        return ceil(bounds.height)
+    }
 }
 
 // MARK: - The silhouette
 
-/// The balloon's outline: a rounded card with a triangle hanging off its bottom edge.
+/// The balloon's outline: a rounded card with a curved tail hanging off its bottom edge.
 ///
-/// One closed path rather than a card with a triangle drawn on top of it: the fill is a material, and
+/// One closed path rather than a card with a tail drawn on top of it: the fill is a material, and
 /// two shapes each filled with a material double the blur where they overlap. The tail is part of the
 /// outline, so there is also no second subpath whose winding could cut a hole in the body. Corners are
 /// quad curves — at this radius they are indistinguishable from arcs and there is no angle convention
 /// to get wrong.
 struct PetBalloonShape: InsettableShape {
-    /// The tail's centre, as a fraction of the shape's width. Clamped so the point never eats a
+    /// The tail's centre, as a fraction of the shape's width. Clamped so the tail never eats a
     /// rounded corner.
     var tailCentre: CGFloat = 0.5
     var tailHeight: CGFloat = PetCalloutMetrics.tailHeight
@@ -172,11 +224,15 @@ struct PetBalloonShape: InsettableShape {
 
         let radius = max(0, min(cornerRadius - strokeInset, min(box.width, box.height) / 2))
         let tail = max(0, min(tailHeight - strokeInset, box.height - radius * 2))
-        // The card's bottom edge; everything below it is the point.
+        // The card's bottom edge; everything below it is the tail.
         let bottom = box.maxY - tail
         let half = max(0, min(tailWidth, box.width - radius * 2)) / 2
         let centre = min(max(box.minX + box.width * tailCentre, box.minX + radius + half),
                          box.maxX - radius - half)
+        // The tip is an arc, so it needs a radius smaller than the tail's own half-width.
+        let tipRadius = min(PetCalloutMetrics.tailTipRadius, half * 0.4)
+        let rootRight = centre + half
+        let rootLeft = centre - half
 
         var path = Path()
         path.move(to: CGPoint(x: box.minX + radius, y: box.minY))
@@ -186,10 +242,20 @@ struct PetBalloonShape: InsettableShape {
         path.addLine(to: CGPoint(x: box.maxX, y: bottom - radius))
         path.addQuadCurve(to: CGPoint(x: box.maxX - radius, y: bottom),
                           control: CGPoint(x: box.maxX, y: bottom))
-        // ... along the bottom edge to the tail, down to the point, and back up.
-        path.addLine(to: CGPoint(x: centre + half, y: bottom))
-        path.addLine(to: CGPoint(x: centre, y: box.maxY))
-        path.addLine(to: CGPoint(x: centre - half, y: bottom))
+        // ... along the bottom edge to the tail's root, then the tail itself, which is the reason
+        // this is a bubble and not a rounded rectangle. Each side is one quad curve whose control
+        // point sits *on* the bottom edge: the curve therefore leaves the card with a horizontal
+        // tangent and there is no notch where the tail meets the body. The two sides meet at a small
+        // arc rather than a point, so the tip is soft.
+        path.addLine(to: CGPoint(x: rootRight, y: bottom))
+        path.addQuadCurve(to: CGPoint(x: centre + tipRadius, y: box.maxY - tipRadius),
+                          control: CGPoint(x: rootRight - half * PetCalloutMetrics.tailFlare,
+                                           y: bottom))
+        path.addQuadCurve(to: CGPoint(x: centre - tipRadius, y: box.maxY - tipRadius),
+                          control: CGPoint(x: centre, y: box.maxY))
+        path.addQuadCurve(to: CGPoint(x: rootLeft, y: bottom),
+                          control: CGPoint(x: rootLeft + half * PetCalloutMetrics.tailFlare,
+                                           y: bottom))
         path.addLine(to: CGPoint(x: box.minX + radius, y: bottom))
         path.addQuadCurve(to: CGPoint(x: box.minX, y: bottom - radius),
                           control: CGPoint(x: box.minX, y: bottom))
@@ -206,7 +272,7 @@ struct PetBalloonShape: InsettableShape {
 /// The balloon: a field, then thinking, then the answer — or the timeout, or the host's refusal.
 ///
 /// Its own window, floating a point above the pet's, so the pet's window stays icon-sized and the
-/// bubble is the only opaque thing on screen.
+/// bubble is the only frosted thing on screen.
 struct PetBalloonView: View {
     @ObservedObject var model: PetBalloonModel
     let botName: String
@@ -239,19 +305,7 @@ struct PetBalloonView: View {
             }
 
             if let answer = model.state.answer {
-                // No `ScrollView` here. Its height is greedy and flexible, and this bubble is sized by
-                // `fittingSize` on the hosting view — so the scroll view measured as (almost) nothing
-                // and the answer was drawn into zero height: present in the model, copyable by the
-                // Copy button, invisible on screen. A self-sizing `Text` is what the fitting size can
-                // measure; a long answer is capped by line count and the whole thing is still copyable.
-                Text(answer)
-                    .font(TypeScale.font(Tokens.textSM))
-                    .foregroundStyle(PetBalloonInk.primary)
-                    .textSelection(.enabled)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(40)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                answerBody(answer)
             }
 
             if model.state.isAsking {
@@ -266,24 +320,32 @@ struct PetBalloonView: View {
 
             field
         }
-        .padding(14)
+        .padding(PetCalloutMetrics.contentInset)
         // The tail hangs below the card, so the content's bottom inset is the padding plus the tail:
-        // no line of text ever reaches down into the point.
+        // no line of text ever reaches down into the curve.
         .padding(.bottom, PetCalloutMetrics.tailHeight)
         .frame(width: Self.width)
-        // A callout, not a card. The material blurs whatever is behind the window and the white sits
-        // on it at 0.82, so a photo tints the bubble and a dark editor does not blacken it; the
-        // hairline is the only hard edge, and the tail points at the pet.
+        // A callout, not a card. The material frosts whatever is behind the window and the white
+        // sits on it at 0.38 — enough to warm the frost toward paper, not enough to hide the desktop
+        // behind it: a dark wallpaper tints the bubble grey-blue, a bright one cream. The material is
+        // `.regular` rather than `.ultraThin` because that is where the contrast comes from: the
+        // tint stays low and the frost does the work, which is the difference between a sheet of
+        // glass and a solid light panel.
         .background(
             silhouette
-                .fill(.ultraThinMaterial)
+                .fill(.regularMaterial)
                 .overlay(silhouette.fill(PetBalloonInk.body))
+        )
+        .overlay(
+            // The glass edge: a light rim one point inside the hairline, so the sheet reads as
+            // frosted rather than painted.
+            silhouette.inset(by: 1).strokeBorder(PetBalloonInk.highlight, lineWidth: 1)
         )
         .overlay(
             silhouette.strokeBorder(PetBalloonInk.edge, lineWidth: 1)
         )
-        // Light inside, always. The app's theme dresses the app's windows; this bubble is white paper
-        // and its scroller, insertion point and selection have to be drawn for white paper. The inks
+        // Light inside, always. The app's theme dresses the app's windows; this bubble is frosted
+        // paper and its scroller, insertion point and selection have to be drawn for it. The inks
         // above are pinned as well, so a dark theme cannot put near-white text on it even if this
         // environment were lost.
         .environment(\.colorScheme, .light)
@@ -295,6 +357,44 @@ struct PetBalloonView: View {
             // The field is the point of the balloon: hand focus back the moment a turn ends.
             if !asking { fieldFocused = true }
         }
+    }
+
+    /// The answer, at one of two sizes, chosen by measurement rather than by counting characters.
+    ///
+    /// Under the cap it is exactly the self-sizing `Text` it always was: the bubble grows with the
+    /// words and ends where the last line does. Over the cap it scrolls, inside a height that is
+    /// *written down* — `ScrollView`'s own height is greedy and flexible, and this bubble is sized by
+    /// `fittingSize` on the hosting view, so a flexible height measured as (almost) nothing and the
+    /// answer was drawn into zero height: present in the model, copyable by Copy, invisible on
+    /// screen. The explicit height is what gives `fittingSize` a number to add up and the answer a
+    /// box to scroll inside.
+    @ViewBuilder
+    private func answerBody(_ answer: String) -> some View {
+        if PetCalloutMetrics.answerHeight(of: answer) > PetCalloutMetrics.answerCap {
+            ScrollView(.vertical, showsIndicators: true) {
+                answerText(answer)
+            }
+            .frame(height: PetCalloutMetrics.answerCap)
+            .frame(maxWidth: .infinity)
+        } else {
+            answerText(answer)
+        }
+    }
+
+    /// The answer's words — the same in both branches, so a short reply and a long one read the
+    /// same way: selectable, left-aligned, the bubble's full width.
+    private func answerText(_ answer: String) -> some View {
+        Text(answer)
+            .font(TypeScale.font(Tokens.textSM))
+            .foregroundStyle(PetBalloonInk.primary)
+            // The backdrop-contrast layer: a faint shade under the words themselves, so a busy or
+            // very dark desktop cannot sit directly behind a glyph. It is the only place the sheet
+            // is allowed to darken — the answer to weak contrast is never a more opaque bubble.
+            .shadow(color: PetBalloonInk.backdropContrast, radius: 7, x: 0, y: 1)
+            .textSelection(.enabled)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
