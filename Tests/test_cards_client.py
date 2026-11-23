@@ -93,8 +93,14 @@ class MarkerTests(unittest.TestCase):
         self.assertIn('attributes["kind"]', MARKER)
 
     def test_crlf_is_not_treated_as_two_line_breaks(self) -> None:
+        # `String.split(separator: "\n")` is the wrong tool: Swift treats "\r\n" as ONE Character, so it
+        # never breaks a CRLF message and every marker stays buried inside a single line. The split has
+        # to happen at the NSString level, and the carriage return must survive into the prose.
         self.assertIn('hasSuffix("\\r")', MARKER)
-        self.assertIn('text.split(separator: "\\n", omittingEmptySubsequences: false)', MARKER)
+        self.assertIn('text.components(separatedBy: "\\n")', MARKER)
+        self.assertNotIn('text.split(separator: "\\n"', MARKER)
+        self.assertIn("kept.append(raw)", MARKER)
+        self.assertNotIn("kept.append(line)", MARKER)
 
     def test_the_parser_cases_are_pinned_in_swift(self) -> None:
         for name in (

@@ -246,10 +246,20 @@ extension CardModelTests {
         assertUnavailable("")
     }
 
-    func testDecodingThroughJSONDecoderNeverThrows() {
-        XCTAssertNoThrow(try JSONDecoder().decode(CardModel.self, from: Data("not json".utf8)))
-        let decoded = try? JSONDecoder().decode(CardModel.self, from: Data("not json".utf8))
-        XCTAssertEqual(decoded, CardModel.unavailable(CardModel.unavailableMessage))
+    /// `JSONDecoder` rejects syntactically invalid JSON before any `Decodable` initialiser runs, so a
+    /// type cannot make *that* call throw-free. The guarantee the app relies on is `CardModel.decode`,
+    /// which is total; and `init(from:)` is itself total for anything that parses.
+    func testDecodeIsTotalAndTheInitialiserDoesNotThrowOnWellFormedInput() {
+        for input in ["not json", "{", "[]", "", "\"a string\""] {
+            XCTAssertEqual(CardModel.decode(Data(input.utf8)), CardModel.unavailable(CardModel.unavailableMessage),
+                           "decode must return unavailable for \(input)")
+        }
+        let wrongShape = Data(#"{"schema":"card.v1","kind":"approval"}"#.utf8)
+        let parsed = try? JSONSerialization.jsonObject(with: wrongShape)
+        XCTAssertNotNil(parsed, "this input is valid JSON, so the decoder reaches our initialiser")
+        XCTAssertNoThrow(try JSONDecoder().decode(CardModel.self, from: wrongShape))
+        XCTAssertEqual(try? JSONDecoder().decode(CardModel.self, from: wrongShape),
+                       CardModel.unavailable(CardModel.unavailableMessage))
     }
 
     func testTheUnavailableMessageIsTheOneTheSpecNames() {

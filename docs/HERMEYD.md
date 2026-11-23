@@ -440,8 +440,8 @@ places assumed the patched one (each has tests that pin the behaviour):
    routine twice. `gateway_guard.rs` scans `/proc` for another `hermes gateway run` (both spellings,
    `…/bin/hermes` and `python -m hermes_cli.main`) whose `HERMES_HOME`/cwd is this engine home, and
    `hermeyd --gateway-check` exits **75** with the pid, cmdline, home and remedy. Nothing is
-   killed; `scripts/run-gateway.sh` refuses to exec on 75 and warns (but continues) on any other
-   failure, so a host without hermeyd is not blocked.
+   killed; the check reports the pid, cmdline, home and remedy and exits, so the thing that
+   launches the engine can decide what to do with it.
 
 Vision settings read `auxiliary.vision.provider` / `.model` (the engine's own keys) and fall back
 to the flat `auxiliary.vision_provider` / `vision_model` for a config written before that fix;
