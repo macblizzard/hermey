@@ -140,7 +140,7 @@ struct PetBlink: Equatable {
 
     static let open = PetBlink()
     /// Four fifths of the height for the length of a blink, with the lids over the eyes.
-    static let shut = PetBlink(squash: 0.80, lift: 0.02, lid: 1)
+    static let shut = PetBlink(squash: 0.74, lift: 0.02, lid: 1)
     /// Reduce Motion: shallower, and the lids half as far. A blink is a desktop's smallest bit of
     /// life, so it is gentled rather than removed.
     static let gentle = PetBlink(squash: 0.94, lift: 0, lid: 0.55)
@@ -193,12 +193,15 @@ struct PetView: View {
             // `PetHitTestView`, which knows nothing about anything drawn around the ink.
             .brightness(lid.lift)
             .shadow(color: .black.opacity(0.28), radius: 10, x: 0, y: 6)
-            // The lids go on before the transforms, so a blink squashes the band with the body
-            // instead of leaving the eyes at full height over a shrinking face.
-            .overlay(alignment: .top) { eyelids }
+            // No drawn eyes. The shipped faces already have their own — a cloud with two vertical bars
+            // — and a second pair drawn over them read as a doubled, T-shaped face (owner, 0.1.631).
+            // The looking-around is the *whole icon* drifting a few points instead, which the art
+            // carries without anything being drawn on it.
             .scaleEffect(motion.scale)
             .rotationEffect(.degrees(motion.rotation))
-            .offset(motion.offset)
+            // A slow sideways drift is what makes the face look around: ±3 pt of the whole picture
+            // reads as the eyes moving, with nothing drawn over the art.
+            .offset(x: gaze * side * PetEyes.drift, y: motion.offset.height)
             // The blink is a vertical squash of the whole body, applied after the move so the two
             // multiply instead of replacing each other.
             .scaleEffect(x: 1, y: lid.squash, anchor: .center)
@@ -227,34 +230,6 @@ struct PetView: View {
             // The click: the panel's AppKit event, as a counter. The balloon opens from the same
             // click, so the reaction plays *while* the bubble appears.
             .onChange(of: pet.taps) { _, _ in beginClickReaction() }
-    }
-
-    // MARK: - The eyes
-
-    /// Two soft dark eyes over the upper-middle of the face, drifting a few points.
-    ///
-    /// Open they are pupils; a blink thickens and darkens them into a lid band (`lid.lid` drives
-    /// both, so the pair closes as the body squashes). The frame is the icon's own box with the eyes
-    /// pinned to its top: an overlay is *proposed* the base view's size, and an unbounded `HStack`
-    /// in a 96 pt box would centre them in the middle of the face instead of at the owner's ~30 %.
-    private var eyelids: some View {
-        HStack(spacing: side * PetEyes.gap) {
-            eyelid
-            eyelid
-        }
-        .padding(.top, side * PetEyes.band)
-        .frame(width: side, height: side, alignment: .top)
-        .offset(x: gaze * side * PetEyes.drift)
-        .allowsHitTesting(false)
-    }
-
-    private var eyelid: some View {
-        let closed = CGFloat(lid.lid)
-        return Capsule(style: .continuous)
-            .fill(Color.black.opacity(PetEyes.resting + (PetEyes.opacity - PetEyes.resting) * lid.lid))
-            .frame(width: side * PetEyes.width,
-                   height: side * (PetEyes.openHeight
-                                   + (PetEyes.shutHeight - PetEyes.openHeight) * closed))
     }
 
     // MARK: - Idle motion
