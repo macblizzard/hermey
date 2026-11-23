@@ -43,13 +43,14 @@ security design is one sentence: <strong>the tailnet is the wall, the device is 
 can only answer questions the agent asks — never give itself permission.</strong></p>
     <p>This document states the trust boundaries, the invariants that hold them up, the threats those
 invariants are for, and the evidence (a test, or an explicit gap) for each one.</p>
-<div class="note info"><p><strong>The Python bridge this document was written about has been removed.</strong> Its code lived in
+<div class="note info"><p><strong>The Python bridge this document was first written about has been removed.</strong> Its code lived in
 <code>Bridge/hermes_bridge</code>, which is no longer in this repository. The host service now is <code>hermeyd/</code>
-(Rust); its contract, its routes and its own tests are <a href="https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md"><code>HERMEYD.md</code></a>. The trust
-boundaries and threats below still apply — read &quot;the bridge&quot; as &quot;hermeyd&quot; — but §2's invariant table
-is the bridge's own audit, and says so at its head.</p></div>
-<p>Scope: <code>hermes_bridge</code> as it was (the only new server-side code at the time), the <code>wss://</code> path into
-it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
+(Rust); its contract, its routes and its own tests are <a href="https://github.com/macblizzard/hermey/blob/main/docs/HERMEYD.md"><code>HERMEYD.md</code></a>. §1's boundaries
+and §3's threats are the ones that hold today. §2's table is kept as the bridge's own audit — the
+reasoning behind the controls, with module and test names that are historical — and says so at its
+head.</p></div>
+<p>Scope: <code>hermeyd</code>, the service that runs on the host today, the <code>wss://</code> path into it, and the
+approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
 item, or a <code>0600</code> file on the unsigned Mac build) is described where it matters, but not audited
 here.</p>
 <h2 id="1-trust-boundaries">1. Trust boundaries</h2>
@@ -80,12 +81,12 @@ Keychain alone.</p>
 <td>nothing (no public ingress exists)</td>
 </tr>
 <tr>
-<td>Tailnet → bridge</td>
+<td>Tailnet → hermeyd</td>
 <td>TLS to <code>tailscale serve</code>, then a <strong>single-use 30 s ticket</strong></td>
 <td>pairing, tokens, <code>/v1/ws</code></td>
 </tr>
 <tr>
-<td>Bridge → gateway</td>
+<td>hermeyd → gateway</td>
 <td>loopback + the <strong>gateway token</strong> (never sent to a device)</td>
 <td>full authority over the agent</td>
 </tr>
@@ -107,8 +108,8 @@ Keychain alone.</p>
 <code>shell.exec</code>, <code>cli.exec</code>, <code>config.set</code> or <code>vault.*</code>; the worst a stolen phone can do is drive
 sessions the user could drive anyway, and answer approvals — which is why approvals are rendered,
 not auto-accepted.</li>
-<li><strong>A compromised bridge is already root on the box.</strong> Loopback-only, token-gated and audited, but it
-adds no privilege; the point is that it does not <em>widen</em> what an attacker on the host can do.</li>
+<li><strong>A compromised host service is already root on the box.</strong> Loopback-only, token-gated and audited,
+but it adds no privilege; the point is that it does not <em>widen</em> what an attacker on the host can do.</li>
 <li><strong>The tailnet is the outer wall.</strong> Every control below assumes an attacker who is already on the
 tailnet or has stolen a device; controls that assume &quot;nobody can reach the port&quot; are marked as such.</li>
 </ul>
@@ -357,7 +358,7 @@ evidence; this table is the reasoning.</p>
 <td>Oversize frame / memory exhaustion</td>
 <td>DoS the bridge or the agent</td>
 <td>16 MiB per frame both directions, close <code>1009</code>, never forwarded (invariant 20)</td>
-<td>many small frames are still work; no per-device socket or bandwidth quota (<strong>G4</strong>)</td>
+<td>many small frames are still work; no per-request rate limit and no bandwidth quota (<strong>G4</strong>)</td>
 </tr>
 <tr>
 <td>T10</td>
@@ -434,10 +435,12 @@ Invariant 9 covers both the <em>new</em> token and the <em>open</em> socket now.
 <code>-32700</code>, nothing is forwarded. The Swift client sends one frame per message
 (<code>JSONRPCCodec.encodeFrame</code>), and the gateway's WS transport does the same, so this is not a live path.
 <em>Fix if it ever matters:</em> accumulate a partial buffer with the same 16 MiB ceiling.</p>
-<p><strong>G4 — no per-device socket or request quota (low).</strong> The bridge caps <code>max_pending_requests</code> per
-socket (256) and the ticket store at 1 024 pending tickets, but one device can open many sockets, each
-with its own upstream connection. <em>Fix:</em> per-device socket limit (2 is enough for a phone + a
-reconnect overlap) and a per-device connection rate limit.</p>
+<p><strong>G4 — no per-request rate limit (low).</strong> The socket caps are in place in <code>hermeyd/src/relay.rs</code>: a
+device may hold four sockets and a host 64, and at the cap the longest-idle socket is evicted with
+<code>4429</code> rather than the newcomer refused (a device's last socket is never taken). What is still
+missing is a limit on the <em>requests</em> one socket may send and on bandwidth, so a paired device can
+still generate load up to whatever the engine answers.</p>
+<p><em>(Four sockets per device is the figure the Python bridge's <code>proxy.py</code> used; hermeyd implements it.)</em></p>
 <p><strong>G5 — gateway close codes are collapsed into <code>1011</code> (low, UX).</strong> When the gateway closes with one of
 Hermes' own codes (<code>4009</code> session busy, <code>4004</code>, <code>4018</code> …), the app sees <code>1011 &quot;gateway closed&quot;</code> and
 cannot tell a busy session from a gateway restart. <code>test_gateway_close_reaches_the_client</code> accepts
@@ -538,9 +541,9 @@ no route accepts; only <code>ws_ticket</code> is a credential, and it is single 
 <code>access_token</code> and sends it gets <code>401</code>. Kept for wire compatibility with shipped app builds.</li>
 <li><strong>A pairing code is a shared secret on the host's screen</strong> (A3). Its window is 600 s and clamped to
 30–3600 s by <code>app._pairing_ttl</code>, so a mistyped override cannot mint a year-long code.</li>
-<li><strong>Two processes on the same state file are not coordinated.</strong> The categories, disabled-bots and
-defaults files take an in-process lock and publish with an atomic rename, which covers the one
-bridge a host runs. A second bridge pointed at the same <code>HERMES_BRIDGE_DB</code> is unsupported.</li>
+<li><strong>Two processes on the same state are not coordinated.</strong> The store takes an in-process lock and
+publishes with an atomic rename, which covers the one service a host runs. A second <code>hermeyd</code>
+pointed at the same state directory (<code>/var/lib/hermeyd</code>) is unsupported.</li>
 </ul>
 <h2 id="bot-to-bot-messages">Bot-to-bot messages</h2>
 <p><code>POST /v1/bots/{profile}/message</code> lets the agent on the host speak into another bot's chat, in the
@@ -575,17 +578,20 @@ already root-equivalent (a device ticket buys shell access, see the threat model
 new verbs add is <em>authority over other bots</em>, not reach outside the host.</p>
 <ul>
 <li><strong>SOUL.md</strong> is written through <code>profiles.configure</code> (soul section only) and capped at 64,000
-characters in the bridge's allow-list: a SOUL.md is injected into every turn of that bot, so an
-accidental megabyte paste would be paid for on every message it ever answers.</li>
-<li><strong>Disable</strong> pauses the bot's scheduled jobs through the loopback dashboard and records which job
-ids it paused in the bridge's state directory (<code>/var/lib/hermes-bridge/disabled-bots.json</code>), so
-enabling resumes exactly those. A disabled bot also refuses <code>POST /v1/bots/{profile}/message</code>:
-otherwise another bot could make a disabled bot answer.</li>
-<li><strong>Delete</strong> goes through the dashboard's own <code>DELETE /api/profiles/{name}</code> — the process that owns
-tombstones, multiplexer release and alias cleanup — after the bridge tars the profile into
-<code>/var/lib/hermes-bridge/deleted-bots</code>. The archive is a mistake-catcher, not a backup contract.</li>
-<li>The bridge still runs under <code>ProtectSystem=strict</code> with only <code>/var/lib/hermes-bridge</code> writable.
-Nothing here widened that: management verbs are asked of the dashboard, which runs unconfined.</li>
+characters in the allow-list: a SOUL.md is injected into every turn of that bot, so an accidental
+megabyte paste would be paid for on every message it ever answers.</li>
+<li><strong>Disable</strong> marks the bot disabled in the service's own documents store (<code>bots_disabled</code> in
+<code>/var/lib/hermeyd/bridge.db</code>), and a disabled bot refuses <code>POST /v1/bots/{profile}/message</code>:
+otherwise another bot could make a disabled bot answer. It does <strong>not</strong> yet stop that bot's
+scheduled jobs — that is the next piece of the routines work, and until it lands a disabled bot's
+routines still fire.</li>
+<li><strong>Delete</strong> archives the profile to <code>/var/lib/hermeyd/deleted-bots</code> first, then removes the
+directory itself and refuses to report success if the directory is still there. The archive is a
+mistake-catcher, not a backup contract.</li>
+<li><code>hermeyd</code> runs under <code>ProtectSystem=strict</code> with <code>/var/lib/hermeyd</code> as its only <code>ReadWritePaths</code>
+entry and <code>ProtectHome=no</code>, because the engine home is often under the service account's home
+(<code>deploy/hermeyd.service</code>). A write into a profile — a restored SOUL.md, a bot's skill — lands in
+the engine's profiles as that same UID, which is why the two must share one.</li>
 </ul>
 <h2 id="bot-computer-shared-desktop">Bot computer (shared desktop)</h2>
 <p>One headless desktop serves every bot on the host, on purpose: one Xvnc, one Chromium user-data-dir,

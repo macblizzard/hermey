@@ -147,9 +147,10 @@ Revoke a device from the app, or by deleting it there.</p>
 (<a href="https://sidestore.io">sidestore.io</a>), then add this source in its <em>Sources</em> tab:
 <code>https://github.com/macblizzard/hermey/releases/latest/download/altstore.json</code>
 and install <strong>Hermey</strong> from it. Unsigned builds need re-signing every ~7 days with a free Apple ID.</li>
-<li><strong>macOS</strong> — download <code>Hermey-macOS-unsigned.dmg</code> from
-<a href="https://github.com/macblizzard/hermey/releases/latest">https://github.com/macblizzard/hermey/releases/latest</a>, move <code>Hermey.app</code> to <code>/Applications</code>, then
-right-click → <strong>Open</strong> → <strong>Open</strong>. If macOS still refuses:
+<li><strong>macOS</strong> — download the disk image from <a href="https://macblizzard.github.io/hermey-downloads/">https://macblizzard.github.io/hermey-downloads/</a>
+(<code>Hermey-macOS-&lt;version&gt;.dmg</code>, the newest build; the release page attaches the same file under the
+versioned name only), open it, drag <strong>Hermey</strong> onto the <code>Applications</code> shortcut, then right-click →
+<strong>Open</strong> → <strong>Open</strong>. If macOS still refuses:
 <code>xattr -dr com.apple.quarantine /Applications/Hermey.app</code>.</li>
 <li><strong>The host URL to type by hand</strong>, if there is no QR path: <code>https://&lt;host&gt;.&lt;tailnet&gt;.ts.net</code> — the
 tailnet name <code>tailscale serve</code> publishes, with <strong>no port</strong>.</li>

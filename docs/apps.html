@@ -104,6 +104,16 @@ when the Mac wakes, which is a different thing.</p>
 <li>The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
 three-dot menu.</li>
 </ul>
+<h2 id="pictures-in-a-message">Pictures in a message</h2>
+<p>Tapping an image in a reply opens it with every other image attached to that same message: the viewer
+opens on the one you tapped and pages to its neighbours.</p>
+<ul>
+<li><strong>iPhone/iPad:</strong> swipe sideways to turn the page; the bar carries a counter (<code>2 of 5</code>) naming your
+place. Swipe the picture down to put it away.</li>
+<li><strong>Mac:</strong> ← and → turn the page, or click the chevrons beside the counter.</li>
+</ul>
+<p>Each picture still pinches to zoom, and the page turns only on a sideways drag — the pull-down that
+closes the viewer is deliberately not also a page turn.</p>
 <h2 id="appearance-and-themes">Appearance and themes</h2>
 <p>Settings → <strong>Appearance</strong>. Several dark palettes, with <strong>Midnight</strong> the default, and <strong>Parchment</strong>
 for daylight. Every window, sheet and tab tells the system which direction its palette faces, so
@@ -123,6 +133,15 @@ until you arrange it, and <strong>Pinned</strong> and <strong>Uncategorized</str
 above and below the arrangement and never move.</p>
 <p>The whole arrangement is written at once rather than &quot;move this one up a slot&quot;, so two devices
 arranging at the same time end up with the last arrangement written, never with two half-swaps.</p>
+<h2 id="renaming-a-group-chat">Renaming a group chat</h2>
+<p>The name lives on the room's row, not in the room's own chrome — a rename button beside the
+transcript is the one place a name change does not look like it belongs.</p>
+<ul>
+<li><strong>iPhone/iPad:</strong> long-press the room in the list → <strong>Rename group chat…</strong></li>
+<li><strong>Mac:</strong> right-click the room in the sidebar → <strong>Rename group chat…</strong></li>
+</ul>
+<p>The new name is sent to the host (<code>POST /v1/rooms/{id}/rename</code>, an engine <code>groups.rename</code>), so it is
+the room's name everywhere, not a label this device keeps.</p>
 <h2 id="unpairing-and-revocation">Unpairing and revocation</h2>
 <p>Removing a device in the app deletes its key — from the Keychain, and from the <code>0600</code> file an
 unsigned Mac build keeps it in. On the host, revoking a device invalidates its outstanding tickets
@@ -195,6 +214,23 @@ screen, and your own reply never rings.</li>
 </ul>
 <p>Reactions, drafts, pins and this switch are per-device; the unread counts themselves come from the
 host, so they survive a reinstall.</p>
+<h2 id="live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</h2>
+<p>While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
+card naming the bot and how long it has been running. When the turn ends the same card holds for about
+six seconds with the first ~120 characters of the reply, then goes.</p>
+<ul>
+<li><strong>One card per turn.</strong> A second turn updates the card that is already up instead of stacking another.</li>
+<li><strong>Leftovers are swept.</strong> A card outlives the process that made it, so one left by a quit mid-turn is
+cleared the next time the app launches.</li>
+<li><strong>A stalled turn stops claiming to work.</strong> A card that goes half an hour without an update greys out;
+the next update brings it back.</li>
+<li><strong>iOS only.</strong> The Mac has notifications and the badge instead. A phone with Live Activities switched
+off keeps working normally — the app records why no card appeared once in its client log (feature
+off, no ActivityKit, no turn running) rather than on every turn.</li>
+</ul>
+<p>The extension is <code>dev.hermey.app.mobile.liveActivity</code>. It draws in the app's two palette colours as
+literals, because an extension is its own process and linking the design system into it to read two
+integers would only make it slow to launch.</p>
 
 <p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/APPS.md">docs/APPS.md</a>, rendered at build time. Corrections belong in that file.</p>
     <nav class="pager" aria-label="Pages"><a href="install.html"><span>Previous</span><strong>Install the host</strong></a><a class="next" href="agents.html"><span>Next</span><strong>For agents</strong></a></nav>
@@ -202,7 +238,7 @@ host, so they survive a reinstall.</p>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li></ul>
+    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
   </nav>
 </div>
 

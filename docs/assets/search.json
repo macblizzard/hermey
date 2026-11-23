@@ -87,7 +87,7 @@
 "h": "Options",
 "p": "Install the host",
 "u": "install.html#options",
-"b": "Options Flags mirror environment variables, which matters when the script is piped into a shell. Flag Env Default Meaning --from-source \u2014 off build with cargo instead of downloading --version TAG HERMEY_VERSION latest release tag to install ( v0.2.0 ) or latest --prefix DIR HERMEY_PREFIX /opt/hermey where the binary go"
+"b": "Options Flags mirror environment variables, which matters when the script is piped into a shell. Flag Env Default Meaning --from-source \u2014 off build with cargo instead of downloading --version TAG HERMEY_VERSION latest host release to install: hermeyd-v0.2.0 (or 0.2.0 ), or latest \u2014 which resolves the newest release of "
 },
 {
 "h": "What is on disk",
@@ -117,7 +117,7 @@
 "h": "When the first install fails",
 "p": "Install the host",
 "u": "install.html#when-the-first-install-fails",
-"b": "When the first install fails Symptom Cause Fix could not download \u2026/hermeyd-linux-aarch64 no published build for that platform/tag use a release that has it, or --from-source SHA256SUMS has no entry for \u2026 incomplete release install a complete release, or build checksum mismatch corrupt download or a replaced asset re-r"
+"b": "When the first install fails Symptom Cause Fix could not download \u2026/hermeyd-linux-aarch64 the tag you pointed at carries no host binary \u2014 an app release ( v0.1.N ) never does; only hermeyd-v* releases do install from a hermeyd-v* tag, or --from-source SHA256SUMS has no entry for \u2026 incomplete release install a complete "
 },
 {
 "h": "iOS",
@@ -138,6 +138,12 @@
 "b": "First run Add a server: paste https://<host>.<tailnet>.ts.net \u2014 serve-root, no port. Enter the pairing code minted on the host: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
 },
 {
+"h": "Pictures in a message",
+"p": "The apps",
+"u": "apps.html#pictures-in-a-message",
+"b": "Pictures in a message Tapping an image in a reply opens it with every other image attached to that same message: the viewer opens on the one you tapped and pages to its neighbours. iPhone/iPad: swipe sideways to turn the page; the bar carries a counter ( 2 of 5 ) naming your place. Swipe the picture down to put it away"
+},
+{
 "h": "Appearance and themes",
 "p": "The apps",
 "u": "apps.html#appearance-and-themes",
@@ -148,6 +154,12 @@
 "p": "The apps",
 "u": "apps.html#arranging-bot-groups",
 "b": "Arranging bot groups Right-click a group's heading in the Mac's sidebar to Move \u2026 Up or Move \u2026 Down . The menu items grey out at the ends of the list. On the phone the same two verbs are on a category heading: long-press it, or tap the \u22ef at its right edge \u2014 the visible door, since a long press on a heading is not somet"
+},
+{
+"h": "Renaming a group chat",
+"p": "The apps",
+"u": "apps.html#renaming-a-group-chat",
+"b": "Renaming a group chat The name lives on the room's row, not in the room's own chrome \u2014 a rename button beside the transcript is the one place a name change does not look like it belongs. iPhone/iPad: long-press the room in the list \u2192 Rename group chat\u2026 Mac: right-click the room in the sidebar \u2192 Rename group chat\u2026 The n"
 },
 {
 "h": "Unpairing and revocation",
@@ -166,6 +178,12 @@
 "p": "The apps",
 "u": "apps.html#notifications-and-badges",
 "b": "Notifications and badges A bot's reply earns a notification when that bot is not the one on screen \u2014 a chat you are reading has already told you. Both apps put the total waiting (bots and rooms together) on the Dock tile or the app icon; zero clears it. Settings \u2192 Notifications (macOS) or Settings \u2192 Replies (iOS) has o"
+},
+{
+"h": "Live Activity and the Dynamic Island",
+"p": "The apps",
+"u": "apps.html#live-activity-and-the-dynamic-island",
+"b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot and how long it has been running. When the turn ends the same card holds for about six seconds with the first ~120 characters of the reply, then goes. One card per "
 },
 {
 "h": "Who does what",
@@ -447,7 +465,13 @@
 "h": "Every route",
 "p": "Reference",
 "u": "reference.html#every-route",
-"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 97 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
+"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 98 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
+},
+{
+"h": "Versions",
+"p": "Reference",
+"u": "reference.html#versions",
+"b": "Versions Two numbers, moving for different reasons. Number Apps 0.1.<run> \u2014 the marketing version defaults to the CI run number; a release tag is v0.1.N . The Mac's About panel and Settings show it as version \u00b7 build Host service hermeyd carries its own version in hermeyd/Cargo.toml , released separately as tag hermeyd"
 },
 {
 "h": "Download URLs",
