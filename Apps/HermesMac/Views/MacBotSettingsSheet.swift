@@ -35,6 +35,9 @@ struct MacBotSettingsSheet: View {
     @State private var descriptionError: String?
     @State private var descriptionSaved = false
 
+    /// The pet switch, mirrored from `PetSettings` so a pet closed from its own menu moves it.
+    @State private var petEnabled: Bool
+
     init(model: AppModel, store: WorkspaceStore, bot: Bot, conversationIsOpen: Bool) {
         self.model = model
         self.store = store
@@ -42,6 +45,7 @@ struct MacBotSettingsSheet: View {
         self.conversationIsOpen = conversationIsOpen
         _descriptionText = State(initialValue: bot.description ?? "")
         _savedDescription = State(initialValue: bot.description ?? "")
+        _petEnabled = State(initialValue: PetSettings.isEnabled(bot.id))
     }
 
     var body: some View {
@@ -70,6 +74,7 @@ struct MacBotSettingsSheet: View {
                     }
                     soulSection
                     descriptionSection
+                    petSection
 
                     dangerSection
                 }
@@ -193,6 +198,47 @@ struct MacBotSettingsSheet: View {
                 .foregroundStyle(Tokens.textDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // MARK: Desktop pet
+
+    /// The desktop pet: a small window for this bot, on this Mac only.
+    ///
+    /// The switch writes the key the controller reads (`PetSettings`), which is also the key the
+    /// pet's own **Close pet** menu writes `false` to — so the two surfaces are one setting, not two
+    /// that have to be kept in step.
+    private var petSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionCaption("DESKTOP PET")
+
+            Toggle(isOn: Binding(get: { petEnabled },
+                                 set: { setPetEnabled($0) })) {
+                Text("Show \(bot.displayName) on the desktop")
+                    .font(TypeScale.font(Tokens.textSM))
+                    .foregroundStyle(Tokens.textPrimary)
+            }
+
+            HermeyButton("Bring it here", kind: .secondary, size: .small) {
+                DesktopPetController.shared.bringHere(bot)
+                petEnabled = PetSettings.isEnabled(bot.id)
+            }
+
+            Text("A small \(bot.displayName) that floats above your windows and answers a click. "
+                 + "Which pets are out is this Mac's own choice — nothing about it is stored on the host.")
+                .font(TypeScale.font(TypeScale.caption))
+                .foregroundStyle(Tokens.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        // Closed from the pet's own menu while this sheet is open: the toggle follows.
+        .onReceive(NotificationCenter.default.publisher(for: PetSettings.changedNotification)) { note in
+            guard (note.userInfo?[PetSettings.botKey] as? String) == bot.id else { return }
+            petEnabled = PetSettings.isEnabled(bot.id)
+        }
+    }
+
+    private func setPetEnabled(_ enabled: Bool) {
+        petEnabled = enabled
+        DesktopPetController.shared.setEnabled(enabled, for: bot)
     }
 
     // MARK: Description

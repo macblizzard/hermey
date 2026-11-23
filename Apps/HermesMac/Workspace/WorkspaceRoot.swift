@@ -84,6 +84,17 @@ struct WorkspaceRoot: View {
                 .hermesSheetChrome()
         }
         .task { credentials.watch(model: store.model) }
+        // The three things that change which pets should exist, without the pets polling the store:
+        // a bot arriving or leaving, a face being chosen, a bot being turned off on the host.
+        .onChange(of: store.model.bots.map(\.id)) { _, _ in
+            DesktopPetController.shared.sync()
+        }
+        .onChange(of: store.botFaces) { _, _ in
+            DesktopPetController.shared.sync()
+        }
+        .onChange(of: store.model.disabledBots) { _, _ in
+            DesktopPetController.shared.sync()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .genUICardSend)) { note in
             // A card's button sends its text as the user's next message, the same contract the
             // plugin's own composer actions have.
@@ -132,6 +143,9 @@ struct WorkspaceRoot: View {
             // The faces' answer too: taken from the system once, then the app's own switch owns it.
             BotAvatarMotion.seedIfNeeded(reduceMotion: systemReduceMotion)
             auditLaunchSurfaces()
+            // Desktop pets: one controller for the window's whole life, attached once. It restores
+            // whatever was switched on last time; a second window's attach is a no-op.
+            DesktopPetController.shared.attach(store: store)
             // Nothing starts focused. macOS puts the focus ring on the first focusable control of a
             // new window, which made the bot list's "+" look selected at launch until a click moved
             // it. Clearing the first responder removes that ring and leaves Tab navigation intact.

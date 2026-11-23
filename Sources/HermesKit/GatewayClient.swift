@@ -205,6 +205,15 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Which bots are off, so the list marks them without one request per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// Ask one bot a question and wait for the answer (`POST /v1/bots/{profile}/ask` on the
+    /// bridge).
+    ///
+    /// A separate turn addressed to the bot, not a message in the open conversation: the desktop
+    /// pet asks without disturbing what is on screen. A host timeout is an answer —
+    /// `BotAnswer.answered == false`, `reply == nil` — and a refusal arrives as
+    /// `BotAskError.host` carrying the host's own sentence.
+    func askBot(profile: String, question: String, from: String, timeout: Double) async throws -> BotAnswer
+
     /// The approval mode across every bot profile, read from the host's own configs.
     func approvalSettings() async throws -> ApprovalSettings
 
@@ -1179,5 +1188,12 @@ public extension GatewayClientProtocol {
     /// the reply; a spinner would be a lie about work that is not happening.
     func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         throw CardFetchError.unreachable("this connection has no bridge to read cards from")
+    }
+
+    /// A client with no bridge cannot ask a bot anything. `.unreachable` is the honest refusal and
+    /// the sentence the balloon already knows how to show.
+    func askBot(profile: String, question: String, from: String, timeout: Double) async throws -> BotAnswer {
+        _ = (profile, question, from, timeout)
+        throw BotAskError.unreachable
     }
 }

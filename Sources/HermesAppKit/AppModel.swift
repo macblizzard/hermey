@@ -3819,6 +3819,18 @@ public final class AppModel: ObservableObject {
         return created
     }
 
+    /// `POST /v1/bots/{profile}/ask` — one question to a bot, answered in the same turn.
+    ///
+    /// The desktop pet's door: it asks the bot directly rather than typing into the conversation
+    /// that is open, so a pet's question never disturbs what is on screen. `from` names the surface,
+    /// which is how the host's transcript shows where the question came from. A host timeout is an
+    /// answer with no reply, not a failure.
+    public func askBot(profile: String, question: String,
+                       from: String = BotAsk.fromDesktopPet,
+                       timeout: Double = BotAsk.defaultTimeout) async throws -> BotAnswer {
+        try await client.askBot(profile: profile, question: question, from: from, timeout: timeout)
+    }
+
     /// One bot's SOUL.md and description, straight from the host.
     public func describeBot(_ profile: String) async throws -> ProfileDescription {
         try await client.describeProfile(profile)

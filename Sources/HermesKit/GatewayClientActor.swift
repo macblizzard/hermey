@@ -556,6 +556,18 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.disabledBots()
     }
 
+    /// `POST /v1/bots/{profile}/ask` — the desktop pet's one call.
+    ///
+    /// The wait belongs to the host: it holds the question until the bot's turn finishes or its own
+    /// timeout expires, then answers either way. A hint that arrived before the pointer is
+    /// `.unreachable` rather than a silent `nil`, so the balloon says so.
+    public func askBot(profile: String, question: String, from: String,
+                       timeout: Double) async throws -> BotAnswer {
+        guard let sessionPointer else { throw BotAskError.unreachable }
+        return try await sessionPointer.ask(profile: profile, question: question,
+                                            from: from, timeout: timeout)
+    }
+
     /// The fleet-wide approval mode lives on the bridge, like the other admin reads.
     public func approvalSettings() async throws -> ApprovalSettings {
         guard let sessionPointer else { throw BotAdminUnavailable() }
