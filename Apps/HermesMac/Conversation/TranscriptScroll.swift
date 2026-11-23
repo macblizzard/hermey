@@ -54,16 +54,17 @@ struct TranscriptScroll: View {
     /// "Select Text" is one sheet for the whole transcript, not one per row: a row lives inside a
     /// `LazyVStack`, so a sheet owned by a row is destroyed the moment that row scrolls out.
     @State private var selectionText: String?
-    /// The reading position, held across a merge of older rows (see `TranscriptAnchorKeeper`).
+    /// The reading position, held across a prepend of older rows (see `TranscriptAnchorKeeper`).
     ///
-    /// Armed from the `onChange` handlers below — before SwiftUI lays the merged rows out — and
-    /// consumed by the AppKit half on the layout that follows. Without it a prepend inserts rows
-    /// above the viewport and everything the reader is looking at slides down by the page's height.
+    /// Armed from the two doors that *name* a prepend — the model's `earlierLoads` counter and the
+    /// "load earlier" tap — before SwiftUI lays the merged rows out, and consumed by the AppKit half
+    /// on the layout that follows. Without it a prepend inserts rows above the viewport and
+    /// everything the reader is looking at slides down by the page's height.
+    ///
+    /// Not from `transcript.count`, which used to guess: a resume's merge grows the transcript and
+    /// can change which row is first without prepending anything, and a guess that arms there moves
+    /// a page the reader did not ask to move.
     @State private var anchorHold = TranscriptAnchorHold()
-    /// The transcript's first row as of the last change, so rows arriving at the *top* can be told
-    /// from a new turn landing at the bottom. `transcript` itself is not `Equatable`, so the count
-    /// is the change this pane can observe.
-    @State private var firstRowID: TranscriptEntry.ID?
     @FocusState private var searchFocused: Bool
     private let streamingID = "conversation-streaming-search"
 
@@ -228,20 +229,19 @@ struct TranscriptScroll: View {
             .overlay(alignment: .bottom) { foot.padding(.bottom, bottomInset) }
             .onAppear { scrollRequest += 1 }
 
-            .onChange(of: model.transcript.count) { oldCount, newCount in
-                // Older rows arriving is the one change that is *above* the reading position:
-                // following to the bottom would lose the page the reader just asked for. Hold the
-                // position instead, before the layout that would move it.
-                if olderRowsArrived(grewFrom: oldCount, to: newCount) {
-                    anchorHold.hold(pinnedToBottom: followsBottom)
-                }
+            .onChange(of: model.transcript.count) { _, _ in
+                // A count change is deliberately *not* a door to the hold. It is far too common a
+                // shape: a turn landing at the bottom, a rewind, and — the one that used to arm and
+                // should not — a resume's merge that grows the transcript without prepending
+                // anything, because `TranscriptPaging.merge` replaces the whole thing when the two
+                // pages do not overlap. Older rows arriving is named by the two doors below.
                 follow(proxy)
             }
             // The model's own counter, which the one path that prepends today
-            // (`loadEarlierHistory`) bumps itself — the door that does not depend on the row-identity
-            // guess above. Arming twice for one merge is harmless: the keeper keeps one snapshot.
-            .onChange(of: model.earlierLoads) { _, _ in
-                anchorHold.hold(pinnedToBottom: followsBottom)
+            // (`loadEarlierHistory`) bumps itself — they are the same event, and this is the one
+            // that arrives *after* the rows are already in the transcript.
+            .onChange(of: model.earlierLoads) { _, loads in
+                anchorHold.hold(pinnedToBottom: followsBottom, reason: "earlierLoads \(loads)")
             }
             .onChange(of: model.streamingText) { _, _ in follow(proxy) }
             .onChange(of: model.isStreaming) { _, _ in follow(proxy) }
@@ -307,7 +307,7 @@ struct TranscriptScroll: View {
                     // Armed here as well as on the model's counter: the request is a round trip, so
                     // this is the only moment strictly before the page can land, whatever order
                     // SwiftUI chooses for `onChange` and the layout that follows it.
-                    anchorHold.hold(pinnedToBottom: followsBottom)
+                    anchorHold.hold(pinnedToBottom: followsBottom, reason: "load earlier tapped")
                     Task { await model.loadEarlierHistory() }
                 }
             }
@@ -440,26 +440,6 @@ struct TranscriptScroll: View {
         scrollRequest += 1
     }
 
-    /// Whether the change that just landed put rows in at the *top* of the transcript.
-    ///
-    /// Two facts decide it: the rows grew, and the first row on screen is one that was not there
-    /// before. A turn landing at the bottom grows the count and leaves the first row alone. A
-    /// resume's merge splices the host's page in at the join, so it leaves the first row alone too —
-    /// the pages the reader already loaded stay in front of it. Only a page of *earlier* history
-    /// starts with a row the transcript did not have.
-    private func olderRowsArrived(grewFrom old: Int, to new: Int) -> Bool {
-        let first = model.transcript.first?.id
-        defer { firstRowID = first }
-        // A conversation opening is not a merge: there was nothing on screen to hold.
-        guard old > 0, new > old, let first, let previous = firstRowID, first != previous else {
-            return false
-        }
-        // The row that was first has to still be on screen. A resume that swapped the transcript
-        // for a different one (a rewind, a different session) has nothing to hold either — there is
-        // no row in common to hold *to*.
-        return model.transcript.contains { $0.id == previous }
-    }
-
     /// A different conversation opens at its newest message, whatever the previous one's reading
     /// position was — the follow is re-armed with it. A search belongs to the conversation it was
     /// typed in, so it goes with the old one: leaving it up would answer the new bot's rows with
@@ -469,8 +449,7 @@ struct TranscriptScroll: View {
         search.resetForConversationChange()
         // The held position belongs to the rows that are leaving. A new conversation's first row
         // is not "earlier" than anything the reader was looking at.
-        anchorHold.release()
-        firstRowID = nil
+        anchorHold.release(because: "a different conversation opened")
         followsBottom = true
         scrollRequest += 1
     }

@@ -1,6 +1,13 @@
 #if os(macOS)
 import AppKit
+import HermesKit
 import SwiftUI
+
+/// One point measurement as the log writes it: no fraction, because half a point is not a fact
+/// anybody can act on and two decimals per line is noise in a 400-line ring.
+private func anchorPoints(_ value: CGFloat) -> String {
+    String(Int(value.rounded()))
+}
 
 /// Holds the reading position still while older rows are merged in above it.
 ///
@@ -9,9 +16,15 @@ import SwiftUI
 /// the finger slides down by the height of the page that arrived. Reported 2026-11-22 — scrolling up
 /// into older messages shifted the transcript under the reader on each page.
 ///
-/// The prepend is `AppModel.loadEarlierHistory()` (`transcript.insert(contentsOf:at:0)`). A resume's
-/// merge is not one: `TranscriptPaging.merge` keeps the rows the reader already had in front of the
-/// incoming page, so its prefix never moves.
+/// The prepend is `AppModel.loadEarlierHistory()` (`transcript.insert(contentsOf:at:0)`), and it is
+/// the *only* thing that arms this hold. It used to be inferred as well, from
+/// `.onChange(of: model.transcript.count)`: rows grew, the first row's id changed, and the row that
+/// had been first was still present. A resume's merge can satisfy all three without prepending
+/// anything — `TranscriptPaging.merge` falls back to the incoming page when the two do not overlap,
+/// and a refreshed prefix then changes the first row while the reader's rows are still in it — so
+/// the hold armed and the keeper moved the clip for a change nobody asked for. That is one of the
+/// two reported symptoms ("it jumps"), and the guess is gone: arming is the model's own
+/// `earlierLoads` counter and the "load earlier" tap, both of which name the prepend.
 ///
 /// Two pieces, deliberately separate:
 ///
@@ -19,13 +32,13 @@ import SwiftUI
 ///   rows out. Not `@Published` on purpose: arming must not schedule a body pass, because the reader
 ///   is not being asked to redraw anything.
 /// * ``TranscriptAnchorKeeper`` — the AppKit half. It reads the clip view's origin and the
-///   document's height at the moment of arming and, on the layout that follows, moves the clip to
-///   where those two numbers say the reader's row still is. That is the exact inverse of what the
-///   prepend did, and it needs no knowledge of which row is where.
+///   document's height at the moment of arming and, on the layout that follows, moves the clip by
+///   the growth that landed above it. That is the exact inverse of what the prepend did, and it
+///   needs no knowledge of which row is where.
 ///
 /// Reading the pre-merge numbers *at arm time* rather than inferring them later is what makes this
-/// safe either way: if SwiftUI already held the position itself, the target equals the origin the
-/// clip is already at and nothing moves.
+/// safe either way: if SwiftUI already held the position itself, the first correction is a no-op
+/// and nothing moves.
 ///
 /// Why the clip view rather than `scrollPosition(id:)` with `scrollTargetLayout`: the same reason
 /// `ScrollViewportProbe` exists. This transcript's position is already owned by three SwiftUI
@@ -45,13 +58,20 @@ final class TranscriptAnchorHold {
     /// How long a merge's layout may take before the arm is treated as stale.
     ///
     /// A lazy transcript lays itself out within a frame or two. The window exists only so an arm
-    /// that never met a merge cannot go on to absorb somebody else's growth — a streaming reply
-    /// arriving a minute later must not be pulled into a held position.
+    /// that never met a prepended page cannot go on to absorb somebody else's growth — a streaming
+    /// reply arriving a minute later must not be pulled into a held position.
     private static let window: TimeInterval = 0.75
 
     /// The position being held, or nil when nothing is in flight.
     private(set) var armed: Position?
     private var armedAt = Date.distantPast
+
+    /// Bumped by every *fresh* arm, never by one that only widens the window.
+    ///
+    /// The keeper accumulates how much growth it has already corrected. That running total belongs
+    /// to one page: carrying it into the next would make the first correction of the new page the
+    /// difference between two unrelated heights.
+    private(set) var generation = 0
 
     /// The keeper that owns the clip view. Weak, and re-installed on attach: this object belongs to
     /// the SwiftUI view's identity, while the AppKit view under it can be built more than once.
@@ -60,30 +80,58 @@ final class TranscriptAnchorHold {
     /// True while a merge is expected or still laying out.
     var isLive: Bool { armed != nil && Date().timeIntervalSince(armedAt) < Self.window }
 
-    /// Arm for the merge that is about to land, reading the scroll view *now* — before the rows are
+    /// Arm for the page that is about to land, reading the scroll view *now* — before the rows are
     /// laid out, which is the only moment the pre-merge numbers exist.
     ///
     /// A reader pinned to the newest message is not holding a reading position — the transcript's
     /// own follow owns that case — so this is a no-op there. That guard is what keeps the live tail
     /// following new messages exactly as it did before.
-    func hold(pinnedToBottom: Bool) {
-        guard !pinnedToBottom, let keeper else { return }
-        // A merge that is already armed keeps the snapshot it has: it is the earliest one, and the
-        // only one taken while the rows were still where the reader left them. A second door to the
-        // same merge (the tap, the model's counter, the row count) only widens the window — the
-        // arithmetic is absolute, so an older baseline is not an over-correction, it is the truth.
-        if armed != nil, isLive {
-            armedAt = Date()
+    ///
+    /// `reason` is the door that armed, and goes into the log: the two doors are the model's
+    /// `earlierLoads` counter (the page arrived) and the "load earlier" tap (the page was asked for),
+    /// so a log line naming one proves which path ran.
+    func hold(pinnedToBottom: Bool, reason: String = "unspecified") {
+        guard !pinnedToBottom else {
+            ClientLog.note("anchor skipped — pinned to bottom (\(reason))", category: "paging")
             return
         }
-        guard let now = keeper.readingPosition else { return }
+        guard let keeper else {
+            ClientLog.note("anchor skipped — no clip view yet (\(reason))", category: "paging")
+            return
+        }
+        // A page that is already armed keeps the snapshot it has: it is the earliest one, and the
+        // only one taken while the rows were still where the reader left them. A second door to the
+        // same page (the tap, then the counter when it lands) only widens the window — the
+        // arithmetic is a delta from that baseline, so an older baseline is not an over-correction,
+        // it is the truth.
+        if armed != nil, isLive {
+            armedAt = Date()
+            ClientLog.note("anchor kept — origin \(anchorPoints(armed?.origin ?? 0)) already armed "
+                           + "(\(reason))", category: "paging")
+            return
+        }
+        guard let now = keeper.readingPosition else {
+            ClientLog.note("anchor skipped — clip view has no document yet (\(reason))", category: "paging")
+            return
+        }
         armed = now
         armedAt = Date()
+        generation &+= 1
+        ClientLog.note("anchor armed — origin \(anchorPoints(now.origin)), "
+                       + "height \(anchorPoints(now.height)), \(reason)", category: "paging")
     }
 
-    /// The merge has settled, or the reader took the position back.
-    func release() {
-        armed = nil
+    /// The page has settled, or the reader took the position back.
+    ///
+    /// `reason` separates the three ways a hold ends — settled after the last correction, the reader
+    /// moved, a different conversation opened — which is what tells "the keeper fought a drag" from
+    /// "the keeper never ran".
+    func release(because reason: String = "unspecified") {
+        guard let armed else { return }
+        let now = keeper?.readingPosition?.origin
+        ClientLog.note("anchor released — origin \(now.map { anchorPoints($0) } ?? "-"), "
+                       + "was \(anchorPoints(armed.origin)), \(reason)", category: "paging")
+        self.armed = nil
     }
 }
 
@@ -110,8 +158,19 @@ struct TranscriptAnchorKeeper: NSViewRepresentable {
         /// Where this keeper last put the clip, so a move the reader makes is never mistaken for
         /// layout and never fought.
         private var applied: CGFloat?
+        /// The growth this hold has already been corrected for: document height minus the height
+        /// read at arm time. One prepend, one correction — this is the number that says which
+        /// heights have already been answered.
+        private var appliedGrowth: CGFloat = 0
+        /// Where this keeper has committed the clip to. Corrections move *from* here by the
+        /// additional delta, so a re-measure can never re-derive a target that was already applied.
+        private var committedOrigin: CGFloat?
+        /// The arm these numbers belong to (see `TranscriptAnchorHold.generation`).
+        private var generation = 0
         /// Ends the hold once the merge's layout has stopped arriving.
         private var settle: DispatchWorkItem?
+        /// When the no-hold line was last written, so a streaming reply cannot fill the ring with it.
+        private var lastIdleNote = Date.distantPast
 
         init(hold: TranscriptAnchorHold) {
             self.hold = hold
@@ -172,29 +231,83 @@ struct TranscriptAnchorKeeper: NSViewRepresentable {
             if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
             frameObserver = nil
             boundsObserver = nil
+            reset()
             if hold.keeper === self { hold.keeper = nil }
         }
 
         // MARK: Holding
 
-        /// The content changed size. If a merge is in flight, that growth landed *above* the
-        /// viewport, so the clip has to move down by exactly as much to keep the reader's row still.
+        /// The content changed size.
+        ///
+        /// With nothing in flight this is the live turn growing below the fold, or a re-measure of
+        /// rows nobody is holding — not a reading position, and compensating it would walk the
+        /// reader away from their row. It is still worth one line, throttled: a report of "it
+        /// jumped" can then be answered with whether the keeper ran at all, instead of guessed at.
+        ///
+        /// With a hold, the growth landed *above* the viewport (a prepend puts rows in before the
+        /// reader's row), so the clip moves down by that much. What it moves by is the *additional*
+        /// growth since the last correction — `growth - appliedGrowth` — never the whole of it: a
+        /// `LazyVStack` re-measures as it lays out and hands one prepend several heights, and
+        /// re-deriving `armed.origin + growth` for each of them re-scrolls the same page over and
+        /// over. That repeated correction is the sticky, tugging feel in the report.
+        ///
+        /// A height that goes back *down* while the hold is live is the same arithmetic the other
+        /// way (a row above the viewport measured shorter than it was estimated), so it is corrected
+        /// by the negative delta once rather than ignored.
         private func contentChanged() {
             guard let scroll = enclosingScrollView, let document = scroll.documentView else { return }
             guard let armed = hold.armed, hold.isLive else {
-                // Nothing in flight: this is the live turn growing below the fold, which is not a
-                // reading position and must not be compensated.
-                hold.release()
-                applied = nil
+                noteChangeWithNoHold(in: scroll, document: document)
+                hold.release(because: "the window had closed")
+                reset()
                 return
             }
-            let growth = document.frame.height - armed.height
-            guard growth > 0.5 else { return }
+            // A new page: its growth is measured from its own baseline, not the last page's total.
+            if generation != hold.generation {
+                generation = hold.generation
+                reset()
+            }
 
-            let target = armed.origin + growth
+            let growth = document.frame.height - armed.height
+
+            // The first look at this page. SwiftUI sometimes holds the position itself, in which
+            // case that move is already in the origin — and a correction that ignored it would move
+            // the reader twice. Credit what the clip has already moved for, so the delta below is
+            // only the part that is still missing. Capped at the growth: a clip that moved further
+            // than the page did was moved by the reader, not by the layout.
+            if committedOrigin == nil {
+                let moved = scroll.contentView.bounds.origin.y - armed.origin
+                appliedGrowth = max(0, min(moved, growth))
+                committedOrigin = scroll.contentView.bounds.origin.y
+            }
+
+            let delta = growth - appliedGrowth
+            // The height this hold already answered for. Not a new event, and moving for it is the
+            // stick: stop here, which also lets the settle window close on its own.
+            guard abs(delta) > 0.5 else { return }
+
+            // From where the clip is committed, not from the snapshot: two changes that arrive
+            // before the first correction has run would otherwise both measure the same origin.
+            let from = committedOrigin ?? scroll.contentView.bounds.origin.y
+            let target = from + delta
+            committedOrigin = target
+            appliedGrowth = growth
+            ClientLog.note("anchor corrected — delta \(anchorPoints(delta)), "
+                           + "origin \(anchorPoints(from)) → \(anchorPoints(target)), "
+                           + "growth \(anchorPoints(growth))", category: "paging")
             // One turn later, so SwiftUI has finished laying the page out and anything it did to the
             // clip itself is included in the origin this compares against.
             DispatchQueue.main.async { [weak self] in self?.restore(to: target) }
+        }
+
+        /// The clip change nobody asked to be held.
+        private func noteChangeWithNoHold(in scroll: NSScrollView, document: NSView) {
+            let now = Date()
+            guard now.timeIntervalSince(lastIdleNote) > 2 else { return }
+            lastIdleNote = now
+            ClientLog.note("anchor not involved — size change with no hold: "
+                           + "origin \(anchorPoints(scroll.contentView.bounds.origin.y)), "
+                           + "height \(anchorPoints(document.frame.height))", category: "paging")
         }
 
         private func restore(to target: CGFloat) {
@@ -212,6 +325,13 @@ struct TranscriptAnchorKeeper: NSViewRepresentable {
             scheduleRelease()
         }
 
+        /// Forget the numbers of the page that has gone.
+        private func reset() {
+            applied = nil
+            appliedGrowth = 0
+            committedOrigin = nil
+        }
+
         /// End the hold once the layout has stopped.
         ///
         /// A merge can arrive in more than one chunk (estimated heights replaced by real ones), so
@@ -221,8 +341,8 @@ struct TranscriptAnchorKeeper: NSViewRepresentable {
             settle?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
-                self.hold.release()
-                self.applied = nil
+                self.hold.release(because: "the layout settled")
+                self.reset()
             }
             settle = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
@@ -233,8 +353,8 @@ struct TranscriptAnchorKeeper: NSViewRepresentable {
         private func clipMoved() {
             guard let applied, let scroll = enclosingScrollView else { return }
             guard abs(scroll.contentView.bounds.origin.y - applied) > 1.5 else { return }
-            hold.release()
-            self.applied = nil
+            hold.release(because: "the reader moved the transcript")
+            reset()
         }
     }
 }
