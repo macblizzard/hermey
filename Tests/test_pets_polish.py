@@ -80,7 +80,7 @@ class TheBalloonIsAWhiteCallout(unittest.TestCase):
         self.assertIn('CalloutButton("Retry") { model.retry() }', BALLOON)
         self.assertIn('CalloutButton(copied ? "Copied" : "Copy")', BALLOON)
         self.assertIn("setString(text, forType: .string)", BALLOON, "Copy still copies")
-        self.assertIn(".frame(maxHeight: 240)", BALLOON)
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", BALLOON)
 
 
 class TheTailPointsAtThePet(unittest.TestCase):
