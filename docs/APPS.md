@@ -72,6 +72,64 @@ when the Mac wakes, which is a different thing.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
 
+## The bell, and what is waiting
+
+The top row of the bot list holds the bell and the ＋. The bell wears a dot, not a number, when any bot
+has replies this device has not read: *something is waiting* is what the dot says, and the list behind
+it is where the names and counts live.
+
+- **One row per bot that spoke**, most waiting first, each with the bot's picture, its name, how many
+  replies are waiting, and the first line of its newest message. A bot with nothing waiting is not a
+  row.
+- **Opening a row is reading it.** Picking a bot from the list opens that conversation and clears its
+  badge through the same call the bot's own dot uses, so the count, the dot and the list cannot
+  disagree.
+- **The phone has the same bell**, beside Settings, in a sheet sized to the rows it holds; the Mac draws
+  it in a popover, from the bell or from ⇧⌘N.
+- **The bars sit at the edges.** Settings is bottom left, search and the sidebar toggle bottom right,
+  and the list fades into both ends over the same 26 points so no edge cuts a row.
+
+## Updating from the app
+
+The app checks once when it opens and does not put a window in front of you with the answer. When a
+newer build exists, a **↓** button appears on the bot list's bottom bar, immediately left of search;
+press it and the normal download-and-install window opens. Nothing installs without that press.
+
+- **A skipped update stays quiet.** Choose Skip and the button stays away until the next launch, which
+  checks again.
+- **Asking for a check is unchanged.** Settings → **About** → *Check for Updates…* goes straight to the
+  same window, as does the menu bar's own item: a check you asked for is never turned into a button
+  instead.
+- **The launch check never opens anything.** It reports the version to the bar and stops there, which
+  is the window the button replaces.
+
+## Reactions — one emoji, both devices
+
+A reaction is kept by the host now, not by the device that made it: react on the Mac and the phone shows
+it, react on the phone and the Mac shows it, live while the conversation is open. One emoji per message,
+stored by the host and served by `GET` / `PUT /v1/reactions`.
+
+- **Scoped, not global.** The host stores a reaction under the host, the bot and the session, so the
+  same message in two bots is two reactions, and one host's bots are never confused with another's.
+- **What a device already had goes up once.** Reactions kept locally before the host owned them are
+  sent on the first run after the upgrade, so nothing is lost.
+- **Unpaired, nothing changes.** With no host to ask, both apps keep using their local copy exactly as
+  before.
+- **Drafts and pins are still per-device.** Only reactions moved to the host.
+
+## Desktop pets
+
+On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon
+on your wallpaper, bobbing, tilting and occasionally hopping. Click it and a balloon opens with a field
+— type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button.
+Escape or a click elsewhere dismisses it. Drag the pet anywhere and it remembers where you left it, per
+screen; right-click → **Close pet** takes it off the desktop and switches off the same setting that
+brought it back. Off by default, one switch per bot in that bot's settings, and Reduce Motion is
+respected — no hops, and a gentler bob.
+
+[`docs/DESKTOP-PETS.md`](DESKTOP-PETS.md) is the design it was built from: the window behaviour, the
+decisions worth stating, and the corrections the build forced.
+
 ## Pictures in a message
 
 Tapping an image in a reply opens it with every other image attached to that same message: the viewer
@@ -204,8 +262,8 @@ Dock tile or the app icon; zero clears it.
 - If a banner never appears, the first thing to check is the system permission: the app reports
   "Turned off in System Settings" (macOS) or offers a link straight to its iOS Settings page.
 
-Reactions, drafts, pins and this switch are per-device; the unread counts themselves come from the
-host, so they survive a reinstall.
+Drafts, pins and this switch are per-device; reactions are the host's now (see **Reactions** above), and
+the unread counts themselves come from the host, so they survive a reinstall.
 
 ## Live Activity and the Dynamic Island
 

@@ -4,8 +4,9 @@ A bot can keep a small companion on the Mac's desktop: the bot's own picture, wa
 answers a question in a speech bubble when you click it. Off by default; enabled per bot in that bot's
 settings; closed from its own right-click menu, which switches the setting off again.
 
-This is a **design** — nothing here is built yet. It is written against the code as it is today, so
-every claim about an existing route or file is checkable.
+The pet ships, so this page is the design it was built from rather than a proposal: the sections below
+are the plan as written, and **What the build changed about this design** records where the code ended up
+differing. Every claim about an existing route or file is checkable against the code.
 
 ## What it is, precisely
 

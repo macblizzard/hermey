@@ -35,7 +35,12 @@ then install the app on a phone or Mac and pair it with a short code.
 ## Reference
 
 - [docs/INSTALL.md](docs/INSTALL.md): installer flags, environment variables, paths on disk, uninstall.
-- [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, unpairing and revocation.
+- [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, the waiting bell, updating from the
+  app, reactions that sync between devices, desktop pets, the Live Activity, unpairing and revocation.
+- [docs/HERMEYD.md](docs/HERMEYD.md): the host's `/v1` contract, route by route — including
+  `GET`/`PUT /v1/reactions`, the reaction the host keeps so both apps show the same one.
+- [docs/DESKTOP-PETS.md](docs/DESKTOP-PETS.md): desktop pets on the Mac — the invisible window, the
+  balloon that asks a bot a question, and the settings that keep it on this desk only.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom, cause, fix, with real log strings.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how `hermeyd` relays the engine's WebSocket; the protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
@@ -67,4 +72,6 @@ then install the app on a phone or Mac and pair it with a short code.
   release does not bump it; CI enforces that.
 - Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open). Images in a
   message open as a gallery that pages through every attachment on that message. iOS also shows a
-  running turn as a Live Activity (lock screen + Dynamic Island).
+  running turn as a Live Activity (lock screen + Dynamic Island). Reactions are the host's —
+  `GET`/`PUT /v1/reactions`, one emoji per message, scoped by bot and session — so a reaction made on
+  one device appears on the other; drafts and pins stay per device.
