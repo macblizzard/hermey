@@ -1029,3 +1029,11 @@ clear button, approvals, attachments, and the three-pane macOS shell.
   happened with no hold at all.
 
 iPhone was never affected: it has no such hold, which is exactly why it felt smooth.
+
+## [0.1.625] — 2026-11-23
+
+### Added
+- **⌘K opens this bot's soul.** The command palette has "Edit this bot's soul": one verb, one sheet, for
+  the bot on screen — no detour through settings to find the tab. Saving writes to the host, and the editor
+  still says the thing that matters: a conversation already open keeps the soul it started with until it is
+  reset.
