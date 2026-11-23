@@ -7,7 +7,7 @@ import HermesAppKit
 import ActivityKit
 
 /// Keeps the Live Activity honest: one card per turn, from `isStreaming == true` to `isStreaming ==
-/// false`.
+/// false`, and it stays on screen until the owner takes it away.
 ///
 /// It is an observer, not a participant. `AppModel.isStreaming` is already the app's single answer to
 /// "is a turn running" — the same property the transcript spinner and the bot list's pose read — so
@@ -17,33 +17,40 @@ import ActivityKit
 /// Mac, a phone with Live Activities switched off, and a build against an SDK without ActivityKit all
 /// keep compiling and running.
 ///
-/// Three behaviours are deliberate and easy to get wrong:
+/// **Four behaviours are deliberate and easy to get wrong:**
 ///
-/// * **One activity.** A second turn that begins while a card is showing *updates* that card
-///   instead of requesting another. `Activity.request` is happy to stack two islands, and the one
-///   nobody ended is the leak.
-/// * **Orphans are swept.** Activities outlive the process: quit mid-turn (or crash) and the card
-///   is still on the lock screen at the next launch, describing a turn that no longer exists. So
-///   `attach` clears whatever is left of this attribute type before adopting the new run, and
-///   `endAll` is public for a shell that gets a termination callback.
+/// * **One activity, reused.** A second turn *updates* the card that is already up — including a
+///   card left showing `Done` by the previous turn, which is still on screen (and still updatable)
+///   because nothing ended it. `Activity.request` is the last resort: only when the process holds no
+///   handle and nothing of this type is on screen.
+/// * **Nothing ends it but the owner.** The owner's rule is "it should stay unless I remove them",
+///   and `Activity.end(_:dismissalPolicy:)` is the only call that can take a card away — `.immediate`
+///   removes it outright, and even `.default` clears the Dynamic Island immediately and keeps only
+///   the Lock Screen copy. So there is **no `end` call in this file at all**: a finished turn is an
+///   `update` to `.done`, and the card lives until he swipes it away or the system's own ceiling
+///   (eight hours) closes in. That is also why `staleAfter` is that ceiling and not thirty minutes:
+///   a card that greyed out mid-turn would be the same complaint wearing a hat.
+/// * **A leftover is told the truth, not yanked.** Activities outlive the process: quit mid-turn (or
+///   crash) and the card is still on the lock screen at the next launch, describing a turn that no
+///   longer exists. `attach` *updates* whatever is left of this type to `Done` before adopting the
+///   new run — it never ends it, so nothing blinks off his Lock Screen during a launch.
 /// * **Silence is explained once.** Every path that cannot show a card records *why* in the client
 ///   log, once per reason — a phone with the feature turned off must not write 400 identical lines
 ///   into the log the owner opens to diagnose something else.
 @MainActor
 final class LiveActivityCoordinator: ObservableObject {
 
-    /// Mirrors whether a card is on screen, for a settings row or a debug overlay. Nothing depends
-    /// on it; the card's own lifecycle is the system's.
+    /// Mirrors whether a card is on screen, for a settings row or a debug overlay. It stays true
+    /// after a turn ends, because the finished card is still there.
     @Published private(set) var isShowing = false
 
-    /// How long a card may go without an update before the system greys it out. A turn that takes
-    /// longer than this is not broken — the next `update` refreshes it — but a turn whose app died
-    /// should stop claiming to be working.
-    static let staleAfter: TimeInterval = 30 * 60
-
-    /// How long the "replied" card stays after the turn ends. `end(dismissalPolicy:)` is the only
-    /// way to flash a finished state: an activity removed immediately never shows it.
-    static let doneLinger: TimeInterval = 6
+    /// How long a card may go without an update before the system greys it out.
+    ///
+    /// Effectively "never": eight hours is the ceiling the system itself enforces on a Live
+    /// Activity, so a card cannot grey out before it is removed anyway. A shorter value would make a
+    /// long turn look abandoned — the card greys, the sentence steps back to "Still waiting on" —
+    /// which is exactly the behaviour the owner asked to stop.
+    static let staleAfter: TimeInterval = 8 * 60 * 60
 
     /// Weak: `AppEnvironment` owns the model and the shell owns this coordinator, so a strong link
     /// back would only make the teardown order matter.
@@ -75,7 +82,12 @@ final class LiveActivityCoordinator: ObservableObject {
     /// Reasons already written to the log, so a per-turn path cannot flood a 400-line ring.
     private var logged: Set<String> = []
 
+    /// The card this process is driving. Kept across a finished turn on purpose: the `Done` card is
+    /// still on screen and updatable, and the next turn re-points it instead of stacking a second.
     private var activity: Activity<HermeyTurnAttributes>?
+
+    /// The sweep of anything left on screen by an earlier launch, while it is still in flight.
+    private var retirement: Task<Void, Never>?
 
     init() {}
 
@@ -88,10 +100,10 @@ final class LiveActivityCoordinator: ObservableObject {
         detach()
         self.model = model
 
-        // Before subscribing: a card left by a previous launch is cleaned up here, because the
+        // Before subscribing: a card left by a previous launch is retired here, because the
         // subscription's first value is the *current* run and would otherwise be applied on top of
         // a stale card.
-        endAll()
+        retireLeftovers()
 
         model.$isStreaming
             .removeDuplicates()
@@ -135,31 +147,62 @@ final class LiveActivityCoordinator: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Stop observing and take the card down. Called by `attach` when a different model arrives.
+    /// Stop observing. The card is **not** taken down: it is still the owner's to dismiss.
+    ///
+    /// Called by `attach` when a different model arrives (a re-pair keeps the shell and swaps the
+    /// model), where the card on screen describes a turn this process can no longer follow — so it
+    /// is retired to `Done` rather than left claiming to work.
     func detach() {
         cancellables.removeAll()
         model = nil
-        endAll()
+        retireLeftovers()
     }
 
-    /// End every card of this type, ours or an orphan's.
+    /// Hand every card of this type on screen a true sentence, and forget our handle on it.
     ///
-    /// This is the `endAll` semantics the feature needs at two moments: at attach (a previous
-    /// process may have died mid-turn) and from a shell that is about to terminate, where the card
-    /// would otherwise sit on the lock screen for hours after the app is gone. `.immediate` because
-    /// both callers are saying "this turn is not running any more" — there is nothing left to show.
-    func endAll() {
+    /// This replaced the old `endAll()`, which ended each card with `.immediate`. That was the
+    /// second half of "it disappears seconds after it appears": a launch, a re-pair or a termination
+    /// callback could take a card the owner was still looking at. Nothing here ends anything —
+    /// the leftovers are *updated* to a finished state, which is both honest (the turn behind them
+    /// is gone) and quiet (the card behaves like any other finished one: it waits for him).
+    func retireLeftovers() {
         startedAt = nil
         replyTail = ""
         lastStep = ""
-        isShowing = false
         activity = nil
         let leftovers = Activity<HermeyTurnAttributes>.activities
-        guard !leftovers.isEmpty else { return }
-        Task {
+        let now = Date()
+        let state = HermeyTurnAttributes.ContentState(phase: .done,
+                                                      startedAt: now,
+                                                      finishedAt: now,
+                                                      step: Self.doneWords)
+        let content = ActivityContent(state: state, staleDate: nil)
+        guard !leftovers.isEmpty else {
+            retirement = nil
+            isShowing = false
+            return
+        }
+        // Held so a turn that begins in the same launch can wait for this write. Without it the
+        // sweep could land *after* `begin`'s update and leave the new turn reading `Done`.
+        retirement = Task {
             for leftover in leftovers {
-                await leftover.end(nil, dismissalPolicy: .immediate)
+                await leftover.update(content)
             }
+        }
+        isShowing = true
+    }
+
+    /// Hand a state to a card, once any sweep from this launch has landed.
+    ///
+    /// Every transition goes through here rather than calling `update` at the call site: the sweep
+    /// at `attach` is asynchronous, and two updates racing on the same activity is how a card shows
+    /// the wrong phase.
+    private func push(_ content: ActivityContent<HermeyTurnAttributes.ContentState>,
+                      to card: Activity<HermeyTurnAttributes>) {
+        let pending = retirement
+        Task {
+            await pending?.value
+            await card.update(content)
         }
     }
 
@@ -193,37 +236,43 @@ final class LiveActivityCoordinator: ObservableObject {
             return
         }
 
-        if let activity {
+        let state = HermeyTurnAttributes.ContentState(phase: .working,
+                                                      startedAt: now,
+                                                      step: startStep)
+        let content = ActivityContent(state: state,
+                                      staleDate: now.addingTimeInterval(Self.staleAfter))
+
+        startedAt = now
+        replyTail = ""
+        lastStep = startStep
+
+        if let current = activity,
+           current.activityState == .active || current.activityState == .stale {
             // Same card, new turn: re-point the state rather than requesting a second activity.
             // `startedAt` resets so the elapsed timer counts this message, not the last one, and
             // the previous turn's reply is dropped rather than shown against this one.
-            startedAt = now
-            replyTail = ""
-            lastStep = startStep
-            let state = HermeyTurnAttributes.ContentState(phase: .working,
-                                                          startedAt: now,
-                                                          step: startStep)
-            Task {
-                await activity.update(ActivityContent(state: state,
-                                                     staleDate: now.addingTimeInterval(Self.staleAfter)))
-            }
+            push(content, to: current)
+            isShowing = true
+            return
+        }
+        // A card the owner swiped away is not a card to update: its handle is dropped and the
+        // request below starts a fresh one.
+        activity = nil
+
+        // A card this process does not hold but the system still has on screen — the `Done` card of
+        // the last turn, or one left by a launch that died. Updating it is the difference between
+        // one island and two. The bot's name lives in the *attributes*, which an update cannot
+        // change, so only a card that already belongs to this bot is adopted.
+        if let lingering = Activity<HermeyTurnAttributes>.activities.first(where: { $0.attributes.botName == name }) {
+            activity = lingering
+            isShowing = true
+            push(content, to: lingering)
             return
         }
 
-        replyTail = ""
-        lastStep = startStep
         do {
             let attributes = HermeyTurnAttributes(botName: name)
-            let state = HermeyTurnAttributes.ContentState(phase: .working,
-                                                          startedAt: now,
-                                                          step: startStep)
-            activity = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(state: state,
-                                         staleDate: now.addingTimeInterval(Self.staleAfter)),
-                pushType: nil
-            )
-            startedAt = now
+            activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
             isShowing = true
         } catch {
             // The usual causes are a per-app limit on simultaneous activities and an app that was
@@ -233,35 +282,35 @@ final class LiveActivityCoordinator: ObservableObject {
         }
     }
 
-    /// The reply landed — or the run was cancelled. Either way the card is over.
+    /// The reply landed — or the run was cancelled. Either way the turn is over; the card is not.
     ///
     /// The finished card says `Done` and then, when there is one, the reply's first line: the step
     /// field is the turn's last word, so the end state cannot fall back to a tint with no text even
     /// when the turn produced nothing the coordinator caught.
+    ///
+    /// **It is updated, not ended.** See the type's doc: `end` is what removes a card from the
+    /// island, and the owner wants the island to keep saying `Done` until he takes it away. The
+    /// handle is kept so the *next* turn re-points this same card back to `.working`.
     private func finish() {
-        guard let activity else { return }
-        self.activity = nil
-        isShowing = false
+        // `startedAt` is the "a turn was actually observed" flag: a second `false` from
+        // `isStreaming`, or the first value at attach on a phone where nothing is running, must not
+        // rewrite a finished card with a fresh zero elapsed.
+        guard let activity, let startedAt else { return }
 
         let state = HermeyTurnAttributes.ContentState(
             phase: .done,
-            startedAt: startedAt ?? Date(),
+            startedAt: startedAt,
             finishedAt: Date(),
             replySnippet: replySnippet(),
             step: Self.doneWords
         )
-        startedAt = nil
+        self.startedAt = nil
         replyTail = ""
         lastStep = ""
-        // Cleared before the end is awaited, so a turn that starts immediately after this one is not
-        // blocked on the dismissal. The overlap is a few seconds at most and the old card has
-        // already been told to go.
-        Task {
-            await activity.end(
-                ActivityContent(state: state, staleDate: nil),
-                dismissalPolicy: .after(Date().addingTimeInterval(Self.doneLinger))
-            )
-        }
+        // `staleDate: nil` — a finished card is not going to produce anything else, so there is
+        // nothing for the system to grey out.
+        let content = ActivityContent(state: state, staleDate: nil)
+        push(content, to: activity)
     }
 
     /// The word a finished turn ends on. One word, because the reply's first line is the sentence
@@ -321,10 +370,9 @@ final class LiveActivityCoordinator: ObservableObject {
         let state = HermeyTurnAttributes.ContentState(phase: .working,
                                                       startedAt: startedAt,
                                                       step: step)
-        Task {
-            await activity.update(ActivityContent(state: state,
-                                                 staleDate: now.addingTimeInterval(Self.staleAfter)))
-        }
+        let content = ActivityContent(state: state,
+                                      staleDate: now.addingTimeInterval(Self.staleAfter))
+        push(content, to: activity)
     }
 
     // MARK: The snippet
@@ -374,7 +422,7 @@ final class LiveActivityCoordinator: ObservableObject {
 
     func detach() {}
 
-    func endAll() {}
+    func retireLeftovers() {}
 
     var isShowing: Bool { false }
 
