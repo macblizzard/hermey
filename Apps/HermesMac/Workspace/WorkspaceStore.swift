@@ -143,6 +143,10 @@ final class WorkspaceStore: ObservableObject {
     @Published var modelBot: Bot?
     /// The owner's note for one bot, off the panel's Notes row.
     @Published var notesBot: Bot?
+
+    /// ⌘K → "Edit this bot's soul": the SOUL editor as a route of its own, so the palette can open
+    /// the editor directly instead of landing him on the settings sheet and making him find the tab.
+    @Published var soulBot: Bot?
     /// The client log, from the palette. Settings → About has the same view; this reaches it without
     /// leaving the keyboard.
     @Published var isLogsPresented = false
@@ -738,6 +742,21 @@ final class WorkspaceStore: ObservableObject {
             run: { [weak self] in
                 guard let self else { return }
                 Task { await self.model.compressNow() }
+            }))
+
+        items.append(WorkspaceCommand(
+            id: "bot.soul",
+            title: "Edit this bot's soul",
+            subtitle: model.selectedBot.map { "The instructions \($0.displayName) runs on" }
+                ?? "Open a conversation first",
+            systemImage: "text.book.closed",
+            shortcut: nil,
+            group: .chat,
+            isEnabled: model.selectedBot != nil,
+            run: { [weak self] in
+                guard let self, let bot = self.model.selectedBot else { return }
+                self.soulBot = bot
+                self.closePalette()
             }))
 
         items.append(WorkspaceCommand(
