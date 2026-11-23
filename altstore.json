@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.624",
-          "buildVersion": "624",
-          "date": "2026-11-23T09:54:08Z",
-          "localizedDescription": "### Fixed\n- **The Mac's conversation pane stops fighting the reader.** Two faults in the code that holds your\n  place while older messages load:\n  - the position was armed whenever the transcript merely *grew and its first row changed* \u2014 which is\n    what a resume looks like \u2014 so the pane scrolled although nothing had been inserted above you. The\n    guess is gone; only a real \"load earlier\" arms it now.\n  - one page could move the pane several times, because the lazy list re-measures itself as it lays\n    out and every re-measure applied the correction again. A prepend now corrects once.\n- **If it still moves, the log says why.** New `paging \u00b7 anchor \u2026` lines record when the hold was armed\n  (and from which signal), corrected by how much, released, or \u2014 the important one \u2014 that a size change\n  happened with no hold at all.\n\niPhone was never affected: it has no such hold, which is exactly why it felt smooth.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.624/Hermey-0.1.624-b624.ipa",
-          "size": 5142780,
+          "version": "0.1.625",
+          "buildVersion": "625",
+          "date": "2026-11-23T10:28:23Z",
+          "localizedDescription": "### Added\n- **\u2318K opens this bot's soul.** The command palette has \"Edit this bot's soul\": one verb, one sheet, for\n  the bot on screen \u2014 no detour through settings to find the tab. Saving writes to the host, and the editor\n  still says the thing that matters: a conversation already open keeps the soul it started with until it is\n  reset.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.625/Hermey-0.1.625-b625.ipa",
+          "size": 5142785,
           "minOSVersion": "17.0",
-          "sha256": "91832b683ed1521176d6942aa9d77b5703210dd75abd62716513fde5c5034470"
+          "sha256": "ae55775cd6d48dbfdf3677350e591a75b5e07cf9ab239a607bf959cb69ef0f06"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.624 (624)",
-      "identifier": "hermes-0.1.624-624",
-      "caption": "### Fixed\n- **The Mac's conversation pane stops fighting the reader.** Two faults in the code that holds your\n  place while older messages load:\n  - the position was armed whenever the transcript merely *grew and its first row changed* \u2014 which is\n    what a resume looks like \u2014 so the pane scrolled although nothing had been inserted above you. The\n    guess is gone; only a real \"load earlier\" arms it now.\n  - one page could move the pane several times, because the lazy list re-measures itself as it lays\n    out and every re-measure applied the correction again. A prepend now corrects once.\n- **If it still moves, the log says why.** New `paging \u00b7 anchor \u2026` lines record when the hold was armed\n  (and from which signal), corrected by how much, released, or \u2014 the important one \u2014 that a size change\n  happened with no hold at all.\n\niPhone was never affected: it has no such hold, which is exactly why it felt smooth.",
-      "date": "2026-11-23T09:54:08Z",
+      "title": "Hermes 0.1.625 (625)",
+      "identifier": "hermes-0.1.625-625",
+      "caption": "### Added\n- **\u2318K opens this bot's soul.** The command palette has \"Edit this bot's soul\": one verb, one sheet, for\n  the bot on screen \u2014 no detour through settings to find the tab. Saving writes to the host, and the editor\n  still says the thing that matters: a conversation already open keeps the soul it started with until it is\n  reset.",
+      "date": "2026-11-23T10:28:23Z",
       "tintColor": "#9A9AA0"
     }
   ],
