@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.638",
-          "buildVersion": "638",
-          "date": "2026-11-23T17:48:36Z",
-          "localizedDescription": "### Changed\n- **The phone's toolbar is back to its own size.** The 25% icon growth you asked for was for the Mac, so\n  the iPhone's bell, gear, \uff0b and search return to the size they shipped with. The Mac's top and bottom\n  bars keep the larger icons.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.638/Hermey-0.1.638-b638.ipa",
-          "size": 5284712,
+          "version": "0.1.639",
+          "buildVersion": "639",
+          "date": "2026-11-23T19:27:05Z",
+          "localizedDescription": "### Fixed\n- **The View menu no longer offers tabs.** \"Show Tab Bar\" and \"Show All Tabs\" were the system's window-tab\n  items; Hermey has no tabs, so both were always dead. They are gone \u2014 the text-size commands and Enter Full\n  Screen are untouched.\n- **Settings \u25b8 Agents \u25b8 Bot instructions tells the truth, and Install works.** The row asked the host for the\n  skill and got an answer that meant \"not found\", so it sat on *Unavailable* on a healthy host while the\n  button's own result went nowhere. The host now reports what it actually has \u2014 installed, out of date, or\n  missing per agent \u2014 and the button does the work and says what happened; if it cannot act, the row says\n  why instead of going quiet.\n- **The Live Activity on the Lock Screen has words in it.** It drew a card with no text at all and never\n  refreshed during a turn. It now names the bot and what it is doing \u2014 thinking, reading, running a tool,\n  streaming the reply \u2014 updates as the turn moves, and ends with *Done* plus the first line of the answer.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.639/Hermey-0.1.639-b639.ipa",
+          "size": 5289054,
           "minOSVersion": "17.0",
-          "sha256": "be8c22b7531d8e4f4257c311219eac4d85d8bac9843a22faf48cc2c77189a677"
+          "sha256": "ec7632941cfd8ad87e8af35a307e8397b8ef8ba6892f55e377b72212dadd7da7"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.638 (638)",
-      "identifier": "hermes-0.1.638-638",
-      "caption": "### Changed\n- **The phone's toolbar is back to its own size.** The 25% icon growth you asked for was for the Mac, so\n  the iPhone's bell, gear, \uff0b and search return to the size they shipped with. The Mac's top and bottom\n  bars keep the larger icons.",
-      "date": "2026-11-23T17:48:36Z",
+      "title": "Hermes 0.1.639 (639)",
+      "identifier": "hermes-0.1.639-639",
+      "caption": "### Fixed\n- **The View menu no longer offers tabs.** \"Show Tab Bar\" and \"Show All Tabs\" were the system's window-tab\n  items; Hermey has no tabs, so both were always dead. They are gone \u2014 the text-size commands and Enter Full\n  Screen are untouched.\n- **Settings \u25b8 Agents \u25b8 Bot instructions tells the truth, and Install works.** The row asked the host for the\n  skill and got an answer that meant \"not found\", so it sat on *Unavailable* on a healthy host while the\n  button's own result went nowhere. The host now reports what it actually has \u2014 installed, out of date, or\n  missing per agent \u2014 and the button does the work and says what happened; if it cannot act, the row says\n  why instead of going quiet.\n- **The Live Activity on the Lock Screen has words in it.** It drew a card with no text at all and never\n  refreshed during a turn. It now names the bot and what it is doing \u2014 thinking, reading, running a tool,\n  streaming the reply \u2014 updates as the turn moves, and ends with *Done* plus the first line of the answer.",
+      "date": "2026-11-23T19:27:05Z",
       "tintColor": "#9A9AA0"
     }
   ],
