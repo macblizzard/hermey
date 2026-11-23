@@ -11,7 +11,30 @@ import SwiftUI
 /// `hasShadow` stays false even though the pet now looks like it floats: a window shadow follows the
 /// window's rectangle, not the icon's alpha, so it would draw a grey square around a blob. The drop
 /// shadow is SwiftUI's, on the icon itself, inside the clear window (see `PetView`).
+///
+/// It also *moves* itself. A drag used to be a SwiftUI `DragGesture` that wrote a translation into
+/// view state and let the controller set the frame from a SwiftUI update: two hops per frame, and an
+/// animated set-frame at the end, which is what made the pet trail the pointer. Here the pointer's
+/// delta is applied to the origin the button went down on and `setFrameOrigin` is called straight
+/// away, on the event's own turn. Nothing animates, nothing lays out, and the window is never a
+/// frame behind the cursor.
 final class DesktopPetPanel: NSPanel {
+    /// Where the window was when the button went down, and where the pointer was: a drag is one
+    /// delta applied to one origin, not a running total.
+    private var dragOrigin: NSPoint?
+    private var dragMouse: NSPoint?
+    private var didDrag = false
+
+    /// A release that moved the pet, with the origin it ended at — where the position is saved.
+    var onMoved: ((NSPoint) -> Void)?
+    /// A release that never moved: a click, which opens the balloon.
+    var onClick: (() -> Void)?
+    /// A drag has started, so the controller stops re-deciding click-through until it ends.
+    var onDragBegan: (() -> Void)?
+    /// Where the pet may sit, applied to a proposed origin. The controller supplies it: that rule is
+    /// `PetGeometry.clamp`, and it belongs in one place.
+    var clampOrigin: ((NSPoint) -> NSPoint)?
+
     init(side: CGFloat) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: side, height: side),
                    styleMask: [.borderless, .nonactivatingPanel],
@@ -39,6 +62,59 @@ final class DesktopPetPanel: NSPanel {
     /// A pet is never the keyboard's target: the balloon takes typing, and only when clicked.
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    // MARK: - Dragging and clicking
+
+    /// Left-button events are the pet's: the window moves itself, and a release that never moved is
+    /// the click that opens the balloon.
+    ///
+    /// Handled in `sendEvent` rather than on the content view because this *is* the window's
+    /// behaviour — and because a view-level handler would still be behind SwiftUI's own hit testing.
+    /// The event is still forwarded, so the view keeps its context menu.
+    override func sendEvent(_ event: NSEvent) {
+        switch event.type {
+        case .leftMouseDown:
+            dragOrigin = frame.origin
+            dragMouse = NSEvent.mouseLocation
+            didDrag = false
+        case .leftMouseDragged:
+            follow()
+        case .leftMouseUp:
+            finish()
+        default:
+            break
+        }
+        super.sendEvent(event)
+    }
+
+    /// Move to the origin the drag started from plus the pointer's delta, now.
+    private func follow() {
+        guard let start = dragOrigin, let from = dragMouse else { return }
+        let mouse = NSEvent.mouseLocation
+        let dx = mouse.x - from.x
+        let dy = mouse.y - from.y
+        if !didDrag {
+            // Two points of travel is a drag, not the tremor of a click.
+            guard abs(dx) + abs(dy) > 2 else { return }
+            didDrag = true
+            onDragBegan?()
+        }
+        let proposed = NSPoint(x: start.x + dx, y: start.y + dy)
+        setFrameOrigin(clampOrigin?(proposed) ?? proposed)
+    }
+
+    private func finish() {
+        guard dragOrigin != nil else { return }
+        let moved = didDrag
+        dragOrigin = nil
+        dragMouse = nil
+        didDrag = false
+        if moved {
+            onMoved?(frame.origin)
+        } else {
+            onClick?()
+        }
+    }
 }
 
 /// The pet's content view: a clear host for the icon that refuses hits on its own transparency.

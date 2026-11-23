@@ -12,6 +12,10 @@ private final class PetInstance {
     let hitView: PetHitTestView
     let model: PetModel
     var balloon: PetBalloonWindow?
+    /// The pet's conversation, kept for as long as the pet is: the balloon window comes and goes, and
+    /// the last exchange has to survive it. In memory only — a desktop pet's transcript is not a
+    /// document, and nothing about it belongs in `UserDefaults`.
+    var balloonModel: PetBalloonModel?
     var occlusionObserver: NSObjectProtocol?
 
     init(bot: Bot, panel: DesktopPetPanel, hitView: PetHitTestView, model: PetModel) {
@@ -42,7 +46,9 @@ final class DesktopPetController: ObservableObject {
 
     private weak var store: WorkspaceStore?
     private var pets: [String: PetInstance] = [:]
-    private var dragOrigins: [String: NSPoint] = [:]
+    /// Pets whose window is being dragged right now. The cursor watch stands down for those: the
+    /// window is under the pointer and moving, so re-deciding click-through mid-drag would flicker.
+    private var dragging: Set<String> = []
     private var cursorTimer: Timer?
     private var observers: [NSObjectProtocol] = []
 
@@ -146,10 +152,6 @@ final class DesktopPetController: ObservableObject {
         let model = PetModel(botID: bot.id, botName: bot.displayName, face: face)
         let hosting = NSHostingView(rootView: PetView(
             pet: model,
-            onOpen: { [weak self] in self?.openBalloon(botID: bot.id) },
-            onDrag: { [weak self] translation, ended in
-                self?.drag(botID: bot.id, translation: translation, ended: ended)
-            },
             onClose: { [weak self] in self?.userClosed(botID: bot.id) }
         ))
         // The icon sits inside a clear ring, so a hop has somewhere to go instead of being clipped
@@ -168,6 +170,15 @@ final class DesktopPetController: ObservableObject {
         let panel = DesktopPetPanel(side: windowSide)
         panel.contentView = hitView
         panel.setFrameOrigin(NSPoint(x: origin.x, y: origin.y))
+        // Dragging and clicking are the panel's own AppKit events: a drag moves the window on the
+        // event's turn (no gesture, no layout pass, no animation), and a release that never moved is
+        // the click that opens the balloon. The controller only supplies the pet's rules.
+        panel.onDragBegan = { [weak self] in self?.dragBegan(botID: bot.id) }
+        panel.onMoved = { [weak self] origin in self?.dragEnded(botID: bot.id, at: origin) }
+        panel.clampOrigin = { [weak self] proposed in
+            self?.clampOrigin(botID: bot.id, proposed: proposed) ?? proposed
+        }
+        panel.onClick = { [weak self] in self?.clicked(botID: bot.id) }
         panel.orderFrontRegardless()
 
         let instance = PetInstance(bot: bot, panel: panel, hitView: hitView, model: model)
@@ -191,7 +202,7 @@ final class DesktopPetController: ObservableObject {
         if let observer = pet.occlusionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        dragOrigins[botID] = nil
+        dragging.remove(botID)
         pet.panel.orderOut(nil)
         pet.panel.close()
 
@@ -204,32 +215,58 @@ final class DesktopPetController: ObservableObject {
 
     // MARK: - Dragging
 
-    private func drag(botID: String, translation: CGSize, ended: Bool) {
-        guard let pet = pets[botID] else { return }
-        if dragOrigins[botID] == nil { dragOrigins[botID] = pet.panel.frame.origin }
-        guard let origin = dragOrigins[botID] else { return }
+    /// The pointer is moving the pet: stand the cursor watch down until it lets go.
+    private func dragBegan(botID: String) {
+        dragging.insert(botID)
+    }
 
-        // SwiftUI's y grows downward; the window server's grows up.
-        let proposed = NSPoint(x: origin.x + translation.width, y: origin.y - translation.height)
+    /// Where the pet may sit, for one proposed origin. `PetGeometry.clamp` is the rule, and this is
+    /// the only place the window asks for it mid-drag — the arithmetic is a few subtractions, so it
+    /// costs nothing to run on every drag event.
+    private func clampOrigin(botID: String, proposed: NSPoint) -> NSPoint {
+        guard let pet = pets[botID] else { return proposed }
         let side = pet.panel.frame.width
         let centre = NSPoint(x: proposed.x + side / 2, y: proposed.y + side / 2)
         let screen = screen(containing: centre)
             ?? NSScreen.screens.first(where: { $0.frame.intersects(pet.panel.frame) })
             ?? NSScreen.main
             ?? NSScreen.screens.first
-        guard let screen else { return }
-
+        guard let screen else { return proposed }
         let clamped = PetGeometry.clamp(
             PetPlacement(x: proposed.x, y: proposed.y, screenID: screenID(screen)),
             side: side,
             to: rect(screen.visibleFrame))
-        pet.panel.setFrameOrigin(NSPoint(x: clamped.x, y: clamped.y))
+        return NSPoint(x: clamped.x, y: clamped.y)
+    }
 
-        if ended {
-            PetSettings.setPosition(clamped, for: botID)
-            dragOrigins[botID] = nil
-            ClientLog.note("pet moved: \(botID) to \(clamped.encoded)", category: "pets")
-        }
+    /// The drag ended: the pet stays where the pointer left it, and that is what is saved.
+    private func dragEnded(botID: String, at origin: NSPoint) {
+        dragging.remove(botID)
+        guard let pet = pets[botID] else { return }
+        let side = pet.panel.frame.width
+        let centre = NSPoint(x: origin.x + side / 2, y: origin.y + side / 2)
+        let screen = screen(containing: centre)
+            ?? NSScreen.screens.first(where: { $0.frame.intersects(pet.panel.frame) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let screen else { return }
+        let placement = PetGeometry.clamp(
+            PetPlacement(x: origin.x, y: origin.y, screenID: screenID(screen)),
+            side: side,
+            to: rect(screen.visibleFrame))
+        pet.panel.setFrameOrigin(NSPoint(x: placement.x, y: placement.y))
+        PetSettings.setPosition(placement, for: botID)
+        ClientLog.note("pet moved: \(botID) to \(placement.encoded)", category: "pets")
+    }
+
+    /// A release that never moved: the pet answers it, then the balloon opens.
+    ///
+    /// The reaction is the view's (`pet.taps`); it is committed here, before `openBalloon`, so the
+    /// pet is hopping while the bubble appears rather than a moment after it.
+    private func clicked(botID: String) {
+        guard let pet = pets[botID] else { return }
+        pet.model.tap()
+        openBalloon(botID: botID)
     }
 
     // MARK: - Balloon
@@ -241,11 +278,18 @@ final class DesktopPetController: ObservableObject {
             return
         }
         let store = self.store
-        let model = PetBalloonModel(botID: botID) { question in
+        // The model outlives the window: the pet keeps its last exchange for as long as it is on the
+        // screen, so a dismissal followed by a click shows the answer again instead of an empty box.
+        let model = pet.balloonModel ?? PetBalloonModel(botID: botID) { question in
             guard let store else { throw BotAskError.unreachable }
             return try await store.model.askBot(profile: botID,
                                                 question: question,
                                                 from: BotAsk.fromDesktopPet)
+        }
+        if pet.balloonModel == nil {
+            model.onDismiss = { [weak self] in self?.dismissBalloon(botID: botID) }
+            model.onAnswer = { [weak pet] in pet?.model.celebrate() }
+            pet.balloonModel = model
         }
         let window = PetBalloonWindow(model: model,
                                       botName: pet.bot.displayName,
@@ -254,8 +298,6 @@ final class DesktopPetController: ObservableObject {
                                           return pet.panel.frame.insetBy(dx: pet.hitView.iconInset,
                                                                          dy: pet.hitView.iconInset)
                                       })
-        model.onDismiss = { [weak self] in self?.dismissBalloon(botID: botID) }
-        model.onAnswer = { [weak pet] in pet?.model.celebrate() }
         window.isOwnerWindow = { [weak pet] candidate in candidate === pet?.panel }
         window.onClose = { [weak self] in self?.pets[botID]?.balloon = nil }
         pet.balloon = window
@@ -392,7 +434,7 @@ final class DesktopPetController: ObservableObject {
     }
 
     private func refreshPassThrough() {
-        guard !pets.isEmpty, dragOrigins.isEmpty else { return }
+        guard !pets.isEmpty, dragging.isEmpty else { return }
         let mouse = NSEvent.mouseLocation
         for pet in pets.values {
             guard pet.panel.isVisible else { continue }

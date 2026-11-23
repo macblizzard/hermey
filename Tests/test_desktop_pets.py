@@ -252,9 +252,13 @@ class WiredExactlyOnce(unittest.TestCase):
         self.assertIn(".disabled(!model.state.acceptsInput)", BALLOON)
         self.assertIn("guard !trimmed.isEmpty, !isAsking else { return false }", STATE)
 
-    def test_the_balloon_is_a_separate_window_above_the_pet(self):
+    def test_the_balloon_is_a_separate_window_beside_the_pet(self):
         self.assertIn("NSWindow.Level.floating.rawValue + 1", BALLOON)
-        self.assertIn("PetGeometry.above(", BALLOON)
+        self.assertIn("PetCalloutPlacement.place(", BALLOON)
+        self.assertIn("let placed = PetCalloutPlacement.place(", BALLOON)
+        self.assertIn("pet: petRect", BALLOON,
+                      "the placement is given the pet's frame, not a centre point: that frame is "
+                      "the thing the bubble must not cover")
         self.assertIn("PetCalloutMetrics.answerHeight(of: answer)", BALLOON,
                       "the answer's height is measured before the bubble settles on its size")
         self.assertIn("hosting.sizingOptions = [.preferredContentSize]", BALLOON,
@@ -274,12 +278,16 @@ class NothingElseWasTouched(unittest.TestCase):
 
     def test_new_files_are_all_in_the_mac_target(self):
         for name in ("DesktopPetPanel.swift", "PetView.swift", "PetBalloonView.swift",
-                     "PetSettings.swift", "DesktopPetController.swift"):
+                     "PetSettings.swift", "DesktopPetController.swift",
+                     "PetCalloutPlacement.swift"):
             path = PETS / name
             self.assertTrue(path.is_file(), f"{name} is missing")
             self.assertEqual(PETS, path.parent)
         self.assertEqual([], sorted(p.name for p in PETS.iterdir() if p.suffix != ".swift"),
                          "everything in Pets/ is a Mac source file")
+        project = (ROOT / "project.yml").read_text(encoding="utf-8")
+        self.assertIn("- path: Apps/HermesMac", project,
+                      "the folder glob picks up a new file in Pets/ without a project edit")
 
     def test_the_ios_app_knows_nothing_about_pets(self):
         mobile = ROOT / "Apps" / "HermesMobile"
