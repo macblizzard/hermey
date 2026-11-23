@@ -106,6 +106,12 @@ Tapping a button sends `action.send` as a user turn (that is the value the skill
 `APPROVE c-9b book the cabin`). The card ticks the chosen label optimistically and settles on
 the next poll — the bot is expected to rewrite the file with `resolved`.
 
+A live draft is the one exception, and only in *what* the send text is: **Send** posts one
+deterministic block built from the fields as typed — the card's own `send` token on the first
+line, then `send this email exactly as written:`, `To:`, `Cc:` (omitted when empty), `Subject:`,
+a `---` rule, and the body. It goes out through the same path, so nothing downstream changed.
+**Discard** is local: it greys the card and posts nothing at all.
+
 v1 shows that turn in the transcript. Hiding it (what Grokbot does) needs a per-message
 hidden flag; the engine currently exposes only session-level `hidden` (`session.set_hidden`).
 Tracked as an enhancement, not a blocker: the send strings are short by design.
@@ -115,8 +121,11 @@ Tracked as an enhancement, not a blocker: the send strings are short by design.
 - **approval** — title, body, buttons. No status chip.
 - **task** — status chip (`running` with spinner, `done`, `error`), body, optional `Stop`
   button in `danger` style.
-- **draft-email** — subject as the heading (title when there is no subject), `To`/`Cc` rows,
-  `bodyText` as paragraphs, then the buttons.
+- **draft-email** — a form, not a poster: `To`/`Cc`/`Subject` are text fields and `bodyText` is
+  a multi-line editor, always, with no "Edit" step. The card ends in exactly two buttons, **Send**
+  and **Discard**, whatever `actions[]` the file wrote; an action labelled `Edit` is not drawn.
+  A draft with no `email` block cannot be typed into and draws as before.
+- A resolved card is a receipt: no fields, no buttons, just the facts and the note.
 - A body that is one line under 200 characters and has no line breaks reads as the question
   under the title.
 - Styling comes from `HermeyUI` tokens, never from the card: `primary` maps to the accent

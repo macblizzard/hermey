@@ -3,10 +3,11 @@
 The target has no Swift compiler on this box: `swift build --build-tests` on CI is the only
 compiler, so the Python suite guards the parts a tidy-up can silently break — the marker's
 alone-on-line and fence rules, the degradation contract, the three layouts (approval, task,
-draft-email), the body blocks, the status chip, a resolved card, the injected theme (the target
-must not import `HermeyUI`) and the `cards.enabled` default. The behaviour itself is pinned by the
-XCTest cases in `Tests/HermesCardsTests/`, which this file also checks for the load-bearing
-scenarios so they cannot be dropped.
+draft-email), the body blocks, the status chip, a resolved card, a live draft's editable fields
+and its two controls, the composed turn Send posts, the injected theme (the target must not import
+`HermeyUI`) and the `cards.enabled` default. The behaviour itself is pinned by the XCTest cases in
+`Tests/HermesCardsTests/`, which this file also checks for the load-bearing scenarios so they
+cannot be dropped.
 """
 from __future__ import annotations
 
@@ -22,12 +23,14 @@ MARKER = (TARGET / "CardMarker.swift").read_text()
 MODEL = (TARGET / "CardModel.swift").read_text()
 THEME = (TARGET / "CardTheme.swift").read_text()
 VIEW = (TARGET / "CardView.swift").read_text()
+DRAFT = (TARGET / "DraftEditing.swift").read_text()
 SETTINGS = (TARGET / "CardsSettings.swift").read_text()
 
 MARKER_TESTS = (TESTS / "CardMarkerTests.swift").read_text()
 MODEL_TESTS = (TESTS / "CardModelTests.swift").read_text()
 KINDS_TESTS = (TESTS / "CardKindsTests.swift").read_text()
 SETTINGS_TESTS = (TESTS / "CardsSettingsTests.swift").read_text()
+DRAFT_TESTS = (TESTS / "DraftEditingTests.swift").read_text()
 
 
 def imports(source: str) -> set[str]:
@@ -36,7 +39,8 @@ def imports(source: str) -> set[str]:
 
 class TargetTests(unittest.TestCase):
     def test_the_target_is_foundation_and_swiftui_only(self) -> None:
-        for name in ("CardMarker", "CardModel", "CardTheme", "CardView", "CardsSettings", "CardLoader"):
+        for name in ("CardMarker", "CardModel", "CardTheme", "CardView", "CardsSettings", "CardLoader",
+                     "DraftEditing"):
             self.assertTrue((TARGET / f"{name}.swift").is_file(), name)
 
         imported: set[str] = set()
@@ -55,7 +59,8 @@ class TargetTests(unittest.TestCase):
             self.assertNotIn("HermeyUI.", source, path.name)
 
     def test_the_swift_tests_exist_where_ci_will_run_them(self) -> None:
-        for name in ("CardMarkerTests", "CardModelTests", "CardsSettingsTests", "CardKindsTests"):
+        for name in ("CardMarkerTests", "CardModelTests", "CardsSettingsTests", "CardKindsTests",
+                     "DraftEditingTests"):
             self.assertTrue((TESTS / f"{name}.swift").is_file(), name)
 
 
@@ -331,6 +336,124 @@ class ThemeAndViewTests(unittest.TestCase):
     def test_the_unavailable_case_draws_the_apology(self) -> None:
         self.assertIn("case .unavailable(let message):", VIEW)
         self.assertIn("Text(message)", VIEW)
+
+
+class LiveDraftTests(unittest.TestCase):
+    """A draft-email card is a form the moment it draws: fields, then Send and Discard."""
+
+    def controls(self) -> str:
+        return VIEW[VIEW.index("private func draftControls"):VIEW.index("private func draftButton")]
+
+    def draft_case(self) -> str:
+        return VIEW[VIEW.index("case .draftEmail:"):VIEW.index("// MARK: - Unavailable")]
+
+    def test_a_live_draft_is_a_form_and_has_no_edit_mode(self) -> None:
+        # The fields are the card: there is no "Edit" tap, no second state and no flag to hold one.
+        self.assertIn("@State private var draft: DraftEditor?", VIEW)
+        self.assertIn("TextField(label, text: text)", VIEW)
+        self.assertIn("TextEditor(text: text)", VIEW)
+        self.assertNotIn("isEditing", VIEW)
+
+    def test_the_card_shows_exactly_send_and_discard(self) -> None:
+        controls = self.controls()
+        self.assertIn('draftButton("Send", style: .primary)', controls)
+        self.assertIn('draftButton("Discard", style: .danger)', controls)
+        # `Edit` is never drawn: the controls do not iterate the file's actions at all, so a card
+        # that still writes one renders the same two buttons as every other draft.
+        self.assertNotIn("ForEach", controls)
+        self.assertNotIn("actionRow", controls)
+        self.assertNotIn("Card.Action", controls.split('draftButton("Discard"')[1])
+
+    def test_discard_is_local_and_sends_no_turn(self) -> None:
+        controls = self.controls()
+        self.assertIn("self.discarded = true", controls)
+        self.assertNotIn("onAction?", controls)
+        # The card stays readable and stops answering: fields disabled, card dimmed, buttons gone.
+        self.assertIn(".disabled(discarded)", VIEW)
+        self.assertIn(".opacity(discarded ? 0.55 : 1)", VIEW)
+        self.assertIn('Text("Discarded")', VIEW)
+
+    def test_send_rides_the_path_every_card_button_already_used(self) -> None:
+        # One callback, one action: the composed block is that action's `send`, so the hooks post
+        # it and tick the card exactly as before.
+        self.assertIn('onAction?(Card.Action(label: "Send",', VIEW)
+        self.assertIn("send: typed.composedSend(lead: action?.send)", VIEW)
+        self.assertIn("onAction: ((Card.Action) -> Void)? = nil", VIEW)
+        # The view owns no transport and no second channel of its own.
+        for word in ("URLSession", "URLRequest", "NotificationCenter"):
+            self.assertNotIn(word, VIEW, word)
+
+    def test_typing_is_seeded_from_the_document_and_never_overwritten(self) -> None:
+        # `nil` until the first keystroke: the fields read the card, then the typed copy wins.
+        self.assertIn('get: { self.editor(for: card)?[keyPath: keyPath] ?? "" }', VIEW)
+        self.assertIn("self.draft = editing", VIEW)
+        self.assertIn("draft ?? DraftEditor.editor(for: card)", VIEW)
+        # A *different* document clears the typing; an ordinary re-render leaves it alone, because
+        # the seed is the email's own text, not the view's identity.
+        self.assertIn(".onChange(of: draftSeed)", VIEW)
+        self.assertIn("self.draft = nil", VIEW)
+        self.assertIn("private var draftSeed: String", VIEW)
+
+    def test_nothing_is_persisted_and_nothing_is_written_back(self) -> None:
+        for source, name in ((DRAFT, "DraftEditing"), (VIEW, "CardView")):
+            for word in ("UserDefaults", "AppStorage", "SceneStorage", "FileManager", "write(to:"):
+                self.assertNotIn(word, source, f"{name}: {word}")
+
+    def test_a_resolved_draft_is_read_only_and_an_emailless_one_is_unchanged(self) -> None:
+        draft_case = self.draft_case()
+        # Only a live draft with an `email` block is the form.
+        self.assertIn("if card.email != nil, !card.isResolved {", draft_case)
+        # Resolved: facts, the note, and no controls at all.
+        self.assertIn("} else if card.isResolved {", draft_case)
+        self.assertIn("controls: { EmptyView() }", draft_case)
+        # No email: exactly today's card, its own buttons included.
+        self.assertIn("controls: { actionRow(card) }", draft_case)
+        self.assertIn("draftDetails(card)", draft_case)
+
+    def test_the_composed_block_is_deterministic(self) -> None:
+        self.assertIn('public static let instruction = "send this email exactly as written:"', DRAFT)
+        # The card's own token leads, so the agent still sees the intent, then the fixed block.
+        self.assertIn("lines.append(lead)", DRAFT)
+        self.assertIn("lines.append(DraftEditor.instruction)", DRAFT)
+        self.assertIn('lines.append("To: " + DraftEditor.singleLine(to))', DRAFT)
+        self.assertIn("if !copied.isEmpty {", DRAFT)
+        self.assertIn('lines.append("Cc: " + copied)', DRAFT)
+        self.assertIn('lines.append("Subject: " + DraftEditor.singleLine(subject))', DRAFT)
+        self.assertIn('lines.append("---")', DRAFT)
+        # A header is one line, so a pasted newline cannot reshape the block.
+        self.assertIn("components(separatedBy: .newlines)", DRAFT)
+
+    def test_the_send_token_is_the_cards_primary_action_and_never_edit(self) -> None:
+        self.assertIn("var draftSendAction: Action?", DRAFT)
+        self.assertIn("actions.filter { $0.draftRole != .edit }", DRAFT)
+        self.assertIn("$0.style == .primary", DRAFT)
+        self.assertIn("$0.style != .danger", DRAFT)
+
+    def test_an_edited_send_still_names_its_button(self) -> None:
+        # The composed block's first line is the card's `send`, and that is what `matches` reads
+        # back, so the note under a sent draft says "Resolved: Send", not the whole email.
+        self.assertIn('chosen.components(separatedBy: "\\n").first == action.send', MODEL)
+
+    def test_the_draft_cases_are_pinned_in_swift(self) -> None:
+        for name in (
+            "testALiveDraftOpensReadyToTypeItsOwnValues",
+            "testAResolvedDraftCannotBeTypedInto",
+            "testADraftWithNoEmailBlockCannotBeTypedInto",
+            "testOtherKindsAreNeverTypedInto",
+            "testTheEditsAreWhatTheSendCarries",
+            "testTheCardsOwnSendIsTheFirstLine",
+            "testTheCcLineIsOmittedWhenEmpty",
+            "testADraftWithNoUsableActionStillComposesAWholeBlock",
+            "testAHeaderFieldIsOneLine",
+            "testAnEmptyBodyStillEndsTheBlockAfterTheRule",
+            "testThePrimaryActionIsTheSend",
+            "testAnEditActionIsNeverTheSend",
+            "testThePositionDecidesWhenTheFilesWordsDoNot",
+            "testTheRolesReadTheCardsOwnLabels",
+            "testTypingLeavesTheCardsDocumentAlone",
+            "testASentEditedDraftStillNamesTheButtonThatSentIt",
+        ):
+            self.assertIn(name, DRAFT_TESTS, name)
 
 
 class SettingsTests(unittest.TestCase):

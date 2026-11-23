@@ -245,5 +245,40 @@ class HookTests(unittest.TestCase):
             self.assertNotIn("CardMarker.textWithoutMarkers(entry.text)", row)
 
 
+class DraftEditPathTests(unittest.TestCase):
+    """A typed draft leaves through the door every card's button already used.
+
+    The card view composes the turn and hands it over as an ordinary `Card.Action`, so neither
+    shell knows what an editable draft is: the hook still posts `action.send` and still ticks the
+    action through the loader. Discard never reaches the host at all.
+    """
+
+    VIEW = (ROOT / "Sources/HermesCards/CardView.swift").read_text()
+
+    def test_the_composed_turn_is_a_card_action_like_any_other(self) -> None:
+        self.assertIn('onAction?(Card.Action(label: "Send",', self.VIEW)
+        self.assertIn("send: typed.composedSend(lead: action?.send)", self.VIEW)
+        # One callback, unchanged in shape: whoever wired the card up needs to learn nothing.
+        self.assertIn("onAction: ((Card.Action) -> Void)? = nil", self.VIEW)
+
+    def test_no_hook_needs_to_know_about_editing(self) -> None:
+        for source, name in ((MAC, "macOS"), (IOS, "iOS")):
+            self.assertIn('"text": action.send', source, name)
+            self.assertIn("CardLoader.shared.choose(action,", source, name)
+            for word in ("DraftEditor", "composedSend", "discarded"):
+                self.assertNotIn(word, source, f"{name}: {word}")
+
+    def test_discard_never_reaches_the_host(self) -> None:
+        controls = self.VIEW[self.VIEW.index("private func draftControls"):
+                              self.VIEW.index("private func draftButton")]
+        self.assertIn("self.discarded = true", controls)
+        self.assertNotIn("onAction?", controls, "discard is local: it posts no turn")
+
+    def test_the_cards_stay_dumb_about_the_transport(self) -> None:
+        # The composed turn is text in an action, never a second way to reach the engine.
+        self.assertNotIn("NotificationCenter", self.VIEW)
+        self.assertNotIn("URLSession", self.VIEW)
+
+
 if __name__ == "__main__":
     unittest.main()

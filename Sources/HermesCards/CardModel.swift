@@ -206,7 +206,11 @@ public struct Card: Sendable, Equatable {
 
     private func matches(_ action: Action, _ resolved: Resolved) -> Bool {
         let chosen = resolved.action.trimmingCharacters(in: .whitespacesAndNewlines)
-        return chosen == action.label || chosen == action.send
+        if chosen == action.label || chosen == action.send { return true }
+        // An edited draft is sent as a composed block whose first line is the card's own `send`
+        // (see `DraftEditor.composedSend`). Without this the note under the card would read
+        // "Resolved: send this email exactly as written: …" — the whole email instead of "Send".
+        return chosen.components(separatedBy: "\n").first == action.send
     }
 }
 
