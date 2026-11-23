@@ -118,6 +118,12 @@ public protocol BotSessionPointerStore: Sendable {
     /// once per bot.
     func disabledBots() async throws -> Set<String>
 
+    /// `POST /v1/bots/{profile}/ask` — one question, one synchronous answer.
+    ///
+    /// Defaulted to `.unreachable`: a store with no such route (an older bridge, an unpaired app)
+    /// must make the balloon say "can't reach the host", never pretend it asked.
+    func ask(profile: String, question: String, from: String, timeout: Double) async throws -> BotAnswer
+
     /// `GET`/`PUT /v1/bots/{profile}/model-settings` — the effort level and the aux/vision model.
     ///
     /// Two facts the catalogue cannot answer: how hard the model is asked to think (`agent.reasoning_effort`,
@@ -386,6 +392,14 @@ extension BotSessionPointerStore {
     public func previews(since marks: [String: Double]) async throws -> BotPreviewFeed {
         BotPreviewFeed(previews: try await previews())
     }
+
+    /// A store that cannot ask has no bridge behind it. Saying "unreachable" is what the balloon
+    /// already knows how to render; a silent `nil` would read as an empty answer.
+    public func ask(profile: String, question: String,
+                    from: String, timeout: Double) async throws -> BotAnswer {
+        _ = (profile, question, from, timeout)
+        throw BotAskError.unreachable
+    }
 }
 
 /// The real pointer: one HTTP request, one freshly minted single-use ticket.
@@ -611,6 +625,39 @@ enum Failure: Error, Equatable, LocalizedError {
               let names = object["disabled"] as? [String]
         else { return [] }
         return Set(names)
+    }
+
+    /// `POST /v1/bots/{profile}/ask` — the pet's whole conversation model.
+    ///
+    /// One request, one freshly minted ticket, and a socket timeout longer than the host's own: the
+    /// host holds the question until the bot's turn ends (or its timeout), and a client that gave up
+    /// first would report "unreachable" about a bot that was working the whole time.
+    public func ask(profile: String, question: String,
+                    from: String, timeout: Double) async throws -> BotAnswer {
+        let endpoint = try await endpoint()
+        let url = try BotAsk.url(base: endpoint.baseURL, profile: profile)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout + 15
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(endpoint.ticket)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try BotAsk.body(question: question, from: from, timeout: timeout)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw BotAskError.unreachable }
+        guard (200..<300).contains(http.statusCode) else {
+            // The host's `detail` is a sentence written for a person ("no conversation yet",
+            // "this bot is off"); it travels unchanged. Only a body without one gets a status.
+            throw BotAskError.host(Self.detail(from: data)
+                                   ?? "the host refused the question (\(http.statusCode))")
+        }
+        guard let answer = BotAnswer.decode(data,
+                                            fallbackProfile: profile,
+                                            fallbackFrom: from,
+                                            fallbackQuestion: question)
+        else { throw BotAskError.host("the host's answer was not readable") }
+        return answer
     }
 
     /// `GET /v1/cards/{id}?session=<session id>&message=<message id>` — one `card.v1` document.
