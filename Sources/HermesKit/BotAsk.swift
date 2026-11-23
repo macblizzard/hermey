@@ -108,6 +108,11 @@ public enum BotAsk {
             "question": question,
             "from": from,
             "timeout": timeout,
+            // The route defaults to waiting for the *owner's* reply, which is right when one bot asks
+            // another bot's owner. A pet asks the bot itself, so the answer arrives as the bot's own
+            // message; without this the host waited for a user row that never came and every question
+            // timed out with the reply sitting in the transcript.
+            "await": "bot",
         ])
     }
 }

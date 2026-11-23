@@ -7,6 +7,10 @@ import SwiftUI
 /// activation when it is clicked (`.nonactivatingPanel`), no fill, no shadow, and no material behind
 /// the picture. What is left is the bot's own alpha. The balloon is a separate window so this one is
 /// never larger than the icon.
+///
+/// `hasShadow` stays false even though the pet now looks like it floats: a window shadow follows the
+/// window's rectangle, not the icon's alpha, so it would draw a grey square around a blob. The drop
+/// shadow is SwiftUI's, on the icon itself, inside the clear window (see `PetView`).
 final class DesktopPetPanel: NSPanel {
     init(side: CGFloat) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: side, height: side),
