@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.633",
-          "buildVersion": "633",
-          "date": "2026-11-23T15:19:16Z",
-          "localizedDescription": "### Added\n- **The pet tells you when a bot answers while you are away.** If Hermey's window is minimised (or the app\n  hidden) and a bot you asked something replies, that bot's pet hops once and wears a small badge with the\n  count. Click the pet and the balloon opens with the reply; the badge clears with it \u2014 and the dot in the\n  app's bot list clears at the same time, because both read the same count.\n- It stays quiet when you are already looking at the window, and it does not hop for a reply its own\n  balloon is showing.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.633/Hermey-0.1.633-b633.ipa",
-          "size": 5151074,
+          "version": "0.1.635",
+          "buildVersion": "635",
+          "date": "2026-11-23T16:17:10Z",
+          "localizedDescription": "### Added\n- **Reactions follow you.** A reaction is kept by the host now, not by the device that made it: react on\n  the Mac and the phone shows it, react on the phone and the Mac shows it \u2014 live, while the conversation is\n  open. Reactions you already had on a device are sent to the host once, so nothing is lost. Unpaired, both\n  apps keep working exactly as before, locally.\n- **A bell that says what is waiting.** The bot list's top row is now the bell and the \uff0b menu. The bell\n  lists the bots with unread replies, most first, each with the first line of its last message; pick one and\n  it opens with that bot. iOS gets the same bell, right beside Settings.\n\n### Changed\n- **The bot list has a floor bar.** Settings moved to the bottom left; search and the sidebar toggle to the\n  bottom right. The list fades into both ends of the panel over the same 26 pt, so no edge cuts a row.\n- **An empty composer says who you are writing to** \u2014 \"Message Cody\", the same words the phone shows.\n\n### Fixed\n- Two compile-time faults the app build caught before release: the reaction table was cleared with an array\n  literal where Swift needs a dictionary one, and the reaction key took the row id at the wrong width.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.635/Hermey-0.1.635-b635.ipa",
+          "size": 5193179,
           "minOSVersion": "17.0",
-          "sha256": "38171b3d85923166664f8f81710da259628e5b5a93f40ebfcc02d5cb0c35bd78"
+          "sha256": "0c347fd729a16d14a8acab043846c5a0cf040b8e882fdab6e1830aba9fa0365e"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.633 (633)",
-      "identifier": "hermes-0.1.633-633",
-      "caption": "### Added\n- **The pet tells you when a bot answers while you are away.** If Hermey's window is minimised (or the app\n  hidden) and a bot you asked something replies, that bot's pet hops once and wears a small badge with the\n  count. Click the pet and the balloon opens with the reply; the badge clears with it \u2014 and the dot in the\n  app's bot list clears at the same time, because both read the same count.\n- It stays quiet when you are already looking at the window, and it does not hop for a reply its own\n  balloon is showing.",
-      "date": "2026-11-23T15:19:16Z",
+      "title": "Hermes 0.1.635 (635)",
+      "identifier": "hermes-0.1.635-635",
+      "caption": "### Added\n- **Reactions follow you.** A reaction is kept by the host now, not by the device that made it: react on\n  the Mac and the phone shows it, react on the phone and the Mac shows it \u2014 live, while the conversation is\n  open. Reactions you already had on a device are sent to the host once, so nothing is lost. Unpaired, both\n  apps keep working exactly as before, locally.\n- **A bell that says what is waiting.** The bot list's top row is now the bell and the \uff0b menu. The bell\n  lists the bots with unread replies, most first, each with the first line of its last message; pick one and\n  it opens with that bot. iOS gets the same bell, right beside Settings.\n\n### Changed\n- **The bot list has a floor bar.** Settings moved to the bottom left; search and the sidebar toggle to the\n  bottom right. The list fades into both ends of the panel over the same 26 pt, so no edge cuts a row.\n- **An empty composer says who you are writing to** \u2014 \"Message Cody\", the same words the phone shows.\n\n### Fixed\n- Two compile-time faults the app build caught before release: the reaction table was cleared with an array\n  literal where Swift needs a dictionary one, and the reaction key took the row id at the wrong width.",
+      "date": "2026-11-23T16:17:10Z",
       "tintColor": "#9A9AA0"
     }
   ],
