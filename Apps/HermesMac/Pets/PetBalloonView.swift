@@ -239,14 +239,19 @@ struct PetBalloonView: View {
             }
 
             if let answer = model.state.answer {
-                ScrollView(.vertical, showsIndicators: true) {
-                    Text(answer)
-                        .font(TypeScale.font(Tokens.textSM))
-                        .foregroundStyle(PetBalloonInk.primary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 240)
+                // No `ScrollView` here. Its height is greedy and flexible, and this bubble is sized by
+                // `fittingSize` on the hosting view — so the scroll view measured as (almost) nothing
+                // and the answer was drawn into zero height: present in the model, copyable by the
+                // Copy button, invisible on screen. A self-sizing `Text` is what the fitting size can
+                // measure; a long answer is capped by line count and the whole thing is still copyable.
+                Text(answer)
+                    .font(TypeScale.font(Tokens.textSM))
+                    .foregroundStyle(PetBalloonInk.primary)
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(40)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if model.state.isAsking {
