@@ -360,109 +360,46 @@ class ThePetFloats(unittest.TestCase):
                       BALLOON, "the callout's buttons still declare their own shape")
 
 
-class ThePetBlinksAndItsEyesMove(unittest.TestCase):
-    """A squash the owner can see, a pair of lids drawn over the eyes, and a slow drift."""
+class ThePetBlinksAndLooksAround(unittest.TestCase):
+    """A visible squash for the blink, and a sideways drift of the whole icon for the gaze.
 
-    @staticmethod
-    def _blink() -> str:
-        return VIEW.split("private func blink(times:", 1)[1].split("// MARK: - Looking around", 1)[0]
+    There are no drawn eyes any more: the shipped faces have their own (a cloud with two vertical
+    bars), and a second pair drawn over them read as a doubled T-shaped face with the horizontal
+    capsules crossing the vertical bars. Motion carries it instead.
+    """
 
     @staticmethod
     def _eyes() -> str:
-        """The `PetEyes` metrics, from their doc comment to the closing brace."""
         return VIEW.split("enum PetEyes {", 1)[1].split("\n}\n", 1)[0]
 
-    def test_a_blink_squashes_and_the_eyes_close_over_the_face(self):
-        self.assertIn("static let shut = PetBlink(squash: 0.80, lift: 0.02, lid: 1)", VIEW)
+    def test_the_blink_squashes_visibly(self):
+        self.assertIn("static let shut = PetBlink(squash: 0.74, lift: 0.02, lid: 1)", VIEW)
         squash = float(VIEW.split("static let shut = PetBlink(squash: ", 1)[1].split(",", 1)[0])
-        self.assertGreaterEqual(squash, 0.78,
-                                "0.90 read as nothing on a 96 pt icon; the body has to visibly "
-                                "compress")
-        self.assertLessEqual(squash, 0.82)
+        self.assertGreaterEqual(squash, 0.72, "with no drawn lids the squash is the whole blink")
+        self.assertLessEqual(squash, 0.78)
         self.assertIn(".scaleEffect(x: 1, y: lid.squash, anchor: .center)", VIEW)
-        self.assertNotIn(".rotationEffect(.degrees(lid", VIEW, "a blink is not a tilt")
 
-    def test_the_eyes_are_two_rounded_shapes_over_the_upper_middle_of_the_face(self):
+    def test_nothing_is_drawn_over_the_face(self):
+        # The owner's exact complaint, pinned: no overlay of eyelid capsules on top of the icon.
+        self.assertNotIn("private var eyelids", VIEW)
+        self.assertNotIn("private var eyelid:", VIEW)
+        self.assertNotIn(".overlay(alignment: .top) { eyelids }", VIEW)
+        self.assertNotIn("Capsule(style: .continuous)", VIEW,
+                         "the drawn pupils were capsules; none may come back")
+
+    def test_the_look_around_moves_the_icon(self):
+        self.assertIn(".offset(x: gaze * side * PetEyes.drift", VIEW)
         eyes = self._eyes()
-        # Two shapes, ~55 % of the icon's width together, at ~30 % of its height, dark at ~0.55.
-        self.assertIn("static let width: CGFloat = 0.26", eyes)
-        self.assertIn("static let gap: CGFloat = 0.04", eyes)
-        self.assertIn("static let openHeight: CGFloat = 0.08", eyes)
-        self.assertIn("static let shutHeight: CGFloat = 0.22", eyes)
-        self.assertIn("static let band: CGFloat = 0.32", eyes)
-        self.assertIn("static let resting: Double = 0.35", eyes)
-        self.assertIn("static let opacity: Double = 0.55", eyes)
-        combined = 2 * 0.26 + 0.04
-        self.assertTrue(0.5 <= combined <= 0.6, f"two eyes plus the gap are {combined:.2f} of the "
-                                                "width, not the owner's ~55 %")
-        eyes_view = VIEW.split("private var eyelids: some View {", 1)[1].split("// MARK: - Idle", 1)[0]
-        self.assertEqual(eyes_view.count("eyelid\n"), 2, "two shapes, one per eye")
-        self.assertIn(".padding(.top, side * PetEyes.band)", eyes_view,
-                      "the pair sits over the upper-middle of the face, not across it")
-        self.assertIn("Capsule(style: .continuous)", VIEW, "rounded, not rectangles")
-        self.assertIn(".allowsHitTesting(false)", eyes_view,
-                      "an overlay over the face is not allowed to eat the pet's click")
+        meeting = float(eyes.split("static let drift: CGFloat = ", 1)[1].split("\n", 1)[0])
+        self.assertGreaterEqual(meeting, 0.02, "a drift smaller than two points is invisible")
+        self.assertLessEqual(meeting, 0.06)
+        self.assertIn("static let driftCycle: ClosedRange<Double> = 2...5", eyes)
+        self.assertIn("static let driftDuration: Double = 0.7", eyes)
 
-    def test_the_pair_closes_into_a_lid_band_but_is_a_pupil_pair_when_open(self):
-        # The owner's drift has to be *visible*, so the pair cannot exist only during a blink: open
-        # it is two pupils, and `lid.lid` thickens and darkens them into the lid band.
-        lid = VIEW.split("private var eyelid: some View {", 1)[1].split("// MARK: - Idle", 1)[0]
-        self.assertIn("let closed = CGFloat(lid.lid)", lid)
-        self.assertIn("PetEyes.resting + (PetEyes.opacity - PetEyes.resting) * lid.lid", lid,
-                      "open the eyes are the resting shade, shut they reach the owner's 0.55")
-        self.assertIn("PetEyes.openHeight", lid)
-        self.assertIn("PetEyes.shutHeight", lid)
-        self.assertIn("(PetEyes.shutHeight - PetEyes.openHeight) * closed", lid,
-                      "one number closes both the thickness and the shade")
-        self.assertIn("var lid: Double = 0", VIEW, "open eyes: no lid at all")
-
-    def test_the_overlay_is_inside_the_squash(self):
-        body = VIEW.split("var body: some View {", 1)[1].split(".help(", 1)[0]
-        self.assertLess(body.index(".overlay(alignment: .top) { eyelids }"),
-                        body.index(".scaleEffect(x: 1, y: lid.squash, anchor: .center)"),
-                        "the eyes have to compress with the body, or the blink reads as shrinking")
-
-    def test_the_blink_is_one_hundred_and_forty_milliseconds(self):
-        self.assertIn("static let duration: Double = 0.14", VIEW)
-        blink = self._blink()
-        self.assertEqual(blink.count(".easeInOut(duration: PetBlink.duration)"), 2,
-                         "down and back, at the same speed")
-        self.assertIn("try? await Task.sleep(for: .seconds(PetBlink.duration))", blink)
-
-    def test_the_timer_is_three_to_nine_seconds_and_per_pet(self):
-        self.assertIn("Double.random(in: 3...9)", VIEW)
-        self.assertIn(".task(id: pet.isVisible) { await blinkLoop() }", VIEW,
-                      "the blink runs on the panel's visibility, like the idle loop")
-        loop = VIEW.split("private func blinkLoop()", 1)[1].split("private func blink(times:", 1)[0]
-        self.assertIn("pet.isVisible", loop, "an occluded pet must not keep a timer alive")
-        self.assertIn("Task.isCancelled", loop)
-
-    def test_the_eyes_drift_on_their_own_two_to_five_second_clock(self):
-        self.assertIn("static let driftCycle: ClosedRange<Double> = 2...5", VIEW)
-        self.assertIn("Double.random(in: PetEyes.driftCycle)", VIEW)
-        self.assertIn(".task(id: pet.isVisible) { await gazeLoop() }", VIEW,
-                      "the drift is per panel too: an occluded pet does not look around")
-        loop = VIEW.split("private func gazeLoop()", 1)[1].split("private func look(", 1)[0]
-        self.assertIn("pet.isVisible", loop)
-        self.assertIn("Task.isCancelled", loop)
-        self.assertIn("look(CGFloat.random(in: -1...1))", loop)
-        # A few points each way at 96 pt, not a slide across the face.
-        self.assertIn("static let drift: CGFloat = 0.035", self._eyes())
-        self.assertLessEqual(0.035 * 96, 4.0, "the pupils move a few points, not the whole eye")
-        self.assertIn(".offset(x: gaze * side * PetEyes.drift)", VIEW)
-        self.assertIn("withAnimation(.easeInOut(duration: PetEyes.driftDuration))", VIEW)
-
-    def test_reduce_motion_gentles_the_blink_and_stops_the_drift(self):
-        self.assertIn("static let gentle = PetBlink(squash: 0.94, lift: 0, lid: 0.55)", VIEW)
-        blink = self._blink()
-        self.assertIn("NSWorkspace.shared.accessibilityDisplayShouldReduceMotion", blink)
-        self.assertIn("let shut = reduceMotion ? PetBlink.gentle : PetBlink.shut", blink,
-                      "Reduce Motion keeps the blink, shallower and with the eyes half closed")
-        loop = VIEW.split("private func gazeLoop()", 1)[1].split("private func look(", 1)[0]
-        self.assertIn("guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { continue }",
-                      loop, "Reduce Motion stops the drift — a face looking around on its own is "
-                            "exactly what the setting asks to be spared")
-        self.assertNotIn("withAnimation", loop)
+    def test_the_drift_stops_under_reduce_motion(self):
+        look = VIEW.split("private func gazeLoop", 1)[1].split("// MARK: -", 1)[0]
+        self.assertIn("accessibilityDisplayShouldReduceMotion", look,
+                      "a face that drifts on its own is exactly what Reduce Motion asks not to get")
 
 
 class TheClickReactsBeforeTheBalloon(unittest.TestCase):

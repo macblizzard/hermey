@@ -112,7 +112,9 @@ class TheTransparentPartsAreNotClickable(unittest.TestCase):
 
 class TheIdleMotionIsCheapAndKinder(unittest.TestCase):
     def test_the_moves_are_transform_only(self):
-        for modifier in (".offset(motion.offset)", ".rotationEffect(", ".scaleEffect("):
+        # The gaze rides in the same offset as the move: `offset(x: gaze …, y: motion.offset.height)`.
+        for modifier in (".offset(x: gaze * side * PetEyes.drift, y: motion.offset.height)",
+                         ".rotationEffect(", ".scaleEffect("):
             self.assertIn(modifier, VIEW)
         self.assertIn("BotAvatarStill", VIEW,
                       "no second animation asset: the same face, moved")
