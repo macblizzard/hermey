@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import HermesAppKit
 import HermesKit
 import HermeyUI
@@ -51,6 +52,10 @@ final class DesktopPetController: ObservableObject {
     private var dragging: Set<String> = []
     private var cursorTimer: Timer?
     private var observers: [NSObjectProtocol] = []
+    /// The `AppModel.objectWillChange` subscription behind the unread badges, and the model it was
+    /// made for: a re-pair builds a fresh model, and a watch on the old one would go quiet.
+    private var unreadWatch: AnyCancellable?
+    private var watchedModel: ObjectIdentifier?
 
     private init() {}
 
@@ -61,6 +66,7 @@ final class DesktopPetController: ObservableObject {
         guard self.store !== store else { return }
         self.store = store
         installObservers()
+        watchUnread()
         sync()
     }
 
@@ -70,6 +76,9 @@ final class DesktopPetController: ObservableObject {
     /// on the host. It is the only place that decides whether a window should exist.
     func sync() {
         guard let store else { return }
+        // Cheap and identity-guarded: called on every roster change, and only re-subscribes when the
+        // store replaced its model (a re-pair).
+        watchUnread()
         let bots = store.model.bots
         let present = Set(bots.map(\.id))
         let disabled = store.model.disabledBots
@@ -92,6 +101,10 @@ final class DesktopPetController: ObservableObject {
         for bot in bots {
             pets[bot.id]?.updateFace(store.botFaces[bot.id]?.raw)
         }
+
+        // A pet that appears while its bot already has something waiting wears the badge at once,
+        // and takes the count as its baseline: no hop for a reply that predates the window.
+        refreshUnread()
     }
 
     /// The app is going away: close the windows without touching the switches, so the pets come back
@@ -104,6 +117,8 @@ final class DesktopPetController: ObservableObject {
         }
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
+        unreadWatch = nil
+        watchedModel = nil
         ClientLog.note("pets stopped for quit", category: "pets")
     }
 
@@ -185,6 +200,8 @@ final class DesktopPetController: ObservableObject {
         pets[bot.id] = instance
         observeOcclusion(botID: bot.id)
         startCursorWatch()
+        // Whatever is already waiting shows on the pet from its first frame.
+        refreshUnread()
         ClientLog.note("pet shown: \(bot.id) at \(origin.encoded)", category: "pets")
     }
 
@@ -273,6 +290,10 @@ final class DesktopPetController: ObservableObject {
 
     private func openBalloon(botID: String) {
         guard let pet = pets[botID] else { return }
+        // The bubble is the reading: the badge goes, and the app's own dot for this bot with it, on
+        // the same rule the conversation uses. Before the early return, so a second click that only
+        // re-presents the window still counts.
+        clearUnread(for: botID)
         if let existing = pet.balloon {
             existing.present()
             return
@@ -310,6 +331,73 @@ final class DesktopPetController: ObservableObject {
         pets[botID]?.balloon = nil
         window.close()
         ClientLog.note("pet \(botID): balloon closed", category: "pets")
+    }
+
+    // MARK: - Unread
+
+    /// Follow the model's own counters instead of inventing a notification system beside it.
+    ///
+    /// `AppModel` already owns "how many of this bot's turns are waiting" — the number the bot list
+    /// and the Dock tile show — and `markBotRead` is already how a bot stops being unread. The pet's
+    /// badge is that number, shown; a second counter here would be a second truth.
+    ///
+    /// `objectWillChange` is sent *before* the mutation lands, so the reading is deferred to the
+    /// main actor's next turn, when the new counts are in place. The debounce is for streaming: the
+    /// model publishes on every delta of an answer, and the badge only needs the count once the
+    /// burst has settled.
+    private func watchUnread() {
+        guard let store else { return }
+        let identity = ObjectIdentifier(store.model)
+        guard watchedModel != identity else { return }
+        watchedModel = identity
+        unreadWatch = store.model.objectWillChange
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in self?.refreshUnread() }
+            }
+        refreshUnread()
+    }
+
+    /// Give every pet the count its bot is owed, and hop the ones that gained one while the window
+    /// was away.
+    ///
+    /// The window's state is read once for the pass: it cannot change mid-loop, and asking per pet
+    /// would be the same answer N times.
+    private func refreshUnread() {
+        guard let store else { return }
+        let model = store.model
+        let away = PetWindowPresence.isAway()
+        for (botID, pet) in pets {
+            // A balloon already open on this bot is showing its newest exchange: the app's count can
+            // still grow behind it (the pet's own ask lands as a message too), and hopping at the
+            // answer it is displaying would be the pet telling him what he is reading.
+            let count = pet.balloon == nil ? Self.unreadCount(botID: botID, in: model) : 0
+            // The hit view draws nothing, but it has to know: the dot sits on a corner the ink may
+            // not cover, and a badge the window passes clicks through is not a target.
+            pet.hitView.hasBadge = count > 0
+            if pet.model.setUnread(count, hopWhenAway: away) {
+                ClientLog.note("pet \(botID): hopped — \(count) waiting with the window away",
+                               category: "pets")
+            }
+        }
+    }
+
+    /// What the badge shows. A bot marked unread without a count still has one turn waiting: the
+    /// app treats the two keys as one fact (`hasUnread`), and so does this.
+    private static func unreadCount(botID: String, in model: AppModel) -> Int {
+        let count = model.unreadCounts[botID] ?? 0
+        if count > 0 { return count }
+        return model.unreadBots.contains(botID) ? 1 : 0
+    }
+
+    /// The badge cleared from the pet's own side: through the app's rule, never a copy of it.
+    ///
+    /// Opening the balloon is reading that bot's newest reply, so the bot list's dot goes at the
+    /// same time as the pet's — one fact, cleared once.
+    private func clearUnread(for botID: String) {
+        store?.model.markBotRead(botID)
+        pets[botID]?.hitView.hasBadge = false
+        pets[botID]?.model.setUnread(0, hopWhenAway: false)
     }
 
     // MARK: - Screens
@@ -441,7 +529,8 @@ final class DesktopPetController: ObservableObject {
             let iconRect = pet.panel.frame.insetBy(dx: pet.hitView.iconInset,
                                                    dy: pet.hitView.iconInset)
             let local = CGPoint(x: mouse.x - iconRect.minX, y: iconRect.maxY - mouse.y)
-            let overIcon = iconRect.contains(mouse) && pet.hitView.iconMask?.hasInk(at: local) == true
+            // The same shape the view answers: the icon's ink and, when it is showing, its badge.
+            let overIcon = iconRect.contains(mouse) && pet.hitView.hasTarget(at: local)
             if pet.panel.ignoresMouseEvents == overIcon {
                 pet.panel.ignoresMouseEvents = !overIcon
             }

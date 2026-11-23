@@ -3297,6 +3297,16 @@ public final class AppModel: ObservableObject {
 
     public func hasUnread(_ botID: String) -> Bool { unreadBots.contains(botID) }
 
+    /// The pet's way in to the same rule: its balloon is showing the bot's newest reply, so the
+    /// badge goes.
+    ///
+    /// Deliberately a door onto `clearUnread` rather than a second implementation. The count, the
+    /// dot and the read mark have to move together, and they already do in there — a caller that
+    /// cleared the pet's badge by hand would leave the bot list showing one.
+    public func markBotRead(_ botID: String) {
+        clearUnread(botID)
+    }
+
     /// Everything waiting on this device, for the Dock tile and the app icon.
     ///
     /// One number covering bots and rooms: the user is looking at one badge, and a badge that

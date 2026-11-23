@@ -12,6 +12,7 @@ by XCTest in `Tests/HermesKitTests`.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -24,11 +25,15 @@ VIEW = (PETS / "PetView.swift").read_text(encoding="utf-8")
 BALLOON = (PETS / "PetBalloonView.swift").read_text(encoding="utf-8")
 SETTINGS = (PETS / "PetSettings.swift").read_text(encoding="utf-8")
 CONTROLLER = (PETS / "DesktopPetController.swift").read_text(encoding="utf-8")
+BADGE = (PETS / "PetBadge.swift").read_text(encoding="utf-8")
+PRESENCE = (PETS / "PetWindowPresence.swift").read_text(encoding="utf-8")
 
 SHEET = (ROOT / "Apps" / "HermesMac" / "Views" / "MacBotSettingsSheet.swift").read_text(encoding="utf-8")
 WORKSPACE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceRoot.swift").read_text(encoding="utf-8")
 
 KIT = ROOT / "Sources" / "HermesKit"
+PLACEMENT = (KIT / "PetPlacement.swift").read_text(encoding="utf-8")
+MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
 BOT_ASK = (KIT / "BotAsk.swift").read_text(encoding="utf-8")
 POINTER = (KIT / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
 GATEWAY = (KIT / "GatewayClient.swift").read_text(encoding="utf-8")
@@ -90,10 +95,16 @@ class TheTransparentPartsAreNotClickable(unittest.TestCase):
     def test_the_hit_is_declined_where_the_icon_has_no_ink(self):
         block = PANEL.split("override func hitTest", 1)[1].split("override func acceptsFirstMouse", 1)[0]
         self.assertIn("guard let iconMask", block)
-        self.assertIn("hasInk(at: iconPoint)", block)
+        # The rule itself lives in `hasTarget`, because the controller's window-server pass-through
+        # has to ask the same question: two answers would be two different pets.
+        self.assertIn("hasTarget(at: iconPoint)", block)
         self.assertIn("return nil", block)
         self.assertLess(block.index("return nil"), block.index("return super.hitTest"),
                         "the nil has to come before the delegation, or the view is always hit")
+        target = PANEL.split("func hasTarget(at iconPoint: CGPoint) -> Bool {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("iconMask.hasInk(at: iconPoint)", target,
+                      "the icon's own alpha is still the boundary against the desktop")
+        self.assertIn("return false", target, "no mask, no pet")
 
     def test_the_mask_is_the_drawn_shape_or_the_photos_alpha(self):
         self.assertIn("resolved.shape.path(inSide: side)", VIEW,
@@ -275,13 +286,197 @@ class WiredExactlyOnce(unittest.TestCase):
                       "Reduce Motion takes the hop away; it does not resize it")
 
 
+class AReplyWhileHeIsAwayHopsAndWaits(unittest.TestCase):
+    """Minimise the window, ask a bot something, and its pet hops and wears a dot.
+
+    The owner chose exactly this, and not an auto-popping balloon: the hop is the attention, the dot
+    is the fact, and the reply arrives when *he* clicks the pet. So the guards here are about
+    restraint as much as about behaviour — one source of truth for the count (`AppModel`), one hop
+    path (`play(.hop)`), one clearing rule (`markBotRead`), and nothing that opens itself.
+    """
+
+    @staticmethod
+    def _refresh() -> str:
+        """`refreshUnread`: the whole decision, from the model's counts to the pet's hop."""
+        return CONTROLLER.split("private func refreshUnread() {", 1)[1].split("private static func", 1)[0]
+
+    @staticmethod
+    def _unread_section() -> str:
+        return CONTROLLER.split("// MARK: - Unread", 1)[1].split("// MARK: - Screens", 1)[0]
+
+    def test_the_badge_reads_the_apps_own_counters(self):
+        refresh = self._refresh()
+        self.assertIn("let model = store.model", refresh)
+        self.assertIn("Self.unreadCount(botID: botID, in: model)", refresh,
+                      "the pet's badge is the model's number, read where it is decided")
+        unread = CONTROLLER.split("private static func unreadCount", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("model.unreadCounts[botID] ?? 0", unread)
+        self.assertIn("model.unreadBots.contains(botID) ? 1 : 0", unread,
+                      "a bot marked unread without a count still has one turn waiting")
+        # One subscription, on the model's own publisher — no second notification system.
+        self.assertIn("store.model.objectWillChange", CONTROLLER)
+        self.assertEqual(1, CONTROLLER.count(".sink {"), "one watch, not one per pet")
+        self.assertNotIn("private var unread: Int", CONTROLLER,
+                         "the controller must not keep a count of its own")
+
+    def test_the_badge_is_the_models_number_shown(self):
+        self.assertIn("@Published private(set) var unread = 0", VIEW)
+        self.assertIn("PetUnreadBadge(count: pet.unread)", VIEW)
+        self.assertIn("if pet.unread > 0 {", VIEW, "zero draws nothing at all")
+        # The dot: accent fill, a white hairline, the count only above one.
+        self.assertIn("Circle().fill(Tokens.accent)", BADGE)
+        self.assertIn("Circle().strokeBorder(Color.white.opacity(0.92), lineWidth: 1)", BADGE,
+                      "the hairline is what keeps the accent readable on a light wallpaper")
+        self.assertIn("if count > 1 {", BADGE, "one waiting turn is a dot, not a '1'")
+        self.assertNotIn("Tokens.text", BADGE, "the text is pinned white, not a theme ink")
+
+    @staticmethod
+    def _constant(pattern: str, text: str) -> float:
+        """The number in a `static let … = <n>` line, from whichever file declares it."""
+        match = re.search(pattern, text)
+        assert match is not None, f"no constant matching {pattern!r}"
+        return float(match.group(1))
+
+    def test_the_badge_fits_inside_the_icons_own_box(self):
+        icon = self._constant(r"static let iconSide: Double = ([\d.]+)", PLACEMENT)
+        side = self._constant(r"static let side: CGFloat = ([\d.]+)", BADGE)
+        inset = self._constant(r"static let inset: CGFloat = ([\d.]+)", BADGE)
+        self.assertGreaterEqual(icon - side - inset, 0,
+                                "the dot has to sit inside the icon's square, or the window grows")
+        self.assertLessEqual(side, icon / 4, "a badge on a pet, not a second face")
+        self.assertGreaterEqual(inset, 1, "a dot flush against the corner reads as a crop")
+        self.assertIn("CGRect(x: iconSide - side - inset, y: inset, width: side, height: side)",
+                      BADGE)
+
+    def test_the_badge_is_part_of_the_pet_you_can_click(self):
+        target = PANEL.split("func hasTarget(at iconPoint: CGPoint) -> Bool {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("if hasBadge, PetBadge.contains(iconPoint, iconSide: iconMask.side)",
+                      target, "the dot sits on a corner the icon's own ink often leaves empty")
+        self.assertIn("iconMask.hasInk(at: iconPoint)", target)
+        self.assertIn("var hasBadge = false", PANEL)
+        self.assertIn("pet.hitView.hasBadge = count > 0", CONTROLLER,
+                      "the hit view has to be told, or the dot is drawn but passes clicks through")
+        self.assertIn("pet.hitView.hasTarget(at: local)", CONTROLLER,
+                      "the window-server pass-through asks the same shape the view answers")
+        self.assertNotIn("iconMask?.hasInk(at: local)", CONTROLLER,
+                         "a second, ink-only answer there would make the dot click-through")
+
+    def test_a_dot_is_hit_as_a_circle_not_as_its_box(self):
+        contains = BADGE.split("static func contains(", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("dx * dx + dy * dy <= radius * radius", contains,
+                      "the corners of an 18 pt square over a blob are not pet")
+        self.assertIn("let radius = side / 2", contains)
+
+    def test_the_hop_needs_a_window_he_cannot_see(self):
+        refresh = self._refresh()
+        self.assertIn("let away = PetWindowPresence.isAway()", refresh)
+        self.assertIn("setUnread(count, hopWhenAway: away)", refresh,
+                      "the count and the window's state travel together; one cannot apply without "
+                      "the other")
+        self.assertIn("if NSApp.isHidden { return true }", PRESENCE, "⌘H is hidden, not minimised")
+        self.assertIn("return !workspace.contains { !$0.isMiniaturized && $0.isVisible }", PRESENCE,
+                      "a minimised window stops being visible, and is asked both ways anyway")
+        self.assertIn("$0.canBecomeMain && !($0 is NSPanel)", PRESENCE,
+                      "a pet panel can never be mistaken for the window it reports on")
+        self.assertIn("guard !workspace.isEmpty else { return true }", PRESENCE)
+
+    def test_no_hop_when_he_is_looking(self):
+        # The gate is on the model, not the view: a visible window means no `notices` bump at all.
+        setter = VIEW.split("func setUnread(_ count: Int, hopWhenAway: Bool) -> Bool {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("let grew = count > unread", setter, "a stale republish is not a new reply")
+        self.assertIn("guard grew, hopWhenAway else { return false }", setter)
+        self.assertLess(setter.index("guard grew, hopWhenAway"),
+                        setter.index("notices += 1"),
+                        "nothing hops before both facts are true")
+
+    def test_the_hop_is_the_pets_existing_hop(self):
+        self.assertIn("@Published private(set) var notices = 0", VIEW)
+        hop = VIEW.split(".onChange(of: pet.notices)", 1)[1].split(".onChange(of: pet.taps)", 1)[0]
+        self.assertIn("Task { await play(.hop) }", hop,
+                      "the same move an answer gets; a second animation would be a second pet")
+        self.assertIn("accessibilityDisplayShouldReduceMotion else { return }", hop,
+                      "Reduce Motion takes the hop away, as it does for an answer")
+        self.assertNotIn("withAnimation", hop, "the hop's curve belongs to `play`")
+        self.assertIn('ClientLog.note("pet \\(botID): hopped', CONTROLLER)
+        self.assertIn("count) waiting with the window away", CONTROLLER,
+                      "the log says why it hopped")
+
+    def test_the_balloon_opening_clears_the_badge(self):
+        open_balloon = CONTROLLER.split("private func openBalloon(botID: String) {", 1)[1]
+        self.assertIn("clearUnread(for: botID)", open_balloon)
+        self.assertLess(open_balloon.index("clearUnread(for: botID)"),
+                        open_balloon.index("if let existing = pet.balloon"),
+                        "the clear must come before the re-present early return")
+        clear = CONTROLLER.split("private func clearUnread(for botID: String) {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("store?.model.markBotRead(botID)", clear,
+                      "the app's rule, not a copy of it")
+        self.assertIn("pets[botID]?.hitView.hasBadge = false", clear)
+        self.assertIn("setUnread(0, hopWhenAway: false)", clear,
+                      "clearing is never a hop")
+
+    def test_the_app_clears_through_one_door(self):
+        door = MODEL.split("public func markBotRead(_ botID: String) {", 1)[1].split("\n    }", 1)[0]
+        self.assertEqual("clearUnread(botID)", door.strip(),
+                         "the smallest possible door onto the rule that already exists")
+        self.assertIn("private func clearUnread(_ botID: String)", MODEL,
+                      "which stays private: the pet is not a second owner of the badge")
+
+    def test_the_apps_own_clear_reaches_the_pet(self):
+        # The badge is a projection: the publish that clears the bot list's dot is the one that
+        # takes the pet's away, with nothing to go stale in between.
+        self.assertIn("store.model.objectWillChange", CONTROLLER)
+        self.assertIn(".debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)", CONTROLLER,
+                      "an answer streams a delta at a time; the count is read once it settles")
+        self.assertIn("Task { @MainActor in self?.refreshUnread() }", CONTROLLER,
+                      "objectWillChange is sent before the mutation, so the read waits a turn")
+        self.assertIn("guard watchedModel != identity else { return }", CONTROLLER,
+                      "a re-pair replaces the model, and a stale watch would go quiet")
+        self.assertIn("unreadWatch = nil", CONTROLLER, "and quitting drops it")
+
+    def test_an_open_balloon_is_not_announced_to_itself(self):
+        refresh = self._refresh()
+        self.assertIn("let count = pet.balloon == nil ? Self.unreadCount(botID: botID, in: model) : 0",
+                      refresh,
+                      "the bubble he is reading is not a reply he needs telling about — the pet's "
+                      "own ask lands as a message in the app's own count")
+
+    def test_the_balloon_never_opens_itself(self):
+        self.assertEqual(1, CONTROLLER.count("openBalloon(botID: botID)"),
+                         "one call site: the click")
+        click = CONTROLLER.split("private func clicked(botID: String) {", 1)[1].split("private func", 1)[0]
+        self.assertIn("openBalloon(botID: botID)", click)
+        unread = self._unread_section()
+        self.assertNotIn("openBalloon", unread, "the unread path never presents a window")
+        self.assertNotIn("present()", unread)
+        self.assertNotIn("pet.model.tap()", unread, "nor fakes a click to get one")
+
+    def test_nothing_else_notifies(self):
+        # The app already has banners, sound and the Dock tile, and this adds none of them.
+        for text, name in ((CONTROLLER, "the controller"), (VIEW, "the view"),
+                           (BADGE, "the badge"), (PRESENCE, "the presence check")):
+            for banned in ("NSSound", "UNUserNotificationCenter", "ReplyNotifier",
+                           "dockTile", "updateBadge", "requestUserAttention",
+                           "NSApplication.requestUserAttention", "appearance = "):
+                self.assertNotIn(banned, text, f"{name} reached for {banned}")
+
+    def test_the_badge_rides_the_icon_and_never_resizes_the_window(self):
+        overlay = VIEW.split(".overlay(alignment: .topTrailing)", 1)[1].split(".brightness(", 1)[0]
+        self.assertIn("PetUnreadBadge(count: pet.unread)", overlay)
+        self.assertIn(".allowsHitTesting(false)", BADGE,
+                      "the pet's menu and its click come from the panel and the base view")
+        # Drawn before the transforms, so the hop carries the dot with it.
+        body = VIEW.split("var body: some View {", 1)[1]
+        self.assertLess(body.index(".overlay(alignment: .topTrailing)"), body.index(".scaleEffect(motion.scale)"),
+                        "an overlay applied after the move would stay put while the pet hops")
+
+
 class NothingElseWasTouched(unittest.TestCase):
     """macOS only: no iOS app, no host, no cards."""
 
     def test_new_files_are_all_in_the_mac_target(self):
         for name in ("DesktopPetPanel.swift", "PetView.swift", "PetBalloonView.swift",
                      "PetSettings.swift", "DesktopPetController.swift",
-                     "PetCalloutPlacement.swift"):
+                     "PetCalloutPlacement.swift", "PetBadge.swift", "PetWindowPresence.swift"):
             path = PETS / name
             self.assertTrue(path.is_file(), f"{name} is missing")
             self.assertEqual(PETS, path.parent)

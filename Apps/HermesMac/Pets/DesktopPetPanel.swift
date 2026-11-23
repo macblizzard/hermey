@@ -129,6 +129,12 @@ final class PetHitTestView: NSView {
     var iconMask: PetIconMask?
     /// The clear ring around the icon inside this view, where the idle motion has room to move.
     var iconInset: CGFloat = 0
+    /// Whether the pet is wearing its unread badge. Kept in step by the controller, which is the one
+    /// that reads the count — the same way `iconMask` is kept in step when the face changes.
+    ///
+    /// It exists because the badge is drawn on a corner of the icon's box that a blob's alpha often
+    /// leaves empty: without this, the dot would be visible and clickable-through at once.
+    var hasBadge = false
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         // `point` arrives in the superview's space; the mask is in the icon's own top-left space,
@@ -138,8 +144,19 @@ final class PetHitTestView: NSView {
         guard iconRect.contains(local) else { return nil }
         guard let iconMask else { return nil }
         let iconPoint = CGPoint(x: local.x - iconRect.minX, y: iconRect.maxY - local.y)
-        guard iconMask.hasInk(at: iconPoint) else { return nil }
+        guard hasTarget(at: iconPoint) else { return nil }
         return super.hitTest(point)
+    }
+
+    /// Where the pet answers a click: the icon's own ink, plus the badge when it is showing one.
+    ///
+    /// One rule, two callers — this view's `hitTest`, and the controller's cursor watch that makes
+    /// the window itself stop ignoring mouse events here. If they disagreed, the pet would take the
+    /// click in a view that never sees it.
+    func hasTarget(at iconPoint: CGPoint) -> Bool {
+        guard let iconMask else { return false }
+        if hasBadge, PetBadge.contains(iconPoint, iconSide: iconMask.side) { return true }
+        return iconMask.hasInk(at: iconPoint)
     }
 
     /// A pet takes the first click too: clicking a desktop icon should open it, not wake the app.
