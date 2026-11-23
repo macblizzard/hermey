@@ -1155,3 +1155,12 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - Two compile-time faults the app build caught before release: the reaction table was cleared with an array
   literal where Swift needs a dictionary one, and the reaction key took the row id at the wrong width.
+
+## [0.1.636] — 2026-11-23
+
+### Changed
+- **Updates no longer interrupt you at launch.** The app still checks once when it opens, but it no longer
+  puts a dialog in front of you when it finds something. Instead a small ↓ button appears on the bot list's
+  bottom bar, just left of search: press it and the normal download-and-install window opens. Skip an update
+  and the button stays away until the next launch.
+- Settings ▸ About ▸ Check for Updates… works exactly as before, and nothing installs without a press.
