@@ -1079,3 +1079,21 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **Pets float.** The icon casts its own soft shadow inside the transparent window.
 - **Pets blink.** A quick squash of the body on a random 3–9 second timer, and clicking a pet adds a hop
   and a double blink as the balloon opens. Reduce Motion keeps the hop off and gentles the rest.
+
+## [0.1.630] — 2026-11-23
+
+### Changed
+- **The balloon is glass now.** It was an opaque near-white sheet; it is a frosted callout — a material with
+  white at 0.38 and a thin inner rim — so a dark wallpaper tints it grey-blue and a bright one cream, while
+  the ink stays readable.
+- **A real callout shape.** Corners are 26 pt and the tail is a curved 26×13 shape with a rounded tip instead
+  of a straight triangle, still pointing at the pet wherever the bubble ends up.
+
+### Fixed
+- **The answer is visible again.** It was being drawn into zero height — the reply arrived, Copy could hand
+  it over, but nothing appeared in the bubble: a `ScrollView` measures as nothing inside a panel sized to fit
+  its content. It is a self-sizing text now.
+
+### Added
+- **Long answers grow, then scroll.** The bubble expands with the reply up to 240 pt and scrolls past that,
+  so a two-line answer makes a small bubble and a long one stays readable instead of stretching off the screen.
