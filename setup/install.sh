@@ -202,10 +202,15 @@ detect_engine_home() {
     if [ -z "$ENGINE_HOME" ]; then
         if [ -n "${HERMES_HOME:-}" ]; then
             ENGINE_HOME=$HERMES_HOME
-        elif [ -d "$STATE/engine" ]; then
-            ENGINE_HOME=$STATE/engine
-        elif [ -d "$SVC_HOME/.hermes" ]; then
+        elif [ -d "$SVC_HOME/.hermes/profiles" ]; then
+            # The Hermes install this host actually uses. Checked *before* the bundled-engine
+            # layout on purpose: preferring $STATE/engine is how a host with an old bundled
+            # directory ends up serving bots from a second, empty fleet.
             ENGINE_HOME=$SVC_HOME/.hermes
+        elif [ -d "$STATE/engine/profiles" ]; then
+            # Legacy bundled layout (engine shipped inside hermeyd's own state). Only chosen
+            # when it is a real engine home — a directory without profiles/ is not one.
+            ENGINE_HOME=$STATE/engine
         else
             fail "cannot find the Hermes engine home on this host" \
                 "it is the directory that contains profiles/ — the one Hermes itself uses." \
