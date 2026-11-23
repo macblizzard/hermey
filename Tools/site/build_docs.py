@@ -912,6 +912,12 @@ PAGES.append(markdown_page(
     lede="Connect your own Google account so a bot can act in it — mail, calendar, files, maps.",
     source="INTEGRATIONS.md"))
 
+# The pager must read in the sidebar's order, not the order these sections happened to be written in:
+# `.append` above mixes groups, so Reference used to be followed by "Next: Importing bots". Sorting by
+# NAV_GROUPS (stable, so each group keeps its authored order) makes Reference last, and the final page
+# has no Next at all.
+PAGES.sort(key=lambda page: NAV_GROUPS.index(page["group"]))
+
 
 def sections(body: str) -> list[tuple[str, str, str]]:
     """(id, heading, that section's own text) — one entry per h2.
