@@ -157,6 +157,33 @@ final class WorkspaceStore: ObservableObject {
     /// which is why the palette row disables itself rather than lying.
     var checkForUpdates: (() -> Void)?
 
+    /// The version Sparkle last said is waiting, or nil. Set by the app's updater delegate
+    /// (`UpdateReminder`) and read by the bot panel's floor bar, which is where an available update
+    /// is announced now: the launch check no longer opens a window of its own. A plain string, so
+    /// the store still knows nothing about Sparkle beyond this one word.
+    @Published private(set) var updateAvailable: String?
+
+    /// True from the floor bar's press until Sparkle takes the update over, so the glyph cannot be
+    /// pressed a second time while the user-initiated check is on its way to the install window.
+    @Published private(set) var isInstallingUpdate = false
+
+    /// What the updater's delegate says is (or is no longer) waiting. Nil retires the glyph and
+    /// releases the press latch — the same call covers "downloaded", "cancelled" and "gone".
+    func offerUpdate(_ version: String?) {
+        updateAvailable = version
+        if version == nil { isInstallingUpdate = false }
+    }
+
+    /// The floor bar's press: the *user-initiated* check, which is the same closure the menu bar,
+    /// the palette and Settings → About run — so Sparkle draws its own download-and-install UI and
+    /// nothing is installed without this press. The latch is set first so a double press cannot
+    /// start a second check.
+    func installAvailableUpdate() {
+        guard updateAvailable != nil, !isInstallingUpdate, let check = checkForUpdates else { return }
+        isInstallingUpdate = true
+        check()
+    }
+
     /// Open one of them, closing any other: the window's one modal is shared.
     func openWorkspace(_ bot: Bot) { closePanels(); workspaceBot = bot }
     func openSkills(_ bot: Bot) { closePanels(); skillsBot = bot }

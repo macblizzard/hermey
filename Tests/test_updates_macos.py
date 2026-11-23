@@ -133,14 +133,15 @@ class TheAppOwnsTheUpdater(unittest.TestCase):
         # Held by the `App`, not by a view: a controller that is re-created when a view is rebuilt
         # forgets its schedule, and the daily check silently stops.
         head = APP.split("var body: some Scene", 1)[0]
-        self.assertIn("private let updater = SPUStandardUpdaterController", head)
+        self.assertIn("private let updater: SPUStandardUpdaterController", head)
         self.assertIn("struct HermesMacApp: App {", head)
 
     def test_the_import_and_the_use_are_both_guarded(self) -> None:
         # A tree built without the package must still compile: the guard is what keeps `xcodegen`
         # output buildable when the dependency cannot be resolved.
         self.assertIn("#if canImport(Sparkle)\nimport Sparkle\n#endif", APP)
-        self.assertIn("#if canImport(Sparkle)\n    private let updater = SPUStandardUpdaterController", APP)
+        guarded = APP.split("    #if canImport(Sparkle)\n", 1)[1].split("    #endif", 1)[0]
+        self.assertIn("private let updater: SPUStandardUpdaterController", guarded)
 
     def test_one_action_is_shared_by_the_menu_and_settings(self) -> None:
         self.assertIn("private var checkForUpdates: () -> Void {", APP)
