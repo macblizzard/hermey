@@ -168,6 +168,26 @@ enum GatewayEventDecoder {
         case "session.info", "session.title", "session.reclaimed", "session.control.update":
             return [.sessionUpdated(session)]
 
+        case "reaction.updated":
+            // A host-originated event, not the engine's: `reactions.rs` broadcasts it when any
+            // device sets or clears an emoji. `payload.session` names the conversation because the
+            // frame is also read by sockets attached to another one; a frame without a placeable
+            // message is dropped rather than applied to whatever is open.
+            guard let message = payload["message"]?.stringValue,
+                  ReactionKey.isValidMessage(message) else { return [] }
+            let bot = payload["bot"]?.stringValue ?? ""
+            // The conversation the frame is about. Empty or absent means "the one this socket is
+            // attached to", which is what `attributedSession` already decided.
+            let target = payload["session"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? session
+            // `null` for a removal, a string for a set; either way `stringValue` is nil when it is
+            // not a string, which is the removal case.
+            let emoji = payload["emoji"]?.stringValue
+            return [.reactionUpdated(bot: bot,
+                                     session: target,
+                                     message: message,
+                                     emoji: emoji,
+                                     by: payload["by"]?.stringValue ?? "")]
+
         case "error":
             return [.error(code: payload["code"]?.intValue.map { Int($0) },
                            message: payload["message"]?.stringValue ?? "unknown gateway error")]

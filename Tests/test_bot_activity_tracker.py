@@ -133,8 +133,10 @@ class TheTransitions(unittest.TestCase):
             self.assertIn(case, block, case)
         # A heartbeat with no text must not make the face think.
         self.assertIn("if !text.isEmpty { thinking(botID: botID) }", block)
-        # A transport event is not a bot's event.
-        self.assertIn("case .ready, .state, .contextUsage, .sessionUpdated, .error, .unknown:", block)
+        # A transport event is not a bot's event — and neither is a reaction: an emoji another
+        # device set says nothing about whether this bot is working.
+        self.assertIn("case .ready, .state, .contextUsage, .sessionUpdated,", block)
+        self.assertIn(".reactionUpdated, .error, .unknown:", block)
 
     def test_every_transition_has_a_test(self) -> None:
         # The behavioural half lives in Swift. These names are the contract this file describes.

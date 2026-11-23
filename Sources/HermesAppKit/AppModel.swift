@@ -537,14 +537,48 @@ public final class AppModel: ObservableObject {
     /// publishing, so a slow answer for the bot we left cannot overwrite the bot we are on.
     private var botEpoch = 0
 
+    // MARK: Reactions
+
+    /// The open conversation's reactions, keyed by ``ReactionKey/storageKey``.
+    ///
+    /// The host owns these now, so a reaction set on the Mac appears on the phone (`reaction.updated`
+    /// on the socket) instead of living in one device's `@AppStorage` under a menu that offered to
+    /// remove a "**local** reaction". Only the conversation on screen is held: one map, replaced
+    /// when the bot or the session changes.
+    @Published public private(set) var reactions: [String: String] = [:]
+    /// The device's own document, kept for the one job it still has — the unpaired app.
+    private let reactionLocal: ReactionLocalStore
+    /// The read that fills `reactions`, cancelled when the conversation moves.
+    private var reactionsTask: Task<Void, Never>?
+    /// Conversations whose local reactions have already been handed to the host. One import, then
+    /// the host is the truth: re-sending one every open would resurrect a reaction the other device
+    /// has since removed.
+    private var reactionsImported: Set<String> = []
+    /// The name this device gives itself on a reaction, so the other device can say whose it is.
+    public var deviceName: String = ProcessInfo.processInfo.hostName
+
+    /// The `@AppStorage` key each app already wrote, so an upgrade finds the reactions a device had
+    /// instead of losing them. `mac.messageReactions.v1` / `mobile.messageReactions.v1`.
+    public static var defaultReactionLocalKey: String {
+        #if os(macOS)
+        return "mac.messageReactions.v1"
+        #else
+        return "mobile.messageReactions.v1"
+        #endif
+    }
+
     /// - Parameter cache: the device cache, injectable so a preview or a test can point it at a
     ///   throwaway directory instead of this machine's Application Support.
+    /// - Parameter localReactions: the device-local reaction document, injectable so a test never
+    ///   writes this machine's `UserDefaults`. The default is the key each app already used.
     public init(client: GatewayClientProtocol,
                 hostName: String = "hermes",
-                cache: HermesCacheStore? = nil) {
+                cache: HermesCacheStore? = nil,
+                localReactions: ReactionLocalStore? = nil) {
         self.client = client
         self.hostName = hostName
         self.diskCache = cache ?? HermesCacheStore(host: hostName)
+        self.reactionLocal = localReactions ?? ReactionLocalStore(key: Self.defaultReactionLocalKey)
         // A default only applies to a key nobody wrote: `defaults.bool(forKey:)` answers `false`
         // for an unset key, which would ship reasoning and tool output hidden on first launch.
         let defaults = Self.defaults
@@ -1448,6 +1482,10 @@ public final class AppModel: ObservableObject {
         compactionNotice = nil
         sending = false
         lastSendError = nil
+        // A badge belongs to the conversation it was put on: the previous bot's must not survive
+        // the switch even for the frame it takes to load the new one.
+        reactionsTask?.cancel()
+        reactions = []
     }
 
     /// The host's own timestamp for the newest message it holds for a bot.
@@ -1648,7 +1686,7 @@ public final class AppModel: ObservableObject {
              .toolStart, .toolProgress, .toolComplete:
             return true
         case .ready, .state, .request, .requestCancelled, .contextUsage, .sessionUpdated,
-             .error, .unknown:
+             .reactionUpdated, .error, .unknown:
             return false
         }
     }
@@ -1666,7 +1704,7 @@ public final class AppModel: ObservableObject {
              .contextUsage(let session, _, _, _),
              .sessionUpdated(let session):
             return session
-        case .ready, .state, .request, .requestCancelled, .error, .unknown:
+        case .ready, .state, .request, .requestCancelled, .reactionUpdated, .error, .unknown:
             return nil
         }
     }
@@ -1760,6 +1798,9 @@ public final class AppModel: ObservableObject {
     public func select(_ id: SessionID) async {
         selectedSessionID = id
         noteSessionOwner(id)
+        // Reactions belong to the conversation, not to the pane: read them for the one being
+        // opened, off the transcript's critical path.
+        refreshReactions()
         // Paint what this process already knows before touching the network: a long chat costs the
         // host ~4 s to resume, and an empty pane for those seconds reads as "the app is broken".
         if let cached = recentTranscripts[id] {
@@ -3531,6 +3572,162 @@ public final class AppModel: ObservableObject {
         try await client.card(id: id, session: session, message: message)
     }
 
+    // MARK: Reactions
+
+    /// Whether the host is the source of truth for reactions on this connection.
+    ///
+    /// An unpaired app has no host to agree with, so it keeps them on the device — exactly the
+    /// behaviour it had before they were synced. Everything else asks the host.
+    public var reactionsAreHostBacked: Bool { client.bridgeAvailable }
+
+    /// The emoji on one message, in the conversation on screen.
+    ///
+    /// One map serves both cases: the host's answer when paired, the device's own document when
+    /// not. The views never touch `@AppStorage` — one place decides, so a reaction can no longer be
+    /// "local" on one device and invisible on the other.
+    public func reaction(for key: ReactionKey) -> String? {
+        reactions[key.storageKey]
+    }
+
+    /// Set one reaction, or clear it with `nil` (the toggle is the caller's, as it always was).
+    ///
+    /// Paired, the host is the truth: the badge moves now and is put back if the write fails, so a
+    /// reaction never looks saved when the other device will never see it. Unpaired, it is the
+    /// device's own document and no network is touched — the offline behaviour, unchanged.
+    public func setReaction(_ emoji: String?, for key: ReactionKey) async {
+        guard ReactionKey.isValidMessage(key.message) else { return }
+        guard client.bridgeAvailable else {
+            reactionLocal.set(emoji, for: key.storageKey)
+            apply(emoji, to: key.storageKey)
+            return
+        }
+        let previous = reactions[key.storageKey]
+        apply(emoji, to: key.storageKey)
+        do {
+            try await client.setReaction(bot: key.bot, session: key.session,
+                                         message: key.message, emoji: emoji, by: deviceName)
+        } catch {
+            // Revert: a badge the host does not have is a lie the other device will contradict at
+            // the next open.
+            apply(previous, to: key.storageKey)
+            lastSendError = "could not save the reaction: \(error.localizedDescription)"
+            ClientLog.note("reaction write failed for \(key.message): \(error.localizedDescription)",
+                           level: .warning, category: "reactions")
+        }
+    }
+
+    /// Fill `reactions` for whatever conversation is on screen.
+    ///
+    /// Called on every session open and bot switch. The transcript does not wait for it: this is a
+    /// separate read with its own timeout, and a badge arriving a moment late is better than a pane
+    /// held shut by an HTTP round trip.
+    private func refreshReactions() {
+        reactionsTask?.cancel()
+        guard let bot = selectedBotID, let session = selectedSessionID else {
+            reactions = [:]
+            return
+        }
+        guard client.bridgeAvailable else {
+            // Unpaired: the device's own document, which is all there is.
+            reactions = localReactions(bot: bot, session: session)
+            return
+        }
+        let epoch = botEpoch
+        reactionsTask = Task { [weak self] in
+            await self?.loadReactions(bot: bot, session: session, epoch: epoch)
+        }
+    }
+
+    private func loadReactions(bot: String, session: SessionID, epoch: Int) async {
+        await importLocalReactions(bot: bot, session: session, epoch: epoch)
+        do {
+            let rows = try await client.reactions(bot: bot, session: session)
+            guard epoch == botEpoch, selectedSessionID == session, selectedBotID == bot else { return }
+            var next: [String: String] = [:]
+            for (message, reaction) in rows {
+                let key = ReactionKey(host: hostName, bot: bot, session: session, message: message)
+                next[key.storageKey] = reaction.emoji
+            }
+            reactions = next
+        } catch is CancellationError {
+            return
+        } catch ReactionSyncError.noBridge {
+            // The route is not there (an older host): this device keeps its own copy, and the
+            // behaviour is what it was before reactions were synced.
+            guard epoch == botEpoch, selectedSessionID == session else { return }
+            reactions = localReactions(bot: bot, session: session)
+        } catch {
+            guard epoch == botEpoch, selectedSessionID == session else { return }
+            // The host could not answer. Draw what this device already had rather than nothing —
+            // and do not treat it as an error the reader has to dismiss.
+            reactions = localReactions(bot: bot, session: session)
+            ClientLog.note("reactions unavailable for \(session): \(error.localizedDescription)",
+                           level: .info, category: "reactions")
+        }
+    }
+
+    /// Hand the device's reactions for one conversation to the host, once.
+    ///
+    /// This is what stops an upgrade from losing them: a reaction set while unpaired (or before the
+    /// host owned them) is still in the local document, and the first paired open pushes it up. The
+    /// conversation is then marked imported and never pushed again — the host is the truth, and a
+    /// re-send would resurrect a reaction the other device has since cleared.
+    private func importLocalReactions(bot: String, session: SessionID, epoch: Int) async {
+        let conversation = "\(bot)\u{0}\(session)"
+        guard !reactionsImported.contains(conversation) else { return }
+        var pending: [(key: ReactionKey, emoji: String)] = []
+        for (storageKey, emoji) in reactionLocal.all() {
+            guard let key = ReactionKey.parse(storageKey),
+                  key.host == hostName, key.bot == bot, key.session == session,
+                  ReactionKey.isValidMessage(key.message) else { continue }
+            pending.append((key: key, emoji: emoji))
+        }
+        guard !pending.isEmpty else {
+            reactionsImported.insert(conversation)
+            return
+        }
+        // Show them at once: a badge this device set is the reader's, and it must not blink while
+        // the host is told.
+        for (key, emoji) in pending where reactions[key.storageKey] == nil {
+            reactions[key.storageKey] = emoji
+        }
+        var allLanded = true
+        for (key, emoji) in pending {
+            if epoch != botEpoch { return }
+            do {
+                try await client.setReaction(bot: key.bot, session: key.session,
+                                             message: key.message, emoji: emoji, by: deviceName)
+            } catch {
+                // Offline, or the host refused one: try the whole set again on the next open
+                // rather than marking the conversation imported and losing it.
+                allLanded = false
+            }
+        }
+        if allLanded {
+            reactionsImported.insert(conversation)
+        }
+    }
+
+    /// The device's own reactions for one conversation, keyed by storage key.
+    private func localReactions(bot: String, session: SessionID) -> [String: String] {
+        var out: [String: String] = [:]
+        for (storageKey, emoji) in reactionLocal.all() {
+            guard let key = ReactionKey.parse(storageKey),
+                  key.bot == bot, key.session == session else { continue }
+            out[storageKey] = emoji
+        }
+        return out
+    }
+
+    /// Put one emoji in the in-memory map (or take it out).
+    private func apply(_ emoji: String?, to storageKey: String) {
+        if let emoji, !emoji.isEmpty {
+            reactions[storageKey] = emoji
+        } else {
+            reactions.removeValue(forKey: storageKey)
+        }
+    }
+
     /// The Integrations screen's data (docs/INTEGRATIONS.md).
     public func integrations() async throws -> IntegrationsState {
         try await client.integrations()
@@ -4435,6 +4632,10 @@ public final class AppModel: ObservableObject {
             if let sid = selectedSessionID {
                 await reconcile(afterReconnect: sid)
             }
+            // A reaction set on the other device while this socket was down is not in the map, and
+            // the host is the authority: one read on every `ready` is cheap and makes the badge the
+            // same on both devices after a reconnect.
+            refreshReactions()
         case .state(let state):
             switch state {
             case .open: connection = .connected
@@ -4602,6 +4803,15 @@ public final class AppModel: ObservableObject {
             // reloaded by `resumeSession`, and re-listing every session here turned one host
             // notification into a `session.list` storm.
             break
+        case .reactionUpdated(let bot, let session, let message, let emoji, _):
+            // The other device reacted. Applied only to the conversation on screen and only for the
+            // bot it names: `reactions` holds one conversation, and a frame for another one must
+            // not decorate this transcript. A removal arrives as `emoji == nil`.
+            guard bot.isEmpty || bot == selectedBotID,
+                  session == selectedSessionID,
+                  let botID = selectedBotID else { return }
+            let key = ReactionKey(host: hostName, bot: botID, session: session, message: message)
+            apply(emoji, to: key.storageKey)
         case .error(_, let message):
             lastSendError = message
             ClientLog.note("host reported an error: \(message)", level: .error, category: "gateway")
@@ -4639,9 +4849,10 @@ public final class AppModel: ObservableObject {
             let session = Self.sessionID(of: request)
             guard let bot = session.flatMap({ sessionBots[$0] }) ?? selectedBotID else { return }
             botActivityTracker.apply(event, bot: bot)
-        case .ready, .state, .requestCancelled, .contextUsage, .sessionUpdated, .error, .unknown:
-            // A transport state is not a bot's state, and `error` is the gateway's error, not a
-            // failed run: a run's failure has no event of its own.
+        case .ready, .state, .requestCancelled, .contextUsage, .sessionUpdated,
+             .reactionUpdated, .error, .unknown:
+            // A transport state is not a bot's state, `error` is the gateway's error, not a
+            // failed run, and a reaction is an emoji rather than work in flight.
             break
         }
     }

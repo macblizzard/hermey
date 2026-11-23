@@ -930,6 +930,7 @@ mod tests {
                 Some(dir.join("engine.token")),
             ),
             relay_sockets: Default::default(),
+            reactions: crate::reactions::Registry::in_dir(dir),
             attachments_dir: dir.join("attachments"),
             local_token: std::sync::Arc::new(crate::local_token::LocalToken::from_value(
                 "test-local-token",

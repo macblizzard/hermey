@@ -506,6 +506,27 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.card(id: id, session: session, message: message)
     }
 
+    /// Whether there is a bridge to ask. `AppModel` reads it before it lets the host own reactions:
+    /// with no bridge the app keeps them on the device, exactly as it did before.
+    ///
+    /// `nonisolated` because it is a fact about how the client was built, not about the connection:
+    /// the protocol asks for it synchronously, and a view must be able to ask without `await`.
+    public nonisolated var bridgeAvailable: Bool { sessionPointer != nil }
+
+    /// `GET /v1/reactions?bot=…&session=…` — the host's copy of one conversation's reactions.
+    public func reactions(bot: String, session: SessionID) async throws -> [String: Reaction] {
+        guard let sessionPointer else { throw ReactionSyncError.noBridge }
+        return try await sessionPointer.reactions(bot: bot, session: session)
+    }
+
+    /// `PUT /v1/reactions` — set or clear one, and let the host tell the other device.
+    public func setReaction(bot: String, session: SessionID, message: String,
+                            emoji: String?, by: String) async throws {
+        guard let sessionPointer else { throw ReactionSyncError.noBridge }
+        try await sessionPointer.setReaction(bot: bot, session: session, message: message,
+                                             emoji: emoji, by: by)
+    }
+
     // MARK: Shared conversation pointer
 
     /// The bridge's answer, not the gateway's: the pointer is HTTP on the bridge surface, so it

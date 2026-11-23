@@ -31,6 +31,12 @@ pub struct AppState {
     /// `relay::MAX_SOCKETS_PER_DEVICE` / `relay::MAX_SOCKETS_TOTAL` by evicting (see
     /// `relay::Registry`).
     pub relay_sockets: crate::relay::Registry,
+    /// Reactions, one emoji per message per conversation, agreed by every device.
+    ///
+    /// The host is the only place a Mac and a phone can meet, so they live here (`reactions.rs`):
+    /// one JSON document beside `bridge.db`, and a live frame on `relay_sockets` whenever one
+    /// changes.
+    pub reactions: crate::reactions::Registry,
     pub store: Store,
     pub pairing: Pairing,
     pub tickets: Tickets,
@@ -569,6 +575,7 @@ mod tests {
             browsers: Default::default(),
             display: crate::display::DisplayHub::spawn(engine_ws, Some(token_file)),
             relay_sockets: Default::default(),
+            reactions: crate::reactions::Registry::in_dir(dir),
             audit: Arc::new(crate::audit::AuditLog::in_dir(dir)),
         })
     }

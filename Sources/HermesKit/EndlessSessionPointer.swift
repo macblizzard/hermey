@@ -213,6 +213,19 @@ public protocol BotSessionPointerStore: Sendable {
     /// as `Card not available`.
     func card(id: String, session: SessionID, message: String) async throws -> CardFetch
 
+    /// `GET /v1/reactions?bot=<profile>&session=<session id>` — one conversation's reactions, keyed
+    /// by the message half of ``ReactionKey``.
+    ///
+    /// The read that makes a reaction the owner set on one device appear on the other. A store that
+    /// predates the route throws `ReactionSyncError.noBridge`, which `AppModel` reads as "keep them
+    /// on this device" rather than as a failure.
+    func reactions(bot: String, session: SessionID) async throws -> [String: Reaction]
+
+    /// `PUT /v1/reactions` — set one, or clear it with `nil`. The host persists it and broadcasts
+    /// the change on the app socket, so the caller does not have to.
+    func setReaction(bot: String, session: SessionID, message: String,
+                     emoji: String?, by: String) async throws
+
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
 
@@ -355,6 +368,19 @@ public extension BotSessionPointerStore {
     /// `Card not available`, not an upgrade prompt over a reply.
     func card(id: String, session: SessionID, message: String) async throws -> CardFetch {
         throw CardFetchError.refused(status: 404, code: nil)
+    }
+
+    /// A store that predates the reaction route has nowhere to put one. That is the *unpaired*
+    /// path, not a failure: `AppModel` keeps the device's own document and loses nothing.
+    func reactions(bot: String, session: SessionID) async throws -> [String: Reaction] {
+        _ = (bot, session)
+        throw ReactionSyncError.noBridge
+    }
+
+    func setReaction(bot: String, session: SessionID, message: String,
+                     emoji: String?, by: String) async throws {
+        _ = (bot, session, message, emoji, by)
+        throw ReactionSyncError.noBridge
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
@@ -713,6 +739,56 @@ enum Failure: Error, Equatable, LocalizedError {
         return CardFetch(card: cardData,
                          mtime: (object["mtime"] as? String) ?? "",
                          final: (object["final"] as? Bool) ?? false)
+    }
+
+    // MARK: Reactions
+
+    /// `GET /v1/reactions?bot=<profile>&session=<session id>` — the host's copy of one
+    /// conversation's reactions, keyed by the message half of `ReactionKey` (`row:41`, `live:r3`).
+    ///
+    /// A row whose message key is not one the host would accept, or whose emoji is missing, is
+    /// dropped rather than guessed at: drawing a blank badge is worse than drawing none.
+    public func reactions(bot: String, session sessionID: SessionID) async throws -> [String: Reaction] {
+        let path = "v1/reactions?bot=\(Self.queryValue(bot))&session=\(Self.queryValue(sessionID))"
+        let data = try await bridgeGET(path, timeout: 20)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = object["reactions"] as? [String: Any] else {
+            throw Failure.rejected(status: 502, detail: "the host sent no reactions")
+        }
+        var out: [String: Reaction] = [:]
+        for (message, value) in rows {
+            guard ReactionKey.isValidMessage(message), let reaction = Reaction.decode(value) else { continue }
+            out[message] = reaction
+        }
+        return out
+    }
+
+    /// `PUT /v1/reactions` — set one reaction, or clear it with `nil` (an empty `emoji`, which is
+    /// what the route reads as a removal).
+    ///
+    /// Checked here as well as on the host: a key the route would refuse is a bug in the caller, and
+    /// reporting it as a refusal is better than a round trip that returns 422.
+    public func setReaction(bot: String, session sessionID: SessionID, message: String,
+                            emoji: String?, by: String) async throws {
+        guard ReactionKey.isValidMessage(message) else {
+            throw ReactionSyncError.refused(status: 422, detail: "message must start with row: or live:")
+        }
+        _ = try await bridgePUT("v1/reactions",
+                                body: ["bot": bot,
+                                       "session": sessionID,
+                                       "message": message,
+                                       "emoji": emoji ?? "",
+                                       "by": by],
+                                timeout: 20)
+    }
+
+    /// A query value that cannot reshape the request: everything outside the unreserved set is
+    /// percent-encoded. A profile name and a session id are both simple today, but an `&` in one
+    /// must not become a second parameter.
+    static func queryValue(_ raw: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return raw.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
     }
 
     public func approvalSettings() async throws -> ApprovalSettings {
