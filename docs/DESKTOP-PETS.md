@@ -12,7 +12,7 @@ every claim about an existing route or file is checkable.
 | Behaviour | Detail |
 |---|---|
 | Where it appears | A macOS-only floating window per enabled bot, above normal windows, on every Space, visible over full-screen apps if macOS allows it. |
-| What it looks like | The bot's icon (`/v1/bot-icons/{bot}`), drawn ~96 pt with a soft shadow and no window chrome. |
+| What it looks like | **Only the icon.** No frame, no border, no title bar, no panel, no coloured background — a fully transparent window whose content is the bot's picture (`/v1/bot-icons/{bot}`) at ~96 pt. The desktop, the wallpaper and whatever is behind it stay visible around the icon. |
 | Idle behaviour | Small random movements — a bob, a tilt, a hop, a brief wander of a few points — at random intervals (8–30 s). No pathfinding, no walking across the screen unless asked for later. |
 | Click | Opens a balloon above the pet with a text field. Type a question, press Return. |
 | While it works | The balloon switches to a thinking state (three dots / a pulse) until the answer arrives. |
@@ -37,6 +37,26 @@ Three things already exist and are the reason this is a UI feature rather than a
 
 Nothing new is needed on the host. No new entitlements: a floating window and an HTTP call to the local
 host are things the current unsigned build already does.
+
+## The window must be invisible except for the icon
+
+This is the one requirement that decides whether the feature feels like a pet or like a widget, so it is
+spelled out rather than assumed:
+
+- `NSPanel` with `styleMask` **`.borderless` + `.nonactivatingPanel`** — a borderless window has no title
+  bar, no close/minimise buttons and no border for macOS to draw.
+- `isOpaque = false`, `backgroundColor = .clear`, `hasShadow = false`, `titlebarAppearsTransparent = true`.
+  The content view is also layer-backed and clear, and the icon is drawn with its own alpha.
+- **The transparent parts are not clickable.** `hitTest` returns `nil` where the icon's alpha is zero, so a
+  click on "empty window" reaches the desktop underneath — otherwise a 96 pt invisible square would sit on
+  the desktop swallowing clicks, which is exactly the widget feel to avoid.
+- No background material, no hairline, no rounded rect behind the icon.
+- The **balloon is a separate window**, so the pet window itself is never large, never opaque, and never
+  in the way: it stays icon-sized and the balloon floats above it while it is open.
+- The shadow you see is the icon asset's own alpha, not a window shadow.
+
+A guard test pins those four window properties, because a borderless-but-opaque panel looks correct in
+code review and wrong on the desktop.
 
 ## Shape of the implementation
 
