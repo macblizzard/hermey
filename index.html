@@ -356,11 +356,11 @@
   <div class="wrap head-row">
     <a class="brand" href="#top">Hermey<span class="dot">.</span></a>
     <nav class="head-nav" aria-label="Sections">
+      <a href="#pets">Pets</a>
       <a href="#look">Look</a>
       <a href="#signin">Sign-in</a>
       <a href="#integrations">Integrations</a>
       <a href="#features">Features</a>
-      <a href="#reactions">Reactions</a>
       <a href="#computer">Computer use</a>
       <a href="#install">Install</a>
       <a href="#platforms">Platforms</a>
@@ -433,6 +433,28 @@
     </div>
   </section>
 
+  <!-- desktop pets -->
+  <section class="block dark" id="pets">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Desktop pets</p>
+          <h2>Your bot, sitting on your desktop.</h2>
+        </div>
+        <p>On the Mac a bot can put its own picture on your wallpaper — no window, no frame, just the face, doing small things while you work. Drag it anywhere and it stays there, per screen and per bot; right-click closes it, and it is off until you turn it on in that bot's settings.</p>
+      </div>
+
+      <div class="feature-list">
+        <article class="feature"><span class="n">01</span><div><h3>Only the icon</h3><p>A transparent window the size of the picture: no title bar, no panel, no background behind it. The clear pixels are not part of the window, so a click beside the pet reaches the desktop instead of landing on an invisible square.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>It moves because it is alive</h3><p>Every 8 to 30 seconds it bobs, tilts, hops or wanders a few points; it blinks on its own clock and drifts side to side like it is looking around. Reduce Motion keeps a smaller bob and drops the rest.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Click it, ask it</h3><p>A frosted balloon opens beside the pet rather than over it. Type a question and press Return; the answer grows the balloon to a cap and then scrolls inside it, with Copy for the text and Escape to put it away.</p></div></article>
+        <article class="feature"><span class="n">04</span><div><h3>A badge for the reply you missed</h3><p>When an answer lands while Hermey is minimised or hidden, the pet hops and wears the count on its corner. Click it to read the answer, and the badge clears as you do.</p></div></article>
+      </div>
+
+      <p class="signin-more"><a href="docs/pets.html">What a pet does, and the switch that turns it on →</a></p>
+    </div>
+  </section>
+
   <!-- what it looks like -->
   <section class="block" id="look">
     <div class="wrap">
@@ -490,7 +512,7 @@
 
       <div class="feature-list">
         <article class="feature"><span class="n">01</span><div><h3>One conversation per bot</h3><p>The bot list is the home screen. Open a bot and its thread resumes exactly where it stopped — no sessions to name, nothing to tidy.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Live over your own network</h3><p>Streaming over a WebSocket on your tailnet, with the round trip shown in the header so a slow link is visible instead of mysterious.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>Live over your own network</h3><p>Streaming over a WebSocket on your tailnet, with the round trip shown in the header so a slow link is visible instead of mysterious. A reaction takes the same road: one emoji per message, kept by the host, so a tap on the Mac is already on the phone.</p></div></article>
         <article class="feature"><span class="n">03</span><div><h3>Reads like a document</h3><p>Full markdown — headings, tables, quotes — with code blocks that carry their own copy button and tick, and reasoning you can open.</p></div></article>
         <article class="feature"><span class="n">04</span><div><h3>Speaks, and shows pictures</h3><p>Read a long answer aloud in the system voice, attach files and screenshots, and open any image full screen at full resolution.</p></div></article>
         <article class="feature"><span class="n">05</span><div><h3>The bot's own computer</h3><p>Open the headless desktop your agent works on in a pane beside the chat — mouse and keyboard, so you can watch a run or take over.</p></div></article>
@@ -501,28 +523,6 @@
         <article class="feature"><span class="n">10</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
         <article class="feature"><span class="n">11</span><div><h3>A turn on the lock screen</h3><p>While a bot works, an iPhone shows the turn as a Live Activity: the bot's name, what it is doing right now and how long it has been at it, then <em>Done</em> with the first line of the answer.</p></div></article>
       </div>
-    </div>
-  </section>
-
-  <!-- reactions -->
-  <section class="block" id="reactions">
-    <div class="wrap">
-      <div class="block-head">
-        <div>
-          <p class="eyebrow">Reactions</p>
-          <h2>React on one device, and the other one already knows.</h2>
-        </div>
-        <p>A reaction belongs to your host now, not to the device you tapped it on. The Mac and the phone show the same one on the same message — while the conversation is open, not after a reload.</p>
-      </div>
-
-      <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>One reaction per message</h3><p>Stored against the bot and the session, so the same words in two conversations are two separate reactions and nothing has to be guessed.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Both screens, as it happens</h3><p>React on the Mac and the phone draws it; react on the phone and the Mac does. The change travels over the same host socket the conversation streams on.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>What you already had comes with you</h3><p>Reactions a device was keeping to itself before this are sent to the host once, on the first run — so nothing you tapped disappears in the upgrade.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>Unpaired, nothing breaks</h3><p>With no host to ask, both apps keep using their local copy exactly as before. Drafts and pins stay on the device either way — only reactions needed one owner.</p></div></article>
-      </div>
-
-      <p class="signin-more"><a href="docs/apps.html">Reactions, the waiting bell and the lock-screen card →</a></p>
     </div>
   </section>
 

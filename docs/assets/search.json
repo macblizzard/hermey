@@ -150,16 +150,16 @@
 "b": "Updating from the app The app checks once when it opens and does not put a window in front of you with the answer. When a newer build exists, a \u2193 button appears on the bot list's bottom bar, immediately left of search; press it and the normal download-and-install window opens. Nothing installs without that press. A ski"
 },
 {
-"h": "Reactions \u2014 one emoji, both devices",
-"p": "The apps",
-"u": "apps.html#reactions--one-emoji-both-devices",
-"b": "Reactions \u2014 one emoji, both devices A reaction is kept by the host now, not by the device that made it: react on the Mac and the phone shows it, react on the phone and the Mac shows it, live while the conversation is open. One emoji per message, stored by the host and served by GET / PUT /v1/reactions . Scoped, not glo"
-},
-{
 "h": "Desktop pets",
 "p": "The apps",
 "u": "apps.html#desktop-pets",
-"b": "Desktop pets On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon on your wallpaper, bobbing, tilting and occasionally hopping. Click it and a balloon opens with a field \u2014 type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy but"
+"b": "Desktop pets On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon on your wallpaper, moving and blinking on its own. Click it and a frosted balloon opens beside it \u2014 type a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button, a"
+},
+{
+"h": "Reactions \u2014 one emoji, both devices",
+"p": "The apps",
+"u": "apps.html#reactions--one-emoji-both-devices",
+"b": "Reactions \u2014 one emoji, both devices A reaction is kept by the host now, not by the device that made it: one emoji per message, stored against the host, the bot and the session, so a reaction on one device appears on the other while the conversation is open. With no host to ask, both apps keep using their local copy; dr"
 },
 {
 "h": "Pictures in a message",
@@ -208,6 +208,54 @@
 "p": "The apps",
 "u": "apps.html#live-activity-and-the-dynamic-island",
 "b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how long it has been running. When the turn ends the same card holds for about six sec"
+},
+{
+"h": "What a pet is",
+"p": "Desktop pets",
+"u": "pets.html#what-a-pet-is",
+"b": "What a pet is One pet, one window, one bot. The window is the icon's own 96 pt square plus a clear 12 pt margin the picture never draws into, and everything else about it is invisible: no frame, no coloured background, no shadow rectangle. What you see is the bot's face, with the desktop showing through everywhere the "
+},
+{
+"h": "Putting one on the desktop",
+"p": "Desktop pets",
+"u": "pets.html#putting-one-on-the-desktop",
+"b": "Putting one on the desktop Open the bot's own settings and find Desktop pet , then turn the switch on. The switch is labelled with the bot's name \u2014 Show that bot on the desktop \u2014 and the pet appears straight away, at the centre of the screen you are on. Bring it here puts it back there later if you have dragged it some"
+},
+{
+"h": "What it does while you leave it alone",
+"p": "Desktop pets",
+"u": "pets.html#what-it-does-while-you-leave-it-alone",
+"b": "What it does while you leave it alone The pet is not a still image. On its own clock it does one of four things \u2014 a small bob, a tilt, a short hop, or a wander of a few points \u2014 every 8 to 30 seconds, chosen at random so two pets on one desk never move in step. It blinks every 3 to 9 seconds, and the whole face drifts "
+},
+{
+"h": "Clicking it: the balloon",
+"p": "Desktop pets",
+"u": "pets.html#clicking-it-the-balloon",
+"b": "Clicking it: the balloon Click the pet and a frosted speech balloon opens beside it \u2014 above and to one side, never over the icon, so the pet stays visible while you type. The tail points at the pet, and the balloon picks a seat that fits the display: above-right by default, above-left when the right edge would run off "
+},
+{
+"h": "The badge, and the hop you did not see",
+"p": "Desktop pets",
+"u": "pets.html#the-badge-and-the-hop-you-did-not-see",
+"b": "The badge, and the hop you did not see The pet shows the same unread count the bot list does \u2014 the app's own number, not a second tally. A reply lands while Hermey is minimised or hidden and the pet hops and puts a badge on the icon's top-right corner: a dot for one turn waiting, the number for more, 9+ past nine. The "
+},
+{
+"h": "Moving it, closing it, and where it lives",
+"p": "Desktop pets",
+"u": "pets.html#moving-it-closing-it-and-where-it-lives",
+"b": "Moving it, closing it, and where it lives Drag it anywhere. The position is remembered per bot and per screen, so a pet can live on the second display and stay there. Unplug the display or change the resolution and the pet is moved back onto a screen you can see, at the next launch and when the screen setup changes. Ri"
+},
+{
+"h": "Troubleshooting",
+"p": "Desktop pets",
+"u": "pets.html#troubleshooting",
+"b": "Troubleshooting What you see What it means No pet after switching it on Check you are looking at the right screen \u2014 press Bring it here in that bot's settings. macOS only: the pet does not exist on iOS. The pet is not where you left it The display it was on is gone or its resolution changed. It is moved onto a visible "
+},
+{
+"h": "The design it was built from",
+"p": "Desktop pets",
+"u": "pets.html#the-design-it-was-built-from",
+"b": "The design it was built from docs/DESKTOP-PETS.md is the design record: the window behaviour, the decisions worth stating, the risks, and the corrections the build forced. It is written for whoever changes the feature, not for whoever uses it. This page is docs/PETS.md , rendered at build time. Corrections belong in th"
 },
 {
 "h": "How it works",
