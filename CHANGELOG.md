@@ -1000,3 +1000,16 @@ clear button, approvals, attachments, and the three-pane macOS shell.
 ### Changed
 - **Card reads are keyed to their message.** The read now carries the message id as well as the session,
   so two messages that name the same card keep their own snapshot instead of sharing one row.
+
+## [0.1.623] — 2026-11-23
+
+### Changed
+- **A mail draft card is editable the moment it arrives.** No Edit step: `To`, `Cc`, `Subject` and the body
+  are fields straight away, and the card carries exactly two buttons — **Send** and **Discard**.
+- **Send posts what you typed.** The turn carries the edited headers and body, so the bot acts on your
+  version rather than the file's original. `Cc` is omitted when you leave it empty.
+- **Discard is local.** It dims the card and sends nothing; the bot's own card file is never touched.
+- **Your typing is not overwritten.** Edits live in the card's own state and are only reseeded when the
+  document itself changes, so a redraw cannot eat what you are writing.
+- A resolved draft stays a receipt (which action was taken, no fields, no buttons), and a draft with no
+  `email` block renders exactly as before.
