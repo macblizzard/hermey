@@ -2182,6 +2182,14 @@ public final class AppModel: ObservableObject {
             lastSendError = "That attachment is empty."
             return
         }
+        // A camera roll is HEIC by default and the host's image route refuses that extension, so the
+        // picture is re-encoded here — before the size check, because a JPEG can be larger or smaller
+        // than the HEIC it came from and the user should be judged against what will actually travel.
+        let transcoded = isImage
+            ? ImageTranscoding.jpegIfNeeded(name: name, data: data)
+            : ImageTranscoding.Result(name: name, data: data, converted: false)
+        let name = transcoded.name
+        let data = transcoded.data
         guard data.count <= Self.maxAttachmentBytes else {
             lastSendError = "That attachment is larger than the 8 MB limit."
             return
