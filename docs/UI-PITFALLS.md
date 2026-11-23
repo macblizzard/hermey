@@ -75,11 +75,12 @@ They are listed here so the next change does not rediscover them.
 - A protocol extension default that returns `{}` (or `[]`) is a *silent success*, and a concrete
   type that forgets one inherits it. `BotSessionPointerStore` declares `renameRoom` and
   `disbandRoom` as `async throws {}` "for stores with no admin routes"; `BridgeBotSessionPointer`
-  implemented rooms/create/log/send and never overrode those two, so renaming a group chat sent
-  nothing, threw nothing, and looked broken on the Mac and the phone at once. Every admin verb on a
-  concrete store needs a test that asserts *the request* — method, path, ticket, body — because a
-  behaviour test on `AppModel` still passes when the store no-ops.
-- The bridge audit log is the fastest discriminator: `rooms.list` from the device with no
+  implemented rooms/create/log/send and for a while overrode neither, so renaming a group chat sent
+  nothing and looked broken on both platforms at once. The overrides live in `HermesKit/Rooms.swift`
+  now, and the rule they cost is the one to keep: every admin verb on a concrete store needs a test
+  that asserts *the request* — method, path, ticket, body — because a behaviour test on `AppModel`
+  still passes when the store no-ops.
+- The host's audit log is the fastest discriminator: `rooms.list` from the device with no
   `rooms/<id>/rename` at the same timestamp means the app never sent anything, so stop looking at
   the host.
 

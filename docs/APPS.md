@@ -72,6 +72,18 @@ when the Mac wakes, which is a different thing.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
 
+## Pictures in a message
+
+Tapping an image in a reply opens it with every other image attached to that same message: the viewer
+opens on the one you tapped and pages to its neighbours.
+
+- **iPhone/iPad:** swipe sideways to turn the page; the bar carries a counter (`2 of 5`) naming your
+  place. Swipe the picture down to put it away.
+- **Mac:** ← and → turn the page, or click the chevrons beside the counter.
+
+Each picture still pinches to zoom, and the page turns only on a sideways drag — the pull-down that
+closes the viewer is deliberately not also a page turn.
+
 ## Appearance and themes
 
 Settings → **Appearance**. Several dark palettes, with **Midnight** the default, and **Parchment**
@@ -97,6 +109,17 @@ above and below the arrangement and never move.
 
 The whole arrangement is written at once rather than "move this one up a slot", so two devices
 arranging at the same time end up with the last arrangement written, never with two half-swaps.
+
+## Renaming a group chat
+
+The name lives on the room's row, not in the room's own chrome — a rename button beside the
+transcript is the one place a name change does not look like it belongs.
+
+- **iPhone/iPad:** long-press the room in the list → **Rename group chat…**
+- **Mac:** right-click the room in the sidebar → **Rename group chat…**
+
+The new name is sent to the host (`POST /v1/rooms/{id}/rename`, an engine `groups.rename`), so it is
+the room's name everywhere, not a label this device keeps.
 
 ## Unpairing and revocation
 
@@ -183,3 +206,22 @@ Dock tile or the app icon; zero clears it.
 
 Reactions, drafts, pins and this switch are per-device; the unread counts themselves come from the
 host, so they survive a reinstall.
+
+## Live Activity and the Dynamic Island
+
+While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
+card naming the bot and how long it has been running. When the turn ends the same card holds for about
+six seconds with the first ~120 characters of the reply, then goes.
+
+- **One card per turn.** A second turn updates the card that is already up instead of stacking another.
+- **Leftovers are swept.** A card outlives the process that made it, so one left by a quit mid-turn is
+  cleared the next time the app launches.
+- **A stalled turn stops claiming to work.** A card that goes half an hour without an update greys out;
+  the next update brings it back.
+- **iOS only.** The Mac has notifications and the badge instead. A phone with Live Activities switched
+  off keeps working normally — the app records why no card appeared once in its client log (feature
+  off, no ActivityKit, no turn running) rather than on every turn.
+
+The extension is `dev.hermey.app.mobile.liveActivity`. It draws in the app's two palette colours as
+literals, because an extension is its own process and linking the design system into it to read two
+integers would only make it slow to launch.

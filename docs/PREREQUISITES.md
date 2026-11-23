@@ -140,5 +140,5 @@ See [Troubleshooting](TROUBLESHOOTING.md). The two failures worth knowing before
 
 - **401 on every call** — no bearer. `local.token` is minted at boot, `0600`, owner-only; if the bots run as a
   different user than the service, grant that one principal `0640` via `HERMEYD_LOCAL_TOKEN_GROUP`.
-- **502 from the tailnet URL** — a leftover `:8443` mount pointing at the retired Python bridge. Remove it with
-  `tailscale serve --https=8443 off`; the current service is published at serve-root.
+- **502 from the tailnet URL** — a leftover `:8443` mount from the old port scheme. Remove it with
+  `tailscale serve --https=8443 off`; hermeyd is published at serve-root, with no port.

@@ -24,6 +24,8 @@ Two processes on the host, one in your pocket.
 | `Sources/HermesRender` | SwiftPM | markdown → block model (tables, code, quotes) |
 | `Sources/HermeyUI` | SwiftPM | the design system and shared screens |
 | `Sources/HermesAppKit` | SwiftPM | shared app state (`AppModel`, refresh, routing) |
+| `Sources/HermesA2UI` | SwiftPM | the A2UI surface renderer; `a2ui.surfaces.disabled` turns drawing off |
+| `Sources/HermesCards` | SwiftPM | the `::card` renderer (`card.v1`) — **in progress, in no release** |
 | `hermeyd/` | Rust | host service: pairing, devices, tickets, the WS relay, attachments, genui, voice |
 | `setup/install.sh` | POSIX shell | installs the published `hermeyd` binary (checksum-verified) or builds it |
 | `setup/plugins/hermes-genui` | JS bundle | the card plugin the apps load; upstream Hermes does not ship it |

@@ -2,7 +2,7 @@
 
 Baseline shipped in 0.1.561: outbound authenticated socket, host + paired-device auth, **no approval
 gate** (owner decision), argv shell with cwd / 30-min timeout / 4 MB cap, host-side bot CLI, remote
-revoke, bridge audit. Remote Login is off on the Mac.
+revoke, audit. Remote Login is off on the Mac.
 
 Owner decisions that shape this plan:
 - **No LaunchAgent.** Only act while the Mac is online and Hermey is running; "not connected" is a
@@ -82,7 +82,7 @@ browser tools, secret-safe output, takeover, activity feed, serialization, resil
 - [x] Acceptance: two simultaneous batches are serialized, not interleaved; cancel leaves no orphan process
 
 ## Phase 11 — Connectivity discipline (no LaunchAgent) — done
-- [x] CLI/bridge return 503 "computer not connected" when the Mac is offline or Hermey is closed
+- [x] hermeyd answers 503 "that computer is not connected" when the Mac is offline or Hermey is closed
 - [x] Existing 20 s heartbeat / 1→30 s reconnect handles sleep, wake and network changes
 - [x] Acceptance: closing Hermey immediately disables computer use; reopening reconnects without restart
 

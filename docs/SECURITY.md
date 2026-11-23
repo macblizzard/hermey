@@ -7,14 +7,15 @@ can only answer questions the agent asks — never give itself permission.**
 This document states the trust boundaries, the invariants that hold them up, the threats those
 invariants are for, and the evidence (a test, or an explicit gap) for each one.
 
-> **The Python bridge this document was written about has been removed.** Its code lived in
+> **The Python bridge this document was first written about has been removed.** Its code lived in
 > `Bridge/hermes_bridge`, which is no longer in this repository. The host service now is `hermeyd/`
-> (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). The trust
-> boundaries and threats below still apply — read "the bridge" as "hermeyd" — but §2's invariant table
-> is the bridge's own audit, and says so at its head.
+> (Rust); its contract, its routes and its own tests are [`HERMEYD.md`](HERMEYD.md). §1's boundaries
+> and §3's threats are the ones that hold today. §2's table is kept as the bridge's own audit — the
+> reasoning behind the controls, with module and test names that are historical — and says so at its
+> head.
 
-Scope: `hermes_bridge` as it was (the only new server-side code at the time), the `wss://` path into
-it, and the approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
+Scope: `hermeyd`, the service that runs on the host today, the `wss://` path into it, and the
+approval semantics the client relies on. The Swift apps' own storage (a this-device-only Keychain
 item, or a `0600` file on the unsigned Mac build) is described where it matters, but not audited
 here.
 
@@ -39,8 +40,8 @@ Keychain alone.
 | Boundary | Crossing it requires | What is on the other side |
 |---|---|---|
 | Public internet → tailnet | Tailscale identity + ACL | nothing (no public ingress exists) |
-| Tailnet → bridge | TLS to `tailscale serve`, then a **single-use 30 s ticket** | pairing, tokens, `/v1/ws` |
-| Bridge → gateway | loopback + the **gateway token** (never sent to a device) | full authority over the agent |
+| Tailnet → hermeyd | TLS to `tailscale serve`, then a **single-use 30 s ticket** | pairing, tokens, `/v1/ws` |
+| hermeyd → gateway | loopback + the **gateway token** (never sent to a device) | full authority over the agent |
 | Gateway → app | a server→client JSON-RPC request (approval, clarify, sudo, secret…) | a human decision |
 | App → gateway | the **client method allow-list** | sessions, prompts, discovery |
 
@@ -50,8 +51,8 @@ Three consequences worth stating plainly:
   `shell.exec`, `cli.exec`, `config.set` or `vault.*`; the worst a stolen phone can do is drive
   sessions the user could drive anyway, and answer approvals — which is why approvals are rendered,
   not auto-accepted.
-- **A compromised bridge is already root on the box.** Loopback-only, token-gated and audited, but it
-  adds no privilege; the point is that it does not *widen* what an attacker on the host can do.
+- **A compromised host service is already root on the box.** Loopback-only, token-gated and audited,
+  but it adds no privilege; the point is that it does not *widen* what an attacker on the host can do.
 - **The tailnet is the outer wall.** Every control below assumes an attacker who is already on the
   tailnet or has stolen a device; controls that assume "nobody can reach the port" are marked as such.
 
@@ -118,7 +119,7 @@ evidence; this table is the reasoning.
 | T6 | Compromised client asks the bridge for more than the UI shows | shell access | allow-list (`shell.exec`, `cli.exec`, `config.set`, `vault.*` absent) and no generic proxy (invariant 13–14) | a compromised client can still `prompt.submit` — i.e. ask the *agent* to run something, which then needs an approval the user sees (T8) |
 | T7 | Malicious/compromised gateway asks the app for something it cannot render | stall the agent, or phish the user | the bridge answers anything outside the six approved methods with `-32601` (invariant 15) | none material: fail-fast is the desired behaviour |
 | T8 | Approval fatigue / social engineering (the real risk) | get a destructive action approved | approvals are shown with tool + input + reason; `declines_not_shown` stays true; **nothing auto-approves**; the client cannot widen permissions (invariant 16–17) | the human is the control. Show the command, not just the tool name |
-| T9 | Oversize frame / memory exhaustion | DoS the bridge or the agent | 16 MiB per frame both directions, close `1009`, never forwarded (invariant 20) | many small frames are still work; no per-device socket or bandwidth quota (**G4**) |
+| T9 | Oversize frame / memory exhaustion | DoS the bridge or the agent | 16 MiB per frame both directions, close `1009`, never forwarded (invariant 20) | many small frames are still work; no per-request rate limit and no bandwidth quota (**G4**) |
 | T10 | Prompt text or tool output leaks into logs / journald / a bug report | read the user's data | `AuditLog.emit` has no parameter for payload and validates every free-form field against a token pattern; verified with a canary through a real turn (invariant 22) | uvicorn access logs are off (`access_log=False`) but an operator can enable debug logging on the *gateway* |
 | T11 | Gateway token exfiltration | full agent authority | token never leaves the process except in the loopback dial URI; never in responses or audit (invariant 21) | a host-level reader (`/proc/…/environ`) can still see it — root on host |
 | T12 | Revoked (lost/stolen) device keeps acting | persist access | refresh + tickets are refused immediately (invariant 9, 12) | **the live socket stays open until it reconnects — G2** |
@@ -162,10 +163,13 @@ Invariant 9 covers both the *new* token and the *open* socket now.
 (`JSONRPCCodec.encodeFrame`), and the gateway's WS transport does the same, so this is not a live path.
 *Fix if it ever matters:* accumulate a partial buffer with the same 16 MiB ceiling.
 
-**G4 — no per-device socket or request quota (low).** The bridge caps `max_pending_requests` per
-socket (256) and the ticket store at 1 024 pending tickets, but one device can open many sockets, each
-with its own upstream connection. *Fix:* per-device socket limit (2 is enough for a phone + a
-reconnect overlap) and a per-device connection rate limit.
+**G4 — no per-request rate limit (low).** The socket caps are in place in `hermeyd/src/relay.rs`: a
+device may hold four sockets and a host 64, and at the cap the longest-idle socket is evicted with
+`4429` rather than the newcomer refused (a device's last socket is never taken). What is still
+missing is a limit on the *requests* one socket may send and on bandwidth, so a paired device can
+still generate load up to whatever the engine answers.
+
+*(Four sockets per device is the figure the Python bridge's `proxy.py` used; hermeyd implements it.)*
 
 **G5 — gateway close codes are collapsed into `1011` (low, UX).** When the gateway closes with one of
 Hermes' own codes (`4009` session busy, `4004`, `4018` …), the app sees `1011 "gateway closed"` and
@@ -255,9 +259,9 @@ Written down because each is a real gap that is *not* hidden by the allow-list:
   `access_token` and sends it gets `401`. Kept for wire compatibility with shipped app builds.
 - **A pairing code is a shared secret on the host's screen** (A3). Its window is 600 s and clamped to
   30–3600 s by `app._pairing_ttl`, so a mistyped override cannot mint a year-long code.
-- **Two processes on the same state file are not coordinated.** The categories, disabled-bots and
-  defaults files take an in-process lock and publish with an atomic rename, which covers the one
-  bridge a host runs. A second bridge pointed at the same `HERMES_BRIDGE_DB` is unsupported.
+- **Two processes on the same state are not coordinated.** The store takes an in-process lock and
+  publishes with an atomic rename, which covers the one service a host runs. A second `hermeyd`
+  pointed at the same state directory (`/var/lib/hermeyd`) is unsupported.
 
 ## Bot-to-bot messages
 
@@ -296,17 +300,20 @@ already root-equivalent (a device ticket buys shell access, see the threat model
 new verbs add is *authority over other bots*, not reach outside the host.
 
 - **SOUL.md** is written through `profiles.configure` (soul section only) and capped at 64,000
-  characters in the bridge's allow-list: a SOUL.md is injected into every turn of that bot, so an
-  accidental megabyte paste would be paid for on every message it ever answers.
-- **Disable** pauses the bot's scheduled jobs through the loopback dashboard and records which job
-  ids it paused in the bridge's state directory (`/var/lib/hermes-bridge/disabled-bots.json`), so
-  enabling resumes exactly those. A disabled bot also refuses `POST /v1/bots/{profile}/message`:
-  otherwise another bot could make a disabled bot answer.
-- **Delete** goes through the dashboard's own `DELETE /api/profiles/{name}` — the process that owns
-  tombstones, multiplexer release and alias cleanup — after the bridge tars the profile into
-  `/var/lib/hermes-bridge/deleted-bots`. The archive is a mistake-catcher, not a backup contract.
-- The bridge still runs under `ProtectSystem=strict` with only `/var/lib/hermes-bridge` writable.
-  Nothing here widened that: management verbs are asked of the dashboard, which runs unconfined.
+  characters in the allow-list: a SOUL.md is injected into every turn of that bot, so an accidental
+  megabyte paste would be paid for on every message it ever answers.
+- **Disable** marks the bot disabled in the service's own documents store (`bots_disabled` in
+  `/var/lib/hermeyd/bridge.db`), and a disabled bot refuses `POST /v1/bots/{profile}/message`:
+  otherwise another bot could make a disabled bot answer. It does **not** yet stop that bot's
+  scheduled jobs — that is the next piece of the routines work, and until it lands a disabled bot's
+  routines still fire.
+- **Delete** archives the profile to `/var/lib/hermeyd/deleted-bots` first, then removes the
+  directory itself and refuses to report success if the directory is still there. The archive is a
+  mistake-catcher, not a backup contract.
+- `hermeyd` runs under `ProtectSystem=strict` with `/var/lib/hermeyd` as its only `ReadWritePaths`
+  entry and `ProtectHome=no`, because the engine home is often under the service account's home
+  (`deploy/hermeyd.service`). A write into a profile — a restored SOUL.md, a bot's skill — lands in
+  the engine's profiles as that same UID, which is why the two must share one.
 
 ## Bot computer (shared desktop)
 

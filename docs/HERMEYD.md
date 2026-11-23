@@ -80,6 +80,15 @@ HERMEY_HOME=../var/hermeyd ./target/release/hermeyd
 ../scripts/smoke-hermeyd.sh
 ```
 
+## Version
+
+`hermeyd --version` is how a host answers "is the deployed binary the build I just made?", so the
+`version` in `Cargo.toml` moves whenever `hermeyd/src/` or its bundled skills change — and **only**
+then. A client release does not bump it; a service number dragged along by app builds would say
+nothing about the service. `Tools/check_hermeyd_version_bump.py` runs in CI and refuses a source
+change that leaves the version alone. The service is released separately, as tag `hermeyd-vX.Y.Z`
+(`hermeyd-release.yml`), while the apps keep `v0.1.N`.
+
 ## WS relay (built)
 
 ```
@@ -108,7 +117,7 @@ PASS  bogus ticket refused — InvalidStatus
 RELAY SMOKE OK — pair → ticket → socket → turn
 ```
 
-## Bridge-owned collections (built)
+## Collections hermeyd owns (built)
 
 These are UI state, not agent state: they live in our SQLite `documents` table and survive an engine
 swap. Shapes were taken from the Swift decoders, not invented.
@@ -123,12 +132,13 @@ swap. Shapes were taken from the Swift decoders, not invented.
 | `GET /v1/bot-icons` · `PUT /v1/bot-icons/{bot}` | `{faces:{bot:{avatar}}, icons:{}}` |
 | `GET /v1/bots/disabled` · `POST /v1/bots/{bot}/state` | `{disabled:[…]}` / `{enabled:bool}` |
 | `GET/PUT /v1/bots/approvals` | `{mode, profiles, unset, updated, failed}` |
-| `GET /v1/rooms` | `[]` (rooms are engine-hosted; wiring is next) |
+| `GET/POST /v1/rooms` | the engine's rooms (`groups.list`, limit 50); create names one and picks 2–6 members |
+| `GET /v1/rooms/{id}/log` · `POST …/send` · `POST …/rename` · `POST …/disband` | room log (`?since_seq=`), a message, a rename, a disband — each an engine `groups.*` call |
 | `POST /v1/push/{presence,register,test}` | `{ok:true}` — no relay, says so plainly |
-| `GET /v1/bots/previews` | `{previews:{}}` until previews are read from the engine's state |
+| `GET /v1/bots/previews` · `POST /v1/bots/previews` | each bot's newest line, read from its own `state.db` against the conversation the app opens; POST adds `{unread:{profile:n}}`. Best-effort: a locked or missing database yields no row for that bot, never an error for the list |
 
-`scripts/smoke-app-routes.sh` replays the app's connect sequence (17 checks, fresh single-use ticket
-per call, like the client) and asserts every shape plus persistence across calls.
+`scripts/smoke-app-routes.sh` replays the app's connect sequence (a fresh single-use ticket per call,
+like the client) and asserts every shape plus persistence across calls.
 
 ## Pitfall that cost the first real device: frames must be NDJSON
 
@@ -273,9 +283,25 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | Route | Behaviour |
 |---|---|
 | `GET /v1/search?q=&limit=&offset=` | per-bot newest matches (cap 20/bot) read from read-only `state.db`, assembled and paged newest-first; `<2` chars answers empty because the app searches per keystroke; snippets are char-boundary safe |
-| `GET /v1/bot-transfers?between=a,b&limit=` | JSONL hand-offs, either direction, oldest-first. **No producer yet** — this stack has no bot-to-bot DM, so the page honestly answers empty; `record()` writes the bridge's format for when it exists |
+| `GET /v1/bot-transfers?between=a,b&limit=` | JSONL hand-offs between two bots, either direction, oldest-first. Written by `POST /v1/bots/{profile}/message` — a bot speaking into another bot's chat — in the retired bridge's line format; `session_id` is `null` when the message reached no session |
 | `GET /v1/backup`, `POST /v1/backup/restore` | the bridge's document shape (kind/version/bots with soul, memory, notes, routines). Restore is additive and idempotent: identical content is not a write, memory only fills when empty, nothing is deleted, `routines_added` drives `restart_required` |
 | `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded |
+
+## Agent cards — `GET /v1/cards/{card_id}` (in progress, in no release)
+
+A reply may carry one directive line, `::card{id="c-9b" kind="approval" file="cards/c-9b.json"}`,
+naming a `card.v1` JSON file the bot wrote under its session's working directory. The host resolves
+the id and returns the file; the client sends only an id, never a path.
+
+- `hermeyd/src/cards.rs` validates the id before it builds a path, canonicalises the result, refuses
+  a symlink that leaves `<base>/cards/`, and snapshots the last good read per `(session, message)` so
+  a card file rewritten or removed after the turn still serves the message that referenced it.
+- `final` and `mtime` are in the response for a polling phase that is not built.
+- The native renderer is `Sources/HermesCards`, behind `cards.enabled`
+  (`defaults write dev.hermey.app cards.enabled -bool NO` puts the marker line back to plain text).
+
+No release carries it; both apps check `::card` after `::a2ui` and before `::blocks`, so a host
+without the route simply shows the prose. See [`a2ui-migration.md`](a2ui-migration.md).
 
 ## genui and integrations
 
@@ -332,9 +358,10 @@ WS   ws://127.0.0.1:8790/v1/browser/ws         the extension's socket; hello fir
   `https://host:8445/v1/browser/*` both answer **404**. Do not add them back "for convenience".
 * **8790 must never be added to `tailscale serve`.** Boot says so: `HERMEYD_BROWSER_READY
   127.0.0.1:8790 (loopback only — never add this port to tailscale serve)`.
-* **The extension dials `ws://127.0.0.1:8790/v1/browser/ws`.** The sign-in skill must be pointed at the
-  same host: `hermey_signin.py --bridge http://127.0.0.1:8790`. Its built-in default still names the
-  retired bridge's `8787`, so pass `--bridge` rather than relying on it.
+* **The extension dials `ws://127.0.0.1:8790/v1/browser/ws`.** The bundled sign-in script already
+  points there (`DEFAULT_BROWSER`), and a test forbids `8787` anywhere in the bundled scripts; an
+  explicit `--bridge http://127.0.0.1:8790` still governs both the API and the channel, which is what
+  a host running something other than the defaults passes.
 * **A browser listener that cannot bind is fatal at boot**, not a silent degradation: a service that
   looks healthy while every sign-in gets "connection refused" is worse than one that refuses to start.
   `HERMEYD_BROWSER_PORT` may not equal `HERMEYD_PORT`.
@@ -420,9 +447,8 @@ Vision settings read `auxiliary.vision.provider` / `.model` (the engine's own ke
 to the flat `auxiliary.vision_provider` / `vision_model` for a config written before that fix;
 writes always land nested and preserve every sibling (`base_url`, `timeout`, `auxiliary.free_only`).
 
-## Not built yet
+## Known limits
 
-- **Voice** — blocked on a product decision, not code: which TTS provider and whose key. Everything
-  else in this service is credential-free at rest except the engine's provider key.
-- **Rooms index**, **approvals proxy** — ported from the production bridge next.
-- **Per-device authority scoping** (today any paired device can list/revoke devices, as in production).
+- **Per-device authority scoping.** Any paired device can list and revoke the others, as in
+  production: there is no admin device, no per-device scope. A stolen paired device is a stolen
+  pairing.

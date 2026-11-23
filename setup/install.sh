@@ -90,7 +90,7 @@ Hermey host installer (hermeyd)
   sudo sh install.sh [options]
 
   --from-source        build hermeyd with cargo instead of downloading a release binary
-  --version TAG        release to install: a tag (v0.2.0) or "latest" (default: latest)
+  --version TAG        release to install: a host tag (hermeyd-v0.2.0, or 0.2.0) or "latest" (default: latest)
   --prefix DIR         where the binary goes (default: /opt/hermey)
   --state-dir DIR      hermeyd's state directory (default: /var/lib/hermeyd)
   --engine-home DIR    the Hermes engine home — the directory containing profiles/ (default: detect)
@@ -297,13 +297,39 @@ verify_checksum() {
     note "checksum ok: $name"
 }
 
+# The newest release that actually carries a host binary.
+#
+# `releases/latest` is the newest release of *anything*, and an app release (`v0.1.N`) publishes an
+# `install.sh`, an `.ipa` and a `.dmg` but no `hermeyd-<platform>` and no `SHA256SUMS` — so a download
+# pointed at it answers 404 on a fresh host. Measured: `releases/latest` was `v0.1.620` with both
+# `hermeyd-linux-x86_64` and `SHA256SUMS` missing. The host service has its own tag series
+# (`hermeyd-vX.Y.Z`), so ask for the newest of those; an empty answer falls back to `latest`, which is
+# what a mirror passing HERMEY_BASE_URL never reaches.
+newest_host_tag() {
+    command -v curl >/dev/null 2>&1 || return 0
+    curl -fsSL --proto '=https' "https://api.github.com/repos/$REPO/releases?per_page=40" 2>/dev/null \
+        | grep -o '"tag_name": *"hermeyd-v[0-9][^"]*"' \
+        | head -n 1 \
+        | sed -e 's/.*"\(hermeyd-v[^"]*\)".*/\1/'
+}
+
 download_binary() {
     if [ -n "$BASE_URL" ]; then
         BASE=$BASE_URL
     elif [ "$VERSION" = latest ]; then
-        BASE="https://github.com/$REPO/releases/latest/download"
+        tag=$(newest_host_tag)
+        if [ -n "$tag" ]; then
+            BASE="https://github.com/$REPO/releases/download/$tag"
+            note "host release $tag"
+        else
+            BASE="https://github.com/$REPO/releases/latest/download"
+        fi
     else
-        case "$VERSION" in v*) tag=$VERSION ;; *) tag=v$VERSION ;; esac
+        case "$VERSION" in
+            hermeyd-v*) tag=$VERSION ;;
+            v*) tag=$VERSION ;;
+            *) tag="hermeyd-v$VERSION" ;;
+        esac
         BASE="https://github.com/$REPO/releases/download/$tag"
     fi
     TMP=$(mktemp -d "${TMPDIR:-/tmp}/hermey-install.XXXXXX") || fail "cannot create a temporary directory" \

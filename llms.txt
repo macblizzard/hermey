@@ -13,7 +13,8 @@ then install the app on a phone or Mac and pair it with a short code.
   `curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh`
   It downloads the `hermeyd` binary for the platform, verifies the published SHA-256, installs it
   under `/opt/hermey/bin`, and writes `/var/lib/hermeyd`, `/etc/hermey/hermeyd.env` and the unit.
-  `--from-source` builds with cargo instead.
+  `latest` means the newest `hermeyd-v*` release; the apps' own `v0.1.N` releases carry no host
+  binary. `--from-source` builds with cargo instead.
 - Then: `hermeyd pair` — prints a 6-digit code, `https://<host>/?code=…` and a QR for the app
   (`POST /v1/pair/start` is the same route).
 - Publishing: the installer runs `tailscale serve --bg http://127.0.0.1:8788` itself — serve-root, no
@@ -21,9 +22,10 @@ then install the app on a phone or Mac and pair it with a short code.
   leaves the one command to run.
 - iOS: add `https://github.com/macblizzard/hermey/releases/latest/download/altstore.json` to
   AltStore or SideStore.
-- macOS: `Hermey-macOS-unsigned.dmg` from the latest release, or
-  `https://macblizzard.github.io/hermey-downloads/Hermey-macOS-unsigned.dmg`; right-click → Open on
-  first launch (or `xattr -dr com.apple.quarantine /Applications/Hermey.app`).
+- macOS: `Hermey-macOS-<version>.dmg` from <https://macblizzard.github.io/hermey-downloads/> (the
+  versioned name is the newest build; `Hermey-macOS-unsigned.dmg` on the same page is the same bytes
+  under the older name). Right-click → Open on first launch, or
+  `xattr -dr com.apple.quarantine /Applications/Hermey.app`.
 
 ## Agent runbook
 
@@ -59,4 +61,9 @@ then install the app on a phone or Mac and pair it with a short code.
   upstream Hermes does not have it, and cards answer 503 without it.
 - Requirements: Linux with systemd or macOS, Hermes installed, the service account sharing the
   engine's UID, Tailscale (or your own TLS proxy).
-- Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open).
+- Versions: the apps are `0.1.<run>` (tag `v0.1.N`); `hermeyd` has its own series
+  (`hermeyd-vX.Y.Z`) and moves only when `hermeyd/src/` or its bundled skills change. A client
+  release does not bump it; CI enforces that.
+- Apps: iOS 17+, macOS 14+, unsigned builds (AltStore/SideStore, or right-click → Open). Images in a
+  message open as a gallery that pages through every attachment on that message. iOS also shows a
+  running turn as a Live Activity (lock screen + Dynamic Island).

@@ -14,7 +14,7 @@ irreversible, and a rollback that is configuration only.
 | Client | `HermesKit/GenUIBlocks.swift` — the `::blocks` + WebView card path | **kept**; it is the fallback while A2UI coverage grows |
 
 The surface rides inside the message (`::a2ui{"surface":…,"messages":[…]}`), so a transcript
-reopened later still draws: no card session, no bridge fetch, nothing to expire.
+reopened later still draws: no card session, no round trip, nothing to expire.
 
 ## Turning A2UI on
 
@@ -54,3 +54,27 @@ Nothing in SQLite, no migration, no board data touched.
    `hermes-genui` can be deleted rather than disabled.
 3. **Seen on a screen** — the wiring compiles and both apps build on CI, but no surface has been
    drawn in front of a human yet. That is the trial.
+
+## The third renderer: `::card` (in progress, not in a release)
+
+A reply can also carry a single directive line — `::card{id="c-9b" kind="approval" file="cards/c-9b.json"}`
+— which names a JSON file (`card.v1`) the bot wrote under its session's working directory. This is
+narrower than both paths above: one card, authored as data, drawn by native SwiftUI instead of a
+WebView or a general surface tree.
+
+| Layer | Piece | State |
+|---|---|---|
+| Host | `GET /v1/cards/{id}?session=…&message=…` (`hermeyd/src/cards.rs`) — validates the id before it builds a path, canonicalises the result, refuses a symlink out of `<base>/cards/`, and snapshots the last good read per message | on this branch |
+| Client | `Sources/HermesCards` — `CardMarker` (finds the directive line, takes it out of the prose), `CardLoader` (one fetch per `(session, card id)`, a remembered failure, no polling), `CardView` | on this branch |
+| Transcripts | both platforms check `::card` **after** `::a2ui` and **before** `::blocks`, behind `cards.enabled` | on this branch |
+
+Why the host resolves the file and the client sends only an id: the client has the transcript, not the
+host's filesystem, and a path from a client is a path that would have to be sanitised. Why a snapshot:
+a card file belongs to a turn and may be rewritten or gone by the time the thread is reopened, so the
+first successful read of `(session, message, card)` is kept and serves that message afterwards.
+`final` and `mtime` are in the response for the polling phase, which is not built.
+
+**Not shipped:** no release carries it. The renderer has a rollback switch in the app's own style —
+`defaults write dev.hermey.app cards.enabled -bool NO` puts `::card{…}` lines back to plain text — and
+a failed read leaves the reply's prose exactly as it was, so a host without the route shows the text
+and nothing else.
