@@ -31,7 +31,7 @@
   <details class="side">
     <summary>Documentation</summary>
     <div class="side-inner">
-      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html" aria-current="page">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li><li><a href="credentials.html">Sign-in cards</a></li></ul></div>
+      <div class="side-group"><h2>Getting started</h2><ul><li><a href="index.html">Overview</a></li><li><a href="prerequisites.html" aria-current="page">Getting Hermey running</a></li><li><a href="install.html">Install the host</a></li><li><a href="apps.html">The apps</a></li></ul></div><div class="side-group"><h2>Using it</h2><ul><li><a href="computer-use.html">Local computer use</a></li><li><a href="importing.html">Importing bots</a></li><li><a href="credentials.html">Sign-in cards</a></li><li><a href="integrations.html">Integrations</a></li></ul></div><div class="side-group"><h2>Automation</h2><ul><li><a href="agents.html">For agents</a></li></ul></div><div class="side-group"><h2>Reference</h2><ul><li><a href="troubleshooting.html">Troubleshooting</a></li><li><a href="security.html">Security</a></li><li><a href="reference.html">Reference</a></li></ul></div>
     </div>
   </details>
 
@@ -136,8 +136,8 @@ answers <code>503</code> on <code>/v1/genui/plugin.js</code> and cards come up b
 <ul>
 <li><strong>401 on every call</strong> — no bearer. <code>local.token</code> is minted at boot, <code>0600</code>, owner-only; if the bots run as a
 different user than the service, grant that one principal <code>0640</code> via <code>HERMEYD_LOCAL_TOKEN_GROUP</code>.</li>
-<li><strong>502 from the tailnet URL</strong> — a leftover <code>:8443</code> mount from the old port scheme. Remove it with
-<code>tailscale serve --https=8443 off</code>; hermeyd is published at serve-root, with no port.</li>
+<li><strong>502 from the tailnet URL</strong> — a leftover <code>:8443</code> mount pointing at the retired Python bridge. Remove it with
+<code>tailscale serve --https=8443 off</code>; the current service is published at serve-root.</li>
 </ul>
 
 <p class="doc-source">This page is <a href="https://github.com/macblizzard/hermey/blob/main/docs/PREREQUISITES.md">docs/PREREQUISITES.md</a>, rendered at build time. Corrections belong in that file.</p>
