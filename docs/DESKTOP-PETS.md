@@ -25,8 +25,10 @@ every claim about an existing route or file is checkable.
 
 Three things already exist and are the reason this is a UI feature rather than a protocol change:
 
-1. **A bot's picture is served by the host.** `GET /v1/bot-icons/{bot}` returns the PNG the app already
-   renders in the bot list and the settings sheet (`MacBotIconPicker.swift` fetches exactly this).
+1. **A bot's picture is already in the app.** `GET /v1/bot-icons` returns the faces map, which the app
+   holds in `store.botFaces` and draws with `BotAvatarStill` in the sidebar and the settings sheet — the
+   pet reuses that. (`/v1/bot-icons/{bot}` is `PUT` only; a pet must not fetch an icon that has no
+   `GET`.)
 2. **A bot can be asked a question and answer it synchronously.** `POST /v1/bots/{profile}/ask`
    (`hermeyd/src/bot_message.rs`) takes `{question, from, timeout}` and answers
    `{profile, from, session_id, question, reply, answered}`. That is the pet's whole conversation model —
@@ -141,6 +143,18 @@ right-click ──► menu: Close pet ──► setting off, window closes, posi
 Roughly **three days**, shippable in two increments: (1) pet appears, drags, right-click closes, settings
 toggle works; (2) the balloon and the ask/answer flow. The first increment is worth testing on its own
 because it is where the window-behaviour risk lives.
+
+## What the build changed about this design
+
+Three corrections, all found while implementing:
+
+- The icon comes from `store.botFaces` (the map `GET /v1/bot-icons` returns), not from a per-bot `GET` that
+  does not exist.
+- The window is the icon plus a **12 pt clear margin**, because a 96 pt window clipped the 9 pt hop at its
+  own edge. The margin draws nothing and `hitTest` declines it, so it costs pixels, not clicks.
+- Pixel-transparent windows still swallow clicks on macOS even when no view handles them, so the controller
+  also polls `NSEvent.mouseLocation` at 10 Hz and flips `ignoresMouseEvents`: over the ink the pet takes the
+  click, anywhere else the click reaches the desktop.
 
 ## Risks, honestly
 
