@@ -320,7 +320,8 @@ class OfflineFallbackTests(unittest.TestCase):
     def test_switching_bot_drops_the_previous_badge(self) -> None:
         reset = MODEL[MODEL.index("private func resetForBotSwitch"):]
         reset = reset[:reset.index("\n    }")]
-        self.assertIn("reactions = []", reset)
+        self.assertIn("reactions = [:]", reset,
+                      "a dictionary is emptied with [:]; [] is an array and would not compile")
 
 
 class ContractAgreementTests(unittest.TestCase):
