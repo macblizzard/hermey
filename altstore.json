@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.641",
-          "buildVersion": "641",
-          "date": "2026-11-23T22:34:39Z",
-          "localizedDescription": "### Changed\n- **Room for the words.** The turn card's text sat almost on its own border; it now keeps 8 pt to every\n  edge, and the Dynamic Island's mark and timer sit 8 pt off the pill's rounded ends.\n- **The card reads as glass.** It carries a faint white lift over the lock screen's own material, so a dark\n  wallpaper shows through instead of the card looking like a solid black panel.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.641/Hermey-0.1.641-b641.ipa",
-          "size": 5288984,
+          "version": "0.1.642",
+          "buildVersion": "642",
+          "date": "2026-11-23T23:15:42Z",
+          "localizedDescription": "### Changed\n- **The expanded island reads as one line.** The bot's name sat above its status, and the shorter line\n  hung off the name's left edge, which looked misaligned. Mark, name and status now share a line, with the\n  elapsed number at the right.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.642/Hermey-0.1.642-b642.ipa",
+          "size": 5289129,
           "minOSVersion": "17.0",
-          "sha256": "3b39f341c42ad0b010f909fb538bebdc31d2b8f868efb69e5a2375d6e1ea51d9"
+          "sha256": "0ff2a7404b4770fe7fb2e8848f2e6dfb0e2b258f6a6445fddfa922bf7c4a13af"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.641 (641)",
-      "identifier": "hermes-0.1.641-641",
-      "caption": "### Changed\n- **Room for the words.** The turn card's text sat almost on its own border; it now keeps 8 pt to every\n  edge, and the Dynamic Island's mark and timer sit 8 pt off the pill's rounded ends.\n- **The card reads as glass.** It carries a faint white lift over the lock screen's own material, so a dark\n  wallpaper shows through instead of the card looking like a solid black panel.",
-      "date": "2026-11-23T22:34:39Z",
+      "title": "Hermes 0.1.642 (642)",
+      "identifier": "hermes-0.1.642-642",
+      "caption": "### Changed\n- **The expanded island reads as one line.** The bot's name sat above its status, and the shorter line\n  hung off the name's left edge, which looked misaligned. Mark, name and status now share a line, with the\n  elapsed number at the right.",
+      "date": "2026-11-23T23:15:42Z",
       "tintColor": "#9A9AA0"
     }
   ],
