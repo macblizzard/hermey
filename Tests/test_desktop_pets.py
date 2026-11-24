@@ -551,10 +551,30 @@ class NothingElseWasTouched(unittest.TestCase):
             "hermeyd/Cargo.toml",
             "hermeyd/Cargo.lock",
         }
+        # The pet also draws a bot's own avatar now, and that feature is deliberately both apps plus
+        # the host's validator — so those paths are named here rather than the guard being dropped.
+        # Anything else under the phone app or `hermeyd/` is still the pet leaking.
+        avatar_feature = {
+            # host: validate a definition, store it on the face the pet already reads
+            "hermeyd/src/bot_avatar.rs",
+            "hermeyd/src/bridge_routes.rs",
+            "hermeyd/src/main.rs",
+            # phone: the same editor, on the same avatar document
+            "Apps/HermesMobile/App/AppEnvironment.swift",
+            "Apps/HermesMobile/Views/BotIconPicker.swift",
+            "Apps/HermesMobile/Views/BotListScreen.swift",
+            "Apps/HermesMobile/Views/BotModelSettingsScreen.swift",
+            "Apps/HermesMobile/Views/BotSettingsDoor.swift",
+            "Apps/HermesMobile/Views/ConversationScreen.swift",
+            "Apps/HermesMobile/Views/LiveActivityCoordinator.swift",
+        }
+        allowed = host_ask_fix | avatar_feature
         offending = sorted(
             path for path in changed
-            if path.startswith(("Apps/HermesMobile/", "Sources/HermesCards/"))
-            or (path.startswith("hermeyd/") and path not in host_ask_fix)
+            if path.startswith("Sources/HermesCards/")
+            or (
+                path.startswith("Apps/HermesMobile/") or path.startswith("hermeyd/")
+            ) and path not in allowed
         )
         self.assertEqual([], offending, "the desktop pet is a macOS feature")
 
