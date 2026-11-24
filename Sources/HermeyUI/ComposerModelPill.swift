@@ -119,19 +119,18 @@ public struct ComposerModelPill: View, Equatable {
                 HStack(spacing: 5) {
                     glyph
 
-                    // The full pill where it fits, the model and the chevron where it does not.
-                    // `fixedSize` on the first candidate is what lets `ViewThatFits` compare ideal
-                    // widths instead of accepting a pill that has already been squeezed.
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 4) {
-                            modelName(name)
-                            if let tokens {
-                                context(tokens)
-                            }
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-
+                    // Both parts, always: the model gives up width first and truncates, the count
+                    // keeps its room. The old fit-based fallback dropped the whole count on a narrow
+                    // pill, which is why the phone lost it while the Mac kept it — the number is what
+                    // the reader came for, so it is not the thing that disappears.
+                    HStack(spacing: 4) {
                         modelName(name)
+                            .layoutPriority(0)
+                        if let tokens {
+                            context(tokens)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(1)
+                        }
                     }
 
                     chevron

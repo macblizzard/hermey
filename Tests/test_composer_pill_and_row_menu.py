@@ -142,18 +142,19 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         self.assertIn(".padding(.horizontal, 14)", label)
 
-    def test_a_narrow_window_drops_the_count_and_keeps_the_model_and_chevron(self) -> None:
-        label = self.pill_label()
-        fits = between(label, "ViewThatFits(in: .horizontal) {", "chevron")
-        self.assertIn(".fixedSize(horizontal: true, vertical: false)", fits)
-        # Candidate one: name and count. Candidate two: the name alone. Both still carry the glyph
-        # and the chevron, which sit outside the `ViewThatFits`.
-        candidates = fits.split(".fixedSize(horizontal: true, vertical: false)")
-        self.assertIn("context(tokens)", candidates[0])
-        self.assertIn("modelName(name)", candidates[1])
-        self.assertNotIn("context(tokens)", candidates[1])
-        self.assertIn(".truncationMode(.tail)", self.PILL_SOURCE)
-        self.assertIn(".lineLimit(1)", self.PILL_SOURCE)
+    def test_the_count_keeps_its_room_and_the_model_truncates(self) -> None:
+        # ViewThatFits used to drop the whole count on a narrow pill, so the phone lost the number the
+        # Mac kept. The count now holds its width and the model name is what gives way.
+        body = self.pill_label()
+        self.assertNotIn("ViewThatFits", body,
+                         "a fallback that drops the count comes back the moment this returns")
+        self.assertIn("context(tokens)", body)
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)", body,
+                      "the count must not be squeezed")
+        self.assertIn(".layoutPriority(1)", body)
+        # The name truncates where it is drawn, in `modelName(_:)`.
+        self.assertIn(".truncationMode(.tail)", read(PILL),
+                      "the model truncates rather than widening the pill")
 
     def test_the_pill_is_not_in_the_field_row(self) -> None:
         # It used to sit between the paperclip and the text, which read as part of the field and put
