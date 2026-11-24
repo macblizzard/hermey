@@ -33,7 +33,14 @@ public enum MessageRefs {
 
     /// The message as the user would have written it.
     public static func display(_ text: String) -> String {
-        split(text).body
+        let body = split(text).body
+        // The host appends an attachment's extracted text under a `--- attachment:` line, after
+        // whatever was typed — that block belongs to the prompt, not the bubble. Everything from
+        // the first marker on is host-added, so the typed words are everything before it.
+        if let marker = body.range(of: "--- attachment:") {
+            return String(body[..<marker.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return body
     }
 
     /// Just the file name of each reference — all a chat bubble should show when it has neither

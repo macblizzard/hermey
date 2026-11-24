@@ -196,3 +196,20 @@ class NothingWasRegressed(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheBubbleShowsOnlyWhatWasTyped(unittest.TestCase):
+    """The host appends an attachment's extracted text to the stored user row; the bubble must not."""
+
+    def test_the_host_block_never_reaches_the_bubble(self) -> None:
+        src = (ROOT / "Sources" / "HermesKit" / "MessageRefs.swift").read_text(encoding="utf-8")
+        body = src[src.index("public static func display"):]
+        self.assertIn('body.range(of: "--- attachment:")', body,
+                      "the labelled block the host appends has to be cut before the bubble draws")
+        self.assertIn("String(body[..<marker.lowerBound])", body)
+
+    def test_the_typed_words_are_kept(self) -> None:
+        src = (ROOT / "Sources" / "HermesKit" / "MessageRefs.swift").read_text(encoding="utf-8")
+        display = src[src.index("public static func display"):src.index("public static func names")]
+        self.assertIn("trimmingCharacters(in: .whitespacesAndNewlines)", display,
+                      "cutting the block must not leave the typed words ending in blank lines")
