@@ -22,6 +22,10 @@ import SwiftUI
 /// window, or when `animates` is false, it holds the rest pose and costs nothing. The drawing itself
 /// never allocates geometry: the body's cross-sections and the marks are built once per definition
 /// and cached (`OpenBotAvatarModel`), and a frame only transforms them.
+///
+/// That is the face's *breathing*. Where the app shows a bot beside its name, `BotAvatarView` also
+/// performs the shared face's motion over it (the hop, the flip, the darts) and hands the eye pose
+/// down through `eyeOverride:` — so this view is never asked for a second motion language.
 public struct OpenBotAvatarView: View {
     public var definition: BotAvatarDefinition
     /// The stored `#RRGGBB`, or nil for the house colour.
@@ -38,6 +42,9 @@ public struct OpenBotAvatarView: View {
     public var animatingFrom: Double
     /// Spoken label. Without one the avatar is decoration beside a name already read out.
     public var label: String?
+    /// Eyes decided elsewhere, for the shared face's blink-and-dart schedule. Nil — the default, and
+    /// every caller that draws this view directly — keeps the avatar's own idle blinking.
+    public var eyeOverride: OpenBotAvatarEyeOverride?
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -50,7 +57,8 @@ public struct OpenBotAvatarView: View {
                 animates: Bool = true,
                 reduceMotion: Bool = false,
                 animatingFrom: Double = 24,
-                label: String? = nil) {
+                label: String? = nil,
+                eyeOverride: OpenBotAvatarEyeOverride? = nil) {
         self.definition = definition
         self.color = color
         self.state = state
@@ -60,6 +68,7 @@ public struct OpenBotAvatarView: View {
         self.reduceMotion = reduceMotion
         self.animatingFrom = animatingFrom
         self.label = label
+        self.eyeOverride = eyeOverride
     }
 
     /// The frame interval: 10 Hz, the pets' cadence. Calm is the point — a 60 Hz avatar in a list of
@@ -76,7 +85,8 @@ public struct OpenBotAvatarView: View {
             if let model = OpenBotAvatarModel.model(for: definition) {
                 TimelineView(.animation(minimumInterval: Self.frameInterval, paused: !moves)) { context in
                     let time = moves ? context.date.timeIntervalSinceReferenceDate : 0
-                    let pose = state.pose(mood: mood, time: time, seed: seed, reducedMotion: !moves)
+                    let pose = state.pose(mood: mood, time: time, seed: seed, reducedMotion: !moves,
+                                          eyeOverride: eyeOverride)
                     Canvas { context, canvasSize in
                         OpenBotAvatarRenderer.draw(model,
                                                    pose: pose,
