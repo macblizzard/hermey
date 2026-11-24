@@ -407,6 +407,38 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | `GET /v1/backup`, `POST /v1/backup/restore` | the bridge's document shape (kind/version/bots with soul, memory, notes, routines). Restore is additive and idempotent: identical content is not a write, memory only fills when empty, nothing is deleted, `routines_added` drives `restart_required` |
 | `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded |
 
+## Fast pet asks — `POST /v1/bots/{profile}/ask` (shipped in 0.5.0)
+
+The desktop pet's balloon asks a bot a question and waits for the answer. Until 0.5.0 that question
+was delivered into **the bot's endless conversation** — the one `bot_sessions` points the apps at —
+so a one-word greeting paid for the whole transcript: measured at **12.55s / 15.51s / 15.16s**,
+always against session `20261103_160851_77da50` (tinker's endless conversation), and 147s the
+first time the model decided to go run a tool.
+
+`from: "desktop-pet"` is now a routing key (`hermeyd/src/bot_message.rs`, `PET_SENDER`) and
+nothing else. What each of the four asks became:
+
+| Ask | Result |
+|---|---|
+| **Bounded per-bot session** | **Built.** A dedicated `pet_sessions` row per bot (its own table, never `bot_sessions`), minted on the first balloon with `session.create` and resumed on every ask after. Before each delivery the pet's transcript is counted in the bot's own `state.db`; at `PET_WINDOW` (60 rows) the pointer is dropped and a fresh session is minted. Rotation rather than compaction: the gateway's compaction threshold is *profile* config, and a config write would change the bot's normal conversation too. A deleted pet session (`session.resume` −32001) re-mints instead of failing every later question. |
+| **Fast model** | **Built.** `session.create` carries `model`/`provider` read out of that profile's own `config.yaml` by `pet_model` — `model.default` when it already names a fast model, else the first `fallback_providers` entry that does, else no pin at all. A name the config does not have is a provider 404 on the first turn, which is the failure the create-time model×provider gate refuses up front, so nothing is ever invented. |
+| **No tools** | **Not reachable on the wire.** `session.create` has no toolset parameter (`tui_gateway/contracts/sessions.py`, `SessionCreateParams`), `_make_agent` resolves toolsets from `HERMES_TUI_TOOLSETS` and profile config only (`tui_gateway/agent_factory.py`, `_load_enabled_toolsets`), and `tools.configure` writes the profile's `config.yaml` — which would change the bot's normal conversation too. The pet therefore runs with the profile's own toolset. |
+| **Short prompt** | **Not reachable on the wire.** The gateway builds the agent's system prompt from profile config and environment (`tui_gateway/agent_factory.py`, `_startup_system_prompt`); neither `session.create` nor `prompt.submit` carries a prompt parameter. Nothing is sent pretending otherwise. |
+
+**Where the answer lands now — the trade-off, resolved.** Before this change the pet's question
+and the bot's reply were rows in the conversation the app opens, and that is exactly why the pet
+reused it. They are now rows in the pet's own session instead: the balloon still shows the reply,
+but opening the bot in the app no longer shows the exchange. That is the chosen behaviour, and the
+alternative was rejected deliberately — keeping both would mean either a second model turn in the
+bot's conversation (the bot answering the same thing twice) or hermeyd writing rows directly into a
+`state.db` the engine owns and has open. So the pet's session is titled **`Desktop Pet`** and left
+visible in the profile's session list — never hidden — so the exchange stays readable exactly
+where it happened. Rotating at the cap leaves the old one in the list too, for the same reason.
+
+Every other `from` keeps the old route byte for byte, and so does `POST /v1/bots/{profile}/message`:
+the response is still `{profile, from, session_id, question, reply, answered}`, with `session_id`
+now naming the pet's own key when the question came from the balloon.
+
 ## Agent cards — `GET /v1/cards/{card_id}?session=&message=` (shipped in 0.1.621)
 
 A reply may carry one directive line, `::card{id="c-9b" kind="approval" file="cards/c-9b.json"}`,

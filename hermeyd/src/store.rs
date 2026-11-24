@@ -78,6 +78,14 @@ impl Store {
                  stored_session_id TEXT NOT NULL,
                  updated_at        REAL NOT NULL
              );
+             -- The desktop pet's OWN conversation, one row per bot profile. Separate from
+             -- `bot_sessions` on purpose: a balloon question is answered in a small bounded
+             -- session, while the pointer above is the endless transcript the app opens.
+             CREATE TABLE IF NOT EXISTS pet_sessions (
+                 profile           TEXT PRIMARY KEY,
+                 stored_session_id TEXT NOT NULL,
+                 updated_at        REAL NOT NULL
+             );
              -- Bark relay targets, one row per device: where this device's banners go. The key is a
              -- credential (`http://host:port/<KEY>`), so the database file itself is 0600 — see
              -- `restrict_db_permissions` — and nothing here is ever logged or echoed.
@@ -347,6 +355,32 @@ impl Store {
         let conn = self.conn.lock().unwrap();
         let _ = conn.execute(
             "INSERT INTO bot_sessions (profile, stored_session_id, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(profile) DO UPDATE SET stored_session_id = ?2, updated_at = ?3",
+            params![profile, stored_session_id, now()],
+        );
+    }
+
+    /// The desktop pet's own session for one bot, or `None` when it has not been minted yet.
+    ///
+    /// Deliberately a different table from `bot_sessions`: that pointer is the conversation the
+    /// app opens, and a balloon question must not be answered in it.
+    pub fn get_bot_pet_session(&self, profile: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT stored_session_id FROM pet_sessions WHERE profile = ?1",
+            params![profile],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
+    /// Point the pet at a session — the mint, and again whenever the window is rotated.
+    pub fn set_bot_pet_session(&self, profile: &str, stored_session_id: &str) {
+        let conn = self.conn.lock().unwrap();
+        let _ = conn.execute(
+            "INSERT INTO pet_sessions (profile, stored_session_id, updated_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(profile) DO UPDATE SET stored_session_id = ?2, updated_at = ?3",
             params![profile, stored_session_id, now()],
         );

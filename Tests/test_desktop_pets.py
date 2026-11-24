@@ -472,7 +472,12 @@ class AReplyWhileHeIsAwayHopsAndWaits(unittest.TestCase):
 
 
 class NothingElseWasTouched(unittest.TestCase):
-    """macOS only: no iOS app, no host, no cards."""
+    """macOS only: no iOS app, no cards — and the host only where the `ask` route must route it.
+
+    The pet used to be invisible to `hermeyd/` entirely. Fast pet asks changed that by one
+    constant: the balloon's sender is now a routing key in `bot_message.rs`, and the test below
+    pins that to being the whole of it.
+    """
 
     def test_new_files_are_all_in_the_mac_target(self):
         for name in ("DesktopPetPanel.swift", "PetView.swift", "PetBalloonView.swift",
@@ -494,11 +499,30 @@ class NothingElseWasTouched(unittest.TestCase):
             for word in ("DesktopPet", "PetSettings", "PetBalloon", "PetGeometry"):
                 self.assertNotIn(word, text, f"{path.relative_to(ROOT)} mentions {word}")
 
-    def test_the_host_was_not_changed(self):
+    def test_the_host_names_the_pet_only_as_the_ask_sender(self):
+        """The pet's whole footprint in the service is one routing key in the `ask` route.
+
+        It used to be none at all. Fast pet asks answer a balloon question in the bot's own bounded
+        session instead of the endless conversation, which means `bot_message.rs` has to recognise
+        `from: "desktop-pet"` — and that recognition has to be the entire leak. The balloon, the
+        geometry, the settings and the ask *call* all stay in the Mac target.
+        """
+        named = []
         for path in (ROOT / "hermeyd" / "src").rglob("*.rs"):
             text = path.read_text(encoding="utf-8", errors="ignore")
-            self.assertNotIn("desktop-pet", text)
-            self.assertNotIn("desktop_pet", text)
+            for word in ("desktop-pet", "desktop_pet"):
+                if word in text:
+                    named.append((str(path.relative_to(ROOT)), word))
+        self.assertEqual(
+            [("hermeyd/src/bot_message.rs", "desktop-pet")],
+            [entry for entry in named if entry[1] == "desktop-pet"],
+            "the pet may be named only by the route that has to route it",
+        )
+        self.assertEqual([], [entry for entry in named if entry[1] == "desktop_pet"],
+                         "the host keeps one spelling of the sender, the one the app sends")
+        message = (ROOT / "hermeyd" / "src" / "bot_message.rs").read_text(encoding="utf-8")
+        self.assertIn("pet: sender == PET_SENDER", message,
+                      "the sender decides the route, not a field a caller could add")
 
     def test_the_cards_renderer_was_not_changed(self):
         cards = ROOT / "Sources" / "HermesCards"
@@ -516,12 +540,14 @@ class NothingElseWasTouched(unittest.TestCase):
         # failing here would be a guard against work this file knows nothing about.
         if not any(path.startswith("Apps/HermesMac/Pets/") for path in changed):
             self.skipTest("this branch does not carry the desktop pet")
-        # The pet itself is macOS-only, but the branch also carries the fix to the host's `ask` path —
-        # the role it waits for, the session id it polls, the profiles directory it opens and the
-        # timestamp it anchors on. Those are the only host files allowed here; anything else appearing
-        # under `hermeyd/` means the pet leaked into the service.
+        # The pet itself is macOS-only, but a branch may carry work on the host's `ask` path: the
+        # role it waits for, the session id it polls, the profiles directory it opens, the timestamp
+        # it anchors on — and, since fast pet asks, the one `pet_sessions` row the balloon's own
+        # bounded session hangs off. Those are the only host files allowed here; anything else
+        # appearing under `hermeyd/` means the pet leaked into the service.
         host_ask_fix = {
             "hermeyd/src/bot_message.rs",
+            "hermeyd/src/store.rs",
             "hermeyd/Cargo.toml",
             "hermeyd/Cargo.lock",
         }
