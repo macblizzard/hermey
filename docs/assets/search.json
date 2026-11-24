@@ -141,7 +141,7 @@
 "h": "The model pill",
 "p": "The apps",
 "u": "apps.html#the-model-pill",
-"b": "The model pill The composer's control row carries one pill: the bot's provider/model and how full its context is, as 540k/1M Tokens . Press it and the model picker opens \u2014 the same sheet the bot panel's Model row opens on the Mac, and the drawer's on the phone. The count arrives with a turn. Usage comes back when a tur"
+"b": "The model pill On its own row under the message field, both apps show one pill: the bot's provider/model and how full its context is, as 540k/1M Tokens . It sits under the field rather than inside it, so it never reads as part of what you type. Press it and the model picker opens \u2014 the same sheet the bot panel's Model "
 },
 {
 "h": "The bell, and what is waiting",
