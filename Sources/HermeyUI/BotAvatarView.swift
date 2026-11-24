@@ -235,18 +235,9 @@ public struct BotAvatarView: View {
             let time = context.date.timeIntervalSinceReferenceDate
             // One frame, the same call the shape face makes: the state's own acting with the jump,
             // flip, darts and squint performed over it — or, while the pointer is on the row, the
-            // one-off greeting that settles into the reference's idle float.
-            let frame: BotAvatarMotion.Frame
-            if awake {
-                frame = BotAvatarWake.frame(at: time, since: wokeAt, traits: traits)
-            } else if moves {
-                frame = BotAvatarMotion.performedFrame(activity: activity,
-                                                       traits: traits,
-                                                       at: time,
-                                                       side: Double(size))
-            } else {
-                frame = .rest
-            }
+            // one-off greeting that settles into the reference's idle float. Resolved by one helper,
+            // because a result builder cannot take an `if` that assigns.
+            let frame = motionFrame(at: time, traits: traits, moves: moves, awake: awake)
 
             OpenBotAvatarView(definition: face.definition,
                               color: face.color,
@@ -268,6 +259,21 @@ public struct BotAvatarView: View {
                 .offset(x: frame.body.translateX * size, y: frame.body.translateY * size)
                 .brightness(frame.body.brightness)
         }
+    }
+
+    /// The one place a frame is chosen for either face: woken (the pointer is on the row), acting
+    /// (the state and its performance), or at rest. A result builder cannot hold an `if` that
+    /// assigns, which is why this is a function and not a statement list.
+    private func motionFrame(at time: Double,
+                             traits: BotAvatarMotionTraits,
+                             moves: Bool,
+                             awake: Bool) -> BotAvatarMotion.Frame {
+        if awake { return BotAvatarWake.frame(at: time, since: wokeAt, traits: traits) }
+        if moves {
+            return BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time,
+                                                   side: Double(size))
+        }
+        return .rest
     }
 
     /// The face this view draws: the definition it was handed (a preview, the editor), else what the
@@ -332,15 +338,7 @@ public struct BotAvatarView: View {
         //
         // A woken face (the pointer is on its row) replaces all of that with one greeting and then
         // the reference's idle float — the row is being looked at, not working.
-        let frame: BotAvatarMotion.Frame
-        if awake {
-            frame = BotAvatarWake.frame(at: time, since: wokeAt, traits: traits)
-        } else if moves {
-            frame = BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time,
-                                                   side: Double(size))
-        } else {
-            frame = .rest
-        }
+        let frame = motionFrame(at: time, traits: traits, moves: moves, awake: awake)
         let body = frame.body
         let eyes = frame.eyes
 
