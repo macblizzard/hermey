@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.654",
-          "buildVersion": "654",
-          "date": "2026-11-24T21:22:54Z",
-          "localizedDescription": "### Fixed\n- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath the field, lined up with where the text starts.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.654/Hermey-0.1.654-b654.ipa",
-          "size": 5469914,
+          "version": "0.1.655",
+          "buildVersion": "655",
+          "date": "2026-11-24T21:47:08Z",
+          "localizedDescription": "### Changed\n- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never wears it. Every button, picker, toggle, menu and link now suppresses that drawing \u2014 and keyboard focus still works: a focused bot row and the composer's model pill show the app's own quiet fill.\n\n### Removed\n- The old Hermes-to-Rakazo parity tasklist (docs/LOCAL_COMPUTER_PARITY.md) and its test, which outlived the thing they tracked.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.655/Hermey-0.1.655-b655.ipa",
+          "size": 5516252,
           "minOSVersion": "17.0",
-          "sha256": "8c489135681da039283d7c0208cde7a9dc1dd61a26eddc295001acbf26cc2160"
+          "sha256": "e1b1abe4fe400f4785e5059ecd830953952d0fc360ed3c9317c1a40652bdb552"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.654 (654)",
-      "identifier": "hermes-0.1.654-654",
-      "caption": "### Fixed\n- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath the field, lined up with where the text starts.",
-      "date": "2026-11-24T21:22:54Z",
+      "title": "Hermes 0.1.655 (655)",
+      "identifier": "hermes-0.1.655-655",
+      "caption": "### Changed\n- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never wears it. Every button, picker, toggle, menu and link now suppresses that drawing \u2014 and keyboard focus still works: a focused bot row and the composer's model pill show the app's own quiet fill.\n\n### Removed\n- The old Hermes-to-Rakazo parity tasklist (docs/LOCAL_COMPUTER_PARITY.md) and its test, which outlived the thing they tracked.",
+      "date": "2026-11-24T21:47:08Z",
       "tintColor": "#9A9AA0"
     }
   ],
