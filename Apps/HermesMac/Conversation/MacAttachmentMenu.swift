@@ -55,12 +55,26 @@ struct MacAttachmentMenu: View {
 
     // MARK: Picking
 
+    /// What "Files…" offers: the three office documents the host reads (PDF, Word, Excel) and the
+    /// pictures it already took from "Photos…". The panel used to accept `UTType.item` — anything —
+    /// so a `.zip` could be picked and staged as a file nothing would ever read.
+    static let fileTypes: [UTType] = {
+        var types: [UTType] = [.pdf, .image]
+        for ext in AttachmentKind.officeExtensions {
+            // `.pdf` is already there as the system's own type; the two Office formats have no
+            // preferred constant on every SDK, so they are resolved from their extensions.
+            guard ext != "pdf", let type = UTType(filenameExtension: ext) else { continue }
+            types.append(type)
+        }
+        return types
+    }()
+
     private func chooseImages() {
         pick(contentTypes: [.image], prompt: "Choose a photo to attach")
     }
 
     private func chooseFiles() {
-        pick(contentTypes: [.item], prompt: "Choose a file to attach")
+        pick(contentTypes: Self.fileTypes, prompt: "Choose a document or photo to attach")
     }
 
     private func pick(contentTypes: [UTType], prompt: String) {

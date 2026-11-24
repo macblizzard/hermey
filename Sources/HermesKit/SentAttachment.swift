@@ -13,12 +13,16 @@ public struct SentAttachment: Identifiable, Hashable, Sendable {
     public let isImage: Bool
     /// Only for images: what the bubble draws. Never sent anywhere — the upload already happened.
     public let imageData: Data?
+    /// How many bytes went up, when it is known. A row's size line; `nil` while it is not.
+    public let size: Int?
 
-    public init(id: String = UUID().uuidString, name: String, isImage: Bool, imageData: Data? = nil) {
+    public init(id: String = UUID().uuidString, name: String, isImage: Bool,
+                imageData: Data? = nil, size: Int? = nil) {
         self.id = id
         self.name = name
         self.isImage = isImage
         self.imageData = imageData
+        self.size = size
     }
 }
 
@@ -43,6 +47,8 @@ public enum SentAttachmentVault {
         var isImage: Bool
         /// File name inside the vault directory, for images only.
         var file: String?
+        /// Bytes that were sent. Optional so a vault written by an older build still decodes.
+        var size: Int?
     }
 
     private static let folder = "sent-attachments"
@@ -59,7 +65,7 @@ public enum SentAttachmentVault {
                 if (try? data.write(to: directory.appendingPathComponent(name))) != nil { file = name }
             }
             items.append(Item(id: attachment.id, name: attachment.name,
-                              isImage: attachment.isImage, file: file))
+                              isImage: attachment.isImage, file: file, size: attachment.size))
         }
         var records = read(sessionID: sessionID)
         records.append(Record(text: MessageRefs.display(text), at: Date().timeIntervalSince1970,
@@ -119,7 +125,8 @@ public enum SentAttachmentVault {
             if let file = item.file, let directory {
                 data = try? Data(contentsOf: directory.appendingPathComponent(file))
             }
-            return SentAttachment(id: item.id, name: item.name, isImage: item.isImage, imageData: data)
+            return SentAttachment(id: item.id, name: item.name, isImage: item.isImage,
+                                  imageData: data, size: item.size)
         }
     }
 
@@ -168,10 +175,12 @@ public extension TranscriptEntry {
         return MessageRefs.split(text).refs.map { path in
             let name = (path as NSString).lastPathComponent
             let isImage = Self.imageExtensions.contains((name as NSString).pathExtension.lowercased())
+            let location = AttachmentLocation.uploaded(profile: "", name: name.isEmpty ? path : name)
             return SentAttachment(id: path,
                                   name: name.isEmpty ? path : name,
                                   isImage: isImage,
-                                  imageData: isImage ? AttachmentImageStore.data(named: name) : nil)
+                                  imageData: isImage ? AttachmentImageStore.data(named: name) : nil,
+                                  size: AttachmentFileCache.cachedSize(for: location))
         }
     }
 

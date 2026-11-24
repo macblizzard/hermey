@@ -25,6 +25,19 @@ public enum AttachmentImageStore {
         return try? Data(contentsOf: file)
     }
 
+    /// The cached bytes as a file a viewer can open — Quick Look and the share sheet take a URL,
+    /// not a `Data`, and they pick the viewer from the suffix the host's name already carries.
+    public static func url(named name: String) -> URL? {
+        guard let directory = directory(), let file = file(named: name, in: directory) else { return nil }
+        return FileManager.default.fileExists(atPath: file.path) ? file : nil
+    }
+
+    public static func size(named name: String) -> Int? {
+        guard let file = url(named: name),
+              let values = try? file.resourceValues(forKeys: [.fileSizeKey]) else { return nil }
+        return values.fileSize
+    }
+
     // MARK: Plumbing
 
     /// Only the last path component is used: the host's path is meaningless on the phone, and a

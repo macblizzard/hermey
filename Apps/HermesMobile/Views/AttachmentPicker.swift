@@ -1,4 +1,5 @@
 import Foundation
+import HermesKit
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -287,6 +288,24 @@ struct AttachmentPhotos: UIViewControllerRepresentable {
     }
 }
 
+/// The types the paperclip's file picker offers.
+///
+/// PDF, Word and Excel are the three documents the host extracts text from, and photographs stay
+/// because a screenshot saved to Files is still the thing people attach most. `UTType.item` used to
+/// accept anything, which let a `.zip` be picked and rejected only after the read.
+enum AttachmentFileTypes {
+    static let accepted: [UTType] = {
+        var types: [UTType] = [.pdf, .image]
+        for ext in AttachmentKind.officeExtensions where ext != "pdf" {
+            // The Office formats have no preferred constant on every SDK, so the extension is the
+            // authority — the same rule `AttachmentKind` uses for the row's icon.
+            guard let type = UTType(filenameExtension: ext) else { continue }
+            types.append(type)
+        }
+        return types
+    }()
+}
+
 struct AttachmentFiles: UIViewControllerRepresentable {
     let completion: (Result<[AttachmentPayload], Error>) -> Void
     let cancel: () -> Void
@@ -297,7 +316,8 @@ struct AttachmentFiles: UIViewControllerRepresentable {
         // `asCopy: true` hands back a file this app owns. The provider's original URL is
         // security-scoped, and an iCloud item can still be a placeholder: reading it without a
         // copy is what made "pick a file from Files" look like nothing happened at all.
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: AttachmentFileTypes.accepted,
+                                                    asCopy: true)
         picker.allowsMultipleSelection = true
         picker.shouldShowFileExtensions = true
         picker.delegate = context.coordinator

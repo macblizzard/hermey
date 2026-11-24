@@ -1212,6 +1212,12 @@ final class WorkspaceStore: ObservableObject {
             guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
             return (try address.apiOrigin(), try await address.mintedTicket())
         })
+        // Attachment bytes — the PDF, Word file or spreadsheet a bubble names — over the same
+        // one-ticket-per-request rule. Without it a file row is a name and nothing to open.
+        model.attachmentClient = AttachmentFileClient(endpoint: {
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
         return model
     }
 }

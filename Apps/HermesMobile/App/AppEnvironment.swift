@@ -125,6 +125,16 @@ final class AppEnvironment: ObservableObject {
                                                              refreshToken: credentials.token)
             return (credentials.host.baseURL, ticket)
         })
+        // Attachment bytes: the PDF, Word file or spreadsheet a bubble names, fetched over the same
+        // `GET /v1/attachments/{profile}/{name}` route and one-ticket-per-request bearer the
+        // pictures already travel on.
+        self.model.attachmentClient = AttachmentFileClient(endpoint: {
+            guard let credentials = await box.credentials() else { throw BridgeError.noHost }
+            let ticket = try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
+                                                             deviceID: credentials.host.deviceID,
+                                                             refreshToken: credentials.token)
+            return (credentials.host.baseURL, ticket)
+        })
         self.updates = UpdateChecker()
     }
 

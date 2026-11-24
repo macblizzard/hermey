@@ -656,6 +656,30 @@ public final class AppModel: ObservableObject {
     /// call, exactly like `BotComputerClient`.
     public var hostUpdateClient: HostUpdateClient?
 
+    /// The bytes of an attachment the host holds — a picture, a PDF, a Word document, a
+    /// spreadsheet — over one freshly minted device ticket per request. Injected by each app for
+    /// the same reason `hostUpdateClient` is: the model owns no pairing and mints nothing.
+    public var attachmentClient: AttachmentFileClient?
+
+    /// A local file a viewer can open, for a file the chat names.
+    ///
+    /// An upload never changes, so its cached bytes answer immediately — the copy was written when
+    /// it was sent, and it opens with no round trip even offline. A bot-made workspace file can be
+    /// rewritten between two presses, so that one is fetched every time: the row exists to show
+    /// what is on disk *now*. A 404 is `AttachmentFetchError.notReady` rather than an empty file —
+    /// a bot that announced a document a moment before writing it has not failed, and the row says
+    /// so quietly and offers to look again.
+    public func attachmentFile(for location: AttachmentLocation) async throws -> URL {
+        if case .uploaded = location,
+           let cached = AttachmentFileCache.cachedURL(for: location) { return cached }
+        guard let client = attachmentClient else { throw AttachmentFetchError.notConfigured }
+        let data = try await client.bytes(for: location)
+        guard let url = AttachmentFileCache.store(data, for: location) else {
+            throw AttachmentFetchError.cacheUnavailable
+        }
+        return url
+    }
+
     /// A manual check is in flight. Settings ▸ About's button reads it for its own word ("Checking…")
     /// and disables itself: a second press would put two questions on the wire and could paint the
     /// older answer over the newer one. Launch and reconnect checks never set it — they are not a
@@ -2331,7 +2355,8 @@ public final class AppModel: ObservableObject {
         let sentAttachments = pendingAttachments.map { attachment in
             SentAttachment(name: attachment.name,
                            isImage: attachment.isImage,
-                           imageData: attachment.isImage ? attachment.data : nil)
+                           imageData: attachment.isImage ? attachment.data : nil,
+                           size: attachment.data.count)
         }
         sending = true
         lastSendError = nil
@@ -2348,12 +2373,11 @@ public final class AppModel: ObservableObject {
                                                           data: attachment.data,
                                                           isImage: attachment.isImage)
                     if let ref = receipt.refText { refs.append(ref) }
-                    if attachment.isImage {
-                        // The transcript will quote the host's own path back, so the picture is
-                        // cached under that name — the one handle both sides agree on after a
-                        // relaunch, with no guessing by message text.
-                        AttachmentImageStore.save(attachment.data, as: receipt.path ?? attachment.name)
-                    }
+                    // Every file is cached under the name the host quoted back: a picture draws
+                    // from it, a PDF or a spreadsheet opens from it without a round trip, and the
+                    // transcript's own `@image:`/`@file:` references find the bytes again after a
+                    // relaunch — the one handle both sides agree on, with no guessing by text.
+                    AttachmentImageStore.save(attachment.data, as: receipt.path ?? attachment.name)
                 }
                 pendingAttachments = []
             } catch {

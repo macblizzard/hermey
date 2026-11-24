@@ -95,8 +95,10 @@ class PageTests(unittest.TestCase):
 class AppTests(unittest.TestCase):
     def test_both_transcripts_draw_the_card_and_hide_the_directive(self) -> None:
         for source, name in ((MAC_ROW, "mac"), (IOS_ROW, "ios")):
-            self.assertIn("GenUITag.boardID(in: entry.text)", source, name)
-            self.assertIn("GenUITag.textWithoutTags(entry.text)", source, name)
+            # The directive is read from the reply with any bot-made workspace link taken out
+            # (that link is a file row); with no link the text is `entry.text` untouched.
+            self.assertRegex(source, r"GenUITag\.boardID\(in: (?:entry\.text|files\.prose)\)", name)
+            self.assertRegex(source, r"GenUITag\.textWithoutTags\((?:entry\.text|files\.prose)\)", name)
             self.assertIn("GenUICard(blockID: boardID)", source, name)
 
     def test_both_apps_supply_a_resolver(self) -> None:
