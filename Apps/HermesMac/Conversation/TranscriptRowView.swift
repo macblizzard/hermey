@@ -33,6 +33,10 @@ struct TranscriptRowView: View {
     /// a lazy stack must not reach for a store, and the pane already holds the connection. The
     /// third argument is this row's message id — the host snapshots a card per message.
     var fetchCard: ((String, SessionID, String) async throws -> CardFetch)? = nil
+    /// Where a named file's bytes come from: a cached file, or the host over the device bearer.
+    /// A closure for the same reason `fetchCard` is one — a row in a lazy stack must not reach for
+    /// a store, and the pane already holds the connection.
+    var openAttachmentFile: (@MainActor (AttachmentLocation) async throws -> URL)? = nil
     /// The emoji on this message, and the way to change it — `AppModel`'s map, reached through the
     /// transcript rather than by handing a row the whole app. Both are closures for the same reason
     /// `fetchCard` is: a row inside a `LazyVStack` is torn down and rebuilt as it scrolls.
@@ -60,6 +64,9 @@ struct TranscriptRowView: View {
     /// Held here rather than in `CardLoader` because this is what makes the row repaint: the
     /// loader is the shared, fetch-once cache, and a row is torn down long before the cache is.
     @State private var cardStates: [String: CardLoader.State] = [:]
+    /// One file fetch per row: a PDF is downloaded once even with two rows naming it, and the
+    /// "not there yet" state survives a re-render.
+    @StateObject private var attachments = AttachmentOpenCoordinator()
 
     /// The pictures a message carried, ready for `ImageViewer`, and where the viewer opens.
     struct ViewedGallery: Identifiable {
@@ -92,6 +99,7 @@ struct TranscriptRowView: View {
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             content.contextMenu { messageMenu }
+                .onAppear(perform: wireAttachmentOpener)
             if let emoji = currentReaction {
                 Button(emoji) { toggleReaction(emoji) }
                     .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
@@ -185,25 +193,22 @@ struct TranscriptRowView: View {
 
             VStack(alignment: .trailing, spacing: 6) {
                 // The pictures that went with the words. The host's transcript carries no
-                // attachment metadata, so a message's own memory is all there is to draw.
+                // attachment metadata, so a message's own memory is all there is to draw. A file
+                // that is not a picture gets a row instead of a thumbnail: its type's symbol, its
+                // name, its size, and a press that opens it in Quick Look.
                 if !bubbleAttachments.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(viewablePictures) { attachment in
-                            if let data = attachment.imageData, let image = NSImage(data: data) {
-                                imageThumbnail(attachment, image: image)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        if !viewablePictures.isEmpty {
+                            HStack(spacing: 6) {
+                                ForEach(viewablePictures) { attachment in
+                                    if let data = attachment.imageData, let image = NSImage(data: data) {
+                                        imageThumbnail(attachment, image: image)
+                                    }
+                                }
                             }
                         }
                         ForEach(bubbleAttachments.filter { !$0.isImage || $0.imageData == nil }) { attachment in
-                            HStack(spacing: 4) {
-                                Image(systemName: "doc").font(.system(size: 9))
-                                Text(attachment.name)
-                                    .font(TypeScale.font(Tokens.textSM))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(Tokens.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Tokens.control, in: Capsule())
+                            sentFileRow(attachment)
                         }
                     }
                 }
@@ -320,6 +325,54 @@ struct TranscriptRowView: View {
         }, startIndex: start)
     }
 
+    // MARK: Files
+
+    /// One file the person sent: named, typed, sized, and openable.
+    ///
+    /// Only pictures are cached at send time, so a PDF or a spreadsheet is fetched back through the
+    /// host when it is pressed — `/v1/attachments/{profile}/{name}`, the route the pictures already
+    /// use — and then shown in Quick Look.
+    @ViewBuilder
+    private func sentFileRow(_ attachment: SentAttachment) -> some View {
+        let location = AttachmentLocation.uploaded(profile: bot, name: attachment.name)
+        let coordinator = attachments
+        AttachmentFileRow(name: attachment.name,
+                          kind: location.kind,
+                          size: attachment.size ?? AttachmentFileCache.cachedSize(for: location),
+                          status: coordinator.status(for: location),
+                          onOpen: { coordinator.open(location) },
+                          onRetry: { coordinator.open(location) })
+            .frame(maxWidth: 320)
+    }
+
+    @ViewBuilder
+    private func replyFileRows(_ links: [WorkspaceFileLink]) -> some View {
+        if !links.isEmpty {
+            let coordinator = attachments
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(links.enumerated()), id: \.offset) { _, link in
+                    let location = link.location
+                    AttachmentFileRow(name: link.name,
+                                      kind: location.kind,
+                                      size: link.size ?? AttachmentFileCache.cachedSize(for: location),
+                                      status: coordinator.status(for: location),
+                                      onOpen: { coordinator.open(location) },
+                                      onRetry: { coordinator.open(location) })
+                        .frame(maxWidth: 340)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    /// Hands the row's fetch and the platform viewer to the one coordinator it shares.
+    private func wireAttachmentOpener() {
+        attachments.loader = openAttachmentFile
+        attachments.present = { url in
+            MacAttachmentQuickLook.shared.show(url)
+        }
+    }
+
     // MARK: Assistant
 
     /// Every A2UI surface this reply carries, in order. Parsed once per body evaluation.
@@ -329,7 +382,7 @@ struct TranscriptRowView: View {
     ///
     /// The parser runs before the genui check below, which is the whole order: a reply may carry a
     /// card, a `::blocks` board or neither, and only the card path knows how to strip its own lines.
-    private var cardScan: CardScan { CardMarker.scan(entry.text) }
+    private var cardScan: CardScan { CardMarker.scan(WorkspaceLinkScan.scan(entry.text).prose) }
 
     /// `cards.enabled`, read per body pass. Off is the old behaviour — the marker line stays as
     /// text, nothing is stripped and nothing is fetched (the rollback switch is `defaults write`).
@@ -364,12 +417,16 @@ struct TranscriptRowView: View {
     }
 
     private var assistantRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // A bot-made file arrives as a link to the workspace route. It is taken out of the prose
+        // and drawn as a row, exactly like a file the person attached; with no link the reply is
+        // `entry.text` untouched.
+        let files = WorkspaceLinkScan.scan(entry.text)
+        return VStack(alignment: .leading, spacing: 6) {
             // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
             // the plugin produced. The prose around it is the reply; the surfaces are drawn in its
             // place, in order. Turning `a2ui.surfaces.disabled` on falls through to `::blocks`.
             if A2UISurfaceSettings.isEnabled, !surfacePayloads.isEmpty {
-                let prose = A2UIMarker.textWithoutMarkers(entry.text)
+                let prose = A2UIMarker.textWithoutMarkers(files.prose)
                 if !prose.isEmpty {
                     MarkdownTextView(text: prose)
                         .accessibilityLabel("Hermes said: \(prose)")
@@ -385,10 +442,10 @@ struct TranscriptRowView: View {
                 // is drawn under the words. A card that cannot be read says so and leaves the prose
                 // exactly as the bot wrote it.
                 cardBubble(cardScan)
-            } else if let boardID = GenUITag.boardID(in: entry.text) {
+            } else if let boardID = GenUITag.boardID(in: files.prose) {
                 // A `::blocks{id="…"}` line is not prose: the plugin's board is drawn in its place, and
                 // the directive itself must never be read as text.
-                let prose = GenUITag.textWithoutTags(entry.text)
+                let prose = GenUITag.textWithoutTags(files.prose)
                 if !prose.isEmpty {
                     MarkdownTextView(text: prose)
                         .accessibilityLabel("Hermes said: \(prose)")
@@ -396,9 +453,11 @@ struct TranscriptRowView: View {
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MarkdownTextView(text: entry.text)
-                    .accessibilityLabel("Hermes said: \(entry.text)")
+                MarkdownTextView(text: files.prose)
+                    .accessibilityLabel("Hermes said: \(files.prose)")
             }
+
+            replyFileRows(files.links)
 
             messageTime
 

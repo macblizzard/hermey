@@ -177,12 +177,15 @@ class HookTests(unittest.TestCase):
         # The order is the contract: A2UI, then cards, then the genui board.
         a2ui = row.index("A2UISurfaceSettings.isEnabled")
         cards = row.index("cardScan.refs.isEmpty")
-        genui = row.index("GenUITag.boardID(in: entry.text)")
+        genui = row.index("GenUITag.boardID(in:")
         self.assertLess(a2ui, cards, name)
         self.assertLess(cards, genui, name)
 
-        # The marker parser is what decides there is a card at all.
-        self.assertIn("CardMarker.scan(entry.text)", source, name)
+        # The marker parser is what decides there is a card at all. It reads the reply with any
+        # bot-made workspace link already taken out: that link is a file row, not prose.
+        self.assertRegex(source,
+                         r"CardMarker\.scan\((?:entry\.text|WorkspaceLinkScan\.scan\(entry\.text\)\.prose)\)",
+                         name)
 
         # `cards.enabled` is honoured: off means today's plain text, nothing stripped, nothing read.
         self.assertIn("CardsSettings.isEnabled", source, name)

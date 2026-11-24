@@ -59,7 +59,9 @@ class BothAppsRenderIt(unittest.TestCase):
         self.assertIn("ForEach(fileLinks)", IOS_MD)
         self.assertIn("HermesFileLinkCard(link: link)", IOS_MD)
         self.assertIn("markdownCache.sanitized(label.body)", IOS_ROW)
-        self.assertIn("markdownCache.sanitized(entry.text)", IOS_ROW)
+        # The row hands the markdown layer the reply's prose with any bot-made workspace link taken
+        # out (that link is a file row, not a URL); store links are still stripped in the renderer.
+        self.assertRegex(IOS_ROW, r"markdownCache\.sanitized\((?:entry\.text|files\.prose)\)")
 
     def test_room_messages_get_cards_too(self) -> None:
         self.assertIn("IncrementalMarkdown.parse(HermesFileLinks.removingLinks(from: text))", IOS_MD)

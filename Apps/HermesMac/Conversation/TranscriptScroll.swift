@@ -340,6 +340,9 @@ struct TranscriptScroll: View {
                                       fetchCard: { id, session, message in
                                           try await model.fetchCard(id: id, session: session, message: message)
                                       },
+                                      openAttachmentFile: { [model] location in
+                                          try await model.attachmentFile(for: location)
+                                      },
                                       reaction: { model.reaction(for: $0) },
                                       onReact: { key, emoji in
                                           Task { await model.setReaction(emoji, for: key) }
@@ -358,6 +361,9 @@ struct TranscriptScroll: View {
                                           onOpenPair: { peer in pairPeer = peer },
                                           fetchCard: { id, session, message in
                                               try await model.fetchCard(id: id, session: session, message: message)
+                                          },
+                                          openAttachmentFile: { [model] location in
+                                              try await model.attachmentFile(for: location)
                                           },
                                           reaction: { model.reaction(for: $0) },
                                           onReact: { key, emoji in

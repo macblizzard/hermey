@@ -1198,7 +1198,9 @@ struct ConversationScreen: View {
                         if attachment.isImage {
                             AttachmentThumbnail(data: attachment.data, size: 26)
                         } else {
-                            Image(systemName: "doc")
+                            // The type's own symbol: a spreadsheet is not a PDF in the strip you
+                            // check before sending.
+                            Image(systemName: AttachmentKind(name: attachment.name).symbolName)
                                 .font(.system(size: 11))
                         }
                         Text(attachment.name)

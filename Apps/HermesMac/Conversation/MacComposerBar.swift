@@ -244,7 +244,9 @@ struct MacComposerBar: View {
                             Image(nsImage: image).resizable().scaledToFill()
                                 .frame(width: 26, height: 26).clipped().cornerRadius(4)
                         } else {
-                            Image(systemName: attachment.isImage ? "photo" : "doc")
+                            // The type's own symbol, so a spreadsheet does not look like a PDF
+                            // in the strip you check before sending.
+                            Image(systemName: AttachmentKind(name: attachment.name).symbolName)
                                 .font(.system(size: 9)).foregroundStyle(Tokens.textSecondary)
                         }
 

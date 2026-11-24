@@ -43,6 +43,9 @@ struct MobileTranscriptRow: View {
     /// The shared `CardLoader` is the fetch-once cache; this is the copy the row repaints from,
     /// because a row inside a lazy stack is torn down long before the cache is.
     @State private var cardStates: [String: CardLoader.State] = [:]
+    /// Fetches and opens the files this message names. One per row, so a PDF is downloaded once and
+    /// the quiet "not there yet" state survives a re-render.
+    @StateObject private var attachments = AttachmentOpenCoordinator()
     /// The bot whose conversation this row is in — the near side of a bot-to-bot exchange.
     var botID: String = ""
     /// The other bot, when the pair sheet is open.
@@ -103,6 +106,7 @@ struct MobileTranscriptRow: View {
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             rowContent
+                .onAppear(perform: wireAttachmentOpener)
             if let emoji = currentReaction {
                 Button(emoji) { setReaction(emoji) }
                     .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
@@ -423,8 +427,8 @@ struct MobileTranscriptRow: View {
         HStack(alignment: .bottom, spacing: 8) {
             Spacer(minLength: 44)
             VStack(alignment: .trailing, spacing: 6) {
-                // What was sent with the words: pictures as pictures, files as chips. Without this
-                // the chat looked like the attachment had never gone anywhere.
+                // What was sent with the words: pictures as pictures, documents as rows that open.
+                // Without this the chat looked like the attachment had never gone anywhere.
                 // Pictures the row's own memory holds, or — after a relaunch — the references the
                 // host stored, looked up in the image cache by the name it quotes.
                 if !bubbleAttachments.isEmpty {
@@ -480,7 +484,7 @@ struct MobileTranscriptRow: View {
                 }
             }
             ForEach(bubbleAttachments.filter { !$0.isImage }) { attachment in
-                attachmentChip(attachment.name)
+                sentFileRow(attachment)
             }
         }
     }
@@ -519,6 +523,53 @@ struct MobileTranscriptRow: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
         .background(Tokens.surface, in: Capsule())
+    }
+
+    // MARK: Files
+
+    /// One file the person sent: its type's symbol, its name, its size, and a press that opens it.
+    ///
+    /// Only pictures are cached at send time, so a PDF is fetched back when it is pressed, over the
+    /// same name-keyed route the pictures already use.
+    @ViewBuilder
+    private func sentFileRow(_ attachment: SentAttachment) -> some View {
+        let profile = botID.isEmpty ? (app.model.selectedBotID ?? "") : botID
+        let location = AttachmentLocation.uploaded(profile: profile, name: attachment.name)
+        let coordinator = attachments
+        AttachmentFileRow(name: attachment.name,
+                          kind: location.kind,
+                          size: attachment.size ?? AttachmentFileCache.cachedSize(for: location),
+                          status: coordinator.status(for: location),
+                          onOpen: { coordinator.open(location) },
+                          onRetry: { coordinator.open(location) })
+            .frame(maxWidth: 300)
+    }
+
+    @ViewBuilder
+    private func replyFileRows(_ links: [WorkspaceFileLink]) -> some View {
+        if !links.isEmpty {
+            let coordinator = attachments
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(links.enumerated()), id: \.offset) { _, link in
+                    let location = link.location
+                    AttachmentFileRow(name: link.name,
+                                      kind: location.kind,
+                                      size: link.size ?? AttachmentFileCache.cachedSize(for: location),
+                                      status: coordinator.status(for: location),
+                                      onOpen: { coordinator.open(location) },
+                                      onRetry: { coordinator.open(location) })
+                        .frame(maxWidth: 320)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    /// Hands the row's fetch and the phone's viewer to the one coordinator it shares.
+    private func wireAttachmentOpener() {
+        let model = app.model
+        attachments.loader = { location in try await model.attachmentFile(for: location) }
+        attachments.present = { url in MobileAttachmentShare.present(url) }
     }
 
     /// Bytes fetched from the host, by attachment name — one dictionary per bubble.
@@ -563,7 +614,7 @@ struct MobileTranscriptRow: View {
     ///
     /// Parsed before the genui check below on purpose: a reply carries a card, a `::blocks` board
     /// or neither, and only the card path knows which of its own lines to strip.
-    private var cardScan: CardScan { CardMarker.scan(entry.text) }
+    private var cardScan: CardScan { CardMarker.scan(WorkspaceLinkScan.scan(entry.text).prose) }
 
     /// `cards.enabled`, read per body pass. Off is today's behaviour: the marker line stays text,
     /// nothing is stripped and nothing is fetched.
@@ -596,12 +647,16 @@ struct MobileTranscriptRow: View {
     }
 
     private var assistant: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        // A bot-made file arrives as a link to the workspace route: it is taken out of the prose
+        // and drawn as a row, exactly like a file the person attached; with no link the reply is
+        // `entry.text` untouched.
+        let files = WorkspaceLinkScan.scan(entry.text)
+        return VStack(alignment: .leading, spacing: 2) {
             // An A2UI surface arrives as one `::a2ui{…}` line: the compiled, validated wire JSON
             // the plugin produced. The prose around it is the reply; the surfaces are drawn in its
             // place, in order. Turning `a2ui.surfaces.disabled` on falls through to `::blocks`.
             if A2UISurfaceSettings.isEnabled, !surfacePayloads.isEmpty {
-                let prose = A2UIMarker.textWithoutMarkers(entry.text)
+                let prose = A2UIMarker.textWithoutMarkers(files.prose)
                 if !prose.isEmpty {
                     MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
                         .accessibilityLabel(prose)
@@ -616,10 +671,10 @@ struct MobileTranscriptRow: View {
                 // A `::card{…}` line is a reference, not prose: the line goes, the card draws under
                 // the words, and a card that cannot be read says so without touching the prose.
                 cardBubble(cardScan)
-            } else if let boardID = GenUITag.boardID(in: entry.text) {
+            } else if let boardID = GenUITag.boardID(in: files.prose) {
                 // A `::blocks{id="…"}` line is a directive, not prose: the plugin's board is drawn in
                 // its place, and the tag itself never appears in the transcript.
-                let prose = GenUITag.textWithoutTags(entry.text)
+                let prose = GenUITag.textWithoutTags(files.prose)
                 if !prose.isEmpty {
                     MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
                         .accessibilityLabel(prose)
@@ -628,12 +683,15 @@ struct MobileTranscriptRow: View {
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(entry.text)), rawText: entry.text)
-                    .accessibilityLabel(entry.text)
+                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(files.prose)), rawText: files.prose)
+                    .accessibilityLabel(files.prose)
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
                     .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
             }
+
+            replyFileRows(files.links)
+
             messageTime
         }
         .frame(maxWidth: .infinity, alignment: .leading)
