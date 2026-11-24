@@ -138,6 +138,12 @@
 "b": "First run Add a server: paste https://<host>.<tailnet>.ts.net \u2014 serve-root, no port. Enter the pairing code minted on the host: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
 },
 {
+"h": "The line above the composer",
+"p": "The apps",
+"u": "apps.html#the-line-above-the-composer",
+"b": "The line above the composer Both apps print one muted line over the message box, outside the field: the bot's provider/model and how full its context is, as 540k/1M Tokens . The count arrives with a turn. Usage comes back when a turn completes, so before the first reply the line shows the model alone rather than a made"
+},
+{
 "h": "The bell, and what is waiting",
 "p": "The apps",
 "u": "apps.html#the-bell-and-what-is-waiting",
