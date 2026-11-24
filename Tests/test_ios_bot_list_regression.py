@@ -69,7 +69,7 @@ class BotListRegressionTests(unittest.TestCase):
         source = SOURCE.read_text()
         self.assertNotRegex(source, r"\} header: \{",
                             "a pinned section header is back; headings must scroll with the list")
-        self.assertIn('scrollingHeading { listHeading("GROUP CHATS") }', source)
+        self.assertIn('scrollingHeading { listHeading(BotGrouping.roomsName.uppercased()) }', source)
         self.assertIn("scrollingHeading { groupHeader(group) }", source)
 
 

@@ -837,7 +837,7 @@ public final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 guard let self else { return }
                 if self.connection.isLive { await self.loadBotPreviews() }
-                self.noteWireSilence()
+                await self.noteWireSilence()
                 try? await Task.sleep(for: .seconds(Self.unreadSweepInterval))
             }
         }
@@ -861,27 +861,53 @@ public final class AppModel: ObservableObject {
     private var lastWireEventAt = Date()
     private var lastWireEventLabel = "none yet"
     private var silenceReported = false
+    /// Whether the read that a stall earns has already been asked for. One per stall: a frame clears
+    /// it, so the next silence may ask again, but a host that is quiet for an hour is not polled.
+    private var silenceReadBack = false
 
     private func noteWireEvent(_ event: ClientEvent) {
         lastWireEventAt = Date()
         // A short name, not the payload: the rows carry the words, this is a diagnostic line.
         lastWireEventLabel = String(describing: event).prefix(80).description
         silenceReported = false
+        silenceReadBack = false
     }
 
-    /// Say how long the wire has been quiet, once per stall, while a turn is supposed to be running.
+    /// Say how long the wire has been quiet, once per stall, while a turn is supposed to be running —
+    /// and then ask the host the one question this app cannot answer locally.
     ///
     /// Runs on the sweep's clock (`unreadSweepInterval`) rather than a timer of its own: one slow
     /// loop already exists, and a second one is how a client ends up polling twice as often as it
     /// meant to.
-    func noteWireSilence() {
+    ///
+    /// A turn with no frame at all for this long is not slow, it is *stranded*: the host finished and
+    /// the completion never reached this window (the socket had re-attached to another bot's session,
+    /// the event named an id the app could not place, the turn settled while the wire was down). The
+    /// log line used to be the entire answer, so the only cure was to leave the bot and come back —
+    /// the report this whole path exists for. One read per stall is the correction: the host's answer
+    /// says whether anything is still running, and `refreshTranscript` finishes the turn from it.
+    func noteWireSilence() async {
         guard isStreaming || !runningSessions.isEmpty else { return }
         let quiet = Date().timeIntervalSince(lastWireEventAt)
-        guard quiet >= Self.silenceThreshold, !silenceReported else { return }
-        silenceReported = true
-        ClientLog.note("no socket event for \(Int(quiet))s while a turn runs "
-                       + "(last: \(lastWireEventLabel); wire: \(connection.label))",
-                       level: .warning, category: "connection")
+        guard quiet >= Self.silenceThreshold else { return }
+        if !silenceReported {
+            silenceReported = true
+            ClientLog.note("no socket event for \(Int(quiet))s while a turn runs "
+                           + "(last: \(lastWireEventLabel); wire: \(connection.label))",
+                           level: .warning, category: "connection")
+        }
+        // Never during a compaction or a submit in flight: both are deliberate silence with their own
+        // notice, and both would be made worse by a read landing under them. One read per stall —
+        // `silenceReadBack` is cleared by the next frame, so the *next* stall may ask again.
+        guard !isCompressing, !sending, !silenceReadBack, let sid = selectedSessionID else { return }
+        silenceReadBack = true
+        ClientLog.note("the wire has been quiet for \(Int(quiet))s with \(sid) on screen: "
+                       + "asking the host whether the turn is over",
+                       level: .info, category: "session")
+        let read = await refreshTranscript(sid)
+        if !read {
+            await followMovedConversation(insteadOf: sid)
+        }
     }
 
     // MARK: Sessions
@@ -1134,12 +1160,24 @@ public final class AppModel: ObservableObject {
     /// never learned, so each event would start its own read. Debounced to one read per burst: short
     /// enough that the reply lands almost immediately, long enough that a turn's deltas collapse into
     /// a single refresh.
+    ///
+    /// The read is also what *ends* the turn when its completion was the event that could not be
+    /// placed: the host is the only authority left on whether anything is still running, and a
+    /// refresh that finds it idle commits the streamed text and clears the thinking row (see
+    /// `finishTurn`). Without that the pane kept the old answer and `(´･_･`) musing…` for ever while
+    /// the bot list showed the reply — the report of a message that only arrives after switching
+    /// bots, which is what forces a resume.
     private func scheduleOpenRefresh() {
         guard pendingOpenRefresh == nil, let sid = selectedSessionID, connection.isLive else { return }
         pendingOpenRefresh = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard let self else { return }
-            await self.refreshTranscript(sid)
+            let read = await self.refreshTranscript(sid)
+            if !read {
+                // The id on screen does not resolve any more: the host moved this bot's
+                // conversation, and the reply whose event could not be placed is in the new one.
+                await self.followMovedConversation(insteadOf: sid)
+            }
             self.pendingOpenRefresh = nil
         }
     }
@@ -1735,28 +1773,7 @@ public final class AppModel: ObservableObject {
                                category: "session")
                 return false
             }
-            // A moved conversation is a *different* conversation: the older rows on screen belong to
-            // it, so they are not merged with its page (that is what `adoptResume` is for).
-            transcript = []
-            resetForMovedConversation()
-            selectedSessionID = session
-            sessionBots[session] = bot
-            if resumed.id != session { sessionAliases[resumed.id] = session }
-            if let stored = resumed.storedSessionID, stored != session {
-                sessionAliases[stored] = session
-            }
-            adoptResume(resumed.entries, cursor: resumed.earlierCursor,
-                        total: resumed.historyTotal, sessionID: session, botID: bot)
-            pendingRequests = resumed.openRequests
-            adopt(resumed, session: session)
-            remember(session, entries: transcript, cursor: resumed.earlierCursor,
-                     total: resumed.historyTotal)
-            markTranscriptCurrent()
-            unseenSessions.remove(session)
-            unseenSessionOrder.removeAll { $0 == session }
-            cacheTranscriptSoon(session)
-            ClientLog.note("followed \(bot) into \(session) (\(open ?? "nothing") was on screen)",
-                           level: .info, category: "session")
+            paintAdoptedConversation(resumed, named: session, bot: bot, was: open)
             return true
         } catch is CancellationError {
             return false
@@ -1767,6 +1784,76 @@ public final class AppModel: ObservableObject {
             ClientLog.note("a moved session for \(bot) would not resume (\(session)): "
                            + error.localizedDescription, level: .info, category: "session")
             return false
+        }
+    }
+
+    /// Put the conversation the host just named on screen, as this bot's one conversation.
+    ///
+    /// The one place both ways of moving a window end: an event naming a newer id (the socket moved
+    /// the conversation while the pane was showing the old one), and a read of the id on screen being
+    /// refused because the host no longer holds it (`followMovedConversation`). They must land on the
+    /// same rows, so they share this rather than each writing its own order of assignments.
+    ///
+    /// A moved conversation is a *different* conversation: the older rows on screen belong to
+    /// it, so they are not merged with its page (that is what `adoptResume` is for).
+    private func paintAdoptedConversation(_ resumed: SessionResume, named session: SessionID,
+                                          bot: String, was open: SessionID?) {
+        transcript = []
+        resetForMovedConversation()
+        selectedSessionID = session
+        sessionBots[session] = bot
+        if resumed.id != session { sessionAliases[resumed.id] = session }
+        if let stored = resumed.storedSessionID, stored != session {
+            sessionAliases[stored] = session
+        }
+        adoptResume(resumed.entries, cursor: resumed.earlierCursor,
+                    total: resumed.historyTotal, sessionID: session, botID: bot)
+        pendingRequests = resumed.openRequests
+        adopt(resumed, session: session)
+        remember(session, entries: transcript, cursor: resumed.earlierCursor,
+                 total: resumed.historyTotal)
+        markTranscriptCurrent()
+        unseenSessions.remove(session)
+        unseenSessionOrder.removeAll { $0 == session }
+        cacheTranscriptSoon(session)
+        ClientLog.note("followed \(bot) into \(session) (\(open ?? "nothing") was on screen)",
+                       level: .info, category: "session")
+    }
+
+    /// Follow a bot's conversation to the id the host says it owns now.
+    ///
+    /// The sibling of `adoptMovedConversation` for the case no event announces. The id on screen stops
+    /// resolving (`4001`/`4007` — the host retired the Bot Chat, turned the runtime over, or re-minted
+    /// the session), so every frame after it is either refused or names an id this window never
+    /// learned, and re-reading the id it holds can only fail again. That is how a reply ended up
+    /// visible in the list's preview and absent from the open pane until the reader switched bots:
+    /// the switch is what re-resolved the bot's conversation from scratch.
+    ///
+    /// So the read asks the host which conversation the bot owns — the same answer opening the bot
+    /// uses (the Bot Chat by name, then the newest conversation that actually holds messages) — and
+    /// adopts it without a bot switch and without a resume of a dead id.
+    private func followMovedConversation(insteadOf stale: SessionID) async {
+        guard connection.isLive, let bot = selectedBotID, selectedSessionID == stale else { return }
+        guard let moved = await newestExistingConversation(for: bot), moved != stale else { return }
+        let epoch = botEpoch
+        do {
+            let resumed = try await client.resumeSession(moved, profile: bot)
+            // Re-read after the await: another bot, or another conversation in this one, means the
+            // reader moved while the host was answering and this answer belongs to neither.
+            guard epoch == botEpoch, selectedBotID == bot, selectedSessionID == stale else { return }
+            // The host names the durable id beside the runtime one. It has to be the conversation the
+            // roster offered, or this read is about to draw something else in a window nobody asked
+            // to move — the refusal that keeps one bot's words out of another's chat.
+            guard resumed.storedSessionID == nil || resumed.storedSessionID == moved else {
+                ClientLog.note("\(bot)'s conversation moved to \(moved) but the host answered "
+                               + "\(resumed.storedSessionID ?? "-"); the window stays on \(stale)",
+                               level: .info, category: "session")
+                return
+            }
+            paintAdoptedConversation(resumed, named: moved, bot: bot, was: stale)
+        } catch {
+            ClientLog.note("\(bot)'s moved conversation \(moved) would not resume either: "
+                           + error.localizedDescription, level: .info, category: "session")
         }
     }
 
@@ -2126,11 +2213,33 @@ public final class AppModel: ObservableObject {
     /// gauge for a conversation that was only asleep. iOS suspends the socket constantly, so this ran
     /// on every return to the app. A refresh keeps what is on screen until the host's copy replaces
     /// it, and says so with `transcriptReloads` so the shell can land at the end.
-    private func refreshTranscript(_ sid: SessionID) async {
-        guard !draftSessionIDs.contains(sid) else { return }
+    ///
+    /// A read is also the app's last authority on a turn: if this window believes one is running and
+    /// the host answers that nothing is, the completion event is not coming and the read finishes the
+    /// turn instead (see `finishTurn`). That is the path that puts a reply on screen with no
+    /// interaction when its `message.complete` was lost or named a session this window could not place.
+    ///
+    /// - Returns: whether the host answered with this conversation's rows. `false` means the id no
+    ///   longer resolves (or the wire died mid-read), which is the caller's cue to ask the host where
+    ///   the bot's conversation went now (`followMovedConversation`).
+    @discardableResult
+    private func refreshTranscript(_ sid: SessionID) async -> Bool {
+        guard !draftSessionIDs.contains(sid) else { return false }
+        // Captured before the first `await`: this is what the turn had already streamed when the read
+        // started, and it is the answer if the host says the turn is over whether or not the host had
+        // persisted it by the time it answered.
+        let streamed = streamedText
+        let wasStreaming = isStreaming
         do {
             let resumed = try await client.resumeSession(sid, profile: selectedBotID)
-            guard selectedSessionID == sid else { return }
+            guard selectedSessionID == sid else { return false }
+            if wasStreaming, !resumed.isStreaming {
+                // Nothing is running on the host: the turn is over and its `message.complete` is not
+                // coming. Adopting the rows alone would leave the bubble up and the words this app
+                // already received on the floor, so the turn is finished from the host's answer.
+                finishTurn(from: resumed, session: sid, streamed: streamed)
+                return true
+            }
             adoptResume(resumed.entries, cursor: resumed.earlierCursor,
                         total: resumed.historyTotal, sessionID: sid)
             pendingRequests = resumed.openRequests
@@ -2142,14 +2251,72 @@ public final class AppModel: ObservableObject {
             cacheTranscriptSoon(sid)
             transcriptReloads += 1
             settleCompactionWait()
+            return true
         } catch is CancellationError {
-            return
+            return false
         } catch {
             // A failed refresh leaves the transcript that is on screen alone: it is still the last
             // thing the host said, and blanking it would invent a loss.
-            ClientLog.note("transcript refresh failed: \(error.localizedDescription)",
-                           level: .warning, category: "connection")
+            if let gateway = error as? GatewayError, Self.isUnknownSession(gateway) {
+                ClientLog.note("the conversation on screen no longer resolves (\(sid)): asking the "
+                               + "host which conversation \(selectedBotID ?? "this bot") owns now",
+                               level: .info, category: "session")
+            } else {
+                ClientLog.note("transcript refresh failed: \(error.localizedDescription)",
+                               level: .warning, category: "connection")
+            }
+            return false
         }
+    }
+
+    /// Finish a turn the host says is over, keeping the words this app already received.
+    ///
+    /// `message.complete` is the fast path, and it used to be the *only* path that committed the
+    /// streamed text and cleared the thinking row. Every other way a turn ends left both behind: the
+    /// completion dropped because it named a session this window could not place, the completion lost
+    /// with a socket that had re-attached to another bot's session (the events of a live turn carry no
+    /// session id on the wire, so the socket's last attach decides who owns them), or the turn
+    /// finishing while the socket was down. The reply was on the host and in the bot list's preview,
+    /// and the open pane sat on the previous message under a `musing…` row until the reader left the
+    /// bot and came back — which is the whole report.
+    ///
+    /// Deliberately the same rule `reconcile` uses after a reconnect, applied here so the two paths
+    /// cannot disagree: adopt the host's rows, then append anything this client streamed that the
+    /// host has not persisted, rather than discarding words the reader can already see.
+    private func finishTurn(from resumed: SessionResume, session: SessionID, streamed: String) {
+        var entries = resumed.entries
+        // This turn's cards are events, not messages: the host answers a resume with messages, so
+        // they would vanish with the transcript that is being replaced.
+        entries.append(contentsOf: liveToolEntries)
+        let text = streamed.isEmpty ? resumed.liveText : streamed
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty,
+           !entries.contains(where: { $0.role == .assistant && $0.text.contains(trimmed) }) {
+            entries.append(TranscriptEntry(id: "recovered-\(session)-\(entries.count)",
+                                           role: .assistant, text: trimmed))
+        }
+        adoptResume(entries, cursor: resumed.earlierCursor,
+                    total: resumed.historyTotal, sessionID: session)
+        pendingRequests = resumed.openRequests
+        // The host's own verdict: `isStreaming` false, the bubble's text gone with it.
+        adopt(resumed, session: session)
+        setStreamed("")
+        reasoningText = ""
+        liveTools = []
+        sealedInterimKeys.removeAll()
+        sealedCommentary.removeAll()
+        runningSessions.remove(session)
+        turnRowStart = transcript.count
+        remember(session, entries: transcript, cursor: resumed.earlierCursor, total: resumed.historyTotal)
+        markTranscriptCurrent()
+        unseenSessions.remove(session)
+        unseenSessionOrder.removeAll { $0 == session }
+        cacheTranscriptSoon(session)
+        transcriptReloads += 1
+        settleCompactionWait()
+        ClientLog.note("finished \(session) from the host's answer: it is not running, "
+                       + "\(trimmed.isEmpty ? "no" : "the") streamed words are committed "
+                       + "(\(transcript.count) rows)", level: .info, category: "session")
     }
 
     public func send() async {

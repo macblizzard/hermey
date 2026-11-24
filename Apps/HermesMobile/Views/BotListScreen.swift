@@ -564,7 +564,7 @@ struct BotListScreen: View {
     private var roomsSection: some View {
         if !model.rooms.isEmpty {
             Section {
-                scrollingHeading { listHeading("GROUP CHATS") }
+                scrollingHeading { listHeading(BotGrouping.roomsName.uppercased()) }
                 ForEach(model.rooms) { room in
                     roomRow(room)
                 }

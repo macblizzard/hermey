@@ -246,6 +246,17 @@ struct TranscriptScroll: View {
             .onChange(of: model.streamingText) { _, _ in follow(proxy) }
             .onChange(of: model.isStreaming) { _, _ in follow(proxy) }
             .onChange(of: model.selectedSessionID) { _, _ in openSession(proxy) }
+            // A read replaced the rows in place: a foreground, a re-read after an event this app could
+            // not place, or a turn the host said was finished. The scroll view keeps the offset it
+            // had, so rows that arrived *below* the viewport stayed there — the reply was on screen in
+            // the model and out of sight in the pane, which reads exactly like "the message only
+            // appears when I switch away and back". The phone has landed at the newest message on this
+            // signal since its own re-read; the Mac had no handler for it at all.
+            .onChange(of: model.transcriptReloads) { _, _ in
+                followsBottom = true
+                anchorHold.release(because: "the transcript was re-read")
+                scrollRequest += 1
+            }
             .onChange(of: search.query) { _, _ in
                 // The cursor has already been reset to the first result by the state's own
                 // assignment rule; this is the jump that shows it.

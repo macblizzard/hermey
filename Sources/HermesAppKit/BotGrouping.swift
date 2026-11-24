@@ -37,6 +37,10 @@ public enum BotGrouping {
     public static let uncategorizedID = "__uncategorized"
     public static let pinnedName = "Pinned"
     public static let uncategorizedName = "Uncategorized"
+    /// The heading over the group chats. Not a category — a room has no category on the host — but
+    /// it is the third heading the app draws itself, and both surfaces must spell it the same way.
+    public static let roomsID = "__rooms"
+    public static let roomsName = "Group chats"
 
     public static func groups(bots: [Bot],
                               state: BotCategoryState,

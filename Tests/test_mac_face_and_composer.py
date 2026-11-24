@@ -71,11 +71,19 @@ class TheSidebarRowIsOneCluster(unittest.TestCase):
         for glyph in ("magnifyingglass", "sidebar.left", "gearshape"):
             self.assertGreater(row.index(glyph), row.index(filler))
 
-    def test_no_captions_over_the_lists(self) -> None:
-        # "CHATS" over a list of chats cost a line above the first row and said nothing.
+    def test_the_group_chats_wear_the_same_heading_as_the_categories(self) -> None:
+        # ".CHATS" over a list of chats cost a line and said nothing — that stays gone. The group
+        # chats are the exception, and the owner asked for it: the phone has always headed them, and
+        # the Mac drew the rows bare above a divider, so a reader could not tell what they were. It
+        # is the categories' own control (chevron, count, remembered fold), not a plain label.
         self.assertNotIn('SectionCaption("CHATS")', ROSTER)
+        self.assertIn("roomsCaption", ROSTER)
+        self.assertIn("BotGrouping.roomsName", ROSTER)
+        self.assertIn("private var roomsCollapsed: Bool { collapsedGroups[BotGrouping.roomsID] == true }",
+                      ROSTER)
+        # A plain caption would be the second kind of heading on one list; there is none.
         self.assertNotIn('SectionCaption("GROUP CHATS")', ROSTER)
-        # The divider between rooms and bots is what separates them now.
+        # The divider between rooms and bots is still what separates them once the fold is open.
         self.assertIn("Divider().padding(.horizontal, 8).padding(.vertical, 4)", ROSTER)
 
 
