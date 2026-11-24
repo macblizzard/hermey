@@ -1336,3 +1336,26 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed
 - `hermeyd` **0.6.0**: the bot icon document accepts a `definition` and `color` per bot, and refuses an
   invalid definition with the reason (so the editor can show it instead of silently saving).
+
+## [0.1.649] — 2026-11-24
+
+### Added
+- **Glass avatars.** A bot's drawn face now has a material. Choose **Glass** in the Avatar tab and the shape
+  is lit like glass — a soft coloured halo, a vertical colour ramp, a form sheen, one specular streak, a
+  bright Fresnel rim and a contact shadow at the bottom — instead of a flat fill. The rim and glow pulse with
+  what the bot is doing, and the look holds at 26 pt in a list row as well as full size on the pet and in the
+  editor. **Solid** stays the default, so nothing you already saved changes.
+- **Motions that match the old face.** The drawn avatar used to only breathe; it now hops, tilts, flips,
+  makes quick eye darts and squints while it works, on exactly the same clock and performance the picture
+  avatars have — one motion language, not two.
+
+### Fixed
+- **The avatar follows you everywhere.** A stored avatar only appeared in a few places: the bot settings
+  header, the right-hand bot panel, transcript rows and the activity badges kept drawing the old face. All of
+  them now read the stored avatar, so a change shows up without a relaunch.
+- **One place to choose a face.** The duplicate *Choose bot icon* control is gone from the About tab (Mac) and
+  the identity section (iPhone); the Avatar tab is the only place a face is picked.
+
+### Changed
+- `hermeyd` **0.7.0**: the stored face carries a `material`, validated on the way in — an unknown value is
+  refused with the reason instead of being saved.
