@@ -114,6 +114,13 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         # Hover only where there is a pointer — the app's own cross-platform helper.
         self.assertIn(".onHoverCompat { isHovered = $0 }", self.PILL_SOURCE)
 
+    def test_the_pill_is_as_tall_as_its_row(self) -> None:
+        label = self.pill_label()
+        self.assertIn(".frame(maxHeight: .infinity)", label,
+                      "the pill must take the composer row's control height")
+        self.assertNotIn(".fixedSize(horizontal: false, vertical: true)", label,
+                         "a vertical fixedSize pins the pill to its text height")
+
     def test_the_sample_s_anatomy_inside_the_pill(self) -> None:
         label = self.pill_label()
         # A small circular tinted glyph, then the model in semibold, then the count quieter beside
@@ -132,7 +139,7 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         order = ["glyph", "modelName(name)", "context(tokens)", "\n                    chevron\n"]
         positions = [label.index(token) for token in order]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn(".padding(.horizontal, 12)", label)
+        self.assertIn(".padding(.horizontal, 14)", label)
 
     def test_a_narrow_window_drops_the_count_and_keeps_the_model_and_chevron(self) -> None:
         label = self.pill_label()

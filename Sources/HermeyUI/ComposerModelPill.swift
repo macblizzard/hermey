@@ -100,7 +100,7 @@ public struct ComposerModelPill: View, Equatable {
 
     /// The tinted round glyph's side. The pill's height is the row's own control height, given by
     /// `Composer`, so the lozenge is level with the paperclip and the send arrow.
-    private var glyphSide: CGFloat { 14 }
+    private var glyphSide: CGFloat { 16 }
 
     public var body: some View {
         let name = SessionLine.model(provider: provider, model: model)
@@ -132,8 +132,12 @@ public struct ComposerModelPill: View, Equatable {
                 }
                 // About the sample's 14 pt, trimmed to 12 because this pill is the height of the
                 // Mac's 26 pt row controls and a wider inset reads as a lozenge rather than a chip.
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 14)
+                // Fills the row's control height. `fixedSize(vertical:)` used to sit below this and
+                // pinned the lozenge to its text height, so it read as a slim bar beside round
+                // buttons twice its height — the row's height is the pill's height.
                 .frame(maxHeight: .infinity)
+                .frame(minHeight: 0)
                 // Dark lozenge, no border: the fill the bar composer already uses, one step lighter
                 // under the pointer. Nothing is stroked — a rim here would read as a text field
                 // inside the field.
@@ -146,7 +150,6 @@ public struct ComposerModelPill: View, Equatable {
             .disabled(!isEnabled)
             .opacity(isEnabled ? 1 : 0.55)
             .lineLimit(1)
-            .fixedSize(horizontal: false, vertical: true)
             // One element to VoiceOver: glyph, name, count and chevron are a single control.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(accessibilityLabel(name: name))
