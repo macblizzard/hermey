@@ -33,10 +33,10 @@ final class MacAttachmentQuickLook {
             return
         }
 
-        // A local name: the stored `preview` is optional, so assigning its member here would not
-        // compile — and the stored one is only set once the window exists.
-        let view = QLPreviewView(frame: NSRect(x: 0, y: 0, width: 820, height: 600),
-                                 style: .normal)
+        // `init?(frame:style:)` is failable, so the local is optional too: bind it rather than
+        // force-unwrapping, and store it on the instance only once the window exists.
+        guard let view = QLPreviewView(frame: NSRect(x: 0, y: 0, width: 820, height: 600),
+                                       style: .normal) else { return }
         view.previewItem = url as NSURL
 
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 600),
