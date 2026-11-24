@@ -505,12 +505,16 @@ class ABotWithoutADefinitionKeepsItsPicture(unittest.TestCase):
         self.assertIn("} else {", source)
         self.assertIn("shapeBody", source)
 
-    def test_both_rows_and_headers_pass_the_stored_definition(self) -> None:
+    def test_both_rows_and_headers_resolve_the_stored_definition(self) -> None:
+        # They no longer pass it: `BotAvatarView` resolves the stored avatar from the environment,
+        # so a row and a header get it without naming it — and a surface added later cannot forget
+        # (2026-11-24, the report that a new avatar never reached Settings or the bot panel).
         for path in (MAC_ROW, IOS_ROW, MAC_HEADER, IOS_HEADER):
             source = read(path)
             with self.subTest(file=path.name):
-                self.assertIn("avatarColor:", source)
-                self.assertIn("botAvatars[", source)
+                self.assertIn("BotAvatarView(", source)
+                self.assertNotIn("definition:", source)
+                self.assertNotIn("avatarColor:", source)
 
     def test_the_pet_draws_a_definition_instead_of_its_picture(self) -> None:
         source = read(MAC_PET)

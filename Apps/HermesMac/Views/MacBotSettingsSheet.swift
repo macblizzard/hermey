@@ -21,7 +21,6 @@ struct MacBotSettingsSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showingIconPicker = false
     @State private var showingSoul = false
     @State private var showingMemory = false
     @State private var showingDelete = false
@@ -87,10 +86,6 @@ struct MacBotSettingsSheet: View {
         .frame(width: 520)
         .frame(minHeight: 420, idealHeight: 560, maxHeight: 560)
         .background(Tokens.canvas)
-        .sheet(isPresented: $showingIconPicker) {
-            MacBotIconPicker(bot: bot, store: store)
-            .hermesSheetChrome()
-        }
         .sheet(isPresented: $showingMemory) {
             BotMemorySheet(botName: bot.displayName,
                            load: { try await model.memory(for: bot.id) })
@@ -105,7 +100,13 @@ struct MacBotSettingsSheet: View {
         }
     }
 
-    /// What the bot is: its portrait picker, its prompt file, its description and its pet.
+    /// What the bot is: its prompt file, its description and its pet.
+    ///
+    /// The face is *not* chosen here. It was — this tab carried a button of its own that opened the
+    /// old shape-and-colour picker, a second chooser beside the Avatar tab's own editor, and the two
+    /// could disagree about which face a bot wore. The Avatar tab is now the only door: choosing a
+    /// body and a colour there is choosing the face, and this tab keeps the things that are not a
+    /// face.
     @ViewBuilder
     private var aboutContent: some View {
         if let error {
@@ -115,12 +116,6 @@ struct MacBotSettingsSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
 
-        HermeyButton("Choose bot icon…",
-                      kind: .secondary,
-                      size: .small,
-                      isDisabled: store.pairing == nil || store.pairing?.isTicketOnly == true) {
-            showingIconPicker = true
-        }
         if let iconError = store.botFacesError {
             Text("Could not refresh bot icons: \(iconError)")
                 .font(TypeScale.font(TypeScale.caption)).foregroundStyle(Tokens.danger)

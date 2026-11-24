@@ -130,6 +130,12 @@ struct RootView: View {
                 guard live else { return }
                 Task { await app.model.prefetchConversations() }
             }
+            // Every bot's face on this phone resolves its stored avatar from here — the roster, the
+            // chat header, the drawer, the settings sheet's title bar and every still row — so a bot
+            // that chose an avatar wears it everywhere. Read off `app`, which publishes
+            // `botAvatars`: saving, clearing or changing a definition re-reads the map and the faces
+            // follow without a relaunch.
+            .environment(\.botAvatars, BotAvatarLibrary(avatars: app.botAvatars))
     }
 }
 

@@ -662,9 +662,7 @@ private struct HoverRow<Content: View>: View {
                               color: store.botFaces[bot.id]?.raw,
                               activity: store.activity(for: bot.id),
                               size: metrics.avatar,
-                              animates: store.activity(for: bot.id) != .idle,
-                              definition: store.botAvatars[bot.id]?.definition,
-                              avatarColor: store.botAvatars[bot.id]?.color)
+                              animates: store.activity(for: bot.id) != .idle)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.

@@ -25,6 +25,12 @@ import SwiftUI
 /// Both compile against `HermeyUI` alone for everything but the activity value, which lives in
 /// `HermesKit` — the one vocabulary the wire layer and the design system share.
 ///
+/// **The stored avatar is not an argument.** A bot that has chosen a face draws it on every
+/// surface, and the surface does not have to know: `EnvironmentValues.botAvatars` carries the host's
+/// map (`BotAvatarLibrary`), injected once at each app's root, and this view resolves
+/// `definition ?? environment.botAvatars[identity]`. The `definition:` parameter remains for a
+/// preview or an editor drawing a face the host does not have yet.
+///
 /// **A face changes when a surface adopts this.** The shape and colour derive from the reference's
 /// palette (eleven colours) with the reference's hash. A surface that must keep a stored face passes
 /// `color:` with the stored value (the reference's `#RRGGBB` or `#RRGGBB::shape_N`) and leaves the id
@@ -88,9 +94,17 @@ public struct BotAvatarView: View {
     /// The bot's own generated avatar, when it has one (`BotAvatarDocument`). A bot with a definition
     /// draws that instead of the shape-and-palette face — the whole row, header and pet follow this
     /// one branch, so no two surfaces can disagree about which face a bot wears.
+    ///
+    /// Almost nothing passes this. The stored avatar arrives through the environment
+    /// (`EnvironmentValues.botAvatars`, injected once at each app's root), so a call site that knows
+    /// only the bot's id still draws the face the bot chose; the parameter exists for a preview or an
+    /// editor that is drawing a definition the host does not have yet.
     public var definition: BotAvatarDefinition?
-    /// The definition's colour: `#RRGGBB`, or nil for the house colour.
+    /// The definition's colour: `#RRGGBB`, or nil for the house colour. Only read beside an explicit
+    /// `definition:` — a stored definition brings its own stored colour with it.
     public var avatarColor: String?
+
+    @Environment(\.botAvatars) private var avatarLibrary
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// Backgrounded windows keep their faces still: the Mac target had no such gate, so a minimised
@@ -132,11 +146,11 @@ public struct BotAvatarView: View {
     static let lightEyeInk = Color.white
 
     public var body: some View {
-        if let definition {
+        if let face = self.face {
             // The generated avatar draws itself, in its own volume; the shape-and-palette face below
             // is untouched, which is what keeps a bot without one looking exactly as it did.
-            OpenBotAvatarView(definition: definition,
-                              color: avatarColor,
+            OpenBotAvatarView(definition: face.definition,
+                              color: face.color,
                               state: OpenBotAvatarState(activity: activity),
                               mood: OpenBotAvatarState.mood(for: activity),
                               size: size,
@@ -147,6 +161,21 @@ public struct BotAvatarView: View {
         } else {
             shapeBody
         }
+    }
+
+    /// The face this view draws: the definition it was handed (a preview, the editor), else what the
+    /// environment says the host stores for this bot.
+    ///
+    /// One resolution for every surface. Before this, four call sites passed the stored definition
+    /// and twelve did not, so a bot's new avatar appeared in its header and its old one in Settings,
+    /// in the bot panel and in every list row — the report that started this. A caller's `color:` is
+    /// deliberately *not* consulted when the definition came from the host: the stored colour
+    /// belongs to the stored body, and a stale `bots.color` must not repaint a newer face.
+    private var face: BotAvatarDocument? {
+        if let definition {
+            return BotAvatarDocument(definition: definition, color: avatarColor)
+        }
+        return avatarLibrary[identity]
     }
 
     private var shapeBody: some View {

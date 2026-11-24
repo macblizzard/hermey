@@ -228,6 +228,12 @@ struct WorkspaceRoot: View {
             // filling a spinner does not jump inside an already-moving sheet.
             .transition(.opacity.animation(WorkspaceMotion.sheet))
         }
+        // Every bot's face in this window resolves its stored avatar from here — the bot panel, the
+        // roster, the header, the working row, the transcript's attribution rows and every sheet
+        // above — so a bot that chose an avatar wears it everywhere without sixteen call sites each
+        // remembering to pass it. Read off the store, which publishes `botAvatars`: saving, clearing
+        // or changing a definition re-runs this and the faces follow on the next pass.
+        .environment(\.botAvatars, BotAvatarLibrary(avatars: store.botAvatars))
     }
 
     /// What the log is *about*: build, OS, host, connection — the same header the phone and

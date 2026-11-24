@@ -90,6 +90,10 @@ struct MacSettingsView: View {
                                 conversationIsOpen: store.model.selectedBotID == bot.id)
             .hermesSheetChrome()
         }
+        // Settings is its own window, outside the workspace root's environment, so the Bots tab's
+        // rows and the settings sheet it opens would otherwise draw the old shape face for a bot
+        // that has an avatar. Same library, same source: the store the window already observes.
+        .environment(\.botAvatars, BotAvatarLibrary(avatars: store.botAvatars))
     }
 }
 

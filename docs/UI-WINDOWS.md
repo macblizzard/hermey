@@ -44,9 +44,8 @@ whether the site applies the rule.
 | HermesMac | `BotSidebarView.swift` | 90 | sheet | `GroupChatsSheet(` | yes |
 | HermesMac | `BotSidebarView.swift` | 97 | sheet | `ManageBotsSheet(` | yes |
 | HermesMac | `AboutSettingsTab.swift` | 109 | sheet | `ClientLogView(title: "Log", header: logHeader)` | yes |
-| HermesMac | `MacBotSettingsSheet.swift` | 84 | sheet | `MacBotIconPicker(bot: bot, store: store)` | yes |
-| HermesMac | `MacBotSettingsSheet.swift` | 88 | sheet | `BotMemorySheet(botName: bot.displayName,` | yes |
-| HermesMac | `MacBotSettingsSheet.swift` | 93 | sheet | `SoulEditorSheet(` | yes |
+| HermesMac | `MacBotSettingsSheet.swift` | 89 | sheet | `BotMemorySheet(botName: bot.displayName,` | yes |
+| HermesMac | `MacBotSettingsSheet.swift` | 94 | sheet | `SoulEditorSheet(` | yes |
 | HermesMac | `MacSettingsView.swift` | 60 | sheet | `MacBotSettingsSheet(model: store.model,` | yes |
 | HermesMac | `WorkspaceRoot.swift` | 134 | sheet | `switch route` | yes |
 | HermesMobile | `HermesMobileApp.swift` | 60 | sheet | `PairingSheet()` | yes |

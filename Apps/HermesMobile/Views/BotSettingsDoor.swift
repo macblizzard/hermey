@@ -7,9 +7,9 @@ import SwiftUI
 ///
 /// The bot list reaches it by long-pressing a row; a conversation reaches it by opening the drawer and
 /// tapping Edit. They are the same sheet answering the same question, so they are one view: before this
-/// existed the conversation's copy was built separately and had quietly lost whole sections — the icon
-/// picker, the soul editor and the memory pane were simply absent there, which is exactly what "the edit
-/// button lacks some settings like bot image edit, soul, etc." described (reported 2026-11-17).
+/// existed the conversation's copy was built separately and had quietly lost whole sections — the
+/// avatar editor, the soul editor and the memory pane were simply absent there, which is exactly what
+/// "the edit button lacks some settings like bot image edit, soul, etc." described (reported 2026-11-17).
 ///
 /// It owns the soul sheet itself, because that is the one section that is a second presentation rather
 /// than a pane, and a caller that had to remember to add it is how the two doors drifted apart.
@@ -30,7 +30,6 @@ struct BotSettingsDoor: View {
                 try await model.configureDescription(botID: botID, description: text)
             },
             editSoul: { soulBot = bot },
-            saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) },
             loadMemory: { try await model.memory(for: bot.id) },
             deleteBot: { try await model.deleteBot(bot.id) },
             avatar: app.botAvatars[bot.id],
