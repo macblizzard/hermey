@@ -411,12 +411,15 @@ struct ConversationScreen: View {
             Button("Reset conversation", role: .destructive) {
                 Task { await resetConversation() }
             }
+            .hermeyFocusQuiet()
             Button("Keep it", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("This phone forgets its thread with \(title) and starts a new one on the next message. The old conversation stays on the host, and you can still open it there.")
         }
         .alert("Couldn’t add attachment", isPresented: noticeBinding) {
             Button("OK", role: .cancel) { notice = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text(notice ?? "")
         }
@@ -451,6 +454,7 @@ struct ConversationScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back to the bots")
+                .hermeyFocusQuiet()
 
                 Spacer(minLength: 0)
 
@@ -480,6 +484,7 @@ struct ConversationScreen: View {
                                        showsDot: true, size: .small)
                         }
                         .buttonStyle(.plain)
+                        .hermeyFocusQuiet()
                     }
                     if model.isCompressing {
                         StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
@@ -520,6 +525,7 @@ struct ConversationScreen: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(title), chat actions")
         .accessibilityIdentifier("chatDrawerButton")
+        .hermeyFocusQuiet()
     }
 
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
@@ -612,15 +618,18 @@ struct ConversationScreen: View {
             Button { moveSearch(-1) } label: { Image(systemName: "chevron.up") }
                 .disabled(found.isEmpty)
                 .accessibilityLabel("Previous search result")
+                .hermeyFocusQuiet()
             Button { moveSearch(1) } label: { Image(systemName: "chevron.down") }
                 .disabled(found.isEmpty)
                 .accessibilityLabel("Next search result")
+                .hermeyFocusQuiet()
             Button("Done") {
                 searchFocused = false
                 isSearching = false
                 searchText = ""
                 searchIndex = 0
             }
+            .hermeyFocusQuiet()
         }
         // The same glass the pill above it wears: the field used to be bare text on the
         // transcript, so it read as part of the conversation rather than as a control over it
@@ -1062,6 +1071,7 @@ struct ConversationScreen: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Cancel reply")
+                    .hermeyFocusQuiet()
                 }
                 .foregroundStyle(Tokens.textMuted)
                 .padding(.horizontal, 16)
@@ -1204,6 +1214,7 @@ struct ConversationScreen: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Remove \(attachment.name)")
+                        .hermeyFocusQuiet()
                     }
                     .foregroundStyle(Tokens.textSecondary)
                     .padding(.horizontal, 10)
@@ -1512,6 +1523,7 @@ struct ConversationScreen: View {
             .transition(.opacity.combined(with: .scale(scale: 0.92)))
             .accessibilityIdentifier("conversationScrollToBottom")
             .accessibilityLabel("Scroll to latest message")
+            .hermeyFocusQuiet()
         }
     }
 }

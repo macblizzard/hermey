@@ -175,6 +175,7 @@ struct SidebarBotList: View {
                    isPresented: Binding(get: { failure != nil },
                                         set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) { failure = nil }
+                .hermeyFocusQuiet()
             } message: {
                 Text(failure ?? "")
             }
@@ -210,7 +211,9 @@ struct SidebarBotList: View {
                                     set: { if !$0 { pendingCategoryDelete = nil } }),
                presenting: pendingCategoryDelete) { category in
             Button("Delete category", role: .destructive) { delete(category) }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingCategoryDelete = nil }
+            .hermeyFocusQuiet()
         } message: { category in
             Text("The bots in it move to Uncategorized. Nothing is deleted but the group.")
         }
@@ -269,6 +272,7 @@ struct SidebarBotList: View {
                                         Label("Delete group chat", systemImage: "trash")
                                     }
                                 }
+                                .hermeyFocusQuiet()
                             }
 
                             Divider().padding(.horizontal, 8).padding(.vertical, 4)
@@ -468,6 +472,7 @@ struct SidebarBotList: View {
                 .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
                 .id(SidebarSearchRow.message(hit.id))
                 .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+                .hermeyFocusQuiet()
             }
 
         case .messagesEmpty:
@@ -562,6 +567,7 @@ struct SidebarBotList: View {
         .help(roomsCollapsed ? "Expand \(BotGrouping.roomsName)" : "Collapse \(BotGrouping.roomsName)")
         .accessibilityLabel("\(BotGrouping.roomsName), \(roomRows.count) group chats")
         .accessibilityHint(roomsCollapsed ? "Expand" : "Collapse")
+        .hermeyFocusQuiet()
     }
 
     /// A heading is a control, not a label: clicking it folds the group away, and right-clicking
@@ -622,6 +628,7 @@ struct SidebarBotList: View {
                 }
             }
         }
+        .hermeyFocusQuiet()
     }
 
     /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
@@ -664,6 +671,11 @@ private struct HoverRow<Content: View>: View {
             || isKeyboardSelected
             || focusedRow == bot.id
             || focusedOverflow == bot.id
+
+        // Keyboard focus is a real affordance here (Tab reveals the ⋯ and Space opens the row), so it
+        // draws the row's own "this one is live" state — the hover fill and its hairline — instead of
+        // the system's accent ring, which `hermeyFocusQuiet()` keeps off.
+        let holdsKeyboardFocus = focusedRow == bot.id || focusedOverflow == bot.id
 
         return Button {
             guard !isSelected else { return }
@@ -769,18 +781,21 @@ private struct HoverRow<Content: View>: View {
             .padding(.vertical, metrics.rowPadding)
             .frame(height: metrics.rowHeight)
             // The hover fill is the row's own background, drawn at a fixed size: nothing here is
-            // padded, scaled or re-laid-out by the pointer, so a row never moves under it.
+            // padded, scaled or re-laid-out by the pointer, so a row never moves under it. Keyboard
+            // focus gets the same fill — the row's own signal that it is the live one — because the
+            // system's focus ring is off (`hermeyFocusQuiet()`).
             .background(
                 RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
                     .fill(isSelected || isKeyboardSelected ? Tokens.controlActive
-                          : (isHovered ? Tokens.controlHover : .clear))
+                          : (isHovered || holdsKeyboardFocus ? Tokens.controlHover : .clear))
             )
             // One hairline on hover, the chat header pill's own signal (a scale would move the hit
-            // box, which is what made that pill feel like it ignored clicks).
+            // box, which is what made that pill feel like it ignored clicks). A keyboard-focused row
+            // wears it too: focus is not hover, and a fill alone would not say which row it is.
             .overlay(
                 RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
                     .strokeBorder(Tokens.borderStrong,
-                                  lineWidth: isHovered && !isSelected ? 1 : 0)
+                                  lineWidth: (isHovered || holdsKeyboardFocus) && !isSelected ? 1 : 0)
             )
             .contentShape(Rectangle())
         }
@@ -804,6 +819,7 @@ private struct HoverRow<Content: View>: View {
         }
         .help(bot.displayName)
         .accessibilityLabel(accessibilityLabel(for: bot))
+        .hermeyFocusQuiet()
     }
 
     /// The row's ⋯: the same entries the right-click opens, as a native menu. It used to be a
@@ -845,6 +861,7 @@ private struct HoverRow<Content: View>: View {
         .allowsHitTesting(isVisible)
         .help("Bot menu")
         .accessibilityLabel("Bot menu")
+        .hermeyFocusQuiet()
     }
 
     /// A hidden bot is not gone: the filter reveals it here, and one click puts it back.
@@ -893,6 +910,7 @@ private struct HoverRow<Content: View>: View {
         }
         .help("Show \(bot.displayName) in the bot list")
         .accessibilityLabel("Show \(bot.displayName)")
+        .hermeyFocusQuiet()
     }
 
     /// One row that says why the block is empty — and it is a statement about *both* halves of the

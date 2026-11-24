@@ -157,6 +157,7 @@ public struct HermesFileLinkCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Copy the download link")
+            .hermeyFocusQuiet()
 
             #if os(macOS)
             ShareLink(item: link.url) {
@@ -165,6 +166,7 @@ public struct HermesFileLinkCard: View {
                     .foregroundStyle(Tokens.textSecondary)
                     .frame(width: 26, height: 26)
             }
+            .hermeyFocusQuiet()
             #else
             // A URL on the pasteboard has no "Save to Files": iOS only offers that for a file on
             // disk. Fetch the bytes first, hand the system a real file, and the option appears.
@@ -184,6 +186,7 @@ public struct HermesFileLinkCard: View {
             .buttonStyle(.plain)
             .disabled(preparing)
             .accessibilityLabel("Download and share this file")
+            .hermeyFocusQuiet()
             #endif
         }
         .padding(10)
@@ -209,6 +212,7 @@ public struct HermesFileLinkCard: View {
             set: { if !$0 { shareError = nil } }
         )) {
             Button("OK", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text(shareError ?? "")
         }

@@ -131,7 +131,7 @@ public struct ImageViewer: View {
         #if os(macOS)
         .focusable()
         .focused($keyboardFocused)
-        .focusEffectDisabled()
+        .hermeyFocusQuiet()
         .onAppear {
             keyboardFocused = true
             // The focus a window takes on its first layout pass can be dropped again a runloop
@@ -266,6 +266,7 @@ public struct ImageViewer: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
+            .hermeyFocusQuiet()
             #if os(macOS)
             .help("Close")
             #endif
@@ -350,6 +351,7 @@ public struct ImageViewer: View {
                 .foregroundStyle(zoom == 1 ? Tokens.textDim : Tokens.accentText)
                 .disabled(zoom == 1)
                 .fixedSize()
+                .hermeyFocusQuiet()
         }
     }
 
@@ -363,6 +365,7 @@ public struct ImageViewer: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Tokens.accentText)
                 .fixedSize()
+                .hermeyFocusQuiet()
             #else
             if let sharedFile {
                 ShareLink(item: sharedFile) {
@@ -374,6 +377,7 @@ public struct ImageViewer: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Share")
+                .hermeyFocusQuiet()
             } else {
                 iconButton("square.and.arrow.up", enabled: true, label: "Share", tint: Tokens.accentText) {
                     sharedFile = Self.writeTemporaryFile(data: data, name: title)
@@ -398,6 +402,7 @@ public struct ImageViewer: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .hermeyFocusQuiet()
         #if os(macOS)
         .help(label)
         #endif

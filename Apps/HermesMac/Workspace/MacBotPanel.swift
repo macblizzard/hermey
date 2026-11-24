@@ -129,6 +129,7 @@ struct MacBotPanel: View {
                 .keyboardShortcut(.escape, modifiers: [])
                 .opacity(0)
                 .accessibilityHidden(true)
+                .hermeyFocusQuiet()
         )
     }
 
@@ -197,6 +198,7 @@ struct MacBotPanel: View {
                     .buttonStyle(.plain)
                     .disabled(bot == nil)
                     .help("Bot settings")
+                    .hermeyFocusQuiet()
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 6)
@@ -292,6 +294,7 @@ struct MacBotPanel: View {
             if inside { hovered = title }
             else if hovered == title { hovered = nil }
         }
+        .hermeyFocusQuiet()
     }
 
     // The connection row is gone: the wire belongs to the window, not to a panel about one bot.
@@ -310,5 +313,6 @@ struct MacBotPanel: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .hermeyFocusQuiet()
     }
 }

@@ -110,6 +110,7 @@ struct MobileTranscriptRow: View {
             if let emoji = currentReaction {
                 Button(emoji) { setReaction(emoji) }
                     .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
+                    .hermeyFocusQuiet()
             }
         }
         // A long press raises one small card: the six reactions on top, the verbs under them.
@@ -157,7 +158,7 @@ struct MobileTranscriptRow: View {
                 }
                 .navigationTitle("Select Text")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingSelection = false } } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingSelection = false }.hermeyFocusQuiet() } }
             }
             .hermesSheetChrome()
         }
@@ -224,6 +225,7 @@ struct MobileTranscriptRow: View {
             .buttonStyle(.plain)
             .disabled(label.senderProfile == nil)
             .accessibilityLabel("\(label.headerTitle). Show the conversation between these two bots.")
+            .hermeyFocusQuiet()
 
             // Markdown, not a plain `Text`: a bot writes to another bot exactly as it writes to the
             // owner — lists, bold, code fences — and the recipient's side used to show the source
@@ -374,6 +376,7 @@ struct MobileTranscriptRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .hermeyFocusQuiet()
         }
         .padding(.vertical, 5)
         .frame(width: 232)
@@ -399,6 +402,7 @@ struct MobileTranscriptRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .hermeyFocusQuiet()
     }
 
     /// The first fenced block, so a long answer with code does not force a whole-message copy.
@@ -468,6 +472,7 @@ struct MobileTranscriptRow: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Attached image \(attachment.name)")
                     .accessibilityHint("Opens the image")
+                    .hermeyFocusQuiet()
                 } else {
                     // The host holds the picture; ask for it once per bubble. Until it arrives —
                     // or if this device cannot reach the host — the file is named, not invented.
@@ -924,6 +929,7 @@ struct MobileToolRow: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText)
         .accessibilityHint(shownOutput == nil ? "" : (expanded ? "Collapse tool output" : "Expand tool output"))
+        .hermeyFocusQuiet()
     }
 
     @ViewBuilder
@@ -1034,6 +1040,7 @@ struct MobileReasoningBlock: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Reasoning")
             .accessibilityHint(expanded ? "Collapse reasoning" : "Expand reasoning")
+            .hermeyFocusQuiet()
 
             if expanded {
                 Text(text)

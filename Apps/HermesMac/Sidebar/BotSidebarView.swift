@@ -96,7 +96,9 @@ struct BotSidebarView: View {
                     await model.refreshRooms()
                 }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }
@@ -224,7 +226,7 @@ struct BotSidebarView: View {
             // A popover hands keyboard focus to its first control, and macOS drew the blue ring
             // around that row as if it were selected. The rows keep their focus (Space/Return still
             // opens one) — only the ring is gone, and the hover fill is the feedback.
-            .focusEffectDisabled()
+            .hermeyFocusQuiet()
         }
         .accessibilityIdentifier("sidebar.notifications")
     }
@@ -519,7 +521,7 @@ struct BotSidebarView: View {
         // The first focusable control in a new window wears the system focus ring, and a ring on
         // the list's "+" at launch reads as "this is selected" when nothing is. The + is a verb,
         // not a tab stop that benefits from the ring; Tab still reaches everything after it.
-        .focusEffectDisabled()
+        .hermeyFocusQuiet()
         .help("Add a bot, start a group chat, manage the list")
         .accessibilityLabel("Bot list menu")
     }

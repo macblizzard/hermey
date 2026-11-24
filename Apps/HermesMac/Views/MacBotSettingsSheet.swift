@@ -69,6 +69,7 @@ struct MacBotSettingsSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 2)
+            .hermeyFocusQuiet()
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
@@ -201,6 +202,7 @@ struct MacBotSettingsSheet: View {
         }
         .alert("Delete \(bot.displayName)?", isPresented: $showingDelete) {
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
             Button("Delete bot", role: .destructive) {
                 deleting = true
                 deleteError = nil
@@ -214,6 +216,7 @@ struct MacBotSettingsSheet: View {
                     deleting = false
                 }
             }
+            .hermeyFocusQuiet()
         } message: {
             Text("This cannot be undone from the app.")
         }
@@ -256,6 +259,7 @@ struct MacBotSettingsSheet: View {
                     .font(TypeScale.font(Tokens.textSM))
                     .foregroundStyle(Tokens.textPrimary)
             }
+            .hermeyFocusQuiet()
 
             HermeyButton("Bring it here", kind: .secondary, size: .small) {
                 DesktopPetController.shared.bringHere(bot)

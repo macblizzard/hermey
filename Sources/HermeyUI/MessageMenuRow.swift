@@ -53,10 +53,12 @@ public struct MessageMenuRow: View {
             Button(action: perform) {
                 Label(title, systemImage: symbol)
             }
+            .hermeyFocusQuiet()
         case .share(let text):
             ShareLink(item: text) {
                 Label(title, systemImage: symbol)
             }
+            .hermeyFocusQuiet()
         }
     }
 }

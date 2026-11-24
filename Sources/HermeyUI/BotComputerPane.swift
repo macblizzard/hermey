@@ -174,11 +174,13 @@ public struct BotComputerPane: View {
             .buttonStyle(.borderless)
             .help(fullScreenActive ? "Leave full screen (Esc)" : "Full screen")
             .accessibilityLabel(fullScreenActive ? "Leave full screen" : "Full screen")
+            .hermeyFocusQuiet()
             if let onClose {
                 Button { onClose() } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
                     .help("Close")
                     .accessibilityLabel("Close")
+                    .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 14)
@@ -205,11 +207,13 @@ public struct BotComputerPane: View {
             .buttonStyle(.borderedProminent)
             .tint(holdsControl ? Tokens.warning : Tokens.accent)
             .controlSize(.small)
+            .hermeyFocusQuiet()
         } else if status?.running == true {
             Button("Open screen") { openScreen() }
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
                 .controlSize(.small)
+                .hermeyFocusQuiet()
         } else if status?.installed == false {
             EmptyView()
         } else {
@@ -217,6 +221,7 @@ public struct BotComputerPane: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
                 .controlSize(.small)
+                .hermeyFocusQuiet()
         }
     }
 
@@ -243,6 +248,7 @@ public struct BotComputerPane: View {
             .foregroundStyle(Color.white)
             .help("Leave full screen (Esc)")
             .accessibilityLabel("Leave full screen")
+            .hermeyFocusQuiet()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -274,6 +280,7 @@ public struct BotComputerPane: View {
                 .foregroundStyle(viewer.canZoomOut ? Color.white : Color.white.opacity(0.4))
                 .disabled(!viewer.canZoomOut)
                 .fixedSize()
+                .hermeyFocusQuiet()
         }
     }
 
@@ -290,6 +297,7 @@ public struct BotComputerPane: View {
         .disabled(!enabled)
         .help(label)
         .accessibilityLabel(label)
+        .hermeyFocusQuiet()
     }
 
     // MARK: - Content
@@ -384,6 +392,7 @@ public struct BotComputerPane: View {
             Spacer(minLength: 0)
             Button { errorText = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
+                .hermeyFocusQuiet()
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

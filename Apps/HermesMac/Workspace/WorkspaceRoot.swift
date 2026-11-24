@@ -608,7 +608,9 @@ struct WorkspaceShell: View {
                     await model.refreshRooms()
                 }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }

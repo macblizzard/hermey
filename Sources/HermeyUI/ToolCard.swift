@@ -154,6 +154,7 @@ public struct ToolCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText)
         .accessibilityHint(expanded ? "Collapse tool output" : "Expand tool output")
+        .hermeyFocusQuiet()
     }
 
     @ViewBuilder

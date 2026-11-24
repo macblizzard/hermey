@@ -64,6 +64,7 @@ public struct HermesCommandsHelpSheet: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .hermeyFocusQuiet()
                         }
                     }
                 }
@@ -76,6 +77,7 @@ public struct HermesCommandsHelpSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
             }
         }

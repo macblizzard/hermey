@@ -95,7 +95,9 @@ struct MacDevicesView: View {
                 pending = nil
                 Task { await perform(device) }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pending = nil }
+            .hermeyFocusQuiet()
         } message: { device in
             if device.revoked {
                 Text("Permanently remove \(device.name) from the host's device list? This cannot be undone.")

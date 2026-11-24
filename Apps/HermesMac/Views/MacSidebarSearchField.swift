@@ -72,6 +72,7 @@ struct MacSidebarSearchField: View {
                 .buttonStyle(.plain)
                 .help("Clear \(prompt.lowercased())")
                 .accessibilityLabel("Clear the search")
+                .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 8)

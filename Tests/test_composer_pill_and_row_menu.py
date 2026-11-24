@@ -103,9 +103,10 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
 
     def test_it_is_chrome_not_a_link(self) -> None:
         label = self.pill_label()
-        # A dark rounded fill of the app's own token, lightened under the pointer; nothing stroked,
-        # no underline, no accent-coloured text that would read as a link.
-        self.assertIn("Capsule().fill(isHovered && isEnabled ? Tokens.controlHover", label)
+        # A dark rounded fill of the app's own token, lightened under the pointer (and under
+        # keyboard focus, which is the pill's own answer to the system ring); nothing stroked, no
+        # underline, no accent-coloured text that would read as a link.
+        self.assertIn("Capsule().fill(isEnabled && (isHovered || isFocused) ? Tokens.controlHover", label)
         self.assertIn(": Tokens.control))", label)
         self.assertNotIn("strokeBorder", self.PILL_SOURCE)
         self.assertNotIn("underline(", self.PILL_SOURCE)

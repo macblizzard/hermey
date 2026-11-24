@@ -133,6 +133,7 @@ public struct AttachmentFileRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Retry opening \(name)")
+            .hermeyFocusQuiet()
         case .failed, .ready:
             Image(systemName: "chevron.right")
                 .font(.system(size: 9, weight: .semibold))

@@ -58,8 +58,9 @@ public enum SessionLine {
 ///   the name, the count and the chevron all open the *existing* model picker for this bot, which
 ///   the caller supplies. There is no picker in here.
 /// * **it is chrome, so it looks like chrome.** The app's own fill (`Tokens.control`), lightened
-///   under the pointer on the Mac and unchanged on iOS, with the shared press feedback
-///   (`PressableButtonStyle`) — no underline, no accent text, no link affordance anywhere in it.
+///   under the pointer on the Mac — and under keyboard focus, where the system would otherwise
+///   draw its accent ring — with the shared press feedback (`PressableButtonStyle`) — no
+///   underline, no accent text, no link affordance anywhere in it.
 public struct ComposerModelPill: View, Equatable {
     private let provider: String?
     private let model: String?
@@ -73,6 +74,11 @@ public struct ComposerModelPill: View, Equatable {
     /// Pointer hover, for the Mac. `@State` inside an `Equatable` view is still invalidated by the
     /// pointer — equality only decides whether the *caller's* re-render reaches this body.
     @State private var isHovered = false
+
+    /// Keyboard focus. The pill is a tab stop, and the system's answer to a focused button is the
+    /// accent ring, which this app never wears (`hermeyFocusQuiet()`); the pill's own answer is the
+    /// same one step the pointer gets, so a keyboard user still sees where they are.
+    @FocusState private var isFocused: Bool
 
     public init(provider: String?,
                 model: String?,
@@ -139,13 +145,15 @@ public struct ComposerModelPill: View, Equatable {
                 .frame(maxHeight: .infinity)
                 .frame(minHeight: 0)
                 // Dark lozenge, no border: the fill the bar composer already uses, one step lighter
-                // under the pointer. Nothing is stroked — a rim here would read as a text field
-                // inside the field.
-                .background(Capsule().fill(isHovered && isEnabled ? Tokens.controlHover
-                                                                  : Tokens.control))
+                // under the pointer — and on keyboard focus, which is why focus needs no rim here
+                // and gets none: a rim inside the field would read as a text field inside the field.
+                .background(Capsule().fill(isEnabled && (isHovered || isFocused) ? Tokens.controlHover
+                                                                                : Tokens.control))
                 .contentShape(Capsule())
             }
             .buttonStyle(PressableButtonStyle())
+            // Focus lands and draws the pill's own fill; the system's accent ring does not.
+            .focused($isFocused)
             .onHoverCompat { isHovered = $0 }
             .disabled(!isEnabled)
             .opacity(isEnabled ? 1 : 0.55)
@@ -155,6 +163,7 @@ public struct ComposerModelPill: View, Equatable {
             .accessibilityLabel(accessibilityLabel(name: name))
             .accessibilityHint("Opens this bot's model picker")
             .accessibilityAddTraits(.isButton)
+            .hermeyFocusQuiet()
             #if os(macOS)
             .help("Model: \(name)")
             #endif
