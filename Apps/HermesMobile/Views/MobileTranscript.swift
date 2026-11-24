@@ -242,36 +242,28 @@ struct MobileTranscriptRow: View {
 
     @ViewBuilder
     private var menu: some View {
+        // The same rows the Mac's menu builds, through the same helper: one icon per verb, and no
+        // way to add a row without one (`MessageMenuRow` takes `symbol:` by requirement).
         if entry.role == .user || entry.role == .assistant {
-            Button { showingSelection = true } label: {
-                Label("Select Text", systemImage: "text.cursor")
-            }
-            Button {
+            MessageMenuRow.action("Select Text", symbol: "text.cursor") { showingSelection = true }
+            MessageMenuRow.action("Read Aloud", symbol: "speaker.wave.2") {
                 Self.speaker.stopSpeaking(at: .immediate)
                 Self.speaker.speak(AVSpeechUtterance(string: entry.text))
-            } label: {
-                Label("Read Aloud", systemImage: "speaker.wave.2")
             }
-            Button { app.model.reply(to: entry) } label: {
-                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            MessageMenuRow.action("Reply", symbol: "arrowshape.turn.up.left") {
+                app.model.reply(to: entry)
             }
         }
-        ShareLink(item: entry.text) {
-            Label("Share", systemImage: "square.and.arrow.up")
-        }
-        Button {
+        MessageMenuRow.share(entry.text)
+        MessageMenuRow.action("Copy message", symbol: "doc.on.doc") {
             UIPasteboard.general.string = entry.text
             Haptics.success()
-        } label: {
-            Label("Copy message", systemImage: "doc.on.doc")
         }
 
         if let code = Self.firstCodeBlock(in: entry.text) {
-            Button {
+            MessageMenuRow.action("Copy code block", symbol: "chevron.left.forwardslash.chevron.right") {
                 UIPasteboard.general.string = code
                 Haptics.success()
-            } label: {
-                Label("Copy code block", systemImage: "chevron.left.forwardslash.chevron.right")
             }
         }
     }
