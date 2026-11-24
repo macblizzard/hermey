@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.649",
-          "buildVersion": "649",
-          "date": "2026-11-24T19:29:26Z",
-          "localizedDescription": "### Added\n- **Glass avatars.** A bot's drawn face now has a material. Choose **Glass** in the Avatar tab and the shape\n  is lit like glass \u2014 a soft coloured halo, a vertical colour ramp, a form sheen, one specular streak, a\n  bright Fresnel rim and a contact shadow at the bottom \u2014 instead of a flat fill. The rim and glow pulse with\n  what the bot is doing, and the look holds at 26 pt in a list row as well as full size on the pet and in the\n  editor. **Solid** stays the default, so nothing you already saved changes.\n- **Motions that match the old face.** The drawn avatar used to only breathe; it now hops, tilts, flips,\n  makes quick eye darts and squints while it works, on exactly the same clock and performance the picture\n  avatars have \u2014 one motion language, not two.\n\n### Fixed\n- **The avatar follows you everywhere.** A stored avatar only appeared in a few places: the bot settings\n  header, the right-hand bot panel, transcript rows and the activity badges kept drawing the old face. All of\n  them now read the stored avatar, so a change shows up without a relaunch.\n- **One place to choose a face.** The duplicate *Choose bot icon* control is gone from the About tab (Mac) and\n  the identity section (iPhone); the Avatar tab is the only place a face is picked.\n\n### Changed\n- `hermeyd` **0.7.0**: the stored face carries a `material`, validated on the way in \u2014 an unknown value is\n  refused with the reason instead of being saved.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.649/Hermey-0.1.649-b649.ipa",
-          "size": 5436681,
+          "version": "0.1.650",
+          "buildVersion": "650",
+          "date": "2026-11-24T19:38:03Z",
+          "localizedDescription": "### Fixed\n- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list\n  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you\n  saved \u2014 at rest, so it costs nothing per notification \u2014 and a bot without one keeps exactly the picture it had.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.650/Hermey-0.1.650-b650.ipa",
+          "size": 5444800,
           "minOSVersion": "17.0",
-          "sha256": "7a7cee9e0bae1ea9f6cf68fcb7795a86faee035a64211bf55629d59ec097474d"
+          "sha256": "c5da4908a9a825bc0325010b95fa5ebbd3dae60b93fd9e2a2a42cf070525f1a3"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.649 (649)",
-      "identifier": "hermes-0.1.649-649",
-      "caption": "### Added\n- **Glass avatars.** A bot's drawn face now has a material. Choose **Glass** in the Avatar tab and the shape\n  is lit like glass \u2014 a soft coloured halo, a vertical colour ramp, a form sheen, one specular streak, a\n  bright Fresnel rim and a contact shadow at the bottom \u2014 instead of a flat fill. The rim and glow pulse with\n  what the bot is doing, and the look holds at 26 pt in a list row as well as full size on the pet and in the\n  editor. **Solid** stays the default, so nothing you already saved changes.\n- **Motions that match the old face.** The drawn avatar used to only breathe; it now hops, tilts, flips,\n  makes quick eye darts and squints while it works, on exactly the same clock and performance the picture\n  avatars have \u2014 one motion language, not two.\n\n### Fixed\n- **The avatar follows you everywhere.** A stored avatar only appeared in a few places: the bot settings\n  header, the right-hand bot panel, transcript rows and the activity badges kept drawing the old face. All of\n  them now read the stored avatar, so a change shows up without a relaunch.\n- **One place to choose a face.** The duplicate *Choose bot icon* control is gone from the About tab (Mac) and\n  the identity section (iPhone); the Avatar tab is the only place a face is picked.\n\n### Changed\n- `hermeyd` **0.7.0**: the stored face carries a `material`, validated on the way in \u2014 an unknown value is\n  refused with the reason instead of being saved.",
-      "date": "2026-11-24T19:29:26Z",
+      "title": "Hermes 0.1.650 (650)",
+      "identifier": "hermes-0.1.650-650",
+      "caption": "### Fixed\n- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list\n  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you\n  saved \u2014 at rest, so it costs nothing per notification \u2014 and a bot without one keeps exactly the picture it had.",
+      "date": "2026-11-24T19:38:03Z",
       "tintColor": "#9A9AA0"
     }
   ],
