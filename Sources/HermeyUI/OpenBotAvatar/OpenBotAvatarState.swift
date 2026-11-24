@@ -24,13 +24,20 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
     /// The pose for this state. `time` is seconds on any monotonic clock; `seed` only shifts the
     /// phase, so two bots on screen never move in step.
     ///
+    /// `eyeOverride` is the one way in for an eye pose decided elsewhere: `BotAvatarView` evaluates
+    /// the shared face's frame once per tick (`BotAvatarMotion.performedFrame`) and hands its eyes
+    /// down, so the drawn avatar blinks and looks on the schedule the shape face has always had
+    /// instead of growing a second blink clock. Nil — the default, and every caller that draws this
+    /// view directly — leaves the idle blinking below exactly as it was.
+    ///
     /// 10 Hz is the cadence this is sampled at (the same as the pets), which is why every motion
     /// here is a slow sine or an eased fraction rather than a spring: a calm avatar at 10 Hz reads as
     /// alive, and a fast one would strobe.
     public func pose(mood: BotAvatarMood,
                      time: Double,
                      seed: UInt32,
-                     reducedMotion: Bool = false) -> OpenBotAvatarPose {
+                     reducedMotion: Bool = false,
+                     eyeOverride: OpenBotAvatarEyeOverride? = nil) -> OpenBotAvatarPose {
         var pose = OpenBotAvatarPose()
         pose.mood = mood
         // Upstream's resting view: turned a little and seen a little from above, so the inferred
@@ -163,6 +170,19 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.arch = mood == .happy ? 1 : 0
             pose.blink = reducedMotion ? 0 : Self.blink(seed: seed, time: t * 0.8)
         }
+        // The material's light rides the pose: same clock, same seed, same freeze under Reduce
+        // Motion, so one frame is still a pure function of (state, mood, time, seed).
+        pose.light = light(time: t, reducedMotion: reducedMotion)
+
+        // An eye pose decided elsewhere (the shared face's own frame) supersedes the idle clock
+        // above, channel for channel — one blink schedule per bot, not two that drift apart. Nil
+        // leaves everything above untouched. Applied last so it wins over the material's pose too.
+        if let eyeOverride {
+            pose.blink = eyeOverride.blink
+            pose.gazeX = eyeOverride.gazeX
+            pose.gazeY = eyeOverride.gazeY
+            pose.squint = eyeOverride.squint
+        }
         return pose
     }
 
@@ -275,4 +295,7 @@ public struct OpenBotAvatarPose: Hashable, Sendable {
     public var bodyScale: Double = 1
     public var mark: OpenBotAvatarMark?
     public var markScale: Double = 1
+    /// How lit the body's material is in this frame. A glass face reads it for its rim and its
+    /// halo; a solid face has neither and ignores it.
+    public var light: OpenBotAvatarLight = OpenBotAvatarLight(rim: 0.55, halo: 0.20)
 }

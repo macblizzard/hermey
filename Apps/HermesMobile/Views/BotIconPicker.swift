@@ -110,7 +110,9 @@ struct BotIconService {
                   let encoded = try? JSONSerialization.data(withJSONObject: definition,
                                                             options: [.sortedKeys, .withoutEscapingSlashes]),
                   let text = String(data: encoded, encoding: .utf8),
-                  let document = BotAvatarDocument(json: text, color: face["color"] as? String) else { continue }
+                  let document = BotAvatarDocument(json: text,
+                                                   color: face["color"] as? String,
+                                                   material: face["material"] as? String) else { continue }
             documents[botID] = document
         }
         return documents
@@ -126,64 +128,17 @@ struct BotIconService {
         } else {
             definition = NSNull()
         }
-        let body: [String: Any] = ["definition": definition, "color": document?.color ?? NSNull()]
+        // `material` travels with the definition and is cleared with it: the host drops the
+        // material when the definition is null, so a reset leaves nothing behind.
+        let body: [String: Any] = ["definition": definition,
+                                   "color": document?.color ?? NSNull(),
+                                   "material": document?.material.rawValue ?? NSNull()]
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
         _ = try await request(url, method: "PUT", body: data)
     }
 }
 
-/// Caller refreshes its shared dictionary after saving; errors stay visible.
-struct BotIconPicker: View {
-    /// The bot whose face is being chosen: its id decides the body and the preview.
-    let botID: String
-    let botName: String
-    let selected: BotFaceChoice?
-    let save: (BotFaceChoice?) async throws -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var saving = false
-    @State private var error: String?
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Any body, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
-                        .font(TypeScale.font(TypeScale.sm))
-                        .foregroundStyle(Tokens.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    BotFacePicker(identity: botID, value: selected) { face in
-                        guard !saving else { return }
-                        saving = true
-                        error = nil
-                        Task {
-                            do {
-                                try await save(face)
-                                dismiss()
-                            } catch {
-                                self.error = error.localizedDescription
-                            }
-                            saving = false
-                        }
-                    }
-
-                    if let error {
-                        Text(error)
-                            .font(TypeScale.font(TypeScale.sm))
-                            .foregroundStyle(Tokens.danger)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(18)
-            }
-            .background(Tokens.canvas)
-            .navigationTitle("Portrait for \(botName)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-    }
-}
+// `BotIconPicker` used to live here: a shape-and-colour chooser offered beside the Avatar tab's
+// own editor, so a bot had two doors to its face and they could disagree. The Avatar tab is the
+// only one now. The `BotIconService` above is what both shells' writes go through, so the file
+// (and its name) stay.

@@ -462,6 +462,34 @@ pub fn is_hex_color(value: &str) -> bool {
     (rest.len() == 3 || rest.len() == 6) && rest.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+// ---- material ---------------------------------------------------------------------
+//
+// The face's material is a string beside `definition` and `color`, not part of the avatar
+// definition (which stays the upstream contract's, untouched). Absent or null means `solid`, so
+// every document written before this field existed keeps its meaning and nothing is migrated.
+
+/// The material values the runtime accepts, in the contract's order.
+///
+/// `Sources/HermeyUI/OpenBotAvatar/BotAvatarMaterial.swift` has the same two and the same refusal;
+/// `Tests/test_bot_avatar_glass.py` checks that the two lists and the two sentences agree, so a
+/// material cannot be storable but undrawable, or drawable but unstorable.
+pub const MATERIALS: [&str; 2] = ["solid", "glass"];
+
+/// The material a stored value names, or the contract's reason it does not.
+///
+/// Deliberately not a serde enum: the field lives in an untyped document beside fields written by
+/// older builds, and a refusal here has to carry a sentence the editor can show — the same sentence
+/// the Swift validator throws.
+pub fn parse_material(value: &Value) -> Result<String, String> {
+    match value.as_str() {
+        Some(raw) if MATERIALS.contains(&raw) => Ok(raw.to_string()),
+        Some(raw) => Err(format!(
+            "material must be \"solid\" or \"glass\", not {raw:?}"
+        )),
+        None => Err("material must be a string, \"solid\" or \"glass\"".to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,6 +566,18 @@ mod tests {
         def["body"]["path"] = json!("M20 20 H80 <script>");
         let errors = validate(&def).expect_err("markup is not a path");
         assert!(errors.iter().any(|e| e.contains("body.path:")), "{errors:?}");
+    }
+
+    #[test]
+    fn a_material_is_solid_or_glass_and_nothing_else() {
+        assert_eq!(MATERIALS, ["solid", "glass"]);
+        assert_eq!(parse_material(&json!("solid")).expect("solid"), "solid");
+        assert_eq!(parse_material(&json!("glass")).expect("glass"), "glass");
+        // The same sentence the Swift validator throws, so an editor shows one wording.
+        let reason = parse_material(&json!("matte")).expect_err("matte is not a material");
+        assert_eq!(reason, "material must be \"solid\" or \"glass\", not \"matte\"");
+        let reason = parse_material(&json!(2)).expect_err("a number is not a material");
+        assert!(reason.contains("must be a string"), "{reason}");
     }
 
     #[test]

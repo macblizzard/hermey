@@ -55,24 +55,27 @@ class TheBotKnowsItself(unittest.TestCase):
         for verb in ("Bot Settings", "Pin to top", "Hide bot"):
             self.assertIn(verb, read(LIST))
 
-    def test_bot_settings_owns_the_icon_the_soul_and_the_memory(self) -> None:
+    def test_bot_settings_owns_the_soul_and_the_memory(self) -> None:
         settings = read(SETTINGS)
-        self.assertIn('Label("Bot icon", systemImage: "person.crop.circle")', settings)
         self.assertIn('Label("Soul", systemImage: "doc.text")', settings)
         self.assertIn('Label("Memory", systemImage: "brain")', settings)
-        self.assertIn("BotIconPicker(botID: bot.id, botName: bot.displayName, selected: icon)", settings)
         self.assertIn("BotMemorySheet(botName: bot.displayName, load: loadMemory)", settings)
-        # Each is optional: a client that cannot write the icon must not be shown the row.
-        self.assertIn("var saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil", settings)
+        # The face is not chosen here any more: the Avatar tab is the one door, and the Identity
+        # section no longer carries a second picker beside it (reported 2026-11-24).
+        self.assertNotIn('Label("Bot icon"', settings)
+        self.assertNotIn("BotIconPicker", settings)
+        self.assertNotIn("saveIcon", settings)
+        # Each remaining row is optional: a client that cannot write it must not be shown the row.
         self.assertIn("var loadMemory: (() async throws -> BotMemory)? = nil", settings)
 
-    def test_the_list_hands_both_writers_to_the_settings_sheet(self) -> None:
+    def test_the_list_hands_its_writers_to_the_settings_sheet(self) -> None:
         listing = read(LIST)
-        # The icon and memory writers moved into the shared door when the list's copy became one; the
-        # list still has to reach that door rather than build its own sheet.
+        # The memory writer and the avatar moved into the shared door when the list's copy became
+        # one; the list still has to reach that door rather than build its own sheet.
         door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
-        self.assertIn("saveIcon: { face in try await app.saveBotFace(botID: bot.id, face: face) }", door)
         self.assertIn("loadMemory: { try await model.memory(for: bot.id) }", door)
+        self.assertIn("saveAvatar: { document in try await app.saveBotAvatar(botID: bot.id, document: document) }",
+                      door)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", listing)
 
 

@@ -91,7 +91,9 @@ class ThePhoneHasOneSettingsDoor(unittest.TestCase):
         self.assertNotIn("BotModelSettingsScreen(", CHAT)
 
     def testTheDoorCarriesEverySectionTheListHad(self) -> None:
-        for section in ("saveDescription:", "editSoul:", "saveIcon:", "loadMemory:", "deleteBot:"):
+        # `saveIcon:` is gone on purpose: a bot's face is chosen in the Avatar tab now, not in the
+        # settings sheet's Identity section (2026-11-24). `saveAvatar:` is what the door carries.
+        for section in ("saveDescription:", "editSoul:", "saveAvatar:", "loadMemory:", "deleteBot:"):
             with self.subTest(section=section):
                 self.assertIn(section, DOOR,
                               f"{section} is a section the conversation's copy had lost")

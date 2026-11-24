@@ -2,8 +2,8 @@ import SwiftUI
 import HermesKit
 import HermeyUI
 
-/// Who this bot **is**: its portrait, its name, what it does, its prompt file, what it remembers, and the
-/// door that deletes it.
+/// Who this bot **is**: its name, what it does, its prompt file, what it remembers, and the door
+/// that deletes it.
 ///
 /// The model, the effort level and the aux/vision model are not here — they moved to `BotModelSheet`,
 /// reached from the drawer's Model row, which is where the desktop keeps them. A catalogue of hundreds of
@@ -13,7 +13,8 @@ import HermeyUI
 struct BotModelSettingsScreen: View {
     let bot: Bot
     /// The portrait the host has for this bot, when it has one — the sheet shows the face the list
-    /// shows, so it is recognisable before its title is read.
+    /// shows, so it is recognisable before its title is read. It is only the fallback colour for a
+    /// bot with no generated avatar; the avatar itself arrives through the environment.
     var icon: BotFaceChoice? = nil
     /// Writes the human-readable description on the host (`profiles.configure`, description
     /// section). `nil` hides the editor entirely — a client that cannot write it must not offer it.
@@ -21,9 +22,6 @@ struct BotModelSettingsScreen: View {
     /// Opens this bot's real SOUL.md. `nil` hides the row: a client that cannot write it must not
     /// offer it, the same rule the description follows.
     var editSoul: (() -> Void)? = nil
-    /// Writes this bot's portrait. `nil` hides the row, the same rule as the soul: the picker moved
-    /// here from a long press on the list, where nobody found it (reported 2026-11-14).
-    var saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil
     /// Reads the two documents this bot carries into every turn. `nil` hides the row.
     var loadMemory: (() async throws -> BotMemory)? = nil
     /// Deletes this bot on the host. `nil` hides the row — the rule every verb here follows: a
@@ -41,12 +39,10 @@ struct BotModelSettingsScreen: View {
     @State private var descriptionBusy = false
     @State private var descriptionError: String?
     @State private var descriptionSaved = false
-    @State private var showingIcon = false
     @State private var showingMemory = false
     @State private var showingDelete = false
     @State private var deleteError: String?
     @State private var deleting = false
-    @State private var iconError: String?
     /// Which tab is showing: the bot's identity, or its generated avatar.
     @State private var tab: SettingsTab = .about
 
@@ -60,7 +56,6 @@ struct BotModelSettingsScreen: View {
          icon: BotFaceChoice? = nil,
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
-         saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil,
          loadMemory: (() async throws -> BotMemory)? = nil,
          deleteBot: (() async throws -> Void)? = nil,
          avatar: BotAvatarDocument? = nil,
@@ -69,7 +64,6 @@ struct BotModelSettingsScreen: View {
         self.icon = icon
         self.saveDescription = saveDescription
         self.editSoul = editSoul
-        self.saveIcon = saveIcon
         self.loadMemory = loadMemory
         self.deleteBot = deleteBot
         self.avatar = avatar
@@ -187,27 +181,8 @@ struct BotModelSettingsScreen: View {
 
     @ViewBuilder
     private var identitySection: some View {
-        if editSoul != nil || saveIcon != nil || loadMemory != nil {
+        if editSoul != nil || loadMemory != nil {
             Section {
-                if let saveIcon {
-                    Button {
-                        showingIcon = true
-                    } label: {
-                        HStack {
-                            Label("Bot icon", systemImage: "person.crop.circle")
-                            Spacer()
-                            BotAvatarView(identity: bot.id, color: icon?.raw, size: 22, animates: false)
-                        }
-                    }
-                    .sheet(isPresented: $showingIcon) {
-                        BotIconPicker(botID: bot.id, botName: bot.displayName, selected: icon) { face in
-                            iconError = nil
-                            do { try await saveIcon(face) }
-                            catch { iconError = error.localizedDescription }
-                        }
-                        .hermesSheetChrome()
-                    }
-                }
                 if let editSoul {
                     Button(action: editSoul) {
                         Label("Soul", systemImage: "doc.text")
@@ -224,17 +199,12 @@ struct BotModelSettingsScreen: View {
                         .hermesSheetChrome()
                     }
                 }
-                if let iconError {
-                    Text(iconError)
-                        .font(TypeScale.font(TypeScale.sm))
-                        .foregroundStyle(Tokens.danger)
-                }
             } header: {
                 Text("Identity")
             } footer: {
-                Text("The portrait the list shows, the prompt this bot is built on, and the notes it "
-                     + "carries into every turn. All three are stored on the host; a conversation "
-                     + "already open keeps the soul it started with until it is reset.")
+                Text("The prompt this bot is built on and the notes it carries into every turn. "
+                     + "Both are stored on the host; a conversation already open keeps the soul it "
+                     + "started with until it is reset.")
             }
         }
     }

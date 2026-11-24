@@ -503,9 +503,7 @@ struct ConversationScreen: View {
                               color: app.botFaces[bot.id]?.raw,
                               activity: model.activity(forBot: bot.id),
                               size: 32,
-                              animates: model.activity(forBot: bot.id) != .idle,
-                              definition: app.botAvatars[bot.id]?.definition,
-                              avatarColor: app.botAvatars[bot.id]?.color)
+                              animates: model.activity(forBot: bot.id) != .idle)
                 Text(title)
                     .font(TypeScale.font(Tokens.chatHeaderTitle, weight: .semibold))
                     .foregroundStyle(Tokens.textPrimary)

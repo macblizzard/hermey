@@ -16,6 +16,14 @@ import AppKit
 /// face instead of floating above it. Around and in front of that sit the state's marks — a band of
 /// ribbons for `working` and `done`, three dots for `thinking`, an exclamation for `blocked`.
 ///
+/// ## Materials
+///
+/// A face is made of a material, and the material is data (`BotAvatarMaterialSpec.all`): a fill
+/// treatment, then whatever highlights its row names. A `.flat` fill is the slice stack above and
+/// nothing else — the 0.1.648 solid; a `.ramp` fill is one silhouette painted from the spec
+/// (`OpenBotAvatarMaterialPaint`), which is glass. The renderer never asks which material it is
+/// drawing, only what the spec holds, so a third material is a row in the table.
+///
 /// ## Cost
 ///
 /// Every path this draws is built once, when the definition is first seen (`OpenBotAvatarModel`), and
@@ -31,8 +39,15 @@ public enum OpenBotAvatarRenderer {
     public static let defaultInk = Color(red: 0.082, green: 0.082, blue: 0.082)
 
     /// Paint one frame.
+    ///
+    /// `material` and `backdrop` are the face's material and where it is drawn. The material is
+    /// looked up in `BotAvatarMaterialSpec.all` and the drawing follows the spec; a spec whose fill
+    /// is `.flat` takes the slice-stack path below, untouched since 0.1.648, which is what keeps
+    /// Solid exactly the face a bot already had.
     public static func draw(_ model: OpenBotAvatarModel,
                             pose: OpenBotAvatarPose,
+                            material: BotAvatarMaterial = .solid,
+                            backdrop: OpenBotAvatarBackdrop = .themed(dark: true),
                             into context: inout GraphicsContext,
                             size: CGSize,
                             color: Color,
@@ -43,6 +58,11 @@ public enum OpenBotAvatarRenderer {
         let unit = side / 100
         let viewport = CGAffineTransform(translationX: (size.width - side) / 2, y: (size.height - side) / 2)
             .scaledBy(x: unit, y: unit)
+
+        let spec = BotAvatarMaterialSpec.spec(for: material)
+        // What this size draws of the material. Derived from the side and the backdrop, never from
+        // the call site: a surface gets the right layers because it says how big it is.
+        let plan = MaterialPlan.plan(for: spec, side: Double(side), backdrop: backdrop)
 
         let basis = ViewBasis(yaw: pose.yaw, pitch: pose.pitch)
         let pivot = volume.pivot
@@ -59,23 +79,48 @@ public enum OpenBotAvatarRenderer {
 
         let bodyScale = max(0, min(1, pose.bodyScale))
         if bodyScale > 0.01 {
-            var bodyContext = context
             let shrink = CGAffineTransform(translationX: pivot.x, y: pivot.y)
                 .scaledBy(x: bodyScale, y: bodyScale)
                 .translatedBy(x: -pivot.x, y: -pivot.y)
-            for slice in drawnSlices(volume: volume, basis: basis) {
-                let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
-                bodyContext.transform = plane
+            switch spec.fill {
+            case .flat:
+                // The 0.1.648 body: the inferred volume's cross-sections, back to front, each
+                // filled flat. Nothing below this line changed when materials arrived.
+                var bodyContext = context
+                for slice in drawnSlices(volume: volume, basis: basis) {
+                    let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
+                    bodyContext.transform = plane
+                        .concatenating(shrink)
+                        .concatenating(root)
+                        .concatenating(viewport)
+                    bodyContext.fill(slice.path,
+                                     with: .color(color),
+                                     style: FillStyle(eoFill: slice.evenOdd, antialiased: true))
+                }
+            case .ramp:
+                // One silhouette, painted from the material's spec. The front plane (z = 0) is the
+                // outline the slice stack draws its core from, so the shape is the same one Solid
+                // shows; the layers over it are what make it glass.
+                let face = planeTransform(basis: basis, z: 0, pivot: pivot)
                     .concatenating(shrink)
                     .concatenating(root)
                     .concatenating(viewport)
-                bodyContext.fill(slice.path,
-                                 with: .color(color),
-                                 style: FillStyle(eoFill: slice.evenOdd, antialiased: true))
+                let box = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
+                                 width: side, height: side)
+                OpenBotAvatarMaterialPaint.paint(spec,
+                                                 light: pose.light,
+                                                 backdrop: backdrop,
+                                                 silhouette: model.silhouette.applying(face),
+                                                 tint: color,
+                                                 side: side,
+                                                 box: box,
+                                                 plan: plan,
+                                                 into: &context)
             }
             // The eyes ride the surface, so they are drawn over the body but under the marks.
             drawEyes(model: model, pose: pose, basis: basis, into: &context, viewport: viewport,
-                     root: root, ink: ink, pivot: pivot, bodyScale: bodyScale)
+                     root: root, ink: ink, pivot: pivot, bodyScale: bodyScale,
+                     catchlight: plan.catchlight)
         }
 
         if let mark = pose.mark {
@@ -155,7 +200,8 @@ public enum OpenBotAvatarRenderer {
                          root: CGAffineTransform,
                          ink: Color,
                          pivot: OpenBotAvatarGeometry.Point,
-                         bodyScale: Double) {
+                         bodyScale: Double,
+                         catchlight: Bool = false) {
         guard basis.facing > 0.05 else { return }
         let eyes = model.definition.eyes
         let scale = model.volume.eyeScale
@@ -208,6 +254,19 @@ public enum OpenBotAvatarRenderer {
                 let rect = CGRect(x: hip.x - width / 2, y: hip.y - open / 2, width: width, height: open)
                 let pill = Path(roundedRect: rect, cornerRadius: min(width, open) / 2)
                 layer.fill(pill, with: .color(ink))
+            }
+
+            // The one reflection the spec allows on the eye, and only above 64 pt: a 1 pt dot at
+            // 30 % white, in the pupil's upper left. Below that size it is mud, so it is not drawn.
+            if catchlight {
+                // A point in the eye's own units: the layer's scale is how many points one unit is,
+                // so a 1 pt dot is `0.5 / pointsPerUnit` units in radius.
+                let pointsPerUnit = max(0.0001, (abs(layer.transform.a) * abs(layer.transform.d)).squareRoot())
+                let radius = 0.5 / pointsPerUnit
+                let centre = CGPoint(x: eyePoint.x - width * 0.22, y: eyePoint.y - height * 0.22)
+                let dot = CGRect(x: centre.x - radius, y: centre.y - radius,
+                                 width: radius * 2, height: radius * 2)
+                layer.fill(Path(ellipseIn: dot), with: .color(Color.white.opacity(0.30)))
             }
         }
     }
@@ -272,6 +331,11 @@ public final class OpenBotAvatarModel {
     public let definition: BotAvatarDefinition
     public let volume: OpenBotAvatarVolume
 
+    /// The whole outline, as one path, in the definition's own coordinates: every part's core
+    /// contour. The slice stack paints the volume; this is what a material paints over — the same
+    /// silhouette, flat, so glass and solid wear the same shape.
+    public let silhouette: Path
+
     /// Unit shapes, drawn through a transform: a ribbon hoop, the three dots, the exclamation mark.
     /// Held here so no frame builds a path for them.
     let ribbonArc: Path
@@ -285,6 +349,9 @@ public final class OpenBotAvatarModel {
     private init(definition: BotAvatarDefinition, volume: OpenBotAvatarVolume) {
         self.definition = definition
         self.volume = volume
+        var silhouette = Path()
+        for part in volume.parts { silhouette.addPath(part.core.path) }
+        self.silhouette = silhouette
         var arc = Path()
         arc.addArc(center: .zero, radius: 1, startAngle: .degrees(-52), endAngle: .degrees(52), clockwise: false)
         ribbonArc = arc

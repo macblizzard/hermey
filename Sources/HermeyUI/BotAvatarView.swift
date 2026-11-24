@@ -25,6 +25,12 @@ import SwiftUI
 /// Both compile against `HermeyUI` alone for everything but the activity value, which lives in
 /// `HermesKit` — the one vocabulary the wire layer and the design system share.
 ///
+/// **The stored avatar is not an argument.** A bot that has chosen a face draws it on every
+/// surface, and the surface does not have to know: `EnvironmentValues.botAvatars` carries the host's
+/// map (`BotAvatarLibrary`), injected once at each app's root, and this view resolves
+/// `definition ?? environment.botAvatars[identity]`. The `definition:` parameter remains for a
+/// preview or an editor drawing a face the host does not have yet.
+///
 /// **A face changes when a surface adopts this.** The shape and colour derive from the reference's
 /// palette (eleven colours) with the reference's hash. A surface that must keep a stored face passes
 /// `color:` with the stored value (the reference's `#RRGGBB` or `#RRGGBB::shape_N`) and leaves the id
@@ -61,6 +67,12 @@ import SwiftUI
 /// own slower clock. That is a deliberate departure from the reference, asked for on 2026-11-16; the
 /// port itself is untouched, which is why the two live in separate functions and only this view
 /// composes them.
+///
+/// **A bot with a generated avatar wears the same face twice.** The drawn branch (`drawnBody`) draws
+/// `OpenBotAvatarView` and then performs *this* model over it — one `performedFrame` per tick, its
+/// body as the outer transform and its eyes handed down through `eyeOverride:` — so the hop, the
+/// flip, the darts and the blink are the ones above, not a second, quieter set written for the new
+/// renderer.
 public struct BotAvatarView: View {
     /// The bot's id. The colour and the shape are both derived from it when nothing is stored.
     public var identity: String
@@ -88,9 +100,17 @@ public struct BotAvatarView: View {
     /// The bot's own generated avatar, when it has one (`BotAvatarDocument`). A bot with a definition
     /// draws that instead of the shape-and-palette face — the whole row, header and pet follow this
     /// one branch, so no two surfaces can disagree about which face a bot wears.
+    ///
+    /// Almost nothing passes this. The stored avatar arrives through the environment
+    /// (`EnvironmentValues.botAvatars`, injected once at each app's root), so a call site that knows
+    /// only the bot's id still draws the face the bot chose; the parameter exists for a preview or an
+    /// editor that is drawing a definition the host does not have yet.
     public var definition: BotAvatarDefinition?
-    /// The definition's colour: `#RRGGBB`, or nil for the house colour.
+    /// The definition's colour: `#RRGGBB`, or nil for the house colour. Only read beside an explicit
+    /// `definition:` — a stored definition brings its own stored colour with it.
     public var avatarColor: String?
+
+    @Environment(\.botAvatars) private var avatarLibrary
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// Backgrounded windows keep their faces still: the Mac target had no such gate, so a minimised
@@ -132,21 +152,91 @@ public struct BotAvatarView: View {
     static let lightEyeInk = Color.white
 
     public var body: some View {
-        if let definition {
+        if let face = self.face {
             // The generated avatar draws itself, in its own volume; the shape-and-palette face below
             // is untouched, which is what keeps a bot without one looking exactly as it did.
-            OpenBotAvatarView(definition: definition,
-                              color: avatarColor,
-                              state: OpenBotAvatarState(activity: activity),
-                              mood: OpenBotAvatarState.mood(for: activity),
-                              size: size,
-                              animates: animates,
-                              reduceMotion: reduceMotion,
-                              animatingFrom: animatingFrom,
-                              label: label)
+            drawnBody(face)
         } else {
             shapeBody
         }
+    }
+
+    /// The generated avatar, performing the motions the shape face already has.
+    ///
+    /// The drawn avatar has life of its own inside (`OpenBotAvatarState.pose` breathes it and sways
+    /// it), and that is now the *inside* of the face, not the whole of it: since 2026-11-16 a bot
+    /// that is busy also hops, flips and squints. That language lives in `BotAvatarMotion` /
+    /// `BotAvatarPerformance`, and it is asked for here exactly as `shapeBody` asks for it — one
+    /// `performedFrame` per tick, on the same clock (the same interval, the same phase seed, the
+    /// same gates) — rather than being written a second time for the new renderer:
+    ///
+    /// * the frame's **body** becomes the outer transform, the same three modifiers in the same
+    ///   order as the shape path (`.scaleEffect`, `.rotationEffect`, `.offset`), plus the same
+    ///   `.brightness`;
+    /// * the frame's **eyes** travel down through `eyeOverride:`, so the drawn eyes blink and look
+    ///   where the old face's do, instead of on a second clock of their own.
+    ///
+    /// Under Reduce Motion, with `animates` false, in a background window, below `animatingFrom`, or
+    /// in a state that rests, `moves` is false: the frame is `.rest`, the override is nil (the drawn
+    /// avatar keeps its own idle blinking and its own breath as it does today) and the timeline is
+    /// paused.
+    private func drawnBody(_ face: BotAvatarDocument) -> some View {
+        // The identity both faces are seeded from, so a bot's hop and its drawn breath share a
+        // phase rather than drifting apart.
+        let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: face.color)
+        let moves = BotAvatarMotion.allows(activity: activity,
+                                           reduceMotion: reduceMotion || systemReduceMotion,
+                                           animates: animates && appAllowsMotion
+                                               && scenePhase == .active,
+                                           size: size,
+                                           minimumSize: animatingFrom)
+        let traits = BotAvatarMotionTraits(identity: resolved.identity)
+        let state = OpenBotAvatarState(activity: activity)
+
+        return TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
+                                       paused: !moves)) { context in
+            // One frame, the same call the shape face makes: the state's own acting with the jump,
+            // flip, darts and squint performed over it.
+            let frame = moves
+                ? BotAvatarMotion.performedFrame(activity: activity,
+                                                 traits: traits,
+                                                 at: context.date.timeIntervalSinceReferenceDate,
+                                                 side: Double(size))
+                : .rest
+
+            OpenBotAvatarView(definition: face.definition,
+                              color: face.color,
+                              material: face.material,
+                              state: state,
+                              mood: OpenBotAvatarState.mood(for: activity),
+                              size: size,
+                              // The app's own motion switch stops the drawn breath too; it never
+                              // reached this branch before.
+                              animates: animates && appAllowsMotion,
+                              reduceMotion: reduceMotion,
+                              animatingFrom: animatingFrom,
+                              label: label,
+                              eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
+                .scaleEffect(x: frame.body.scaleX, y: frame.body.scaleY)
+                .rotationEffect(.degrees(frame.body.rotate))
+                .offset(x: frame.body.translateX * size, y: frame.body.translateY * size)
+                .brightness(frame.body.brightness)
+        }
+    }
+
+    /// The face this view draws: the definition it was handed (a preview, the editor), else what the
+    /// environment says the host stores for this bot.
+    ///
+    /// One resolution for every surface. Before this, four call sites passed the stored definition
+    /// and twelve did not, so a bot's new avatar appeared in its header and its old one in Settings,
+    /// in the bot panel and in every list row — the report that started this. A caller's `color:` is
+    /// deliberately *not* consulted when the definition came from the host: the stored colour
+    /// belongs to the stored body, and a stale `bots.color` must not repaint a newer face.
+    private var face: BotAvatarDocument? {
+        if let definition {
+            return BotAvatarDocument(definition: definition, color: avatarColor)
+        }
+        return avatarLibrary[identity]
     }
 
     private var shapeBody: some View {

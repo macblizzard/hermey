@@ -108,7 +108,9 @@ struct MacBotIconService {
                   let encoded = try? JSONSerialization.data(withJSONObject: definition,
                                                             options: [.sortedKeys, .withoutEscapingSlashes]),
                   let text = String(data: encoded, encoding: .utf8),
-                  let document = BotAvatarDocument(json: text, color: face["color"] as? String) else { continue }
+                  let document = BotAvatarDocument(json: text,
+                                                   color: face["color"] as? String,
+                                                   material: face["material"] as? String) else { continue }
             documents[botID] = document
         }
         return documents
@@ -126,59 +128,16 @@ struct MacBotIconService {
         } else {
             definition = NSNull()
         }
-        let body: [String: Any] = ["definition": definition, "color": document?.color ?? NSNull()]
+        // `material` travels with the definition and is cleared with it: the host drops the
+        // material when the definition is null, so a reset leaves nothing behind.
+        let body: [String: Any] = ["definition": definition,
+                                   "color": document?.color ?? NSNull(),
+                                   "material": document?.material.rawValue ?? NSNull()]
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
         _ = try await request(url: url, method: "PUT", body: data)
     }
 }
 
-struct MacBotIconPicker: View {
-    let bot: Bot
-    @ObservedObject var store: WorkspaceStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var saving = false
-    @State private var error: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Portrait for \(bot.displayName)")
-                    .font(TypeScale.font(Tokens.textLG, weight: .semibold))
-                    .foregroundStyle(Tokens.textPrimary)
-                Spacer()
-                HermeyButton("Cancel", kind: .secondary, size: .small) { dismiss() }
-                    .disabled(saving)
-            }
-            Text("Any body, any colour. Your paired devices share this choice, and your own message bubbles take the colour.")
-                .font(TypeScale.font(Tokens.textSM))
-                .foregroundStyle(Tokens.textMuted)
-            ScrollView {
-                BotFacePicker(identity: bot.id, value: store.botFaces[bot.id]) { face in
-                    guard !saving else { return }
-                    saving = true
-                    error = nil
-                    Task {
-                        do {
-                            try await store.saveBotFace(botID: bot.id, face: face)
-                            dismiss()
-                        } catch {
-                            self.error = error.localizedDescription
-                            saving = false
-                        }
-                    }
-                }.disabled(saving)
-            }
-            if saving { ProgressView("Saving…") }
-            if let error {
-                Text(error)
-                    .font(TypeScale.font(TypeScale.caption))
-                    .foregroundStyle(Tokens.danger)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(20)
-        .frame(width: 520, height: 520)
-        .background(Tokens.canvas)
-        .preferredColorScheme(.dark)
-    }
-}
+// The face picker that used to live here (`MacBotIconPicker`) is gone: the bot settings sheet's
+// Avatar tab is the one place a bot's face is chosen, and the About tab no longer offers a second
+// chooser. The service above is what both doors write through, so it stays.
