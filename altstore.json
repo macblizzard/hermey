@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.645",
-          "buildVersion": "645",
-          "date": "2026-11-24T10:35:16Z",
-          "localizedDescription": "### Changed\n- **The bot panel's buttons sit evenly in their corners.** The bell, \uff0b, Settings, search and the sidebar\n  toggle were 12 pt in from the sides but only 4 pt from the top and bottom, so a corner button looked twice\n  as far across as it was up. Both chrome rows use one 10 pt margin on every side now, and the rows grew by\n  the difference.\n- **Settings \u25b8 About states the host version on one line with its action.** Version and state together, and\n  `Check now` is a real button on that same line instead of muted text stranded at the far right; the state\n  is toned \u2014 normal when current, accent when an update is available, warning when the host cannot be asked.\n\n### Fixed\n- **An error from another conversation no longer appears in yours.** Host errors were drawn in whichever\n  chat was open, because the event did not say which session it belonged to \u2014 which is how \"No LLM provider\n  configured\" appeared over a healthy conversation. An error is now shown only in the conversation it\n  belongs to; anything else goes to the log.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.645/Hermey-0.1.645-b645.ipa",
-          "size": 5248426,
+          "version": "0.1.646",
+          "buildVersion": "646",
+          "date": "2026-11-24T11:12:58Z",
+          "localizedDescription": "### Fixed\n- **A reply now appears in the conversation it belongs to, without switching away.** The desktop was showing\n  the previous message and the \"musing\u2026\" indicator while the sidebar already had the new one: a reply that\n  arrives while the pane is open could be filed against the wrong session and dropped, and the indicator only\n  ever cleared on one specific event. Both are fixed \u2014 the pane settles the turn from the host's own answer,\n  and it follows the bot's conversation if the host moved it.\n- **Group chats show their heading on the desktop**, under Group chats, the same way the bot categories do \u2014\n  and fold with them.\n\n### Changed\n- **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a\n  bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white\n  text, a faint white hairline and the same curved tail and placement.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.646/Hermey-0.1.646-b646.ipa",
+          "size": 5251359,
           "minOSVersion": "17.0",
-          "sha256": "d7cbf7694b54f2e121bb540a448d1b1b21c4036f98c3ad15804ad0b78ebd5f59"
+          "sha256": "b2d5b4cebc3adeec352025f732cec4ec0e55f16bf35b069e65d729cc48a6e76a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.645 (645)",
-      "identifier": "hermes-0.1.645-645",
-      "caption": "### Changed\n- **The bot panel's buttons sit evenly in their corners.** The bell, \uff0b, Settings, search and the sidebar\n  toggle were 12 pt in from the sides but only 4 pt from the top and bottom, so a corner button looked twice\n  as far across as it was up. Both chrome rows use one 10 pt margin on every side now, and the rows grew by\n  the difference.\n- **Settings \u25b8 About states the host version on one line with its action.** Version and state together, and\n  `Check now` is a real button on that same line instead of muted text stranded at the far right; the state\n  is toned \u2014 normal when current, accent when an update is available, warning when the host cannot be asked.\n\n### Fixed\n- **An error from another conversation no longer appears in yours.** Host errors were drawn in whichever\n  chat was open, because the event did not say which session it belonged to \u2014 which is how \"No LLM provider\n  configured\" appeared over a healthy conversation. An error is now shown only in the conversation it\n  belongs to; anything else goes to the log.",
-      "date": "2026-11-24T10:35:16Z",
+      "title": "Hermes 0.1.646 (646)",
+      "identifier": "hermes-0.1.646-646",
+      "caption": "### Fixed\n- **A reply now appears in the conversation it belongs to, without switching away.** The desktop was showing\n  the previous message and the \"musing\u2026\" indicator while the sidebar already had the new one: a reply that\n  arrives while the pane is open could be filed against the wrong session and dropped, and the indicator only\n  ever cleared on one specific event. Both are fixed \u2014 the pane settles the turn from the host's own answer,\n  and it follows the bot's conversation if the host moved it.\n- **Group chats show their heading on the desktop**, under Group chats, the same way the bot categories do \u2014\n  and fold with them.\n\n### Changed\n- **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a\n  bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white\n  text, a faint white hairline and the same curved tail and placement.",
+      "date": "2026-11-24T11:12:58Z",
       "tintColor": "#9A9AA0"
     }
   ],
