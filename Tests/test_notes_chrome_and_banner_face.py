@@ -36,10 +36,10 @@ class TheNotesSheetDressesLikeItsNeighbours(unittest.TestCase):
 
 class TheBannerFaceCannotGoStaleForever(unittest.TestCase):
     def testTheCacheKeyCarriesARendererVersion(self) -> None:
-        self.assertIn('private static let schema = "v2"', FACE_CACHE)
-        self.assertIn('\\(schema)-\\(slug(botID, color)).png', FACE_CACHE)
-        # And the cache still keys on the stored face: changing a bot's portrait in settings must change
-        # its next banner, not just every banner after the next app release.
+        self.assertIn('private static let schema = "v3"', FACE_CACHE)
+        # The file is keyed by the bot alone now: the face is kept current by rewriting it on save
+        # (and `invalidate(botID:)` removing it), so no stale face is ever a cache hit.
+        self.assertIn('\\(schema)-\\(stem(botID)).png', FACE_CACHE)
         self.assertIn("appendingPathComponent", FACE_CACHE)
 
     def testTheOldKeyCannotBeAccidentallyReused(self) -> None:
