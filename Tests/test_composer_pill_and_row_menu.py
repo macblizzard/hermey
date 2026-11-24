@@ -154,39 +154,34 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         self.assertIn(".truncationMode(.tail)", self.PILL_SOURCE)
         self.assertIn(".lineLimit(1)", self.PILL_SOURCE)
 
-    def test_the_composer_draws_it_in_the_control_row_before_the_field(self) -> None:
-        body = between(self.COMPOSER_SOURCE,
-                       "HStack(alignment: .bottom, spacing: 8) {",
-                       "// One tap clears everything typed.")
-        # After the paperclip, before the field: a sibling in the row, never an overlay over the text.
-        self.assertIn("rowCentred(attachControl)", body)
-        self.assertIn("#if os(macOS)\n                if let sessionPill {", body)
-        self.assertIn("field\n                    .frame(minHeight: rowHeight)", body)
-        self.assertLess(body.index("rowCentred(attachControl)"), body.index("if let sessionPill {"))
-        self.assertLess(body.index("if let sessionPill {"),
-                        body.index("field\n                    .frame(minHeight: rowHeight)"))
-        # The row's own control height, so the lozenge lines up with the clip and the arrow.
-        self.assertIn(".frame(height: controlSide))", body)
-        # An overlay would be drawn over the field; there is none around the pill.
-        pill_block = between(body, "if let sessionPill {", "field\n                    .frame")
-        self.assertNotIn("overlay", pill_block)
+    def test_the_pill_is_not_in_the_field_row(self) -> None:
+        # It used to sit between the paperclip and the text, which read as part of the field and put
+        # a lozenge on the placeholder's own line. Nothing about the pill belongs in that row.
+        row = between(self.COMPOSER_SOURCE,
+                      "HStack(alignment: .bottom, spacing: 8) {",
+                      "// One tap clears everything typed.")
+        self.assertIn("rowCentred(attachControl)", row)
+        self.assertNotIn("sessionPill", row,
+                         "the pill is back on the field's line")
+        self.assertNotIn("rowCentred(sessionPill", row)
 
-    def test_the_phone_stacks_the_same_pill_in_its_own_row_inside_the_composer(self) -> None:
-        # A phone's row cannot hold the field and a pill with a model name in it, so iOS stacks the
-        # pill under the field — inside the same rounded container, before the card's own `hint`.
-        body = between(self.COMPOSER_SOURCE,
-                       "            .padding(.bottom, hint == nil ? 8 : 2)\n",
-                       "if let hint, !hint.isEmpty {")
-        self.assertIn("#if os(iOS)", body)
-        self.assertIn("sessionPillBand", body)
+    def test_the_pill_sits_on_its_own_row_under_the_text_on_both_platforms(self) -> None:
+        # One band, no per-platform split: under the field row, inside the same rounded container,
+        # before the card's own `hint` — so it can never cover a character being typed.
+        use = between(self.COMPOSER_SOURCE,
+                      "            .padding(.bottom, hint == nil ? 8 : 2)\n",
+                      "if let hint, !hint.isEmpty {")
+        self.assertIn("sessionPillBand", use)
+        self.assertNotIn("#if os(iOS)", use, "the band is one rule, not a phone-only branch")
         band = between(self.COMPOSER_SOURCE,
                        "private var sessionPillBand: some View {",
                        "private var trimmed: String {")
         self.assertIn("if let sessionPill {", band)
         self.assertIn(".equatable()", band)
         self.assertIn(".frame(height: controlSide)", band)
-        # Its own row, on the container's leading edge — not an overlay on the field.
+        # Its own row, aligned with the text rather than the card's edge — not an overlay.
         self.assertIn(".frame(maxWidth: .infinity, alignment: .leading)", band)
+        self.assertIn("showsAttach ? controlSide + 8 : 0", band)
         self.assertNotIn("overlay", band)
         self.assertLess(self.COMPOSER_SOURCE.index("            HStack(alignment: .bottom, spacing: 8) {"),
                         self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"))
