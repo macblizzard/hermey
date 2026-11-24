@@ -1359,3 +1359,10 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed
 - `hermeyd` **0.7.0**: the stored face carries a `material`, validated on the way in — an unknown value is
   refused with the reason instead of being saved.
+
+## [0.1.650] — 2026-11-24
+
+### Fixed
+- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list
+  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you
+  saved — at rest, so it costs nothing per notification — and a bot without one keeps exactly the picture it had.
