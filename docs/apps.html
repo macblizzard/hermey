@@ -104,12 +104,13 @@ when the Mac wakes, which is a different thing.</p>
 <li>The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
 three-dot menu.</li>
 </ul>
-<h2 id="the-line-above-the-composer">The line above the composer</h2>
-<p>Both apps print one muted line over the message box, outside the field: the bot's <code>provider/model</code> and
-how full its context is, as <code>540k/1M Tokens</code>.</p>
+<h2 id="the-model-pill">The model pill</h2>
+<p>The composer's control row carries one pill: the bot's <code>provider/model</code> and how full its context is, as
+<code>540k/1M Tokens</code>. Press it and the model picker opens — the same sheet the bot panel's <strong>Model</strong> row
+opens on the Mac, and the drawer's on the phone.</p>
 <ul>
 <li><strong>The count arrives with a turn.</strong> Usage comes back when a turn completes, so before the first reply
-the line shows the model alone rather than a made-up zero.</li>
+the pill names the model alone rather than a made-up zero.</li>
 <li><strong>It never pushes the box around.</strong> Typing cannot re-lay it out, and on a narrow phone it truncates
 to the model name instead of wrapping.</li>
 <li><strong>It replaces two chips.</strong> The provider and the context count used to sit in separate chips under the
@@ -158,8 +159,10 @@ troubleshooting table. <a href="https://github.com/macblizzard/hermey/blob/main/
 <strong>Avatar</strong> tab — the same editor on the Mac and the phone — and the top of it is a live preview of the
 draft, drawn in the state the bot is actually in.</p>
 <ul>
-<li><strong>Six presets to start from:</strong> a blob, a box, a mug, a sprout, a cat and an egg. Each is a solid
-silhouette with two eyes, chosen so the face still reads at the size of a row in the bot list.</li>
+<li><strong>Twelve shapes to start from:</strong> a blob, a box, a mug, a sprout, a cat, an egg, a bottle, a star, a
+droplet, an hourglass, an open book and a mushroom. Each is a solid silhouette with two eyes, chosen
+so the face still reads at the size of a row in the bot list. <strong>Random</strong> rolls a shape, a material and
+a colour together when you would rather meet one than pick one.</li>
 <li><strong>Paste a definition.</strong> The JSON box takes an avatar in the
 <a href="https://github.com/DominikScholz/open-bot-avatar">open-bot-avatar</a> v1 format — Dominik Scholz's
 MIT-licensed spec and renderer, which is where these shapes and the eye placement come from. A
@@ -167,11 +170,13 @@ definition that does not validate is refused with its own reasons listed, and th
 it had.</li>
 <li><strong>Nudge it by hand:</strong> the colour, and the eyes' position, spacing and scale. Those edit the same
 definition the preview draws, so what you see is what gets saved.</li>
-<li><strong>Solid or glass.</strong> The body is either the flat colour it has always been or a lit glass: a
-three-stop ramp, one specular streak, a rim that catches the light and a contact shadow under it.
-Glass draws what the size can carry — a row in the bot list gets the ramp, the rim and the contact
-band, the pet adds the streak and a glow kept inside its window, the editor's preview adds the eye's
-catchlight. The eight states tint the rim, and <strong>Blocked</strong> calms the colour instead of turning it red.</li>
+<li><strong>Four materials.</strong> <strong>Solid</strong> is the flat body it has always been. <strong>Glass</strong> is lit: a three-stop
+ramp, one specular streak, a rim that catches the light and a soft glow. <strong>Matte</strong> takes the shine
+away — felt or unglazed clay, dark soft edges and a faint grain. <strong>Metal</strong> puts one hard horizon line
+across the body with a narrow bright rim and no halo. What gets drawn follows the size: a row in the
+bot list carries the ramp, the rim and the contact band, the pet adds the streak and a glow kept
+inside its window, the editor's preview adds the eye's catchlight. The eight states tint the rim, and
+<strong>Blocked</strong> calms the colour instead of turning it red.</li>
 <li><strong>It moves like the picture faces.</strong> A drawn face uses the same idle motion and the same pose for
 the state it is in, so choosing one does not make a bot go still.</li>
 <li><strong>One place to pick a face.</strong> This tab is the only chooser: the old <em>Choose bot icon</em> control is
@@ -198,7 +203,14 @@ composing its answer shows.</li>
 run the host reported failed.</li>
 <li><strong>Done</strong> is a finished turn, held for a few seconds before the face falls back to <strong>Idle</strong>. A
 background run is <strong>Idle</strong> on purpose — helper work should not look like a conversation.</li>
+<li><strong>A marked state has one pair of eyes, not two.</strong> <strong>Thinking</strong> gives the body over to three dots and
+<strong>Blocked</strong> to an exclamation mark; the mark is the face in those states, so no eyes are drawn beside
+it.</li>
 </ul>
+<h2 id="the-bot-lists-row-menu">The bot list's row menu</h2>
+<p>A row's <strong>⋯</strong> menu appears on hover, on selection and from the keyboard, and reserves no space when it
+is hidden — a long bot name gets the width instead. Hovering a row also wakes its avatar for a small
+hop, so a list of bots reads as alive before you open any of them.</p>
 <h2 id="reactions--one-emoji-both-devices">Reactions — one emoji, both devices</h2>
 <p>A reaction is kept by the host now, not by the device that made it: one emoji per message, stored
 against the host, the bot and the session, so a reaction on one device appears on the other while the
@@ -361,7 +373,7 @@ integers would only make it slow to launch.</p>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#the-line-above-the-composer">The line above the composer</a></li><li><a href="#the-bell-and-what-is-waiting">The bell, and what is waiting</a></li><li><a href="#updating-from-the-app">Updating from the app</a></li><li><a href="#desktop-pets">Desktop pets</a></li><li><a href="#a-bots-own-face">A bot's own face</a></li><li><a href="#the-eight-words-a-bot-wears">The eight words a bot wears</a></li><li><a href="#reactions--one-emoji-both-devices">Reactions — one emoji, both devices</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#excel-word-and-pdf-files">Excel, Word and PDF files</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
+    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#the-model-pill">The model pill</a></li><li><a href="#the-bell-and-what-is-waiting">The bell, and what is waiting</a></li><li><a href="#updating-from-the-app">Updating from the app</a></li><li><a href="#desktop-pets">Desktop pets</a></li><li><a href="#a-bots-own-face">A bot's own face</a></li><li><a href="#the-eight-words-a-bot-wears">The eight words a bot wears</a></li><li><a href="#the-bot-lists-row-menu">The bot list's row menu</a></li><li><a href="#reactions--one-emoji-both-devices">Reactions — one emoji, both devices</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#excel-word-and-pdf-files">Excel, Word and PDF files</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
   </nav>
 </div>
 

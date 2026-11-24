@@ -138,10 +138,10 @@
 "b": "First run Add a server: paste https://<host>.<tailnet>.ts.net \u2014 serve-root, no port. Enter the pairing code minted on the host: curl -fsS -X POST http://127.0.0.1:8788/v1/pair/start . The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the three-dot menu."
 },
 {
-"h": "The line above the composer",
+"h": "The model pill",
 "p": "The apps",
-"u": "apps.html#the-line-above-the-composer",
-"b": "The line above the composer Both apps print one muted line over the message box, outside the field: the bot's provider/model and how full its context is, as 540k/1M Tokens . The count arrives with a turn. Usage comes back when a turn completes, so before the first reply the line shows the model alone rather than a made"
+"u": "apps.html#the-model-pill",
+"b": "The model pill The composer's control row carries one pill: the bot's provider/model and how full its context is, as 540k/1M Tokens . Press it and the model picker opens \u2014 the same sheet the bot panel's Model row opens on the Mac, and the drawer's on the phone. The count arrives with a turn. Usage comes back when a tur"
 },
 {
 "h": "The bell, and what is waiting",
@@ -165,13 +165,19 @@
 "h": "A bot's own face",
 "p": "The apps",
 "u": "apps.html#a-bots-own-face",
-"b": "A bot's own face A bot can wear a face it draws instead of a picture you chose. Open that bot's settings and its Avatar tab \u2014 the same editor on the Mac and the phone \u2014 and the top of it is a live preview of the draft, drawn in the state the bot is actually in. Six presets to start from: a blob, a box, a mug, a sprout,"
+"b": "A bot's own face A bot can wear a face it draws instead of a picture you chose. Open that bot's settings and its Avatar tab \u2014 the same editor on the Mac and the phone \u2014 and the top of it is a live preview of the draft, drawn in the state the bot is actually in. Twelve shapes to start from: a blob, a box, a mug, a sprou"
 },
 {
 "h": "The eight words a bot wears",
 "p": "The apps",
 "u": "apps.html#the-eight-words-a-bot-wears",
 "b": "The eight words a bot wears A bot is described with the same eight words everywhere now, from one table rather than three vocabularies: Idle , Thinking , Reading , Working , Using the computer , Waiting for you , Blocked , Done . The bot list's badge, the pet's own label, the chat header and the iPhone's Live Activity "
+},
+{
+"h": "The bot list's row menu",
+"p": "The apps",
+"u": "apps.html#the-bot-lists-row-menu",
+"b": "The bot list's row menu A row's \u22ef menu appears on hover, on selection and from the keyboard, and reserves no space when it is hidden \u2014 a long bot name gets the width instead. Hovering a row also wakes its avatar for a small hop, so a list of bots reads as alive before you open any of them."
 },
 {
 "h": "Reactions \u2014 one emoji, both devices",
