@@ -38,7 +38,8 @@ then install the app on a phone or Mac and pair it with a short code.
 - [docs/PETS.md](docs/PETS.md): desktop pets — what a pet is, the per-bot switch, the balloon, the badge,
   and what to check when one does not appear.
 - [docs/APPS.md](docs/APPS.md): iOS and macOS installation, first run, the waiting bell, updating from the
-  app, desktop pets, the Live Activity, reactions that sync between devices, unpairing and revocation.
+  app, desktop pets, a bot's own face (the Avatar tab), the eight words a bot state prints, the Live
+  Activity, reactions that sync between devices, unpairing and revocation.
 - [docs/HERMEYD.md](docs/HERMEYD.md): the host's `/v1` contract, route by route — including
   `GET`/`PUT /v1/reactions`, the reaction the host keeps so both apps show the same one.
 - [docs/DESKTOP-PETS.md](docs/DESKTOP-PETS.md): the design the pets were built from — the invisible
@@ -68,6 +69,16 @@ then install the app on a phone or Mac and pair it with a short code.
 - Plugin: `hermes-genui` ships with this repo and is installed into `<engine>/plugins/hermes-genui`;
   upstream Hermes does not have it, and cards answer 503 without it.
 - Office files: `POST /v1/office/extract` (bearer) takes a base64 document and returns the text block a prompt would carry — content-sniffed `pdf`/`docx`/`xlsx`, 8 MiB, bounded by pages/sheets/characters. The apps attach the same bytes through `file.attach`; `GET /v1/attachments/{profile}/{name}` serves them back, and a bot hands a file over by linking its workspace path.
+- Bot states: eight words, one table — `Idle`, `Thinking`, `Reading`, `Working`, `Using the computer`,
+  `Waiting for you`, `Blocked`, `Done` (`Sources/HermesKit/BotStateWord.swift`). The bot list's badge,
+  the desktop pet, the chat header and the iOS Live Activity all print that word, so the surfaces cannot
+  disagree. Derived from run status and the last tool called, never from a provider's free-text status.
+- Avatars: a bot may wear a generated face instead of an icon picture — an
+  [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) v1 definition (MIT, Dominik Scholz)
+  plus a colour. It lives in the same document as the bot icons (`/v1/bot-icons`, keyed by bot, fields
+  `avatar`, `definition`, `color`); the host validates a definition and refuses an invalid one with its
+  reasons, and `null` clears it. No separate route exists. It draws in the bot list row, the chat header
+  and the desktop pet.
 - Requirements: Linux with systemd or macOS, Hermes installed, the service account sharing the
   engine's UID, Tailscale (or your own TLS proxy).
 - Versions: the apps are `0.1.<run>` (tag `v0.1.N`); `hermeyd` has its own series

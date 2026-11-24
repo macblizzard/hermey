@@ -110,10 +110,51 @@ on your wallpaper, moving and blinking on its own. Click it and a frosted balloo
 a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button, and a
 badge on the icon when a reply lands while Hermey is minimised. Drag it anywhere and it stays there per
 screen; right-click → **Close pet** switches it off again. Off by default, one switch per bot in that
-bot's settings.
+bot's settings. A pet is the bot's picture — or, once the bot has a face of its own (below), that face
+in whatever state the bot is in.
 
 [`docs/PETS.md`](PETS.md) is the reader's page: what a pet is, the switch, the balloon and a
 troubleshooting table. [`docs/DESKTOP-PETS.md`](DESKTOP-PETS.md) is the design it was built from.
+
+## A bot's own face
+
+A bot can wear a face it draws instead of a picture you chose. Open that bot's settings and its
+**Avatar** tab — the same editor on the Mac and the phone — and the top of it is a live preview of the
+draft, drawn in the state the bot is actually in.
+
+- **Six presets to start from:** a blob, a box, a mug, a sprout, a cat and an egg. Each is a solid
+  silhouette with two eyes, chosen so the face still reads at the size of a row in the bot list.
+- **Paste a definition.** The JSON box takes an avatar in the
+  [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) v1 format — Dominik Scholz's
+  MIT-licensed spec and renderer, which is where these shapes and the eye placement come from. A
+  definition that does not validate is refused with its own reasons listed, and the bot keeps the face
+  it had.
+- **Nudge it by hand:** the colour, and the eyes' position, spacing and scale. Those edit the same
+  definition the preview draws, so what you see is what gets saved.
+- **Save** stores the face. **Reset** deletes it, and the bot goes back to the picture or the
+  shape-and-palette face it wore before.
+
+The face is decoration and is allowed to be nothing else: this tab can write an avatar document and
+cannot touch the bot's config or its soul. It draws in the bot list's row, in the chat header, and — on
+the Mac — as the desktop pet.
+
+## The eight words a bot wears
+
+A bot is described with the same eight words everywhere now, from one table rather than three
+vocabularies: **Idle**, **Thinking**, **Reading**, **Working**, **Using the computer**,
+**Waiting for you**, **Blocked**, **Done**. The bot list's badge, the pet's own label, the chat header
+and the iPhone's Live Activity all read that one word, so a row cannot say *Working* while the face says
+something else — and the old three words (Working, Needs you, Finished) are gone.
+
+- **Reading** is a tool that reads something: a file, a page, the transcript, a skill. **Using the
+  computer** is a tool that drives a machine — the shared computer, a browser, a shell — and is the
+  longest label anything here has to fit.
+- **Working** is everything else a tool does, writing included, and it is also what a bot that is
+  composing its answer shows.
+- **Waiting for you** is a turn paused on you: a question, an approval, a take-over. **Blocked** is a
+  run the host reported failed.
+- **Done** is a finished turn, held for a few seconds before the face falls back to **Idle**. A
+  background run is **Idle** on purpose — helper work should not look like a conversation.
 
 ## Reactions — one emoji, both devices
 

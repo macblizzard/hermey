@@ -116,6 +116,7 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | | |
 |---|---|
 | **Desktop pets** | A bot's own picture, on your Mac's desktop, with no window or frame around it — it bobs, blinks and wanders, drags anywhere and remembers the screen, answers a question in a frosted balloon, and hops with a badge when a reply lands while Hermey is minimised. It is the reason to keep the Mac app on the desktop rather than in the Dock: the bot is simply there. |
+| **A bot's own face** | Any bot can wear a generated face instead of a picture: an **Avatar** tab in its settings with six presets, a box for an [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) definition (MIT, by Dominik Scholz), and colour and eye placement you nudge against a live preview. It draws in the bot list, the chat header and as the desktop pet — and the pet says what the bot is doing in one word underneath it. |
 | **Bots first** | The home screen is your bots. Each opens one endless conversation — no session list to manage. |
 | **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. A room is renamed from its row, on either device. |
 | **Reactions that follow you** | One emoji per message, kept by the host — react on the Mac and the phone shows it. Unpaired, both apps still work locally. |
@@ -188,7 +189,7 @@ Read [`SECURITY.md`](SECURITY.md) for the threat model and how to report a probl
 | [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) | What Hermes has to be doing first, then install, publish, pair |
 | [`docs/INSTALL.md`](docs/INSTALL.md) | What the installer writes, every flag, uninstall, when the first install fails |
 | [`docs/HERMEYD.md`](docs/HERMEYD.md) | The host service: its contract, its routes, its tests |
-| [`docs/APPS.md`](docs/APPS.md) | Installing the iOS and macOS builds, first run, re-signing |
+| [`docs/APPS.md`](docs/APPS.md) | Installing the iOS and macOS builds, first run, avatars, the eight bot states, re-signing |
 | [`docs/PETS.md`](docs/PETS.md) | Desktop pets: the per-bot switch, the balloon, the badge, and what to check when one is missing |
 | [`docs/DESKTOP-PETS.md`](docs/DESKTOP-PETS.md) | The design the pets were built from: window behaviour, decisions, risks |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | The protocol, the components, the state on disk |

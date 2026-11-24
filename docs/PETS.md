@@ -7,6 +7,13 @@ while you work, and answering a question when you click it.
 Pets are macOS only, off by default, and switched on one bot at a time. A phone has no desktop to sit
 on; there the bot's picture in the bot list is the same idea, already done.
 
+A pet is normally the bot's picture. It can also be the bot's own drawn face, if that bot has one — the
+**Avatar** tab in the bot's settings builds it
+([`docs/APPS.md`](APPS.md#a-bots-own-face)), and the pet draws whatever face the bot wears. Either way
+the pet prints the bot's state underneath it in one word — *Idle*, *Thinking*, *Reading*, *Working*,
+*Using the computer*, *Waiting for you*, *Blocked*, *Done* — so the desk tells you what the bot is doing
+without opening a window.
+
 ## What a pet is
 
 One pet, one window, one bot. The window is the icon's own 96 pt square plus a clear 12 pt margin the
