@@ -168,6 +168,12 @@
 "b": "Pictures in a message Tapping an image in a reply opens it with every other image attached to that same message: the viewer opens on the one you tapped and pages to its neighbours. iPhone/iPad: swipe sideways to turn the page; the bar carries a counter ( 2 of 5 ) naming your place. Swipe the picture down to put it away"
 },
 {
+"h": "Excel, Word and PDF files",
+"p": "The apps",
+"u": "apps.html#excel-word-and-pdf-files",
+"b": "Excel, Word and PDF files Attach a document in either app and the bot reads it. The composer takes a .xlsx , .docx or .pdf alongside pictures, the row in the transcript names the file and its size, and the text travels with your message: a spreadsheet sheet by sheet with its rows, a Word document paragraph by paragraph"
+},
+{
 "h": "Appearance and themes",
 "p": "The apps",
 "u": "apps.html#appearance-and-themes",
@@ -207,7 +213,7 @@
 "h": "Live Activity and the Dynamic Island",
 "p": "The apps",
 "u": "apps.html#live-activity-and-the-dynamic-island",
-"b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how long it has been running. When the turn ends the same card holds for about six sec"
+"b": "Live Activity and the Dynamic Island While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how long it has been running. When the turn ends the card stays and says \"Done\" with t"
 },
 {
 "h": "What a pet is",
@@ -717,7 +723,7 @@
 "h": "Every route",
 "p": "Reference",
 "u": "reference.html#every-route",
-"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 99 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, GE"
+"b": "Every route Each path hermeyd mounts, read from the .route(\u2026) table in hermeyd/src/main.rs when this page is built \u2014 101 of them, so this list cannot fall behind the service. /v1/health and /v1/pair/start answer without the local bearer; everything else answers 401 without it. Method Path POST /v1/attachments DELETE, G"
 },
 {
 "h": "Versions",

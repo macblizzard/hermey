@@ -525,7 +525,21 @@ the same reasoning written next to it.</p>
 </table></div>
 <p><code>POST /v1/bots/{profile}/message</code> is different again: it takes <strong>no ticket</strong>, because it is an
 operator command for the agent on the host, and it is refused <code>404</code> for any caller that arrived
-through a proxy (same loopback rule as <code>pair/start</code>).</p>
+through a proxy (same loopback rule as <code>pair/start</code>). Its optional <code>attachments</code> changed nothing
+about that: they are bytes in the body under a name that must be a single path component, the
+extracted text is appended to the same message, and there is no field that names a file on disk.</p>
+<p><code>POST /v1/office/extract</code> takes a device ticket, <strong>or</strong> no credential at all on direct loopback (a
+bot on this host asking about a document). It is a converter, not a reader of the filesystem: the
+filename header is reduced to a label (<code>../../etc/passwd</code> → <code>passwd</code>), nothing is opened by name, and
+the answer is text bounded at 8 MiB in and 24 000 characters out. It therefore adds no reach a
+<code>prompt.submit</code> does not already have — a paired device can ask its own bot to read the same file —
+and an unauthenticated caller from anywhere but loopback gets the same <code>404 not found</code> as an unknown
+route.</p>
+<p>The relay's own reading on a forwarded <code>prompt.submit</code> follows the same rule: an <code>@file:</code> reference
+is resolved against the service's <code>engine_home</code> only (absolute, canonicalised, and left untouched
+when it lands anywhere else), the bytes are capped at the same 8 MiB, and the reference itself is
+never rewritten — so the only file the host reads on a device's behalf is a document inside its own
+profiles, which is the file that same device just sent.</p>
 <h2 id="known-residual-risks-2026-11-audit">Known residual risks (2026-11 audit)</h2>
 <p>Written down because each is a real gap that is <em>not</em> hidden by the allow-list:</p>
 <ul>

@@ -157,6 +157,25 @@ place. Swipe the picture down to put it away.</li>
 </ul>
 <p>Each picture still pinches to zoom, and the page turns only on a sideways drag — the pull-down that
 closes the viewer is deliberately not also a page turn.</p>
+<h2 id="excel-word-and-pdf-files">Excel, Word and PDF files</h2>
+<p>Attach a document in either app and the bot reads it. The composer takes a <code>.xlsx</code>, <code>.docx</code> or <code>.pdf</code>
+alongside pictures, the row in the transcript names the file and its size, and the text travels with your
+message: a spreadsheet sheet by sheet with its rows, a Word document paragraph by paragraph with tables
+flattened, a PDF page by page from its text layer.</p>
+<ul>
+<li><strong>What is sent</strong> is the document's text, once, extracted on the host — every bot and both devices see
+the same thing. Bounds are stated rather than silent: 8 MiB per file, four files a message, 24 000
+characters a document, 50 PDF pages, 2 000 Word paragraphs and table rows, 12 sheets of 500 rows. A file
+cut at a bound says so in the host's log, and the block in the prompt names the sheet or page it came
+from.</li>
+<li><strong>Opening one</strong> from the transcript needs no download step: the Mac opens Quick Look, the phone opens
+the share sheet with a preview. A file you sent is already cached on the device that sent it.</li>
+<li><strong>Scans are not read.</strong> A PDF with no text layer is text-free to the host — no OCR runs, so photograph
+the page and send it as an image instead.</li>
+<li><strong>The way back.</strong> A bot can write a file into its workspace and link it: the reply carries the same kind
+of row, downloaded from the host when you press it. Bots learn this from the bundled <code>office-files</code>
+skill, so a bot that has never read a file can still hand you one.</li>
+</ul>
 <h2 id="appearance-and-themes">Appearance and themes</h2>
 <p>Settings → <strong>Appearance</strong>. Several dark palettes, with <strong>Midnight</strong> the default, and <strong>Parchment</strong>
 for daylight. Every window, sheet and tab tells the system which direction its palette faces, so
@@ -260,14 +279,17 @@ the unread counts themselves come from the host, so they survive a reinstall.</p
 <h2 id="live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</h2>
 <p>While a bot is working, an iPhone shows the turn on the lock screen and in the Dynamic Island: one
 card naming the bot, what it is doing (thinking, the tool it is running, streaming the reply) and how
-long it has been running. When the turn ends the same card holds for about six seconds saying &quot;Done&quot;
-with the first ~120 characters of the reply, then goes.</p>
+long it has been running. When the turn ends the card stays and says &quot;Done&quot; with the first ~120
+characters of the reply.</p>
 <ul>
+<li><strong>It stays until you remove it.</strong> The card is never dismissed by the app: it keeps its place in the
+Dynamic Island and on the lock screen until it is swiped away (or the system's own eight-hour limit is
+reached), so an answer you asked for is still there when you pick the phone up.</li>
 <li><strong>One card per turn.</strong> A second turn updates the card that is already up instead of stacking another.</li>
 <li><strong>Leftovers are swept.</strong> A card outlives the process that made it, so one left by a quit mid-turn is
-cleared the next time the app launches.</li>
-<li><strong>A stalled turn stops claiming to work.</strong> A card that goes half an hour without an update greys out;
-the next update brings it back.</li>
+turned into &quot;Done&quot; the next time the app launches rather than left claiming to work.</li>
+<li><strong>Glass, not a panel.</strong> The card carries no fill of ours: the lock screen's own material shows through,
+with the bot's accent on the mark and the status line.</li>
 <li><strong>iOS only.</strong> The Mac has notifications and the badge instead. A phone with Live Activities switched
 off keeps working normally — the app records why no card appeared once in its client log (feature
 off, no ActivityKit, no turn running) rather than on every turn.</li>
@@ -282,7 +304,7 @@ integers would only make it slow to launch.</p>
 
   <nav class="toc" aria-label="On this page">
     <h2>On this page</h2>
-    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#the-bell-and-what-is-waiting">The bell, and what is waiting</a></li><li><a href="#updating-from-the-app">Updating from the app</a></li><li><a href="#desktop-pets">Desktop pets</a></li><li><a href="#reactions--one-emoji-both-devices">Reactions — one emoji, both devices</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
+    <ul><li><a href="#ios">iOS</a></li><li><a href="#macos">macOS</a></li><li><a href="#first-run">First run</a></li><li><a href="#the-bell-and-what-is-waiting">The bell, and what is waiting</a></li><li><a href="#updating-from-the-app">Updating from the app</a></li><li><a href="#desktop-pets">Desktop pets</a></li><li><a href="#reactions--one-emoji-both-devices">Reactions — one emoji, both devices</a></li><li><a href="#pictures-in-a-message">Pictures in a message</a></li><li><a href="#excel-word-and-pdf-files">Excel, Word and PDF files</a></li><li><a href="#appearance-and-themes">Appearance and themes</a></li><li><a href="#arranging-bot-groups">Arranging bot groups</a></li><li><a href="#renaming-a-group-chat">Renaming a group chat</a></li><li><a href="#unpairing-and-revocation">Unpairing and revocation</a></li><li><a href="#bot-computer">Bot computer</a></li><li><a href="#notifications-and-badges">Notifications and badges</a></li><li><a href="#live-activity-and-the-dynamic-island">Live Activity and the Dynamic Island</a></li></ul>
   </nav>
 </div>
 
