@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.651",
-          "buildVersion": "651",
-          "date": "2026-11-24T20:00:52Z",
-          "localizedDescription": "### Fixed\n- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked\n  wrong around a square or cat-shaped avatar \u2014 a dark ring with gaps. It now only draws that circle for the\n  old picture faces, and lets a drawn avatar be separated by its own outline.\n- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and\n  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.\n\n### Added\n- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's\n  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never\n  covers or reflows what you type, and drops to the model alone on a narrow window.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.651/Hermey-0.1.651-b651.ipa",
-          "size": 5451139,
+          "version": "0.1.652",
+          "buildVersion": "652",
+          "date": "2026-11-24T20:40:49Z",
+          "localizedDescription": "### Added\n- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all \u2014\n  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow\n  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.\n- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,\n  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a\n  colour together \u2014 never the same combination twice.\n\n### Fixed\n- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,\n  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now\n  gives the face up entirely, as the reference does.\n- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase\n  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.\n\n### Changed\n- **The row menu hides until you need it.** On the Mac the \u22ef on a bot row appears on hover, selection or\n  keyboard focus and no longer reserves space \u2014 and hovering a row wakes its avatar for a small hop and a look\n  toward the pointer.\n- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model\n  name, how much context it is using, and a chevron. Click the pill to open the model picker.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.652/Hermey-0.1.652-b652.ipa",
+          "size": 5469953,
           "minOSVersion": "17.0",
-          "sha256": "957786094474e1f3f14075f4f4238159caf6ec63ec1b953dc2578e76564f6a41"
+          "sha256": "330fe6c1876841aa2b04a80917b38f78da9c9fe42a013c7e57b786f2b1fa02bc"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.651 (651)",
-      "identifier": "hermes-0.1.651-651",
-      "caption": "### Fixed\n- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked\n  wrong around a square or cat-shaped avatar \u2014 a dark ring with gaps. It now only draws that circle for the\n  old picture faces, and lets a drawn avatar be separated by its own outline.\n- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and\n  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.\n\n### Added\n- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's\n  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never\n  covers or reflows what you type, and drops to the model alone on a narrow window.",
-      "date": "2026-11-24T20:00:52Z",
+      "title": "Hermes 0.1.652 (652)",
+      "identifier": "hermes-0.1.652-652",
+      "caption": "### Added\n- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all \u2014\n  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow\n  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.\n- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,\n  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a\n  colour together \u2014 never the same combination twice.\n\n### Fixed\n- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,\n  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now\n  gives the face up entirely, as the reference does.\n- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase\n  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.\n\n### Changed\n- **The row menu hides until you need it.** On the Mac the \u22ef on a bot row appears on hover, selection or\n  keyboard focus and no longer reserves space \u2014 and hovering a row wakes its avatar for a small hop and a look\n  toward the pointer.\n- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model\n  name, how much context it is using, and a chevron. Click the pill to open the model picker.",
+      "date": "2026-11-24T20:40:49Z",
       "tintColor": "#9A9AA0"
     }
   ],
