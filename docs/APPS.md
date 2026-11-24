@@ -106,11 +106,10 @@ press it and the normal download-and-install window opens. Nothing installs with
 ## Desktop pets
 
 On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon
-on your wallpaper, moving and blinking on its own. Click it and a frosted balloon opens beside it — type
-a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button, and a
-badge on the icon when a reply lands while Hermey is minimised. Drag it anywhere and it stays there per
-screen; right-click → **Close pet** switches it off again. Off by default, one switch per bot in that
-bot's settings. A pet is the bot's picture — or, once the bot has a face of its own (below), that face
+on your wallpaper, moving and blinking on its own. Click it for a frosted balloon — type, press Return,
+read the answer, Copy it. It wears a badge when a reply lands while Hermey is minimised, drags anywhere
+and stays there per screen, and right-click → **Close pet** switches it off. Off by default, one switch
+per bot in that bot's settings. A pet is the bot's picture — or, once the bot has a face of its own (below), that face
 in whatever state the bot is in.
 
 [`docs/PETS.md`](PETS.md) is the reader's page: what a pet is, the switch, the balloon and a
@@ -267,13 +266,11 @@ live but input is inert. **Take over** asks the host for the control lease and e
 pointer; **Hand back** returns it. Closing the pane hands control back on its own, so a bot is never
 locked out by a viewer you forgot.
 
-**Full screen** is the arrows in the pane's header. On the Mac it puts the *window* into full screen —
-the same thing the green button does — so the sidebar, the transcript and the traffic lights all go;
-leaving it the system's way (green button, ⌃⌘F) puts the pane back in its panel. On the phone the pane
-drops its own header, the status bar and the safe-area inset and runs edge to edge. Either platform
-shows one floating bar over the picture: take over / hand back, zoom −/+, the level, **Fit**, and the
-way out. `Esc` leaves full screen too (on the Mac the shell answers it, unless a text field has the
-caret).
+**Full screen** is the arrows in the pane's header. On the Mac it takes the *window* full screen, so the
+sidebar, the transcript and the traffic lights all go; leaving it the system's way (green button, ⌃⌘F)
+puts the pane back in its panel. On the phone the pane drops its own header, the status bar and the
+safe-area inset. Either platform keeps one floating bar over the picture: take over / hand back, zoom
+−/+, the level, **Fit**, and the way out. `Esc` leaves it too, unless a text field has the caret.
 
 While the picture is bigger than its frame it zooms and pans between 1× and 5×:
 

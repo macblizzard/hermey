@@ -95,9 +95,9 @@ That is the complete list. If a future feature needs more, it goes in this docum
 | the owner's Mac browser | the same extension, installed by hand; later, the Mac app may fill through its own browser surface |
 | native app windows | out of scope for this version; a bot must ask the owner to type |
 
-The extension is preferred because it needs no launch flags: it works for a browser the owner started
-themselves, and it is the same component on the Mac, where launch flags cannot reach at all. It never
-stores, logs or resends a value, and its reply is an id and a boolean.
+The extension needs no launch flags, so it reaches a browser the owner started themselves — and it is
+the same component on the Mac, where launch flags cannot reach at all. It never stores, logs or resends
+a value, and its reply is an id and a boolean.
 
 ## When it cannot work
 
