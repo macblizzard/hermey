@@ -266,6 +266,7 @@ pub async fn ws_upgrade(
     let engine_ws = st.engine_ws.clone();
     let relay_sockets = st.relay_sockets.clone();
     let audit = Arc::clone(&st.audit);
+    let engine_home = st.engine_home.clone();
     let device_id = device.clone();
     Ok(ws.on_upgrade(move |socket| async move {
         println!("relay: device {} attached", truncate(&device));
@@ -277,6 +278,7 @@ pub async fn ws_upgrade(
             relay_sockets,
             crate::relay::Limits::default(),
             Some(audit),
+            engine_home,
         )
         .await;
     }))

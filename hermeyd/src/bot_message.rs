@@ -7,6 +7,11 @@
 //! POST /v1/bots/{profile}/message   {"text": "…", "from": "assistant", "from_profile": "cody"}
 //!   -> {"profile", "from", "session_id", "text", "reply", "delivered": true}
 //!
+//!   … and optionally `"attachments": [{"name": "budget.xlsx", "data_base64": "…"}]` (at most four,
+//!   8 MiB each, PDF/DOCX/XLSX/CSV/TXT). The host reads the document once and appends one labelled
+//!   block per attachment/sheet to the message, so the engine sees the text rather than a filename.
+//!   The response then also carries `attachments: [{name, kind, chars, truncated}]`.
+//!
 //! POST /v1/bots/{profile}/ask       {"question": "…", "from": "cody", "timeout": 300}
 //!   -> {"profile", "from", "session_id", "question", "reply", "answered": <bool>}
 //! ```
@@ -37,6 +42,7 @@
 //! conversation yet, stale pointer), 413 (text over the cap), 502/503/504 (gateway faults).
 
 use crate::engine_client::engine_url;
+use crate::office;
 use crate::routes::AppState;
 use crate::transfers;
 use axum::body::Bytes;
@@ -218,8 +224,13 @@ pub(crate) struct MessagePlan {
     pub sender_profile: Option<String>,
     /// The caller's words without the label — what the transfer record and the apps show.
     pub text: String,
-    /// The labelled row that is submitted into the target's conversation.
+    /// The labelled row that is submitted into the target's conversation, with the attachments'
+    /// extracted text after it.
     pub message: String,
+    /// One `{name, kind, chars, truncated}` per attachment, in the order they were handed over.
+    /// Empty for a plain message, which is what keeps the response byte-identical for every caller
+    /// that never sends one.
+    pub attachments: Vec<Value>,
 }
 
 #[derive(Debug)]
@@ -274,12 +285,22 @@ pub(crate) fn plan_message(profile: &str, body: &Value, is_disabled: bool) -> Re
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "invalid from"));
     }
     let sender_profile = sender_profile(body)?;
+    let (blocks, attachments) = attachment_blocks(body)?;
+
+    // The label stays the first line — both apps parse `Assistant (cody) → Ops:` off it — and the
+    // document text follows as labelled blocks, so a bot reading the row sees the words first.
+    let mut message = label(sender, profile, text, sender_profile.as_deref());
+    if !blocks.is_empty() {
+        message.push_str("\n\n");
+        message.push_str(&blocks);
+    }
 
     Ok(MessagePlan {
         text: text.trim().to_string(),
-        message: label(sender, profile, text, sender_profile.as_deref()),
+        message,
         sender: sender.to_string(),
         sender_profile,
+        attachments,
     })
 }
 
@@ -311,6 +332,21 @@ pub(crate) fn plan_ask(profile: &str, body: &Value, is_disabled: bool) -> Result
     }
     let sender_profile = sender_profile(body)?;
 
+    // An `ask` is one question and one answer; a document with nowhere to be read would be a file
+    // the caller believes it sent. Say so instead.
+    if body
+        .get("attachments")
+        .filter(|value| !value.is_null())
+        .and_then(|value| value.as_array())
+        .map(|items| !items.is_empty())
+        .unwrap_or(false)
+    {
+        return Err(bad(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "ask does not take attachments: use message",
+        ));
+    }
+
     // A JSON `true` is a Python `int`, so the bridge accepted it as a one-second timeout; a boolean
     // is not a duration here and is refused rather than silently reinterpreted.
     let timeout = match body.get("timeout") {
@@ -338,6 +374,121 @@ pub(crate) fn plan_ask(profile: &str, body: &Value, is_disabled: bool) -> Result
         sender_profile,
         timeout,
     })
+}
+
+/// Read every attachment into one block of labelled text, bounded twice over: per document
+/// ([`office::MAX_EXTRACT_CHARS`]) and across the message
+/// ([`office::MAX_MESSAGE_ATTACHMENT_CHARS`]).
+///
+/// Refusals are 422 with the same `{"detail": …}` shape the rest of the route uses, and each one
+/// names the file: a caller that sent three documents needs to know which one was wrong.
+fn attachment_blocks(body: &Value) -> Result<(String, Vec<Value>), Fail> {
+    let Some(raw) = body.get("attachments").filter(|value| !value.is_null()) else {
+        return Ok((String::new(), Vec::new()));
+    };
+    let Some(items) = raw.as_array() else {
+        return Err(bad(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "attachments must be a list",
+        ));
+    };
+    if items.is_empty() {
+        return Ok((String::new(), Vec::new()));
+    }
+    if items.len() > office::MAX_ATTACHMENTS_PER_MESSAGE {
+        return Err(bad(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!(
+                "at most {} attachments per message",
+                office::MAX_ATTACHMENTS_PER_MESSAGE
+            ),
+        ));
+    }
+
+    let mut blocks = String::new();
+    let mut summaries = Vec::new();
+    let mut spent = 0usize;
+    for item in items {
+        let Some(object) = item.as_object() else {
+            return Err(bad(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "each attachment must be an object with a name and data_base64",
+            ));
+        };
+        let name = object
+            .get("name")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| {
+                bad(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "each attachment needs a name",
+                )
+            })?;
+        if !office::valid_attachment_name(name) {
+            return Err(bad(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("invalid attachment name: {name}"),
+            ));
+        }
+        // Only the two byte-carrying keys, exactly as the relay allows: a caller cannot smuggle a
+        // `path` alongside the bytes for a later layer to honour.
+        if object
+            .keys()
+            .any(|key| !matches!(key.as_str(), "name" | "data_base64" | "data_url"))
+        {
+            return Err(bad(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("{name}: only name and data_base64 (or data_url) are allowed"),
+            ));
+        }
+        let data = match (
+            object.get("data_base64").and_then(|value| value.as_str()),
+            object.get("data_url").and_then(|value| value.as_str()),
+        ) {
+            (Some(base64), None) => base64,
+            (None, Some(url)) => url,
+            (Some(_), Some(_)) => {
+                return Err(bad(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("{name}: give data_base64 or data_url, not both"),
+                ))
+            }
+            (None, None) => {
+                return Err(bad(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("{name}: data_base64 (or data_url) is required"),
+                ))
+            }
+        };
+        let bytes = office::decode_attachment(&office::Incoming { name, data })
+            .map_err(|error| bad(StatusCode::UNPROCESSABLE_ENTITY, error.detail().to_string()))?;
+
+        // Three documents at full length would crowd the bot's own prompt, so the message's budget
+        // is spent in order and a document with no room left says so instead of arriving empty.
+        let budget = office::MAX_EXTRACT_CHARS.min(office::MAX_MESSAGE_ATTACHMENT_CHARS - spent);
+        if budget < 200 {
+            blocks.push_str(&format!(
+                "--- attachment: {name} (not included) ---\n\
+                 [not included: this message already carries {} characters of attachments]\n",
+                office::MAX_MESSAGE_ATTACHMENT_CHARS
+            ));
+            summaries.push(serde_json::json!({
+                "name": name, "kind": null, "chars": 0, "truncated": true,
+            }));
+            continue;
+        }
+
+        let extraction = office::extract_with_budget(name, &bytes, budget)
+            .map_err(|error| bad(StatusCode::UNPROCESSABLE_ENTITY, error.detail().to_string()))?;
+        spent += extraction.chars();
+        if !blocks.is_empty() {
+            blocks.push('\n');
+        }
+        blocks.push_str(&extraction.block());
+        summaries.push(extraction.summary());
+    }
+
+    Ok((blocks, summaries))
 }
 
 fn bad_ask_timeout() -> Fail {
@@ -914,14 +1065,20 @@ fn audit(
 }
 
 fn message_body(profile: &str, plan: &MessagePlan, delivered: &Delivered) -> Value {
-    json!({
+    let mut body = json!({
         "profile": profile,
         "from": plan.sender,
         "session_id": delivered.session_id,
         "text": plan.message,
         "reply": delivered.reply,
         "delivered": true,
-    })
+    });
+    // Only when there were attachments: six fields is the contract every existing caller reads, and
+    // a message without a document must look exactly as it did.
+    if !plan.attachments.is_empty() {
+        body["attachments"] = Value::Array(plan.attachments.clone());
+    }
+    body
 }
 
 fn ask_body(profile: &str, plan: &AskPlan, session_id: &str, reply: Option<&str>) -> Value {
@@ -1374,6 +1531,194 @@ mod tests {
             "ops has no conversation yet: open it in the app once, then send"
         );
         assert_eq!(require_stored(Some("s1".into()), "ops", "ask").unwrap(), "s1");
+    }
+
+    // ---- attachments -------------------------------------------------------------------------
+
+    fn base64(bytes: &[u8]) -> String {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
+    #[test]
+    fn a_message_without_attachments_is_unchanged_on_the_wire() {
+        // The contract every existing caller reads: six fields, no `attachments`.
+        let body = json!({"text": "hi"});
+        let plan = plan_message("ops", &body, false).unwrap();
+        assert!(plan.attachments.is_empty());
+        assert_eq!(plan.message, "Assistant → Ops: hi");
+        let value = message_body(
+            "ops",
+            &plan,
+            &Delivered { session_id: "s1".to_string(), reply: None },
+        );
+        assert_eq!(value.as_object().unwrap().len(), 6);
+        assert!(value.get("attachments").is_none());
+    }
+
+    #[test]
+    fn a_spreadsheet_is_extracted_into_the_message_it_travels_with() {
+        let bytes = office::fixtures::xlsx_fixture();
+        let body = json!({
+            "text": "here is the sheet",
+            "from": "cody",
+            "from_profile": "cody",
+            "attachments": [{"name": "budget.xlsx", "data_base64": base64(&bytes)}],
+        });
+        let plan = plan_message("ops", &body, false).unwrap();
+
+        // The label is still the first line, the blocks follow it.
+        assert!(plan.message.starts_with("Cody (cody) → Ops: here is the sheet\n\n"), "{}", plan.message);
+        assert!(plan.message.contains("--- attachment: budget.xlsx (sheet: Q4"), "{}", plan.message);
+        assert!(plan.message.contains("North | 42"), "{}", plan.message);
+        // The transfer record keeps the caller's words only: the attachment is not the hand-off.
+        assert_eq!(plan.text, "here is the sheet");
+
+        // One summary per attachment, with what was actually read.
+        assert_eq!(plan.attachments.len(), 1);
+        assert_eq!(plan.attachments[0]["name"], "budget.xlsx");
+        assert_eq!(plan.attachments[0]["kind"], "xlsx");
+        assert!(plan.attachments[0]["chars"].as_u64().unwrap() > 0);
+        assert_eq!(plan.attachments[0]["truncated"], false);
+
+        let value = message_body(
+            "ops",
+            &plan,
+            &Delivered { session_id: "s1".to_string(), reply: None },
+        );
+        assert_eq!(value["attachments"][0]["name"], "budget.xlsx");
+        assert_eq!(value.as_object().unwrap().len(), 7);
+    }
+
+    #[test]
+    fn a_data_url_and_a_pdf_both_work_and_the_engine_text_is_the_block() {
+        let bytes = office::fixtures::pdf_fixture("Invoice 4711");
+        let data_url = format!("data:application/pdf;base64,{}", base64(&bytes));
+        let body = json!({
+            "text": "invoice attached",
+            "attachments": [{"name": "invoice.pdf", "data_url": data_url}],
+        });
+        let plan = plan_message("ops", &body, false).unwrap();
+        assert!(plan.message.contains("Invoice 4711"), "{}", plan.message);
+        assert!(plan.message.contains("--- attachment: invoice.pdf (pdf, 1 page) ---"));
+        assert_eq!(plan.attachments[0]["kind"], "pdf");
+
+        // A docx too, in the same message: two files, two blocks, one label.
+        let docx = office::fixtures::docx_fixture();
+        let two = json!({
+            "text": "two files",
+            "attachments": [
+                {"name": "invoice.pdf", "data_base64": base64(&bytes)},
+                {"name": "report.docx", "data_base64": base64(&docx)},
+            ],
+        });
+        let plan = plan_message("ops", &two, false).unwrap();
+        assert_eq!(plan.attachments.len(), 2);
+        assert!(plan.message.contains("--- attachment: invoice.pdf"));
+        assert!(plan.message.contains("--- attachment: report.docx"));
+        assert!(plan.message.contains("# Quarterly report"));
+    }
+
+    #[test]
+    fn a_mislabelled_or_unsupported_attachment_is_refused_with_the_file_named() {
+        let pdf = office::fixtures::pdf_fixture("x");
+        let body = json!({
+            "text": "here",
+            "attachments": [{"name": "budget.xlsx", "data_base64": base64(&pdf)}],
+        });
+        let (status, payload) = plan_message("ops", &body, false).unwrap_err();
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let detail = payload.0["detail"].as_str().unwrap();
+        assert!(detail.contains("budget.xlsx"), "{detail}");
+        assert!(detail.contains("Excel"), "{detail}");
+
+        for (name, data) in [
+            ("scan.heic", base64(&[0xff, 0x00, 0x01])),
+            ("notes.bin", base64(b"\x00\x01binary")),
+        ] {
+            let body = json!({"text": "here", "attachments": [{"name": name, "data_base64": data}]});
+            let (status, payload) = plan_message("ops", &body, false).unwrap_err();
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{name}");
+            assert!(payload.0["detail"].as_str().unwrap().contains(name));
+        }
+
+        // A traversing name is refused before anything is decoded.
+        let body = json!({
+            "text": "here",
+            "attachments": [{"name": "../etc/passwd", "data_base64": base64(b"a,b\n")}],
+        });
+        let (status, payload) = plan_message("ops", &body, false).unwrap_err();
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(payload.0["detail"], "invalid attachment name: ../etc/passwd");
+    }
+
+    #[test]
+    fn the_attachment_list_itself_is_bounded_and_strict() {
+        let one = base64(b"a,b\n1,2\n");
+        let body = json!({"text": "x", "attachments": [{"name": "a.csv", "data_base64": one}]});
+        assert!(plan_message("ops", &body, false).is_ok());
+
+        // Wrong shape, too many, both encodings, no encoding, an extra field.
+        for attachments in [
+            json!("a.csv"),
+            json!([{"name": "a.csv", "data_base64": one}, {"name": "b.csv", "data_base64": one},
+                   {"name": "c.csv", "data_base64": one}, {"name": "d.csv", "data_base64": one},
+                   {"name": "e.csv", "data_base64": one}]),
+            json!([{"name": "a.csv", "data_base64": one, "data_url": format!("data:text/csv;base64,{one}")}]),
+            json!([{"name": "a.csv"}]),
+            json!([{"name": "a.csv", "data_base64": one, "path": "/etc/passwd"}]),
+            json!([{"name": 7, "data_base64": one}]),
+            json!([{ "data_base64": one }]),
+        ] {
+            let body = json!({"text": "x", "attachments": attachments});
+            let (status, _) = plan_message("ops", &body, false).unwrap_err();
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{attachments}");
+        }
+
+        // A null is "no attachments", not an error: a client that always sends the key still works.
+        let body = json!({"text": "x", "attachments": null});
+        assert!(plan_message("ops", &body, false).unwrap().attachments.is_empty());
+        let body = json!({"text": "x", "attachments": []});
+        assert!(plan_message("ops", &body, false).unwrap().attachments.is_empty());
+    }
+
+    #[test]
+    fn an_ask_refuses_attachments_rather_than_dropping_them() {
+        let body = json!({
+            "question": "what is in this?",
+            "attachments": [{"name": "a.csv", "data_base64": base64(b"a,b\n")}],
+        });
+        let (status, payload) = plan_ask("ops", &body, false).unwrap_err();
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(payload.0["detail"], "ask does not take attachments: use message");
+    }
+
+    #[tokio::test]
+    async fn a_delivered_attachment_reaches_the_engine_as_text() {
+        let dir = scratch("attachments");
+        let st = test_state(&dir);
+        st.store.set_bot_session("ops", "s1");
+        let engine = FakeEngine::default();
+        let recorded: Mutex<Recorded> = Mutex::new(Vec::new());
+        let bytes = office::fixtures::docx_fixture();
+        let raw = json!({
+            "text": "the report",
+            "attachments": [{"name": "report.docx", "data_base64": base64(&bytes)}],
+        })
+        .to_string();
+
+        let value = run_message(&st, "ops", raw.as_bytes(), &engine, &recorder(&recorded))
+            .await
+            .expect("delivered");
+
+        // What the engine was actually asked to read: the text of the document, not its name.
+        let seen = engine.seen.lock().unwrap();
+        assert!(seen[0].2.contains("the report"));
+        assert!(seen[0].2.contains("| Region | Revenue |"), "{}", seen[0].2);
+        assert_eq!(value["attachments"][0]["kind"], "docx");
+        // The record of the hand-off is still the words, not the document.
+        assert_eq!(recorded.lock().unwrap()[0].4, "the report");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ---- the routes -------------------------------------------------------------------------

@@ -241,7 +241,23 @@ the same reasoning written next to it.
 
 `POST /v1/bots/{profile}/message` is different again: it takes **no ticket**, because it is an
 operator command for the agent on the host, and it is refused `404` for any caller that arrived
-through a proxy (same loopback rule as `pair/start`).
+through a proxy (same loopback rule as `pair/start`). Its optional `attachments` changed nothing
+about that: they are bytes in the body under a name that must be a single path component, the
+extracted text is appended to the same message, and there is no field that names a file on disk.
+
+`POST /v1/office/extract` takes a device ticket, **or** no credential at all on direct loopback (a
+bot on this host asking about a document). It is a converter, not a reader of the filesystem: the
+filename header is reduced to a label (`../../etc/passwd` → `passwd`), nothing is opened by name, and
+the answer is text bounded at 8 MiB in and 24 000 characters out. It therefore adds no reach a
+`prompt.submit` does not already have — a paired device can ask its own bot to read the same file —
+and an unauthenticated caller from anywhere but loopback gets the same `404 not found` as an unknown
+route.
+
+The relay's own reading on a forwarded `prompt.submit` follows the same rule: an `@file:` reference
+is resolved against the service's `engine_home` only (absolute, canonicalised, and left untouched
+when it lands anywhere else), the bytes are capped at the same 8 MiB, and the reference itself is
+never rewritten — so the only file the host reads on a device's behalf is a document inside its own
+profiles, which is the file that same device just sent.
 
 ## Known residual risks (2026-11 audit)
 

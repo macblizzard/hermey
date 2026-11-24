@@ -6,6 +6,24 @@ All notable changes to Hermey are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- **PDF, Word and Excel files are read by the host, and a file a bot writes comes back to you.** A
+  `.pdf`, `.docx` or `.xlsx` (plus `.csv`/`.txt`) sent to a bot is converted **once** by hermeyd — the
+  text layer page by page, paragraphs with their headings, every sheet's used range as pipe-separated
+  rows — and arrives in the prompt as a labelled block (`--- attachment: budget.xlsx (sheet: Q4) ---`),
+  so the phone, the Mac and every bot read the same document the same way. Bounds (50 pages, 2 000
+  paragraphs, 12 sheets × 500 rows, 24 000 characters per document) are written into the text where
+  they bite, every truncation is logged, and a scanned PDF says it has no text layer instead of
+  pretending to be empty. The apps did not change how they send: the relay sniffs `file.attach`'s
+  three types against their own bytes and refuses a mislabelled one with a sentence that names the
+  file, while `GET /v1/attachments/{profile}/{name}` now serves those documents beside the pictures
+  for a cross-device open. Two more ways in — `POST /v1/office/extract` for an
+  app or a script (`{"block", "text", "notes", …}`), and an `attachments` array on
+  `POST /v1/bots/{profile}/message` for a bot handing a document to another bot — and one way back: a
+  bot writes the file in its workspace and links
+  `/v1/workspace/<profile>/file?source=workspace&path=…`, which the apps turn into a file chip (the
+  route canonicalises both sides, so `..`, absolute paths and symlinks out of the folder are
+  refused). No new crate is a C dependency (`lopdf`, `zip` + `quick-xml`), and the image paths are
+  untouched.
 - **The shared computer goes full screen, and can be zoomed and panned while it is there.** The pane's
   own arrows now hand the *window* to full screen on the Mac (the green button's behaviour, with the
   pane falling back into its panel if you leave full screen that way, and `Esc` as the third way out)

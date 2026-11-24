@@ -28,6 +28,7 @@ mod credentials;
 mod search;
 mod transfers;
 mod gateway_guard;
+mod office;
 mod genui;
 mod history;
 mod host_env;
@@ -598,6 +599,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .route("/v1/workspace/{profile}", get(workspace::list_workspace))
         .route("/v1/workspace/{profile}/file", get(workspace::workspace_file))
+        .route(
+            "/v1/office/extract",
+            post(office::post_office_extract)
+                // Refused before it is buffered: the same 8 MiB a message attachment may be.
+                .layer(axum::extract::DefaultBodyLimit::max(office::MAX_OFFICE_BYTES + 1024)),
+        )
         .route("/v1/rooms", get(rooms::list_rooms).post(rooms::create_room))
         .route("/v1/rooms/{room_id}/log", get(rooms::room_log))
         .route("/v1/rooms/{room_id}/send", post(rooms::send_room))
@@ -668,4 +675,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .await?;
     Ok(())
+}
+
+/// A whole `AppState` on a throwaway directory, for the modules whose guards are worth testing
+/// without an HTTP request. One copy, because three modules each building their own was three
+/// places to forget a new field.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::auth::{RateLimiter, Tickets};
+    use crate::display::DisplayHub;
+    use crate::pairing::Pairing;
+    use crate::routes::AppState;
+    use crate::store::Store;
+    use std::path::{Path, PathBuf};
+
+    pub(crate) fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "hermeyd-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    pub(crate) fn state(dir: &Path) -> AppState {
+        AppState {
+            store: Store::open(&dir.join("bridge.db")).unwrap(),
+            pairing: Pairing::new(600.0),
+            tickets: Tickets::new(30.0, 300.0),
+            limiter: RateLimiter::new(30, 60.0),
+            salt: "test-salt".to_string(),
+            public_host: "localhost".to_string(),
+            engine_ws: "ws://127.0.0.1:1/api/ws".to_string(),
+            engine_token_file: dir.join("engine.token"),
+            engine_auth: crate::engine_auth::EngineAuth::Required,
+            engine_home: dir.join("engine"),
+            local_computers: Default::default(),
+            browsers: Default::default(),
+            display: DisplayHub::spawn(
+                "ws://127.0.0.1:1/api/ws".to_string(),
+                Some(dir.join("engine.token")),
+            ),
+            relay_sockets: Default::default(),
+            reactions: crate::reactions::Registry::in_dir(dir),
+            home: dir.to_path_buf(),
+            attachments_dir: dir.join("attachments"),
+            local_token: std::sync::Arc::new(crate::local_token::LocalToken::from_value(
+                "test-local-token",
+                dir.join("local.token"),
+            )),
+            audit: std::sync::Arc::new(crate::audit::AuditLog::in_dir(dir)),
+        }
+    }
 }
