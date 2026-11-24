@@ -1404,3 +1404,9 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   toward the pointer.
 - **Model and context moved into the composer.** They are one pill in the composer's own control row: the model
   name, how much context it is using, and a chevron. Click the pill to open the model picker.
+
+## [0.1.653] — 2026-11-24
+
+### Fixed
+- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its
+  own text, which made it read as a slim bar next to the round attach and send controls.
