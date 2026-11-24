@@ -359,13 +359,8 @@
       <a href="#pets">Pets</a>
       <a href="#faces">Faces</a>
       <a href="#files">Files</a>
-      <a href="#look">Look</a>
       <a href="#signin">Sign-in</a>
       <a href="#integrations">Integrations</a>
-      <a href="#features">Features</a>
-      <a href="#computer">Computer use</a>
-      <a href="#install">Install</a>
-      <a href="#platforms">Platforms</a>
       <a href="#faq">Questions</a>
       <a href="docs/">Docs</a>
     </nav>
@@ -380,7 +375,7 @@
       <div class="hero-copy">
         <p class="eyebrow">iOS · macOS · self-hosted</p>
         <h1>Your agent,<br>in a real app<span class="clay">.</span></h1>
-        <p class="lede">Hermey is a native client for the Hermes agent you run yourself. One endless conversation per bot, streamed over your own Tailscale network — and, on the Mac, a computer your bots can use when you say so. No SSH. No Remote Login. No cloud in the middle.</p>
+        <p class="lede">A native home for the Hermes agents you already run. Bots with faces, a conversation that never resets, and your own Mac doing the work when you ask it to. No account, no cloud, nothing to subscribe to.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="docs/prerequisites.html">Get started</a>
           <a class="btn btn-quiet" href="https://github.com/macblizzard/hermey">View source</a>
@@ -413,7 +408,7 @@
         .catch(function () { /* the fallback sentence is the failure state */ });
     })();
     </script>
-        <p class="fineprint">Free and MIT licensed, and it needs a Hermes install you already run. The builds are unsigned — you sideload the app with your own certificate — and the host never leaves your machine.</p>
+        <p class="fineprint">Free and MIT licensed. It needs a Hermes install you already run — the host never leaves your machine.</p>
       </div>
 
       <figure class="hero-shot">
@@ -421,16 +416,16 @@
           <img src="shots/bots-list.webp" width="806" height="1752"
                alt="Hermey on iPhone: the bot list, with cody pinned and the lab bots grouped below" fetchpriority="high">
         </div>
-        <figcaption>The bot list is the home screen</figcaption>
+        <figcaption>Your bots, first thing, every time</figcaption>
       </figure>
     </div>
 
     <div class="wrap">
       <dl class="facts">
-        <div><dt>Opt-in by design</dt><dd>Computer use is off until you switch it on, and revocable in one click.</dd></div>
-        <div><dt>iOS 17 · macOS 14</dt><dd>SwiftUI on both, not a web wrapper.</dd></div>
-        <div><dt>Zero telemetry</dt><dd>No analytics, no crash reports, no accounts to create.</dd></div>
-        <div><dt>MIT licensed</dt><dd>Read it, fork it, host it. Nothing to subscribe to.</dd></div>
+        <div><dt>Yours alone</dt><dd>Your machine, your network, your bots.</dd></div>
+        <div><dt>iOS 17 · macOS 14</dt><dd>SwiftUI on both — not a web wrapper.</dd></div>
+        <div><dt>No accounts</dt><dd>No sign-up, no analytics, no telemetry.</dd></div>
+        <div><dt>MIT licensed</dt><dd>Read it, fork it, host it. Free.</dd></div>
       </dl>
     </div>
   </section>
@@ -443,17 +438,16 @@
           <p class="eyebrow">Desktop pets</p>
           <h2>Your bot, sitting on your desktop.</h2>
         </div>
-        <p>On the Mac a bot can put its own picture on your wallpaper — no window, no frame, just the face, doing small things while you work. Drag it anywhere and it stays there, per screen and per bot; right-click closes it, and it is off until you turn it on in that bot's settings.</p>
+        <p>Not an icon in a Dock — the bot itself, loose on your wallpaper, doing its small business while you work. Click it and it answers without a window getting in the way.</p>
       </div>
 
       <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>Only the icon</h3><p>A transparent window the size of the picture: no title bar, no panel, no background behind it. The clear pixels are not part of the window, so a click beside the pet reaches the desktop instead of landing on an invisible square.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>It moves because it is alive</h3><p>Every 8 to 30 seconds it bobs, tilts, hops or wanders a few points; it blinks on its own clock and drifts side to side like it is looking around. Reduce Motion keeps a smaller bob and drops the rest.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>Click it, ask it</h3><p>A frosted balloon opens beside the pet rather than over it. Type a question and press Return; the answer grows the balloon to a cap and then scrolls inside it, with Copy for the text and Escape to put it away.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>A badge for the reply you missed</h3><p>When an answer lands while Hermey is minimised or hidden, the pet hops and wears the count on its corner. Click it to read the answer, and the badge clears as you do.</p></div></article>
+        <article class="feature"><span class="n">01</span><div><h3>Nothing around it</h3><p>No frame, no panel, no shaded rectangle. Just the face on your wallpaper, and the space beside it still behaves like your desktop because it is.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>It fidgets like it's alive</h3><p>It bobs, tilts, hops and wanders, blinks on its own clock and glances around the room. Ask for less motion and it calms down instead of freezing.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Ask it from the desk</h3><p>Click, type, Return. The answer opens beside it, says what the bot is doing in one word, and hops with a badge when something lands while you were away.</p></div></article>
       </div>
 
-      <p class="signin-more"><a href="docs/pets.html">What a pet does, and the switch that turns it on →</a></p>
+      <p class="signin-more"><a href="docs/pets.html">Meet the pets →</a></p>
     </div>
   </section>
 
@@ -463,18 +457,18 @@
       <div class="block-head">
         <div>
           <p class="eyebrow">A bot's own face</p>
-          <h2>Give it a face you made.</h2>
+          <h2>Or give it a face nobody else has.</h2>
         </div>
-        <p>Instead of a picture, a bot can wear a face it draws. Open that bot's settings, find the <strong>Avatar</strong> tab, and the top of it is a live preview in the state the bot is actually in — on the Mac and the phone alike.</p>
+        <p>Six shapes to start from, then move the eyes, pick a colour and watch it change as you do. The face you make shows up in the list, in the chat, and on your desktop.</p>
       </div>
 
       <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>Six presets, one box</h3><p>Start from a blob, a box, a mug, a sprout, a cat or an egg — solid silhouettes with two eyes, drawn to still read at the size of a row in the bot list. Or paste an avatar definition and edit it.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Nudge it, see it</h3><p>Colour, and where the eyes sit, how far apart and how big — edited against the preview, so what you see is what gets saved. A definition that does not validate is refused with its reasons and the bot keeps the face it had.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>One word underneath</h3><p>The pet prints what the bot is doing as one word — Idle, Thinking, Reading, Working, Using the computer, Waiting for you, Blocked, Done. The bot list, the chat header and the iPhone's Live Activity read that same word, so nothing can disagree.</p></div></article>
+        <article class="feature"><span class="n">01</span><div><h3>Start from a shape</h3><p>A blob, a box, a mug, a sprout, a cat, an egg — or paste a definition from the open-bot-avatar community and make it yours.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>Twist it, don't code it</h3><p>Colour, where the eyes sit, how far apart, how big — with the preview in front of you the whole time. What you see is what gets saved.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>It tells you what it's doing</h3><p>Idle, Thinking, Reading, Working, Using the computer, Waiting for you, Blocked, Done — one word, in the list, under the pet and on the lock screen.</p></div></article>
       </div>
 
-      <p class="signin-more"><a href="docs/apps.html#a-bots-own-face">The Avatar tab, and the eight words →</a></p>
+      <p class="signin-more"><a href="docs/apps.html#a-bots-own-face">Make a face →</a></p>
     </div>
   </section>
 
@@ -483,19 +477,18 @@
     <div class="wrap">
       <div class="block-head">
         <div>
-          <p class="eyebrow">Spreadsheets, documents, PDFs</p>
-          <h2>Send a file. Get a file back.</h2>
+          <p class="eyebrow">Files, both ways</p>
+          <h2>Hand it a spreadsheet.<br>Get one back.</h2>
         </div>
-        <p>Attach a workbook, a Word document or a PDF and the bot reads what is inside it — not a filename and a hope. A bot can write one too, and hand it over as a row in its reply that opens with one press.</p>
+        <p>Send a workbook, a document or a PDF and the bot reads what is actually inside it. Ask for a file and it arrives in the reply, one press from open.</p>
       </div>
 
       <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>It actually reads them</h3><p>The text is extracted on the host, once: a spreadsheet sheet by sheet with its rows, a Word document paragraph by paragraph with tables flattened, a PDF page by page from its text layer. Every bot and both devices see the same text.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Limits it states, not hides</h3><p>8 MiB a file, four files a message, 24 000 characters a document, 50 PDF pages, 12 sheets of 500 rows. A file cut at a bound says so in the host's log, and the block names the sheet or page it came from.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>And it hands them back</h3><p>When a bot writes a workbook, a document or a PDF, the reply carries the same kind of row: press it and the file arrives from the host — Quick Look on the Mac, the share sheet on the phone.</p></div></article>
+        <article class="feature"><span class="n">01</span><div><h3>It really reads them</h3><p>Sheets by name, tables row by row, PDF pages in order. Your phone, your Mac and every bot work from the same text, so answers don't depend on where you asked.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>And it hands them back</h3><p>When a bot writes a report, a sheet or a PDF, the reply carries it. Press once: Quick Look on the Mac, the share sheet on the phone.</p></div></article>
       </div>
 
-      <p class="signin-more"><a href="docs/apps.html#excel-word-and-pdf-files">What is read, what is not, and the bounds →</a></p>
+      <p class="signin-more"><a href="docs/apps.html#excel-word-and-pdf-files">What it reads, and what it won't →</a></p>
     </div>
   </section>
 
@@ -507,7 +500,7 @@
           <p class="eyebrow">On the phone</p>
           <h2>A conversation, not a chat window.</h2>
         </div>
-        <p>Every bot on your host is a row. Tap one and you are where you left off — no session list, no titles to manage. Answers arrive as documents: headings, tables, code with its own copy button, tool runs folded into a single line you can open.</p>
+        <p>Open a bot and you are exactly where you left off. No session list, no titles to keep, nothing to tidy up later.</p>
       </div>
 
       <div class="gallery">
@@ -516,21 +509,21 @@
             <img src="shots/chat-table.webp" width="806" height="1752" loading="lazy"
                  alt="A reply in Hermey showing a markdown table of machine update state">
           </div>
-          <figcaption><b>Real markdown</b>Tables, quotes and headings render as a document, not as plain text.</figcaption>
+          <figcaption><b>Reads like a document</b>Tables, quotes and headings, not a wall of plain text.</figcaption>
         </figure>
         <figure>
           <div class="phone-frame">
             <img src="shots/chat-tools.webp" width="806" height="1752" loading="lazy"
                  alt="A turn in Hermey with folded tool runs and a reasoning section">
           </div>
-          <figcaption><b>Work you can audit</b>Thirty tool calls become one line; reasoning opens when you want it.</figcaption>
+          <figcaption><b>Work you can audit</b>Thirty tool calls, one line. Reasoning opens if you want it.</figcaption>
         </figure>
         <figure>
           <div class="phone-frame">
             <img src="shots/bot-settings.webp" width="806" height="1752" loading="lazy"
                  alt="A bot's settings screen in Hermey: Computer, Library, Model, Skills, MCP, Routines, Notes, Soul and Memory">
           </div>
-          <figcaption><b>Per-bot settings</b>Computer, model, skills, routines, memory — all from the app.</figcaption>
+          <figcaption><b>Every dial in reach</b>Model, skills, routines, memory — no shell required.</figcaption>
         </figure>
         <figure>
           <div class="phone-frame">
@@ -543,33 +536,6 @@
     </div>
   </section>
 
-  <!-- features -->
-  <section class="block" id="features">
-    <div class="wrap">
-      <div class="block-head">
-        <div>
-          <p class="eyebrow">What it does</p>
-          <h2>Built for one person, one machine.</h2>
-        </div>
-        <p>Hermey is the front end to a host you already run, not a chat client bolted onto an API.</p>
-      </div>
-
-      <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>One conversation per bot</h3><p>The bot list is the home screen. Open a bot and its thread resumes exactly where it stopped — no sessions to name, nothing to tidy.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Live over your own network</h3><p>Streaming over a WebSocket on your tailnet, with the round trip shown in the header so a slow link is visible instead of mysterious. A reaction takes the same road: one emoji per message, kept by the host, so a tap on the Mac is already on the phone.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>Reads like a document</h3><p>Full markdown — headings, tables, quotes — with code blocks that carry their own copy button and tick, and reasoning you can open.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>Speaks, and shows pictures</h3><p>Read a long answer aloud in the system voice, attach files and screenshots, and open any image full screen at full resolution.</p></div></article>
-        <article class="feature"><span class="n">05</span><div><h3>The bot's own computer</h3><p>Open the headless desktop your agent works on in a pane beside the chat — mouse and keyboard, so you can watch a run or take over.</p></div></article>
-        <article class="feature"><span class="n">06</span><div><h3>Pair once, per device</h3><p>The host mints a short-lived code, a <code>https://&lt;host&gt;/?code=…</code> URL and a QR. Type the code or scan it on the phone or the Mac; the token stays in the Keychain.</p></div></article>
-        <article class="feature"><span class="n">07</span><div><h3>Driven from the keyboard</h3><p>⌘K opens the command palette; typing / in the composer shows the gateway's slash commands with autocomplete.</p></div></article>
-        <article class="feature"><span class="n">08</span><div><h3>Nothing in the middle</h3><p>The host is software you installed, on a machine you own. The apps dial it directly: no relay of ours, no login, no analytics.</p></div></article>
-        <article class="feature"><span class="n">09</span><div><h3>Finds anything it ever said</h3><p>Search runs across every bot's conversation at once and comes back newest first, each hit shown with the line around the match.</p></div></article>
-        <article class="feature"><span class="n">10</span><div><h3>Takes its bots with it</h3><p>Export every bot's soul, memory, notes and routines as one file, and restore it on another host. Restoring only adds what is missing and never overwrites a bot's memory.</p></div></article>
-        <article class="feature"><span class="n">11</span><div><h3>A turn on the lock screen</h3><p>While a bot works, an iPhone shows the turn as a Live Activity: the bot's name, what it is doing right now and how long it has been at it, then <em>Done</em> with the first line of the answer.</p></div></article>
-      </div>
-    </div>
-  </section>
-
   <!-- secure sign-in -->
   <section class="block" id="signin">
     <div class="wrap">
@@ -578,17 +544,16 @@
           <p class="eyebrow">Secure sign-in</p>
           <h2>Your password never reaches the bot.</h2>
         </div>
-        <p>Tell a bot to book something, or to check a site you are already signed in to. If it needs a login, it finds the sign-in page itself and asks you there — with a card, not a chat message.</p>
+        <p>Tell a bot to book the table. When it hits a login, it asks you in the app — on a card that names the site, so you always know what you are approving.</p>
       </div>
 
       <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>It finds the form first</h3><p>The bot follows the site's own login link, walks past account-choice screens and waits until a real password field is on screen. A page with search boxes is not a sign-in page, and it is not treated as one.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>A card, in your app</h3><p>The card names the site and the fields, and nothing else. You fill it in the Mac or iPhone app; a card that is never answered simply expires.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>Typed the way the page wants it</h3><p>Email on one screen, password on the next, a six-box one-time code on the third — filled in order, submitted with the form's own button, in the browser running on the bot's desktop.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>One use, then gone</h3><p>The value is held in memory, handed straight to the browser and swept. No route returns it, no log line contains it, and the bot is told one thing: whether it worked.</p></div></article>
+        <article class="feature"><span class="n">01</span><div><h3>You approve, it types</h3><p>Fill the card on your phone or your Mac and the bot is in. It is told one thing — whether it worked.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>One use, then gone</h3><p>The value lives in memory, goes straight into the page and is swept. Not in the transcript, not in a log, not in the model's context.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Filled the way the page wants</h3><p>Email on one screen, password on the next, a six-box code after that — in order, submitted with the site's own button.</p></div></article>
       </div>
 
-      <p class="signin-more"><a href="docs/credentials.html">How the cards work, and what ships today →</a></p>
+      <p class="signin-more"><a href="docs/credentials.html">How the cards work →</a></p>
     </div>
   </section>
 
@@ -598,19 +563,18 @@
       <div class="block-head">
         <div>
           <p class="eyebrow">Integrations</p>
-          <h2>Your accounts, connected once.</h2>
+          <h2>Your accounts, already there.</h2>
         </div>
-        <p>Eight services — Gmail, Calendar, Drive, Docs, Sheets and Maps, plus Cloudflare and Vercel by API key — connected through your own Composio project key. The bot gets a tool, not a token, and you can connect the same service twice when you have two accounts.</p>
+        <p>Mail, calendar, drive, docs, sheets and maps, plus Cloudflare and Vercel — connected once, through your own key, with as many accounts as you really have.</p>
       </div>
 
       <div class="feature-list">
-        <article class="feature"><span class="n">01</span><div><h3>One card per connection</h3><p>Each service is a card with its own logo and state. Connect, rename, or disconnect a single account by id — never "disconnect gmail", which would have to guess.</p></div></article>
-        <article class="feature"><span class="n">02</span><div><h3>Two Gmails, two names</h3><p>Connect a service again and name the account the way you say it out loud. That name is what the bot acts on, so "send it from the work one" means something.</p></div></article>
-        <article class="feature"><span class="n">03</span><div><h3>Yours, not ours</h3><p>Tokens live on Composio under your key; the key sits at <code>/etc/hermey/composio.key</code> on your host. Your mail and calendars are never copied into Hermey.</p></div></article>
-        <article class="feature"><span class="n">04</span><div><h3>It supplies the one-time code</h3><p>With Gmail connected, a bot reads the code a site just emailed you and hands it to the sign-in flow, so you are asked only for your password.</p></div></article>
+        <article class="feature"><span class="n">01</span><div><h3>Two inboxes, two names</h3><p>Name each account the way you say it out loud, so "send it from the work one" means the work one.</p></div></article>
+        <article class="feature"><span class="n">02</span><div><h3>It fetches the code for you</h3><p>With mail connected, a bot can read the one-time code a site just sent you and finish the sign-in itself — so you are asked for your password and nothing else.</p></div></article>
+        <article class="feature"><span class="n">03</span><div><h3>Yours, not ours</h3><p>Connections sit under your key, on your host. Your mail and calendars are never copied into Hermey.</p></div></article>
       </div>
 
-      <p class="signin-more"><a href="docs/integrations.html">Connecting services, multiple accounts, and what each one does →</a></p>
+      <p class="signin-more"><a href="docs/integrations.html">What each service can do →</a></p>
     </div>
   </section>
 
@@ -622,28 +586,26 @@
           <p class="eyebrow">Local computer use</p>
           <h2>Your Mac, without Remote Login.</h2>
         </div>
-        <p>The Mac app is the executor. Your host sends a command; the app performs it under your account and returns the result. Nothing listens for SSH, and no port is opened on the Mac.</p>
+        <p>Switch it on and your bots can build, click, type and drive the machine under your desk — while you watch, take over, or switch it off again. No SSH, no port opened, nothing listening.</p>
       </div>
 
       <div class="dark-grid" style="margin-top: clamp(2.5rem, 5vw, 4rem);">
         <div>
-          <h3>What bots can do</h3>
+          <h3>What they can do</h3>
           <ul class="rule-list">
-            <li>Run one-shot commands on the Mac — including local builds — with a working directory you choose.</li>
-            <li>Capture the screen with active-window metadata, then click, type, use keys, scroll or focus an app.</li>
-            <li>Read, write and list files in one shared workspace, with downloads from the private browser surface.</li>
-            <li>Open URLs and inspect a page snapshot without leaving the conversation.</li>
+            <li>Run commands and local builds in a workspace you choose.</li>
+            <li>See the screen, then click, type, scroll or focus an app.</li>
+            <li>Drive a browser and open a page without leaving the chat.</li>
           </ul>
 
-          <h3 style="margin-top: 2.4rem;">How it stays contained</h3>
+          <h3 style="margin-top: 2.4rem;">And only when you say so</h3>
           <ul class="rule-list">
-            <li>Computer use starts switched off. Nothing is queried until you enable it.</li>
-            <li>Accessibility, Screen Recording, Input Monitoring and Automation each have their own status and Settings link.</li>
-            <li>One sorted queue drives the desktop, so two bots cannot interleave actions. Revoking the Mac closes its link immediately.</li>
-            <li>The app must be running. When it closes, computer use reports the Mac as offline.</li>
+            <li>Off until you turn it on, with each macOS permission granted separately.</li>
+            <li>One action at a time, attributed to the bot that asked.</li>
+            <li>Revoke the Mac and the link closes immediately.</li>
           </ul>
 
-          <p style="font-size: .95rem; max-width: 62ch;">Bots reach it through the host's own <code>computer</code> tools — observe, act, files, browser — over the same authenticated link. There is no separate command to learn or install.</p>
+          <p class="signin-more" style="margin-top: 2rem;"><a href="docs/computer-use.html">Permissions, and what stays contained →</a></p>
         </div>
 
         <div class="dark-shots">
@@ -666,8 +628,42 @@
               <img src="shots/mac-light-connection.webp" width="1400" height="1005" loading="lazy"
                    alt="Hermey for macOS on the Parchment light theme, showing the Connection settings with a paired host">
             </div>
-            <figcaption>The same window on Parchment — settings and body text follow the palette, system chrome included.</figcaption>
+            <figcaption>The same window on Parchment — settings and body text follow the palette.</figcaption>
           </figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- features -->
+  <section class="block" id="features">
+    <div class="wrap">
+      <div class="block-head">
+        <div>
+          <p class="eyebrow">Everything else</p>
+          <h2>The small things you'll stop noticing.</h2>
+        </div>
+        <p>Because they work: streaming answers, search across every conversation, a lock-screen card that tells you when it's done.</p>
+      </div>
+
+      <div class="platforms">
+        <div class="platform">
+          <ul class="doc-links">
+            <li><span>One endless conversation per bot</span></li>
+            <li><span>Search every bot's history at once</span></li>
+            <li><span>Read a long answer aloud, or dictate one</span></li>
+            <li><span>Pictures open full screen, at full size</span></li>
+            <li><span>Reactions that follow you between devices</span></li>
+          </ul>
+        </div>
+        <div class="platform">
+          <ul class="doc-links">
+            <li><span>Approvals and drafts as cards, not prose</span></li>
+            <li><span>Routines and notes you can edit in the app</span></li>
+            <li><span>⌘K palette, / commands, keyboard all the way</span></li>
+            <li><span>A Live Activity on the lock screen while it works</span></li>
+            <li><span>Export every bot, restore on another host</span></li>
+          </ul>
         </div>
       </div>
     </div>
@@ -679,27 +675,27 @@
       <div class="block-head">
         <div>
           <p class="eyebrow">Install</p>
-          <h2>Three steps to chat.<br>One more for the Mac.</h2>
+          <h2>Three steps.<br>The last one is optional.</h2>
         </div>
-        <p>The host runs where Hermes already runs. The apps are unsigned, so they are sideloaded or opened once from the command line — that is the price of not having an account.</p>
+        <p>One command on the machine that already runs Hermes, then pair the app. It is unsigned — that is how it stays free and account-free.</p>
       </div>
 
       <div class="steps">
         <div class="step">
           <span class="n">Step one</span>
           <h3>Install the host</h3>
-          <p>On the machine that already runs Hermes. The script is a release asset — it downloads the published binary, checks it against the release's <code>SHA256SUMS</code> and installs <code>hermeyd</code>; the same file is in the repo at <code>setup/install.sh</code> if you want to read it first. <code>--from-source</code> builds it with cargo instead.</p>
-          <p class="fineprint">Then <code>curl -fsS http://127.0.0.1:8788/v1/health</code> answers <code>{"status":"ok",…}</code>, and <code>hermeyd --gateway-check</code> exits 0. Two things break setups: <code>hermeyd</code> must run as the user that owns the Hermes install, and one gateway per <code>HERMES_HOME</code> — see <a href="docs/prerequisites.html">Getting Hermey running</a>.</p>
+          <p>On the machine that already runs Hermes. The script downloads the published build and checks it before it installs anything.</p>
           <div class="snippet">
             <code>curl -fsSL https://github.com/macblizzard/hermey/releases/latest/download/install.sh | sudo sh</code>
             <button class="copy" type="button" aria-label="Copy the host install command">Copy</button>
           </div>
+          <p class="fineprint" style="margin-top: .9rem;"><a href="docs/install.html">What it writes, and every flag →</a></p>
         </div>
 
         <div class="step">
           <span class="n">Step two</span>
           <h3>Pair the app</h3>
-          <p><code>hermeyd pair</code> prints a six-digit code, a pairing URL of the form <code>https://&lt;host&gt;/?code=…</code> and a QR code the app can scan. Enter the code or scan it; the token stays in the Keychain.</p>
+          <p>The host prints a code and a QR. Type the code, or scan it — the token stays in the Keychain.</p>
           <div class="snippet">
             <code>sudo hermeyd pair</code>
             <button class="copy" type="button" aria-label="Copy the pairing command">Copy</button>
@@ -709,14 +705,14 @@
         <div class="step">
           <span class="n">Step three</span>
           <h3>Talk to your bots</h3>
-          <p>Every profile on the host appears as a bot. Pick one and its conversation resumes where it stopped.</p>
+          <p>Every profile on your host turns up as a bot. Pick one and its conversation resumes where it stopped.</p>
           <p class="fineprint" style="margin-top: .8rem;">cody · atlas · crony · sage — whatever your host runs.</p>
         </div>
       </div>
 
       <div class="platform" style="margin-top: clamp(2rem, 4vw, 3rem);">
         <h3 style="font-size: 1.2rem; margin-bottom: .4rem;">Optional: let bots use the Mac</h3>
-        <p style="font-size: .95rem; max-width: 62ch;">Open <strong>Settings → Computer</strong> on the Mac and switch on <em>Let bots use this computer</em>. Grant only the macOS permissions you want, from the buttons in that panel — nothing is requested just by opening Settings. Keep Remote Login off; the app does the work.</p>
+        <p style="font-size: .95rem; max-width: 62ch;">One switch in <strong>Settings → Computer</strong>, then grant only the macOS permissions you want to grant. Keep Remote Login off — the app does the work.</p>
       </div>
     </div>
   </section>
@@ -729,18 +725,17 @@
           <p class="eyebrow">Platforms</p>
           <h2>Two apps, one conversation.</h2>
         </div>
-        <p>The phone is for when you are away from the desk; the Mac app is for when you are not. Both talk to the same host, and each keeps its own place in the same thread.</p>
+        <p>The phone is for away from the desk; the Mac is for when you are not. Both talk to the same host and each keeps its own place in the same thread.</p>
       </div>
 
       <div class="platforms">
         <div class="platform">
           <h3>iPhone &amp; iPad</h3>
-          <p class="kicker">iOS 17 or later · installed with AltStore or SideStore</p>
+          <p class="kicker">iOS 17 or later · AltStore or SideStore</p>
           <ul>
-            <li>Add the source once, then install and update from it</li>
-            <li>Re-signs with your own certificate — no developer account needed</li>
-            <li>Pair with the code the host prints, or scan its QR</li>
-            <li>Voice input, file cards and approval settings where you expect them</li>
+            <li>Add the source once, install and update from it</li>
+            <li>Re-signs with your own certificate</li>
+            <li>Pair with the host's code or QR</li>
           </ul>
           <div class="links">
             <a href="https://macblizzard.github.io/hermey/altstore.json">AltStore source</a>
@@ -752,10 +747,9 @@
           <h3>macOS</h3>
           <p class="kicker">macOS 14 or later · disk image, unsigned</p>
           <ul>
-            <li>Open the disk image and drag Hermey onto Applications</li>
+            <li>Drag Hermey onto Applications</li>
             <li>Sidebar, chat and the bot's computer in one window</li>
-            <li>⌘K for the command palette, / for slash commands, ⌘↩ to send</li>
-            <li>Settings → Computer for local execution, permissions and revoke</li>
+            <li>⌘K for the palette, / for commands, ⌘↩ to send</li>
           </ul>
           <p style="font-size: .88rem; color: var(--muted); margin-bottom: .6rem;">Unsigned, so macOS quarantines the first launch. Authorise it once:</p>
           <div class="snippet">
@@ -777,27 +771,24 @@
       <div class="block-head">
         <div>
           <p class="eyebrow">Documentation</p>
-          <h2>Where the details live.</h2>
+          <h2>Read it before you install.</h2>
         </div>
-        <p>Install, sideloading, computer use, the agent runbook and every failure we know about — on its own site, with a search box.</p>
+        <p>Every flag, every permission and every failure we know about, on its own site with a search box.</p>
       </div>
 
       <div class="platforms">
         <div class="platform">
-          <h3>Setting it up</h3>
           <ul class="doc-links">
-            <li><a href="docs/install.html">Install the host</a><span>The one command, the flags, what lands on disk.</span></li>
-            <li><a href="docs/apps.html">The apps</a><span>Sideloading, first launch, notifications, revocation.</span></li>
-            <li><a href="docs/computer-use.html">Local computer use</a><span>Permissions, containment, the workspace.</span></li>
+            <li><a href="docs/install.html">Install the host</a><span>Flags, paths, uninstall.</span></li>
+            <li><a href="docs/apps.html">The apps</a><span>Sideloading, first launch, pets, avatars.</span></li>
+            <li><a href="docs/computer-use.html">Computer use</a><span>Permissions and containment.</span></li>
           </ul>
         </div>
         <div class="platform">
-          <h3>Running it</h3>
           <ul class="doc-links">
-            <li><a href="docs/agents.html">For agents</a><span>The install runbook, with its verification gates.</span></li>
-            <li><a href="docs/troubleshooting.html">Troubleshooting</a><span>Symptom, cause, fix — with the real log strings.</span></li>
-            <li><a href="docs/reference.html">Reference</a><span>Commands, ports, paths and download URLs.</span></li>
-            <li><a href="docs/security.html">Security</a><span>The threat model, plainly stated.</span></li>
+            <li><a href="docs/troubleshooting.html">Troubleshooting</a><span>Symptom, cause, fix.</span></li>
+            <li><a href="docs/security.html">Security</a><span>The threat model, plainly.</span></li>
+            <li><a href="docs/reference.html">Reference</a><span>Ports, paths, URLs.</span></li>
           </ul>
         </div>
       </div>
@@ -812,7 +803,7 @@
       <div class="block-head">
         <div>
           <p class="eyebrow">Questions</p>
-          <h2>The things people ask before installing.</h2>
+          <h2>The things people ask first.</h2>
         </div>
         <p>If something here is wrong or missing, the repo takes issues — and the whole client is small enough to read.</p>
       </div>
@@ -820,39 +811,35 @@
       <div class="faq">
         <details>
           <summary>Do I need Hermes already running?</summary>
-          <div class="answer">Yes. Hermey is a client; the agent, its tools and its memory live on your host. If you have a Hermes install with profiles you talk to, Hermey talks to those same profiles.</div>
+          <div class="answer">Yes. Hermey is the client — the agents, their tools and their memory live on your host. If you have profiles you already talk to, those are the bots you get.</div>
         </details>
         <details>
           <summary>Why Tailscale?</summary>
-          <div class="answer">Because it gives you a private address for your own machine from anywhere, without exposing a port to the internet. The apps speak to that address directly; there is no relay of ours in between.</div>
+          <div class="answer">It gives your own machine a private address from anywhere without exposing a port to the internet. The app dials it directly; there is no relay of ours in between.</div>
         </details>
         <details>
           <summary>Is it signed? Do I need a developer account?</summary>
-          <div class="answer">The builds are unsigned on purpose — signing them would tie them to one team. On iPhone you sideload with AltStore or SideStore, which re-signs with a certificate you already have. On the Mac you open it once and macOS remembers.</div>
+          <div class="answer">The builds are unsigned on purpose — signing ties them to one team. On iPhone, AltStore or SideStore re-signs with a certificate you already have. On the Mac you open it once.</div>
         </details>
         <details>
           <summary>Does it send anything anywhere?</summary>
-          <div class="answer">No analytics, no crash reporting, no account. The app stores a host address and a token, and talks to that host. Anything that leaves your machine leaves because your agent chose to send it.</div>
+          <div class="answer">No analytics, no crash reports, no account. The app stores an address and a token and talks to that host. Anything leaving your machine leaves because your agent chose to send it.</div>
         </details>
         <details>
-          <summary>Do I need Remote Login or SSH turned on?</summary>
-          <div class="answer">No. With Computer use enabled, the Mac app itself connects out to your host and runs commands there. Remote Login can stay off, and no inbound port is opened on the Mac.</div>
+          <summary>Do I need Remote Login or SSH on the Mac?</summary>
+          <div class="answer">No. With Computer use on, the Mac app connects out to your host and runs commands there. Remote Login stays off and no inbound port opens.</div>
         </details>
         <details>
-          <summary>What macOS permissions does computer use need?</summary>
-          <div class="answer">Accessibility for clicks and keys, Screen Recording for screenshots, Input Monitoring for taking control back, and Automation when an app is driven with AppleScript. Each has its own status in Settings → Computer and its own link to System Settings. Nothing is asked for until you choose to enable or check it.</div>
-        </details>
-        <details>
-          <summary>Can more than one bot drive my Mac?</summary>
-          <div class="answer">Yes, but not at the same time. A single queue serialises desktop actions and every action is attributed to the bot that requested it. All bots share one workspace folder.</div>
+          <summary>Can two bots drive my Mac at once?</summary>
+          <div class="answer">Not at the same time. One queue serialises desktop actions and each one is attributed to the bot that asked. All bots share one workspace folder.</div>
         </details>
         <details>
           <summary>What does it cost?</summary>
           <div class="answer">Nothing. MIT licensed, source on GitHub, no in-app purchases and nothing to subscribe to.</div>
         </details>
         <details>
-          <summary>Can I run it against more than one host?</summary>
-          <div class="answer">Yes — pair another host from Settings and switch between them. Each host keeps its own pairing, its own bots and its own read state.</div>
+          <summary>Can I use more than one host?</summary>
+          <div class="answer">Yes — pair another from Settings and switch between them. Each keeps its own bots, its own pairing and its own read state.</div>
         </details>
       </div>
     </div>
