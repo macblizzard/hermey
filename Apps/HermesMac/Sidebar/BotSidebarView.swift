@@ -173,19 +173,19 @@ struct BotSidebarView: View {
 
             addMenu
         }
-        .padding(.horizontal, Geometry.sidebarInset)
+        .padding(.horizontal, Self.barInset)
         // The traffic-light strip: the panel's fill runs to the window's top edge and the row
         // sits on the lights' own line. 34 pt tall so its centre — 4 plus half — is 21, the
         // same line as the chat header's pill.
-        .padding(.top, WorkspaceShell.titlebarStrip)
-        .frame(height: WorkspaceShell.titlebarStrip + 34)
+        .padding(.top, WorkspaceShell.titlebarStrip + Self.barInset)
+        .frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)
         // Gaps between the buttons belong to the title bar too — one 38 pt band across the whole
         // sidebar top, with the controls still hit-tested above it.
         .background(alignment: .top) {
             TitlebarDragArea()
-                .frame(height: WorkspaceShell.titlebarStrip + 34)
+                .frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, Self.barInset)
     }
 
     /// Everything waiting, one tap away.
@@ -331,7 +331,9 @@ struct BotSidebarView: View {
             }
             .help("Hide the bot panel")
         }
-        .padding(.horizontal, Geometry.sidebarInset)
+        // The same inset on both edges as the top row, so Settings in the left corner and the
+        // toggle in the right corner sit the same distance in as the bell and ＋ above them.
+        .padding(.horizontal, Self.barInset)
         .frame(height: Self.bottomBarHeight)
         .background(Tokens.sidebar)
         .accessibilityIdentifier("sidebar.bottomBar")
@@ -551,8 +553,14 @@ struct BotSidebarView: View {
     /// The height of one end of the dissolve — 26 pt, the same at the top and the bottom.
     private static let dissolveHeight: CGFloat = 26
 
-    /// The floor bar's height: the top row's 34 pt, so the two rows of chrome read as one frame.
-    private static let bottomBarHeight: CGFloat = 34
+    /// An icon's margin to the panel's edge in the chrome rows — the same on all four sides, so a
+    /// control in the corner is inset as far from the left as from the top (owner: "a bit more
+    /// padding with top and bottom, and sort of equal distance from the border on the corner").
+    static let barInset: CGFloat = 10
+
+    /// The floor bar's height: the top row's, so the two rows of chrome read as one frame.
+    /// A 30 pt icon plus `barInset` above and below it.
+    private static let bottomBarHeight: CGFloat = 30 + barInset * 2
 
     // MARK: Content
 

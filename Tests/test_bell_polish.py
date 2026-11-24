@@ -145,9 +145,11 @@ class EveryBarIconIsAQuarterBigger(unittest.TestCase):
         icon = block(CONTROLS, "public struct HermeyIconButton", "    public var body: some View")
         self.assertIn("case .bar: return BarIconScale.of(24)", icon)
         self.assertIn("case .bar: return BarIconScale.of(11)", icon)
-        # 30 pt inside the 34 pt bars: the frame still fits, and the bar's height did not move.
-        self.assertIn("private static let bottomBarHeight: CGFloat = 34", MAC)
-        self.assertIn(".frame(height: WorkspaceShell.titlebarStrip + 34)", self.header)
+        # 30 pt inside a bar that is the icon plus `barInset` above and below it: the frame fits, and
+        # the corner inset is the same on every side (owner: "equal distance from the border").
+        self.assertIn("static let barInset: CGFloat = 10", MAC)
+        self.assertIn("private static let bottomBarHeight: CGFloat = 30 + barInset * 2", MAC)
+        self.assertIn(".frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)", self.header)
 
     def test_the_bell_and_plus_are_the_bar_size(self) -> None:
         self.assertIn("size: .bar", MAC.split("private var notificationsButton: some View {", 1)[1])
