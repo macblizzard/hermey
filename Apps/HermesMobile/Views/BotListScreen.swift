@@ -277,19 +277,29 @@ struct BotListScreen: View {
         // marked read through `markBotRead`, exactly as the pet and the row's own dot do, and then
         // the conversation it was waiting in is pushed. Nothing here is a second unread count.
         .sheet(isPresented: $showWaiting) {
-            WaitingBotsInbox(bots: waitingBots) { botID in
-                showWaiting = false
-                model.markBotRead(botID)
-                if let bot = model.bots.first(where: { $0.id == botID }) {
-                    recordOpened(bot)
-                    onGraphite(bot)
-                }
-            }
+            WaitingBotsInbox(bots: waitingBots,
+                             hostUpdate: model.hostUpdate,
+                             onOpen: { botID in
+                                 showWaiting = false
+                                 model.markBotRead(botID)
+                                 if let bot = model.bots.first(where: { $0.id == botID }) {
+                                     recordOpened(bot)
+                                     onGraphite(bot)
+                                 }
+                             },
+                             onUpdateHost: {
+                                 // The press is the whole permission: nothing here updates a host
+                                 // on a schedule or on launch.
+                                 Task { await model.beginHostUpdate() }
+                             },
+                             onDismissHostUpdate: { model.dismissHostUpdate() })
             .hermesSheetChrome()
             // The sheet is exactly as tall as what is waiting: the header, one row per bot and
             // the handle. A mid-height detent was a page of empty space above a single row; a long
-            // list stops at the shared cap and scrolls instead.
-            .presentationDetents([.height(WaitingBotsInbox.sheetHeight(for: waitingBots.count))])
+            // list stops at the shared cap and scrolls instead. A host update is one fixed row
+            // taller, and it is the shared row's own height rather than a second measurement.
+            .presentationDetents([.height(WaitingBotsInbox.sheetHeight(for: waitingBots.count,
+                                                                      hostUpdate: model.hostUpdate != nil))])
         }
         .sheet(isPresented: $showStartGroupChat) {
             StartGroupChatSheet(
@@ -1080,7 +1090,7 @@ struct BotListScreen: View {
                     Image(systemName: "bell")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(Tokens.textPrimary)
-                        .waitingDot(!waitingBots.isEmpty, size: 6)
+                        .waitingDot(!waitingBots.isEmpty || model.hostUpdate?.wantsAttention == true, size: 6)
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }

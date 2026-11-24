@@ -180,6 +180,86 @@ An unpaired app has no host, so it keeps writing its own `@AppStorage` document
 (`mac.messageReactions.v1` / `mobile.messageReactions.v1`) — the behaviour it had before — and hands
 those entries to the host once, the first time it opens that conversation paired.
 
+## Self-update — `GET/POST /v1/update` (shipped in 0.4.0)
+
+One press updates the host service, and a host that will not start puts itself back. Nothing else
+is touched: the engine, the installer and every other file are off limits — this replaces
+`/opt/hermey/bin/hermeyd` and writes one record in the state directory.
+
+```text
+GET /v1/update[?refresh=1]                                    (bearer)
+  -> {"current":"0.3.9",
+      "latest":"0.4.0" | null,          # null = the feed could not be read: unknown, not current
+      "available": true,
+      "notes_url":"https://github.com/macblizzard/hermey/releases/tag/hermeyd-v0.4.0",
+      "checked_at":1795222533.13,
+      "can_self_update": true,
+      "arch":"linux-x86_64",
+      "error": null | "the release feed is unreachable (…)",
+      "progress": "downloading" | "verifying" | "installing" | null,   # the running press
+      "last_update": {"target":"0.4.0","previous":"0.3.9","state":"healthy",
+                      "attempts":1,"started_at":1795222533.1} | null}
+
+POST /v1/update                                               (bearer)
+  -> 202 {"target":"0.4.0","state":"started"}                 # download, verify, install, exit
+  -> 403 self-update is off, no build for this platform, or the binary is not writable
+  -> 409 an update is already running / this host is already on that version
+  -> 503 the release feed could not be read
+```
+
+`latest` is the numerically newest **published, non-draft, non-prerelease** `hermeyd-v*` tag, read
+from the GitHub releases API and cached for six hours (`?refresh=1` asks again now); a failed check
+is remembered for one minute, so a host whose link just came back stops saying "unknown" promptly.
+An app release (`v0.1.N`) carries no host binary and is never a candidate — the same trap
+`setup/install.sh:newest_host_tag()` guards against.
+
+The install, in the order it happens after the 202:
+
+1. download `<base>/<tag>/hermeyd-<platform>` and `<base>/<tag>/SHA256SUMS` (asset names are the
+   installer's: `linux-x86_64`, `linux-aarch64`, `darwin-arm64`, `darwin-x86_64`);
+2. look this asset's digest up **by name** in `SHA256SUMS` (no entry → refuse) and compare it to the
+   bytes; a mismatch deletes the download and replaces nothing. That published checksum is the whole
+   trust anchor for a prebuilt binary — the same rule `setup/install.sh` applies to a first install;
+3. copy the running binary to `hermeyd.prev` beside it (mode 0755);
+4. `rename` the verified download over the binary — one atomic step, which is why it is staged in
+   the binary's own directory and not in the state directory;
+5. write `update-state.json` as `pending`, audit `update.installed`, and `exit(0)`.
+   `Restart=always` in the unit starts the new build.
+
+**The record** — `<state>/update-state.json`, written temp-then-`rename`:
+
+```json
+{"target":"0.4.0","previous":"0.3.9","state":"pending","attempts":0,"started_at":1795222533.1}
+```
+
+`state` is exactly `pending`, `healthy` or `rolled-back` — those three strings are what both apps
+switch on.
+
+**Rollback, which never needs the network.** Every boot reads that record before it binds anything:
+
+| record | boot of | what happens |
+|---|---|---|
+| `pending`, `target` = running | 0.4.0, 1st time | `attempts` → 1, serve normally |
+| `pending`, `target` = running | 0.4.0, 2nd time | copy `hermeyd.prev` over the binary, `rolled-back`, audit, `exit(0)` → systemd starts 0.3.9 |
+| `pending`, `previous` = running | 0.3.9 | `rolled-back`, audit — the previous build is back and stays |
+| `pending`, some third version | anything | left alone; nothing is guessed |
+| `rolled-back` / `healthy` | anything | nothing |
+
+Sixty seconds after both listeners are bound, a `pending` record about the running version becomes
+`healthy` and `hermeyd.prev` is kept for the next update. A build that crashes, or never binds,
+comes back as attempt 2 and is replaced — that is the whole of "it failed to start". The rollback is
+`fs::copy` + `rename` only: an air-gapped host rolls back exactly as well as a connected one.
+
+Turning it off: `HERMEYD_SELF_UPDATE=off` (or `0`/`no`/`false`/`disabled`) makes
+`can_self_update: false` and `POST` a 403. A mirror or a test listener sets
+`HERMEYD_UPDATE_BASE` (default `https://github.com/macblizzard/hermey/releases/download`) and
+`HERMEYD_UPDATE_API`; `HERMEYD_UPDATE_BIN` points the updater at a binary other than the running one.
+
+Proven end to end on a real process — report, download, checksum, install, record, exit, two boots
+and the restore — against a release server on this machine: `scripts/smoke-self-update.sh`. The apps' side is drawn from the same record: the bell's first row, its four stages, and
+Settings ▸ About's host line all come from `GET /v1/update`, and none of them applies anything
+without a press.
+
 ## Pitfall that cost the first real device: frames must be NDJSON
 
 The iOS/macOS client decodes WebSocket frames with `NDJSONBuffer`, which **only yields a frame when it

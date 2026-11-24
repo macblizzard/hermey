@@ -632,6 +632,115 @@ public final class AppModel: ObservableObject {
         ClientLog.note("cache reset on \(hostName)", level: .info, category: "cache")
     }
 
+    // MARK: Host update
+
+    /// The host service's own next version, as the bell's first row draws it.
+    ///
+    /// `nil` is the normal state and covers three different situations on purpose: no update is
+    /// published, no host is paired, or the host is too old to have `GET /v1/update`. All three draw
+    /// nothing and say nothing — an error line for "this host has no updater" would be a permanent
+    /// complaint about a healthy app.
+    @Published public private(set) var hostUpdate: HostUpdate?
+
+    /// The last successful answer from `GET /v1/update`, whether or not a row is drawn from it.
+    ///
+    /// Settings ▸ About reads it for "which host build am I talking to", and `nil` is the honest
+    /// answer to that question when the host has never replied.
+    @Published public private(set) var hostStatus: HostUpdateStatus?
+
+    /// The version the host reported on the last successful check. Derived from `hostStatus`, so the
+    /// row, the bell and About cannot disagree about which build is running.
+    public var hostVersion: String? { hostStatus?.current }
+
+    /// The HTTP client, injected by each app once a host is paired. One freshly minted ticket per
+    /// call, exactly like `BotComputerClient`.
+    public var hostUpdateClient: HostUpdateClient?
+
+    private var updateTracker = HostUpdateTracker()
+    private var updatePoll: Task<Void, Never>?
+
+    /// Ask the host what it is and what is published.
+    ///
+    /// Called on launch, on every reconnect, and by the poll a press starts. The answer is cached on
+    /// the host for six hours, so this is cheap; `refresh` asks the host to re-read its feed and is
+    /// used only by Settings ▸ About's explicit check.
+    public func checkHostUpdate(refresh: Bool = false) async {
+        guard let client = hostUpdateClient else { return }
+        do {
+            let status = try await client.status(refresh: refresh)
+            updateTracker.checked(status, at: Date(), socketDropped: !connection.isLive)
+            hostStatus = status
+        } catch {
+            // A host without the route (404), an unpaired app, or a wire that is down: silence. A
+            // press in flight keeps the row it has — that is the restart, not a failure.
+            updateTracker.silent()
+            if !Self.isMissingUpdateRoute(error) {
+                ClientLog.note("host update check: \(error.localizedDescription)",
+                               level: .info, category: "update")
+            }
+        }
+        hostUpdate = updateTracker.update
+    }
+
+    /// 404 on `/v1/update`: the host predates self-update. That is a working host with no
+    /// updater, not a fault, and it must not write a complaint into the log on every launch.
+    private static func isMissingUpdateRoute(_ error: any Error) -> Bool {
+        guard case .rejected(let status, _)? = error as? HostUpdateError else { return false }
+        return status == 404
+    }
+
+    /// Press: ask the host to install the version the row is offering.
+    ///
+    /// The **only** caller is a button. There is no timer, no launch path and no retry that reaches
+    /// this: a host that updated itself while nobody was looking is a host that can change under a
+    /// conversation. The host verifies the download's checksum and rolls back if the new build does
+    /// not start; the app is a button and a progress line, and claims nothing it did not see.
+    public func beginHostUpdate() async {
+        guard let client = hostUpdateClient, let update = hostUpdate, update.canStartPress else { return }
+        do {
+            let ack = try await client.apply()
+            updateTracker.pressed(ack, at: Date())
+            hostUpdate = updateTracker.update
+            startUpdatePoll()
+        } catch {
+            let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            updateTracker.refused(reason)
+            hostUpdate = updateTracker.update
+        }
+    }
+
+    /// Dismiss a finished row (updated, rolled back, failed).
+    public func dismissHostUpdate() {
+        updatePoll?.cancel()
+        updatePoll = nil
+        updateTracker.dismiss()
+        hostUpdate = updateTracker.update
+    }
+
+    /// Read the host every two seconds until the version changes or three minutes have passed.
+    ///
+    /// The socket drops in the middle of this and that is expected: the poll is HTTP, so it keeps
+    /// answering while the relay reconnects, and the row says "Restarting…" rather than an error.
+    private func startUpdatePoll() {
+        updatePoll?.cancel()
+        updatePoll = Task { [weak self] in
+            let deadline = Date().addingTimeInterval(HostUpdateTracker.deadline + 10)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                await self.checkHostUpdate()
+                if self.updateTracker.settled { break }
+                if Date() > deadline {
+                    // No answer ever came: the host never came back. Say so instead of leaving the
+                    // row spinning at "Restarting…" for the life of the window.
+                    self.updateTracker.timedOut()
+                    self.hostUpdate = self.updateTracker.update
+                    break
+                }
+            }
+        }
+    }
+
     // MARK: Lifecycle
 
     /// Connect, then learn the bots, then read the selected bot's sessions.
@@ -660,6 +769,10 @@ public final class AppModel: ObservableObject {
             // new groups have to appear on this one.
             await loadBotCategories()
             await loadModelLabel()
+            // What this host is, and whether a newer one exists. After the roster because it is the
+            // least urgent thing on the screen, and because a launch that cannot reach the feed must
+            // not delay a conversation.
+            await checkHostUpdate()
             await loadSessions()
             startUnreadSweep()
         } catch {
@@ -674,6 +787,8 @@ public final class AppModel: ObservableObject {
         eventTask = nil
         unreadSweepTask?.cancel()
         unreadSweepTask = nil
+        // A press in flight keeps its poll: the owner asked for an update, and cancelling here would
+        // leave the row frozen at "Downloading…" with nothing looking for the answer.
         await client.disconnect()
         connection = .offline
     }
@@ -1063,6 +1178,9 @@ public final class AppModel: ObservableObject {
         let wire = await client.state
         if case .open = wire {
             connection = .connected
+            // A reconnect is usually a restarted host — the one moment the running version can
+            // change while the app stays open, so the update row is re-read here.
+            await checkHostUpdate()
             return true
         }
         return false

@@ -201,16 +201,25 @@ struct BotSidebarView: View {
         // conversation), and nothing in the window takes it. It exists only while this panel does —
         // the bell is the panel's own door.
         .keyboardShortcut("n", modifiers: [.command, .shift])
-        .waitingDot(!waitingBots.isEmpty)
+        // A dot for anything behind this bell: replies, or a host update. The update row is the
+        // reason a dot can be up with no bot waiting.
+        .waitingDot(!waitingBots.isEmpty || store.model.hostUpdate?.wantsAttention == true)
         .help("Waiting for you (⇧⌘N)")
         .popover(isPresented: $showsNotifications, arrowEdge: .top) {
-            WaitingBotsInbox(bots: waitingBots) { botID in
-                self.showsNotifications = false
-                // Opening the row *is* reading it: the badge goes through the same door the pet and
-                // the row's dot use, so the count, the dot and the read mark move together.
-                self.store.selectBot(botID)
-                self.store.model.markBotRead(botID)
-            }
+            WaitingBotsInbox(bots: waitingBots,
+                             hostUpdate: store.model.hostUpdate,
+                             onOpen: { botID in
+                                 self.showsNotifications = false
+                                 // Opening the row *is* reading it: the badge goes through the same door the pet and
+                                 // the row's dot use, so the count, the dot and the read mark move together.
+                                 self.store.selectBot(botID)
+                                 self.store.model.markBotRead(botID)
+                             },
+                             onUpdateHost: {
+                                 // Never on a timer: the press is the whole permission this has.
+                                 Task { await self.store.model.beginHostUpdate() }
+                             },
+                             onDismissHostUpdate: { self.store.model.dismissHostUpdate() })
             .frame(width: 300)
             // A popover hands keyboard focus to its first control, and macOS drew the blue ring
             // around that row as if it were selected. The rows keep their focus (Space/Return still

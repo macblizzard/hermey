@@ -108,6 +108,16 @@ pub const EVENTS: &[&str] = &[
     "bots.state",
     "display_open",
     "display_close",
+    // Self-update: what was asked, what was verified, and which build this host came back on.
+    // The record itself (target/previous/state/attempts) lives in `update-state.json`; these lines
+    // are who pressed and what the answer was.
+    "update.check",
+    "update.started",
+    "update.installed",
+    "update.failed",
+    "update.blocked",
+    "update.healthy",
+    "update.rolled_back",
     "history_page",
     "history_page_miss",
     "history_paged",

@@ -87,6 +87,10 @@ struct AboutSettingsTab: View {
             .padding(.top, 26)
             .padding(.bottom, 18)
 
+            hostSection
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
+
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
@@ -123,6 +127,90 @@ struct AboutSettingsTab: View {
             ClientLogView(title: "Log", header: logHeader)
             .hermesSheetChrome()
         }
+    }
+
+    /// The other half of "which version am I running": the **host** service, which updates on its
+    /// own schedule and whose version is not this app's.
+    ///
+    /// Same row, same words as the bell's, and the same button: an update is never applied from
+    /// here without a press, and the button is the only thing on this page that changes the machine.
+    private var hostSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                SectionCaption("HOST SERVICE")
+                Spacer(minLength: 0)
+                Button("Check now") {
+                    Task { await self.store.model.checkHostUpdate(refresh: true) }
+                }
+                .buttonStyle(.plain)
+                .font(TypeScale.font(TypeScale.micro))
+                .foregroundStyle(Tokens.textDim)
+                .accessibilityIdentifier("aboutHostCheck")
+            }
+
+            if let update = store.model.hostUpdate {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(update.versionLine)
+                            .font(TypeScale.font(TypeScale.caption))
+                            .foregroundStyle(Tokens.textPrimary)
+                            .monospacedDigit()
+                            .textSelection(.enabled)
+                        if let state = update.stateText {
+                            Text(state)
+                                .font(TypeScale.font(TypeScale.micro))
+                                .foregroundStyle(update.isSettled ? Tokens.textMuted : Tokens.textDim)
+                                .accessibilityIdentifier("aboutHostState")
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if let notes = update.notesURL, update.showsNotes {
+                        Link("What's new", destination: notes)
+                            .font(TypeScale.font(TypeScale.micro))
+                    }
+                    if update.isBusy {
+                        ProgressView().controlSize(.small)
+                    } else if let title = update.buttonTitle {
+                        Button(title) {
+                            Task { await self.store.model.beginHostUpdate() }
+                        }
+                        .controlSize(.small)
+                        .disabled(!update.canStartPress)
+                        .accessibilityIdentifier("aboutHostUpdate")
+                    } else if update.isSettled {
+                        Button("Dismiss") { self.store.model.dismissHostUpdate() }
+                            .controlSize(.small)
+                    }
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(hostLine)
+                        .font(TypeScale.font(TypeScale.caption))
+                        .foregroundStyle(Tokens.textMuted)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("aboutHostVersion")
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The host line when no row is drawn: the version, and the truth about what it means.
+    ///
+    /// Four different situations, four different sentences — "up to date" is only said when the host
+    /// answered and nothing newer exists. A host that cannot update itself still gets the news it is
+    /// behind; it just gets no button here either.
+    private var hostLine: String {
+        guard store.isPaired else { return "not paired" }
+        guard let status = store.model.hostStatus else { return "version unavailable" }
+        if let latest = status.latest, status.available {
+            return status.canSelfUpdate
+                ? "\(status.current) · \(latest) available"
+                : "\(status.current) · \(latest) is out; this host does not update itself"
+        }
+        if status.latest == nil { return "\(status.current) · could not check" }
+        return "\(status.current) · up to date"
     }
 
     /// What the log is *about*: build, OS, host, connection. The same header the phone puts above

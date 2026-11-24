@@ -54,6 +54,7 @@ mod routes;
 mod skills;
 mod skills_dialect;
 mod store;
+mod update;
 mod voice;
 mod workspace;
 
@@ -265,6 +266,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     std::fs::create_dir_all(&home)?;
 
+    // Before anything is bound, probed or served: did the *previous* boot leave an update
+    // unfinished? A `pending` record and this exact version means this is the new build coming
+    // back up (attempt 1 serves, attempt 2 is rolled back); the previous build booting instead
+    // settles the record. See update.rs — the whole rollback is file operations, no network.
+    let self_bin = std::env::current_exe().ok();
+    match self_bin.as_deref() {
+        Some(bin) => match update::on_boot(&home, bin, VERSION) {
+            update::Boot::Nothing => {}
+            update::Boot::Attempt(attempt) => eprintln!(
+                "self-update: {VERSION} is attempt {attempt} of {} — one more restart onto this \
+                 build restores the previous one",
+                update::MAX_ATTEMPTS
+            ),
+            update::Boot::RolledBack { target, to } => {
+                eprintln!(
+                    "self-update: {target} did not stay up; {to} is back in {} — exiting so the \
+                     service starts it",
+                    bin.display()
+                );
+                // `Restart=always` starts the build that was just restored.
+                std::process::exit(0);
+            }
+            update::Boot::RollbackStuck(why) => eprintln!(
+                "self-update: a rollback was due but could not be done ({why}); this build stays \
+                 on trial"
+            ),
+        },
+        // No `current_exe` is a sandbox oddity; nothing to decide about a binary we cannot name.
+        None => {}
+    }
+
     // Named once at boot, so "integrations are not configured" always has the file it looked for
     // next to it in the log.
     host_env::log_choice_once(&host_env::select_from_process(&engine_home));
@@ -327,6 +359,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if engine_auth.send_token() { Some(engine_token_file) } else { None },
         ),
         attachments_dir: home.join("attachments"),
+        home: home.clone(),
         local_token: Arc::clone(&local_token),
         // One bounded JSON-lines file beside `bridge.db`: who did what, how long, how many bytes.
         // No field can carry a prompt, a response or a credential (see audit.rs).
@@ -507,6 +540,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(reactions::get_reactions).put(reactions::put_reaction),
         )
         .route("/v1/search", get(search::search))
+        // The service's own next version: a report anyone paired can read, and a press that only
+        // the owner's devices can make. See update.rs for the checksum and the rollback.
+        .route(
+            "/v1/update",
+            get(update::get_update).post(update::post_update),
+        )
         .route("/v1/bot-transfers", get(transfers::list_transfers))
         .route("/v1/backup", get(backup::export))
         .route("/v1/backup.zip", get(parity_gaps::backup_zip))
@@ -589,7 +628,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Arc::clone(&state),
             audit::log_http,
         ))
-        .with_state(state);
+        .with_state(Arc::clone(&state));
 
     let addr: SocketAddr = format!("{bind}:{port}").parse()?;
     // Bound before the main listener prints READY: a service that boots with the sign-in channel
@@ -611,6 +650,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             eprintln!("browser channel listener stopped: {e}");
         }
+    });
+
+    // The trial period of a build installed by `POST /v1/update`. Sixty seconds after the
+    // listeners are up — bound and serving, which is what "it started" means here — a `pending`
+    // record about this version becomes `healthy` and the rollback threshold stops applying.
+    let health_home = state.home.clone();
+    let health_audit = Arc::clone(&state.audit);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(update::HEALTHY_SECONDS)).await;
+        update::mark_healthy(&health_home, VERSION, &health_audit);
     });
 
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
