@@ -369,9 +369,9 @@ class BannersArriveWhileTheAppIsShut(unittest.TestCase):
         self.assertEqual(notes.count("content.attachments = [attachment]"), 2,
                          "both the foreground post and the background sweep")
         # Rendering is main-actor and the sweep is not, so the faces are cached as files at launch.
-        self.assertIn("await MobileFaceCache.refresh(faces: faces)", shell)
+        self.assertIn("await MobileFaceCache.refresh(faces: faces, avatars: avatars)", shell)
         # And a banner is wanted with or without a relay.
-        self.assertLess(shell.index("await MobileFaceCache.refresh(faces: faces)"),
+        self.assertLess(shell.index("await MobileFaceCache.refresh(faces: faces, avatars: avatars)"),
                         shell.index('string(forKey: PushRelay.urlKey)'))
 
     def test_reading_a_bot_means_the_app_is_on_screen(self) -> None:
