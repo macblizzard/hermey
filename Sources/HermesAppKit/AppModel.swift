@@ -145,6 +145,13 @@ public final class AppModel: ObservableObject {
     /// ordering clock (last message per bot) and has nothing to do with what a bot is doing now.
     @Published public private(set) var botActivityTracker = BotActivityTracker()
 
+    /// The wake-up that ends a bot's `done` hold.
+    ///
+    /// The tracker decides that a finished turn reads `done` for four seconds; nothing redraws when
+    /// those seconds pass, so one task per bot clears the hold and publishes the fall to `idle`. It
+    /// is cancelled when the next turn starts, which is why a new turn never inherits a stale timer.
+    private var doneExpiry: [BotID: Task<Void, Never>] = [:]
+
     /// Which bot a session belongs to, as far as this launch has seen.
     ///
     /// `apply(_:)` maps an event's session back to its bot with this, so a turn on a bot the user is
@@ -5176,19 +5183,24 @@ public final class AppModel: ObservableObject {
              .thinkingDelta(let session, _),
              .messageDelta(let session, _),
              .interimMessage(let session, _, _, _),
-             .messageComplete(let session, _):
+             .messageComplete(let session, _),
+             .error(let session, _, _):
+            // `error` belongs here: a failed turn is a bot that is blocked on its own face, and the
+            // event names the session, which is how this launch knows which bot it was.
             guard let bot = sessionBots[session] ?? (session == selectedSessionID ? selectedBotID : nil) else { return }
             botActivityTracker.apply(event, bot: bot)
+            holdDone(for: bot)
         case .request(let request):
             // Waiting is a run paused on the user. A request that names no session still blocks the
             // run the app is showing, so it is the open bot's.
             let session = Self.sessionID(of: request)
             guard let bot = session.flatMap({ sessionBots[$0] }) ?? selectedBotID else { return }
             botActivityTracker.apply(event, bot: bot)
+            holdDone(for: bot)
         case .ready, .state, .requestCancelled, .contextUsage, .sessionUpdated,
-             .reactionUpdated, .error, .unknown:
-            // A transport state is not a bot's state, `error` is the gateway's error, not a
-            // failed run, and a reaction is an emoji rather than work in flight.
+             .reactionUpdated, .unknown:
+            // A transport state is not a bot's state, and a reaction is an emoji rather than work
+            // in flight.
             break
         }
     }
@@ -5206,6 +5218,28 @@ public final class AppModel: ObservableObject {
             isStreaming || isCompressing || runningSessions.contains(selectedSessionID ?? ""),
             for: bot)
         botActivityTracker.setWaitingOnUser(!pendingRequests.isEmpty, for: bot)
+        holdDone(for: bot)
+    }
+
+    /// Keep the `done` hold honest on screen: schedule the redraw that ends it, or cancel one a new
+    /// turn made obsolete.
+    ///
+    /// The tracker's answer is the only authority here — this reads it rather than duplicating the
+    /// four-second rule, so the timer cannot disagree with the face.
+    private func holdDone(for botID: BotID) {
+        if botActivityTracker.activity(for: botID) == BotAvatarActivity.done {
+            guard doneExpiry[botID] == nil else { return }
+            doneExpiry[botID] = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(BotActivityTracker.doneHold))
+                // A cancelled task wakes here too: `try?` swallows the cancellation, and without
+                // this guard the task a *new* turn scheduled would be cleared by the old one.
+                guard !Task.isCancelled, let self else { return }
+                self.doneExpiry[botID] = nil
+                self.botActivityTracker.expireDone(for: botID)
+            }
+        } else if let pending = doneExpiry.removeValue(forKey: botID) {
+            pending.cancel()
+        }
     }
 
     /// A new turn is starting: the previous turn's tool cards described a turn whose answer has

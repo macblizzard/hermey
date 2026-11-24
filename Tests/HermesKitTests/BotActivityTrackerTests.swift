@@ -9,6 +9,16 @@ final class BotActivityTrackerTests: XCTestCase {
 
     private let bot = "research"
 
+    /// The tracker's clock, stepped by hand: `done` is a four-second hold and no test sleeps for it.
+    private final class TestClock: @unchecked Sendable {
+        var now = Date(timeIntervalSince1970: 1_000)
+        func advance(_ seconds: TimeInterval) { now += seconds }
+    }
+
+    private func makeTracker(with clock: TestClock) -> BotActivityTracker {
+        BotActivityTracker(now: { clock.now })
+    }
+
     // MARK: - Nothing known
 
     func testABotNobodyHasHeardFromIsIdle() {
@@ -21,9 +31,10 @@ final class BotActivityTrackerTests: XCTestCase {
     // MARK: - Composing and thinking
 
     func testComposingIsWriting() {
+        // The name is history: there is no `writing` state any more, and typing is working.
         var tracker = BotActivityTracker()
         tracker.setComposing(true, for: bot)
-        XCTAssertEqual(tracker.activity(for: bot), .writing)
+        XCTAssertEqual(tracker.activity(for: bot), .working)
     }
 
     func testThinkingIsThinking() {
@@ -37,7 +48,7 @@ final class BotActivityTrackerTests: XCTestCase {
         var tracker = BotActivityTracker()
         tracker.thinking(botID: bot)
         tracker.setComposing(true, for: bot)
-        XCTAssertEqual(tracker.activity(for: bot), .writing)
+        XCTAssertEqual(tracker.activity(for: bot), .working)
     }
 
     // MARK: - Tools
@@ -45,7 +56,7 @@ final class BotActivityTrackerTests: XCTestCase {
     func testEveryToolFamilyPicksItsOwnPose() {
         for (tool, expected) in [("read_file", BotAvatarActivity.reading),
                                  ("web_fetch", .reading),
-                                 ("write_file", .writing),
+                                 ("write_file", .working),
                                  ("computer_observe", .computer),
                                  ("shell", .computer),
                                  ("terminal", .working),
@@ -79,7 +90,7 @@ final class BotActivityTrackerTests: XCTestCase {
         var tracker = BotActivityTracker()
         tracker.toolStarted(botID: bot, name: "read_file", callID: "c1")
         tracker.toolStarted(botID: bot, name: "write_file", callID: "c2")
-        XCTAssertEqual(tracker.activity(for: bot), .writing,
+        XCTAssertEqual(tracker.activity(for: bot), .working,
                        "the most recent call in flight decides the pose")
     }
 
@@ -103,8 +114,8 @@ final class BotActivityTrackerTests: XCTestCase {
     }
 
     func testAFailedToolIsNotAFailedRun() {
-        // The reference's `error` is a failed run. A tool that failed is one the model works around,
-        // so the face goes back to thinking instead of turning red over it.
+        // A failed *run* is blocked. A tool that failed is one the model works around, so the face
+        // goes back to thinking instead of turning red over it.
         var tracker = BotActivityTracker()
         tracker.thinking(botID: bot)
         tracker.toolStarted(botID: bot, name: "shell", callID: "c1")
@@ -144,8 +155,45 @@ final class BotActivityTrackerTests: XCTestCase {
         var tracker = BotActivityTracker()
         tracker.setWaitingOnUser(true, for: bot)
         tracker.setStatus("failed", for: bot)
-        XCTAssertEqual(tracker.activity(for: bot), .error)
-        XCTAssertFalse(tracker.activity(for: bot).isAnimated, "error rests")
+        XCTAssertEqual(tracker.activity(for: bot), .blocked)
+        XCTAssertFalse(tracker.activity(for: bot).isAnimated, "a failure rests")
+    }
+
+    func testAHostErrorBlocksTheBot() {
+        var tracker = BotActivityTracker()
+        tracker.toolStarted(botID: bot, name: "shell", callID: "c1")
+        tracker.apply(.error(session: "s1", code: 5001, message: "no provider"), bot: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .blocked)
+        XCTAssertTrue(tracker.state(for: bot).openCalls.isEmpty,
+                      "the stopped tool must not stay on the face")
+    }
+
+    func testABlockedBotClearsOnTheNextTurn() {
+        var tracker = BotActivityTracker()
+        tracker.apply(.error(session: "s1", code: nil, message: "boom"), bot: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .blocked)
+        // The next turn's first work takes it off: a message starting, or a tool call.
+        tracker.setComposing(true, for: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .working)
+
+        tracker.apply(.error(session: "s1", code: nil, message: "again"), bot: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .blocked)
+        tracker.toolStarted(botID: bot, name: "read_file", callID: "c9")
+        XCTAssertEqual(tracker.activity(for: bot), .reading)
+    }
+
+    func testAFinishedTurnIsDoneThenIdle() {
+        let clock = TestClock()
+        var tracker = makeTracker(with: clock)
+        tracker.setStreaming(true, for: bot)
+        tracker.settled(botID: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .done)
+
+        clock.advance(BotActivityTracker.doneHold - 0.1)
+        XCTAssertEqual(tracker.activity(for: bot), .done, "the hold is held")
+
+        clock.advance(0.2)
+        XCTAssertEqual(tracker.activity(for: bot), .idle, "and then the face rests")
     }
 
     func testBackgroundWorkIsIdleOverEverything() {
@@ -161,12 +209,16 @@ final class BotActivityTrackerTests: XCTestCase {
         tracker.toolStarted(botID: bot, name: "read_file", callID: "c1")
         tracker.setComposing(true, for: bot)
         tracker.settled(botID: bot)
+        // It reads `done` for the hold, then the app expires it and the face rests.
+        XCTAssertEqual(tracker.activity(for: bot), .done)
+        tracker.expireDone(for: bot)
         XCTAssertEqual(tracker.activity(for: bot), .idle)
         let state = tracker.state(for: bot)
         XCTAssertTrue(state.openCalls.isEmpty)
         XCTAssertFalse(state.composing)
         XCTAssertFalse(state.thinking)
         XCTAssertFalse(state.waitingOnUser)
+        XCTAssertNil(state.finishedAt)
     }
 
     func testStoppingTheStreamClearsTheTurn() {
@@ -174,15 +226,18 @@ final class BotActivityTrackerTests: XCTestCase {
         tracker.toolStarted(botID: bot, name: "read_file", callID: "c1")
         tracker.setStreaming(true, for: bot)
         tracker.setStreaming(false, for: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .done, "a reply that landed is done")
+        tracker.expireDone(for: bot)
         XCTAssertEqual(tracker.activity(for: bot), .idle)
     }
 
     // MARK: - Events, and two bots
 
     func testEventsAreReducedTheWayTheClientReceivesThem() {
-        var tracker = BotActivityTracker()
+        let clock = TestClock()
+        var tracker = makeTracker(with: clock)
         tracker.apply(.messageDelta(session: "s1", text: "on it"), bot: bot)
-        XCTAssertEqual(tracker.activity(for: bot), .writing)
+        XCTAssertEqual(tracker.activity(for: bot), .working)
 
         tracker.apply(.toolStart(session: "s1", name: "read_file", callID: "c1", input: "{}"), bot: bot)
         XCTAssertEqual(tracker.activity(for: bot), .reading)
@@ -198,6 +253,9 @@ final class BotActivityTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.activity(for: bot), .thinking)
 
         tracker.apply(.messageComplete(session: "s1", text: "here"), bot: bot)
+        XCTAssertEqual(tracker.activity(for: bot), .done)
+
+        clock.advance(BotActivityTracker.doneHold)
         XCTAssertEqual(tracker.activity(for: bot), .idle)
     }
 
@@ -221,7 +279,7 @@ final class BotActivityTrackerTests: XCTestCase {
         XCTAssertEqual(tracker.activity(for: "ops"), .computer)
         tracker.settled(botID: "ops")
         XCTAssertEqual(tracker.activity(for: "research"), .reading)
-        XCTAssertEqual(tracker.activity(for: "ops"), .idle)
+        XCTAssertEqual(tracker.activity(for: "ops"), .done)
     }
 
     func testResettingForgetsOnlyThatBot() {

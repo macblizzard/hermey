@@ -23,15 +23,26 @@ public typealias BotID = String
 ///
 /// | input | source event | what it decides |
 /// | --- | --- | --- |
-/// | `status` | turn lifecycle (`setStreaming`, `setStatus`) | idle / error / waiting / in flight |
-/// | `openCalls` | `toolStart` … `toolComplete` | reading, writing, computer, working |
-/// | `composing` | `messageDelta`, `interimMessage` | writing, when no tool is out |
+/// | `status` | turn lifecycle (`setStreaming`, `setStatus`) | idle / waiting / in flight |
+/// | `finishedAt` | `messageComplete`, the stream stopping | done, held for a few seconds |
+/// | `blocked` | a host `error` event for this bot | blocked, until the next turn starts |
+/// | `openCalls` | `toolStart` … `toolComplete` | reading, computer, working |
+/// | `composing` | `messageDelta`, `interimMessage` | working, when no tool is out |
 /// | `thinking` | `thinkingDelta` | thinking, when nothing else is |
 /// | `background` | `setBackground` | idle, over everything |
 ///
 /// A tool leaves `openCalls` when it completes, which is what makes a finished tool fall back to
 /// thinking (the model went back to deliberating) or working (it did not) instead of leaving the
 /// face stuck on the pose of the tool it already finished.
+///
+/// **`done` is a hold, not a state the wire sends.** When a turn ends the tracker records *when* it
+/// ended, and `activity(for:)` answers `done` for `doneHold` seconds after that, then `idle`. The
+/// clock is injected (`init(now:)`) so a test can step over the window without sleeping, and the
+/// struct still reads no clock of its own.
+///
+/// **`blocked` is a flag, not a status.** A host error names a session, not a run, and a failed run
+/// is not the only way to reach it; so the event sets a flag that outranks every other input and is
+/// cleared by the first event of the next turn.
 public struct BotActivityTracker: Sendable {
 
     /// Everything one bot's next face is derived from. Exposed for tests; callers go through
@@ -43,6 +54,11 @@ public struct BotActivityTracker: Sendable {
         public var background: Bool
         /// Paused on the user (an approval or a clarify). Outranks everything but a failure.
         public var waitingOnUser: Bool
+        /// A host error ended this bot's turn. Outranks everything until the next turn starts.
+        public var blocked: Bool
+        /// When the last turn ended, while `done` is still worth drawing. `nil` before one has, and
+        /// cleared when the next turn starts or the hold expires.
+        public var finishedAt: Date?
         /// Tools with a `toolStart` and no `toolComplete` yet, in the order they started.
         public var openCalls: [OpenCall]
         /// The model is writing a message.
@@ -53,12 +69,16 @@ public struct BotActivityTracker: Sendable {
         public init(status: String? = nil,
                     background: Bool = false,
                     waitingOnUser: Bool = false,
+                    blocked: Bool = false,
+                    finishedAt: Date? = nil,
                     openCalls: [OpenCall] = [],
                     composing: Bool = false,
                     thinking: Bool = false) {
             self.status = status
             self.background = background
             self.waitingOnUser = waitingOnUser
+            self.blocked = blocked
+            self.finishedAt = finishedAt
             self.openCalls = openCalls
             self.composing = composing
             self.thinking = thinking
@@ -78,14 +98,33 @@ public struct BotActivityTracker: Sendable {
 
     private var states: [BotID: State] = [:]
 
-    public init() {}
+    /// How long a finished turn keeps reading `done` before the face goes back to `idle`.
+    public static let doneHold: TimeInterval = 4
+
+    /// Where `done`'s hold is measured from. Injected rather than read: the tracker stays a value a
+    /// test can step through, and no call site has to know the wall clock exists.
+    private let clock: @Sendable () -> Date
+
+    public init(now: @escaping @Sendable () -> Date = { Date.now }) {
+        self.clock = now
+    }
 
     // MARK: - Reading
 
     /// The face this bot should wear. An unknown bot is `idle`: nothing has happened yet, which is
     /// exactly what a bot you have never opened looks like.
+    ///
+    /// The two states the wire never sends are decided here, in this order: `blocked` (a host error
+    /// outranks everything, including a tool still listed as running), then `done` while the hold
+    /// lasts — but never for helper work, which is idle over everything.
     public func activity(for botID: BotID) -> BotAvatarActivity {
         let state = state(for: botID)
+        if state.blocked { return .blocked }
+        if !state.background,
+           let finished = state.finishedAt,
+           clock().timeIntervalSince(finished) < Self.doneHold {
+            return .done
+        }
         return BotAvatarActivity.from(status: status(of: state),
                                       toolNames: state.openCalls.map(\.name),
                                       composing: state.composing,
@@ -108,9 +147,15 @@ public struct BotActivityTracker: Sendable {
 
     /// Set the run's lifecycle directly. `failed` is the one status no event carries, so a caller
     /// that learns a turn failed (an RPC error attributed to the run) says so here.
+    ///
+    /// A working status is a turn starting, which is what clears `blocked` and the finished hold.
     public mutating func setStatus(_ status: String?, for botID: BotID) {
         var state = states[botID] ?? State()
         state.status = status
+        if BotAvatarActivity.isWorking(status: status) {
+            state.blocked = false
+            state.finishedAt = nil
+        }
         states[botID] = state
     }
 
@@ -123,11 +168,17 @@ public struct BotActivityTracker: Sendable {
         var state = states[botID] ?? State()
         if streaming {
             if !BotAvatarActivity.isWorking(status: state.status) { state.status = "running" }
+            // `blocked` is *not* cleared here: the model re-asserts `isStreaming` on every event,
+            // including the one that just failed, so a clear here would wash a failure away in the
+            // same breath. The next turn's own work (`setComposing`, `toolStarted`) clears it.
+            state.finishedAt = nil
         } else if BotAvatarActivity.isWorking(status: state.status) {
             state.status = "completed"
             state.openCalls = []
             state.composing = false
             state.thinking = false
+            // The reply landed. `done` is drawn from this instant for `doneHold` seconds.
+            state.finishedAt = clock()
         }
         states[botID] = state
     }
@@ -140,6 +191,12 @@ public struct BotActivityTracker: Sendable {
             // A question cannot be asked by a run that is not happening; a host that reports the
             // request without a status still has a run in flight behind it.
             state.status = "running"
+        }
+        if waiting {
+            // Asking the user is the bot being alive, so the previous turn's held `done` or a stale
+            // error cannot outrank the question.
+            state.blocked = false
+            state.finishedAt = nil
         }
         states[botID] = state
     }
@@ -157,6 +214,8 @@ public struct BotActivityTracker: Sendable {
         state.composing = composing
         if composing {
             state.thinking = false
+            state.blocked = false
+            state.finishedAt = nil
             start(botID: botID, state: &state)
         }
         states[botID] = state
@@ -164,9 +223,14 @@ public struct BotActivityTracker: Sendable {
 
     /// A tool call began. While one is out the bot is no longer typing, but it may still be
     /// thinking: `thinking` is left alone so the face can fall back to it when the tool returns.
+    ///
+    /// It is also the next turn's first work, so it clears a previous failure from the face.
     public mutating func toolStarted(botID: BotID, name: String, callID: String) {
         var state = states[botID] ?? State()
         state.composing = false
+        // A tool call is a turn happening; a previous failure or finished hold is over.
+        state.blocked = false
+        state.finishedAt = nil
         if !callID.isEmpty, let index = state.openCalls.firstIndex(where: { $0.callID == callID }) {
             // A replayed `tool.start` for a call already running: keep the first entry, refresh the
             // name (the host may have resolved one it did not have at the first event).
@@ -224,6 +288,34 @@ public struct BotActivityTracker: Sendable {
         state.composing = false
         state.thinking = false
         state.waitingOnUser = false
+        state.finishedAt = clock()
+        states[botID] = state
+    }
+
+    /// A host error for this bot. The turn is over and the face is `blocked` until the next one
+    /// starts: this outranks a request, a tool still listed as running and a held `done`.
+    ///
+    /// `status` is left alone deliberately. The error names a session, not a run, so there is no
+    /// honest lifecycle to write into it — the flag is what the face reads, and `setStreaming(true)`
+    /// or the next turn's first event clears it.
+    public mutating func hostFailed(botID: BotID) {
+        var state = states[botID] ?? State()
+        state.blocked = true
+        state.finishedAt = nil
+        // The work stopped, so no pose of it may stay on the face.
+        state.openCalls = []
+        state.composing = false
+        state.thinking = false
+        states[botID] = state
+    }
+
+    /// The hold is over: stop drawing `done` and let the face fall back to `idle`.
+    ///
+    /// Called by the app after `doneHold`, so the face actually changes without another host event.
+    /// A turn that began in the meantime cleared `finishedAt` already, and this is a no-op for it.
+    public mutating func expireDone(for botID: BotID) {
+        guard var state = states[botID], state.finishedAt != nil else { return }
+        state.finishedAt = nil
         states[botID] = state
     }
 
@@ -268,9 +360,14 @@ public struct BotActivityTracker: Sendable {
             // Only the *last* request matters: a cancelled one does not mean the rest are answered,
             // so the caller clears the flag when its own request list empties.
             break
-        case .ready, .state, .contextUsage, .sessionUpdated, .reactionUpdated, .error, .unknown:
-            // A transport state is not a bot's state; `error` is the gateway's, not the run's, and
-            // a reaction is somebody's emoji rather than work in flight.
+        case .error:
+            // The host said this bot's session failed: the turn is over and the face is `blocked`
+            // until the next one starts. This is the run's failure, not the transport's — the
+            // caller only hands it here when the error names this bot's own session.
+            hostFailed(botID: botID)
+        case .ready, .state, .contextUsage, .sessionUpdated, .reactionUpdated, .unknown:
+            // A transport state is not a bot's state, and a reaction is somebody's emoji rather
+            // than work in flight.
             break
         }
     }

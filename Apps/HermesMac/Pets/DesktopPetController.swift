@@ -368,6 +368,8 @@ final class DesktopPetController: ObservableObject {
         let model = store.model
         let away = PetWindowPresence.isAway()
         for (botID, pet) in pets {
+            // The word the pet wears is the tracker's answer, the same one the roster's badge reads.
+            pet.model.setActivity(store.activity(for: botID))
             // A balloon already open on this bot is showing its newest exchange: the app's count can
             // still grow behind it (the pet's own ask lands as a message too), and hopping at the
             // answer it is displaying would be the pet telling him what he is reading.

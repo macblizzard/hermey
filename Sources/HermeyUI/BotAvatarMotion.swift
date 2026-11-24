@@ -202,12 +202,12 @@ public enum BotAvatarMotion {
         switch activity {
         case .idle: return 1.8
         case .reading: return 1.6
-        case .writing: return 1.35
         case .thinking: return 1.1
         case .computer: return 2.4
         case .working: return 1.35
         case .waiting: return 1.6
-        case .error: return 0
+        case .blocked: return 0
+        case .done: return 0
         }
     }
 
@@ -258,12 +258,6 @@ public enum BotAvatarMotion {
                 BodyFrame(time: 0.5, pose: BotAvatarPose(translateX: 1 * unit, rotate: 3)),
                 BodyFrame(time: 1, pose: BotAvatarPose(translateX: -1 * unit, rotate: -3)),
             ]
-        case .writing: // rakazo-organic-squash 1.35s
-            return [
-                BodyFrame(time: 0, pose: BotAvatarPose(scaleX: 1.04, scaleY: 0.96)),
-                BodyFrame(time: 0.5, pose: BotAvatarPose(scaleX: 0.96, scaleY: 1.04)),
-                BodyFrame(time: 1, pose: BotAvatarPose(scaleX: 1.04, scaleY: 0.96)),
-            ]
         case .thinking: // rakazo-organic-pulse 1.1s
             return [
                 BodyFrame(time: 0, pose: BotAvatarPose(scaleX: 0.96, scaleY: 0.96)),
@@ -289,7 +283,11 @@ public enum BotAvatarMotion {
                 BodyFrame(time: 0.5, pose: BotAvatarPose(scaleX: 1.07, scaleY: 1.07, brightness: 0.12)),
                 BodyFrame(time: 1, pose: BotAvatarPose(scaleX: 1, scaleY: 1, brightness: 0)),
             ]
-        case .error:
+        case .blocked:
+            // A failure is gone quiet: no tracks, just the half-closed lid the posture below sets.
+            return [BodyFrame(time: 0, pose: .rest)]
+        case .done:
+            // A finished turn rests too. The word says Done; a body still working would contradict it.
             return [BodyFrame(time: 0, pose: .rest)]
         }
     }
@@ -420,8 +418,7 @@ public enum BotAvatarMotion {
         let slow = [4.0, 4.8, 6.0][min(max(tempo, 0), 2)]
         switch activity {
         case .idle: return 24.0
-        case .working, .reading, .waiting, .error: return slow
-        case .writing: return [1.2, 1.5, 2.0][min(max(tempo, 0), 2)]
+        case .working, .reading, .waiting, .blocked, .done: return slow
         case .thinking, .computer: return 6.0
         }
     }
@@ -450,8 +447,6 @@ public enum BotAvatarMotion {
     ]
     static let readingYTrack: [(Double, Double)] = [(0, 0), (0.28, 0), (0.34, 5), (0.58, 5), (0.64, 10), (0.88, 10), (0.96, 0), (1, 0)]
     static let readingLidTrack: [(Double, Double)] = [(0, 0.76), (0.88, 0.76), (0.92, 0.06), (0.94, 0.06), (0.98, 0.76), (1, 0.76)]
-    static let writingYTrack: [(Double, Double)] = [(0, 0), (0.1, 0), (0.18, 3), (0.26, 0), (0.56, 0), (0.64, 6), (0.74, 0), (1, 0)]
-    static let bodyYTrack: [(Double, Double)] = [(0, 0), (0.1, 0), (0.18, 0.9), (0.26, 0), (0.56, 0), (0.64, 1.4), (0.74, 0), (1, 0)]
     static let thinkingXTrack: [(Double, Double)] = [(0, 0), (0.08, 0), (0.24, -9), (0.4, -9), (0.56, -5), (0.65, -5), (0.82, 0), (0.9, 0), (1, 0)]
     static let thinkingYTrack: [(Double, Double)] = [(0, -2), (0.08, -2), (0.24, -8), (0.4, -8), (0.56, -11), (0.65, -11), (0.82, -3), (0.9, -3), (1, -2)]
     static let thinkingLidTrack: [(Double, Double)] = [(0, 1), (0.08, 1), (0.24, 0.8), (0.4, 0.8), (0.56, 0.68), (0.65, 0.68), (0.82, 0.9), (0.9, 0.9), (1, 1)]
@@ -516,22 +511,20 @@ public enum BotAvatarMotion {
         var eyeY = 0.0
         var lid = 1.0
         var blink = 1.0
-        var bodyY = 0.0
         var bodyScale = 1.0
 
         // The resting posture each state starts from, before any track moves it.
         switch activity {
         case .reading: eyeX = -10; eyeY = -5; lid = 0.76
-        case .writing: eyeY = 10; lid = 0.62
         case .thinking: eyeX = -3 * traits.side; eyeY = -4; lid = 0.8
         case .computer: lid = 1.12
         case .waiting: lid = 0.9
-        case .error: lid = 0.68
-        case .idle, .working: break
+        case .blocked: lid = 0.68
+        case .idle, .working, .done: break
         }
 
         // Blinks: scheduled inside a 24 s loop, only in states that are alive and not waiting.
-        if !needsAttention(activity), activity != .error {
+        if !needsAttention(activity), activity != .blocked, activity != .done {
             let elapsed = (time * 1000) - traits.blinkDelay
             let loop = BotAvatarMotionTraits.loopMilliseconds
             var local = elapsed.truncatingRemainder(dividingBy: loop)
@@ -560,9 +553,6 @@ public enum BotAvatarMotion {
             eyeX += sample(readingXTrack, at: p)
             eyeY += sample(readingYTrack, at: p)
             lid = sample(readingLidTrack, at: p)
-        case .writing:
-            eyeY += sample(writingYTrack, at: p)
-            bodyY = sample(bodyYTrack, at: p)
         case .thinking:
             eyeX += sample(thinkingXTrack, at: p) * traits.side
             eyeY += sample(thinkingYTrack, at: p)
@@ -570,12 +560,12 @@ public enum BotAvatarMotion {
         case .computer:
             eyeX = sample(computerXTrack, at: p)
             eyeY = sample(computerYTrack, at: p)
-        case .waiting, .error:
+        case .waiting, .blocked, .done:
             break
         }
 
         return Frame(
-            body: BotAvatarPose(translateY: bodyY * bodyUnits, scaleX: bodyScale, scaleY: bodyScale),
+            body: BotAvatarPose(scaleX: bodyScale, scaleY: bodyScale),
             eyes: BotAvatarEyePose(offsetX: eyeX * eyeUnits,
                                    offsetY: eyeY * eyeUnits,
                                    scaleY: lid * blink)

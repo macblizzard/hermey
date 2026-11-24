@@ -409,6 +409,10 @@ struct BotListScreen: View {
                                 .accessibilityHidden(true)
                         }
 
+                        // The same word the face wears, from the same table (see `BotStateBadge`).
+                        BotStateBadge(activity: model.activity(forBot: bot.id),
+                                      size: (metrics.metaSize * 0.92).rounded())
+
                         Spacer(minLength: 6)
 
                         if let at = model.botPreviewTimes[bot.id] {

@@ -397,7 +397,6 @@ class TheActivityRulesAreTheReferenceOnes(unittest.TestCase):
             ("not-working", body.index("if !isWorking")),
             ("computer", body.index("if computerTools.contains")),
             ("reading", body.index("if readingTools.contains")),
-            ("writing", body.index("if writingTools.contains")),
             ("composing", body.index("if composing")),
             ("thinking", body.index("if thinking")),
         ]
@@ -407,7 +406,8 @@ class TheActivityRulesAreTheReferenceOnes(unittest.TestCase):
 
     def test_the_ring_rule_is_the_reference_data_working_flag(self) -> None:
         activity = read(ACTIVITY)
-        self.assertIn("self != .idle && self != .error", activity)
+        # The reference's rule, plus `done`: a ring on a turn that already landed is a lie.
+        self.assertIn("self != .idle && self != .blocked && self != .done", activity)
 
 
 class TheMotionIsTheReferenceKeyframes(unittest.TestCase):
@@ -416,7 +416,6 @@ class TheMotionIsTheReferenceKeyframes(unittest.TestCase):
         for activity, seconds in (
             (".idle", "1.8"),        # rakazo-organic-float
             (".reading", "1.6"),     # rakazo-organic-sway
-            (".writing", "1.35"),    # rakazo-organic-squash
             (".thinking", "1.1"),    # rakazo-organic-pulse
             (".computer", "2.4"),    # rakazo-organic-turn
             (".working", "1.35"),    # rakazo-organic-ring

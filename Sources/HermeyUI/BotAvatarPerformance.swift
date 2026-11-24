@@ -83,8 +83,8 @@ extension BotAvatarMotion {
     /// `error` rests, as the reference rests it.
     public static func performs(_ activity: BotAvatarActivity) -> Bool {
         switch activity {
-        case .working, .thinking, .reading, .writing, .computer: return true
-        case .idle, .waiting, .error: return false
+        case .working, .thinking, .reading, .computer: return true
+        case .idle, .waiting, .blocked, .done: return false
         }
     }
 

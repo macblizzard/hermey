@@ -27,6 +27,15 @@ final class PetModel: ObservableObject {
     /// pet already makes for an answer. A counter for the same reason `celebrations` is one — two
     /// replies in a row are two hops, not one.
     @Published private(set) var notices = 0
+    /// What this bot is doing, read from the store's tracker: the same answer the roster's badge and
+    /// the face use, never a second derivation. `.idle` draws nothing.
+    @Published private(set) var activity: BotAvatarActivity = .idle
+
+    /// Take the tracker's answer. Called from the controller's model watch, beside the unread count.
+    func setActivity(_ activity: BotAvatarActivity) {
+        guard self.activity != activity else { return }
+        self.activity = activity
+    }
 
     /// The answer landed: hop, unless Reduce Motion says otherwise (checked by the view).
     func celebrate() {
@@ -220,6 +229,17 @@ struct PetView: View {
                 if pet.unread > 0 {
                     PetUnreadBadge(count: pet.unread)
                 }
+            }
+            // The state's word, under the face: `BotStateBadge` is the roster's badge and this is the
+            // same function printing the same word, so a pet can no longer say "Working" while the
+            // row beside it says something else. Idle draws nothing; it is never a hit target.
+            .overlay(alignment: .bottom) {
+                BotStateBadge(activity: pet.activity, size: 8)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.black.opacity(0.55)))
+                    .padding(.bottom, 4)
+                    .allowsHitTesting(false)
             }
             // It floats. The shadow is drawn inside the clear window's motion ring, under the icon's
             // own alpha — and it is *not* hit area: clicks are decided by `PetIconMask` plus the

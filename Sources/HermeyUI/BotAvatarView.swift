@@ -316,7 +316,7 @@ public struct BotAvatarRing: View {
             }
         }
         HStack(spacing: 14) {
-            ForEach([BotAvatarActivity.idle, .reading, .writing, .thinking, .computer, .working, .waiting, .error], id: \.self) { activity in
+            ForEach([BotAvatarActivity.idle, .thinking, .reading, .working, .computer, .waiting, .blocked, .done], id: \.self) { activity in
                 BotAvatarView(identity: "research", activity: activity, size: 40)
             }
         }
