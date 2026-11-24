@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.644",
-          "buildVersion": "644",
-          "date": "2026-11-24T09:32:16Z",
-          "localizedDescription": "### Added\n- **One word on the island.** The Dynamic Island now says **Working** while a bot is busy, **Needs you**\n  when it is blocked on an approval or a question, and **Finished** when the task is done \u2014 readable\n  without expanding it. The elapsed time moved to the expanded view.\n- **The host updates itself, from either app.** When a newer hermeyd is published, the bell lists it with\n  its version and an **Update** button (Settings \u25b8 About on the Mac too). One press downloads it, checks the\n  published checksum, swaps the binary and restarts the service, with the host's own stages in the row.\n- **Rollback is automatic.** The previous binary stays on disk; if the new one does not stay up, two failed\n  starts put it back and the row says so with both versions.\n\n### Fixed\n- The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word\n  the card disagrees with.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.644/Hermey-0.1.644-b644.ipa",
-          "size": 5246115,
+          "version": "0.1.645",
+          "buildVersion": "645",
+          "date": "2026-11-24T10:35:16Z",
+          "localizedDescription": "### Changed\n- **The bot panel's buttons sit evenly in their corners.** The bell, \uff0b, Settings, search and the sidebar\n  toggle were 12 pt in from the sides but only 4 pt from the top and bottom, so a corner button looked twice\n  as far across as it was up. Both chrome rows use one 10 pt margin on every side now, and the rows grew by\n  the difference.\n- **Settings \u25b8 About states the host version on one line with its action.** Version and state together, and\n  `Check now` is a real button on that same line instead of muted text stranded at the far right; the state\n  is toned \u2014 normal when current, accent when an update is available, warning when the host cannot be asked.\n\n### Fixed\n- **An error from another conversation no longer appears in yours.** Host errors were drawn in whichever\n  chat was open, because the event did not say which session it belonged to \u2014 which is how \"No LLM provider\n  configured\" appeared over a healthy conversation. An error is now shown only in the conversation it\n  belongs to; anything else goes to the log.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.645/Hermey-0.1.645-b645.ipa",
+          "size": 5248426,
           "minOSVersion": "17.0",
-          "sha256": "a74e7777481799d3aaf5510271f58ef34a1bbf4acc2eec65482b1b67fd03c059"
+          "sha256": "d7cbf7694b54f2e121bb540a448d1b1b21c4036f98c3ad15804ad0b78ebd5f59"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.644 (644)",
-      "identifier": "hermes-0.1.644-644",
-      "caption": "### Added\n- **One word on the island.** The Dynamic Island now says **Working** while a bot is busy, **Needs you**\n  when it is blocked on an approval or a question, and **Finished** when the task is done \u2014 readable\n  without expanding it. The elapsed time moved to the expanded view.\n- **The host updates itself, from either app.** When a newer hermeyd is published, the bell lists it with\n  its version and an **Update** button (Settings \u25b8 About on the Mac too). One press downloads it, checks the\n  published checksum, swaps the binary and restarts the service, with the host's own stages in the row.\n- **Rollback is automatic.** The previous binary stays on disk; if the new one does not stay up, two failed\n  starts put it back and the row says so with both versions.\n\n### Fixed\n- The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word\n  the card disagrees with.",
-      "date": "2026-11-24T09:32:16Z",
+      "title": "Hermes 0.1.645 (645)",
+      "identifier": "hermes-0.1.645-645",
+      "caption": "### Changed\n- **The bot panel's buttons sit evenly in their corners.** The bell, \uff0b, Settings, search and the sidebar\n  toggle were 12 pt in from the sides but only 4 pt from the top and bottom, so a corner button looked twice\n  as far across as it was up. Both chrome rows use one 10 pt margin on every side now, and the rows grew by\n  the difference.\n- **Settings \u25b8 About states the host version on one line with its action.** Version and state together, and\n  `Check now` is a real button on that same line instead of muted text stranded at the far right; the state\n  is toned \u2014 normal when current, accent when an update is available, warning when the host cannot be asked.\n\n### Fixed\n- **An error from another conversation no longer appears in yours.** Host errors were drawn in whichever\n  chat was open, because the event did not say which session it belonged to \u2014 which is how \"No LLM provider\n  configured\" appeared over a healthy conversation. An error is now shown only in the conversation it\n  belongs to; anything else goes to the log.",
+      "date": "2026-11-24T10:35:16Z",
       "tintColor": "#9A9AA0"
     }
   ],
