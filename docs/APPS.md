@@ -72,6 +72,18 @@ when the Mac wakes, which is a different thing.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
 
+## The line above the composer
+
+Both apps print one muted line over the message box, outside the field: the bot's `provider/model` and
+how full its context is, as `540k/1M Tokens`.
+
+- **The count arrives with a turn.** Usage comes back when a turn completes, so before the first reply
+  the line shows the model alone rather than a made-up zero.
+- **It never pushes the box around.** Typing cannot re-lay it out, and on a narrow phone it truncates
+  to the model name instead of wrapping.
+- **It replaces two chips.** The provider and the context count used to sit in separate chips under the
+  pill; there is now one rule for the phone and the Mac.
+
 ## The bell, and what is waiting
 
 The top row of the bot list holds the bell and the ＋. The bell wears a dot, not a number, when any bot
@@ -135,6 +147,10 @@ draft, drawn in the state the bot is actually in.
   Glass draws what the size can carry — a row in the bot list gets the ramp, the rim and the contact
   band, the pet adds the streak and a glow kept inside its window, the editor's preview adds the eye's
   catchlight. The eight states tint the rim, and **Blocked** calms the colour instead of turning it red.
+- **It moves like the picture faces.** A drawn face uses the same idle motion and the same pose for
+  the state it is in, so choosing one does not make a bot go still.
+- **One place to pick a face.** This tab is the only chooser: the old *Choose bot icon* control is
+  gone from the Mac's About tab and the phone's identity section.
 - **Save** stores the face. **Reset** deletes it, and the bot goes back to the picture or the
   shape-and-palette face it wore before.
 
@@ -300,6 +316,8 @@ Dock tile or the app icon; zero clears it.
 - Settings → **Notifications** (macOS) or **Settings → Replies** (iOS) has one switch and a
   per-bot **quiet** list. A quieted bot still counts on its row and in the badge; it just never
   buzzes. The switch is shared by the two apps, the system permission is not.
+- **The banner wears the face you chose.** A notification's icon is the bot's own avatar rather than
+  the old shape picture, drawn at whatever size the system asks for.
 - **macOS** delivers a banner as soon as the host reports the reply, even while the app is in the
   background, and clicking it opens that conversation.
 - **iOS** delivers a banner while the app is running. Once the phone has put the app away there is
