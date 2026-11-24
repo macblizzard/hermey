@@ -1366,3 +1366,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list
   used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you
   saved — at rest, so it costs nothing per notification — and a bot without one keeps exactly the picture it had.
+
+## [0.1.651] — 2026-11-24
+
+### Fixed
+- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked
+  wrong around a square or cat-shaped avatar — a dark ring with gaps. It now only draws that circle for the
+  old picture faces, and lets a drawn avatar be separated by its own outline.
+- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and
+  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.
+
+### Added
+- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's
+  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never
+  covers or reflows what you type, and drops to the model alone on a narrow window.
