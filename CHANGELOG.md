@@ -1428,3 +1428,9 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Removed
 - The old Hermes-to-Rakazo parity tasklist (`docs/LOCAL_COMPUTER_PARITY.md`) and its test, which outlived the
   thing they tracked.
+
+## [0.1.656] — 2026-11-24
+
+### Fixed
+- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own
+  inset was missing from its leading padding.
