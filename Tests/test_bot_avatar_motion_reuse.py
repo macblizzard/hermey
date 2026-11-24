@@ -85,9 +85,11 @@ class TheDrawnBranchReusesOneMotionLanguage(unittest.TestCase):
                          "the drawn branch no longer asks the shape face's motion for its frame")
         for argument in ("activity: activity",
                          "traits: traits",
-                         "at: context.date.timeIntervalSinceReferenceDate",
+                         "at: time",
                          "side: Double(size)"):
             self.assertIn(argument, self.drawn, f"the drawn frame is missing {argument!r}")
+        # `time` is the timeline's own date, hoisted so the wake frame can share it.
+        self.assertIn("let time = context.date.timeIntervalSinceReferenceDate", self.drawn)
 
     def test_both_branches_call_the_same_function(self) -> None:
         # Two call sites, one motion language: the shape body and the drawn body, nothing else.
@@ -187,7 +189,7 @@ class TheEyesAreHandedOverNotSecondClocked(unittest.TestCase):
         self.assertEqual([path.name for path in sites], ["BotAvatarView.swift"],
                          "a surface builds its own eye pose instead of the shared frame's")
         drawn = swift_declaration(read(BOT_AVATAR_VIEW), "private func drawnBody(")
-        self.assertIn("eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil", drawn,
+        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil", drawn,
                       "the override is applied even when the face is holding still")
 
     def test_the_rest_pose_channels_of_the_drawn_face_are_untouched(self) -> None:
@@ -236,18 +238,18 @@ class EveryCalmCaseHoldsTheRestPose(unittest.TestCase):
                      "animates: animates && appAllowsMotion",
                      "&& scenePhase == .active",
                      "minimumSize: animatingFrom",
-                     "paused: !moves"):
+                     "paused: !moves && !awake"):
             self.assertIn(gate, self.drawn, f"the drawn branch lost the {gate!r} gate")
 
     def test_no_motion_means_the_rest_frame(self) -> None:
-        self.assertIn(": .rest", self.drawn)
-        self.assertIn("eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil",
+        self.assertIn("frame = .rest", self.drawn)
+        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil",
                       self.drawn)
 
     def test_the_app_switch_reaches_the_drawn_breath_too(self) -> None:
         # The drawn branch used to pass `animates: animates`, so Settings → Appearance could not
         # stop a generated face at all.
-        self.assertIn("animates: animates && appAllowsMotion,", self.drawn)
+        self.assertIn("animates: (animates || awake) && appAllowsMotion,", self.drawn)
 
     def test_the_floor_and_its_callers_are_unchanged(self) -> None:
         self.assertIn("animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize",

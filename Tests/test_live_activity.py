@@ -627,9 +627,10 @@ class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
 
     def test_the_working_card_draws_the_step_line(self) -> None:
         card = piece("private struct HermeyTurnLockScreen: View")
-        self.assertIn(
-            "HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
-            card)
+        self.assertRegex(
+            card,
+            r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+            r"\s+tone: \.card")
         # Unconditionally: nothing in the card's body branches on the phase, so the sentence saying
         # what the bot is doing is drawn from the first second of the turn, not only at `Done`.
         self.assertNotIn("phase == .done", card)
@@ -773,7 +774,9 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         # The complaint was the lock screen, so the layout that failed is the one pinned: the card
         # draws the named status line, and the line is the state's step when there is one.
         card = piece("private struct HermeyTurnLockScreen: View")
-        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)", card)
+        self.assertRegex(card,
+                         r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+                         r"\s+tone: \.card")
         self.assertIn("Text(line)", piece("private struct HermeyTurnStatusLine: View"))
         status = piece("private struct HermeyTurnStatusLine: View")
         self.assertIn("let step = state.step", status)
@@ -959,8 +962,9 @@ class TheIslandSaysOneWord(unittest.TestCase):
         # Drawn for every phase: nothing in the card branches on it.
         card = piece("private struct HermeyTurnLockScreen: View")
         self.assertNotIn("phase ==", card)
-        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
-                      card)
+        self.assertRegex(card,
+                         r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+                         r"\s+tone: \.card")
 
     def test_the_new_phase_travels_in_both_directions(self) -> None:
         # Encoding is the synthesised one, so the raw value *is* the wire form: `needsYou` has to be

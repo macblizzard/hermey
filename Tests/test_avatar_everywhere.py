@@ -138,7 +138,10 @@ class TheFaceIsResolvedOnce(unittest.TestCase):
         view = read(AVATAR)
         self.assertIn("if let face = self.face {", view)
         self.assertIn("OpenBotAvatarView(definition: face.definition,", view)
-        self.assertIn("} else {\n            shapeBody\n        }", view)
+        # The one branch: a bot with a stored face draws it, a bot without keeps its shape face.
+        # (The pair sits inside a `Group` since 2026-11-24 so the whole face can carry the hover
+        # wake-up modifier without changing either branch.)
+        self.assertIn("} else {\n                shapeBody\n            }", view)
         # The stored colour travels with the stored body: a call site's stale `bots.color` must not
         # repaint a face that was saved after it.
         self.assertIn("return BotAvatarDocument(definition: definition, color: avatarColor)", view)
