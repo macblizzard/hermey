@@ -78,6 +78,9 @@ final class LiveActivityCoordinator: ObservableObject {
     /// it. The model publishes tools and tokens as they arrive; this is what stops a token arriving
     /// every 40 ms from becoming an activity update every 40 ms.
     private var lastStep: String = ""
+    /// The phase the card is showing, so a turn that stops to ask something is an update even when
+    /// the step line is unchanged.
+    private var lastPhase: HermeyTurnAttributes.ContentState.Phase = .working
 
     /// Reasons already written to the log, so a per-turn path cannot flood a 400-line ring.
     private var logged: Set<String> = []
@@ -141,6 +144,18 @@ final class LiveActivityCoordinator: ObservableObject {
                                   model.$reasoningText,
                                   model.$botActivityTracker)
             .sink { [weak self] _, _, _, _ in
+                guard let self else { return }
+                self.progress()
+            }
+            .store(in: &cancellables)
+
+        // Fourth, and separately: a pending request is the one thing that changes the *phase* rather
+        // than the step, and Combine's widest arity is already spent above. Count only, so a changed
+        // request body is not a card write.
+        model.$pendingRequests
+            .map(\.count)
+            .removeDuplicates()
+            .sink { [weak self] _ in
                 guard let self else { return }
                 self.progress()
             }
@@ -220,7 +235,8 @@ final class LiveActivityCoordinator: ObservableObject {
         // Read once, before the request: the card is on screen from the moment `request` returns,
         // and the first frame iOS draws is this state. A start with no step is a card with no words
         // until the next publish, which for a slow first token is the whole turn.
-        let startStep = normalisedStep()
+        let startPhase = currentPhase()
+        let startStep = normalisedStep(for: startPhase)
 
         // 16.2 rather than 16.1 on purpose: this coordinator uses the content-carrying
         // `request`/`update`, which arrived in 16.2 and is the form 16.1's API was deprecated in
@@ -236,7 +252,7 @@ final class LiveActivityCoordinator: ObservableObject {
             return
         }
 
-        let state = HermeyTurnAttributes.ContentState(phase: .working,
+        let state = HermeyTurnAttributes.ContentState(phase: startPhase,
                                                       startedAt: now,
                                                       step: startStep)
         let content = ActivityContent(state: state,
@@ -245,6 +261,7 @@ final class LiveActivityCoordinator: ObservableObject {
         startedAt = now
         replyTail = ""
         lastStep = startStep
+        lastPhase = startPhase
 
         if let current = activity,
            current.activityState == .active || current.activityState == .stale {
@@ -315,7 +332,7 @@ final class LiveActivityCoordinator: ObservableObject {
 
     /// The word a finished turn ends on. One word, because the reply's first line is the sentence
     /// underneath it — and because "Replied" claimed a reply that a cancelled turn never had.
-    static let doneWords = "Done"
+    static var doneWords: String { HermeyTurnAttributes.ContentState.word(.done) }
 
     // MARK: What the bot is doing
 
@@ -330,6 +347,11 @@ final class LiveActivityCoordinator: ObservableObject {
     /// tool's own name is what the transcript will show afterwards.
     private func stepLine() -> String {
         guard let model else { return "" }
+        // The stop outranks the pose: a bot blocked on an approval is not "running read_file", it is
+        // waiting for him.
+        if let request = model.pendingRequests.first {
+            return request.method == "approval" ? "Approval waiting" : "Answer waiting"
+        }
         if let tool = model.liveTools.last(where: { $0.isRunning }) {
             let name = tool.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             return "Running \(name.isEmpty ? "a tool" : name)"
@@ -345,13 +367,23 @@ final class LiveActivityCoordinator: ObservableObject {
         case .idle, .working: break
         }
         if !model.streamingText.isEmpty { return "Streaming the reply" }
-        return "Working on your message"
+        return "On your message"
     }
 
     /// The step as the card will store it, so a line that clips to the same 48 characters is not
     /// counted as progress and does not become an update.
-    private func normalisedStep() -> String {
-        HermeyTurnAttributes.ContentState.stepLine(stepLine(), phase: .working)
+    private func normalisedStep(for phase: HermeyTurnAttributes.ContentState.Phase) -> String {
+        HermeyTurnAttributes.ContentState.stepLine(stepLine(), phase: phase)
+    }
+
+    /// Which phase this turn is in.
+    ///
+    /// `needsYou` is not a guess at a trailing question mark: it is the model's own pending requests —
+    /// an approval or a question the bot is blocked on. A turn that is merely slow keeps saying it is
+    /// working.
+    private func currentPhase() -> HermeyTurnAttributes.ContentState.Phase {
+        guard let model else { return .working }
+        return model.hasPendingRequests ? .needsYou : .working
     }
 
     /// Push the current step, if it changed.
@@ -363,11 +395,13 @@ final class LiveActivityCoordinator: ObservableObject {
     /// per token: `streamingText` publishes about every 40 ms and the step changes twice.
     private func progress() {
         guard let activity, let startedAt else { return }
-        let step = normalisedStep()
-        guard step != lastStep else { return }
+        let phase = currentPhase()
+        let step = normalisedStep(for: phase)
+        guard step != lastStep || phase != lastPhase else { return }
         lastStep = step
+        lastPhase = phase
         let now = Date()
-        let state = HermeyTurnAttributes.ContentState(phase: .working,
+        let state = HermeyTurnAttributes.ContentState(phase: phase,
                                                       startedAt: startedAt,
                                                       step: step)
         let content = ActivityContent(state: state,
