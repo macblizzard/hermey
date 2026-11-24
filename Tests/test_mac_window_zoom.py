@@ -30,7 +30,7 @@ class TheSidebarTopZooms(unittest.TestCase):
 
     def testTheWholeHeaderRowIsCoveredIncludingGapsBetweenButtons(self) -> None:
         self.assertIn(".background(alignment: .top)", SIDEBAR)
-        self.assertIn("WorkspaceShell.titlebarStrip + 34", SIDEBAR)
+        self.assertIn("WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2", SIDEBAR)
 
     def testButtonsStayAboveTheDragTarget(self) -> None:
         # The drag area is the row's background and the leading filler; the controls are its siblings

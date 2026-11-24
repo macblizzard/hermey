@@ -79,11 +79,12 @@ class TheFaceIsAShippedBody(unittest.TestCase):
 
 class TheFirstRowIsOnTheLightsLine(unittest.TestCase):
     def test_the_strip_and_the_row_add_up_to_the_pill_centre(self) -> None:
-        # 4 pt strip + a 34 pt row = a 21 pt centre; the pill is 40 pt in a 42 pt box = 21 pt.
+        # 4 pt strip + the row; the row's 30 pt icon is centred in it, so its centre is
+        # titlebarStrip + barInset + 15 — the same line the chat header's pill sits on.
         strip = re.search(r"static let titlebarStrip: CGFloat = (\d+)", ROOTVIEW)
         self.assertIsNotNone(strip)
         self.assertEqual(int(strip.group(1)), 4)
-        self.assertIn(".frame(height: WorkspaceShell.titlebarStrip + 34)", SIDEBAR)
+        self.assertIn(".frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)", SIDEBAR)
         self.assertIn(".frame(width: width, height: Geometry.chatHeaderPill + 2)", HEADER)
 
     def test_the_drag_band_is_its_own_and_the_window_moves_by_its_background(self) -> None:
