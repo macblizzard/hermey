@@ -130,6 +130,11 @@ draft, drawn in the state the bot is actually in.
   it had.
 - **Nudge it by hand:** the colour, and the eyes' position, spacing and scale. Those edit the same
   definition the preview draws, so what you see is what gets saved.
+- **Solid or glass.** The body is either the flat colour it has always been or a lit glass: a
+  three-stop ramp, one specular streak, a rim that catches the light and a contact shadow under it.
+  Glass draws what the size can carry — a row in the bot list gets the ramp, the rim and the contact
+  band, the pet adds the streak and a glow kept inside its window, the editor's preview adds the eye's
+  catchlight. The eight states tint the rim, and **Blocked** calms the colour instead of turning it red.
 - **Save** stores the face. **Reset** deletes it, and the bot goes back to the picture or the
   shape-and-palette face it wore before.
 
