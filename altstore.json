@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.646",
-          "buildVersion": "646",
-          "date": "2026-11-24T11:12:58Z",
-          "localizedDescription": "### Fixed\n- **A reply now appears in the conversation it belongs to, without switching away.** The desktop was showing\n  the previous message and the \"musing\u2026\" indicator while the sidebar already had the new one: a reply that\n  arrives while the pane is open could be filed against the wrong session and dropped, and the indicator only\n  ever cleared on one specific event. Both are fixed \u2014 the pane settles the turn from the host's own answer,\n  and it follows the bot's conversation if the host moved it.\n- **Group chats show their heading on the desktop**, under Group chats, the same way the bot categories do \u2014\n  and fold with them.\n\n### Changed\n- **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a\n  bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white\n  text, a faint white hairline and the same curved tail and placement.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.646/Hermey-0.1.646-b646.ipa",
-          "size": 5251359,
+          "version": "0.1.647",
+          "buildVersion": "647",
+          "date": "2026-11-24T15:24:39Z",
+          "localizedDescription": "### Added\n- **Excel, Word and PDF files, both directions.** Attach a `.xlsx`, `.docx` or `.pdf` in either app and\n  the bot gets its text \u2014 spreadsheets sheet by sheet, Word documents with their tables, PDFs page by page \u2014\n  with sensible limits and a note when a file was too big to include whole. They open from the transcript\n  too: Quick Look on the Mac, the share sheet on the phone. And a bot can write a file and link it back:\n  the reply carries a row you can open, downloaded from the host on press.\n- **Pet questions run in their own session.** A desktop-pet question no longer rides the bot's whole\n  conversation: it opens a dedicated, capped session per bot (60 rows, rotating) with the profile's fast\n  model pinned. Same greeting, roughly 8\u00d7 less input sent to the model, and a `/model` switch on the bot's\n  chat can no longer drag the pet along. The pet's exchange lives in that session, titled *Desktop Pet*.\n\n### Fixed\n- **The bubble shows only what you typed** when a file was attached \u2014 the text the host extracts for the\n  bot is no longer drawn into your message after a reload.\n- **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.647/Hermey-0.1.647-b647.ipa",
+          "size": 5289771,
           "minOSVersion": "17.0",
-          "sha256": "b2d5b4cebc3adeec352025f732cec4ec0e55f16bf35b069e65d729cc48a6e76a"
+          "sha256": "92ac77383e61e36acf592d0c74459538a92c41e77b45a9e66cb63b3707198e5c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.646 (646)",
-      "identifier": "hermes-0.1.646-646",
-      "caption": "### Fixed\n- **A reply now appears in the conversation it belongs to, without switching away.** The desktop was showing\n  the previous message and the \"musing\u2026\" indicator while the sidebar already had the new one: a reply that\n  arrives while the pane is open could be filed against the wrong session and dropped, and the indicator only\n  ever cleared on one specific event. Both are fixed \u2014 the pane settles the turn from the host's own answer,\n  and it follows the bot's conversation if the host moved it.\n- **Group chats show their heading on the desktop**, under Group chats, the same way the bot categories do \u2014\n  and fold with them.\n\n### Changed\n- **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a\n  bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white\n  text, a faint white hairline and the same curved tail and placement.",
-      "date": "2026-11-24T11:12:58Z",
+      "title": "Hermes 0.1.647 (647)",
+      "identifier": "hermes-0.1.647-647",
+      "caption": "### Added\n- **Excel, Word and PDF files, both directions.** Attach a `.xlsx`, `.docx` or `.pdf` in either app and\n  the bot gets its text \u2014 spreadsheets sheet by sheet, Word documents with their tables, PDFs page by page \u2014\n  with sensible limits and a note when a file was too big to include whole. They open from the transcript\n  too: Quick Look on the Mac, the share sheet on the phone. And a bot can write a file and link it back:\n  the reply carries a row you can open, downloaded from the host on press.\n- **Pet questions run in their own session.** A desktop-pet question no longer rides the bot's whole\n  conversation: it opens a dedicated, capped session per bot (60 rows, rotating) with the profile's fast\n  model pinned. Same greeting, roughly 8\u00d7 less input sent to the model, and a `/model` switch on the bot's\n  chat can no longer drag the pet along. The pet's exchange lives in that session, titled *Desktop Pet*.\n\n### Fixed\n- **The bubble shows only what you typed** when a file was attached \u2014 the text the host extracts for the\n  bot is no longer drawn into your message after a reload.\n- **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.",
+      "date": "2026-11-24T15:24:39Z",
       "tintColor": "#9A9AA0"
     }
   ],
