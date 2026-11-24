@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.647",
-          "buildVersion": "647",
-          "date": "2026-11-24T15:24:39Z",
-          "localizedDescription": "### Added\n- **Excel, Word and PDF files, both directions.** Attach a `.xlsx`, `.docx` or `.pdf` in either app and\n  the bot gets its text \u2014 spreadsheets sheet by sheet, Word documents with their tables, PDFs page by page \u2014\n  with sensible limits and a note when a file was too big to include whole. They open from the transcript\n  too: Quick Look on the Mac, the share sheet on the phone. And a bot can write a file and link it back:\n  the reply carries a row you can open, downloaded from the host on press.\n- **Pet questions run in their own session.** A desktop-pet question no longer rides the bot's whole\n  conversation: it opens a dedicated, capped session per bot (60 rows, rotating) with the profile's fast\n  model pinned. Same greeting, roughly 8\u00d7 less input sent to the model, and a `/model` switch on the bot's\n  chat can no longer drag the pet along. The pet's exchange lives in that session, titled *Desktop Pet*.\n\n### Fixed\n- **The bubble shows only what you typed** when a file was attached \u2014 the text the host extracts for the\n  bot is no longer drawn into your message after a reload.\n- **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.647/Hermey-0.1.647-b647.ipa",
-          "size": 5289771,
+          "version": "0.1.648",
+          "buildVersion": "648",
+          "date": "2026-11-24T18:33:45Z",
+          "localizedDescription": "### Added\n- **A bot's own avatar.** Give any bot a generated face and it draws itself everywhere \u2014 the bot list, the\n  chat header, and on your desktop as its pet. Bot settings has a new **Avatar** tab on both the Mac and the\n  phone: pick one of six presets, paste a definition from the open-bot-avatar editor, or nudge the eyes and\n  colour with a live preview. The shape is a small JSON definition (one outline plus where the eyes sit), so\n  an avatar is portable and tiny. A bot without one keeps exactly the picture it had.\n- **Eight bot states, one vocabulary.** idle, thinking, reading, working, computer, waiting, blocked and\n  done. A finished turn now reads **Done** for a few seconds instead of vanishing, and a failed one reads\n  **Blocked**. The same words drive the sidebar chip, the pet's badge and the Live Activity, so a face, a\n  badge and your lock screen can no longer disagree.\n\n### Changed\n- `hermeyd` **0.6.0**: the bot icon document accepts a `definition` and `color` per bot, and refuses an\n  invalid definition with the reason (so the editor can show it instead of silently saving).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.648/Hermey-0.1.648-b648.ipa",
+          "size": 5415507,
           "minOSVersion": "17.0",
-          "sha256": "92ac77383e61e36acf592d0c74459538a92c41e77b45a9e66cb63b3707198e5c"
+          "sha256": "3120aa6247f13ca58b4bd857cd65dd2c2d520f6defff54e863f27818f8fd7439"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.647 (647)",
-      "identifier": "hermes-0.1.647-647",
-      "caption": "### Added\n- **Excel, Word and PDF files, both directions.** Attach a `.xlsx`, `.docx` or `.pdf` in either app and\n  the bot gets its text \u2014 spreadsheets sheet by sheet, Word documents with their tables, PDFs page by page \u2014\n  with sensible limits and a note when a file was too big to include whole. They open from the transcript\n  too: Quick Look on the Mac, the share sheet on the phone. And a bot can write a file and link it back:\n  the reply carries a row you can open, downloaded from the host on press.\n- **Pet questions run in their own session.** A desktop-pet question no longer rides the bot's whole\n  conversation: it opens a dedicated, capped session per bot (60 rows, rotating) with the profile's fast\n  model pinned. Same greeting, roughly 8\u00d7 less input sent to the model, and a `/model` switch on the bot's\n  chat can no longer drag the pet along. The pet's exchange lives in that session, titled *Desktop Pet*.\n\n### Fixed\n- **The bubble shows only what you typed** when a file was attached \u2014 the text the host extracts for the\n  bot is no longer drawn into your message after a reload.\n- **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.",
-      "date": "2026-11-24T15:24:39Z",
+      "title": "Hermes 0.1.648 (648)",
+      "identifier": "hermes-0.1.648-648",
+      "caption": "### Added\n- **A bot's own avatar.** Give any bot a generated face and it draws itself everywhere \u2014 the bot list, the\n  chat header, and on your desktop as its pet. Bot settings has a new **Avatar** tab on both the Mac and the\n  phone: pick one of six presets, paste a definition from the open-bot-avatar editor, or nudge the eyes and\n  colour with a live preview. The shape is a small JSON definition (one outline plus where the eyes sit), so\n  an avatar is portable and tiny. A bot without one keeps exactly the picture it had.\n- **Eight bot states, one vocabulary.** idle, thinking, reading, working, computer, waiting, blocked and\n  done. A finished turn now reads **Done** for a few seconds instead of vanishing, and a failed one reads\n  **Blocked**. The same words drive the sidebar chip, the pet's badge and the Live Activity, so a face, a\n  badge and your lock screen can no longer disagree.\n\n### Changed\n- `hermeyd` **0.6.0**: the bot icon document accepts a `definition` and `color` per bot, and refuses an\n  invalid definition with the reason (so the editor can show it instead of silently saving).",
+      "date": "2026-11-24T18:33:45Z",
       "tintColor": "#9A9AA0"
     }
   ],
