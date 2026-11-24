@@ -1246,3 +1246,19 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   chat was open, because the event did not say which session it belonged to — which is how "No LLM provider
   configured" appeared over a healthy conversation. An error is now shown only in the conversation it
   belongs to; anything else goes to the log.
+
+## [0.1.646] — 2026-11-24
+
+### Fixed
+- **A reply now appears in the conversation it belongs to, without switching away.** The desktop was showing
+  the previous message and the "musing…" indicator while the sidebar already had the new one: a reply that
+  arrives while the pane is open could be filed against the wrong session and dropped, and the indicator only
+  ever cleared on one specific event. Both are fixed — the pane settles the turn from the host's own answer,
+  and it follows the bot's conversation if the host moved it.
+- **Group chats show their heading on the desktop**, under Group chats, the same way the bot categories do —
+  and fold with them.
+
+### Changed
+- **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a
+  bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white
+  text, a faint white hairline and the same curved tail and placement.
