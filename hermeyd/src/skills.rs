@@ -97,6 +97,13 @@ pub const BUNDLED_SKILLS: &[Skill] = &[
         name: "agent-cards",
         template: include_str!("../assets/agent-skills/agent-cards/SKILL.md"),
     },
+    // Documents are the one thing a bot cannot read for itself on every host (no PDF library, no
+    // spreadsheet parser), so the host reads them and this skill teaches the two halves: how the text
+    // arrives, and how a file the bot writes gets back to the owner's app.
+    Skill {
+        name: "office-files",
+        template: include_str!("../assets/agent-skills/office-files/SKILL.md"),
+    },
 ];
 
 /// Every script the bundled skills name, byte for byte as the bridge ships it.

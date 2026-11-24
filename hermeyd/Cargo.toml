@@ -1,6 +1,6 @@
 [package]
 name = "hermeyd"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "Hermey host service: pairing, devices, 30s tickets, WS relay front door"
 license = "MIT"
@@ -41,6 +41,9 @@ libc = "0.2"
 # the module matrix is used, and it is drawn here so the quiet zone and the half-block polarity are
 # ours to get right. Pure Rust, no C, and with no features it has no dependencies at all.
 qrcode = { version = "0.14", default-features = false }
+lopdf = { version = "0.47", default-features = false }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+quick-xml = "0.42"
 
 [dev-dependencies]
 # Decodes the QR the tests render, so "scannable" is asserted rather than assumed. Pure Rust (a port

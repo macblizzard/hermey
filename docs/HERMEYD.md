@@ -297,6 +297,234 @@ Design notes: raw body rather than multipart (one code path, nothing to mis-pars
 is enforced by the framework so an oversized upload is refused before it is buffered; a cross-device
 read answers 404 rather than 403 so ids are not an existence oracle.
 
+## Office documents — `POST /v1/office/extract` (shipped in 0.4.1)
+
+A PDF, a Word document or a spreadsheet is neither something a chat bubble can draw nor something
+every bot can read (no PDF library on a bare host, no spreadsheet parser in a model). If each reader
+decided for itself what `budget.xlsx` says, the phone and the bot would disagree about the same file.
+So **the host reads it once** and hands back text: no OCR, no formula evaluation, no Word rendering —
+what the file already carries, bounded and labelled.
+
+```text
+POST /v1/office/extract                        bearer, or loopback with no credential
+  x-hermey-filename: budget.xlsx
+  <raw bytes, ≤ 8 MiB>
+
+  -> 200 {"name":"budget.xlsx","kind":"xlsx",
+          "mime":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "chars":842,"truncated":false,"notes":[],
+          "text":"Region | Units\nNorth | 42\n…",
+          "block":"--- attachment: budget.xlsx (sheet: Q4, 3 rows, 2 columns) ---\nRegion | Units\n…"}
+  -> 400 {"detail":"empty body"}
+  -> 413 {"detail":"document larger than 8 MiB"}     (the router refuses before buffering)
+  -> 422 {"detail":"budget.xlsx is named as an Excel workbook (.xlsx) but its contents are a PDF"}
+  -> 404 {"detail":"not found"}                      no ticket and not loopback
+```
+
+`block` is the thing to paste into a prompt — an app does not format anything itself, which is the
+whole reason this is one route and not three parsers. `text` is the same body without the headers (a
+preview), `notes` says what was cut and why, and `truncated` is `notes.is_empty() == false`.
+
+The body and the filename header are the same shape `POST /v1/attachments` already takes: raw bytes,
+one code path, `curl --data-binary @budget.xlsx` as the whole client.
+
+### What each type becomes
+
+| kind | read as | block label |
+|---|---|---|
+| PDF | the text layer, page by page (`lopdf`), `[page N]` markers | `pdf, 12 pages` / `pdf, pages 1-50 of 120` |
+| DOCX | `word/document.xml`: paragraphs in order, headings as `#`…`######`, tables flattened row by row (`| a | b |`) | `docx, 34 paragraphs, 2 tables, 118 rows` |
+| XLSX | every sheet's **used range**, one block per sheet, cells joined with ` | ` | `sheet: Q4, 812 rows, 6 columns` |
+| CSV | quote-aware fields, same pipe joining | `csv, 500 rows` |
+| TXT/MD/LOG | the lines as they are | `text, 500 lines` |
+
+Cells that carry a date **number format** are rendered as dates (`2026-11-24`, `2026-11-24 14:05`),
+not as the serial number the file actually stores; shared strings, inline strings, booleans and error
+values all come through. A literal `|` inside a cell becomes `/`, because a pipe is the separator.
+
+### Bounds, and how they are reported
+
+| bound | value |
+|---|---|
+| body / per attachment | 8 MiB (`attachments::MAX_ATTACHMENT_BYTES`, the relay's own ceiling) |
+| per document, text | 24 000 characters |
+| per message, all attachments | 48 000 characters |
+| PDF pages | 50 |
+| DOCX paragraphs / table rows | 2 000 / 2 000 |
+| XLSX sheets / rows per sheet / columns per row | 12 / 500 / 40 |
+| CSV/TXT rows (and bytes read) | 1 000 (2 MiB) |
+
+A bound that bites is written **into the text where a reader will meet it** — `[... 312 more rows not
+shown]`, `[page 51]`, `[... truncated at 24000 characters]` — and named again in `notes`. Truncation is
+therefore never silent, and a bot that needs the rest can ask for the missing part instead of
+re-reading the file. Every truncation is also written to the host's own log
+(`office: budget.xlsx was truncated: stopped after 24000 characters (sheet Q4)`), so a cut that
+happened in a reply nobody kept is still traceable. A scanned PDF has no text layer; its block says
+so instead of pretending to be empty.
+
+### Trust is decided by the bytes, not the name
+
+The name and the content must agree, and the content wins:
+
+- a PDF starts `%PDF-` (leading whitespace or a BOM tolerated);
+- a DOCX is a zip containing `word/document.xml`;
+- an XLSX is a zip containing `xl/workbook.xml`;
+- CSV/TXT must be UTF-8 with no NUL bytes.
+
+A `.docx` that is really a PDF is refused with both facts in the message. A zip that is neither
+(a `.zip`, an `.epub`) is refused as a zip. `.doc`, `.xls`, `.pptx` and everything else are refused
+by name — they are formats this host does not read, and pretending otherwise would hand a bot a
+filename where the owner expected a summary.
+
+## The send path: `file.attach`, sniffed (shipped in 0.4.1)
+
+The apps did not change how they send a file: a picked document still travels the relay's
+`file.attach` with `data:application/octet-stream;base64,` and the same **8 MiB** ceiling as before.
+What is new is that the host reads the bytes of the three types the pickers offer *before* the frame
+is forwarded, so a mislabelled file never reaches the engine:
+
+```text
+file.attach {name: "budget.xlsx", data_url: "data:application/octet-stream;base64,…"}
+  -> forwarded unchanged                          the bytes really are an .xlsx
+  -> -32602 {"message":"budget.xlsx is named as an Excel workbook (.xlsx) but its contents are a PDF"}
+```
+
+- **Only the sniff echoes its reason.** Every other refusal keeps the bridge's fixed
+  `-32602 invalid attachment`: the Python checks never said why, and the app already handles that
+  shape. The sniff is new, and `invalid attachment` would tell the person who just picked a file
+  nothing — so that one message is carried to the app verbatim (it is written for a human, and it
+  names the file).
+- **`image.attach_bytes` is untouched** — no sniff, the same decoder, byte-identical behaviour — and
+  any extension outside `pdf`/`docx`/`xlsx` travels exactly as it always has (the Python bridge had
+  no allow-list and this does not invent one for the rest).
+- The check runs again wherever those bytes are read (`POST /v1/office/extract`, a message's
+  `attachments`, the prompt below), so a file swapped on disk after the send is not read either: its
+  block says `[not read: the file could not be parsed as a document]` rather than vanishing.
+
+## The prompt: `prompt.submit` carries the document's text
+
+The app puts the `file.attach` receipt's `@file:` reference into the prompt it submits, and the
+engine can only stub a binary as *"binary file, not inlined as text"*. So the relay appends the
+labelled blocks to the `text` it forwards — this is how an attached document reaches the bot:
+
+```text
+prompt.submit {text: "@file:/…/profiles/cody/attachments/budget.xlsx\n\nwhat does Q4 say?"}
+  -> {text: "@file:/…/budget.xlsx\n\nwhat does Q4 say?\n\n--- attachment: budget.xlsx (sheet: Q4, 812 rows, 6 columns) ---\nRegion | Units\n…"}
+```
+
+- `prompt.submit`, `prompt.background` and `session.steer` are looked at; nothing else carries a
+  turn's text.
+- Only **absolute** references that resolve **inside the service's own `engine_home`** are read. A
+  prompt may name any path it likes; the host turns a claim into bytes only inside its own profiles,
+  so a reference pointing at `/etc/…` travels untouched for the engine to refuse as it always did.
+- The `@file:` line itself is **never rewritten**: the stored row's reference is how the app fetches
+  the bytes back on another device (and the engine still resolves it, to its usual stub).
+- Bounds are the message ones — **4 documents, 24 000 characters each, 48 000 in total** — and a
+  prompt that already carries a block for that file grows no second copy (a resent prompt is
+  forwarded byte-for-byte).
+- Images never reach this code: their references are not office documents, so their prompts are
+  forwarded unchanged.
+
+## Reading a file back: `GET /v1/attachments/{profile}/{name}` (shipped in 0.4.1)
+
+The cross-device open — a transcript reference fetched by a device that never saw the bytes — now
+serves the three document types beside the pictures:
+
+| extension | looked up in | content type |
+|---|---|---|
+| png/jpg/jpeg/heic/heif/gif/webp/tiff/bmp | `profiles/<p>/images/`, then `images/` — **unchanged** | the image type, unchanged |
+| pdf/docx/xlsx | `profiles/<p>/attachments/`, then `attachments/` (where `file.attach` stages them) | the document's own type |
+| anything else | — | `400 {"detail":"not an image attachment"}` — unchanged |
+
+Same device bearer (`require_device`), same 8 MiB ceiling, same one-component name, same symlink
+refusal, same 404 for a missing file. The document's bytes are read from disk per request, so a
+file staged moments ago is fetchable the moment the transcript quotes its name.
+
+## Documents on the bot-to-bot message, `POST /v1/bots/{profile}/message`
+
+The message route takes an optional `attachments` array, and the host extracts each one before the
+message reaches the engine, so the receiving bot sees the **text**, not a path it may not be able to
+open:
+
+```json
+POST /v1/bots/ops/message                                    (loopback only, no ticket — unchanged)
+{"text": "the forecast is attached", "from": "cody", "from_profile": "cody",
+ "attachments": [{"name": "forecast.xlsx", "data_base64": "<base64>"},
+                 {"name": "terms.pdf", "data_url": "data:application/pdf;base64,<base64>"}]}
+
+-> {"profile":"ops","from":"cody","session_id":"…",
+    "text":"Cody (cody) → Ops: the forecast is attached\n\n--- attachment: forecast.xlsx …",
+    "reply":"thanks — Q4 is up 9%","delivered":true,
+    "attachments":[{"name":"forecast.xlsx","kind":"xlsx","chars":812,"truncated":false},
+                   {"name":"terms.pdf","kind":"pdf","chars":9214,"truncated":true}]}
+```
+
+- one of `data_base64` / `data_url` per attachment, never both; `data_url` must declare a type this
+  host reads (or `application/octet-stream`). No other keys: `{"name", "data_base64"}` is the shape,
+  and `path` is refused exactly as the relay refuses it;
+- at most **4** attachments per message, **8 MiB** each, at most **48 000** characters of extracted
+  text in total. Past that, the surplus attachment arrives as a block that says
+  `[not included: this message already carries 48000 characters of attachments]`;
+- the label stays the **first line** (`Cody (cody) → Ops: …`) so both apps still parse the sender off
+  it, and the blocks follow after a blank line;
+- the transfer record and the audit line still carry the caller's **words** and the message's size —
+  the document is not a second hand-off;
+- `attachments` appears in the response only when there were some, so a message without a document is
+  byte-identical to what every caller already reads (six fields);
+- `POST /v1/bots/{profile}/ask` refuses attachments (`422 ask does not take attachments: use
+  message`) rather than dropping a file the caller believes it sent.
+
+## The way back — how a bot hands a file to the app
+
+This is the contract an app implements; the routes themselves already existed.
+
+1. **The bot writes the file into its own workspace**:
+
+   ```
+   <engine home>/profiles/<profile>/workspace/<any sub path>
+   ```
+
+   That is the bot's working directory, and it is what `GET /v1/workspace/{profile}` lists as
+   `source: "workspace"`.
+
+2. **The bot announces it in its reply with a markdown link to the host's download route**:
+
+   ```markdown
+   Here is the forecast: [Q4-forecast.xlsx](/v1/workspace/ops/file?source=workspace&path=reports/q4-forecast.xlsx)
+   ```
+
+3. **The app resolves that link against its host base URL and fetches it with its device ticket**:
+
+   ```text
+   GET <host>/v1/workspace/ops/file?source=workspace&path=reports%2Fq4-forecast.xlsx
+     Authorization: Bearer <ticket>
+   -> 200 <bytes>
+      content-type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      content-disposition: inline; filename="q4-forecast.xlsx"
+   -> 422 {"detail":"invalid path"}      absolute path, `..`, or a bad profile name
+   -> 404 {"detail":"no such file"}      missing, a directory, or a symlink
+   ```
+
+Rules the route enforces, so the app does not have to:
+
+- `path` is **relative** to the folder and `/`-separated; `source` is `workspace` or `attachments`,
+  and when it is omitted both are tried, `workspace` first (which is what the app already relies on).
+- Absolute paths, `..`, and profile names that are not a plain name are `422 invalid path`.
+- Symlinks are refused at the leaf **and** on the way in: a link named `notes.md`, or a linked
+  directory whose child resolves outside the folder, is `404` — a bot cannot hand out a host file by
+  naming one.
+- The bytes are read from disk **per request**, so a file written during the same turn is fetchable
+  the moment the reply lands. No index, no upload step, no second copy.
+- `content-type` comes from the extension: `xlsx`/`docx`/`pdf`/`csv`/`txt`/`md`/`png`/`jpg`/… are
+  typed, everything else is `application/octet-stream`. `docx` and `xlsx` are **not** in the
+  Library's `previewable` set on purpose: they download rather than render.
+
+So the smallest honest flow is: **bot writes a file, bot links it, app fetches it**. Nothing new
+travels with the message, and the link works for a file that did not exist when the turn started.
+
+Bots are taught this by the bundled `office-files` skill (`hermeyd/assets/agent-skills/office-files/`),
+installed with the other bundled skills on upgrade.
+
 ## Platforms (measured)
 
 | Target | Binary | Contract | Attachments |
