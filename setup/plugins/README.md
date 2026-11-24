@@ -6,10 +6,11 @@
 from the release's `hermes-genui-plugin.tar.gz` otherwise).
 
 It is a build output, not hand-edited source. Refresh it from the engine checkout that builds the
-plugin (`engine/plugins/hermes-genui/` there), keeping `desktop/plugin.js` and `.digest` together:
+plugin — `<engine-checkout>/plugins/hermes-genui/` in the Hermes source tree, keeping
+`desktop/plugin.js` and `.digest` together:
 
 ```sh
-cp -R ../hermey-standalone/engine/plugins/hermes-genui/. setup/plugins/hermes-genui/
+cp -R <engine-checkout>/plugins/hermes-genui/. setup/plugins/hermes-genui/
 ```
 
 The release workflow tars this directory as-is; `Tests/test_installer_hermeyd.py` refuses a tree
