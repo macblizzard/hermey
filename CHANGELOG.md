@@ -1410,3 +1410,10 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its
   own text, which made it read as a slim bar next to the round attach and send controls.
+
+## [0.1.654] — 2026-11-24
+
+### Fixed
+- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the
+  paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath
+  the field, lined up with where the text starts.
