@@ -16,6 +16,7 @@ mod attachments;
 mod audit;
 mod auth;
 mod bot_admin;
+mod bot_avatar;
 mod bot_docs;
 mod bot_message;
 mod bot_sessions;

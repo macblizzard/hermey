@@ -10,6 +10,11 @@ final class PetModel: ObservableObject {
     let botID: String
     let botName: String
     @Published var face: String?
+    /// The bot's own generated avatar, when it has one. The pet draws this instead of the picture,
+    /// keeping every bit of its own behaviour — drag, blink, badge, balloon.
+    @Published var avatar: BotAvatarDocument?
+    /// What the bot is doing, which is the pose the avatar draws.
+    @Published var state: OpenBotAvatarState = .idle
     /// False while the panel is occluded (another Space, Mission Control, a full-screen app):
     /// the idle loop sleeps instead of animating a window nobody can see.
     @Published var isVisible = true
@@ -52,10 +57,11 @@ final class PetModel: ObservableObject {
         return true
     }
 
-    init(botID: String, botName: String, face: String?) {
+    init(botID: String, botName: String, face: String?, avatar: BotAvatarDocument? = nil) {
         self.botID = botID
         self.botName = botName
         self.face = face
+        self.avatar = avatar
     }
 }
 
@@ -70,10 +76,19 @@ struct PetIconMask {
     /// geometry is in this space, and the hit test has to ask the same question the drawing did.
     let side: CGFloat
 
-    init(identity: String, face: String?, side: CGFloat) {
+    init(identity: String, face: String?, avatar: BotAvatarDocument? = nil, side: CGFloat) {
         self.side = side
         let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: face)
-        if resolved.isImage,
+        if let avatar, let polygons = try? avatar.definition.polygons(), !polygons.isEmpty {
+            // A definition's filled outline is its alpha: the same question the path asks for a
+            // drawn shape, asked in the avatar's own 0..100 space.
+            let scale = 100 / side
+            self.test = { point in
+                let p = OpenBotAvatarGeometry.Point(Double(point.x) * Double(scale),
+                                                    Double(point.y) * Double(scale))
+                return OpenBotAvatarGeometry.contains(polygons, p)
+            }
+        } else if resolved.isImage,
            let data = Self.imageData(face),
            let bitmap = NSBitmapImageRep(data: data) {
             let scale = CGFloat(bitmap.pixelsWide) / max(side, 1)
@@ -211,7 +226,21 @@ struct PetView: View {
     private let side = CGFloat(PetGeometry.iconSide)
 
     var body: some View {
-        BotAvatarStill(identity: pet.botID, color: pet.face, size: side)
+        Group {
+            if let avatar = pet.avatar {
+                // The generated avatar, in the state the bot is in. Its own blinking still runs; the
+                // pet's squash and lid overlay are the pet's behaviour and stay on top, as they do
+                // for a picture.
+                OpenBotAvatarView(definition: avatar.definition,
+                                  color: avatar.color,
+                                  state: pet.state,
+                                  size: side,
+                                  animates: pet.isVisible,
+                                  label: "\(pet.botName), a desktop pet")
+            } else {
+                BotAvatarStill(identity: pet.botID, color: pet.face, size: side)
+            }
+        }
             .frame(width: side, height: side)
             // The unread badge sits on the icon's own box, inside the transforms below: a hop
             // carries it, and the hit test is told the same box (`PetBadge.rect`) so the dot is

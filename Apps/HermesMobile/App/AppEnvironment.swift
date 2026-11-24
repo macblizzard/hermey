@@ -52,6 +52,9 @@ final class AppEnvironment: ObservableObject {
     @Published private(set) var devicesError: String?
     @Published private(set) var removingDevice = false
     @Published private(set) var botFaces: [String: BotFaceChoice] = [:]
+    /// The bots' own generated avatars, by bot id, from the same `bot_icons` document. A bot with one
+    /// draws it instead of its picture in the list and the chat header.
+    @Published private(set) var botAvatars: [String: BotAvatarDocument] = [:]
     @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
 
@@ -246,8 +249,10 @@ final class AppEnvironment: ObservableObject {
         do {
             let (host, service) = try iconService()
             let loaded = try await service.load()
+            let avatars = try await service.loadAvatars()
             guard generation == iconGeneration, store.host == host, !isDisconnectedByUser else { return }
             botFaces = loaded
+            botAvatars = avatars
             persistBotFaces(loaded, host: host)
             botFacesError = nil
         } catch {
@@ -267,6 +272,18 @@ final class AppEnvironment: ObservableObject {
         guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }
         await loadBotFaces()
         if let error = botFacesError { throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"]) }
+    }
+
+    /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
+    /// answers a 400 with its reason, which this throws to the editor.
+    func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
+        let (host, service) = try iconService()
+        try await service.saveAvatar(botID: botID, document: document)
+        guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }
+        await loadBotFaces()
+        if let error = botFacesError {
+            throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"])
+        }
     }
 
     // MARK: - Voice
@@ -392,6 +409,7 @@ final class AppEnvironment: ObservableObject {
             store.save(host: claim.host, refreshToken: claim.refreshToken)
             iconGeneration += 1
             botFaces = [:]
+            botAvatars = [:]
             botFacesError = nil
             await box.update(host: claim.host, token: claim.refreshToken)
             Haptics.success()
@@ -411,6 +429,7 @@ final class AppEnvironment: ObservableObject {
     func unpair() async {
         iconGeneration += 1
         botFaces = [:]
+        botAvatars = [:]
         botFacesError = nil
         await model.stop()
         store.clear()
@@ -427,6 +446,7 @@ final class AppEnvironment: ObservableObject {
         isDisconnectedByUser = true
         iconGeneration += 1
         botFaces = [:]
+        botAvatars = [:]
         botFacesError = nil
         await model.stop()
     }

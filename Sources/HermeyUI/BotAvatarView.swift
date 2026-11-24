@@ -85,6 +85,12 @@ public struct BotAvatarView: View {
     public var label: String?
     /// The colour the eyes are cut out in. Defaults to the page (`Tokens.canvas`).
     public var pageBackground: Color?
+    /// The bot's own generated avatar, when it has one (`BotAvatarDocument`). A bot with a definition
+    /// draws that instead of the shape-and-palette face — the whole row, header and pet follow this
+    /// one branch, so no two surfaces can disagree about which face a bot wears.
+    public var definition: BotAvatarDefinition?
+    /// The definition's colour: `#RRGGBB`, or nil for the house colour.
+    public var avatarColor: String?
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     /// Backgrounded windows keep their faces still: the Mac target had no such gate, so a minimised
@@ -102,7 +108,9 @@ public struct BotAvatarView: View {
                 animates: Bool = true,
                 animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize,
                 label: String? = nil,
-                pageBackground: Color? = nil) {
+                pageBackground: Color? = nil,
+                definition: BotAvatarDefinition? = nil,
+                avatarColor: String? = nil) {
         self.identity = identity
         self.color = color
         self.activity = activity
@@ -112,6 +120,8 @@ public struct BotAvatarView: View {
         self.animatingFrom = animatingFrom
         self.label = label
         self.pageBackground = pageBackground
+        self.definition = definition
+        self.avatarColor = avatarColor
     }
 
     /// The fixed inks for the two bodies that are too pale or too dark for a cut-out. The reference
@@ -122,6 +132,24 @@ public struct BotAvatarView: View {
     static let lightEyeInk = Color.white
 
     public var body: some View {
+        if let definition {
+            // The generated avatar draws itself, in its own volume; the shape-and-palette face below
+            // is untouched, which is what keeps a bot without one looking exactly as it did.
+            OpenBotAvatarView(definition: definition,
+                              color: avatarColor,
+                              state: OpenBotAvatarState(activity: activity),
+                              mood: OpenBotAvatarState.mood(for: activity),
+                              size: size,
+                              animates: animates,
+                              reduceMotion: reduceMotion,
+                              animatingFrom: animatingFrom,
+                              label: label)
+        } else {
+            shapeBody
+        }
+    }
+
+    private var shapeBody: some View {
         let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: color)
         let moves = BotAvatarMotion.allows(activity: activity,
                                            reduceMotion: reduceMotion || systemReduceMotion,
