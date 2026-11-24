@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.642",
-          "buildVersion": "642",
-          "date": "2026-11-23T23:15:42Z",
-          "localizedDescription": "### Changed\n- **The expanded island reads as one line.** The bot's name sat above its status, and the shorter line\n  hung off the name's left edge, which looked misaligned. Mark, name and status now share a line, with the\n  elapsed number at the right.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.642/Hermey-0.1.642-b642.ipa",
-          "size": 5289129,
+          "version": "0.1.1011",
+          "buildVersion": "1011",
+          "date": "2026-11-24T08:31:11Z",
+          "localizedDescription": "### Added\n- **The host can update itself, from either app.** When a newer hermeyd is published, a row appears above\n  the bots in the bell (and in Settings \u25b8 About on the Mac) with its version and an **Update** button. One\n  press downloads the build, checks its published checksum, swaps the binary and restarts the service \u2014 the\n  row shows the host's own stages, and the brief disconnect during a restart is expected, not an error.\n- **If a new host build does not come up, it is rolled back automatically.** The previous binary is kept\n  beside the new one; two failed starts put it back and the row says so, with both versions named.\n- Nothing updates without a press.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.1011/Hermey-0.1.1011-b1011.ipa",
+          "size": 5328868,
           "minOSVersion": "17.0",
-          "sha256": "0ff2a7404b4770fe7fb2e8848f2e6dfb0e2b258f6a6445fddfa922bf7c4a13af"
+          "sha256": "be166e105e77259c90f08d65897ff21cd89a47c7cee3249f890c82b3a5ff1a98"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.642 (642)",
-      "identifier": "hermes-0.1.642-642",
-      "caption": "### Changed\n- **The expanded island reads as one line.** The bot's name sat above its status, and the shorter line\n  hung off the name's left edge, which looked misaligned. Mark, name and status now share a line, with the\n  elapsed number at the right.",
-      "date": "2026-11-23T23:15:42Z",
+      "title": "Hermes 0.1.1011 (1011)",
+      "identifier": "hermes-0.1.1011-1011",
+      "caption": "### Added\n- **The host can update itself, from either app.** When a newer hermeyd is published, a row appears above\n  the bots in the bell (and in Settings \u25b8 About on the Mac) with its version and an **Update** button. One\n  press downloads the build, checks its published checksum, swaps the binary and restarts the service \u2014 the\n  row shows the host's own stages, and the brief disconnect during a restart is expected, not an error.\n- **If a new host build does not come up, it is rolled back automatically.** The previous binary is kept\n  beside the new one; two failed starts put it back and the row says so, with both versions named.\n- Nothing updates without a press.",
+      "date": "2026-11-24T08:31:11Z",
       "tintColor": "#9A9AA0"
     }
   ],
