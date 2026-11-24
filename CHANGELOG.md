@@ -1280,3 +1280,21 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **Pet callouts are black with white text.** A frosted material samples whatever is behind it, so over a
   bright wallpaper it was a white panel whatever tint sat on top; the fill is a near-black now, with white
   text, a faint white hairline and the same curved tail and placement.
+
+## [0.1.647] — 2026-11-24
+
+### Added
+- **Excel, Word and PDF files, both directions.** Attach a `.xlsx`, `.docx` or `.pdf` in either app and
+  the bot gets its text — spreadsheets sheet by sheet, Word documents with their tables, PDFs page by page —
+  with sensible limits and a note when a file was too big to include whole. They open from the transcript
+  too: Quick Look on the Mac, the share sheet on the phone. And a bot can write a file and link it back:
+  the reply carries a row you can open, downloaded from the host on press.
+- **Pet questions run in their own session.** A desktop-pet question no longer rides the bot's whole
+  conversation: it opens a dedicated, capped session per bot (60 rows, rotating) with the profile's fast
+  model pinned. Same greeting, roughly 8× less input sent to the model, and a `/model` switch on the bot's
+  chat can no longer drag the pet along. The pet's exchange lives in that session, titled *Desktop Pet*.
+
+### Fixed
+- **The bubble shows only what you typed** when a file was attached — the text the host extracts for the
+  bot is no longer drawn into your message after a reload.
+- **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.
