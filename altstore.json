@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.1011",
-          "buildVersion": "1011",
-          "date": "2026-11-24T08:31:11Z",
-          "localizedDescription": "### Added\n- **The host can update itself, from either app.** When a newer hermeyd is published, a row appears above\n  the bots in the bell (and in Settings \u25b8 About on the Mac) with its version and an **Update** button. One\n  press downloads the build, checks its published checksum, swaps the binary and restarts the service \u2014 the\n  row shows the host's own stages, and the brief disconnect during a restart is expected, not an error.\n- **If a new host build does not come up, it is rolled back automatically.** The previous binary is kept\n  beside the new one; two failed starts put it back and the row says so, with both versions named.\n- Nothing updates without a press.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.1011/Hermey-0.1.1011-b1011.ipa",
-          "size": 5328868,
+          "version": "0.1.644",
+          "buildVersion": "644",
+          "date": "2026-11-24T09:32:16Z",
+          "localizedDescription": "### Added\n- **One word on the island.** The Dynamic Island now says **Working** while a bot is busy, **Needs you**\n  when it is blocked on an approval or a question, and **Finished** when the task is done \u2014 readable\n  without expanding it. The elapsed time moved to the expanded view.\n- **The host updates itself, from either app.** When a newer hermeyd is published, the bell lists it with\n  its version and an **Update** button (Settings \u25b8 About on the Mac too). One press downloads it, checks the\n  published checksum, swaps the binary and restarts the service, with the host's own stages in the row.\n- **Rollback is automatic.** The previous binary stays on disk; if the new one does not stay up, two failed\n  starts put it back and the row says so with both versions.\n\n### Fixed\n- The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word\n  the card disagrees with.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.644/Hermey-0.1.644-b644.ipa",
+          "size": 5246115,
           "minOSVersion": "17.0",
-          "sha256": "be166e105e77259c90f08d65897ff21cd89a47c7cee3249f890c82b3a5ff1a98"
+          "sha256": "a74e7777481799d3aaf5510271f58ef34a1bbf4acc2eec65482b1b67fd03c059"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.1011 (1011)",
-      "identifier": "hermes-0.1.1011-1011",
-      "caption": "### Added\n- **The host can update itself, from either app.** When a newer hermeyd is published, a row appears above\n  the bots in the bell (and in Settings \u25b8 About on the Mac) with its version and an **Update** button. One\n  press downloads the build, checks its published checksum, swaps the binary and restarts the service \u2014 the\n  row shows the host's own stages, and the brief disconnect during a restart is expected, not an error.\n- **If a new host build does not come up, it is rolled back automatically.** The previous binary is kept\n  beside the new one; two failed starts put it back and the row says so, with both versions named.\n- Nothing updates without a press.",
-      "date": "2026-11-24T08:31:11Z",
+      "title": "Hermes 0.1.644 (644)",
+      "identifier": "hermes-0.1.644-644",
+      "caption": "### Added\n- **One word on the island.** The Dynamic Island now says **Working** while a bot is busy, **Needs you**\n  when it is blocked on an approval or a question, and **Finished** when the task is done \u2014 readable\n  without expanding it. The elapsed time moved to the expanded view.\n- **The host updates itself, from either app.** When a newer hermeyd is published, the bell lists it with\n  its version and an **Update** button (Settings \u25b8 About on the Mac too). One press downloads it, checks the\n  published checksum, swaps the binary and restarts the service, with the host's own stages in the row.\n- **Rollback is automatic.** The previous binary stays on disk; if the new one does not stay up, two failed\n  starts put it back and the row says so with both versions.\n\n### Fixed\n- The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word\n  the card disagrees with.",
+      "date": "2026-11-24T09:32:16Z",
       "tintColor": "#9A9AA0"
     }
   ],
