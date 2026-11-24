@@ -25,6 +25,13 @@
 //! * the exchange is **labelled** (`Assistant (cody) → Ops: …`), because the target's transcript
 //!   renders every user row as if the owner typed it.
 //!
+//! A desktop pet is the one exception to the first rule. Its question arrives as
+//! `from: "desktop-pet"` and is answered in a **separate, bounded session** of that bot's own —
+//! minted once, reused, and rotated when it fills — because the endless conversation the app opens
+//! carries the whole transcript, and a one-word greeting was paying for all of it (12–15s measured
+//! against `20261103_160851_77da50`). Every other `from` keeps the old route byte for byte; see
+//! `pet_model` for the fast model that session is pinned to, and `PET_WINDOW` for the cap.
+//!
 //! Delivery is *queued semantics*, not a promise of a reply: a busy session steers or queues (an
 //! `ask` marks its prompt `queued: true` so a running turn holds it instead of swallowing it into
 //! the reply). A timeout returns `delivered: true, reply: null`, so the caller reports "sent, no
@@ -69,6 +76,23 @@ const ASK_TIMEOUT_S: f64 = 300.0;
 
 /// How often an `ask` re-reads the bot's own conversation while it waits.
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// The sender the desktop pet puts on every balloon question.
+///
+/// It is a routing key, not a feature: this one string is the whole of the pet's surface in the
+/// host. Everything else about the pet — the balloon, the geometry, the settings — is the Mac app's.
+const PET_SENDER: &str = "desktop-pet";
+
+/// What the pet's own session is called, so the owner can open it and read what the balloon said.
+const PET_TITLE: &str = "Desktop Pet";
+
+/// The pet session's window, counted in transcript rows, and what forces a fresh session.
+///
+/// Rotation rather than compaction: the gateway's compaction threshold is *profile* config, and a
+/// config write would change the bot's normal conversation too — the one thing this change must not
+/// do. Two rows per exchange makes this ~30 questions, and the pet's own transcript is the only
+/// thing ever written there, so the window can never approach the endless conversation it replaced.
+const PET_WINDOW: i64 = 60;
 
 /// A document key owned by `bridge_routes` (`DOC_DISABLED`); the toggle writes it, this reads it.
 const DOC_DISABLED: &str = "bots_disabled";
@@ -223,6 +247,10 @@ pub(crate) struct AskPlan {
     /// arrives as `assistant`, so waiting for `user` meant every pet question timed out while the
     /// answer sat in the transcript.
     pub await_role: &'static str,
+    /// `true` for a balloon question: it is answered in the pet's own bounded session instead of the
+    /// bot's endless conversation. Derived from `sender`, never from a client-controlled field of its
+    /// own, so a caller cannot claim the fast path by naming a different parameter.
+    pub pet: bool,
 }
 
 fn invalid_profile() -> Fail {
@@ -338,6 +366,8 @@ pub(crate) fn plan_ask(profile: &str, body: &Value, is_disabled: bool) -> Result
 
     Ok(AskPlan {
         await_role,
+        // The sender decides, and the sender is the only thing here the pet actually controls.
+        pet: sender == PET_SENDER,
         text: question.trim().to_string(),
         message: label(sender, profile, question, sender_profile.as_deref()),
         sender: sender.to_string(),
@@ -490,21 +520,109 @@ pub(crate) fn require_stored(stored: Option<String>, profile: &str, verb: &str) 
     })
 }
 
+// ---- the desktop pet's own session -------------------------------------------------------------
+
+/// A model name built for latency rather than depth: the marker every shipped fast catalogue
+/// carries (`deepseek-v4.1-flash`, `mimo-v2.6-flash`, `glm-5.3-flash`, `claude-haiku-…`).
+fn is_fast_model(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    ["flash", "fast", "mini", "lite", "nano", "haiku"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+/// The model the pet's session is pinned to: a fast name **this profile's own `config.yaml`
+/// already carries**, or nothing.
+///
+/// The wire does allow a per-session model — `session.create` takes `model`/`provider`
+/// (`tui_gateway/contracts/sessions.py:130-131`) and the gateway stores them as that session's
+/// `model_override` (`tui_gateway/methods_session_model_guard.py:30-34`, consumed at
+/// `tui_gateway/methods_session.py:396-400`) — but a name the config does not have is a provider
+/// 404 on the pet's very first turn, which is exactly the failure the create-time model×provider
+/// gate exists to refuse up front. So: the profile's own `model.default` when it already names a
+/// fast model, else the first `fallback_providers` entry that does, else `None` and no pin — the
+/// profile default is what the bot's conversation runs, so an unpinned pet loses nothing.
+fn pet_model(st: &AppState, profile: &str) -> Option<(String, String)> {
+    let path = st.engine_home.join("profiles").join(profile).join("config.yaml");
+    let text = std::fs::read_to_string(path).ok()?;
+    let doc: serde_yaml::Value = serde_yaml::from_str(&text).ok()?;
+    let provider_of = |entry: &serde_yaml::Value| {
+        entry
+            .get("provider")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let model = doc.get("model")?;
+    if let Some(default) = model.get("default").and_then(|v| v.as_str()) {
+        if is_fast_model(default) {
+            return Some((default.to_string(), provider_of(model)));
+        }
+    }
+    for entry in doc.get("fallback_providers")?.as_sequence()? {
+        if let Some(candidate) = entry.get("model").and_then(|v| v.as_str()) {
+            if is_fast_model(candidate) {
+                return Some((candidate.to_string(), provider_of(entry)));
+            }
+        }
+    }
+    None
+}
+
+/// How big the pet's own transcript is right now, read from the bot's `state.db`.
+///
+/// `None` — no row yet, or a database this host cannot open — counts as empty, which is the right
+/// answer for a session that has not taken its first question.
+fn pet_message_count(db_path: &FsPath, session_id: &str) -> Option<i64> {
+    if !db_path.is_file() {
+        return None;
+    }
+    let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    conn.busy_timeout(Duration::from_secs(2)).ok()?;
+    conn.query_row(
+        "SELECT COUNT(*) FROM messages WHERE session_id = ?1",
+        rusqlite::params![session_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .ok()
+}
+
 // ---- delivery -------------------------------------------------------------------------------
 
 #[derive(Clone, Copy)]
 pub(crate) struct DeliverRequest<'a> {
     pub profile: &'a str,
+    /// The stored pointer to resume. Empty only for a pet ask that has no session yet — that is
+    /// what makes `pet` below a mint rather than a resume.
     pub stored: &'a str,
     pub message: &'a str,
     /// `queued: true` holds the prompt behind a running turn instead of steering into it. An `ask`
     /// is queued; a plain message is not.
     pub queued: bool,
+    /// `Some` for a desktop-pet ask: land in the pet's own bounded session, minting it when
+    /// `stored` is empty (or when the stored one has since been deleted). `None` — every other
+    /// caller — resumes `stored` and changes nothing.
+    pub pet: Option<PetMint<'a>>,
+}
+
+/// What a mint needs: a title the owner can recognise, and the fast model pinned for this session.
+#[derive(Clone, Copy)]
+pub(crate) struct PetMint<'a> {
+    pub title: &'a str,
+    /// `None` when the profile's config names no fast model: no pin, the profile default runs.
+    pub model: Option<&'a str>,
+    /// Empty when the config's fast entry does not name its own provider — the gateway then
+    /// resolves the profile's, which is the same thing an unpinned session would do.
+    pub provider: &'a str,
 }
 
 #[derive(Debug)]
 pub(crate) struct Delivered {
     pub session_id: String,
+    /// The stored pointer the transcript landed under, **only when it is not the one asked for** —
+    /// a minted pet session answers with a key of its own, and that is the id the reply must be
+    /// polled against and the pointer the store must keep. `None` on every resume.
+    pub stored_session_id: Option<String>,
     /// The assistant text of the completion event — the row the apps render under the message.
     pub reply: Option<String>,
 }
@@ -587,7 +705,158 @@ fn event_name<'a>(params: &'a Value, payload: &'a Value) -> Option<&'a str> {
         .and_then(|v| v.as_str())
 }
 
-/// Resume the stored session *within its profile*, submit, and wait for that session's completion.
+/// JSON-RPC ids on the delivery socket. Fixed rather than sequential so a frame can never be read
+/// as the answer to a different request when the path takes more than one hop.
+const RPC_CAPABILITIES: i64 = 1;
+/// The pet's own session, minted.
+const RPC_CREATE: i64 = 2;
+/// The stored session, resumed.
+const RPC_RESUME: i64 = 3;
+/// The question itself.
+const RPC_SUBMIT: i64 = 4;
+
+/// What `session.resume` answered: a runtime id, or the gateway's "this pointer is gone".
+enum Resume {
+    Resumed(String),
+    Stale,
+}
+
+/// `session.resume` *within its profile* — the stored pointer, because a multiplexed gateway would
+/// otherwise resolve it in the caller's default profile.
+async fn resume_session(
+    socket: &mut Ws,
+    deadline: tokio::time::Instant,
+    req: &DeliverRequest<'_>,
+) -> Result<Resume, Fail> {
+    socket
+        .send(Message::Text(
+            json!({
+                "jsonrpc": "2.0", "id": RPC_RESUME, "method": "session.resume",
+                "params": { "session_id": req.stored, "profile": req.profile },
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .map_err(|_| bad(StatusCode::BAD_GATEWAY, "gateway closed the connection"))?;
+    loop {
+        match read_frame(socket, deadline).await? {
+            Frame::Value(frame) if frame_id(&frame, RPC_RESUME) => {
+                if let Some(error) = frame.get("error") {
+                    // -32001 is the gateway's "session not found"; the pointer is stale.
+                    if error.get("code").and_then(|v| v.as_i64()) == Some(-32001) {
+                        return Ok(Resume::Stale);
+                    }
+                    return Err(bad(StatusCode::BAD_GATEWAY, "gateway refused the session"));
+                }
+                // A result without a usable id is not an answer: keep reading.
+                if let Some(id) = frame
+                    .get("result")
+                    .and_then(|r| r.get("session_id"))
+                    .and_then(|v| v.as_str())
+                    .filter(|id| !id.is_empty())
+                {
+                    return Ok(Resume::Resumed(id.to_string()));
+                }
+            }
+            Frame::Value(_) => continue,
+            Frame::Timeout => {
+                return Err(bad(StatusCode::GATEWAY_TIMEOUT, "gateway did not resume the session"))
+            }
+            Frame::Closed => return Err(bad(StatusCode::BAD_GATEWAY, "gateway closed the connection")),
+        }
+    }
+}
+
+/// `session.create` for the desktop pet's own session: `(runtime id to submit into, stored key the
+/// transcript is written under)`.
+///
+/// The stored key is what the next ask resumes and what the reply is polled against, so a create
+/// that answers without one is a failure, not a fallback — a runtime id would not survive the next
+/// connection and the pointer would silently stop working.
+async fn create_pet_session(
+    socket: &mut Ws,
+    deadline: tokio::time::Instant,
+    req: &DeliverRequest<'_>,
+    mint: &PetMint<'_>,
+) -> Result<(String, String), Fail> {
+    let mut params = json!({ "profile": req.profile, "title": mint.title });
+    if let Some(model) = mint.model {
+        params["model"] = json!(model);
+        if !mint.provider.is_empty() {
+            params["provider"] = json!(mint.provider);
+        }
+    }
+    socket
+        .send(Message::Text(
+            json!({ "jsonrpc": "2.0", "id": RPC_CREATE, "method": "session.create", "params": params })
+                .to_string()
+                .into(),
+        ))
+        .await
+        .map_err(|_| bad(StatusCode::BAD_GATEWAY, "gateway closed the connection"))?;
+    loop {
+        match read_frame(socket, deadline).await? {
+            Frame::Value(frame) if frame_id(&frame, RPC_CREATE) => {
+                if frame.get("error").is_some() {
+                    return Err(bad(StatusCode::BAD_GATEWAY, "gateway refused the session"));
+                }
+                let result = frame.get("result");
+                let runtime = result
+                    .and_then(|r| r.get("session_id"))
+                    .and_then(|v| v.as_str())
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| bad(StatusCode::BAD_GATEWAY, "gateway created no session"))?
+                    .to_string();
+                let stored = result
+                    .and_then(|r| r.get("stored_session_id"))
+                    .and_then(|v| v.as_str())
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| bad(StatusCode::BAD_GATEWAY, "gateway created no session"))?
+                    .to_string();
+                return Ok((runtime, stored));
+            }
+            Frame::Value(_) => continue,
+            Frame::Timeout => {
+                return Err(bad(StatusCode::GATEWAY_TIMEOUT, "gateway did not create the session"))
+            }
+            Frame::Closed => return Err(bad(StatusCode::BAD_GATEWAY, "gateway closed the connection")),
+        }
+    }
+}
+
+/// Establish the session this question lands in: the pet's own when there is one to use, a fresh
+/// mint when there is not, and — for a pet — a fresh mint when the stored one has been deleted.
+async fn open_delivery_session(
+    socket: &mut Ws,
+    deadline: tokio::time::Instant,
+    req: &DeliverRequest<'_>,
+) -> Result<(String, Option<String>), Fail> {
+    if let Some(mint) = req.pet {
+        if req.stored.is_empty() {
+            let (runtime, stored) = create_pet_session(socket, deadline, req, &mint).await?;
+            return Ok((runtime, Some(stored)));
+        }
+        return match resume_session(socket, deadline, req).await? {
+            Resume::Resumed(runtime) => Ok((runtime, None)),
+            // The owner deleted the pet's session from the list: mint the next one rather than
+            // failing every balloon question from here on.
+            Resume::Stale => {
+                let (runtime, stored) = create_pet_session(socket, deadline, req, &mint).await?;
+                Ok((runtime, Some(stored)))
+            }
+        };
+    }
+    match resume_session(socket, deadline, req).await? {
+        Resume::Resumed(runtime) => Ok((runtime, None)),
+        Resume::Stale => Err(bad(
+            StatusCode::CONFLICT,
+            "the stored session no longer exists; open the bot in the app",
+        )),
+    }
+}
+
+/// Establish the session *within its profile*, submit, and wait for that session's completion.
 async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) -> Result<Delivered, Fail> {
     let url = engine_url(ws, token);
     // `max_size=None` in the bridge: a resume answers with the whole conversation, which can be
@@ -607,7 +876,7 @@ async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) ->
         socket
             .send(Message::Text(
                 json!({
-                    "jsonrpc": "2.0", "id": 1, "method": "client.capabilities",
+                    "jsonrpc": "2.0", "id": RPC_CAPABILITIES, "method": "client.capabilities",
                     // No approvals: a bot speaking to a bot must never pick up a pending request
                     // meant for the owner's device.
                     "params": { "server_requests": false },
@@ -617,51 +886,13 @@ async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) ->
             ))
             .await
             .map_err(|_| bad(StatusCode::BAD_GATEWAY, "gateway closed the connection"))?;
-        socket
-            .send(Message::Text(
-                json!({
-                    "jsonrpc": "2.0", "id": 2, "method": "session.resume",
-                    "params": { "session_id": req.stored, "profile": req.profile },
-                })
-                .to_string()
-                .into(),
-            ))
-            .await
-            .map_err(|_| bad(StatusCode::BAD_GATEWAY, "gateway closed the connection"))?;
 
-        let runtime_id = loop {
-            match read_frame(&mut socket, deadline).await? {
-                Frame::Value(frame) if frame_id(&frame, 2) => {
-                    if let Some(error) = frame.get("error") {
-                        // -32001 is the gateway's "session not found"; the pointer is stale.
-                        if error.get("code").and_then(|v| v.as_i64()) == Some(-32001) {
-                            return Err(bad(
-                                StatusCode::CONFLICT,
-                                "the stored session no longer exists; open the bot in the app",
-                            ));
-                        }
-                        return Err(bad(StatusCode::BAD_GATEWAY, "gateway refused the session"));
-                    }
-                    // A result without a usable id is not an answer: keep reading.
-                    if let Some(id) = frame
-                        .get("result")
-                        .and_then(|r| r.get("session_id"))
-                        .and_then(|v| v.as_str())
-                        .filter(|id| !id.is_empty())
-                    {
-                        break id.to_string();
-                    }
-                }
-                Frame::Value(_) => continue,
-                Frame::Timeout => return Err(bad(StatusCode::GATEWAY_TIMEOUT, "gateway did not resume the session")),
-                Frame::Closed => return Err(bad(StatusCode::BAD_GATEWAY, "gateway closed the connection")),
-            }
-        };
+        let (runtime_id, minted) = open_delivery_session(&mut socket, deadline, &req).await?;
 
         socket
             .send(Message::Text(
                 json!({
-                    "jsonrpc": "2.0", "id": 3, "method": "prompt.submit",
+                    "jsonrpc": "2.0", "id": RPC_SUBMIT, "method": "prompt.submit",
                     "params": {
                         "session_id": runtime_id, "profile": req.profile,
                         "text": req.message, "queued": req.queued,
@@ -680,7 +911,7 @@ async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) ->
                 // A timeout here is the documented "delivered, no answer yet", not a failure.
                 Frame::Timeout | Frame::Closed => break,
             };
-            if frame_id(&frame, 3) {
+            if frame_id(&frame, RPC_SUBMIT) {
                 if frame.get("error").is_some() {
                     return Err(bad(StatusCode::BAD_GATEWAY, "gateway refused the message"));
                 }
@@ -705,7 +936,7 @@ async fn deliver_live(ws: &str, token: Option<&str>, req: DeliverRequest<'_>) ->
                 }
             }
         }
-        Ok(Delivered { session_id: runtime_id, reply })
+        Ok(Delivered { session_id: runtime_id, stored_session_id: minted, reply })
     }
     .await;
 
@@ -932,6 +1163,7 @@ pub(crate) async fn run_message<E: Deliverer + ?Sized, R: RecordTransfer + ?Size
             stored: &stored,
             message: &plan.message,
             queued: false,
+            pet: None,
         })
         .await?;
 
@@ -967,7 +1199,38 @@ pub(crate) async fn run_ask<E: Deliverer + ?Sized, R: RecordTransfer + ?Sized>(
 ) -> Result<Value, Fail> {
     let body = parse_body(raw)?;
     let plan = plan_ask(profile, &body, disabled(st, profile))?;
-    let stored = require_stored(st.store.get_bot_session(profile), profile, "ask")?;
+    let databases = profile_databases(st, profile);
+
+    // Where the question lands. A balloon (`from: "desktop-pet"`) is answered in the pet's own
+    // bounded session — minted on first use — and every other sender is answered in the endless
+    // conversation the app opens, exactly as before. A pet ask needs no conversation yet: it makes
+    // its own.
+    let mut stored = if plan.pet {
+        st.store.get_bot_pet_session(profile).unwrap_or_default()
+    } else {
+        require_stored(st.store.get_bot_session(profile), profile, "ask")?
+    };
+    // The window. A pet session that has filled rotates to a fresh one, so the transcript behind a
+    // month of greetings is never what a one-word question has to carry.
+    if plan.pet && !stored.is_empty() {
+        let filled = databases
+            .iter()
+            .find_map(|db| pet_message_count(db, &stored))
+            .unwrap_or(0)
+            >= PET_WINDOW;
+        if filled {
+            stored.clear();
+        }
+    }
+    // Read for a pet ask and for nothing else. It is needed whenever a mint *may* happen — the
+    // first one, a rotated one, and one whose stored session was deleted out from under us — so it
+    // is read up front rather than guessed at. A profile with no fast model of its own gets no pin
+    // rather than a name we invented.
+    let pinned = if plan.pet { pet_model(st, profile) } else { None };
+    let (pinned_model, pinned_provider) = match &pinned {
+        Some((model, provider)) => (Some(model.as_str()), provider.as_str()),
+        None => (None, ""),
+    };
 
     st.store.set_push_prompt(profile, "program");
     // Queued on purpose: a busy turn must hold the question, not steer it into the running reply.
@@ -977,22 +1240,33 @@ pub(crate) async fn run_ask<E: Deliverer + ?Sized, R: RecordTransfer + ?Sized>(
             stored: &stored,
             message: &plan.message,
             queued: true,
+            pet: plan.pet.then(|| PetMint {
+                title: PET_TITLE,
+                model: pinned_model,
+                provider: pinned_provider,
+            }),
         })
         .await?;
 
-    let databases = profile_databases(st, profile);
+    // A mint answers with a key of its own; that key is what the next ask resumes and what this
+    // reply is polled against. A resume answers with none, and the pointer already in place stands.
+    let poll = delivered.stored_session_id.clone().unwrap_or_else(|| stored.clone());
+    if plan.pet && delivered.stored_session_id.is_some() {
+        st.store.set_bot_pet_session(profile, &poll);
+    }
+
     // The question's own row is the anchor; failing to find it (an engine that has not written yet)
     // falls back to now, which is only wrong by the delivery time.
     let asked_at = databases
         .iter()
-        .find_map(|db| question_row_time(db, &stored, &plan.message))
+        .find_map(|db| question_row_time(db, &poll, &plan.message))
         .unwrap_or_else(unix_now);
     // The stored id, not `delivered.session_id`: the engine hands back a *runtime* id, while the
     // transcript is written under the stored one. Querying the runtime id found nothing, which is
     // why a pet's question could sit answered in the chat and still time out.
     let reply = wait_for_owner_reply(
         databases,
-        stored.clone(),
+        poll.clone(),
         asked_at,
         plan.timeout,
         plan.await_role,
@@ -1016,7 +1290,7 @@ pub(crate) async fn run_ask<E: Deliverer + ?Sized, R: RecordTransfer + ?Sized>(
         plan.message.len(),
         if reply.is_some() { "answered" } else { "timeout" },
     );
-    Ok(ask_body(profile, &plan, &stored, reply.as_deref()))
+    Ok(ask_body(profile, &plan, &poll, reply.as_deref()))
 }
 
 /// `POST /v1/bots/{profile}/message` — deliver a message into a bot's canonical conversation.
@@ -1098,11 +1372,19 @@ mod tests {
         }
     }
 
+    /// `(profile, stored pointer the delivery was pointed at, message, queued, pet?)` — the last
+    /// field is what the guard tests read: a balloon delivery must never be aimed at the bot's
+    /// conversation, and a normal one must never be aimed at the pet's session.
+    type Seen = (String, String, String, bool, bool);
+
     #[derive(Default)]
     struct FakeEngine {
-        seen: Mutex<Vec<(String, String, String, bool)>>,
+        seen: Mutex<Vec<Seen>>,
         reply: Option<String>,
         fail: Option<(StatusCode, String)>,
+        /// The stored key a *mint* answers with. `None` — the default — means the engine mints
+        /// nothing, which is every conversation-path delivery.
+        minted: Option<String>,
     }
 
     impl Deliverer for FakeEngine {
@@ -1116,13 +1398,19 @@ mod tests {
                     req.stored.to_string(),
                     req.message.to_string(),
                     req.queued,
+                    req.pet.is_some(),
                 ));
                 if let Some((status, detail)) = &self.fail {
                     return Err(bad(*status, detail.clone()));
                 }
+                // A resume answers with the runtime id; for the stored pointer they agree. A mint
+                // answers with a key of its own, which is the one the caller must keep.
+                let minted = if req.pet.is_some() { self.minted.clone() } else { None };
                 Ok(Delivered {
-                    // A resume answers with the runtime id; for the stored pointer they agree.
-                    session_id: req.stored.to_string(),
+                    session_id: minted
+                        .clone()
+                        .unwrap_or_else(|| req.stored.to_string()),
+                    stored_session_id: minted,
                     reply: self.reply.clone(),
                 })
             })
@@ -1467,6 +1755,7 @@ mod tests {
         assert_eq!(seen[0].1, "20260101_000000_abcdef", "the stored pointer is what is resumed");
         assert_eq!(seen[0].2, "Cody (cody) → Ops: ship it");
         assert!(!seen[0].3, "a plain message must not be marked queued");
+        assert!(!seen[0].4, "a message is never the pet's: the pet only ever asks");
 
         // The hand-off the apps read back: who spoke to whom, the bare words, no prefix.
         let entries = recorded.lock().unwrap();
@@ -1579,6 +1868,14 @@ mod tests {
 
         let seen = engine.seen.lock().unwrap();
         assert!(seen[0].3, "an ask must be queued, not steered into a running turn");
+        assert_eq!(seen[0].1, "s1", "a normal ask takes the bot's own conversation");
+        assert!(!seen[0].4, "a normal ask is never the pet's");
+        drop(seen);
+        assert_eq!(
+            st.store.get_bot_pet_session("ops"),
+            None,
+            "a normal ask must not give the pet a session of its own"
+        );
         let entries = recorded.lock().unwrap();
         assert_eq!(entries[0].3.as_deref(), Some("s1"));
         assert_eq!(entries[0].4, "Should I keep going?");
@@ -1606,6 +1903,255 @@ mod tests {
         assert_eq!(value["answered"], false);
         assert_eq!(value["reply"], Value::Null);
         assert!(started.elapsed() >= Duration::from_millis(900), "it must actually wait");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- the desktop pet's bounded session ----------------------------------------------------
+
+    /// Create (or keep using) a profile `state.db` where `session` already holds a row `role`
+    /// written after "now" — the answer an ask is waiting for, so it resolves instead of waiting
+    /// out its timeout. A pet waits for `assistant`; an owner-awaiting ask waits for `user`.
+    fn answered_in(dir: &FsPath, profile: &str, session: &str, role: &str, content: &str) {
+        let profile_dir = dir.join("engine").join("profiles").join(profile);
+        std::fs::create_dir_all(&profile_dir).unwrap();
+        let conn = Connection::open(profile_dir.join("state.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, \
+             role TEXT, content TEXT, timestamp REAL);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (session_id, role, content, timestamp) \
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![session, role, content, unix_now() + 5.0],
+        )
+        .unwrap();
+        drop(conn);
+    }
+
+    /// The same database with `rows` more transcript rows in `session` — the window's own filler.
+    fn seed_messages(dir: &FsPath, profile: &str, session: &str, rows: i64) {
+        answered_in(dir, profile, session, "assistant", "hi back");
+        let profile_dir = dir.join("engine").join("profiles").join(profile);
+        let conn = Connection::open(profile_dir.join("state.db")).unwrap();
+        for index in 0..rows {
+            conn.execute(
+                "INSERT INTO messages (session_id, role, content, timestamp) VALUES (?1, 'user', ?2, ?3)",
+                rusqlite::params![session, format!("q{index}"), unix_now() + index as f64],
+            )
+            .unwrap();
+        }
+        drop(conn);
+    }
+
+    #[test]
+    fn only_the_balloons_own_sender_takes_the_pet_route() {
+        assert!(
+            plan_ask("ops", &json!({"question": "hi", "from": "desktop-pet"}), false)
+                .unwrap()
+                .pet
+        );
+        // Every other sender — including one that only looks close — keeps the conversation, and
+        // so does a caller that sends no `from` at all.
+        for sender in ["cody", "desktop pets", "Desktop-Pet", "desktop.pet", "assistant"] {
+            assert!(
+                !plan_ask("ops", &json!({"question": "hi", "from": sender}), false)
+                    .unwrap()
+                    .pet,
+                "{sender}"
+            );
+        }
+        assert!(!plan_ask("ops", &json!({"question": "hi"}), false).unwrap().pet);
+    }
+
+    #[tokio::test]
+    async fn a_pet_ask_needs_no_conversation_and_mints_its_own_session() {
+        let dir = scratch("pet-mint");
+        let st = test_state(&dir);
+        // No `bot_sessions` row at all: the endless conversation does not exist yet, and a balloon
+        // question must not be the thing that needs it to.
+        answered_in(&dir, "ops", "20260101_000001_petpet", "assistant", "hi back");
+        let engine = FakeEngine {
+            reply: Some("hi".to_string()),
+            minted: Some("20260101_000001_petpet".to_string()),
+            ..Default::default()
+        };
+        let recorded: Mutex<Recorded> = Mutex::new(Vec::new());
+
+        let value = run_ask(
+            &st,
+            "ops",
+            br#"{"question":"hi","from":"desktop-pet","await":"bot","timeout":300}"#,
+            &engine,
+            &recorder(&recorded),
+        )
+        .await
+        .expect("the pet makes its own session, so no conversation is required");
+
+        let seen = engine.seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].1, "", "a first pet ask resumes nothing — it mints");
+        assert!(seen[0].4, "the delivery must be marked as the pet's");
+        assert!(seen[0].3, "an ask is queued either way");
+        drop(seen);
+
+        // The minted key is the pointer the pet keeps and the id the answer is reported under.
+        assert_eq!(
+            st.store.get_bot_pet_session("ops").as_deref(),
+            Some("20260101_000001_petpet")
+        );
+        assert_eq!(
+            st.store.get_bot_session("ops"),
+            None,
+            "minting a pet session must not create a conversation the app would open"
+        );
+        assert_eq!(value["session_id"], "20260101_000001_petpet");
+        assert_eq!(value["reply"], "hi back");
+        assert_eq!(value["answered"], true);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_pet_ask_resumes_the_pets_session_and_leaves_the_conversation_alone() {
+        let dir = scratch("pet-resume");
+        let st = test_state(&dir);
+        st.store.set_bot_session("ops", "endless");
+        st.store.set_bot_pet_session("ops", "pet1");
+        answered_in(&dir, "ops", "pet1", "assistant", "hi back");
+        let engine = FakeEngine { reply: Some("hi".to_string()), ..Default::default() };
+        let recorded: Mutex<Recorded> = Mutex::new(Vec::new());
+
+        let value = run_ask(
+            &st,
+            "ops",
+            br#"{"question":"hi","from":"desktop-pet","await":"bot","timeout":300}"#,
+            &engine,
+            &recorder(&recorded),
+        )
+        .await
+        .expect("asked");
+
+        let seen = engine.seen.lock().unwrap();
+        assert_eq!(seen[0].1, "pet1", "the pet's own session is what is resumed");
+        assert!(seen[0].4);
+        drop(seen);
+        assert_eq!(value["session_id"], "pet1");
+        assert_eq!(value["reply"], "hi back");
+        assert_eq!(
+            st.store.get_bot_session("ops").as_deref(),
+            Some("endless"),
+            "the conversation the app opens is byte-for-byte where it was"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_normal_ask_still_takes_the_bots_conversation_and_never_the_pets() {
+        let dir = scratch("pet-normal");
+        let st = test_state(&dir);
+        st.store.set_bot_session("ops", "endless");
+        st.store.set_bot_pet_session("ops", "pet1");
+        answered_in(&dir, "ops", "endless", "user", "yes, keep going");
+        let engine = FakeEngine { reply: Some("yes, keep going".to_string()), ..Default::default() };
+        let recorded: Mutex<Recorded> = Mutex::new(Vec::new());
+
+        let value = run_ask(
+            &st,
+            "ops",
+            br#"{"question":"Should I keep going?","from":"cody"}"#,
+            &engine,
+            &recorder(&recorded),
+        )
+        .await
+        .expect("asked");
+
+        let seen = engine.seen.lock().unwrap();
+        assert_eq!(seen[0].1, "endless", "the bot's conversation is still the route");
+        assert!(!seen[0].4, "a normal ask is never marked as the pet's");
+        drop(seen);
+        assert_eq!(value["session_id"], "endless");
+        assert_eq!(value["reply"], "yes, keep going");
+        assert_eq!(
+            st.store.get_bot_pet_session("ops").as_deref(),
+            Some("pet1"),
+            "a normal ask must not move the pet's pointer"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_pet_window_at_the_cap_starts_over_instead_of_growing() {
+        let dir = scratch("pet-window");
+        let st = test_state(&dir);
+        st.store.set_bot_session("ops", "endless");
+        st.store.set_bot_pet_session("ops", "oldpet");
+        seed_messages(&dir, "ops", "oldpet", PET_WINDOW);
+        answered_in(&dir, "ops", "newpet", "assistant", "hi back");
+        let engine = FakeEngine {
+            reply: Some("hi".to_string()),
+            minted: Some("newpet".to_string()),
+            ..Default::default()
+        };
+        let recorded: Mutex<Recorded> = Mutex::new(Vec::new());
+
+        let value = run_ask(
+            &st,
+            "ops",
+            br#"{"question":"hi","from":"desktop-pet","await":"bot","timeout":300}"#,
+            &engine,
+            &recorder(&recorded),
+        )
+        .await
+        .expect("asked");
+
+        let seen = engine.seen.lock().unwrap();
+        assert_eq!(seen[0].1, "", "a window at the cap rotates rather than grows");
+        assert!(seen[0].4);
+        drop(seen);
+        assert_eq!(st.store.get_bot_pet_session("ops").as_deref(), Some("newpet"));
+        assert_eq!(
+            st.store.get_bot_session("ops").as_deref(),
+            Some("endless"),
+            "the conversation is not what rotated"
+        );
+        assert_eq!(value["session_id"], "newpet");
+        assert_eq!(value["reply"], "hi back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // `#[tokio::test]` because `test_state` builds the display hub, which needs a runtime — the
+    // test itself is pure file reading.
+    #[tokio::test]
+    async fn the_pets_model_is_only_ever_a_name_the_profiles_own_config_carries() {
+        let dir = scratch("pet-model");
+        let st = test_state(&dir);
+        let root = dir.join("engine").join("profiles").join("ops");
+        std::fs::create_dir_all(&root).unwrap();
+        let write = |doc: &str| std::fs::write(root.join("config.yaml"), doc).unwrap();
+
+        // The shipped shape: the default is already a fast model, so it is the one pinned.
+        write("model:\n  default: mimo-v2.6-flash\n  provider: opencode-go\nfallback_providers:\n\
+               - provider: opencode-go\n  model: glm-5.3-flash\n");
+        assert_eq!(
+            pet_model(&st, "ops"),
+            Some(("mimo-v2.6-flash".to_string(), "opencode-go".to_string()))
+        );
+
+        // A default that is not fast falls through to the first fast entry the config names itself.
+        write("model:\n  default: gpt-5.2\n  provider: anthropic\nfallback_providers:\n\
+               - provider: opencode-go\n  model: deepseek-v4.1-flash\n");
+        assert_eq!(
+            pet_model(&st, "ops"),
+            Some(("deepseek-v4.1-flash".to_string(), "opencode-go".to_string()))
+        );
+
+        // No fast name anywhere: no pin at all, rather than a model we invented.
+        write("model:\n  default: gpt-5.2\n  provider: anthropic\n");
+        assert_eq!(pet_model(&st, "ops"), None);
+
+        // A profile with no config file: same answer, no error.
+        std::fs::remove_file(root.join("config.yaml")).unwrap();
+        assert_eq!(pet_model(&st, "ops"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
