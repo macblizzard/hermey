@@ -1213,3 +1213,19 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The Live Activity on the Lock Screen has words in it.** It drew a card with no text at all and never
   refreshed during a turn. It now names the bot and what it is doing — thinking, reading, running a tool,
   streaming the reply — updates as the turn moves, and ends with *Done* plus the first line of the answer.
+
+## [0.1.644] — 2026-11-24
+
+### Added
+- **One word on the island.** The Dynamic Island now says **Working** while a bot is busy, **Needs you**
+  when it is blocked on an approval or a question, and **Finished** when the task is done — readable
+  without expanding it. The elapsed time moved to the expanded view.
+- **The host updates itself, from either app.** When a newer hermeyd is published, the bell lists it with
+  its version and an **Update** button (Settings ▸ About on the Mac too). One press downloads it, checks the
+  published checksum, swaps the binary and restarts the service, with the host's own stages in the row.
+- **Rollback is automatic.** The previous binary stays on disk; if the new one does not stay up, two failed
+  starts put it back and the row says so with both versions.
+
+### Fixed
+- The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word
+  the card disagrees with.
