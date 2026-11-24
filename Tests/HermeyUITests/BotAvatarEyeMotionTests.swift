@@ -40,18 +40,18 @@ final class BotAvatarEyeMotionTests: XCTestCase {
     func testEveryBusyStateBlinks() {
         // Not `waiting`: the reference's "needs attention" states hold a lid instead of blinking
         // (`logoAvatarNeedsAttention`), which the next test pins.
-        for activity in [BotAvatarActivity.working, .reading, .writing, .computer, .idle, .thinking] {
+        for activity in [BotAvatarActivity.working, .reading, .computer, .idle, .thinking] {
             let closed = samples(activity, seconds: 6).map(\.scaleY).min() ?? 1
             XCTAssertLessThan(closed, 0.3, "\(activity.rawValue) never closed its eyes")
         }
     }
 
-    func testTheErrorStateIsStill() {
-        // The reference gives error a half-closed lid (0.68) and no tracks: a failure reads as
+    func testTheBlockedStateIsStill() {
+        // The reference gives a failure a half-closed lid (0.68) and no tracks: it reads as
         // "gone quiet", and a blinking one reads as alive. Every sample is the same pose.
-        let poses = samples(.error, seconds: 4)
+        let poses = samples(.blocked, seconds: 4)
         let first = poses.first
-        XCTAssertTrue(poses.allSatisfy { $0 == first }, "error must not animate")
+        XCTAssertTrue(poses.allSatisfy { $0 == first }, "blocked must not animate")
         XCTAssertEqual(first?.scaleY ?? 0, 0.68, accuracy: 0.001)
     }
 

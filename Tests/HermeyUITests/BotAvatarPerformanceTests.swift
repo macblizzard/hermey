@@ -75,16 +75,17 @@ final class BotAvatarPerformanceTests: XCTestCase {
     // MARK: - Which states perform
 
     func testEveryBusyStatePerforms() {
-        for activity in [BotAvatarActivity.working, .thinking, .reading, .writing, .computer] {
+        for activity in [BotAvatarActivity.working, .thinking, .reading, .computer] {
             let performed = performances(activity, seconds: 8).contains { !$0.body.isRest }
             XCTAssertTrue(performed, "\(activity.rawValue) never performed")
         }
     }
 
     func testIdleWaitingAndErrorAreLeftExactlyAsTheReferenceDrawsThem() {
-        // Idle is a bot doing nothing, waiting is looking at the person, error is gone quiet: a
-        // backflip in any of them is a lie. The performed frame must equal the port's own frame.
-        for activity in [BotAvatarActivity.idle, .waiting, .error] {
+        // Idle is a bot doing nothing, waiting is looking at the person, a failure is gone quiet and
+        // a finished turn is over: a backflip in any of them is a lie. The performed frame must equal
+        // the port's own frame.
+        for activity in [BotAvatarActivity.idle, .waiting, .blocked, .done] {
             XCTAssertTrue(performances(activity, seconds: 14).allSatisfy(\.isEmpty),
                           "\(activity.rawValue) performed")
             for moment in stride(from: 0.0, through: 14.0, by: 1.0) {

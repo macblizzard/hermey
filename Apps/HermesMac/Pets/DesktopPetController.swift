@@ -26,11 +26,16 @@ private final class PetInstance {
         self.model = model
     }
 
-    /// The face changed in the picker: redraw it and re-derive where its alpha is.
-    func updateFace(_ face: String?) {
+    /// The face changed in the picker: redraw it and re-derive where its alpha is. A bot with a
+    /// generated avatar is redrawn from its definition, and its hit area is the outline the
+    /// definition draws rather than a picture's pixels.
+    func updateFace(_ face: String?, avatar: BotAvatarDocument? = nil, state: OpenBotAvatarState = .idle) {
         model.face = face
+        model.avatar = avatar
+        model.state = state
         hitView.iconMask = PetIconMask(identity: bot.id,
                                        face: face,
+                                       avatar: avatar,
                                        side: CGFloat(PetGeometry.iconSide))
     }
 }
@@ -94,12 +99,14 @@ final class DesktopPetController: ObservableObject {
         }
 
         for bot in bots where PetSettings.isEnabled(bot.id) && pets[bot.id] == nil {
-            show(bot, face: store.botFaces[bot.id]?.raw)
+            show(bot, face: store.botFaces[bot.id]?.raw, avatar: store.botAvatars[bot.id])
         }
 
         // A face can change in the icon picker while its pet is on screen.
         for bot in bots {
-            pets[bot.id]?.updateFace(store.botFaces[bot.id]?.raw)
+            pets[bot.id]?.updateFace(store.botFaces[bot.id]?.raw,
+                                 avatar: store.botAvatars[bot.id],
+                                 state: OpenBotAvatarState(activity: store.activity(for: bot.id)))
         }
 
         // A pet that appears while its bot already has something waiting wears the badge at once,
@@ -133,7 +140,8 @@ final class DesktopPetController: ObservableObject {
         PetSettings.setEnabled(enabled, for: bot.id)
         if enabled {
             guard pets[bot.id] == nil else { return }
-            show(bot, face: store?.botFaces[bot.id]?.raw)
+            show(bot, face: store?.botFaces[bot.id]?.raw,
+             avatar: store?.botAvatars[bot.id])
             ClientLog.note("pet enabled: \(bot.id)", category: "pets")
         } else if pets[bot.id] != nil {
             close(bot.id, reason: "switched off in settings",
@@ -157,14 +165,14 @@ final class DesktopPetController: ObservableObject {
 
     // MARK: - Showing and closing
 
-    private func show(_ bot: Bot, face: String?) {
+    private func show(_ bot: Bot, face: String?, avatar: BotAvatarDocument?) {
         guard pets[bot.id] == nil else { return }
         let iconSide = CGFloat(PetGeometry.iconSide)
         let windowSide = CGFloat(PetGeometry.windowSide(icon: PetGeometry.iconSide))
         let inset = CGFloat(PetGeometry.motionMargin)
         let origin = placement(for: bot, side: windowSide)
 
-        let model = PetModel(botID: bot.id, botName: bot.displayName, face: face)
+        let model = PetModel(botID: bot.id, botName: bot.displayName, face: face, avatar: avatar)
         let hosting = NSHostingView(rootView: PetView(
             pet: model,
             onClose: { [weak self] in self?.userClosed(botID: bot.id) }
@@ -179,7 +187,7 @@ final class DesktopPetController: ObservableObject {
         hitView.wantsLayer = true
         hitView.layer?.backgroundColor = NSColor.clear.cgColor
         hitView.iconInset = inset
-        hitView.iconMask = PetIconMask(identity: bot.id, face: face, side: iconSide)
+        hitView.iconMask = PetIconMask(identity: bot.id, face: face, avatar: avatar, side: iconSide)
         hitView.addSubview(hosting)
 
         let panel = DesktopPetPanel(side: windowSide)
@@ -368,10 +376,15 @@ final class DesktopPetController: ObservableObject {
         let model = store.model
         let away = PetWindowPresence.isAway()
         for (botID, pet) in pets {
+            // The word the pet wears is the tracker's answer, the same one the roster's badge reads.
+            pet.model.setActivity(store.activity(for: botID))
             // A balloon already open on this bot is showing its newest exchange: the app's count can
             // still grow behind it (the pet's own ask lands as a message too), and hopping at the
             // answer it is displaying would be the pet telling him what he is reading.
             let count = pet.balloon == nil ? Self.unreadCount(botID: botID, in: model) : 0
+            // The pose follows the bot's actual state — the same accessor the list and the header
+            // read, so the desktop pet cannot say `working` while the row says `idle`.
+            pet.model.state = OpenBotAvatarState(activity: store.activity(for: botID))
             // The hit view draws nothing, but it has to know: the dot sits on a corner the ink may
             // not cover, and a badge the window passes clicks through is not a target.
             pet.hitView.hasBadge = count > 0

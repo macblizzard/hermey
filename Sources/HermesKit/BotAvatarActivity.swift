@@ -12,20 +12,26 @@ import Foundation
 /// draws it (design system, which depends on `HermesKit`). Keeping it here is what lets the tracker
 /// return a real activity instead of a parallel enum that the UI would have to translate — a second
 /// copy of these rules is exactly how a face starts disagreeing with the reference.
+///
+/// `writing` and `error` are gone: text being written is `working`, and a failed run is `blocked`.
+/// A turn that has finished is `done`, which the tracker holds for a few seconds before the face
+/// falls back to `idle`. The words those states print come from `BotStateWord`, the only place they
+/// exist.
 public enum BotAvatarActivity: String, CaseIterable, Hashable, Sendable {
     case idle
-    case reading
-    case writing
     case thinking
-    case computer
+    case reading
     case working
+    case computer
     case waiting
-    case error
+    case blocked
+    case done
 
     /// Tools that read something: a file, a page, the transcript, a skill.
     public static let readingTools: Set<String> = ["read_file", "web_fetch", "read_history", "skill_read"]
 
-    /// Tools that write something down.
+    /// Tools that write something down. They are `working`, not a state of their own: a bot writing
+    /// into a file is working, and the reference has no separate pose for it.
     public static let writingTools: Set<String> = ["write_file"]
 
     /// Tools that drive a machine: a screen, a browser, a shell.
@@ -62,12 +68,12 @@ public enum BotAvatarActivity: String, CaseIterable, Hashable, Sendable {
     /// The activity for a run, in the reference's precedence order.
     ///
     /// 1. a background run is `idle` — helper work must not leak into the chat as activity,
-    /// 2. `failed` is `error`,
+    /// 2. `failed` is `blocked`,
     /// 3. a run paused on the user (an answer, an approval, a takeover) is `waiting`,
     /// 4. anything not in flight — completed, cancelled, unknown, `nil` — is `idle`,
-    /// 5. otherwise the **last** tool called picks the pose: computer, then reading, then writing,
-    ///    and any other tool is plain `working`,
-    /// 6. with no tool call in flight, composing is `writing` and thinking is `thinking`,
+    /// 5. otherwise the **last** tool called picks the pose: computer, then reading, and any other
+    ///    tool — `write_file` included — is plain `working`,
+    /// 6. with no tool call in flight, composing is `working` and thinking is `thinking`,
     /// 7. and a working run with neither is `working`.
     ///
     /// The order of 5 matters: a shell command that also read a file is `computer`, because the
@@ -79,24 +85,33 @@ public enum BotAvatarActivity: String, CaseIterable, Hashable, Sendable {
                             thinking: Bool = false,
                             background: Bool = false) -> BotAvatarActivity {
         if background { return .idle }
-        if status == "failed" { return .error }
+        if status == "failed" { return .blocked }
         if isWaitingOnUser(status: status) { return .waiting }
         if !isWorking(status: status) { return .idle }
         if let tool = toolNames.last {
             if computerTools.contains(tool) { return .computer }
             if readingTools.contains(tool) { return .reading }
-            if writingTools.contains(tool) { return .writing }
             return .working
         }
-        if composing { return .writing }
+        if composing { return .working }
         if thinking { return .thinking }
         return .working
     }
 
-    /// The working ring, drawn for every state but rest and error — the reference's
-    /// `data-working={activity !== "idle" && activity !== "error"}`.
+    /// The word this state is printed as, everywhere.
+    ///
+    /// Delegated rather than restated: `BotStateWord` is the table of words, and this is the door a
+    /// caller holding an activity walks through. The Live Activity extension asks `BotStateWord`
+    /// directly for the same reason it cannot link this module.
+    public var label: String {
+        BotStateWord(rawValue: rawValue)?.label ?? rawValue
+    }
+
+    /// The working ring, drawn for every state but rest, a failure and a finished turn — the
+    /// reference's `data-working={activity !== "idle" && activity !== "error"}`, with `done` added
+    /// because a ring on a turn that already landed is a lie.
     public var showsWorkingRing: Bool {
-        self != .idle && self != .error
+        self != .idle && self != .blocked && self != .done
     }
 
     /// Waiting is the one state that is asking the user for something (`logoAvatarNeedsAttention`).
@@ -104,22 +119,14 @@ public enum BotAvatarActivity: String, CaseIterable, Hashable, Sendable {
         self == .waiting
     }
 
-    /// Whether the body moves at all. Error rests.
+    /// Whether the body moves at all. A failure and a finished turn rest.
     public var isAnimated: Bool {
-        self != .error
+        self != .blocked && self != .done
     }
 
-    /// Spoken as part of an avatar's label, where a caller gives one.
+    /// Spoken as part of an avatar's label, where a caller gives one. The same word, lowercased: a
+    /// second set of spoken words is a second vocabulary.
     public var accessibilityDescription: String {
-        switch self {
-        case .idle: return "idle"
-        case .reading: return "reading"
-        case .writing: return "writing"
-        case .thinking: return "thinking"
-        case .computer: return "using the computer"
-        case .working: return "working"
-        case .waiting: return "waiting for you"
-        case .error: return "error"
-        }
+        label.lowercased()
     }
 }

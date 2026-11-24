@@ -1550,7 +1550,7 @@ mod tests {
         let value = message_body(
             "ops",
             &plan,
-            &Delivered { session_id: "s1".to_string(), reply: None },
+            &Delivered { session_id: "s1".to_string(), stored_session_id: None, reply: None },
         );
         assert_eq!(value.as_object().unwrap().len(), 6);
         assert!(value.get("attachments").is_none());
@@ -1584,7 +1584,7 @@ mod tests {
         let value = message_body(
             "ops",
             &plan,
-            &Delivered { session_id: "s1".to_string(), reply: None },
+            &Delivered { session_id: "s1".to_string(), stored_session_id: None, reply: None },
         );
         assert_eq!(value["attachments"][0]["name"], "budget.xlsx");
         assert_eq!(value.as_object().unwrap().len(), 7);

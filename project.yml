@@ -234,6 +234,11 @@ targets:
       - path: Apps/HermesLiveActivity
         excludes:
           - "Info.plist"
+      # The one table of state words, compiled into the extension as well as into HermesKit. The
+      # extension must not link HermesKit (a widget process has no business loading the networking
+      # stack), and a second copy of the eight strings is exactly how the pill came to say "Finished"
+      # while the list said "Done". One file, both processes.
+      - path: Sources/HermesKit/BotStateWord.swift
       # No BrandAssets: the island is black in both appearances and an asset catalog here would be a
       # second palette to keep in sync for no visible gain.
     info:

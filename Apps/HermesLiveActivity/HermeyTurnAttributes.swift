@@ -3,6 +3,15 @@ import Foundation
 #if os(iOS) && canImport(ActivityKit)
 import ActivityKit
 
+// The eight words a bot state prints live in `BotStateWord`, which is compiled into this target (see
+// `project.yml`) as well as into `HermesKit`. The extension must not **link** `HermesKit` — that is
+// the whole networking stack — so this is a conditional import: the extension gets the type from
+// this module, and the app, which compiles this same file, gets it from the package it already
+// links.
+#if canImport(HermesKit)
+import HermesKit
+#endif
+
 /// One turn of the owner's message: a bot picks it up, works on it, and lands a reply.
 ///
 /// This is the *only* file shared by the app and the extension, and it is deliberately the only
@@ -84,7 +93,7 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// single line, so a long or multi-paragraph reply cannot reach the card unflattened.
         public var replySnippet: String
 
-        /// What the bot is doing, in one short line: "Thinking it through", "Running read_file",
+        /// What the bot is doing, in one short line: the state's word, "Running read_file", or
         /// "Streaming the reply".
         ///
         /// **Never empty.** This is the field the blank capsule was missing: the card exists from
@@ -95,7 +104,7 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// the lock screen. The coordinator writes the specific words; this type guarantees a floor.
         ///
         /// It sits *under* the phase word, not instead of it: the island and the card print
-        /// `word(phase)` and then this line, which is why a card can say "Needs you · Running
+        /// `word(phase)` and then this line, which is why a card can say "Waiting for you · Running
         /// read_file" without the coordinator having to compose a sentence.
         public var step: String
 
@@ -123,21 +132,21 @@ public struct HermeyTurnAttributes: ActivityAttributes {
             return String(flat.prefix(stepLimit))
         }
 
-        /// The word for a phase, in one place: `Working`, `Needs you`, `Finished`.
+        /// The word for a phase, from `BotStateWord` — the one table of words the whole app uses.
         ///
-        /// **The only source of these three strings.** The compact pill, the expanded island and
-        /// the Lock Screen card all draw this, so the three surfaces cannot drift into three
-        /// different vocabularies for the same turn — which is what happens when a view writes its
-        /// own literal, and the reason this is a function of the phase rather than a string each
-        /// view holds.
+        /// The compact pill, the expanded island and the Lock Screen card all draw this, so the
+        /// three surfaces cannot drift into three vocabularies for the same turn. A phase is a
+        /// transport fact (a turn runs, waits, or is over); the *words* are the bot vocabulary's, so
+        /// `needsYou` reads "Waiting for you" and `done` reads "Done" exactly as the roster and the
+        /// pet say them.
         ///
         /// Sentence case, one or two short words: it has to be legible in the compact pill, which
         /// is roughly a clock's width and is the whole point of the feature.
         public static func word(_ phase: Phase) -> String {
             switch phase {
-            case .working: return "Working"
-            case .needsYou: return "Needs you"
-            case .done: return "Finished"
+            case .working: return BotStateWord.working.label
+            case .needsYou: return BotStateWord.waiting.label
+            case .done: return BotStateWord.done.label
             }
         }
 
@@ -148,7 +157,7 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// writing: the coordinator supplies the real line, and a neutral word that is *true* beats
         /// a sentence that claims the turn is his when it may be a background sweep. Delegating to
         /// `word(_:)` is what keeps the floor and the status word from ever disagreeing — an old
-        /// card whose step is missing says "Finished", not "Done".
+        /// card whose step is missing says the phase's own word, `BotStateWord.done.label`.
         public static func neutral(_ phase: Phase) -> String {
             word(phase)
         }

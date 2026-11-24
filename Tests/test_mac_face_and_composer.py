@@ -33,9 +33,12 @@ class TheFaceSaysWhatItIsDoing(unittest.TestCase):
 
     def test_eight_states_and_their_precedence(self) -> None:
         self.assertIn("public enum BotAvatarActivity", self.ACTIVITY)
-        for case in ("case idle", "case reading", "case writing", "case thinking",
-                     "case computer", "case working", "case waiting", "case error"):
+        for case in ("case idle", "case thinking", "case reading", "case working",
+                     "case computer", "case waiting", "case blocked", "case done"):
             self.assertIn(case, self.ACTIVITY)
+        # Writing folded into working, and a failed run is blocked: no `writing` or `error` case.
+        self.assertNotIn("case writing", self.ACTIVITY)
+        self.assertNotIn("case error", self.ACTIVITY)
         # A request is waiting; a failure outranks it; neither is a working run.
         order = [
             self.ACTIVITY.index("if background"),
@@ -44,12 +47,12 @@ class TheFaceSaysWhatItIsDoing(unittest.TestCase):
         ]
         self.assertEqual(order, sorted(order), "the state that needs a person wins the face")
 
-    def test_the_face_is_what_moves_and_it_rests_on_error(self) -> None:
-        # A body that breathes, sways, turns or pulses — and an error that holds still, which is
-        # what makes "asleep" readable at a glance.
+    def test_the_face_is_what_moves_and_it_rests_on_failure(self) -> None:
+        # A body that breathes, sways, turns or pulses — and a failure or a finished turn that holds
+        # still, which is what makes "asleep" and "done" readable at a glance.
         motion = (ROOT / "Sources" / "HermeyUI" / "BotAvatarMotion.swift").read_text(encoding="utf-8")
         self.assertIn("public enum BotAvatarMotion", motion)
-        self.assertIn("self != .error", self.ACTIVITY)
+        self.assertIn("self != .blocked && self != .done", self.ACTIVITY)
         # Reduce Motion, the app's switch and the size floor all stop it.
         self.assertIn("accessibilityReduceMotion", self.AVATAR_VIEW)
         self.assertIn("animates && appAllowsMotion", self.AVATAR_VIEW)

@@ -198,6 +198,19 @@ pub async fn put_defaults_soul(
 
 // ---- bot icons --------------------------------------------------------------------
 
+/// A face's own entry: the chosen face (`avatar`), and optionally the avatar it draws itself with
+/// (`definition`, the open-bot-avatar v1 JSON) and that avatar's colour (`color`).
+///
+/// The document predates both, so every field is optional and a missing one is not a change. The
+/// shapes are decoded by the apps' `BotIconService` / `MacBotIconService` field-for-field.
+fn face_entry(doc: &Value, bot: &str) -> Value {
+    doc.get("faces")
+        .and_then(|faces| faces.get(bot))
+        .cloned()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
 pub async fn get_icons(
     State(st): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -205,6 +218,15 @@ pub async fn get_icons(
     require_device(&st, &headers)?;
     let doc = st.store.doc_or(DOC_ICONS, json!({"faces": {}, "icons": {}}));
     Ok(Json(doc))
+}
+
+/// A bad definition is refused with the validator's own reason, and nothing is written: a partial
+/// save here would leave a bot wearing half an avatar.
+fn bad_request(reason: String) -> AuthFail {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "detail": reason })),
+    )
 }
 
 pub async fn put_icon(
@@ -215,16 +237,69 @@ pub async fn put_icon(
 ) -> Result<Json<Value>, AuthFail> {
     require_device(&st, &headers)?;
     let mut doc = st.store.doc_or(DOC_ICONS, json!({"faces": {}, "icons": {}}));
-    match body.get("avatar").and_then(|v| v.as_str()) {
-        Some(avatar) => {
-            if let Some(faces) = doc["faces"].as_object_mut() {
-                faces.insert(bot, json!({"avatar": avatar}));
+    let mut entry = face_entry(&doc, &bot);
+    let has = |key: &str| body.get(key).is_some();
+
+    // The chosen face: a string sets it; an absent or null one clears it. That is exactly what the
+    // pre-avatar picker has always sent, so an old client keeps its meaning.
+    if has("avatar") {
+        match body.get("avatar").and_then(|v| v.as_str()) {
+            Some(avatar) => entry["avatar"] = json!(avatar),
+            None => {
+                if let Some(object) = entry.as_object_mut() {
+                    object.remove("avatar");
+                }
             }
         }
-        None => {
-            if let Some(faces) = doc["faces"].as_object_mut() {
-                faces.remove(&bot);
+    }
+
+    // The generated avatar: `null` clears it, an object must validate.
+    if has("definition") {
+        match body.get("definition") {
+            Some(Value::Null) | None => {
+                if let Some(object) = entry.as_object_mut() {
+                    object.remove("definition");
+                }
             }
+            Some(definition) => match crate::bot_avatar::validate(definition) {
+                Ok(spec) => entry["definition"] = spec.to_json(),
+                Err(errors) => {
+                    // The first reason leads, the rest follow: an editor shows one line and may
+                    // expand the list.
+                    let lead = errors.first().cloned().unwrap_or_default();
+                    let mut detail = format!("invalid avatar definition: {lead}");
+                    if errors.len() > 1 {
+                        detail.push_str(&format!(" (and {} more)", errors.len() - 1));
+                    }
+                    return Err(bad_request(detail));
+                }
+            },
+        }
+    }
+
+    // The avatar's colour, overridable per bot. `null` falls back to the palette colour.
+    if has("color") {
+        match body.get("color").and_then(|v| v.as_str()) {
+            Some(color) if crate::bot_avatar::is_hex_color(color) => entry["color"] = json!(color),
+            Some(color) => {
+                return Err(bad_request(format!(
+                    "color must be #rgb or #rrggbb, not {color:?}"
+                )))
+            }
+            None => {
+                if let Some(object) = entry.as_object_mut() {
+                    object.remove("color");
+                }
+            }
+        }
+    }
+
+    if let Some(faces) = doc["faces"].as_object_mut() {
+        // Nothing left to say about this bot: keep the document clean for the next reader.
+        if entry.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+            faces.remove(&bot);
+        } else {
+            faces.insert(bot, entry);
         }
     }
     st.store.set_doc(DOC_ICONS, &doc);
@@ -320,3 +395,118 @@ pub async fn get_rooms(
 // profile's state.db (read-only) for the bot list's last line, and `push.rs` owns the Bark relay.
 // This module used to carry stubs for both; two answers for one route is how a list ends up empty
 // while the database is full.
+
+#[cfg(test)]
+mod tests {
+    //! The avatar half of the bot-icon document, through the real handlers.
+    //!
+    //! These call `get_icons`/`put_icon` themselves — not a copy of their body — so the route's
+    //! auth gate, the document merge and the validator's refusal are all exercised together. The
+    //! state is a throwaway `bridge.db` (`crate::test_support::state`), and the bearer is the local
+    //! token that state installs.
+
+    use super::*;
+    use axum::extract::{Path, State};
+
+    const LOCAL: &str = "test-local-token";
+
+    fn auth() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {LOCAL}").parse().unwrap(),
+        );
+        headers
+    }
+
+    fn definition() -> Value {
+        json!({
+            "version": 1,
+            "id": "box",
+            "name": "Box",
+            "body": { "path": "M20 20 H80 V80 H20 Z" },
+            "eyes": { "x": 50, "y": 46, "spacing": 15, "scale": 1 },
+        })
+    }
+
+    async fn put(st: &Arc<AppState>, bot: &str, body: Value) -> Result<Json<Value>, AuthFail> {
+        put_icon(State(Arc::clone(st)), auth(), Path(bot.to_string()), Json(body)).await
+    }
+
+    async fn get(st: &Arc<AppState>) -> Value {
+        get_icons(State(Arc::clone(st)), auth()).await.expect("icons").0
+    }
+
+    #[tokio::test]
+    async fn a_definition_and_colour_round_trip_through_the_document() {
+        let dir = crate::test_support::scratch("bot-avatar-round-trip");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        put(&st, "cody", json!({
+            "avatar": "#A97EFE::shape_1",
+            "definition": definition(),
+            "color": "#A97EFE",
+        }))
+        .await
+        .expect("a valid definition is stored");
+
+        let stored = get(&st).await;
+        assert_eq!(stored["faces"]["cody"]["avatar"], json!("#A97EFE::shape_1"));
+        assert_eq!(stored["faces"]["cody"]["definition"], definition());
+        assert_eq!(stored["faces"]["cody"]["color"], json!("#A97EFE"));
+
+        // A second GET reads the document back from SQLite, which is what a paired device sees.
+        let again = get(&st).await;
+        assert_eq!(again["faces"]["cody"]["definition"], definition());
+    }
+
+    #[tokio::test]
+    async fn an_invalid_definition_is_refused_and_nothing_is_written() {
+        let dir = crate::test_support::scratch("bot-avatar-refusal");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        let mut bad = definition();
+        bad["body"]["path"] = json!("M20 20 H140 V80 H20 Z");
+        let (status, body) = put(&st, "cody", json!({ "definition": bad }))
+            .await
+            .expect_err("a path leaving the box must be refused");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let detail = body.0["detail"].as_str().unwrap_or_default();
+        assert!(detail.contains("invalid avatar definition"), "{detail}");
+        assert!(detail.contains("right edge x=140"), "{detail}");
+
+        assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn a_bad_colour_is_refused() {
+        let dir = crate::test_support::scratch("bot-avatar-colour");
+        let st = Arc::new(crate::test_support::state(&dir));
+        let (status, body) = put(&st, "cody", json!({ "color": "orange" }))
+            .await
+            .expect_err("a colour that is not hex must be refused");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.0["detail"].as_str().unwrap_or_default().contains("color"));
+    }
+
+    #[tokio::test]
+    async fn clearing_the_avatar_clears_the_entry_but_the_face_alone_keeps_it() {
+        let dir = crate::test_support::scratch("bot-avatar-clear");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        put(&st, "cody", json!({ "avatar": "#A97EFE", "definition": definition() }))
+            .await
+            .expect("stored");
+        // The old picker's own write: it only ever sends `avatar`, and clearing the face must not
+        // touch the avatar it does not know about.
+        put(&st, "cody", json!({ "avatar": null }))
+            .await
+            .expect("cleared face");
+        assert_eq!(get(&st).await["faces"]["cody"]["definition"], definition());
+
+        put(&st, "cody", json!({ "definition": null }))
+            .await
+            .expect("cleared avatar");
+        assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
+    }
+}

@@ -1298,3 +1298,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The bubble shows only what you typed** when a file was attached — the text the host extracts for the
   bot is no longer drawn into your message after a reload.
 - **Quick Look** compiles: the preview view's initializer is failable and is now bound rather than assumed.
+
+## [Unreleased]
+
+### Added
+- **A bot's own avatar.** Any bot can have a generated face, drawn natively in the app from a small JSON
+  definition (one SVG path plus where the eyes sit — the open-bot-avatar format), edited in the bot's
+  settings on either device: presets, paste a definition, or nudge the eyes and colour. It shows in the
+  list row, the chat header and on the desktop as the pet. A bot without one keeps its picture.
+- **Eight bot states with one vocabulary.** idle, thinking, reading, working, computer, waiting, blocked
+  and done — a finished turn now reads *Done* instead of falling straight to silence, and a failed one
+  reads *Blocked*. The same words drive the sidebar badge, the pet badge and the Live Activity.
+
+### Changed
+- `hermeyd` 0.6.0: the bot icon document accepts a `definition` and `color` per bot, validated on the way in.

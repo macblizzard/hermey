@@ -191,11 +191,18 @@ class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
 
     def test_the_extension_does_not_link_the_app(self) -> None:
         # A widget extension loads in its own process; importing the app's module or package stack
-        # drags the socket client and every view in with it.
+        # drags the socket client and every view in with it. The one exception is the state-word
+        # table: `BotStateWord.swift` is compiled straight into the extension, and the app's copy of
+        # this file imports `HermesKit` only where the module exists (the app target links it).
         for name, source in (("attributes", ATTRIBUTES), ("widget", WIDGET)):
-            for forbidden in ("import HermesAppKit", "import HermesKit", "import HermeyUI",
+            for forbidden in ("import HermesAppKit", "import HermeyUI",
                               "import UIKit", "import AppModel"):
                 self.assertNotIn(forbidden, source, f"{name} links the app: {forbidden}")
+        self.assertNotIn("\nimport HermesKit\n", WIDGET)
+        self.assertIn("#if canImport(HermesKit)\nimport HermesKit\n#endif", ATTRIBUTES)
+        # …and the extension gets the words by compiling that one file, not by linking the package.
+        project = (ROOT / "project.yml").read_text(encoding="utf-8")
+        self.assertIn("- path: Sources/HermesKit/BotStateWord.swift", project)
 
 
 class EveryPresentationHasAView(unittest.TestCase):
@@ -741,9 +748,9 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         neutral = body("public static func neutral", ATTRIBUTES)
         self.assertIn("word(phase)", neutral)
         words = body("public static func word", ATTRIBUTES)
-        self.assertIn('case .working: return "Working"', words)
-        self.assertIn('case .needsYou: return "Needs you"', words)
-        self.assertIn('case .done: return "Finished"', words)
+        self.assertIn("case .working: return BotStateWord.working.label", words)
+        self.assertIn("case .needsYou: return BotStateWord.waiting.label", words)
+        self.assertIn("case .done: return BotStateWord.done.label", words)
 
     def test_an_older_card_gets_the_same_floor(self) -> None:
         # 0.1.638's activities have no `step` key. A missing key must decode to the neutral word,
@@ -803,13 +810,17 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertIn("guard step != lastStep || phase != lastPhase else { return }", progress)
 
     def test_the_step_is_the_apps_own_vocabulary(self) -> None:
-        # Same words the app's working row reads: the tracker's activity, and the tool that is out.
+        # Same words every surface reads: the tracker's activity word, and the tool that is out.
         step = body("private func stepLine()")
         self.assertIn("model.liveTools.last(where: { $0.isRunning })", step)
         self.assertIn("model.activity(forBot: $0)", step)
         self.assertIn("model.streamingText", step)
-        for phrase in ("Thinking it through", "Using the computer", "On your message"):
-            self.assertIn(phrase, step)
+        self.assertIn("return activity.label", step)
+        self.assertIn("return BotAvatarActivity.waiting.label", step)
+        # No second vocabulary survived on the card: these phrases used to be spelled here.
+        for literal in ('"Thinking it through"', '"On your message"', '"Waiting on you"',
+                        '"Stopped with an error"'):
+            self.assertNotIn(literal, step)
 
     def test_the_widget_draws_the_type_the_coordinator_starts(self) -> None:
         # One attributes type in two processes: the widget's configuration and every `Activity<>`
@@ -863,13 +874,13 @@ class TheIslandSaysOneWord(unittest.TestCase):
     appears when the host is actually blocked on him.
     """
 
-    def test_the_three_words_are_exactly_these(self) -> None:
+    def test_the_three_words_are_the_state_words(self) -> None:
         words = body("public static func word", ATTRIBUTES)
-        found = dict(re.findall(r"case \.(\w+): return \"([^\"]+)\"", words))
-        self.assertEqual(found, {"working": "Working", "needsYou": "Needs you", "done": "Finished"})
+        found = dict(re.findall(r"case \.(\w+): return BotStateWord\.(\w+)\.label", words))
+        self.assertEqual(found, {"working": "working", "needsYou": "waiting", "done": "done"})
         # Every phase has a word, so the switch cannot fall through to nothing when a fourth state
         # is ever added without one.
-        self.assertEqual(len(re.findall(r"case \.\w+: return", words)), 3)
+        self.assertEqual(len(re.findall(r"case \.\w+: return BotStateWord\.\w+\.label", words)), 3)
 
     def test_the_widget_never_spells_a_word_itself(self) -> None:
         # The three strings live in the attributes type. A literal in a view is the second
@@ -998,15 +1009,19 @@ class TheIslandSaysOneWord(unittest.TestCase):
         self.assertNotIn("replyTail", phase_body)
 
     def test_the_step_says_what_he_is_being_asked_for(self) -> None:
-        # Under the word, the step names the stop: an approval, or a question. The method is on the
-        # request itself (`fixtures/approval.ndjson`), so nothing is guessed.
+        # Under the word, the step names the stop — and the stop's word is the state's own:
+        # "Waiting for you", exactly what the roster badge says. The method is on the request
+        # itself (`fixtures/approval.ndjson`), so nothing is guessed.
         step = body("private func stepLine()", COORDINATOR)
-        self.assertIn("model.pendingRequests.first", step)
-        self.assertIn('request.method == "approval" ? "Approval waiting" : "Answer waiting"', step)
+        self.assertIn("model.hasPendingRequests", step)
+        self.assertIn("BotAvatarActivity.waiting.label", step)
         # The request outranks the pose: while the host waits, "Running read_file" is not what the
         # turn is doing.
-        self.assertLess(step.index("model.pendingRequests.first"),
+        self.assertLess(step.index("model.hasPendingRequests"),
                         step.index("model.liveTools.last"))
+        # …and a failed turn outranks even the waiting request.
+        self.assertLess(step.index("activity == .blocked"),
+                        step.index("model.hasPendingRequests"))
 
     def test_each_phase_has_its_own_glyph_and_none_is_an_error(self) -> None:
         mark = piece("private struct HermeyTurnMark: View")

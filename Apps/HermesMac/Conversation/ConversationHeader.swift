@@ -135,7 +135,9 @@ struct ConversationHeader: View {
                                   color: store.botFaces[bot.id]?.raw,
                                   activity: store.activity(for: bot.id),
                                   size: Geometry.chatHeaderAvatar,
-                                  animates: store.activity(for: bot.id) != .idle)
+                                  animates: store.activity(for: bot.id) != .idle,
+                                  definition: store.botAvatars[bot.id]?.definition,
+                                  avatarColor: store.botAvatars[bot.id]?.color)
                 } else {
                     Avatar(title, size: .small, presence: presence)
                 }

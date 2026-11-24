@@ -380,7 +380,9 @@ struct BotListScreen: View {
                               size: metrics.avatar,
                               // Same rule as the Mac: idle rows must not animate.
                               animates: (model.isStreaming && model.selectedBotID == bot.id)
-                                  || bot.id == model.selectedBotID)
+                                  || bot.id == model.selectedBotID,
+                              definition: app.botAvatars[bot.id]?.definition,
+                              avatarColor: app.botAvatars[bot.id]?.color)
                     // The count sits on the face, bottom-right, nudged out so it reads as a badge on
                     // the avatar rather than a chip inside it. It was dropped in the roster restyle
                     // (2026-11-13) on the theory that the app badge was enough — it is not: the app
@@ -408,6 +410,10 @@ struct BotListScreen: View {
                                 .foregroundStyle(Tokens.textMuted)
                                 .accessibilityHidden(true)
                         }
+
+                        // The same word the face wears, from the same table (see `BotStateBadge`).
+                        BotStateBadge(activity: model.activity(forBot: bot.id),
+                                      size: (metrics.metaSize * 0.92).rounded())
 
                         Spacer(minLength: 6)
 

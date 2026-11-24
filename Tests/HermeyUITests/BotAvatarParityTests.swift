@@ -390,7 +390,8 @@ final class BotAvatarActivityParityTests: XCTestCase {
             XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: [tool]), .reading, tool)
         }
         for tool in BotAvatarActivity.writingTools {
-            XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: [tool]), .writing, tool)
+            // `write_file` is a working tool: the state no longer has a pose of its own.
+            XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: [tool]), .working, tool)
         }
         for tool in BotAvatarActivity.computerTools {
             XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: [tool]), .computer, tool)
@@ -404,11 +405,11 @@ final class BotAvatarActivityParityTests: XCTestCase {
         XCTAssertEqual(BotAvatarActivity.from(status: "failed", background: true), .idle)
     }
 
-    func testFailedIsErrorEvenWithAToolOut() {
-        XCTAssertEqual(BotAvatarActivity.from(status: "failed", toolNames: ["read_file"]), .error)
-        XCTAssertEqual(BotAvatarActivity.from(status: "failed", composing: true, thinking: true), .error)
-        XCTAssertFalse(BotAvatarActivity.error.isAnimated)
-        XCTAssertFalse(BotAvatarActivity.error.showsWorkingRing)
+    func testFailedIsBlockedEvenWithAToolOut() {
+        XCTAssertEqual(BotAvatarActivity.from(status: "failed", toolNames: ["read_file"]), .blocked)
+        XCTAssertEqual(BotAvatarActivity.from(status: "failed", composing: true, thinking: true), .blocked)
+        XCTAssertFalse(BotAvatarActivity.blocked.isAnimated)
+        XCTAssertFalse(BotAvatarActivity.blocked.showsWorkingRing)
     }
 
     func testWaitingOnTheUserWinsOverTheToolPose() {
@@ -432,14 +433,14 @@ final class BotAvatarActivityParityTests: XCTestCase {
         XCTAssertEqual(BotAvatarActivity.from(status: "queued"), .working)
         XCTAssertEqual(BotAvatarActivity.from(status: "leased"), .working)
         XCTAssertEqual(BotAvatarActivity.from(status: "running", thinking: true), .thinking)
-        XCTAssertEqual(BotAvatarActivity.from(status: "running", composing: true), .writing)
+        XCTAssertEqual(BotAvatarActivity.from(status: "running", composing: true), .working)
         // Composing is checked before thinking.
-        XCTAssertEqual(BotAvatarActivity.from(status: "running", composing: true, thinking: true), .writing)
+        XCTAssertEqual(BotAvatarActivity.from(status: "running", composing: true, thinking: true), .working)
     }
 
     func testAToolOutBeatsComposingAndThinking() {
         XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: ["read_file"], composing: true, thinking: true), .reading)
-        XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: ["write_file"], composing: true, thinking: true), .writing)
+        XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: ["write_file"], composing: true, thinking: true), .working)
     }
 
     func testTheLastToolCalledIsThePose() {
@@ -450,10 +451,12 @@ final class BotAvatarActivityParityTests: XCTestCase {
         XCTAssertEqual(BotAvatarActivity.from(status: "running", toolNames: ["read_file", "some_other_tool"]), .working)
     }
 
-    func testEveryStateSpeaksAndOnlyTwoRestWithoutARing() {
+    func testEveryStateSpeaksAndOnlyThreeRestWithoutARing() {
         for activity in BotAvatarActivity.allCases {
             XCTAssertFalse(activity.accessibilityDescription.isEmpty, activity.rawValue)
-            XCTAssertEqual(activity.showsWorkingRing, activity != .idle && activity != .error, activity.rawValue)
+            XCTAssertEqual(activity.showsWorkingRing,
+                           activity != .idle && activity != .blocked && activity != .done,
+                           activity.rawValue)
         }
     }
 }
@@ -463,12 +466,12 @@ final class BotAvatarMotionParityTests: XCTestCase {
     func testDurationsAreTheReferenceCycles() {
         XCTAssertEqual(BotAvatarMotion.duration(of: .idle), 1.8, accuracy: 1e-9)      // rakazo-organic-float
         XCTAssertEqual(BotAvatarMotion.duration(of: .reading), 1.6, accuracy: 1e-9)   // rakazo-organic-sway
-        XCTAssertEqual(BotAvatarMotion.duration(of: .writing), 1.35, accuracy: 1e-9)  // rakazo-organic-squash
         XCTAssertEqual(BotAvatarMotion.duration(of: .thinking), 1.1, accuracy: 1e-9)  // rakazo-organic-pulse
         XCTAssertEqual(BotAvatarMotion.duration(of: .computer), 2.4, accuracy: 1e-9)  // rakazo-organic-turn
         XCTAssertEqual(BotAvatarMotion.duration(of: .working), 1.35, accuracy: 1e-9)  // rakazo-organic-ring
         XCTAssertEqual(BotAvatarMotion.duration(of: .waiting), 1.6, accuracy: 1e-9)   // rakazo-avatar-breathe
-        XCTAssertEqual(BotAvatarMotion.duration(of: .error), 0, accuracy: 1e-9)
+        XCTAssertEqual(BotAvatarMotion.duration(of: .blocked), 0, accuracy: 1e-9)
+        XCTAssertEqual(BotAvatarMotion.duration(of: .done), 0, accuracy: 1e-9)
         XCTAssertEqual(BotAvatarMotion.workingRingDuration, 1.2, accuracy: 1e-9)      // rakazo-avatar-spin
     }
 
@@ -485,9 +488,8 @@ final class BotAvatarMotionParityTests: XCTestCase {
         XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .thinking, at: 0, traits: traits).scaleX, 0.96, accuracy: 1e-12)
         XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .thinking, at: 1.1 * 0.45, traits: traits).scaleX, 1.06, accuracy: 1e-6)
 
-        // reading sways, writing squashes, the computer turns.
+        // reading sways, the computer turns.
         XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .reading, at: 0, traits: traits).rotate, -3, accuracy: 1e-12)
-        XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .writing, at: 0, traits: traits).scaleY, 0.96, accuracy: 1e-12)
         XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .computer, at: 0, traits: traits).rotate, -4, accuracy: 1e-12)
         XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .computer, at: 1.2, traits: traits).rotate, 4, accuracy: 1e-6)
 
@@ -501,9 +503,12 @@ final class BotAvatarMotionParityTests: XCTestCase {
         XCTAssertEqual(breathe.scaleX, 1.07, accuracy: 1e-6)
         XCTAssertEqual(breathe.brightness, 0.12, accuracy: 1e-6)
 
-        // error: it rests.
-        for time in [0.0, 0.3, 5.0, 600.0] {
-            XCTAssertEqual(BotAvatarMotion.bodyPose(activity: .error, at: time, traits: traits), .rest)
+        // blocked and done: they rest.
+        for activity in [BotAvatarActivity.blocked, .done] {
+            for time in [0.0, 0.3, 5.0, 600.0] {
+                XCTAssertEqual(BotAvatarMotion.bodyPose(activity: activity, at: time, traits: traits),
+                               .rest, activity.rawValue)
+            }
         }
     }
 
@@ -527,7 +532,8 @@ final class BotAvatarMotionParityTests: XCTestCase {
         // The reference's `canMove = motion && size >= 24`.
         XCTAssertFalse(BotAvatarMotion.allows(activity: .working, reduceMotion: false, size: 23.9))
         XCTAssertTrue(BotAvatarMotion.allows(activity: .working, reduceMotion: false, size: 24))
-        XCTAssertFalse(BotAvatarMotion.allows(activity: .error, reduceMotion: false, size: 96))
+        XCTAssertFalse(BotAvatarMotion.allows(activity: .blocked, reduceMotion: false, size: 96))
+        XCTAssertFalse(BotAvatarMotion.allows(activity: .done, reduceMotion: false, size: 96))
     }
 
     func testTheEasingIsTheCSSEaseInOutCurve() {

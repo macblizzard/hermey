@@ -109,7 +109,9 @@ class ABotCanBeDeletedFromItsSettings(unittest.TestCase):
         # Both iOS doors — the list's long press and a conversation's Edit — build the sheet through
         # `BotSettingsDoor`, so the delete writer lives there once and cannot be missing from one of them.
         door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
-        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) })", door)
+        # The avatar's two arguments follow the delete writer, so the call now ends on `saveAvatar:`;
+        # what this guard is about is that the delete writer is still on the one shared door.
+        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) },", door)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_LIST)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_CHAT)
         self.assertNotIn("BotModelSettingsScreen(", IOS_CHAT,
@@ -152,16 +154,20 @@ class TheFaceMovesLikeTheReference(unittest.TestCase):
     ACTIVITY = (ROOT / "Sources/HermesKit/BotAvatarActivity.swift").read_text(encoding="utf-8")
 
     def test_each_activity_has_the_reference_cycle(self) -> None:
-        for activity, seconds in ((".idle", "1.8"), (".reading", "1.6"), (".writing", "1.35"),
+        for activity, seconds in ((".idle", "1.8"), (".reading", "1.6"),
                                   (".thinking", "1.1"), (".computer", "2.4"), (".working", "1.35"),
-                                  (".waiting", "1.6")):
+                                  (".waiting", "1.6"), (".blocked", "0"), (".done", "0")):
             self.assertIn(f"case {activity}: return {seconds}", self.MOTION,
                           f"{activity} lost its cycle length")
 
-    def test_error_rests(self) -> None:
-        # The one state that holds still, which is what makes "asleep" readable.
-        self.assertIn("case .error:\n            return [BodyFrame(time: 0, pose: .rest)]", self.MOTION)
-        self.assertIn("self != .error", self.ACTIVITY)
+    def test_failure_and_done_rest(self) -> None:
+        # The two states that hold still, which is what makes "asleep" and "finished" readable.
+        keyframes = self.MOTION[self.MOTION.index("static func keyframes"):]
+        for state in (".blocked", ".done"):
+            start = keyframes.index(f"case {state}:")
+            block = keyframes[start:keyframes.index("]", start)]
+            self.assertIn("pose: .rest", block, f"{state} lost its still frame")
+        self.assertIn("self != .blocked && self != .done", self.ACTIVITY)
 
     def test_the_app_switch_outranks_the_system_and_is_seeded_once(self) -> None:
         # An answer in the app wins; without one the system decides — and the answer is written on

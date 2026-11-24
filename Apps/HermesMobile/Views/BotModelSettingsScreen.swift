@@ -29,6 +29,10 @@ struct BotModelSettingsScreen: View {
     /// Deletes this bot on the host. `nil` hides the row — the rule every verb here follows: a
     /// client that cannot do it must not offer it.
     var deleteBot: (() async throws -> Void)? = nil
+    /// The bot's own generated avatar, as the host stores it, and the door to save or clear it.
+    /// `nil` for the closure hides the Avatar tab, the same rule as every other verb here.
+    var avatar: BotAvatarDocument? = nil
+    var saveAvatar: ((BotAvatarDocument?) async throws -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -43,6 +47,14 @@ struct BotModelSettingsScreen: View {
     @State private var deleteError: String?
     @State private var deleting = false
     @State private var iconError: String?
+    /// Which tab is showing: the bot's identity, or its generated avatar.
+    @State private var tab: SettingsTab = .about
+
+    enum SettingsTab: String, CaseIterable, Identifiable {
+        case about = "About"
+        case avatar = "Avatar"
+        var id: String { rawValue }
+    }
 
     init(bot: Bot,
          icon: BotFaceChoice? = nil,
@@ -50,7 +62,9 @@ struct BotModelSettingsScreen: View {
          editSoul: (() -> Void)? = nil,
          saveIcon: ((BotFaceChoice?) async throws -> Void)? = nil,
          loadMemory: (() async throws -> BotMemory)? = nil,
-         deleteBot: (() async throws -> Void)? = nil) {
+         deleteBot: (() async throws -> Void)? = nil,
+         avatar: BotAvatarDocument? = nil,
+         saveAvatar: ((BotAvatarDocument?) async throws -> Void)? = nil) {
         self.bot = bot
         self.icon = icon
         self.saveDescription = saveDescription
@@ -58,16 +72,35 @@ struct BotModelSettingsScreen: View {
         self.saveIcon = saveIcon
         self.loadMemory = loadMemory
         self.deleteBot = deleteBot
+        self.avatar = avatar
+        self.saveAvatar = saveAvatar
         _descriptionText = State(initialValue: bot.description ?? "")
         _savedDescription = State(initialValue: bot.description ?? "")
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                identitySection
-                descriptionSection
-                dangerSection
+            VStack(spacing: 0) {
+                // Two tabs, because editing a face is a different job from editing a description.
+                // The Avatar tab only exists for a client that can write one.
+                if saveAvatar != nil {
+                    Picker("Section", selection: $tab) {
+                        ForEach(SettingsTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+                List {
+                    if tab == .avatar, let saveAvatar {
+                        avatarSection(save: saveAvatar)
+                    } else {
+                        identitySection
+                        descriptionSection
+                        dangerSection
+                    }
+                }
             }
             .navigationTitle("\(bot.displayName) Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -203,6 +236,29 @@ struct BotModelSettingsScreen: View {
                      + "carries into every turn. All three are stored on the host; a conversation "
                      + "already open keeps the soul it started with until it is reset.")
             }
+        }
+    }
+
+    // MARK: Avatar
+
+    /// The bot's own generated face: presets, a JSON import, colour and eye placement, a live
+    /// preview and Save/Reset. Nothing in it can reach the bot's config or its soul — the only
+    /// closure it is given saves an avatar document.
+    @ViewBuilder
+    private func avatarSection(save: @escaping (BotAvatarDocument?) async throws -> Void) -> some View {
+        Section {
+            OpenBotAvatarEditor(botID: bot.id,
+                                botName: bot.displayName,
+                                stored: avatar,
+                                previewState: .idle,
+                                save: save)
+                .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+        } header: {
+            Text("Avatar")
+        } footer: {
+            Text("A generated avatar replaces this bot's picture. It is drawn on every device from "
+                 + "the definition, so it costs no storage and stays sharp at any size. Saving here "
+                 + "changes nothing about how the bot thinks.")
         }
     }
 

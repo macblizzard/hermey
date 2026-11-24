@@ -59,10 +59,14 @@ class TheTrackerLivesOnTheWireSide(unittest.TestCase):
         self.assertIn("public enum BotAvatarActivity", ACTIVITY)
 
     def test_it_is_pure(self) -> None:
-        # No clock, no view, no socket: a test drives it with values and reads a value back.
+        # No view, no socket: a test drives it with values and reads a value back. The one piece of
+        # time it needs — how long `done` is held — arrives through the injected clock, never from a
+        # `Date()` in the middle of a transition.
         for forbidden in ("import SwiftUI", "Date()", "TimelineView", "Task {", "await "):
             self.assertNotIn(forbidden, TRACKER, forbidden)
         self.assertIn("public struct BotActivityTracker: Sendable", TRACKER)
+        self.assertIn("private let clock: @Sendable () -> Date", TRACKER)
+        self.assertIn("public init(now: @escaping @Sendable () -> Date = { Date.now })", TRACKER)
 
 
 class ThePrecedenceIsTheReferenceOnes(unittest.TestCase):
@@ -129,14 +133,16 @@ class TheTransitions(unittest.TestCase):
     def test_the_event_reduction_covers_the_four_families(self) -> None:
         block = body("public mutating func apply")
         for case in (".toolStart(", ".toolProgress(", ".toolComplete(", ".thinkingDelta(",
-                     ".messageDelta", ".messageComplete", ".request:"):
+                     ".messageDelta", ".messageComplete", ".request:", ".error"):
             self.assertIn(case, block, case)
         # A heartbeat with no text must not make the face think.
         self.assertIn("if !text.isEmpty { thinking(botID: botID) }", block)
+        # A host error is the run's failure, so it reaches the face as `blocked`.
+        self.assertIn("hostFailed(botID: botID)", block)
         # A transport event is not a bot's event — and neither is a reaction: an emoji another
         # device set says nothing about whether this bot is working.
         self.assertIn("case .ready, .state, .contextUsage, .sessionUpdated,", block)
-        self.assertIn(".reactionUpdated, .error, .unknown:", block)
+        self.assertIn(".reactionUpdated, .unknown:", block)
 
     def test_every_transition_has_a_test(self) -> None:
         # The behavioural half lives in Swift. These names are the contract this file describes.

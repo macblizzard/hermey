@@ -37,6 +37,16 @@ struct MacBotSettingsSheet: View {
 
     /// The pet switch, mirrored from `PetSettings` so a pet closed from its own menu moves it.
     @State private var petEnabled: Bool
+    /// Which tab of the sheet is showing. Two, not more: what the bot is, and what its avatar looks
+    /// like. The avatar is its own tab because editing a face is a different job from editing a
+    /// description, and mixing them put a paste box under the name field.
+    @State private var tab: SettingsTab = .about
+
+    enum SettingsTab: String, CaseIterable, Identifiable {
+        case about = "About"
+        case avatar = "Avatar"
+        var id: String { rawValue }
+    }
 
     init(model: AppModel, store: WorkspaceStore, bot: Bot, conversationIsOpen: Bool) {
         self.model = model
@@ -52,31 +62,22 @@ struct MacBotSettingsSheet: View {
         VStack(spacing: 0) {
             titleBar
             Hairline()
+            Picker("Section", selection: $tab) {
+                ForEach(SettingsTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let error {
-                        Text(error)
-                            .font(TypeScale.font(TypeScale.caption))
-                            .foregroundStyle(Tokens.danger)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if tab == .avatar {
+                        avatarTab
+                    } else {
+                        aboutContent
                     }
-
-                    HermeyButton("Choose bot icon…",
-                                  kind: .secondary,
-                                  size: .small,
-                                  isDisabled: store.pairing == nil || store.pairing?.isTicketOnly == true) {
-                        showingIconPicker = true
-                    }
-                    if let iconError = store.botFacesError {
-                        Text("Could not refresh bot icons: \(iconError)")
-                            .font(TypeScale.font(TypeScale.caption)).foregroundStyle(Tokens.danger)
-                    }
-                    soulSection
-                    descriptionSection
-                    petSection
-
-                    dangerSection
                 }
                 .padding(16)
             }
@@ -102,6 +103,49 @@ struct MacBotSettingsSheet: View {
                 save: { try await model.saveSoul($0, for: bot.id) })
             .hermesSheetChrome()
         }
+    }
+
+    /// What the bot is: its portrait picker, its prompt file, its description and its pet.
+    @ViewBuilder
+    private var aboutContent: some View {
+        if let error {
+            Text(error)
+                .font(TypeScale.font(TypeScale.caption))
+                .foregroundStyle(Tokens.danger)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        HermeyButton("Choose bot icon…",
+                      kind: .secondary,
+                      size: .small,
+                      isDisabled: store.pairing == nil || store.pairing?.isTicketOnly == true) {
+            showingIconPicker = true
+        }
+        if let iconError = store.botFacesError {
+            Text("Could not refresh bot icons: \(iconError)")
+                .font(TypeScale.font(TypeScale.caption)).foregroundStyle(Tokens.danger)
+        }
+        soulSection
+        descriptionSection
+        petSection
+
+        dangerSection
+    }
+
+    /// The Avatar tab: the bot's own generated face. Saving here writes the avatar document and
+    /// nothing else — no config, no soul. A bot with no definition keeps the face it has, which is
+    /// what Reset returns it to.
+    @ViewBuilder
+    private var avatarTab: some View {
+        OpenBotAvatarEditor(
+            botID: bot.id,
+            botName: bot.displayName,
+            stored: store.botAvatars[bot.id],
+            previewState: OpenBotAvatarState(activity: store.activity(for: bot.id)),
+            save: { document in
+                try await store.saveBotAvatar(botID: bot.id, document: document)
+            }
+        )
     }
 
     // MARK: Chrome

@@ -338,36 +338,34 @@ final class LiveActivityCoordinator: ObservableObject {
 
     /// The card's one-line status, in the app's own vocabulary.
     ///
-    /// The words come from the same place the app's working row reads: `BotActivityTracker` through
-    /// `activity(forBot:)`, plus the tool that is actually out. `WorkingStatus` draws kaomoji for
-    /// the chat, which is right in a bubble and wrong on a lock screen, so this maps the same eight
-    /// activities to plain phrases rather than inventing a second notion of what a bot is doing.
+    /// The words come from the same place every other surface reads them: `BotAvatarActivity.label`
+    /// (which delegates to `BotStateWord`), plus the tool that is actually out. `WorkingStatus`
+    /// draws kaomoji for the chat, which is right in a bubble and wrong on a lock screen, so this
+    /// asks the state for its word instead of inventing a second notion of what a bot is doing —
+    /// there is no second vocabulary here any more, only the state's own word.
     ///
     /// A running tool wins over the pose: "Running read_file" is more useful than "Reading", and the
     /// tool's own name is what the transcript will show afterwards.
     private func stepLine() -> String {
         guard let model else { return "" }
-        // The stop outranks the pose: a bot blocked on an approval is not "running read_file", it is
-        // waiting for him.
-        if let request = model.pendingRequests.first {
-            return request.method == "approval" ? "Approval waiting" : "Answer waiting"
-        }
+        let activity = model.selectedBotID.map { model.activity(forBot: $0) } ?? .working
+        // A failed turn outranks everything, including a tool the transcript still lists as running.
+        if activity == .blocked { return activity.label }
+        // The stop outranks the pose *and* the tool: a bot blocked on an approval is not
+        // "Running read_file", it is waiting for him.
+        if model.hasPendingRequests { return BotAvatarActivity.waiting.label }
         if let tool = model.liveTools.last(where: { $0.isRunning }) {
             let name = tool.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             return "Running \(name.isEmpty ? "a tool" : name)"
         }
-        let activity = model.selectedBotID.map { model.activity(forBot: $0) } ?? .working
         switch activity {
-        case .thinking: return "Thinking it through"
-        case .reading: return "Reading"
-        case .writing: return "Writing"
-        case .computer: return "Using the computer"
-        case .waiting: return "Waiting on you"
-        case .error: return "Stopped with an error"
-        case .idle, .working: break
+        case .thinking, .reading, .computer, .waiting, .blocked, .done:
+            return activity.label
+        case .idle, .working:
+            break
         }
         if !model.streamingText.isEmpty { return "Streaming the reply" }
-        return "On your message"
+        return BotAvatarActivity.working.label
     }
 
     /// The step as the card will store it, so a line that clips to the same 48 characters is not
