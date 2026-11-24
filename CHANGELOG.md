@@ -1380,3 +1380,27 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's
   `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never
   covers or reflows what you type, and drops to the model alone on a narrow window.
+
+## [0.1.652] — 2026-11-24
+
+### Added
+- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all —
+  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow
+  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.
+- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,
+  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a
+  colour together — never the same combination twice.
+
+### Fixed
+- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,
+  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now
+  gives the face up entirely, as the reference does.
+- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase
+  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.
+
+### Changed
+- **The row menu hides until you need it.** On the Mac the ⋯ on a bot row appears on hover, selection or
+  keyboard focus and no longer reserves space — and hovering a row wakes its avatar for a small hop and a look
+  toward the pointer.
+- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model
+  name, how much context it is using, and a chevron. Click the pill to open the model picker.
