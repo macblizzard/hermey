@@ -40,7 +40,9 @@ class PopoverRowsWearHoverNotAFocusRing(unittest.TestCase):
         self.popover = block(MAC, "private var notificationsButton: some View {", "    // MARK: Floor")
 
     def test_the_row_suppresses_the_ring(self) -> None:
-        self.assertIn(".focusEffectDisabled()", self.row)
+        # Through the app's one spelling of it — `hermeyFocusQuiet()` — not the system modifier by
+        # hand; `test_focus_rings` holds that it is the only spelling in the tree.
+        self.assertIn(".hermeyFocusQuiet()", self.row)
 
     def test_the_row_is_still_an_activatable_button(self) -> None:
         # The ring is gone, the tab stop is not: `focusable(false)` would have made the row
@@ -55,7 +57,7 @@ class PopoverRowsWearHoverNotAFocusRing(unittest.TestCase):
 
     def test_the_popover_chrome_does_not_ring_either(self) -> None:
         inbox = self.popover.split("WaitingBotsInbox(bots: waitingBots,", 1)[1]
-        self.assertIn(".focusEffectDisabled()", inbox)
+        self.assertIn(".hermeyFocusQuiet()", inbox)
 
 
 class ThePhoneSheetIsSizedToItsRows(unittest.TestCase):

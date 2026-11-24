@@ -66,7 +66,9 @@ struct ConversationHeader: View {
             Button("Reset conversation", role: .destructive) {
                 Task { await model.resetConversation() }
             }
+            .hermeyFocusQuiet()
             Button("Keep it", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("Hermey starts a fresh conversation with \(title). The current one stays on the host, but this app will not reopen it.")
         }
@@ -186,6 +188,7 @@ struct ConversationHeader: View {
         .help(store.isBotPanelVisible
               ? "Close the bot panel (⌘E)"
               : "Bot panel — computer, workspace, skills, settings (⌘E)")
+        .hermeyFocusQuiet()
     }
 
     /// `200 000` reads as a number; `200k` fits in a chip next to the model name.

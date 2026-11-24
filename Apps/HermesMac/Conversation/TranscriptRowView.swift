@@ -104,6 +104,7 @@ struct TranscriptRowView: View {
                 Button(emoji) { toggleReaction(emoji) }
                     .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
                     .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
+                    .hermeyFocusQuiet()
             }
         }
     }
@@ -181,6 +182,7 @@ struct TranscriptRowView: View {
             .buttonStyle(.plain)
             .disabled(label.senderProfile == nil)
             .help("Show the conversation between these two bots")
+            .hermeyFocusQuiet()
             // The same rendering an assistant reply gets: a bot's message to another bot is prose
             // written in the same editor, so its lists, bold and code blocks belong as markup.
             MarkdownTextView(text: label.body, metrics: .macOSScaled)
@@ -313,6 +315,7 @@ struct TranscriptRowView: View {
         .help("Open \(attachment.name)")
         .accessibilityLabel("Attached image \(attachment.name)")
         .accessibilityHint("Opens the image")
+        .hermeyFocusQuiet()
     }
 
     /// Pictures the row remembers, or the host's references looked up in the image cache.
@@ -633,6 +636,7 @@ struct TranscriptRowView: View {
         }
         .help(help)
         .accessibilityLabel(help)
+        .hermeyFocusQuiet()
     }
 
     /// The message's own words, not its rendering: what the user copies is what was said.
@@ -669,6 +673,7 @@ struct TranscriptRowView: View {
         .help(isSpeaking ? "Stop reading this message" : "Read this message aloud")
         .accessibilityLabel(isSpeaking ? "Stop reading this message" : "Read this message aloud")
         .accessibilityIdentifier("message.readAloud")
+        .hermeyFocusQuiet()
     }
 
     // MARK: Tool

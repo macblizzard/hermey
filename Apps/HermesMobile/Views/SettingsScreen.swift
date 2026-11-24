@@ -57,6 +57,7 @@ struct SettingsScreen: View {
                 Label("Integrations", systemImage: "link.badge.plus")
             }
             .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
         }
     }
 
@@ -86,6 +87,7 @@ struct SettingsScreen: View {
                     Text("Bot list size")
                 }
                 .accessibilityIdentifier("appearanceBotListScale")
+                .hermeyFocusQuiet()
                 BotListScalePreview(scale: listScale)
             }
             .padding(.vertical, 4)
@@ -113,6 +115,7 @@ struct SettingsScreen: View {
                 }
             }
             .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Storage")
         } footer: {
@@ -137,6 +140,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(Tokens.textPrimary)
             }
             .tint(Tokens.accent)
+            .hermeyFocusQuiet()
 
             switch notifier.authorization {
             case .denied:
@@ -153,6 +157,7 @@ struct SettingsScreen: View {
                             .foregroundStyle(Tokens.accentText)
                     }
                 }
+                .hermeyFocusQuiet()
             case .notDetermined:
                 Button {
                     notifier.requestAuthorizationIfNeeded()
@@ -161,6 +166,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
             default:
                 EmptyView()
             }
@@ -181,6 +187,7 @@ struct SettingsScreen: View {
                         }
                     }
                 }
+                .hermeyFocusQuiet()
             }
         } header: {
             Text("Replies")
@@ -231,7 +238,9 @@ struct SettingsScreen: View {
             Button("Unpair", role: .destructive) {
                 Task { await app.unpair() }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("The refresh token is deleted from this phone. The device stays in the host's list until you revoke it there.")
         }
@@ -276,6 +285,7 @@ struct SettingsScreen: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hermeyFocusQuiet()
             }
         } header: {
             Text("Approvals · all bots")
@@ -291,7 +301,9 @@ struct SettingsScreen: View {
                 if let mode = pendingApprovalMode { Task { await applyApprovalMode(mode) } }
                 pendingApprovalMode = nil
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingApprovalMode = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("Allow always runs every guarded action on every bot without asking. Auto is the safer default.")
         }
@@ -363,6 +375,7 @@ struct SettingsScreen: View {
                         .foregroundStyle(model.connection.isLive ? Tokens.accentText : Tokens.textDim)
                 }
                 .disabled(!model.connection.isLive)
+                .hermeyFocusQuiet()
 
                 Button {
                     app.isPairingPresented = true
@@ -371,6 +384,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
 
                 Button(role: .destructive) {
                     showUnpairConfirm = true
@@ -378,6 +392,7 @@ struct SettingsScreen: View {
                     Label("Unpair this phone", systemImage: "iphone.slash")
                         .font(TypeScale.font(TypeScale.md))
                 }
+                .hermeyFocusQuiet()
             } else {
                 Button {
                     app.isPairingPresented = true
@@ -386,6 +401,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
             }
         } header: {
             sectionHeader("Connection")
@@ -448,6 +464,7 @@ struct SettingsScreen: View {
             }
             .tint(Tokens.success)
             .accessibilityIdentifier("chatCloseKeyboardAfterSend")
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.showReasoning) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -460,6 +477,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.reasoningExpandedByDefault) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -472,6 +490,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.showToolCalls) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -484,6 +503,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Chat")
         } footer: {
@@ -527,6 +547,7 @@ struct SettingsScreen: View {
                 }
                 .padding(.vertical, 2)
             }
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Devices")
         } footer: {
@@ -584,6 +605,7 @@ struct SettingsScreen: View {
                 }
                 .padding(.vertical, 2)
             }
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Diagnostics")
         } footer: {
@@ -707,6 +729,7 @@ struct CheckForUpdatesRow: View {
             }
         }
         .accessibilityIdentifier("checkForUpdates")
+        .hermeyFocusQuiet()
     }
 
     /// The build is always named: a person deciding about an update wants to know which one they
@@ -759,6 +782,7 @@ struct SettingsSheet: View {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Done") { dismiss() }
                             .accessibilityIdentifier("settings.done")
+                            .hermeyFocusQuiet()
                     }
                 }
         }
@@ -851,6 +875,7 @@ struct DevicesScreen: View {
                     .padding(.vertical, 2)
                 }
                 .disabled(!app.isPaired)
+                .hermeyFocusQuiet()
             } footer: {
                 Text("A code is single-use and expires in minutes.")
                     .font(TypeScale.font(TypeScale.label))
@@ -871,6 +896,7 @@ struct DevicesScreen: View {
                                     prompt = .remove(device)
                                 }
                                 .disabled(app.removingDevice || app.store.host == nil)
+                                .hermeyFocusQuiet()
                             }
                         }
                 }
@@ -909,7 +935,9 @@ struct DevicesScreen: View {
                             titleVisibility: .visible,
                             presenting: prompt) { prompt in
             Button(prompt.confirmTitle, role: .destructive) { confirm(prompt) }
+            .hermeyFocusQuiet()
             Button(prompt.cancelTitle, role: .cancel) { self.prompt = nil }
+            .hermeyFocusQuiet()
         } message: { prompt in
             Text(prompt.message)
         }
@@ -979,6 +1007,7 @@ struct DevicesScreen: View {
             .disabled(app.removingDevice || app.store.host == nil)
             .accessibilityLabel("Remove \(device.name) permanently")
             .accessibilityIdentifier("devices.remove.\(device.deviceID)")
+            .hermeyFocusQuiet()
         } else {
             Button("Revoke") {
                 Haptics.selection()
@@ -990,6 +1019,7 @@ struct DevicesScreen: View {
             .disabled(app.store.host == nil)
             .accessibilityLabel("Revoke \(device.name)")
             .accessibilityIdentifier("devices.revoke.\(device.deviceID)")
+            .hermeyFocusQuiet()
         }
     }
 
@@ -1085,6 +1115,7 @@ struct QuietBotsScreen: View {
                     }
                     .tint(Tokens.accent)
                     .listRowBackground(Tokens.surface)
+                    .hermeyFocusQuiet()
                 }
             } footer: {
                 Text("Off means this bot never buzzes. Its replies still count on its row and in the badge.")

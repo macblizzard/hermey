@@ -51,6 +51,7 @@ public struct BotNotesSheet: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
+                        .hermeyFocusQuiet()
                     }
                 }
         }

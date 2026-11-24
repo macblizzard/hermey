@@ -49,6 +49,7 @@ struct MacWorkspaceSheet: View {
                     Text(failure).font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.textSecondary)
                     Button("Try again") { Task { await load() } }
+                    .hermeyFocusQuiet()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -85,8 +86,10 @@ struct MacWorkspaceSheet: View {
             }
             .buttonStyle(.plain)
             .help("Refresh the workspace")
+            .hermeyFocusQuiet()
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
+                .hermeyFocusQuiet()
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
@@ -199,6 +202,7 @@ struct MacWorkspaceDocumentView: View {
                     .foregroundStyle(Tokens.accentText)
                     .fixedSize()
                     .help("Save a copy…")
+                    .hermeyFocusQuiet()
             }
             .padding(.horizontal, 14)
             .frame(height: 34)

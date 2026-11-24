@@ -49,6 +49,7 @@ struct BotSessionsSheet: View {
                 ToolbarItem(placement: .topBarLeading) { refreshButton }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -137,6 +138,7 @@ struct BotSessionsSheet: View {
         // card, so the fill is the only row that looks different.
         .listRowBackground(isCurrent ? Tokens.controlActive : Tokens.grouped)
         .accessibilityLabel(accessibilityLabel(for: session, current: isCurrent, running: isRunning))
+        .hermeyFocusQuiet()
     }
 
     private func chip(_ text: String, color: Color, fill: Color) -> some View {
@@ -167,6 +169,7 @@ struct BotSessionsSheet: View {
         }
         .disabled(model.sessionsLoading)
         .accessibilityLabel("Refresh sessions")
+        .hermeyFocusQuiet()
     }
 
     private var loading: some View {
@@ -188,6 +191,7 @@ struct BotSessionsSheet: View {
             Button("Try again") {
                 Task { await model.loadSessions() }
             }
+            .hermeyFocusQuiet()
         }
     }
 

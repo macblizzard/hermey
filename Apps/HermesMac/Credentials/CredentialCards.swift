@@ -101,6 +101,7 @@ struct CredentialCardSheet: View {
                     Task { await center.cancel(model: model) }
                 }
                 .keyboardShortcut(.cancelAction)
+                .hermeyFocusQuiet()
             }
         }
         .padding(20)
@@ -116,6 +117,7 @@ struct CredentialCardSheet: View {
                 } label: {
                     Text(option).frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -126,7 +128,9 @@ struct CredentialCardSheet: View {
                 .font(.subheadline)
             HStack {
                 Button("Use it") { send(["choice": "yes"]) }
+                .hermeyFocusQuiet()
                 Button("Not now") { Task { await center.cancel(model: model) } }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -149,6 +153,7 @@ struct CredentialCardSheet: View {
             }
             .keyboardShortcut(.defaultAction)
             .disabled(sending || values.values.allSatisfy(\.isEmpty))
+            .hermeyFocusQuiet()
             Text("Goes straight into the page — the bot never sees it.")
                 .font(.caption)
                 .foregroundStyle(Tokens.textMuted)

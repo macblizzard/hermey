@@ -350,7 +350,7 @@ public struct WaitingBotsInbox: View {
         // that row as if it were selected. The ring is suppressed, not the focus: Space/Return on
         // a focused row still opens it for a keyboard user, and the hover fill is the visible
         // feedback for everyone else.
-        .focusEffectDisabled()
+        .hermeyFocusQuiet()
         .modifier(WaitingRowHint(name: bot.name))
         .accessibilityLabel(bot.preview.map { "\(bot.name), \(bot.waitingLabel), \($0)" }
                             ?? "\(bot.name), \(bot.waitingLabel)")

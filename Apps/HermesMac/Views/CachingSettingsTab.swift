@@ -33,7 +33,9 @@ struct CachingSettingsTab: View {
             Button(CacheCopy.resetTitle, role: .destructive) {
                 Task { await model.resetCache() }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text(CacheCopy.resetConfirmMessage)
         }
@@ -49,6 +51,7 @@ struct CachingSettingsTab: View {
                         .toggleStyle(.switch)
                         .tint(Tokens.success)
                         .accessibilityIdentifier("caching.\(section.rawValue)")
+                        .hermeyFocusQuiet()
                     Text(section.explanation)
                         .font(TypeScale.font(TypeScale.caption))
                         .foregroundStyle(Tokens.textMuted)
@@ -81,6 +84,7 @@ struct CachingSettingsTab: View {
             .font(TypeScale.font(Tokens.textMD))
             .accessibilityLabel(CacheCopy.limitTitle)
             .accessibilityIdentifier("caching.chatLimit")
+            .hermeyFocusQuiet()
         } header: {
             Text(CacheCopy.limitTitle)
         } footer: {
@@ -131,6 +135,7 @@ struct CachingSettingsTab: View {
             Button(CacheCopy.resetTitle, role: .destructive) { confirmReset = true }
                 .disabled(model.cacheBusy)
                 .accessibilityIdentifier("caching.reset")
+                .hermeyFocusQuiet()
         } footer: {
             Text(CacheCopy.resetFooter)
                 .font(TypeScale.font(TypeScale.caption))

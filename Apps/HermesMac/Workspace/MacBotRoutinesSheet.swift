@@ -75,6 +75,7 @@ struct MacBotRoutinesSheet: View {
             .buttonStyle(.plain)
             .help("Add a routine")
             .accessibilityIdentifier("routines.add")
+            .hermeyFocusQuiet()
             Button {
                 Task { await reload() }
             } label: {
@@ -82,9 +83,11 @@ struct MacBotRoutinesSheet: View {
             }
             .buttonStyle(.plain)
             .help("Reload from the host")
+            .hermeyFocusQuiet()
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
                 .accessibilityIdentifier("routines.done")
+                .hermeyFocusQuiet()
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
@@ -98,6 +101,7 @@ struct MacBotRoutinesSheet: View {
             Text("\(bot.displayName) has nothing scheduled.")
                 .font(TypeScale.font(TypeScale.md))
             Button("Add a routine") { showNewRoutine = true }
+            .hermeyFocusQuiet()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -175,6 +179,7 @@ struct MacBotRoutinesSheet: View {
                     .toggleStyle(.switch)
                     .help(routine.paused ? "Paused — click to put back on its schedule"
                                          : "Running — click to pause")
+                    .hermeyFocusQuiet()
                 }
             }
         }

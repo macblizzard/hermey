@@ -69,11 +69,13 @@ struct BotRowMenu: View {
             Button { menu.openSettings() } label: {
                 Label("Bot Settings", systemImage: "gearshape")
             }
+            .hermeyFocusQuiet()
 
             Button { menu.togglePin() } label: {
                 Label(menu.isPinned ? "Unpin" : "Pin to top",
                       systemImage: menu.isPinned ? "pin.slash" : "pin")
             }
+            .hermeyFocusQuiet()
 
             Divider()
 
@@ -82,12 +84,14 @@ struct BotRowMenu: View {
             } label: {
                 Label("Category", systemImage: "folder")
             }
+            .hermeyFocusQuiet()
 
             Divider()
 
             Button { menu.showSessions() } label: {
                 Label("All sessions…", systemImage: "clock.arrow.circlepath")
             }
+            .hermeyFocusQuiet()
 
             Divider()
 
@@ -95,6 +99,7 @@ struct BotRowMenu: View {
                 Label(menu.isHidden ? "Show bot" : "Hide bot",
                       systemImage: menu.isHidden ? "eye" : "eye.slash")
             }
+            .hermeyFocusQuiet()
         }
     }
 
@@ -114,6 +119,7 @@ struct BotRowMenu: View {
                       ? "✓ \(category.name)" : category.name,
                       systemImage: "folder")
             }
+            .hermeyFocusQuiet()
         }
 
         if !menu.categories.isEmpty { Divider() }
@@ -121,11 +127,13 @@ struct BotRowMenu: View {
         Button { menu.newCategory() } label: {
             Label("New category…", systemImage: "folder.badge.plus")
         }
+        .hermeyFocusQuiet()
 
         Button { menu.assignCategory(nil) } label: {
             Label("Remove from category", systemImage: "folder.badge.minus")
         }
         .disabled(menu.currentCategoryID == nil)
+        .hermeyFocusQuiet()
     }
 }
 

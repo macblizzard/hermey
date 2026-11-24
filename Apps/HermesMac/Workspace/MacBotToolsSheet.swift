@@ -74,6 +74,7 @@ struct MacBotToolsSheet: View {
                         .font(TypeScale.font(TypeScale.sm))
                         .foregroundStyle(Tokens.textSecondary)
                     Button("Try again") { Task { await load() } }
+                    .hermeyFocusQuiet()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -107,8 +108,10 @@ struct MacBotToolsSheet: View {
             }
             .buttonStyle(.plain)
             .help("Reload from the host")
+            .hermeyFocusQuiet()
             Button("Done") { dismiss() }
                 .keyboardShortcut(.defaultAction)
+                .hermeyFocusQuiet()
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
@@ -176,6 +179,7 @@ struct MacBotToolsSheet: View {
             .disabled(busy)
             .opacity(busy ? 0.5 : 1)
             .help(isOn ? "On for \(bot.displayName) — click to turn off" : "Off — click to turn on")
+            .hermeyFocusQuiet()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 7)

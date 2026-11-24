@@ -75,6 +75,7 @@ public struct DefaultSoulPane: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
                 .disabled(working || isBusy || text.isEmpty)
+                .hermeyFocusQuiet()
 
                 Button {
                     Task { await commit(reset: true) }
@@ -85,6 +86,7 @@ public struct DefaultSoulPane: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Tokens.textMuted)
                 .disabled(working || isBusy || !present)
+                .hermeyFocusQuiet()
 
                 Spacer(minLength: 0)
 
@@ -170,6 +172,7 @@ public struct BackupPane: View {
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
                 .disabled(writing)
+                .hermeyFocusQuiet()
 
                 Button {
                     importing = true
@@ -180,6 +183,7 @@ public struct BackupPane: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Tokens.textMuted)
                 .disabled(writing)
+                .hermeyFocusQuiet()
 
                 Button {
                     Task { await copyPrompt() }
@@ -190,6 +194,7 @@ public struct BackupPane: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Tokens.textMuted)
                 .disabled(writing)
+                .hermeyFocusQuiet()
 
                 Spacer(minLength: 0)
             }
@@ -221,8 +226,10 @@ public struct BackupPane: View {
         .confirmationDialog("Import these bots?", isPresented: $confirming, titleVisibility: .visible) {
             ForEach(BotImportMode.allCases) { option in
                 Button(option.title) { Task { await applyPicked(option) } }
+                .hermeyFocusQuiet()
             }
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text(plan.map { "\($0.preview). Pick how to treat bots that already exist here." }
                  ?? "Reading the file…")

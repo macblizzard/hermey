@@ -68,6 +68,7 @@ struct IntegrationsTab: View {
             HStack {
                 Button("Refresh") { Task { await refresh() } }
                     .disabled(busy != nil)
+                    .hermeyFocusQuiet()
                 Spacer()
                 if let state, state.services.contains(where: \.connected) {
                     Text("Connections are held by Composio, never by this app.")
@@ -172,16 +173,20 @@ struct IntegrationsTab: View {
                                 .onSubmit { Task { await rename(service, account) } }
                             Button("Save") { Task { await rename(service, account) } }
                                 .buttonStyle(.link).font(.caption2)
+                                .hermeyFocusQuiet()
                             Button("Cancel") { renaming = nil }.buttonStyle(.link).font(.caption2)
+                            .hermeyFocusQuiet()
                         } else {
                             Text(account.label).font(.caption).lineLimit(1)
                             Spacer(minLength: 4)
                             Button("Rename") { renaming = account.id; renameText = account.label }
                                 .buttonStyle(.link).font(.caption2).disabled(busy != nil)
+                                .hermeyFocusQuiet()
                             Button("Remove") { Task { await disconnect(service, account) } }
                                 .buttonStyle(.link)
                                 .font(.caption2)
                                 .disabled(busy != nil)
+                                .hermeyFocusQuiet()
                         }
                     }
                 }
@@ -196,6 +201,7 @@ struct IntegrationsTab: View {
                     Button("Add another") { Task { await connect(service, alias: naming[service.slug]) } }
                         .controlSize(.mini)
                         .disabled(busy != nil || !configured || !service.available)
+                        .hermeyFocusQuiet()
                 }
             }
         } else if busy == service.slug || waiting == service.slug {
@@ -211,6 +217,7 @@ struct IntegrationsTab: View {
             .disabled(busy != nil || !configured || !service.available)
                 .controlSize(.small)
                 .disabled(busy != nil || !configured || !service.available)
+                .hermeyFocusQuiet()
         }
     }
 
@@ -255,12 +262,14 @@ struct IntegrationsTab: View {
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
             HStack {
                 Button("Cancel") { keyService = nil; keyValues = [:] }
+                .hermeyFocusQuiet()
                 Spacer()
                 Button(busy == service.slug ? "Connecting…" : "Connect") {
                     Task { await submitKey(service) }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(busy != nil || keyFields.contains { $0.required && (keyValues[$0.name] ?? "").isEmpty })
+                .hermeyFocusQuiet()
             }
         }
         .padding(20)

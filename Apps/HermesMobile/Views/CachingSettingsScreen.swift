@@ -48,7 +48,9 @@ struct CachingSettingsScreen: View {
                 Haptics.impact()
                 Task { await model.resetCache() }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text(CacheCopy.resetConfirmMessage)
         }
@@ -73,6 +75,7 @@ struct CachingSettingsScreen: View {
                 .tint(Tokens.success)
                 .listRowBackground(Tokens.surface)
                 .accessibilityIdentifier("caching.\(section.rawValue)")
+                .hermeyFocusQuiet()
             }
         } header: {
             header(CacheCopy.sectionsHeader)
@@ -100,6 +103,7 @@ struct CachingSettingsScreen: View {
             .pickerStyle(.menu)
             .listRowBackground(Tokens.surface)
             .accessibilityIdentifier("caching.chatLimit")
+            .hermeyFocusQuiet()
         } header: {
             header(CacheCopy.limitTitle)
         } footer: {
@@ -155,6 +159,7 @@ struct CachingSettingsScreen: View {
             .disabled(model.cacheBusy)
             .listRowBackground(Tokens.surface)
             .accessibilityIdentifier("caching.reset")
+            .hermeyFocusQuiet()
         } footer: {
             Text(CacheCopy.resetFooter)
                 .font(TypeScale.font(TypeScale.label))

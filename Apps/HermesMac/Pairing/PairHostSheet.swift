@@ -162,6 +162,7 @@ struct PairHostSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .hermeyFocusQuiet()
 
             if showAdvanced {
                 VStack(spacing: 1) {

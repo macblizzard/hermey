@@ -109,11 +109,13 @@ public struct BotRoutinesSheet: View {
                             }
                             .accessibilityLabel("Add routine")
                             .accessibilityIdentifier("routines.add")
+                            .hermeyFocusQuiet()
                         }
                         // Done is unconditional: this sheet is reached from a drawer row on the phone and
                         // from a panel on the Mac, and neither has another way back.
                         Button("Done") { dismiss() }
                             .accessibilityIdentifier("routines.done")
+                            .hermeyFocusQuiet()
                     }
                 }
                 ToolbarItem(placement: .cancellationAction) {
@@ -123,6 +125,7 @@ public struct BotRoutinesSheet: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh routines")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -176,6 +179,7 @@ public struct BotRoutinesSheet: View {
                         .accessibilityLabel(routine.paused
                                             ? "Resume \(routine.name)"
                                             : "Pause \(routine.name)")
+                        .hermeyFocusQuiet()
                     }
                 }
             }

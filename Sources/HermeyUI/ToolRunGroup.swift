@@ -99,5 +99,6 @@ public struct ToolRunGroup<Row: View>: View {
         .accessibilityLabel(title)
         .accessibilityHint(expanded ? "Hides the calls" : "Shows the calls")
         .accessibilityAddTraits(.isButton)
+        .hermeyFocusQuiet()
     }
 }

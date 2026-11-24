@@ -195,7 +195,9 @@ struct BotListScreen: View {
                 // is the only reason a group made here appears there.
                 writeCategories { try await model.addBotCategory(name: name) }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { newCategoryName = "" }
+            .hermeyFocusQuiet()
         } message: {
             Text("Groups live on the host, so the Mac shows the same ones. A bot with no group sits in Uncategorized.")
         }
@@ -220,7 +222,9 @@ struct BotListScreen: View {
                     await model.refreshRooms()
                 }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }
@@ -509,6 +513,7 @@ struct BotListScreen: View {
             }
             .tint(model.isPinned(botID: bot.id) ? Tokens.textMuted : Tokens.accent)
             .accessibilityLabel(model.isPinned(botID: bot.id) ? "Unpin" : "Pin")
+            .hermeyFocusQuiet()
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -518,9 +523,11 @@ struct BotListScreen: View {
             }
             .tint(Tokens.warning)
             .accessibilityLabel("Mark unread")
+            .hermeyFocusQuiet()
         }
         .accessibilityLabel(accessibilityLabel(for: bot))
         .accessibilityHint("Opens the conversation with this bot")
+        .hermeyFocusQuiet()
     }
 
     /// A description written on the host is the useful line; without one, name what the row is.
@@ -604,6 +611,7 @@ struct BotListScreen: View {
             Button(role: .destructive) { pendingRoomDelete = room } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .hermeyFocusQuiet()
         }
         // A row in a `.plain` List gets the cell's own background — black under a hidden scroll
         // background — and its own separators and insets. A room is a row in the same list as a
@@ -612,6 +620,7 @@ struct BotListScreen: View {
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
+        .hermeyFocusQuiet()
     }
 
     /// What the search found *inside* the conversations — the reason the field exists.
@@ -638,6 +647,7 @@ struct BotListScreen: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding,
                                               bottom: 0, trailing: Geometry.rosterListPadding))
                     .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -729,11 +739,13 @@ struct BotListScreen: View {
                 Label("Move “\(category.name)” Up", systemImage: "arrow.up")
             }
             .disabled(!model.canMoveBotCategory(id: category.id, by: -1))
+            .hermeyFocusQuiet()
 
             Button { move(category, by: 1) } label: {
                 Label("Move “\(category.name)” Down", systemImage: "arrow.down")
             }
             .disabled(!model.canMoveBotCategory(id: category.id, by: 1))
+            .hermeyFocusQuiet()
         }
     }
 
@@ -763,6 +775,7 @@ struct BotListScreen: View {
             // A long press is where the phone keeps the verbs a row has; an empty builder for
             // Pinned and Uncategorized presents nothing rather than a menu with nothing in it.
             .contextMenu { categoryArrangeItems(group) }
+            .hermeyFocusQuiet()
 
             // And the visible door, because a long press on a heading is not something a person
             // finds. Only categories get it: Pinned and Uncategorized cannot move (2026-11-21).
@@ -778,6 +791,7 @@ struct BotListScreen: View {
                 }
                 .menuIndicator(.hidden)
                 .accessibilityLabel("Arrange \(group.name)")
+                .hermeyFocusQuiet()
             }
         }
         .textCase(nil)
@@ -878,6 +892,7 @@ struct BotListScreen: View {
                         Text("Show").foregroundStyle(Tokens.accentText)
                     }
                 }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -1080,6 +1095,7 @@ struct BotListScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(searchOpen ? "Close search" : "Search bots")
+                .hermeyFocusQuiet()
             }
             // One group, because the order inside it is the order on screen: the bell, Settings,
             // then the create menu. Two separate trailing items would leave the pairing to
@@ -1103,6 +1119,7 @@ struct BotListScreen: View {
                                     ? "Nothing waiting"
                                     : "Waiting: \(waitingBots.count) \(waitingBots.count == 1 ? "bot" : "bots")")
                 .accessibilityIdentifier("botList.notifications")
+                .hermeyFocusQuiet()
 
                 // Settings used to be the last row of the menu, which is where an app-level
                 // destination goes to be missed: a person looking for theme, pairing or update
@@ -1120,6 +1137,7 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
                 .accessibilityIdentifier("botList.settings")
+                .hermeyFocusQuiet()
 
                 // A plus, because that is what the menu is for: everything in it creates or
                 // maintains something. It wore ⋯ while it also carried navigation (Settings,
@@ -1178,6 +1196,7 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add or manage")
                 .accessibilityIdentifier("botList.add")
+                .hermeyFocusQuiet()
             }
         }
         if !app.isPaired {
@@ -1188,6 +1207,7 @@ struct BotListScreen: View {
                     Label("Pair", systemImage: "link.badge.plus")
                 }
                 .tint(Tokens.accentText)
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -1217,6 +1237,7 @@ struct BotListScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
+                .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 14)

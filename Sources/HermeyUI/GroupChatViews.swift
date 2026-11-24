@@ -88,11 +88,12 @@ public struct StartGroupChatSheet: View {
             .inlineSheetTitle()
             .sheetSizing(minWidth: 420, minHeight: 520)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.hermeyFocusQuiet() }
                 ToolbarItem(placement: .confirmationAction) {
                     if busy { ProgressView() } else {
                         Button("Start") { Task { await create() } }
                             .disabled(!(2...6).contains(picked.count))
+                            .hermeyFocusQuiet()
                     }
                 }
             }
@@ -129,6 +130,7 @@ public struct StartGroupChatSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hermeyFocusQuiet()
     }
 
     private func create() async {
@@ -215,6 +217,7 @@ public struct GroupChatsSheet: View {
                         // app's canvas.
                         .listRowBackground(Tokens.canvas)
                         .listRowSeparator(.hidden)
+                        .hermeyFocusQuiet()
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -225,9 +228,10 @@ public struct GroupChatsSheet: View {
             .inlineSheetTitle()
             .sheetSizing()
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() }.hermeyFocusQuiet() }
                 ToolbarItem(placement: .primaryAction) {
                     Button { dismiss(); onNew() } label: { Label("New", systemImage: "plus") }
+                    .hermeyFocusQuiet()
                 }
             }
             .task {
@@ -389,7 +393,7 @@ public struct RoomChatView: View {
                     .inlineSheetTitle()
                     .sheetSizing(minWidth: 520, minHeight: 520)
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                        ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.hermeyFocusQuiet() }
                     }
             }
         case .pushed:
@@ -429,6 +433,7 @@ public struct RoomChatView: View {
                         Image(systemName: "ellipsis")
                     }
                     .accessibilityLabel("Group chat menu")
+                    .hermeyFocusQuiet()
                 }
             }
         case .pane:
@@ -501,6 +506,7 @@ public struct RoomChatView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .hermeyFocusQuiet()
         }
         .padding(.horizontal, 14)
         .frame(height: 48, alignment: .leading)
@@ -529,10 +535,12 @@ public struct RoomChatView: View {
                         .font(TypeScale.font(TypeScale.caption, weight: .semibold))
                         .buttonStyle(.plain)
                         .foregroundStyle(Tokens.accentText)
+                        .hermeyFocusQuiet()
                     Button("Cancel") { editingName = false; renameFailure = nil }
                         .font(TypeScale.font(TypeScale.caption))
                         .buttonStyle(.plain)
                         .foregroundStyle(Tokens.textDim)
+                        .hermeyFocusQuiet()
                 }
                 if let renameFailure {
                     Text(renameFailure)
@@ -592,8 +600,11 @@ public struct RoomChatView: View {
         .confirmationDialog("Attach to the group", isPresented: $showingAttachOptions,
                             titleVisibility: .visible) {
             Button("Photo Library") { showingPhotos = true }
+            .hermeyFocusQuiet()
             Button("File…") { showingImporter = true }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         }
         .photosPicker(isPresented: $showingPhotos, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in
@@ -778,6 +789,7 @@ public struct RoomChatView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Remove reaction \(emoji)")
                     .accessibilityHint("Select again to remove this reaction")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -847,6 +859,7 @@ public struct RoomChatView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .hermeyFocusQuiet()
     }
 
     /// Reactions live on this device, keyed by room and log position: the host's room log has no
@@ -894,6 +907,7 @@ public struct RoomChatView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("React with \(emoji)")
                 .accessibilityHint("Select again to remove this reaction")
+                .hermeyFocusQuiet()
             }
         }
         .padding(8)
@@ -925,6 +939,7 @@ public struct RoomChatView: View {
                         .font(TypeScale.font(TypeScale.caption))
                         .buttonStyle(.plain)
                         .foregroundStyle(Tokens.textDim)
+                        .hermeyFocusQuiet()
                 }
                 .padding(.horizontal, Geometry.chatGutter)
                 .padding(.bottom, 4)
@@ -976,6 +991,7 @@ public struct RoomChatView: View {
                                 .font(.system(size: 8, weight: .bold))
                         }
                         .buttonStyle(.plain)
+                        .hermeyFocusQuiet()
                     }
                     .foregroundStyle(Tokens.textMuted)
                     .padding(.horizontal, 8)
@@ -1015,6 +1031,7 @@ public struct RoomChatView: View {
                             .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .hermeyFocusQuiet()
                 }
                 if matches.isEmpty {
                     Text("no bot in this room matches")

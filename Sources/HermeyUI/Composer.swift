@@ -288,6 +288,7 @@ public struct Composer: View {
                     .allowsHitTesting(!trimmed.isEmpty)
                     .accessibilityHidden(trimmed.isEmpty)
                     .accessibilityLabel("Clear the message")
+                    .hermeyFocusQuiet()
                 }
 
                 // The microphone belongs beside the send arrow: one row of controls, and the
@@ -478,6 +479,7 @@ public struct Composer: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hermeyFocusQuiet()
     }
 
     /// Complete the command in the field first: a caller that owns a native panel can clear it when
@@ -645,6 +647,7 @@ public struct Composer: View {
             .buttonStyle(PressableButtonStyle())
             .disabled(isDisabled || !isMicEnabled)
             .opacity(isMicEnabled ? 1 : 0.5)
+            .hermeyFocusQuiet()
             #if os(macOS)
             .help(micAccessibilityLabel)
             #endif
@@ -667,6 +670,7 @@ public struct Composer: View {
         .buttonStyle(PressableButtonStyle())
         .disabled(!canSend)
         .accessibilityLabel(isSending ? "Send into the running turn" : "Send message")
+        .hermeyFocusQuiet()
     }
 
     private func interruptButton(_ action: @escaping () -> Void) -> some View {
@@ -683,6 +687,7 @@ public struct Composer: View {
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel("Interrupt the turn")
+        .hermeyFocusQuiet()
     }
 
     private func send() {
@@ -784,5 +789,6 @@ private struct ComposerRingButton: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel(label)
         .accessibilityIdentifier("composer.attach")
+        .hermeyFocusQuiet()
     }
 }
