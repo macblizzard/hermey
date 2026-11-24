@@ -504,6 +504,7 @@ struct TranscriptScroll: View {
         .accessibilityIdentifier("conversationScrollToBottom")
         .padding(.bottom, 14)
         .transition(.opacity.combined(with: .scale(scale: 0.92)))
+        .hermeyFocusQuiet()
     }
 
     // MARK: - Search
@@ -601,6 +602,7 @@ struct TranscriptScroll: View {
         .accessibilityIdentifier("conversationSearchToggle")
         .accessibilityLabel("Search conversation")
         .help("Search conversation")
+        .hermeyFocusQuiet()
     }
 
     /// Escape, while the bar is up.
@@ -618,6 +620,7 @@ struct TranscriptScroll: View {
                 .frame(width: 0, height: 0)
                 .opacity(0)
                 .accessibilityHidden(true)
+                .hermeyFocusQuiet()
         }
     }
 
@@ -708,6 +711,7 @@ struct MacReasoningBlock: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Reasoning")
             .accessibilityHint(expanded ? "Collapse reasoning" : "Expand reasoning")
+            .hermeyFocusQuiet()
 
             if expanded {
                 Text(text)

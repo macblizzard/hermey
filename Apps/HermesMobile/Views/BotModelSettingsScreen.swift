@@ -85,6 +85,7 @@ struct BotModelSettingsScreen: View {
                     .labelsHidden()
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+                    .hermeyFocusQuiet()
                 }
                 List {
                     if tab == .avatar, let saveAvatar {
@@ -111,7 +112,7 @@ struct BotModelSettingsScreen: View {
                             .foregroundStyle(Tokens.textPrimary)
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.hermeyFocusQuiet() }
             }
         }
     }
@@ -145,6 +146,7 @@ struct BotModelSettingsScreen: View {
                     }
                 }
                 .disabled(deleting)
+                .hermeyFocusQuiet()
                 if let deleteError {
                     Text(deleteError)
                         .font(TypeScale.font(TypeScale.sm))
@@ -172,7 +174,9 @@ struct BotModelSettingsScreen: View {
                         deleting = false
                     }
                 }
+                .hermeyFocusQuiet()
                 Button("Cancel", role: .cancel) {}
+                .hermeyFocusQuiet()
             } message: {
                 Text("This cannot be undone from the app.")
             }
@@ -187,6 +191,7 @@ struct BotModelSettingsScreen: View {
                     Button(action: editSoul) {
                         Label("Soul", systemImage: "doc.text")
                     }
+                    .hermeyFocusQuiet()
                 }
                 if let loadMemory {
                     Button {
@@ -198,6 +203,7 @@ struct BotModelSettingsScreen: View {
                         BotMemorySheet(botName: bot.displayName, load: loadMemory)
                         .hermesSheetChrome()
                     }
+                    .hermeyFocusQuiet()
                 }
             } header: {
                 Text("Identity")
@@ -251,6 +257,7 @@ struct BotModelSettingsScreen: View {
                     }
                 }
                 .disabled(descriptionBusy || trimmedDescription == savedDescription)
+                .hermeyFocusQuiet()
                 if let descriptionError {
                     Text(descriptionError).font(.caption).foregroundStyle(Tokens.danger)
                 } else if descriptionSaved {

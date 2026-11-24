@@ -108,6 +108,7 @@ struct ConversationDrawer: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close the bot page")
+            .hermeyFocusQuiet()
 
             Spacer(minLength: 0)
         }
@@ -142,6 +143,7 @@ struct ConversationDrawer: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit \(title)")
+            .hermeyFocusQuiet()
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
@@ -264,6 +266,7 @@ struct ConversationDrawer: View {
         .buttonStyle(.plain)
         .disabled(isDisabled || isBusy)
         .opacity(isDisabled ? 0.45 : 1)
+        .hermeyFocusQuiet()
     }
 }
 

@@ -133,7 +133,9 @@ public struct ClientLogView: View {
                     ClientLog.shared.clear()
                     feed.reload()
                 }
+                .hermeyFocusQuiet()
                 Button("Keep it", role: .cancel) {}
+                .hermeyFocusQuiet()
             } message: {
                 Text("The entries are deleted from this device. Nothing on the host changes.")
             }
@@ -225,6 +227,7 @@ public struct ClientLogView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear the search")
+                .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 8)
@@ -257,6 +260,7 @@ public struct ClientLogView: View {
         .accessibilityValue(order.detail)
         .help(order.detail)
         .frame(maxWidth: .infinity)
+        .hermeyFocusQuiet()
     }
 
     private var levelPicker: some View {
@@ -272,6 +276,7 @@ public struct ClientLogView: View {
         .labelsHidden()
         .controlSize(.small)
         .accessibilityLabel("Level")
+        .hermeyFocusQuiet()
     }
 
     private var categoryPicker: some View {
@@ -287,6 +292,7 @@ public struct ClientLogView: View {
         .labelsHidden()
         .controlSize(.small)
         .accessibilityLabel("Category")
+        .hermeyFocusQuiet()
     }
 
     /// Pause is the difference between a log that scrolls under the reader's eyes and one that
@@ -318,6 +324,7 @@ public struct ClientLogView: View {
         .buttonStyle(.plain)
         .help(feed.isLive ? "Pause the live tail" : "Resume the live tail")
         .accessibilityLabel(feed.isLive ? "Pause the live tail" : "Resume the live tail")
+        .hermeyFocusQuiet()
     }
 
     private var countLine: String {
@@ -385,6 +392,7 @@ public struct ClientLogView: View {
         .help("Copy the lines on screen")
         .accessibilityLabel("Copy shown")
         .accessibilityHint("Puts the lines on screen on the clipboard")
+        .hermeyFocusQuiet()
     }
 
     /// The whole buffer, paused-held lines included, with the order kept and the filter dropped.
@@ -400,6 +408,7 @@ public struct ClientLogView: View {
         .help("Copy every line in the log, including lines a paused tail is holding back")
         .accessibilityLabel("Copy all")
         .accessibilityHint("Puts every line in the log on the clipboard")
+        .hermeyFocusQuiet()
     }
 
     /// The same text as Copy shown, handed to the system's share sheet — the phone's route to
@@ -413,6 +422,7 @@ public struct ClientLogView: View {
         .opacity(shown.isEmpty ? 0.45 : 1)
         .help("Send the lines on screen to another app")
         .accessibilityLabel("Share log")
+        .hermeyFocusQuiet()
     }
 
     private var clearButton: some View {
@@ -426,6 +436,7 @@ public struct ClientLogView: View {
         .opacity(feed.entries.isEmpty ? 0.45 : 1)
         .help("Delete the entries on this device")
         .accessibilityLabel("Clear log")
+        .hermeyFocusQuiet()
     }
 
     /// One look for every control in that row: a small capsule in the app's control colour with a
@@ -539,6 +550,7 @@ public struct ClientLogView: View {
             }
             .font(TypeScale.font(TypeScale.md))
             .padding(.top, 2)
+            .hermeyFocusQuiet()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -558,6 +570,7 @@ public struct ClientLogView: View {
         ToolbarItem(placement: .cancellationAction) {
             Button("Close") { dismiss() }
                 .font(TypeScale.font(TypeScale.md))
+                .hermeyFocusQuiet()
         }
         ToolbarItemGroup(placement: .primaryAction) {
             // Re-read without closing the sheet: a log that is only read on open cannot show the
@@ -568,6 +581,7 @@ public struct ClientLogView: View {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .help("Read the log again")
+            .hermeyFocusQuiet()
             // Copy, share and clear are deliberately *not* here: see `handoffControls`. On the Mac
             // this group is exactly what the sheet dropped in build 0.1.611.
         }

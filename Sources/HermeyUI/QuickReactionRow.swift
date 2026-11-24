@@ -55,7 +55,7 @@ public struct QuickReactionRow: View {
                 // A popover hands focus to its first control, and the focus ring drew a square
                 // around 👍 — a ring on a bare emoji reads as a selection, which it is not.
                 .focusable(false)
-                .focusEffectDisabled()
+                .hermeyFocusQuiet()
                 .help(ReactionEmoji.name(emoji))
                 .accessibilityLabel(ReactionEmoji.name(emoji))
                 .accessibilityHint(selected == emoji ? "Select again to remove this reaction"

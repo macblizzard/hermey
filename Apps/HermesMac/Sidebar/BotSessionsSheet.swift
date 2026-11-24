@@ -173,6 +173,7 @@ struct BotSessionsSheet: View {
             else if hoveredID == session.id { hoveredID = nil }
         }
         .help(session.preview ?? session.displayTitle)
+        .hermeyFocusQuiet()
     }
 
     private var loading: some View {

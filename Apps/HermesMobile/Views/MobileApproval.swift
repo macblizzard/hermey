@@ -152,6 +152,7 @@ struct MobilePendingRequestCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open this request as a sheet")
+                .hermeyFocusQuiet()
             }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.98)))
@@ -260,6 +261,7 @@ struct MobileApprovalSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                         .foregroundStyle(Tokens.textMuted)
+                        .hermeyFocusQuiet()
                 }
             }
         }

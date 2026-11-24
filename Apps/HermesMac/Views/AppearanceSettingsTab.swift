@@ -43,6 +43,7 @@ struct AppearanceSettingsTab: View {
                 .toggleStyle(.switch)
                 .font(TypeScale.font(TypeScale.md))
                 .accessibilityIdentifier("appearanceAnimateFaces")
+                .hermeyFocusQuiet()
 
             Text(reduceMotion
                  ? "Breathe, blink, squint and turn. macOS's Reduce Motion is **on** — this app's own switch overrides it while it is on."
@@ -71,6 +72,7 @@ struct AppearanceSettingsTab: View {
                        in: WindowAppearance.minimumOpacity...1,
                        step: 0.01)
                     .accessibilityIdentifier("appearanceOpacitySlider")
+                    .hermeyFocusQuiet()
 
                 Text("\(percent) %")
                     .font(.system(size: TypeScale.caption, design: .monospaced))
@@ -83,6 +85,7 @@ struct AppearanceSettingsTab: View {
                 opacity = 1
             }
             .disabled(opacity >= 0.999)
+            .hermeyFocusQuiet()
 
             Divider().padding(.vertical, 2)
 
@@ -104,6 +107,7 @@ struct AppearanceSettingsTab: View {
                        in: BotListMetrics.minScale...BotListMetrics.maxScale,
                        step: 0.01)
                     .accessibilityIdentifier("appearanceBotListScale")
+                    .hermeyFocusQuiet()
 
                 Text("\(Int((listScale * 100).rounded())) %")
                     .font(.system(size: TypeScale.caption, design: .monospaced))
@@ -118,6 +122,7 @@ struct AppearanceSettingsTab: View {
                 listScale = BotListMetrics.defaultScale
             }
             .disabled(abs(listScale - BotListMetrics.defaultScale) < 0.005)
+            .hermeyFocusQuiet()
 
             Spacer(minLength: 0)
         }

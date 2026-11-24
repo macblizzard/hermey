@@ -77,6 +77,7 @@ struct PairAnotherDeviceSheet: View {
                         } label: {
                             Label("Copy link", systemImage: "doc.on.doc")
                         }
+                        .hermeyFocusQuiet()
                     }
 
                     Section {
@@ -86,6 +87,7 @@ struct PairAnotherDeviceSheet: View {
                             Label("Generate a new code", systemImage: "arrow.clockwise")
                         }
                         .disabled(busy)
+                        .hermeyFocusQuiet()
                     } footer: {
                         Text(countdownFooter(invite))
                             .font(TypeScale.font(TypeScale.label))
@@ -103,6 +105,7 @@ struct PairAnotherDeviceSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
             }
             .task { await mint() }

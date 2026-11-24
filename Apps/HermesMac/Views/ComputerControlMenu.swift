@@ -34,6 +34,7 @@ struct ComputerControlMenu: View {
                 Button("Resume bot control") {
                     service.resumeAfterTakeover()
                 }
+                .hermeyFocusQuiet()
             }
 
             Divider()

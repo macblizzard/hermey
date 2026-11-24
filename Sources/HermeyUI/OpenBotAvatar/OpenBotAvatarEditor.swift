@@ -133,6 +133,7 @@ public struct OpenBotAvatarEditor: View {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
+                .hermeyFocusQuiet()
             }
             Text("Preview shows the state you pick. Every state edits the same definition — the avatar is one drawing, not eight.")
                 .font(TypeScale.font(TypeScale.sm))
@@ -156,6 +157,7 @@ public struct OpenBotAvatarEditor: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
+            .hermeyFocusQuiet()
             Text(current.summary)
                 .font(TypeScale.font(TypeScale.sm))
                 .foregroundStyle(Tokens.textMuted)
@@ -182,6 +184,7 @@ public struct OpenBotAvatarEditor: View {
                     .font(TypeScale.font(TypeScale.sm, weight: .semibold))
                     .foregroundStyle(Tokens.accent)
                     .help("A random shape, material and colour")
+                    .hermeyFocusQuiet()
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
                 ForEach(OpenBotAvatarPresets.all, id: \.id) { preset in
@@ -209,6 +212,7 @@ public struct OpenBotAvatarEditor: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -225,6 +229,7 @@ public struct OpenBotAvatarEditor: View {
                     .buttonStyle(.plain)
                     .font(TypeScale.font(TypeScale.sm, weight: .semibold))
                     .foregroundStyle(Tokens.accent)
+                    .hermeyFocusQuiet()
             }
             TextEditor(text: $jsonText)
                 .font(.system(size: 11, design: .monospaced))
@@ -266,12 +271,14 @@ public struct OpenBotAvatarEditor: View {
                     set: { colorHex = OpenBotAvatarColor.hex(of: $0) }
                 ), supportsOpacity: false)
                 .font(TypeScale.font(TypeScale.sm))
+                .hermeyFocusQuiet()
                 Spacer()
                 if colorHex != nil {
                     Button("House colour") { colorHex = nil }
                         .buttonStyle(.plain)
                         .font(TypeScale.font(TypeScale.sm))
                         .foregroundStyle(Tokens.accent)
+                        .hermeyFocusQuiet()
                 }
             }
             slider("Eyes x", value: $draft.eyes.x, range: 4...96, step: 0.5)
@@ -300,6 +307,7 @@ public struct OpenBotAvatarEditor: View {
                     syncJSONText()
                 }
             ), in: range, step: step)
+            .hermeyFocusQuiet()
             Text(String(format: step < 0.1 ? "%.2f" : "%.1f", value.wrappedValue))
                 .font(TypeScale.font(TypeScale.sm))
                 .foregroundStyle(Tokens.textSecondary)
@@ -328,11 +336,13 @@ public struct OpenBotAvatarEditor: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .disabled(saving || resetting || !dirty)
+                    .hermeyFocusQuiet()
                 if stored != nil {
                     Button(resetting ? "Resetting…" : "Reset to the previous face") { reset() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .disabled(saving || resetting)
+                        .hermeyFocusQuiet()
                 }
             }
         }

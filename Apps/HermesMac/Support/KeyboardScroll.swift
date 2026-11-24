@@ -1,4 +1,5 @@
 import AppKit
+import HermeyUI
 import SwiftUI
 
 /// Arrow/Page/Home keys scroll the nearest enclosing `NSScrollView`.
@@ -101,7 +102,7 @@ extension View {
     func keyboardScrolling(_ handle: KeyboardScrollHandle) -> some View {
         self
             .focusable()
-            .focusEffectDisabled()
+            .hermeyFocusQuiet()
             // `phases:` is what hands the closure its `KeyPress`. Without it SwiftUI picks the
             // no-argument overload — and the modifier can only be read from the press.
             .onKeyPress(.upArrow, phases: .down) { press in

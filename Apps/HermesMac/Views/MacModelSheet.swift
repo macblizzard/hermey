@@ -83,11 +83,13 @@ struct MacModelSheet: View {
         .task { await refresh() }
         .alert("Confirm model", isPresented: pendingBinding) {
             Button("Cancel", role: .cancel) { pending = nil }
+            .hermeyFocusQuiet()
             Button("Confirm") {
                 guard let option = pending else { return }
                 pending = nil
                 Task { await select(option, confirmed: true) }
             }
+            .hermeyFocusQuiet()
         } message: {
             Text(confirmation)
         }
@@ -192,6 +194,7 @@ struct MacModelSheet: View {
                         RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
                             .fill(isChosen ? Tokens.controlActive : .clear))
                     .disabled(busy)
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -261,6 +264,7 @@ struct MacModelSheet: View {
                     RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
                         .fill(isChosen ? Tokens.controlActive : .clear))
                 .disabled(busy || settings == nil)
+                .hermeyFocusQuiet()
             }
 
             if settings == nil {
@@ -373,6 +377,7 @@ struct MacModelSheet: View {
             RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
                 .fill(chosen ? Tokens.controlActive : .clear))
         .disabled(busy || settings == nil)
+        .hermeyFocusQuiet()
     }
 
     private func auxModelRow(_ option: ModelOption) -> some View {
@@ -401,6 +406,7 @@ struct MacModelSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(busy)
+        .hermeyFocusQuiet()
     }
 
     private func firstModel(_ catalog: ModelCatalog, provider: String) -> String? {
@@ -446,6 +452,7 @@ struct MacModelSheet: View {
         .hoverFill(rest: isCurrent ? Tokens.controlActive : .clear)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous))
         .disabled(busy)
+        .hermeyFocusQuiet()
     }
 
     /// Search narrows whichever provider column is selected; no provider shows everything, which is how a

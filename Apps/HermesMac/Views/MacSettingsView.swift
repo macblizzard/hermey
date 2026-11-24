@@ -108,18 +108,21 @@ private struct ChatSettingsTab: View {
             Section {
                 Toggle("Show reasoning", isOn: reasoningBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("The model's thinking, above each answer.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
 
                 Toggle("Expand reasoning automatically", isOn: reasoningExpandedBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("Open the model's thinking on arrival instead of a click.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
 
                 Toggle("Show tool calls", isOn: toolCallsBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("A card for every command, with its result. Off hides them from the chat.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
@@ -240,9 +243,11 @@ private struct BotsSettingsTab: View {
                     get: { model.isPinned(botID: bot.id) },
                     set: { _ in model.togglePin(botID: bot.id) }))
                     .toggleStyle(.checkbox)
+                    .hermeyFocusQuiet()
             }
 
             Button("Settings…") { botForSettings = bot }
+            .hermeyFocusQuiet()
         }
         .padding(.vertical, 2)
     }
@@ -314,17 +319,22 @@ private struct ConnectionSettingsTab: View {
             Section {
                 if store.isPaired, store.model.connection.isLive {
                     Button("Disconnect") { Task { await store.disconnect() } }
+                    .hermeyFocusQuiet()
                 } else if store.isPaired {
                     Button("Connect") { Task { await store.connect() } }
                         .disabled(store.model.connection == .connecting)
+                        .hermeyFocusQuiet()
                 }
                 Button(store.isPaired ? "Pair another host…" : "Pair a host…") {
                     store.isPairSheetPresented = true
                 }
+                .hermeyFocusQuiet()
                 Button("Manage Paired Devices…", action: openDevices)
                     .disabled(!store.isPaired)
+                    .hermeyFocusQuiet()
                 if store.isPaired {
                     Button("Unpair this Mac…", role: .destructive) { confirmingUnpair = true }
+                    .hermeyFocusQuiet()
                 }
             }
 
@@ -336,7 +346,9 @@ private struct ConnectionSettingsTab: View {
                             isPresented: $confirmingUnpair,
                             titleVisibility: .visible) {
             Button("Unpair", role: .destructive) { Task { await store.unpair() } }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("The refresh token is deleted from this Mac. The device stays in the host's list until you revoke it there.")
         }

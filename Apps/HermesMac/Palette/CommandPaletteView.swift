@@ -187,6 +187,7 @@ struct CommandPaletteView: View {
         .hoverFill(rest: .clear, hover: Tokens.control, radius: Tokens.radiusControl)
         .disabled(!command.isEnabled)
         .accessibilityLabel("\(command.title). \(command.subtitle)")
+        .hermeyFocusQuiet()
     }
 
     // MARK: Footer

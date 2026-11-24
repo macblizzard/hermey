@@ -278,6 +278,7 @@ public struct BotFacePicker: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(shape.name) face shape")
                         .accessibilityAddTraits(shapeIndex == index ? .isSelected : [])
+                        .hermeyFocusQuiet()
                     }
                 }
             }
@@ -305,6 +306,7 @@ public struct BotFacePicker: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("\(swatch.name) colour")
                         .accessibilityAddTraits(isChosen(swatch) ? .isSelected : [])
+                        .hermeyFocusQuiet()
                     }
                 }
             }

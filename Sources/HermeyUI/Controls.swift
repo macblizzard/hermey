@@ -149,6 +149,7 @@ public struct HermeyButton: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.45 : 1)
         .accessibilityLabel(title)
+        .hermeyFocusQuiet()
     }
 }
 
@@ -236,6 +237,7 @@ public struct HermeyIconButton: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.4 : 1)
         .accessibilityLabel(label)
+        .hermeyFocusQuiet()
         // Every glyph is a question until it is hovered; the label was already written for
         // VoiceOver, so the tooltip costs nothing and answers the same question.
         #if os(macOS)
@@ -278,6 +280,7 @@ public struct TextButton: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .accessibilityLabel(title)
+        .hermeyFocusQuiet()
     }
 }
 

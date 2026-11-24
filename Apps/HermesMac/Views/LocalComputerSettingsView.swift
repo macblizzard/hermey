@@ -66,6 +66,7 @@ struct LocalComputerSettingsView: View {
                     }
                 ))
                 .tint(Tokens.accent)
+                .hermeyFocusQuiet()
 
                 HStack(spacing: 8) {
                     Text(Host.current().localizedName ?? "This Mac")
@@ -82,6 +83,7 @@ struct LocalComputerSettingsView: View {
                     .buttonStyle(.plain)
                     .disabled(pairedAddress == nil)
                     .help("Revoke this Mac's local access on the host")
+                    .hermeyFocusQuiet()
                 }
                 .padding(.leading, 18)
 
@@ -122,10 +124,12 @@ struct LocalComputerSettingsView: View {
                             // AXIsProcessTrusted, so the row answers honestly.
                             Button("Check") { permissions.check(permission) }
                                 .controlSize(.small)
+                                .hermeyFocusQuiet()
                             Button(permission == .accessibility ? "Request Access" : "Open Settings") {
                                 permissions.request(permission)
                             }
                             .controlSize(.small)
+                            .hermeyFocusQuiet()
                         }
                         Text(permission.detail)
                             .font(TypeScale.font(TypeScale.caption))
@@ -164,6 +168,7 @@ struct LocalComputerSettingsView: View {
                     .disabled(skillDisabledReason != nil)
                     .help(skillDisabledReason
                           ?? "Re-run the host's installer for the skill your agents read")
+                    .hermeyFocusQuiet()
                 }
 
                 // The button's own reason, when it cannot be pressed — and, when it can, whatever
@@ -219,6 +224,7 @@ struct LocalComputerSettingsView: View {
                 ))
                 .tint(Tokens.accent)
                 .accessibilityIdentifier("computerOpenAtLogin")
+                .hermeyFocusQuiet()
 
                 // The row reports what macOS did, not what the click asked for: registration can land
                 // in "needs approval" or be refused outright on a build the system will not accept.
@@ -232,6 +238,7 @@ struct LocalComputerSettingsView: View {
                         launchAtLogin.openLoginItemsSettings()
                     }
                     .controlSize(.small)
+                    .hermeyFocusQuiet()
                 }
             } header: {
                 Text("Startup")
@@ -254,6 +261,7 @@ struct LocalComputerSettingsView: View {
                             service.resumeAfterTakeover()
                         }
                         .controlSize(.small)
+                        .hermeyFocusQuiet()
                     }
                 }
 
@@ -319,7 +327,9 @@ struct LocalComputerSettingsView: View {
             Button("Revoke", role: .destructive) {
                 Task { await service.revoke(address: pairedAddress) }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("The host will close this Mac's socket and refuse it until you switch access back on.")
         }

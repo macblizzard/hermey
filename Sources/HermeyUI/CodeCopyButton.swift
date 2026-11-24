@@ -37,6 +37,7 @@ public struct CodeCopyButton: View {
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.12), value: copied)
+        .hermeyFocusQuiet()
         #if os(macOS)
         .help(copied ? "Copied" : "Copy this code block")
         #endif

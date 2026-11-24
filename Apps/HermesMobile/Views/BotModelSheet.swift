@@ -57,16 +57,19 @@ struct BotModelSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
             }
             .task { await refresh() }
             .alert("Confirm model", isPresented: pendingBinding) {
                 Button("Cancel", role: .cancel) { pending = nil }
+                .hermeyFocusQuiet()
                 Button("Confirm") {
                     guard let option = pending else { return }
                     pending = nil
                     Task { await select(option, confirmed: true) }
                 }
+                .hermeyFocusQuiet()
             } message: {
                 Text(confirmation)
             }
@@ -101,6 +104,7 @@ struct BotModelSheet: View {
                 row(title: catalog.current?.provider ?? "Choose a provider",
                     detail: "\(providers(catalog).count) available")
             }
+            .hermeyFocusQuiet()
         }
     }
 
@@ -122,6 +126,7 @@ struct BotModelSheet: View {
                     }
                 }
             }
+            .hermeyFocusQuiet()
         }
         .navigationTitle("Provider")
         .navigationBarTitleDisplayMode(.inline)
@@ -135,6 +140,7 @@ struct BotModelSheet: View {
                 row(title: catalog.current?.label ?? "Choose a model",
                     detail: catalog.current.map { $0.provider } ?? "—")
             }
+            .hermeyFocusQuiet()
         }
     }
 
@@ -162,6 +168,7 @@ struct BotModelSheet: View {
                             }
                         }
                         .disabled(busy)
+                        .hermeyFocusQuiet()
                     }
                 }
             }
@@ -179,6 +186,7 @@ struct BotModelSheet: View {
                 } label: {
                     row(title: settings.label(for: settings.effort), detail: "How hard it thinks")
                 }
+                .hermeyFocusQuiet()
             } else {
                 // The level lives in the bot's config: unread is unread, not "provider default".
                 row(title: "Reading the bot's config…", detail: "")
@@ -205,6 +213,7 @@ struct BotModelSheet: View {
                 }
             }
             .disabled(busy)
+            .hermeyFocusQuiet()
         }
         .navigationTitle("Effort")
         .navigationBarTitleDisplayMode(.inline)
@@ -226,6 +235,7 @@ struct BotModelSheet: View {
                             ? (catalog.current?.label ?? "the main model")
                             : settings.visionProvider)
                 }
+                .hermeyFocusQuiet()
             } else {
                 row(title: "Reading the bot's config…", detail: "")
                     .foregroundStyle(Tokens.textMuted)
@@ -251,6 +261,7 @@ struct BotModelSheet: View {
                         }
                     }
                 }
+                .hermeyFocusQuiet()
             }
             ForEach(providers(catalog), id: \.self) { name in
                 Section(name) {
@@ -275,6 +286,7 @@ struct BotModelSheet: View {
                             }
                         }
                         .disabled(busy)
+                        .hermeyFocusQuiet()
                     }
                 }
             }

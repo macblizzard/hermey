@@ -69,6 +69,7 @@ public struct HostUpdateRow: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Dismiss host update")
                         .accessibilityIdentifier("hostUpdate.dismiss")
+                        .hermeyFocusQuiet()
                     }
                 }
                 HStack(spacing: 6) {
@@ -93,6 +94,7 @@ public struct HostUpdateRow: View {
                         .font(TypeScale.font(TypeScale.micro))
                         .foregroundStyle(Tokens.textDim)
                         .accessibilityIdentifier("hostUpdate.notes")
+                        .hermeyFocusQuiet()
                 }
             }
             Spacer(minLength: 0)
@@ -140,6 +142,7 @@ public struct HostUpdateRow: View {
             .contentShape(Capsule())
             .disabled(!update.canStartPress)
             .accessibilityIdentifier("hostUpdate.update")
+            .hermeyFocusQuiet()
         }
     }
 

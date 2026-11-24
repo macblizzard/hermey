@@ -93,6 +93,7 @@ struct MobileCredentialCardSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { Task { await center.cancel(model: model) } }
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -109,6 +110,7 @@ struct MobileCredentialCardSheet: View {
                     Text(option).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.bordered)
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -119,8 +121,10 @@ struct MobileCredentialCardSheet: View {
             HStack {
                 Button("Use it") { send(["choice": "yes"]) }
                     .buttonStyle(.borderedProminent)
+                    .hermeyFocusQuiet()
                 Button("Not now") { Task { await center.cancel(model: model) } }
                     .buttonStyle(.bordered)
+                    .hermeyFocusQuiet()
             }
         }
     }
@@ -145,6 +149,7 @@ struct MobileCredentialCardSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(sending || values.values.allSatisfy(\.isEmpty))
+            .hermeyFocusQuiet()
             Text("Goes straight into the page — the bot never sees it.")
                 .font(.caption)
                 .foregroundStyle(Tokens.textMuted)

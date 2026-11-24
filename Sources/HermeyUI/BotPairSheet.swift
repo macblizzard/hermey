@@ -88,6 +88,7 @@ public struct BotPairSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                         .font(TypeScale.font(TypeScale.md))
+                        .hermeyFocusQuiet()
                 }
             }
             .task {

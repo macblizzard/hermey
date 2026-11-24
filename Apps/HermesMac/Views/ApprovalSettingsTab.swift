@@ -52,6 +52,7 @@ struct ApprovalSettingsTab: View {
                     // The blue focus ring on the first row read as "this option is selected" even
                     // when Auto was. These are radio-like choices, not keyboard targets.
                     .focusable(false)
+                    .hermeyFocusQuiet()
                 }
             } header: {
                 Text("Approvals · all bots")
@@ -81,7 +82,9 @@ struct ApprovalSettingsTab: View {
                 if let mode = pending { Task { await apply(mode) } }
                 pending = nil
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pending = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("Allow always runs every guarded action on every bot without asking. Auto is the safer default.")
         }
