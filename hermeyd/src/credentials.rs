@@ -396,6 +396,7 @@ mod tests {
             engine_token_file: token_file.clone(),
             engine_auth: crate::engine_auth::EngineAuth::Required,
             engine_home: dir.join("engine"),
+            home: dir.to_path_buf(),
             attachments_dir: dir.join("attachments"),
             local_token: Arc::new(crate::local_token::LocalToken::from_value(
                 LOCAL,

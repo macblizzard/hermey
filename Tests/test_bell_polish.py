@@ -54,7 +54,7 @@ class PopoverRowsWearHoverNotAFocusRing(unittest.TestCase):
         self.assertNotIn("PressableButtonStyle()", self.row)
 
     def test_the_popover_chrome_does_not_ring_either(self) -> None:
-        inbox = self.popover.split("WaitingBotsInbox(bots: waitingBots)", 1)[1]
+        inbox = self.popover.split("WaitingBotsInbox(bots: waitingBots,", 1)[1]
         self.assertIn(".focusEffectDisabled()", inbox)
 
 
@@ -65,14 +65,19 @@ class ThePhoneSheetIsSizedToItsRows(unittest.TestCase):
         self.sheet = block(IOS, ".sheet(isPresented: $showWaiting)", ".sheet(isPresented: $showStartGroupChat)")
 
     def test_the_detent_follows_the_row_count(self) -> None:
-        self.assertIn(".presentationDetents([.height(WaitingBotsInbox.sheetHeight(for: waitingBots.count))])",
+        # One `sheetHeight` call, and the host-update row declared to it: a sheet sized for the
+        # bots alone would clip the one row above them.
+        self.assertIn(".presentationDetents([.height(WaitingBotsInbox.sheetHeight(for: waitingBots.count,",
                       self.sheet)
+        self.assertIn("hostUpdate: model.hostUpdate != nil", self.sheet)
         self.assertNotIn(".medium", self.sheet)
         self.assertNotIn(".large", self.sheet)
 
     def test_the_height_is_computed_from_the_shared_row_pitch(self) -> None:
-        self.assertIn("public static func sheetHeight(for rowCount: Int) -> CGFloat", SHARED)
-        height = block(SHARED, "public static func sheetHeight(for rowCount: Int) -> CGFloat {",
+        self.assertIn("public static func sheetHeight(for rowCount: Int, hostUpdate: Bool = false) -> CGFloat",
+                      SHARED)
+        height = block(SHARED,
+                       "public static func sheetHeight(for rowCount: Int, hostUpdate: Bool = false) -> CGFloat {",
                        "    private var listHeight")
         self.assertIn("CGFloat(max(rowCount, 1)) * Self.rowPitch", height,
                       "one row must be one row tall, and zero rows must not be negative")

@@ -175,7 +175,7 @@ class NotificationsReadTheModelsOwnUnread(unittest.TestCase):
             self.assertIn(source, waiting, f"the phone stopped reading {source}")
         sheet = block(IOS_LIST, ".sheet(isPresented: $showWaiting)", ".sheet(isPresented: $showStartGroupChat)")
         self.assertIn("model.markBotRead(botID)", sheet)
-        self.assertIn("WaitingBotsInbox(bots: waitingBots)", sheet)
+        self.assertIn("WaitingBotsInbox(bots: waitingBots,", sheet)
 
     def test_a_row_is_the_avatar_the_name_the_count_and_the_line(self) -> None:
         row = block(SHARED, "private func row(_ bot: WaitingBot) -> some View {", "    private var emptyState")
@@ -218,10 +218,15 @@ class TheMacBellIsRightAlignedAndHasAPopover(unittest.TestCase):
 
     def test_the_bell_is_a_popover_anchored_to_itself(self) -> None:
         self.assertIn(".popover(isPresented: $showsNotifications, arrowEdge: .top)", self.bell)
-        self.assertIn("WaitingBotsInbox(bots: waitingBots)", self.bell)
+        self.assertIn("WaitingBotsInbox(bots: waitingBots,", self.bell)
 
     def test_the_dot_is_the_same_statement_here_as_on_the_phone(self) -> None:
-        self.assertIn(".waitingDot(!waitingBots.isEmpty)", self.bell)
+        # The dot means "there is something behind this bell": replies, **or** a host update that
+        # nobody has pressed yet. Both apps must say it with the same condition.
+        self.assertIn(".waitingDot(!waitingBots.isEmpty || ", self.bell)
+        self.assertIn("hostUpdate?.wantsAttention == true", self.bell)
+        phone = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotListScreen.swift").read_text(encoding="utf-8")
+        self.assertIn("hostUpdate?.wantsAttention == true", phone)
         self.assertIn("public struct WaitingDot: ViewModifier", SHARED)
 
     def test_the_shortcut_does_not_collide(self) -> None:

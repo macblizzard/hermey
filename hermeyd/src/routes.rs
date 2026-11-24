@@ -55,6 +55,9 @@ pub struct AppState {
     pub engine_home: std::path::PathBuf,
     /// Where uploaded bytes live. Metadata in SQLite, bytes on disk.
     pub attachments_dir: std::path::PathBuf,
+    /// The service's own state directory — what `state_home()` resolved. Self-update keeps its
+    /// record (`update-state.json`) here, beside `bridge.db` and `audit.jsonl`.
+    pub home: std::path::PathBuf,
     /// The service-owned bearer on-host scripts read from `<state>/local.token`. Accepted by
     /// `require_device`, under `local_token::LOCAL_PRINCIPAL`. See `local_token.rs`.
     pub local_token: Arc<crate::local_token::LocalToken>,
@@ -566,6 +569,7 @@ mod tests {
             // read and appended. `no_token_is_read_when_the_engine_wants_none` flips it.
             engine_auth: crate::engine_auth::EngineAuth::Required,
             engine_home: dir.join("engine"),
+            home: dir.to_path_buf(),
             attachments_dir: dir.join("attachments"),
             local_token: Arc::new(crate::local_token::LocalToken::from_value(
                 LOCAL,

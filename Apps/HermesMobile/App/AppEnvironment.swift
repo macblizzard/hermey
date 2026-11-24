@@ -97,6 +97,15 @@ final class AppEnvironment: ObservableObject {
         }
         self.box = box
         self.model = AppModel(client: resolvedClient, hostName: store.host?.host ?? "hermes")
+        // The host's own updater: one freshly minted ticket per call, resolved against whatever host
+        // is paired right now — the same shape as the icon and preview calls.
+        self.model.hostUpdateClient = HostUpdateClient(endpoint: {
+            guard let credentials = await box.credentials() else { throw BridgeError.noHost }
+            let ticket = try await BotIconService.mintTicket(baseURL: credentials.host.baseURL,
+                                                              deviceID: credentials.host.deviceID,
+                                                              refreshToken: credentials.token)
+            return (credentials.host.baseURL, ticket)
+        })
         // Faces before the wire: the icons are the bot list's own look, and waiting for a round
         // trip meant every launch greeted the user with initials for a second or two.
         self.botFaces = Self.cachedBotFaces(host: store.host)

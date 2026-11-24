@@ -114,11 +114,25 @@ public enum WaitingBots {
 /// what is waiting, and the caller gives it a bound.
 public struct WaitingBotsInbox: View {
     public var bots: [WaitingBot]
+    /// The host's own update, drawn above the bots — nil for the normal case where there is none,
+    /// no host, or a host that cannot update itself.
+    public var hostUpdate: HostUpdate?
     public var onOpen: (String) -> Void
+    /// The row's Update button. Nothing else in either app calls this.
+    public var onUpdateHost: () -> Void
+    /// The ✕ on a settled row (updated, rolled back, failed).
+    public var onDismissHostUpdate: () -> Void
 
-    public init(bots: [WaitingBot], onOpen: @escaping (String) -> Void) {
+    public init(bots: [WaitingBot],
+                hostUpdate: HostUpdate? = nil,
+                onOpen: @escaping (String) -> Void,
+                onUpdateHost: @escaping () -> Void = {},
+                onDismissHostUpdate: @escaping () -> Void = {}) {
         self.bots = bots
+        self.hostUpdate = hostUpdate
         self.onOpen = onOpen
+        self.onUpdateHost = onUpdateHost
+        self.onDismissHostUpdate = onDismissHostUpdate
     }
 
     /// The panel's own inset, so the rows line up with the bot list behind the popover.
@@ -142,6 +156,16 @@ public struct WaitingBotsInbox: View {
             .padding(.horizontal, inset)
             .padding(.top, Self.headerTop)
             .padding(.bottom, 2)
+
+            // The host's own update first: it is the only row here that is not a bot, and it is the
+            // only one with something to *do* rather than read.
+            if let hostUpdate {
+                HostUpdateRow(update: hostUpdate,
+                              onUpdate: onUpdateHost,
+                              onDismiss: onDismissHostUpdate)
+                    .padding(.horizontal, Self.rowInset)
+                    .padding(.bottom, 2)
+            }
 
             if bots.isEmpty {
                 emptyState
@@ -250,11 +274,13 @@ public struct WaitingBotsInbox: View {
     ///
     /// The sheet used to open at `.medium` whatever the list held, so one waiting bot sat under a
     /// page of empty space. The detent is the header, the rows and the footer, plus the handle;
-    /// a long list still caps and scrolls rather than growing past the screen.
-    public static func sheetHeight(for rowCount: Int) -> CGFloat {
+    /// a long list still caps and scrolls rather than growing past the screen. `hostUpdate` adds the
+    /// one non-bot row, which is a fixed height rather than a row pitch.
+    public static func sheetHeight(for rowCount: Int, hostUpdate: Bool = false) -> CGFloat {
         let list = min(CGFloat(max(rowCount, 1)) * Self.rowPitch + 4, Self.listCap)
         let header = Self.headerTop + 12 + 2 + 6
-        return max(header + list + Self.bottomInset + Self.grabberInset, 120)
+        let update = hostUpdate ? HostUpdateRow.sheetHeight : 0
+        return max(header + list + update + Self.bottomInset + Self.grabberInset, 120)
     }
 
     private var listHeight: CGFloat {

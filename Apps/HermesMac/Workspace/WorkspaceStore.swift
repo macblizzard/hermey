@@ -1205,6 +1205,13 @@ final class WorkspaceStore: ObservableObject {
                 let ticket = try await address.mintedTicket()
                 return (try address.apiOrigin(), ticket)
             }))
-        return AppModel(client: client, hostName: address.displayHost)
+        let model = AppModel(client: client, hostName: address.displayHost)
+        // The host's own updater: the same one-ticket-per-request rule as the computer and the
+        // workspace clients, against whatever host this window is paired to now.
+        model.hostUpdateClient = HostUpdateClient(endpoint: {
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
+        return model
     }
 }

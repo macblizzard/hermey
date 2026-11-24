@@ -931,6 +931,7 @@ mod tests {
             ),
             relay_sockets: Default::default(),
             reactions: crate::reactions::Registry::in_dir(dir),
+            home: dir.to_path_buf(),
             attachments_dir: dir.join("attachments"),
             local_token: std::sync::Arc::new(crate::local_token::LocalToken::from_value(
                 "test-local-token",
