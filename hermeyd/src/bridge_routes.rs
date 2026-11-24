@@ -580,15 +580,36 @@ mod tests {
 
         let (status, body) = put(&st, "cody", json!({
             "definition": definition(),
-            "material": "matte",
+            "material": "chrome",
         }))
         .await
-        .expect_err("matte is not a material");
+        .expect_err("chrome is not a material");
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let detail = body.0["detail"].as_str().unwrap_or_default();
-        assert_eq!(detail, "material must be \"solid\" or \"glass\", not \"matte\"");
+        // The sentence names every material the runtime does accept, so an editor can show it as-is.
+        assert_eq!(
+            detail,
+            "material must be \"solid\", \"glass\", \"matte\" or \"metal\", not \"chrome\""
+        );
         // The whole write is refused, not just the field: a bot must not keep half a change.
         assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn every_material_the_app_offers_round_trips_through_the_document() {
+        // The table in `BotAvatarMaterial.swift` grows, and this is the host's own check that each
+        // row it names is storable — the Python guard compares the two lists, this stores them.
+        let dir = crate::test_support::scratch("bot-avatar-materials-round-trip");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        for material in crate::bot_avatar::MATERIALS {
+            put(&st, "cody", json!({ "definition": definition(), "material": material }))
+                .await
+                .unwrap_or_else(|(status, body)| {
+                    panic!("{material} is not storable: {status} {}", body.0)
+                });
+            assert_eq!(get(&st).await["faces"]["cody"]["material"], json!(material));
+        }
     }
 
     #[tokio::test]

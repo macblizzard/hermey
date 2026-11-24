@@ -11,16 +11,27 @@ import AppKit
 /// ## Why a table
 ///
 /// A material is not a flag. Glass is a fill treatment plus a halo, a sheen, a streak, a rim and a
-/// contact band, each with its own geometry, opacity and blend — and the next material (a matte, a
-/// soft fabric) will be the same kind of list with different numbers. So the drawing reads a
-/// `BotAvatarMaterialSpec` and never a `switch`: **adding a material is a row in `all`**, and the
-/// editor lists whatever rows exist rather than hard-coding two choices.
+/// contact band, each with its own geometry, opacity and blend — and a matte or a metal is the same
+/// kind of list with different numbers. So the drawing reads a `BotAvatarMaterialSpec` and never a
+/// `switch`: **adding a material is a row in `all`**, and the editor lists whatever rows exist
+/// rather than hard-coding two choices.
 ///
-/// The two shipped rows are:
+/// The four shipped rows, chosen so each reads as itself at 26 pt (a list row is 26 pt, the chat
+/// header 26–32 pt) and so none can be mistaken for another:
 ///
-/// * `glass` — six layers over the silhouette, built to the reference's spec;
 /// * `solid` — the 0.1.648 solid, whose spec is deliberately empty: a flat fill and nothing over
-///   it, so the slice-stack drawing that shipped keeps drawing exactly what it drew.
+///   it, so the slice-stack drawing that shipped keeps drawing exactly what it drew;
+/// * `glass` — six layers over the silhouette, built to the reference's spec: a smooth ramp, a
+///   halo, a sheen, one streak, a bright rim and a soft contact band;
+/// * `matte` — felt/clay: no halo, no specular at all (no sheen and no streak), a gentler ramp, a
+///   dark low-contrast rim instead of a bright one, a shorter and softer contact band, and a grain
+///   over the fill that only the full stack draws;
+/// * `metal` — the ramp's light half and dark half with a **horizon** between them (`step`), a
+///   narrow bright rim, no halo and a deep contact band.
+///
+/// What separates them at 26 pt is the three layers a compact plan draws — fill, rim, contact — so
+/// each row is written for those three first and the layers only the full stack draws (halo,
+/// sheen, streak, grain) are the accent.
 ///
 /// ## What is stored
 ///
@@ -34,12 +45,16 @@ import AppKit
 /// Absent or null means `solid`, so nothing already saved changes and nothing needs migrating; the
 /// `open-bot-avatar` definition itself is untouched. The host refuses any other value with a 400
 /// (`hermeyd/src/bot_avatar.rs`, `parse_material`), and this enum's own validator accepts exactly
-/// the same two strings with the same sentence — one rule, two readers.
+/// the same four strings with the same sentence — one rule, two readers.
 public enum BotAvatarMaterial: String, CaseIterable, Hashable, Sendable, Codable {
     /// The 0.1.648 face: the volume's cross-sections filled flat, with nothing over them.
     case solid
     /// The reference's material: a ramped silhouette with a halo, sheen, streak, rim and contact.
     case glass
+    /// Felt or clay: no specular, a dark soft edge, a short contact band and a grain.
+    case matte
+    /// Metal: a lit half and a dark half with a horizon between them, and a narrow bright rim.
+    case metal
 
     /// What an absent or null field means. Every document written before `material` existed is
     /// solid, which is why there is no migration.
@@ -47,12 +62,20 @@ public enum BotAvatarMaterial: String, CaseIterable, Hashable, Sendable, Codable
 
     /// The values this build accepts, derived from the cases rather than written out again, so a new
     /// material cannot be drawable and unlisted. `bot_avatar.rs`'s `MATERIALS` is the host's copy of
-    /// the same two, and `Tests/test_bot_avatar_glass.py` checks the two agree.
+    /// the same four, and `Tests/test_bot_avatar_glass.py` checks the two agree.
     public static let accepted: [String] = allCases.map(\.rawValue)
 
-    /// The refusal, in the contract's own words, for a value that is neither.
+    /// The list as a sentence a person reads: `"solid", "glass", "matte" or "metal"` — derived from
+    /// `accepted` so the refusal cannot name a set the enum no longer has.
+    public static var allowedDescription: String {
+        let quoted = accepted.map { "\"\($0)\"" }
+        guard let last = quoted.last else { return "" }
+        return quoted.count == 1 ? last : quoted.dropLast().joined(separator: ", ") + " or " + last
+    }
+
+    /// The refusal, in the contract's own words, for a value that is none of them.
     public static func refusal(_ raw: String) -> String {
-        "material must be \"solid\" or \"glass\", not \"\(raw)\""
+        "material must be \(allowedDescription), not \"\(raw)\""
     }
 
     /// The stored string as a material: nil is `solid`, anything else is itself or a refusal.
@@ -94,7 +117,12 @@ enum MaterialFill: Hashable, Sendable {
     case flat
     /// One silhouette filled with a vertical three-stop gradient: `lightness` toward white at 0,
     /// the tint at `mid`, `darkness` toward black at 1. This is a glass body's whole volume.
-    case ramp(lightness: Double, mid: Double, darkness: Double)
+    ///
+    /// `step` narrows the crossing through the tint from a smooth blend (nil — glass, where the
+    /// light rolls into the shade) to a seam `step` wide at `mid` (a metal's **horizon**: a lit top
+    /// half, a hard line, a dark bottom half). It is one number, not a second fill: the painter
+    /// builds four stops instead of three from the same three tones.
+    case ramp(lightness: Double, mid: Double, darkness: Double, step: Double?)
 }
 
 /// A colour in a material's gradient, named relative to the bot's tint so a material is data and
@@ -117,7 +145,8 @@ struct MaterialStop: Hashable, Sendable {
     var location: Double
 }
 
-/// The highlight that makes a 2-D shape read as glass: the silhouette stroked with a gradient.
+/// The highlight that makes a 2-D shape read as a solid object: the silhouette stroked with a
+/// gradient. Glass adds light along the whole edge; matte takes it away.
 struct MaterialRim: Hashable, Sendable {
     /// Top-left to bottom-right, for a dark backdrop (and always for the pet).
     var stops: [MaterialStop]
@@ -178,8 +207,8 @@ struct MaterialContact: Hashable, Sendable {
     var blend: MaterialBlend
 }
 
-/// A pattern over the fill. No shipped material uses one; it is here so a matte or a fabric is a
-/// row rather than a new drawing path.
+/// A pattern over the fill. `matte` uses one for its grain; it is here so a fabric is a row rather
+/// than a new drawing path.
 struct MaterialTexture: Hashable, Sendable {
     enum Pattern: String, Hashable, Sendable {
         /// A lattice of dots.
@@ -230,11 +259,11 @@ struct BotAvatarMaterialSpec: Hashable, Sendable {
     let contact: MaterialContact?
     /// An optional pattern over the fill.
     let texture: MaterialTexture?
-    /// Whether `blocked` desaturates the tint for this material. Glass does; a flat solid is the
-    /// colour the bot chose and stays it.
+    /// Whether `blocked` desaturates the tint for this material. Glass and matte do; a flat solid and
+    /// a metal are the colour the bot chose and stay it.
     let desaturatesWhenBlocked: Bool
     /// Whether the eyes take the 1 pt catchlight above 64 pt. A material with a lit surface earns
-    /// one; the flat solid's eyes are solid ink and stay that way.
+    /// one (glass, metal); a matte or the flat solid's eyes are solid ink and stay that way.
     let addsEyeCatchlight: Bool
 }
 
@@ -244,7 +273,7 @@ extension BotAvatarMaterialSpec {
     ///
     /// A new material is a new `static let` and one more entry here. Nothing else in the drawing
     /// changes: `OpenBotAvatarMaterialPaint` walks whatever entries the spec has.
-    static let all: [BotAvatarMaterialSpec] = [.solid, .glass]
+    static let all: [BotAvatarMaterialSpec] = [.solid, .glass, .matte, .metal]
 
     static func spec(for material: BotAvatarMaterial) -> BotAvatarMaterialSpec {
         all.first { $0.material == material } ?? .solid
@@ -280,7 +309,7 @@ extension BotAvatarMaterialSpec {
         material: .glass,
         name: "Glass",
         summary: "A lit body: a soft ramp, one streak, a bright rim and a shadow that grounds it.",
-        fill: .ramp(lightness: 0.18, mid: 0.55, darkness: 0.15),
+        fill: .ramp(lightness: 0.18, mid: 0.55, darkness: 0.15, step: nil),
         halo: MaterialHalo(tone: .tint, offset: 0.04, blur: 0.08),
         sheens: [
             MaterialSheen(center: CGPoint(x: 0.42, y: 0.28), radius: 0.6, opacity: 0.22,
@@ -314,6 +343,109 @@ extension BotAvatarMaterialSpec {
                                  blend: .normal),
         texture: nil,
         desaturatesWhenBlocked: true,
+        addsEyeCatchlight: true
+    )
+
+    /// Felt or clay: the one material with no specular at all.
+    ///
+    /// What it is *not*: solid. Solid is the slice stack filled flat, and at 26 pt it is one
+    /// unbroken tint. Matte is one silhouette with a vertical ramp (a lit top, a deeper foot), a
+    /// **dark** rim instead of a bright one — the edge of a felted surface absorbs rather than
+    /// reflects — and a contact band that is shorter and blurrier than glass's, so the shape sits
+    /// close to the page instead of floating over it. The grain is the felt itself: it is a
+    /// `MaterialTexture`, so the plan only draws it at the full stack (the 200 pt preview, the pet,
+    /// a banner icon) and a 26 pt row is spared a pattern that would moiré.
+    ///
+    /// The ramp is the softest in the table: 0.16 toward white, 0.18 toward black over a mid at
+    /// 0.5, against glass's 0.18/0.15 and metal's 0.58/0.52 — chalk, not glass.
+    static let matte = BotAvatarMaterialSpec(
+        material: .matte,
+        name: "Matte",
+        summary: "Felt: no shine, a dark soft edge and a grain you only see close up.",
+        fill: .ramp(lightness: 0.16, mid: 0.5, darkness: 0.18, step: nil),
+        // No halo: a matte surface throws no light, and a glow over it reads as a halo on a
+        // photograph — which is the opposite of matte.
+        halo: nil,
+        // No sheen and no streak: those two are the specular layers, and this material has none.
+        sheens: [],
+        streaks: [],
+        rim: MaterialRim(
+            // A dark edge, normal blend: the tint pulled 30 % toward black at the top-left, easing
+            // to 12 %. Glass's rim adds white; this one takes light away.
+            stops: [
+                MaterialStop(tone: .darken(0.30), opacity: 0.32, location: 0),
+                MaterialStop(tone: .darken(0.12), opacity: 0.18, location: 1),
+            ],
+            lightStops: [
+                MaterialStop(tone: .darken(0.42), opacity: 0.34, location: 0),
+                MaterialStop(tone: .darken(0.20), opacity: 0.20, location: 1),
+            ],
+            width: 0.018,
+            minimumWidth: 1,
+            blend: .normal,
+            // On paper the dark rim is already the outline, so the hairline can be faint.
+            outerHairline: MaterialStop(tone: .darken(0.5), opacity: 0.18, location: 0),
+            hairlineWidth: 1
+        ),
+        // Tighter than glass's: a 0.1 band, blurred at 3 pt, so it reads as contact rather than a
+        // shadow under a floating object.
+        contact: MaterialContact(tone: .darken(0.45), opacity: 0.22, height: 0.10, blur: 3,
+                                 blend: .normal),
+        texture: MaterialTexture(pattern: .grain, opacity: 0.07, cells: 26, tone: .darken(0.35)),
+        // Felt calms like glass does when a bot is blocked; the tint is still the bot's.
+        desaturatesWhenBlocked: true,
+        // No specular surface, so no 1 pt dot in the eye: it would be the only shine on a matte
+        // face and would read as a mistake.
+        addsEyeCatchlight: false
+    )
+
+    /// Metal: a lit half and a dark half with a horizon between them.
+    ///
+    /// The whole material is the ramp — 0.58 toward white at the top, 0.52 toward black at the
+    /// bottom — with `step: 0.03`: instead of glass's smooth roll through the tint, the gradient
+    /// crosses from the light tone to the dark within 3 % of the body's height, so a bot at 26 pt
+    /// shows a bright upper half, a line at its middle and a dark lower half. That line *is* the
+    /// material; no other row has it. The rim is the brightest and narrowest in the table (1.2 % of
+    /// the side, still at least a point, added light, with a dark hairline outside on paper), the
+    /// halo is nil so the horizon is not washed out, and the contact band is deep and crisp so the
+    /// metal sits hard on the surface.
+    static let metal = BotAvatarMaterialSpec(
+        material: .metal,
+        name: "Metal",
+        summary: "Polished alloy: a light half, a dark half and a hard horizon between them.",
+        fill: .ramp(lightness: 0.58, mid: 0.5, darkness: 0.52, step: 0.03),
+        halo: nil,
+        // One tight specular on the lit half (full stack only) — where an alloy reflects the room.
+        sheens: [
+            MaterialSheen(center: CGPoint(x: 0.34, y: 0.20), radius: 0.30, opacity: 0.26,
+                          blend: .plusLighter),
+        ],
+        // No streak: a long soft streak is glass's signature, and two materials that both carry one
+        // are two materials a person cannot tell apart at a glance.
+        streaks: [],
+        rim: MaterialRim(
+            stops: [
+                MaterialStop(tone: .white, opacity: 0.90, location: 0),
+                MaterialStop(tone: .lighten(0.25), opacity: 0.50, location: 0.10),
+            ],
+            lightStops: [
+                MaterialStop(tone: .white, opacity: 0.85, location: 0),
+                MaterialStop(tone: .tint, opacity: 0.45, location: 0.10),
+            ],
+            // Narrow and bright: the edge of a polished bevel, not a pane's thickness.
+            width: 0.012,
+            minimumWidth: 1,
+            blend: .plusLighter,
+            outerHairline: MaterialStop(tone: .darken(0.6), opacity: 0.35, location: 0),
+            hairlineWidth: 1
+        ),
+        // Deep and crisp: a heavy object meeting the page, not a soft shadow under it.
+        contact: MaterialContact(tone: .darken(0.55), opacity: 0.24, height: 0.22, blur: 1.5,
+                                 blend: .normal),
+        texture: nil,
+        // The tint is the alloy's. A metal does not lose its colour when a bot is blocked; the state
+        // calms it by dimming the rim (0.50 in the light table) instead.
+        desaturatesWhenBlocked: false,
         addsEyeCatchlight: true
     )
 }

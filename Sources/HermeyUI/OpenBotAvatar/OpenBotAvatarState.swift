@@ -7,7 +7,8 @@ import Foundation
 /// vocabulary (`BotAvatarActivity` in `HermesKit` does); it accepts one of these and draws it.
 ///
 /// The states are upstream's, and so is what each one does to the body: `thinking` and `blocked`
-/// give the body up to a mark (three dots, an exclamation), `working` sweeps a band of ribbons round
+/// give the body up to a mark (three dots, an exclamation) — body *and face*, so a marked state has
+/// no eyes, which the renderer enforces in one place — `working` sweeps a band of ribbons round
 /// it, `done` turns once, `waiting` flattens the eyes to slits, and `reading`/`computer` lean the
 /// face — over and above a calm breathing pose. Nothing here allocates or reads a clock: a pose is a
 /// pure function of (state, mood, time, seed), so a frame can be reproduced and tested.
@@ -81,7 +82,11 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.gazeY = wander.1
 
         case .thinking:
-            // Looks up and away while the body gives way to three dots.
+            // Looks up and away while the body gives way to three dots. The mark is the face here:
+            // `bodyScale` shrinks the body and the renderer draws no eyes beside a mark, so a
+            // thinking bot shows one pair of "eyes" — the dots. The eye channels above are still
+            // the state's own (they are what the shared motion's override replaces) but a marked
+            // frame does not draw them.
             rest(1)
             pose.yaw += 0.12 + 0.03 * wave(7.3)
             pose.pitch += 0.08
@@ -145,7 +150,8 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.blink = reducedMotion ? 0 : Self.blink(seed: seed, time: t * 0.6)
 
         case .blocked:
-            // Stops still while the body gives way to the exclamation mark.
+            // Stops still while the body gives way to the exclamation mark — again body and face,
+            // so no eyes are drawn beside it (the renderer's one gate).
             pose.sy = 1.02
             pose.sx = 0.99
             pose.bodyScale = 0.32
