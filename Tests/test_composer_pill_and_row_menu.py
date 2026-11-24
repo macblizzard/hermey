@@ -182,7 +182,8 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         self.assertIn(".frame(height: controlSide)", band)
         # Its own row, aligned with the text rather than the card's edge — not an overlay.
         self.assertIn(".frame(maxWidth: .infinity, alignment: .leading)", band)
-        self.assertIn("showsAttach ? controlSide + 8 : 0", band)
+        self.assertIn("showsAttach ? 8 + controlSide + 8 : 10", band,
+                      "the pill must start where the typed text starts, including the row's inset")
         self.assertNotIn("overlay", band)
         self.assertLess(self.COMPOSER_SOURCE.index("            HStack(alignment: .bottom, spacing: 8) {"),
                         self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"))
