@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.653",
-          "buildVersion": "653",
-          "date": "2026-11-24T21:03:05Z",
-          "localizedDescription": "### Fixed\n- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its own text, which made it read as a slim bar next to the round attach and send controls.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.653/Hermey-0.1.653-b653.ipa",
-          "size": 5469938,
+          "version": "0.1.654",
+          "buildVersion": "654",
+          "date": "2026-11-24T21:22:54Z",
+          "localizedDescription": "### Fixed\n- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath the field, lined up with where the text starts.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.654/Hermey-0.1.654-b654.ipa",
+          "size": 5469914,
           "minOSVersion": "17.0",
-          "sha256": "7f131f932d82a91e6a0d886e2cde4106e0fdd30fc0d80cc7c56dc09c043f6ae1"
+          "sha256": "8c489135681da039283d7c0208cde7a9dc1dd61a26eddc295001acbf26cc2160"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.653 (653)",
-      "identifier": "hermes-0.1.653-653",
-      "caption": "### Fixed\n- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its own text, which made it read as a slim bar next to the round attach and send controls.",
-      "date": "2026-11-24T21:03:05Z",
+      "title": "Hermes 0.1.654 (654)",
+      "identifier": "hermes-0.1.654-654",
+      "caption": "### Fixed\n- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath the field, lined up with where the text starts.",
+      "date": "2026-11-24T21:22:54Z",
       "tintColor": "#9A9AA0"
     }
   ],
