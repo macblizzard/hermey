@@ -18,9 +18,10 @@ import ActivityKit
 /// there is no `Bot` here, only the one string the card actually prints.
 ///
 /// `ContentState` is the half that may change while the activity lives, which is exactly what the
-/// two states need: the turn starts as `.working` and is updated to `.done` when the reply lands.
-/// The bot's name sits in the *attributes*, not the state: a turn belongs to one bot from start to
-/// finish, and switching bots ends the turn (the shell cancels the run) rather than re-pointing it.
+/// three states need: the turn starts as `.working`, becomes `.needsYou` while the host is blocked
+/// on an approval or a question, and is updated to `.done` when the reply lands. The bot's name sits
+/// in the *attributes*, not the state: a turn belongs to one bot from start to finish, and switching
+/// bots ends the turn (the shell cancels the run) rather than re-pointing it.
 ///
 /// **Every word the card prints travels in this type.** The extension cannot read the app's model —
 /// it is a second process with no bot list, no transcript and no stream — so a card whose text is a
@@ -31,10 +32,17 @@ import ActivityKit
 public struct HermeyTurnAttributes: ActivityAttributes {
     /// Everything the card says that is allowed to change mid-turn.
     public struct ContentState: Codable, Hashable, Sendable {
-        /// The two states the owner asked to see: working, then done. No queue, no error state —
-        /// an error is a finished turn, and the transcript is where its reason lives.
+        /// The three states the owner asked to see: working, blocked on him, then done. No queue and
+        /// no error state — an error is a finished turn, and the transcript is where its reason
+        /// lives.
+        ///
+        /// `needsYou` is not "the reply ends in a question mark". It is a run the app knows is
+        /// paused on the owner — an approval or a question sitting in `AppModel.pendingRequests`,
+        /// which is the same array the approval sheet is drawn from — so the card can only say it
+        /// when the host is actually waiting for an answer.
         public enum Phase: String, Codable, Hashable, Sendable {
             case working
+            case needsYou
             case done
         }
 
@@ -77,7 +85,7 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         public var replySnippet: String
 
         /// What the bot is doing, in one short line: "Thinking it through", "Running read_file",
-        /// "Streaming the reply", "Done".
+        /// "Streaming the reply".
         ///
         /// **Never empty.** This is the field the blank capsule was missing: the card exists from
         /// the moment `Activity.request` returns, and until now the only text it had was a literal
@@ -85,6 +93,10 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// nothing to say about the turn it was showing. The initialiser and the decoder both end
         /// at `neutral(_:)`, which is why no caller and no older activity can put a blank line on
         /// the lock screen. The coordinator writes the specific words; this type guarantees a floor.
+        ///
+        /// It sits *under* the phase word, not instead of it: the island and the card print
+        /// `word(phase)` and then this line, which is why a card can say "Needs you · Running
+        /// read_file" without the coordinator having to compose a sentence.
         public var step: String
 
         public init(phase: Phase,
@@ -111,16 +123,46 @@ public struct HermeyTurnAttributes: ActivityAttributes {
             return String(flat.prefix(stepLimit))
         }
 
-        /// What a card says when the app had nothing better: one word per phase, never blank.
+        /// The word for a phase, in one place: `Working`, `Needs you`, `Finished`.
+        ///
+        /// **The only source of these three strings.** The compact pill, the expanded island and
+        /// the Lock Screen card all draw this, so the three surfaces cannot drift into three
+        /// different vocabularies for the same turn — which is what happens when a view writes its
+        /// own literal, and the reason this is a function of the phase rather than a string each
+        /// view holds.
+        ///
+        /// Sentence case, one or two short words: it has to be legible in the compact pill, which
+        /// is roughly a clock's width and is the whole point of the feature.
+        public static func word(_ phase: Phase) -> String {
+            switch phase {
+            case .working: return "Working"
+            case .needsYou: return "Needs you"
+            case .done: return "Finished"
+            }
+        }
+
+        /// What a card says under the word when the app had nothing better: the same word, never
+        /// blank.
         ///
         /// "Working" rather than "Working on your message" because this is the floor, not the
         /// writing: the coordinator supplies the real line, and a neutral word that is *true* beats
-        /// a sentence that claims the turn is his when it may be a background sweep.
+        /// a sentence that claims the turn is his when it may be a background sweep. Delegating to
+        /// `word(_:)` is what keeps the floor and the status word from ever disagreeing — an old
+        /// card whose step is missing says "Finished", not "Done".
         public static func neutral(_ phase: Phase) -> String {
-            switch phase {
-            case .working: return "Working"
-            case .done: return "Done"
-            }
+            word(phase)
+        }
+
+        /// A phase from the raw value on the wire, tolerantly.
+        ///
+        /// A card can outlive the build that requested it, so the decoder must never throw on this
+        /// field: a value this build does not know (a state a later build added, or an older
+        /// activity written before `needsYou` existed) resolves to `.working`, and a missing key
+        /// does too. Dropping the whole activity, or drawing a blank phase, are both worse than
+        /// showing the one word that is true of any unfinished turn.
+        public static func phase(from raw: String?) -> Phase {
+            guard let raw, let phase = Phase(rawValue: raw) else { return .working }
+            return phase
         }
 
         /// One line, at most `snippetLimit` characters.
@@ -146,10 +188,13 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         // `replySnippet` key (and 0.1.638's has no `step`), and the synthesised decoder would throw
         // and drop a card the owner is still looking at. A missing key is an empty string, not a
         // failure — and `step` still ends at the neutral word, so an old card in the middle of a
-        // turn cannot draw a blank line either.
+        // turn cannot draw a blank line either. The same tolerance covers `phase`: an unknown raw
+        // value is `.working` rather than a thrown decoder, because the one field that picks the
+        // word must never be the reason a card disappears.
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            let phase = try container.decode(Phase.self, forKey: .phase)
+            let rawPhase = try container.decodeIfPresent(String.self, forKey: .phase)
+            let phase = Self.phase(from: rawPhase)
             self.phase = phase
             self.startedAt = try container.decode(Date.self, forKey: .startedAt)
             self.finishedAt = try container.decodeIfPresent(Date.self, forKey: .finishedAt)

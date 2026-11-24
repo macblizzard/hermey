@@ -58,6 +58,19 @@ that vanished seconds after it appeared, and a blank gold panel while the turn r
   `.primary`/`.secondary` so it is legible on glass in either appearance, with amber only on the
   glyph. The step line is drawn for *every* phase, not only once the reply lands.
 
+And the rule from the owner's next ask — "add some text on the dynamic island like Working when a bot
+is working, Needs you when a bot has a question for me, and Finished for when a bot has finished a
+task":
+
+* **one word, one function, three surfaces.** `ContentState.word(_:)` is the only place the three
+  strings exist; the compact trailing slot, the expanded centre and the Lock Screen status line all
+  draw it, so they cannot drift into three vocabularies for the same turn. The compact pill carries
+  the word where it used to carry the clock — the word is what he reads without expanding it — and
+  the elapsed number moved to the expanded trailing, where digits have room;
+* **`needsYou` is a real state, not a punctuation test.** It is a request in
+  `AppModel.pendingRequests` (the array the approval sheet draws), pushed by the coordinator's own
+  subscription. A reply that ends in a question mark is still a bot working.
+
 What a real device has to confirm (it cannot be asserted here): that the extension is embedded and
 signed, that the compact pill sits inside the notch's width instead of over the status bar, that the
 card reads as glass rather than a filled panel, and that the finished card is still there after the
@@ -151,13 +164,15 @@ class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
         self.assertIn("public struct HermeyTurnAttributes: ActivityAttributes", ATTRIBUTES)
         self.assertIn("public struct ContentState: Codable, Hashable, Sendable", ATTRIBUTES)
 
-    def test_the_two_states_are_working_and_done(self) -> None:
+    def test_the_three_phases_are_working_needs_you_and_done(self) -> None:
         phase = body("public enum Phase: String, Codable, Hashable, Sendable", ATTRIBUTES)
         self.assertIn("case working", phase)
+        self.assertIn("case needsYou", phase)
         self.assertIn("case done", phase)
         # Nothing else. A queue/error/paused state here would be state the card cannot be told
-        # about without the app pushing an update for every one of them.
-        self.assertEqual(len(re.findall(r"\bcase \w+", phase)), 2)
+        # about without the app pushing an update for every one of them, and "needs you" is the
+        # only stop the owner can actually clear from his phone.
+        self.assertEqual(len(re.findall(r"\bcase \w+", phase)), 3)
 
     def test_elapsed_time_is_a_date_not_a_measured_number(self) -> None:
         # A stored duration freezes at whatever the app last sent, so the state carries the date the
@@ -216,13 +231,17 @@ class EveryPresentationHasAView(unittest.TestCase):
         self.assertIn(".activitySystemActionForegroundColor(HermeyTurnAccent.amber)", content)
 
     def test_the_state_picks_the_glyph_and_the_sentence(self) -> None:
-        # Working → an in-progress bubble and a tick when it is over. The words are the state's now
-        # (see `TheCardAlwaysSaysWhatItIsDoing`); the literals here are the floor a card from a build
-        # with no step field still draws.
+        # One glyph per phase, from one function: an in-progress bubble while it works, a question
+        # bubble while it is blocked on him, a tick once it is over. The words are the state's (see
+        # `TheIslandSaysOneWord`); what a card draws when its `step` is missing is the same word.
         self.assertIn('"ellipsis.bubble"', WIDGET)
+        self.assertIn('"questionmark.bubble"', WIDGET)
         self.assertIn('"checkmark.circle"', WIDGET)
-        status = section("// MARK: - Pieces")
-        self.assertIn('return state.phase == .done ? "Done" : "Working on your message"', status)
+        mark = piece("private struct HermeyTurnMark: View")
+        self.assertIn("static func symbol(", mark)
+        self.assertIn("Image(systemName: Self.symbol(phase))", mark)
+        status = piece("private struct HermeyTurnStatusLine: View")
+        self.assertIn("HermeyTurnAttributes.ContentState.word(state.phase)", status)
 
     def test_a_stale_card_stops_claiming_to_work(self) -> None:
         # `staleDate` fires when the app could not update the card (killed mid-turn). The sentence
@@ -264,7 +283,11 @@ class ThePaletteIsTheAccentAndTheSystemsInk(unittest.TestCase):
         # Centre (name + step), trailing (elapsed) and the bottom snippet: every island piece that
         # prints names the island's tone.
         island = WIDGET[WIDGET.index("} dynamicIsland:"):WIDGET.index("// MARK: - Pieces")]
-        self.assertEqual(island.count("tone: .island"), 3)
+        # The expanded trailing number and the bottom snippet are the two pieces in that slice that
+        # take an ink of their own; the centre's status line and the compact word are asserted in
+        # `TheIslandSaysOneWord`, where what they *say* is the subject.
+        self.assertEqual(island.count("tone: .island"), 2)
+        self.assertIn("HermeyTurnElapsedLabel(state: context.state, tone: .island)", island)
 
     def test_no_asset_catalogue_or_remote_image_is_involved(self) -> None:
         # Live Activity snapshots get a small memory budget and no async image loading worth the
@@ -487,11 +510,12 @@ class TheIslandStaysSmall(unittest.TestCase):
         self.assertIn('"\u2026"', names)
         self.assertIn("whereSeparator: \\.isWhitespace", names)
 
-    def test_compact_trailing_is_the_elapsed_number_and_nothing_else(self) -> None:
-        # The trailing slot holds a few monospaced digits and nothing that can grow: no name, no
-        # snippet, no stack that could take the proposal.
+    def test_compact_trailing_is_the_status_word_and_nothing_else(self) -> None:
+        # The trailing slot holds one word and nothing that can grow: no name, no snippet, no stack
+        # that could take the proposal — and no number, because the word is what he asked to read
+        # without expanding the pill.
         content = compact("compactTrailing")
-        self.assertIn("HermeyTurnElapsedLabel(state: context.state, tone: .island)", content)
+        self.assertIn("HermeyTurnWord(phase: context.state.phase)", content)
         self.assertNotIn("botName", content)
         self.assertNotIn("replySnippet", content)
         self.assertNotIn("HStack", content)
@@ -625,9 +649,8 @@ class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
 
     def test_the_expanded_island_says_what_the_bot_is_doing_too(self) -> None:
         center = piece("private struct HermeyTurnExpandedCenter: View")
-        self.assertIn(
-            "HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .island)",
-            center)
+        self.assertIn("HermeyTurnStatusLine(state: state,", center)
+        self.assertIn("leadsWithWord: false", center)
 
 
 class ItStaysUntilTheOwnerRemovesIt(unittest.TestCase):
@@ -699,7 +722,7 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         begin = body("private func begin()")
         # Read before the request, and handed to it: the first frame iOS draws is this state, and a
         # turn whose first token is slow would otherwise be a wordless card for its whole run.
-        self.assertIn("let startStep = normalisedStep()", begin)
+        self.assertIn("let startStep = normalisedStep(for: startPhase)", begin)
         self.assertLess(begin.index("let startStep"), begin.index("Activity.request("))
         # One state for every path — the request, the re-point of a live card, and the adoption of
         # one left by another process — so no branch can push a wordless frame.
@@ -713,9 +736,14 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertIn("prefix(stepLimit)", step_line)
 
     def test_the_neutral_word_for_each_phase(self) -> None:
+        # The floor under the step line is the phase word itself, so an old card with no `step`
+        # says the same thing the pill does rather than a second vocabulary.
         neutral = body("public static func neutral", ATTRIBUTES)
-        self.assertIn('case .working: return "Working"', neutral)
-        self.assertIn('case .done: return "Done"', neutral)
+        self.assertIn("word(phase)", neutral)
+        words = body("public static func word", ATTRIBUTES)
+        self.assertIn('case .working: return "Working"', words)
+        self.assertIn('case .needsYou: return "Needs you"', words)
+        self.assertIn('case .done: return "Finished"', words)
 
     def test_an_older_card_gets_the_same_floor(self) -> None:
         # 0.1.638's activities have no `step` key. A missing key must decode to the neutral word,
@@ -742,17 +770,21 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertIn("Text(line)", piece("private struct HermeyTurnStatusLine: View"))
         status = piece("private struct HermeyTurnStatusLine: View")
         self.assertIn("let step = state.step", status)
-        self.assertIn("guard step.isEmpty else { return step }", status)
+        # The word leads the line on the card, the step follows it: "Needs you · Running read_file".
+        self.assertIn('"\(word) · \(doing)"', status)
+        self.assertIn('let doing = (step.isEmpty || step == word) ? "" : step', status)
 
     def test_the_end_state_has_words_with_or_without_a_reply(self) -> None:
-        status = piece("private struct HermeyTurnStatusLine: View")
-        self.assertIn('return state.phase == .done ? "Done" : "Working on your message"', status)
         finish = body("private func finish()")
         self.assertIn("step: Self.doneWords", finish)
         # The snippet stays the second line, and stays optional: a cancelled turn has no reply to
-        # quote, so the card says "Done" and the elapsed time rather than inventing words.
+        # quote, so the card says "Finished" and the elapsed time rather than inventing words.
         self.assertIn("replySnippet: replySnippet(),", finish)
-        self.assertIn('static let doneWords = "Done"', COORDINATOR)
+        # One spelling of the word: the coordinator asks the state for it rather than keeping a
+        # literal that could drift from the pill's.
+        self.assertIn("static var doneWords: String { HermeyTurnAttributes.ContentState.word(.done) }",
+                      COORDINATOR)
+        self.assertNotIn('doneWords = "', COORDINATOR)
 
     def test_progress_is_pushed_while_the_turn_runs(self) -> None:
         # The path the feature was missing: `begin` wrote the state once and nothing refreshed it,
@@ -763,11 +795,12 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertIn("self.progress()", attach)
         progress = body("private func progress()")
         self.assertIn("push(content, to: activity)", progress)
-        self.assertIn("phase: .working", progress)
+        self.assertIn("let phase = currentPhase()", progress)
+        self.assertIn("phase: phase,", progress)
         # Normalised before it is compared, so a token that does not change the line is not an
         # update — otherwise a streaming reply costs one activity write per token.
-        self.assertIn("let step = normalisedStep()", progress)
-        self.assertIn("guard step != lastStep else { return }", progress)
+        self.assertIn("let step = normalisedStep(for: phase)", progress)
+        self.assertIn("guard step != lastStep || phase != lastPhase else { return }", progress)
 
     def test_the_step_is_the_apps_own_vocabulary(self) -> None:
         # Same words the app's working row reads: the tracker's activity, and the tool that is out.
@@ -775,7 +808,7 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertIn("model.liveTools.last(where: { $0.isRunning })", step)
         self.assertIn("model.activity(forBot: $0)", step)
         self.assertIn("model.streamingText", step)
-        for phrase in ("Thinking it through", "Using the computer", "Working on your message"):
+        for phrase in ("Thinking it through", "Using the computer", "On your message"):
             self.assertIn(phrase, step)
 
     def test_the_widget_draws_the_type_the_coordinator_starts(self) -> None:
@@ -813,3 +846,178 @@ class TheExpandedIslandReadsAsOneLine(unittest.TestCase):
         center = piece("private struct HermeyTurnExpandedCenter: View")
         self.assertIn(".fixedSize(horizontal: false, vertical: true)", center)
         self.assertIn(".layoutPriority(1)", center)
+
+
+class TheIslandSaysOneWord(unittest.TestCase):
+    """The owner: "add some text on the dynamic island like Working when a bot is working, Needs you
+    when a bot has a question for me, and Finished for when a bot has finished a task" — one short
+    status word, readable in the compact pill *without* expanding it.
+
+    The word is a function of the phase and nothing else (`ContentState.word(_:)`), and all three
+    layouts draw that function: the compact trailing slot, the expanded centre beside the name, and
+    the Lock Screen status line. Three views writing three literals is how one turn comes to read
+    "Done" on the card and "Finished" in the pill.
+
+    `needsYou` is not a guess about a reply that ends in a question mark. It is a request sitting in
+    `AppModel.pendingRequests` — the same array the approval sheet is drawn from — so the word only
+    appears when the host is actually blocked on him.
+    """
+
+    def test_the_three_words_are_exactly_these(self) -> None:
+        words = body("public static func word", ATTRIBUTES)
+        found = dict(re.findall(r"case \.(\w+): return \"([^\"]+)\"", words))
+        self.assertEqual(found, {"working": "Working", "needsYou": "Needs you", "done": "Finished"})
+        # Every phase has a word, so the switch cannot fall through to nothing when a fourth state
+        # is ever added without one.
+        self.assertEqual(len(re.findall(r"case \.\w+: return", words)), 3)
+
+    def test_the_widget_never_spells_a_word_itself(self) -> None:
+        # The three strings live in the attributes type. A literal in a view is the second
+        # vocabulary, and the surfaces then disagree about the same turn.
+        rendered = code(WIDGET)
+        for phrase in ("Working", "Needs you", "Finished"):
+            self.assertNotIn(f'"{phrase}"', rendered, f"the widget spells {phrase} itself")
+        # …and every presentation asks for it by phase.
+        self.assertGreaterEqual(rendered.count("HermeyTurnAttributes.ContentState.word("), 3)
+        self.assertIn("HermeyTurnWord(phase: context.state.phase)", compact("compactTrailing"))
+        self.assertIn("HermeyTurnWord(phase: state.phase)",
+                      piece("private struct HermeyTurnExpandedCenter: View"))
+        self.assertIn("HermeyTurnAttributes.ContentState.word(state.phase)",
+                      piece("private struct HermeyTurnStatusLine: View"))
+
+    def test_the_compact_pill_says_the_word_instead_of_the_clock(self) -> None:
+        # The important one: the word has to be readable without expanding the pill, so it takes the
+        # compact *trailing* slot and the number moves to the expanded trailing.
+        trailing = compact("compactTrailing")
+        self.assertIn("HermeyTurnWord(phase: context.state.phase)", trailing)
+        self.assertNotIn("Elapsed", trailing, "the timer still owns the compact slot")
+        self.assertIn(".fixedSize()", trailing)
+        # The leading slot keeps the mark and the bot's name.
+        self.assertIn("HermeyTurnCompactLead(", compact("compactLeading"))
+
+    def test_the_timer_moved_rather_than_disappearing(self) -> None:
+        # The elpased number is still drawn — in the expanded trailing, where the digits have room
+        # to grow every minute without widening the pill.
+        self.assertIn("HermeyTurnElapsedLabel(state: context.state, tone: .island)",
+                      region("trailing"))
+        self.assertIn("HermeyTurnElapsedLabel(state: state, tone: .card)",
+                      piece("private struct HermeyTurnLockScreen: View"))
+        self.assertIn("HermeyTurnElapsed.short(from: state.startedAt", WIDGET)
+        # …and it is still not a live timer, which is what the compact slot could not pin.
+        self.assertNotIn(".timer", code(WIDGET))
+
+    def test_the_compact_pill_got_no_wider(self) -> None:
+        # The word is shorter than the timer it replaced, and nothing in either compact slot may
+        # propose a width: the island sizes itself from what the slots report.
+        trailing = compact("compactTrailing")
+        for forbidden in ("Spacer", "maxWidth", "GeometryReader", "frame(width:"):
+            self.assertNotIn(forbidden, trailing, forbidden)
+        # One word, one line, pinned: nothing that can take the island's proposal. The pill's width
+        # is now two intrinsic texts and the margins — the timer that widened it to 82% of the
+        # screen was the *live* one, and a live timer is nowhere in this feature.
+        word = piece("private struct HermeyTurnWord: View")
+        self.assertIn(".font(.caption2)", word)
+        self.assertIn(".lineLimit(1)", word)
+        self.assertIn(".fixedSize()", word)
+
+    def test_the_expanded_centre_reads_name_then_word_then_step(self) -> None:
+        center = piece("private struct HermeyTurnExpandedCenter: View")
+        text = center[center.index("var body"):]
+        self.assertIn("HStack(alignment: .firstTextBaseline, spacing: 6)", text)
+        self.assertLess(text.index("Text(botName)"), text.index("HermeyTurnWord("),
+                        "the name reads first")
+        self.assertLess(text.index("HermeyTurnWord("), text.index("HermeyTurnStatusLine("),
+                        "then the word, then what it is doing")
+        # The word is drawn beside the name, so the status line is asked for the step alone: one
+        # row cannot say "Needs you" twice.
+        self.assertIn("leadsWithWord: false", text)
+        # …and a finished turn, whose step *is* the word, does not draw the line at all: the row
+        # would otherwise read "Finished Finished".
+        self.assertIn("if state.step != word {", text)
+        # One line, still no new region and no spacer.
+        self.assertNotIn("VStack", text)
+        self.assertNotIn("Spacer", text)
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", center)
+
+    def test_the_lock_screen_line_leads_with_the_word(self) -> None:
+        status = piece("private struct HermeyTurnStatusLine: View")
+        self.assertIn("var leadsWithWord: Bool = true", status)
+        self.assertIn('"\\(word) · \\(doing)"', status)
+        # …and the step still follows it, so the card says "Needs you · Running read_file".
+        self.assertIn("let doing = (step.isEmpty || step == word) ? \"\" : step", status)
+        # Drawn for every phase: nothing in the card branches on it.
+        card = piece("private struct HermeyTurnLockScreen: View")
+        self.assertNotIn("phase ==", card)
+        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
+                      card)
+
+    def test_the_new_phase_travels_in_both_directions(self) -> None:
+        # Encoding is the synthesised one, so the raw value *is* the wire form: `needsYou` has to be
+        # a `String` case of the enum for `update` to hand the extension something it can decode.
+        self.assertIn("public enum Phase: String, Codable, Hashable, Sendable", ATTRIBUTES)
+        self.assertIn("case needsYou", body("public enum Phase: String, Codable, Hashable, Sendable",
+                                            ATTRIBUTES))
+        # Decoding is hand-written and goes through the tolerant mapper — the phase key is read as a
+        # string, not as the enum, so an unknown value cannot throw and drop the card.
+        decoder = ATTRIBUTES[ATTRIBUTES.index("public init(from decoder: Decoder) throws"):]
+        decoder = decoder[:decoder.index("/// What the card calls a bot")]
+        self.assertIn("decodeIfPresent(String.self, forKey: .phase)", decoder)
+        self.assertIn("let phase = Self.phase(from: rawPhase)", decoder)
+        self.assertNotIn("decode(Phase.self", decoder)
+
+    def test_an_unknown_phase_decodes_as_working(self) -> None:
+        # An activity written by an older build, or one a later build gives a fourth state, must
+        # still draw: the card says "Working" rather than vanishing or throwing.
+        mapper = body("public static func phase(from raw: String?)", ATTRIBUTES)
+        self.assertIn("guard let raw, let phase = Phase(rawValue: raw) else { return .working }",
+                      mapper)
+        self.assertIn("return phase", mapper)
+        # The same tolerance covers a missing key.
+        self.assertIn("forKey: .phase", ATTRIBUTES)
+
+    def test_the_word_comes_from_the_real_approval_signal(self) -> None:
+        # The signal: `AppModel.pendingRequests` — published, and already scoped to the conversation
+        # on screen by the model's own `.request` handler. It is the array `MobileApprovalSheet`
+        # draws, so an entry is a run that cannot continue until he answers.
+        self.assertIn("@Published public private(set) var pendingRequests: [ServerRequest] = []",
+                      APP_MODEL)
+        self.assertIn("public var hasPendingRequests: Bool { !pendingRequests.isEmpty }", APP_MODEL)
+        phase = body("private func currentPhase()", COORDINATOR)
+        self.assertIn("model.hasPendingRequests ? .needsYou : .working", phase)
+        # Subscribed, or the card would never be told: its own sink, because `CombineLatest4` is as
+        # wide as Combine goes.
+        attach = body("func attach(to model: AppModel)", COORDINATOR)
+        self.assertIn("model.$pendingRequests", attach)
+        self.assertIn("self.progress()", attach)
+        # Not invented from the text: no trailing-question-mark test, no reply sniffing.
+        rendered = code(COORDINATOR)
+        for forbidden in ('hasSuffix("?")', "contains(\"?\")", "endsWith", "replyTail.hasSuffix"):
+            self.assertNotIn(forbidden, rendered, forbidden)
+        phase_body = phase
+        self.assertNotIn("streamingText", phase_body)
+        self.assertNotIn("replyTail", phase_body)
+
+    def test_the_step_says_what_he_is_being_asked_for(self) -> None:
+        # Under the word, the step names the stop: an approval, or a question. The method is on the
+        # request itself (`fixtures/approval.ndjson`), so nothing is guessed.
+        step = body("private func stepLine()", COORDINATOR)
+        self.assertIn("model.pendingRequests.first", step)
+        self.assertIn('request.method == "approval" ? "Approval waiting" : "Answer waiting"', step)
+        # The request outranks the pose: while the host waits, "Running read_file" is not what the
+        # turn is doing.
+        self.assertLess(step.index("model.pendingRequests.first"),
+                        step.index("model.liveTools.last"))
+
+    def test_each_phase_has_its_own_glyph_and_none_is_an_error(self) -> None:
+        mark = piece("private struct HermeyTurnMark: View")
+        symbols = dict(re.findall(r"case \.(\w+): return \"([^\"]+)\"", mark))
+        self.assertEqual(symbols, {"working": "ellipsis.bubble",
+                                   "needsYou": "questionmark.bubble",
+                                   "done": "checkmark.circle"})
+        # `needsYou` must read as attention, not failure: amber, and no red anywhere.
+        self.assertIn(".foregroundStyle(HermeyTurnAccent.amber)", mark)
+        self.assertNotIn("Color.red", code(WIDGET))
+        self.assertNotIn(".foregroundStyle(.red)", code(WIDGET))
+        # The status line's symbol agrees with the mark.
+        status = piece("private struct HermeyTurnStatusLine: View")
+        self.assertIn('case .needsYou: return "questionmark.circle.fill"', status)

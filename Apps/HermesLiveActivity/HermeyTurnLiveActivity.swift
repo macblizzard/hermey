@@ -77,6 +77,13 @@ private enum HermeyTurnTone {
 /// bot's name packed at the leading edge, and the timer's claimed width filling the rest.
 /// `HermeyTurnElapsed` formats the number instead, so the label's width is its digits.
 ///
+/// **The compact pill says one word, not a number.** `compactLeading` is the mark and the bot's
+/// name; `compactTrailing` is the phase word — `Working`, `Needs you`, `Finished` — so a glance at
+/// the island answers "what is happening" without expanding it. The elapsed time moved to the
+/// expanded trailing, where there is room for digits that grow every minute. Both compact pieces are
+/// short strings with an intrinsic width, so the pill is as wide as the mark, the name and the word
+/// and cannot grow — the timer that widened it to 82% of the screen was the *live* one.
+///
 /// **The card is the system's glass.** No `activityBackgroundTint`: the card's background is
 /// whatever the Lock Screen draws, and the ink is `.primary`/`.secondary` so it is legible on it in
 /// either appearance. The accent stays on the glyph and the status symbol.
@@ -99,10 +106,10 @@ struct HermeyTurnLiveActivity: Widget {
                     HermeyTurnMark(phase: context.state.phase)
                         .padding(.leading, HermeyTurnGlass.islandInset)
                 }
-                // Centre: which bot has the message, and what it is doing — the step line belongs
-                // here rather than in `.bottom`. The expanded island's floor is 84 pt, which fits
-                // the name row; a second *region* while a turn merely runs is what collapsed the
-                // pill into an empty black bar. Two lines in one region fit.
+                // Centre: which bot has the message, the status word, and what it is doing — the
+                // step line belongs here rather than in `.bottom`. The expanded island's floor is
+                // 84 pt, which fits this one row; a second *region* while a turn merely runs is what
+                // collapsed the pill into an empty black bar.
                 DynamicIslandExpandedRegion(.center) {
                     HermeyTurnExpandedCenter(state: context.state,
                                              botName: context.attributes.botName,
@@ -127,13 +134,14 @@ struct HermeyTurnLiveActivity: Widget {
                                       botName: context.attributes.botName)
                     .fixedSize()
             } compactTrailing: {
-                // A few monospaced digits. Pinned at the region's outermost view, not only inside
-                // the label, so the slot reports that and nothing wider.
-                HermeyTurnElapsedLabel(state: context.state, tone: .island)
+                // The phase word — "Working", "Needs you", "Finished" — and nothing else. Pinned at
+                // the region's outermost view so the slot reports its own text's width and no more:
+                // a short string with an intrinsic size, which is what the old live timer was not.
+                HermeyTurnWord(phase: context.state.phase)
                     .fixedSize()
             } minimal: {
                 // Minimal is the glyph only: the island leaves room for nothing else, and the
-                // symbol already carries the state (working vs. done).
+                // symbol already carries the state (working, needs you, finished).
                 HermeyTurnMark(phase: context.state.phase, size: 15)
                     .fixedSize()
             }
@@ -161,21 +169,56 @@ private enum HermeyTurnNames {
     }
 }
 
-/// The app's mark for a turn: an "in progress" bubble while the bot works, a tick when it is done.
+/// The app's mark for a turn: an "in progress" bubble while the bot works, a question bubble when
+/// it is blocked on the owner, a tick when it is finished.
 ///
-/// Both symbol names have shipped since iOS 13/15, so neither can resolve to the blank box a
-/// missing SF Symbol draws. They are the only two glyphs in the feature, and the accent is the only
-/// colour either of them takes.
+/// All three symbol names have shipped since iOS 13/15, so none can resolve to the blank box a
+/// missing SF Symbol draws. `questionmark.bubble` is the distinguishable one: it has to be obvious
+/// at a glance, in the compact pill's leading slot and in `minimal`, that the turn is not moving
+/// until he answers — without turning the amber accent into an error colour.
 private struct HermeyTurnMark: View {
     let phase: HermeyTurnAttributes.ContentState.Phase
     var size: CGFloat = 17
 
     var body: some View {
-        Image(systemName: phase == .working ? "ellipsis.bubble" : "checkmark.circle")
+        Image(systemName: Self.symbol(phase))
             .font(.system(size: size, weight: .semibold))
             .foregroundStyle(HermeyTurnAccent.amber)
             .fixedSize()
             .accessibilityHidden(true)
+    }
+
+    /// The glyph for a phase. One function, so the mark, the minimal slot and the status line's
+    /// symbol cannot disagree about what the island is drawing.
+    static func symbol(_ phase: HermeyTurnAttributes.ContentState.Phase) -> String {
+        switch phase {
+        case .working: return "ellipsis.bubble"
+        case .needsYou: return "questionmark.bubble"
+        case .done: return "checkmark.circle"
+        }
+    }
+}
+
+/// The phase in one word: `Working`, `Needs you`, `Finished`.
+///
+/// The string comes from `ContentState.word(_:)` — the one place the three words exist — so this
+/// view can never be the third vocabulary in a three-process feature. It is drawn in the accent
+/// amber in every presentation: the word is the accent's job on this card (the glass underneath is
+/// the system's), and `needsYou` therefore reads as *attention*, not as an error.
+///
+/// Sized for the compact trailing slot: caption2 semibold, one line, and pinned — the widest of the
+/// three is "Needs you", and the slot reports exactly that.
+private struct HermeyTurnWord: View {
+    let phase: HermeyTurnAttributes.ContentState.Phase
+
+    var body: some View {
+        Text(HermeyTurnAttributes.ContentState.word(phase))
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .lineLimit(1)
+            .foregroundStyle(HermeyTurnAccent.amber)
+            .fixedSize()
+            .accessibilityLabel(HermeyTurnAttributes.ContentState.word(phase))
     }
 }
 
@@ -249,19 +292,22 @@ private enum HermeyTurnElapsed {
     }
 }
 
-/// The expanded island's centre: the bot's name over the line saying what it is doing.
+/// The expanded island's centre: the bot's name, the phase word, and the line saying what it is
+/// doing.
 ///
 /// The step lives here, next to the name, rather than in `.bottom`, because a *region* added while
-/// a turn runs is what collapsed the expanded pill in 0.1.620 (the floor is 84 pt, one row). Two
-/// caption lines inside one region fit.
+/// a turn runs is what collapsed the expanded pill in 0.1.620 (the floor is 84 pt, one row). All
+/// three pieces fit one row inside this one region.
 private struct HermeyTurnExpandedCenter: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
     let isStale: Bool
 
     var body: some View {
-        // One line: the bot's name and what it is doing, side by side. Stacked, the shorter status
-        // line hung off the name's left edge and read as a misalignment rather than a subtitle.
+        let word = HermeyTurnAttributes.ContentState.word(state.phase)
+        // One line: the bot's name, the word, and what it is doing, side by side. Stacked, the
+        // shorter status line hung off the name's left edge and read as a misalignment rather than
+        // a subtitle.
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             // No explicit colour: the island's own primary (white) is the legible one.
             Text(botName)
@@ -269,14 +315,26 @@ private struct HermeyTurnExpandedCenter: View {
                 .fontWeight(.semibold)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-            HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .island)
-                .layoutPriority(1)
+            // The word is drawn here, beside the name, so the status line is asked for the step
+            // only — one row cannot say "Needs you" twice.
+            HermeyTurnWord(phase: state.phase)
+            // …and the step is drawn only when it adds something. A finished turn's step *is* the
+            // word (`doneWords`), so drawing both would read "Finished Finished"; every running
+            // turn has a real step and keeps this line.
+            if state.step != word {
+                HermeyTurnStatusLine(state: state,
+                                     botName: botName,
+                                     isStale: isStale,
+                                     tone: .island,
+                                     leadsWithWord: false)
+                    .layoutPriority(1)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// The state in words: what the bot is doing, from the state the app last sent.
+/// The state in words: the phase word, then what the bot is doing, from the state the app last sent.
 ///
 /// This used to be a literal — `"Working on your message"` while running, `"Replied"` when done —
 /// which is why the card could describe a turn it knew nothing about and still have nothing to say
@@ -284,16 +342,24 @@ private struct HermeyTurnExpandedCenter: View {
 /// empty (`ContentState.stepLine` ends at a neutral word), so the sentence now varies with the turn
 /// **and exists from the first frame of it**.
 ///
+/// On the Lock Screen the word leads the line — "Needs you · Running read_file" — because the card
+/// has a full width and one line, and the word is the part he scans for. The expanded island draws
+/// the word as its own view next to the bot's name and passes `leadsWithWord: false`, so the row
+/// says name, word, step instead of saying the word twice.
+///
 /// The literal survives only as the second floor, for a card requested by a build that predates the
-/// field: a redraw of that activity decodes a missing `step`, and this is what it draws instead of a
-/// blank line. Staleness is not an error: it means the app has not been able to update the card (it
-/// was killed, or the turn is taking longer than the app promised), so the sentence steps back to
+/// field: a redraw of that activity decodes a missing `step`, and the word is what it draws instead
+/// of a blank line. Staleness is not an error: it means the app has not been able to update the card
+/// (it was killed, or the turn is taking longer than the app promised), so the sentence steps back to
 /// what is still true instead of claiming work that may have stopped.
 private struct HermeyTurnStatusLine: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
     let isStale: Bool
     var tone: HermeyTurnTone = .card
+    /// Whether this line prints the phase word itself. False in the expanded island, where the word
+    /// is drawn beside the bot's name.
+    var leadsWithWord: Bool = true
 
     var body: some View {
         HStack(spacing: 5) {
@@ -313,17 +379,24 @@ private struct HermeyTurnStatusLine: View {
     }
 
     private var symbol: String {
-        if state.phase == .done { return "checkmark.circle.fill" }
-        return isStale ? "clock" : "circle.dotted"
+        switch state.phase {
+        case .working: return isStale ? "clock" : "circle.dotted"
+        case .needsYou: return "questionmark.circle.fill"
+        case .done: return "checkmark.circle.fill"
+        }
     }
 
+    /// The word, then the step — or just the step where the word is drawn separately.
+    ///
+    /// `step == word` is the floor rather than a real step (only a card from a build with no `step`
+    /// decodes to it), and printing "Working · Working" would be worse than saying it once.
     private var line: String {
+        let word = HermeyTurnAttributes.ContentState.word(state.phase)
         if isStale { return "Still waiting on \(botName)" }
         let step = state.step
-        guard step.isEmpty else { return step }
-        // Only an activity from a build with no `step` reaches this: the state normalises to the
-        // neutral word at construction and at decode.
-        return state.phase == .done ? "Done" : "Working on your message"
+        let doing = (step.isEmpty || step == word) ? "" : step
+        guard leadsWithWord else { return doing.isEmpty ? word : doing }
+        return doing.isEmpty ? word : "\(word) · \(doing)"
     }
 }
 
@@ -357,11 +430,11 @@ private struct HermeyTurnSnippet: View {
 /// gives it a full card's width. `Hermey` is spelled out here — the card's job is to be identifiable
 /// at a glance on a screen with several notifications on it.
 ///
-/// **The step line is drawn for every phase, unconditionally.** It is the sentence that was missing
-/// while a turn ran: the only text the card used to add at the end was the reply snippet, so a
-/// working card was the name row and a line the layout could squeeze out. Nothing in this body
-/// branches on `phase`, and the text column carries `.layoutPriority(1)` so the trailing number can
-/// never take the width the words need.
+/// **The step line is drawn for every phase, unconditionally, with the phase word in front of it.**
+/// It is the sentence that was missing while a turn ran: the only text the card used to add at the
+/// end was the reply snippet, so a working card was the name row and a line the layout could squeeze
+/// out. Nothing in this body branches on `phase`, and the text column carries `.layoutPriority(1)`
+/// so the trailing number can never take the width the words need.
 private struct HermeyTurnLockScreen: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
@@ -401,14 +474,21 @@ private struct HermeyTurnLockScreen: View {
 
     /// The snippet is read after the sentence rather than as a separate element: VoiceOver announces
     /// the card as one thing, and the words of the reply are the reason the owner raised his phone.
-    /// The step is read too — "which bot" and "doing what" is the whole content of a running turn.
+    /// The word is read first — it is what the card is *for* — then the step, because "which bot"
+    /// and "doing what" is the whole content of a running turn.
     private var accessibilityLine: String {
         let snippet = state.replySnippet
         let said = snippet.isEmpty ? "" : " \(snippet)"
         if isStale { return "Hermey. Still waiting on \(botName)." }
+        let word = HermeyTurnAttributes.ContentState.word(state.phase)
         switch state.phase {
-        case .done: return "Hermey. \(botName): \(state.step).\(said)"
-        case .working: return "Hermey. \(botName) is \(state.step)."
+        case .done:
+            return "Hermey. \(word). \(botName): \(state.step).\(said)"
+        // The word is its own sentence because it is the reason he is looking at the phone; the
+        // step follows it. `needsYou` and `working` read the same, and stay explicit so a fourth
+        // phase cannot be added without this line being considered.
+        case .needsYou, .working:
+            return "Hermey. \(word). \(botName): \(state.step)."
         }
     }
 }
