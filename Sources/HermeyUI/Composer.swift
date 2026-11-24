@@ -198,8 +198,9 @@ public struct Composer: View {
             sessionPill
                 .equatable()
                 .frame(height: controlSide)
-                // Flush with the text, not the card: the paperclip's width plus its gap.
-                .padding(.leading, showsAttach ? controlSide + 8 : 0)
+                // Flush with the text, not the card: the row's own 8 pt inset, the paperclip, and
+                // its gap — the same sum the hint below uses, so both start where the message does.
+                .padding(.leading, showsAttach ? 8 + controlSide + 8 : 10)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
