@@ -76,6 +76,19 @@ fn image_media_type(name: &str) -> Option<&'static str> {
     }
 }
 
+/// The three document types a bubble cannot draw but the app opens on press. They are served from
+/// the profile's `attachments/` — where `file.attach` stages them — rather than `images/`, so the
+/// image route above keeps looking in exactly the two places it always has.
+fn office_media_type(name: &str) -> Option<&'static str> {
+    let (_, extension) = name.rsplit_once('.')?;
+    match extension.to_ascii_lowercase().as_str() {
+        "pdf" => Some("application/pdf"),
+        "docx" => Some("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        "xlsx" => Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        _ => None,
+    }
+}
+
 /// One path component, or `None`: no separators, no traversal, nothing hidden.
 ///
 /// `Path` decoding happens before this runs, so `%2e%2e%2f` arrives here as `../` and is refused
@@ -111,22 +124,39 @@ pub async fn attachment_file(
     let Some(name) = single_component(&name) else {
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "invalid attachment path"));
     };
-    let Some(media_type) = image_media_type(name) else {
-        return Err(bad(StatusCode::BAD_REQUEST, "not an image attachment"));
-    };
 
     let profiles_root = st.engine_home.join("profiles");
-    // Both places the bridge looks: the bot's own images directory, then the engine home's.
-    let candidates = [
-        profiles_root.join(profile).join("images").join(name),
-        st.engine_home.join("images").join(name),
-    ];
+    // Two kinds, two folders, and the split is the extension's: a picture lives where the image
+    // queue puts it (`images/`), a document where `file.attach` stages it (`attachments/`). The
+    // image branch keeps the exact candidates, roots and errors it has always had — only the
+    // office types gained a way in.
+    let (media_type, candidates): (&'static str, [PathBuf; 2]) = if let Some(media) =
+        image_media_type(name)
+    {
+        (
+            media,
+            [
+                profiles_root.join(profile).join("images").join(name),
+                st.engine_home.join("images").join(name),
+            ],
+        )
+    } else if let Some(media) = office_media_type(name) {
+        (
+            media,
+            [
+                profiles_root.join(profile).join("attachments").join(name),
+                st.engine_home.join("attachments").join(name),
+            ],
+        )
+    } else {
+        return Err(bad(StatusCode::BAD_REQUEST, "not an image attachment"));
+    };
     let roots = [profiles_root, st.engine_home.clone()];
 
     for candidate in candidates {
         let Ok(meta) = std::fs::symlink_metadata(&candidate) else { continue };
-        // The name check stops `../`; a symlink inside `images/` named `x.png` would still follow
-        // straight out of the directory, so it is refused rather than resolved.
+        // The name check stops `../`; a symlink inside the folder named `x.png` would still follow
+        // straight out of it, so it is refused rather than followed.
         if meta.file_type().is_symlink() || !meta.is_file() {
             continue;
         }
@@ -565,6 +595,7 @@ pub async fn push_icon_get(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{scratch, state as test_state};
 
     #[test]
     fn crc32_matches_the_reference_vector() {
@@ -613,5 +644,88 @@ mod tests {
     fn read_zip_refuses_junk() {
         assert!(read_zip(b"not a zip at all, just bytes").is_err());
         assert!(read_zip(b"").is_err());
+    }
+
+    // -- GET /v1/attachments/{profile}/{name} -------------------------------------------------
+
+    fn device_headers() -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            header::HeaderValue::from_static("Bearer test-local-token"),
+        );
+        headers
+    }
+
+    async fn fetch(st: &Arc<AppState>, profile: &str, name: &str) -> Result<Response, Fail> {
+        attachment_file(
+            State(Arc::clone(st)),
+            device_headers(),
+            Path((profile.to_string(), name.to_string())),
+        )
+        .await
+    }
+
+    async fn body_bytes(response: Response) -> Vec<u8> {
+        axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("the route builds its body from bytes it already holds")
+            .to_vec()
+    }
+
+    /// The whole point of the route after the office work: a picture still comes from `images/`
+    /// with the type it always had, and a document comes from `attachments/` with a type a viewer
+    /// will open — same bearer, same size ceiling, same refusals.
+    #[tokio::test]
+    async fn pictures_and_documents_are_served_from_their_own_folders() {
+        let dir = scratch("attachment-route");
+        let st = Arc::new(test_state(&dir));
+        let profile_dir = st.engine_home.join("profiles").join("cody");
+        std::fs::create_dir_all(profile_dir.join("images")).unwrap();
+        std::fs::create_dir_all(profile_dir.join("attachments")).unwrap();
+
+        let png = vec![0x89, b'P', b'N', b'G', 1, 2, 3];
+        std::fs::write(profile_dir.join("images").join("shot.png"), &png).unwrap();
+        let xlsx = crate::office::fixtures::xlsx_fixture();
+        std::fs::write(profile_dir.join("attachments").join("budget.xlsx"), &xlsx).unwrap();
+        let pdf = crate::office::fixtures::pdf_fixture("Invoice 4711");
+        std::fs::write(profile_dir.join("attachments").join("invoice.pdf"), &pdf).unwrap();
+
+        // An image: byte-identical, and still an image's content type.
+        let response = fetch(&st, "cody", "shot.png").await.expect("a picture is still served");
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "image/png"
+        );
+        assert_eq!(body_bytes(response).await, png);
+
+        // A spreadsheet and a PDF: the two the apps now open on press.
+        let response = fetch(&st, "cody", "budget.xlsx").await.expect("a workbook is served");
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        );
+        assert_eq!(body_bytes(response).await, xlsx);
+
+        let response = fetch(&st, "cody", "invoice.pdf").await.expect("a pdf is served");
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/pdf"
+        );
+        assert_eq!(body_bytes(response).await, pdf);
+
+        // Everything else keeps the old answer, and a missing file is still a 404.
+        let error = fetch(&st, "cody", "notes.txt").await.unwrap_err();
+        assert_eq!(error.0, StatusCode::BAD_REQUEST);
+        assert_eq!(error.1 .0["detail"], "not an image attachment");
+        let error = fetch(&st, "cody", "absent.xlsx").await.unwrap_err();
+        assert_eq!(error.0, StatusCode::NOT_FOUND);
+
+        // One path component, still: a traversal never reaches the filesystem.
+        let error = fetch(&st, "cody", "..").await.unwrap_err();
+        assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
+        let error = fetch(&st, "../cody", "budget.xlsx").await.unwrap_err();
+        assert_eq!(error.0, StatusCode::UNPROCESSABLE_ENTITY);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -611,7 +611,14 @@ mod tests {
         assert!(!token.matches(""));
         assert!(!token.matches(&value[..value.len() - 1]), "a prefix must not pass");
         assert!(!token.matches(&format!("{value}x")), "a suffix must not pass");
-        assert!(!token.matches(&format!("x{}", &value[1..])), "one wrong byte must not pass");
+        // The guess must differ in its first byte even when the random token happens to start
+        // with `x` — base64's alphabet makes that a 1-in-64 flake, not a matcher bug.
+        let wrong_first = format!(
+            "{}{}",
+            if value.starts_with('x') { 'y' } else { 'x' },
+            &value[1..]
+        );
+        assert!(!token.matches(&wrong_first), "one wrong byte must not pass");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

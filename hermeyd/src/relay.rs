@@ -53,6 +53,7 @@ use axum::extract::ws::{CloseFrame, Message as AxMsg, WebSocket};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -619,6 +620,10 @@ struct ConnectionState {
     autoresume_failed: AtomicBool,
     server_seq: AtomicU64,
     caps_sent: AtomicBool,
+    /// The service root office references are resolved against ([`crate::office::prompt_blocks`]):
+    /// a prompt may name any path it likes, and only a file inside the host's own profiles is read
+    /// into it. `PathBuf::new()` (the policy-only state tests build) reads nothing.
+    engine_home: PathBuf,
 }
 
 impl ConnectionState {
@@ -656,7 +661,14 @@ impl ConnectionState {
             autoresume_failed: AtomicBool::new(false),
             server_seq: AtomicU64::new(0),
             caps_sent: AtomicBool::new(false),
+            engine_home: PathBuf::new(),
         }
+    }
+
+    /// The root office references are read under, set by `relay_guarded` from `AppState`.
+    fn with_home(mut self, engine_home: PathBuf) -> Self {
+        self.engine_home = engine_home;
+        self
     }
 
     /// One audit record, tagged with this connection's device. A missing log is not an error: the
@@ -971,6 +983,7 @@ fn split_frames(text: &str, cap: usize) -> Result<Vec<&str>, &'static str> {
 // Client → engine
 // ---------------------------------------------------------------------------------------------
 
+#[derive(Debug)]
 enum ClientAction {
     /// Send this line upstream; `None` means the original bytes, untouched.
     Forward(Option<String>),
@@ -1056,21 +1069,26 @@ fn client_request(
     }
 
     // `proxy.py:524-529`: the byte-only attachment methods are checked before anything is
-    // forwarded. A refusal is the app's own `-32602 invalid attachment`, never a payload echo.
-    if attachments::is_attachment_method(&method)
-        && attachments::validate_attachment_request(&method, frame.get("params")).is_err()
-    {
-        state.note(
-            "client_request_rejected",
-            Event {
-                method: Some(&method),
-                reason: Some("invalid_attachment"),
-                bytes: Some(original.len()),
-                direction: Some("client_to_gateway"),
-                ..Event::default()
-            },
-        );
-        return ClientAction::Answer(attachments::invalid_params_frame(request_id));
+    // forwarded. A refusal is the app's own `-32602`, never a payload echo — except the content
+    // sniff, whose whole purpose is to say which file disagreed with its own name.
+    if attachments::is_attachment_method(&method) {
+        if let Err(error) = attachments::validate_attachment_request(&method, frame.get("params")) {
+            state.note(
+                "client_request_rejected",
+                Event {
+                    method: Some(&method),
+                    reason: Some("invalid_attachment"),
+                    bytes: Some(original.len()),
+                    direction: Some("client_to_gateway"),
+                    ..Event::default()
+                },
+            );
+            return ClientAction::Answer(if error.explains() {
+                attachments::invalid_params_frame_with(request_id, error.detail())
+            } else {
+                attachments::invalid_params_frame(request_id)
+            });
+        }
     }
 
     // Refuse the relay's own reserved id: its answer is consumed, so a client request under it
@@ -1155,6 +1173,27 @@ fn client_request(
         // Serializing is what makes a dropped `session_id` actually leave: the unchanged path
         // forwards the client's original bytes.
         changed = true;
+    }
+    // A prompt that references an office document carries its text with it: the engine can only
+    // stub a `.xlsx` as "binary file", and the host has already read the bytes, so the labelled
+    // blocks are appended here. The `@file:` reference itself stays — the stored row's reference
+    // line is how the app fetches the file back — and images never reach this branch.
+    if matches!(method.as_str(), "prompt.submit" | "prompt.background" | "session.steer") {
+        if let Some(params) = frame.get_mut("params").and_then(Value::as_object_mut) {
+            let text = params
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            if let Some(text) = text {
+                if let Some(blocks) = crate::office::prompt_blocks(&text, &state.engine_home) {
+                    let mut appended = text;
+                    appended.push_str("\n\n");
+                    appended.push_str(&blocks);
+                    params.insert("text".to_string(), Value::String(appended));
+                    changed = true;
+                }
+            }
+        }
     }
     let wire = if changed {
         serde_json::to_string(&frame).unwrap_or_else(|_| original.to_string())
@@ -1734,12 +1773,14 @@ pub async fn relay(socket: WebSocket, engine_url: String, engine_token: Option<S
         Registry::default(),
         Limits::default(),
         None,
+        PathBuf::new(),
     )
     .await;
 }
 
 /// `audit` is `None` only for callers with no service state (the host-side `relay` above and the
-/// tests). Production passes `AppState::audit`, exactly as `routes::ws_upgrade` does.
+/// tests). Production passes `AppState::audit`, exactly as `routes::ws_upgrade` does — and with it
+/// `AppState::engine_home`, the root [`crate::office::prompt_blocks`] reads office references under.
 pub async fn relay_guarded(
     mut socket: WebSocket,
     engine_url: String,
@@ -1748,6 +1789,7 @@ pub async fn relay_guarded(
     registry: Registry,
     limits: Limits,
     audit: Option<Arc<AuditLog>>,
+    engine_home: PathBuf,
 ) {
     // No token when the engine wants none: `routes::ws_upgrade` hands over `None` in that case.
     let url = crate::engine_client::engine_url(&engine_url, engine_token.as_deref());
@@ -1791,7 +1833,7 @@ pub async fn relay_guarded(
     // only sees what is sent after it exists.
     let mut host_frames = registry.subscribe();
 
-    let state = Arc::new(ConnectionState::with_audit(audit, device_id.clone()));
+    let state = Arc::new(ConnectionState::with_audit(audit, device_id.clone()).with_home(engine_home));
     state.note("ws_open", Event::default());
     // Split once: the splice is re-run on the *same* client socket when the engine restarts, and a
     // socket cannot be re-split.
@@ -2570,6 +2612,118 @@ mod tests {
         }
     }
 
+    // -- the office documents on the wire -----------------------------------------------------
+
+    /// The send path refusing what the bytes contradict, with the sentence the app shows: the
+    /// Python-shaped refusals around it stay fixed, so this one stands out on purpose.
+    #[test]
+    fn a_mislabelled_document_is_refused_with_the_reason_it_disagrees() {
+        use crate::office::fixtures;
+        use base64::Engine as _;
+
+        let state = ConnectionState::new();
+        let (_, code, message) = refusal(client(
+            &state,
+            &json!({"jsonrpc": "2.0", "id": 4, "method": "file.attach",
+                    "params": {"session_id": "s-1", "name": "budget.xlsx",
+                               "data_url": format!("data:application/octet-stream;base64,{}",
+                                                   base64::engine::general_purpose::STANDARD
+                                                       .encode(fixtures::pdf_fixture("x")))}}),
+        ));
+        assert_eq!(code, -32602);
+        assert!(message.contains("budget.xlsx") && message.contains("Excel"), "{message}");
+
+        // A traversal is still the bridge's own fixed refusal: nothing else started echoing.
+        let (_, code, message) = refusal(client(
+            &state,
+            &json!({"jsonrpc": "2.0", "id": 5, "method": "file.attach",
+                    "params": {"session_id": "s-1", "name": "../../etc/passwd",
+                               "data_url": "data:application/octet-stream;base64,AAAA"}}),
+        ));
+        assert_eq!(code, -32602);
+        assert_eq!(message, "invalid attachment");
+    }
+
+    /// The delivery half: a prompt that references a document reaches the engine with the
+    /// document's text appended, the `@file:` reference still in place for the app to fetch by.
+    #[test]
+    fn a_prompt_referencing_a_document_carries_its_text_to_the_engine() {
+        use crate::office::fixtures;
+        use crate::test_support::scratch;
+
+        let dir = scratch("prompt-docs");
+        let attachments = dir.join("profiles").join("cody").join("attachments");
+        std::fs::create_dir_all(&attachments).unwrap();
+        std::fs::write(attachments.join("budget.xlsx"), fixtures::xlsx_fixture()).unwrap();
+        // A document that exists, but not under the host's own root: it is not this service's to
+        // read into a prompt.
+        let outside = scratch("prompt-outside");
+        std::fs::write(outside.join("secret.xlsx"), fixtures::xlsx_fixture()).unwrap();
+        let state = ConnectionState::new().with_home(dir.clone());
+
+        let staged = attachments.join("budget.xlsx");
+        let reference = format!("@file:{}", staged.display());
+        let action = client(
+            &state,
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "prompt.submit",
+                    "params": {"session_id": "s-1",
+                               "text": format!("{reference}\n\nwhat does Q4 say?")}}),
+        );
+        let forwarded = forwarded(action);
+        let text = forwarded["params"]["text"].as_str().unwrap();
+        assert!(text.starts_with(&reference), "the reference must survive: {text}");
+        assert!(text.contains("what does Q4 say?"), "{text}");
+        assert!(text.contains("--- attachment: budget.xlsx (sheet:"), "{text}");
+        assert!(text.contains("North | 42"), "{text}");
+
+        // A second prompt carrying the same document grows no second copy of the block: the
+        // block is already there, so the frame travels byte-for-byte.
+        let again = client(
+            &state,
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "prompt.submit",
+                    "params": {"session_id": "s-1", "text": text}}),
+        );
+        let text_again = match again {
+            ClientAction::Forward(None) => text.to_string(),
+            ClientAction::Forward(Some(wire)) => serde_json::from_str::<Value>(&wire)
+                .expect("forwarded JSON")["params"]["text"]
+                .as_str()
+                .expect("text")
+                .to_string(),
+            other => panic!("unexpected action: {other:?}"),
+        };
+        // Byte-for-byte: the block is already in the text, so there is nothing to add — the
+        // workbook has two sheets, hence two headers, and neither may grow a third.
+        assert_eq!(
+            text_again, text,
+            "a resent prompt must not duplicate the block: {text_again:?}"
+        );
+
+        // Nothing else changes: an image reference, a path outside the host, and a plain prompt
+        // all travel byte-for-byte.
+        for (offset, text) in [
+            "@file:/var/tmp/shot.png\n\nlook".to_string(),
+            format!("@file:{}\n\nlook", outside.join("secret.xlsx").display()),
+            "@file:relative/budget.xlsx\n\nlook".to_string(),
+            "just words".to_string(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let action = client(
+                &state,
+                &json!({"jsonrpc": "2.0", "id": 3 + offset as u64, "method": "prompt.submit",
+                        "params": {"session_id": "s-1", "text": text}}),
+            );
+            assert!(
+                matches!(action, ClientAction::Forward(None)),
+                "this prompt must travel untouched"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
     /// `test_methods_outside_the_allow_list_never_reach_the_gateway`.
     #[test]
     fn a_method_outside_the_allow_list_is_refused_with_the_python_error_shape() {
@@ -3329,7 +3483,8 @@ mod tests {
                 let registry = registry.clone();
                 async move {
                     ws.on_upgrade(move |socket| {
-                        relay_guarded(socket, engine_url, None, device, registry, limits, None)
+                        relay_guarded(socket, engine_url, None, device, registry, limits, None,
+                                      PathBuf::new())
                     })
                 }
             }),
