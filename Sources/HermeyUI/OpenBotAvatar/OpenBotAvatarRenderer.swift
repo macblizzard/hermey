@@ -16,6 +16,17 @@ import AppKit
 /// face instead of floating above it. Around and in front of that sit the state's marks — a band of
 /// ribbons for `working` and `done`, three dots for `thinking`, an exclamation for `blocked`.
 ///
+/// ## One pair of eyes, in every state
+///
+/// A mark is a *face*, not an ornament over one: upstream's `thinking` and `blocked` give the body
+/// up to their mark, so the body shrinks (`pose.bodyScale`) and the mark is what the bot shows. A
+/// frame that drew the mark *and* the body's eyes showed three dots or an exclamation beside a
+/// pair of eyes — which reads as extra eyes — so the two are weighed against each other in exactly
+/// one place, `givesWay` below, and a marked state is a faceless one. Everything else a state may
+/// add is on the eyes' own plane and cannot double them: `slit` and `arch` replace the eye's shape
+/// (one capsule or arc per eye, never both), the catchlight is drawn inside the eye it belongs to,
+/// and the ribbons are drawn behind the body and never near the face.
+///
 /// ## Materials
 ///
 /// A face is made of a material, and the material is data (`BotAvatarMaterialSpec.all`): a fill
@@ -78,6 +89,9 @@ public enum OpenBotAvatarRenderer {
         }
 
         let bodyScale = max(0, min(1, pose.bodyScale))
+        // The one place a state's mark is weighed against its face: a body that has given way to a
+        // mark has no eyes to draw, so a frame can show the mark *or* the face, never both.
+        let givesWay = pose.mark != nil
         if bodyScale > 0.01 {
             let shrink = CGAffineTransform(translationX: pivot.x, y: pivot.y)
                 .scaledBy(x: bodyScale, y: bodyScale)
@@ -117,10 +131,14 @@ public enum OpenBotAvatarRenderer {
                                                  plan: plan,
                                                  into: &context)
             }
-            // The eyes ride the surface, so they are drawn over the body but under the marks.
-            drawEyes(model: model, pose: pose, basis: basis, into: &context, viewport: viewport,
-                     root: root, ink: ink, pivot: pivot, bodyScale: bodyScale,
-                     catchlight: plan.catchlight)
+            // The eyes ride the surface, so they are drawn over the body but under the marks — and
+            // through the same shrink, so an eye can never be left behind outside a body that has
+            // given way to a mark. Not at all when the state draws a mark: the mark is the face.
+            if !givesWay {
+                drawEyes(model: model, pose: pose, basis: basis, into: &context, viewport: viewport,
+                         root: root, ink: ink, pivot: pivot, shrink: shrink,
+                         catchlight: plan.catchlight)
+            }
         }
 
         if let mark = pose.mark {
@@ -192,6 +210,11 @@ public enum OpenBotAvatarRenderer {
 
     // MARK: - Eyes
 
+    /// One pair of eyes, on the tangent plane under each eye's own position.
+    ///
+    /// `shrink` is the body's own give-way transform (identity at `bodyScale == 1`), carried here so
+    /// the eyes always sit *on* the body they belong to: an eye left at full size beside a body that
+    /// shrank is a ghost pair. It is the only caller-supplied transform, and the caller is `draw`.
     static func drawEyes(model: OpenBotAvatarModel,
                          pose: OpenBotAvatarPose,
                          basis: ViewBasis,
@@ -200,12 +223,14 @@ public enum OpenBotAvatarRenderer {
                          root: CGAffineTransform,
                          ink: Color,
                          pivot: OpenBotAvatarGeometry.Point,
-                         bodyScale: Double,
+                         shrink: CGAffineTransform,
                          catchlight: Bool = false) {
         guard basis.facing > 0.05 else { return }
         let eyes = model.definition.eyes
         let scale = model.volume.eyeScale
-        let drawnScale = scale * bodyScale
+        // No `bodyScale` factor: the shrink is in the layer's transform, so applying it here as well
+        // would shrink the eyes twice.
+        let drawnScale = scale
         let width = OpenBotAvatarGeometry.eyeWidth * drawnScale
         let height = OpenBotAvatarGeometry.eyeHeight * drawnScale
         let open = max(height * max(0.09, (1 - pose.blink) * (1 - pose.squint * 0.4)), width * 0.55)
@@ -227,7 +252,12 @@ public enum OpenBotAvatarRenderer {
             transform.b -= CGFloat(basis.cosYaw * basis.sinPitch * plane.dzdx)
             transform.c += CGFloat(basis.sinYaw * plane.dzdy)
             transform.d -= CGFloat(basis.cosYaw * basis.sinPitch * plane.dzdy)
-            layer.transform = transform.concatenating(root).concatenating(viewport)
+            // The body's give-way transform sits between the eye's own plane and the view, exactly
+            // where it sits in the body's chain, so eyes and body can never be drawn at two scales.
+            layer.transform = transform
+                .concatenating(shrink)
+                .concatenating(root)
+                .concatenating(viewport)
 
             if pose.arch >= 0.5 {
                 // The happy arc: a quadratic stroked with round caps, as upstream draws it.

@@ -329,12 +329,19 @@ class TheValidatorKeepsTheContractsRules(unittest.TestCase):
 
 
 class ThePresetsAreValidDefinitions(unittest.TestCase):
-    def test_at_least_six_presets(self) -> None:
+    def test_at_least_twelve_presets(self) -> None:
         presets = preset_values()
-        self.assertGreaterEqual(len(presets), 6, "the editor needs something to offer")
+        self.assertGreaterEqual(len(presets), 12,
+                                "the Avatar tab starts from at least a dozen silhouettes")
         ids = [preset[0] for preset in presets]
         self.assertEqual(len(ids), len(set(ids)), "two presets share an id")
         self.assertEqual(len({preset[1] for preset in presets}), len(presets), "two presets share a path")
+        # …and the table is what the editor and the Random button read.
+        self.assertIn("public static let all: [BotAvatarDefinition]", read(PRESETS))
+        source = read(PRESETS)
+        listed = source.split("public static let all: [BotAvatarDefinition] = [")[1].split("]")[0]
+        self.assertEqual(len([name for name in listed.replace("\n", " ").split(",") if name.strip()]),
+                         len(presets), "a preset is declared but never offered")
 
     def test_every_preset_passes_the_validator(self) -> None:
         for preset_id, path, eyes in preset_values():
@@ -401,6 +408,94 @@ class TheStatesEachDrawThemselves(unittest.TestCase):
         self.assertIn("pose.arch >= 0.5", source)
         self.assertIn("pose.slit >= 0.5", source)
         self.assertIn("bodyScale", source)
+
+
+class OnePairOfEyesInEveryState(unittest.TestCase):
+    """A mark is a face, not an ornament over one: no state may draw two pairs of eyes."""
+
+    def renderer_draw(self) -> str:
+        return read(RENDERER).split("public static func draw(")[1].split("// MARK: - View maths")[0]
+
+    def eyes(self) -> str:
+        return read(RENDERER).split("static func drawEyes(")[1].split("// MARK: - Ribbons")[0]
+
+    def pose(self) -> str:
+        source = read(STATE)
+        return source[source.index("public func pose("):source.index("// MARK: - Clocks")]
+
+    def test_the_eyes_are_drawn_once_and_never_beside_a_mark(self) -> None:
+        draw = self.renderer_draw()
+        self.assertEqual(draw.count("drawEyes("), 1,
+                         "the eyes must be drawn once per frame, or a state shows two pairs")
+        # One gate, one place: the renderer weighs a mark against the face exactly once.
+        self.assertEqual(read(RENDERER).count("pose.mark != nil"), 1,
+                         "the mark/eyes gate has been copied; it must live in one place")
+        gate = draw.split("if !givesWay {")[1].split("}")[0]
+        self.assertIn("drawEyes(", gate, "the eyes must be inside the one gate")
+        self.assertIn("let givesWay = pose.mark != nil", draw)
+
+    def test_the_marked_states_are_thinking_and_blocked_only(self) -> None:
+        pose = self.pose()
+        self.assertEqual(pose.count("pose.mark = "), 2,
+                         "a state that gives its body up sets its mark here, and only it")
+        thinking = pose.split("case .thinking:")[1].split("case .reading:")[0]
+        blocked = pose.split("case .blocked:")[1].split("case .done:")[0]
+        self.assertIn("pose.mark = .dots", thinking)
+        self.assertIn("pose.bodyScale = 0.42", thinking)
+        self.assertIn("pose.mark = .bang", blocked)
+        self.assertIn("pose.bodyScale = 0.32", blocked)
+
+    def test_the_eyes_travel_with_a_body_that_gives_way(self) -> None:
+        # The second half of the same defect: the eyes used to keep their full-size positions while
+        # the body shrank under them, so even one pair read as loose eyes. They now take the body's
+        # own shrink, so no state can leave a pair behind outside the body.
+        renderer = read(RENDERER)
+        self.assertIn("shrink: shrink", renderer)
+        eyes = self.eyes()
+        self.assertIn("layer.transform = transform", eyes)
+        self.assertIn("\n                .concatenating(shrink)", eyes)
+        self.assertNotIn("drawnScale = scale * bodyScale", eyes,
+                         "the shrink must not be applied to the eyes twice")
+
+    def test_every_other_overlay_is_on_the_eyes_own_plane(self) -> None:
+        eyes = self.eyes()
+        # The happy arc, the waiting slit and the neutral pill are one exclusive chain: one shape per
+        # eye, never a shape and its replacement.
+        chain = eyes.split("if pose.arch >= 0.5 {")[1]
+        self.assertIn("} else if pose.slit >= 0.5 {", chain)
+        self.assertIn("} else {", chain)
+        self.assertEqual(eyes.count("if pose.arch >= 0.5 {"), 1,
+                         "the eye's shape is chosen once, not drawn twice")
+        # The catchlight is drawn inside the eye it belongs to, in the same loop over the same pair.
+        self.assertIn("if catchlight {", chain.split("let pill")[1])
+        # The ribbons are behind the body, before the body block, so they cannot cross the face.
+        draw = self.renderer_draw()
+        self.assertLess(draw.index("drawRibbons("), draw.index("switch spec.fill"),
+                        "ribbons must be drawn behind the body")
+        self.assertNotIn("drawRibbons", eyes)
+
+    def test_a_blink_cannot_leave_a_ghost_pair(self) -> None:
+        eyes = self.eyes()
+        self.assertIn("let centers = OpenBotAvatarGeometry.eyeCenters(eyes)", eyes)
+        self.assertEqual(eyes.count("for (index, center) in centers.enumerated()"), 1,
+                         "one drawn shape per eye, from the definition's own pair")
+        # A closed eye is a flat pill, not nothing: a blink must never look like a missing eye.
+        self.assertIn("let open = max(height * max(0.09, (1 - pose.blink) * (1 - pose.squint * 0.4)), width * 0.55)", eyes)
+
+    def test_the_eye_override_still_reaches_every_state(self) -> None:
+        pose = self.pose()
+        self.assertIn("if let eyeOverride {", pose)
+        # Applied after the state's own branch, so no state — marked or not — can skip it.
+        self.assertLess(pose.index("switch self {"), pose.index("if let eyeOverride {"))
+        for channel in ("pose.blink = eyeOverride.blink",
+                        "pose.gazeX = eyeOverride.gazeX",
+                        "pose.gazeY = eyeOverride.gazeY",
+                        "pose.squint = eyeOverride.squint"):
+            self.assertIn(channel, pose)
+        # A marked state still carries its own eye channels; the gate is in the renderer, not here,
+        # so the override is never the thing that decides whether eyes exist.
+        thinking = pose.split("case .thinking:")[1].split("case .reading:")[0]
+        self.assertIn("pose.blink", thinking)
 
 
 class TheVolumeIsInferredAndProjected(unittest.TestCase):
