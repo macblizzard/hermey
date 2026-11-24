@@ -163,7 +163,9 @@ public struct BotAvatarView: View {
         // 30 times a second inside the timeline closure (`A8_mark_constmask` in Tinker's sample).
         let facePath = resolved.shape.path(inSide: size)
 
-        TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
+        // `body` gets result-builder semantics from the protocol; this property does not, so a body
+        // with more than one statement needs the return spelled out.
+        return TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
                                 paused: !moves)) { context in
             content(resolved: resolved, facePath: facePath, traits: traits, moves: moves,
                     date: context.date)
