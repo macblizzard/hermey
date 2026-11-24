@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.655",
-          "buildVersion": "655",
-          "date": "2026-11-24T21:47:08Z",
-          "localizedDescription": "### Changed\n- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never wears it. Every button, picker, toggle, menu and link now suppresses that drawing \u2014 and keyboard focus still works: a focused bot row and the composer's model pill show the app's own quiet fill.\n\n### Removed\n- The old Hermes-to-Rakazo parity tasklist (docs/LOCAL_COMPUTER_PARITY.md) and its test, which outlived the thing they tracked.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.655/Hermey-0.1.655-b655.ipa",
-          "size": 5516252,
+          "version": "0.1.656",
+          "buildVersion": "656",
+          "date": "2026-11-24T22:21:55Z",
+          "localizedDescription": "### Fixed\n- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own inset was missing from its leading padding.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.656/Hermey-0.1.656-b656.ipa",
+          "size": 5516246,
           "minOSVersion": "17.0",
-          "sha256": "e1b1abe4fe400f4785e5059ecd830953952d0fc360ed3c9317c1a40652bdb552"
+          "sha256": "a655805f0c580e412070840489651c4d10165f688a9be443b585f53b450feb5f"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.655 (655)",
-      "identifier": "hermes-0.1.655-655",
-      "caption": "### Changed\n- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never wears it. Every button, picker, toggle, menu and link now suppresses that drawing \u2014 and keyboard focus still works: a focused bot row and the composer's model pill show the app's own quiet fill.\n\n### Removed\n- The old Hermes-to-Rakazo parity tasklist (docs/LOCAL_COMPUTER_PARITY.md) and its test, which outlived the thing they tracked.",
-      "date": "2026-11-24T21:47:08Z",
+      "title": "Hermes 0.1.656 (656)",
+      "identifier": "hermes-0.1.656-656",
+      "caption": "### Fixed\n- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own inset was missing from its leading padding.",
+      "date": "2026-11-24T22:21:55Z",
       "tintColor": "#9A9AA0"
     }
   ],
