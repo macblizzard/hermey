@@ -231,7 +231,9 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
         # than to a squeezed one.
         self.assertIn(".lineLimit(1)", self.LINE)
         self.assertIn(".truncationMode(.tail)", self.LINE)
-        self.assertIn("ViewThatFits(in: .horizontal)", self.LINE)
+        # The count keeps its room; the model name is the half that gives way.
+        self.assertIn("context(tokens)", self.LINE)
+        self.assertNotIn("ViewThatFits(in: .horizontal)", self.LINE)
         self.assertIn(".fixedSize(horizontal: true, vertical: false)", self.LINE)
         # No geometry, no draft: it cannot read the width or the text, so it cannot reflow either.
         self.assertNotIn("GeometryReader", self.LINE)
@@ -244,7 +246,7 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
         self.assertIn("public struct ComposerModelPill: View, Equatable", self.LINE)
         self.assertIn("public static func == (lhs: ComposerModelPill", self.LINE)
         composer = read(UI / "Composer.swift")
-        block = composer.split("if let sessionPill {", 1)[1].split("field\n", 1)[0]
+        block = composer.split("private var sessionPillBand", 1)[1]
         self.assertIn(".equatable()", block)
 
 
