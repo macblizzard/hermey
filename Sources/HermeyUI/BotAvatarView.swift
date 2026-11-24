@@ -67,6 +67,12 @@ import SwiftUI
 /// own slower clock. That is a deliberate departure from the reference, asked for on 2026-11-16; the
 /// port itself is untouched, which is why the two live in separate functions and only this view
 /// composes them.
+///
+/// **A bot with a generated avatar wears the same face twice.** The drawn branch (`drawnBody`) draws
+/// `OpenBotAvatarView` and then performs *this* model over it — one `performedFrame` per tick, its
+/// body as the outer transform and its eyes handed down through `eyeOverride:` — so the hop, the
+/// flip, the darts and the blink are the ones above, not a second, quieter set written for the new
+/// renderer.
 public struct BotAvatarView: View {
     /// The bot's id. The colour and the shape are both derived from it when nothing is stored.
     public var identity: String
@@ -149,18 +155,72 @@ public struct BotAvatarView: View {
         if let face = self.face {
             // The generated avatar draws itself, in its own volume; the shape-and-palette face below
             // is untouched, which is what keeps a bot without one looking exactly as it did.
+            drawnBody(face)
+        } else {
+            shapeBody
+        }
+    }
+
+    /// The generated avatar, performing the motions the shape face already has.
+    ///
+    /// The drawn avatar has life of its own inside (`OpenBotAvatarState.pose` breathes it and sways
+    /// it), and that is now the *inside* of the face, not the whole of it: since 2026-11-16 a bot
+    /// that is busy also hops, flips and squints. That language lives in `BotAvatarMotion` /
+    /// `BotAvatarPerformance`, and it is asked for here exactly as `shapeBody` asks for it — one
+    /// `performedFrame` per tick, on the same clock (the same interval, the same phase seed, the
+    /// same gates) — rather than being written a second time for the new renderer:
+    ///
+    /// * the frame's **body** becomes the outer transform, the same three modifiers in the same
+    ///   order as the shape path (`.scaleEffect`, `.rotationEffect`, `.offset`), plus the same
+    ///   `.brightness`;
+    /// * the frame's **eyes** travel down through `eyeOverride:`, so the drawn eyes blink and look
+    ///   where the old face's do, instead of on a second clock of their own.
+    ///
+    /// Under Reduce Motion, with `animates` false, in a background window, below `animatingFrom`, or
+    /// in a state that rests, `moves` is false: the frame is `.rest`, the override is nil (the drawn
+    /// avatar keeps its own idle blinking and its own breath as it does today) and the timeline is
+    /// paused.
+    private func drawnBody(_ face: BotAvatarDocument) -> some View {
+        // The identity both faces are seeded from, so a bot's hop and its drawn breath share a
+        // phase rather than drifting apart.
+        let resolved = BotAvatarIdentity.resolve(identity: identity, explicitColor: face.color)
+        let moves = BotAvatarMotion.allows(activity: activity,
+                                           reduceMotion: reduceMotion || systemReduceMotion,
+                                           animates: animates && appAllowsMotion
+                                               && scenePhase == .active,
+                                           size: size,
+                                           minimumSize: animatingFrom)
+        let traits = BotAvatarMotionTraits(identity: resolved.identity)
+        let state = OpenBotAvatarState(activity: activity)
+
+        return TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
+                                       paused: !moves)) { context in
+            // One frame, the same call the shape face makes: the state's own acting with the jump,
+            // flip, darts and squint performed over it.
+            let frame = moves
+                ? BotAvatarMotion.performedFrame(activity: activity,
+                                                 traits: traits,
+                                                 at: context.date.timeIntervalSinceReferenceDate,
+                                                 side: Double(size))
+                : .rest
+
             OpenBotAvatarView(definition: face.definition,
                               color: face.color,
                               material: face.material,
-                              state: OpenBotAvatarState(activity: activity),
+                              state: state,
                               mood: OpenBotAvatarState.mood(for: activity),
                               size: size,
-                              animates: animates,
+                              // The app's own motion switch stops the drawn breath too; it never
+                              // reached this branch before.
+                              animates: animates && appAllowsMotion,
                               reduceMotion: reduceMotion,
                               animatingFrom: animatingFrom,
-                              label: label)
-        } else {
-            shapeBody
+                              label: label,
+                              eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
+                .scaleEffect(x: frame.body.scaleX, y: frame.body.scaleY)
+                .rotationEffect(.degrees(frame.body.rotate))
+                .offset(x: frame.body.translateX * size, y: frame.body.translateY * size)
+                .brightness(frame.body.brightness)
         }
     }
 

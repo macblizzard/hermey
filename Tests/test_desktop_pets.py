@@ -561,6 +561,7 @@ class NothingElseWasTouched(unittest.TestCase):
             "hermeyd/src/main.rs",
             # phone: the same editor, on the same avatar document
             "Apps/HermesMobile/App/AppEnvironment.swift",
+            "Apps/HermesMobile/HermesMobileApp.swift",  # the root injects the avatar library
             "Apps/HermesMobile/Views/BotIconPicker.swift",
             "Apps/HermesMobile/Views/BotListScreen.swift",
             "Apps/HermesMobile/Views/BotModelSettingsScreen.swift",

@@ -240,6 +240,12 @@ struct PetView: View {
                 // The generated avatar, in the state the bot is in. Its own blinking still runs; the
                 // pet's squash and lid overlay are the pet's behaviour and stay on top, as they do
                 // for a picture.
+                //
+                // Drawn directly, not through `BotAvatarView` — deliberately. That view now performs
+                // the shared face's hop and flip over a drawn avatar (`BotAvatarView.drawnBody`), and
+                // a pet has its own motion already: an outer jump inside this window would be the
+                // same motion twice and would carry the badge and the hit box off the pet. So the
+                // pet keeps its own layer, and nothing below this line moved.
                 OpenBotAvatarView(definition: avatar.definition,
                                   color: avatar.color,
                                   material: avatar.material,
