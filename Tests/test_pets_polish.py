@@ -1,6 +1,6 @@
 """Desktop pets, polished: the callout with a tail, the floating shadow, blinking, and the click.
 
-Two rounds of fixes, each pinned here as a source guard, because CI is the only Swift compiler this
+Three rounds of fixes, each pinned here as a source guard, because CI is the only Swift compiler this
 repo has.
 
 Round 1 (0.1.626/0.1.627):
@@ -25,6 +25,14 @@ Round 2 (0.1.630 feedback), five complaints and the guards for them:
   no SwiftUI gesture, no animation and no layout pass;
 * **the callout is ~70 % see-through**: a 0.16 white tint over `.ultraThinMaterial`.
 
+Round 3 (the reverse): **full black, white text**. The owner changed his mind about the frost, and a
+material cannot deliver black — it samples the desktop behind the window, so over a bright wallpaper
+it is a light panel whatever tint sits on top. The fill is the app's own dark canvas at 0.97, the ink
+is white (secondaries at 0.7), the hairline is a faint white border, and the window is forced to the
+dark appearance so the selection highlight stays dark enough for white ink to read on. Everything
+else the balloon does — 26 pt corners, the curved tail, the 8 pt gap, the beside-the-pet placement,
+the 240 pt answer cap and its scroll, Copy, Escape, `New` — is untouched.
+
 The hit test is asserted here too: a shadow, a tail and a blink must not move the boundary between
 "the pet" and "the desktop", which is `PetIconMask` and nothing else.
 
@@ -33,6 +41,7 @@ file repeats those.
 """
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -52,74 +61,123 @@ def _tap_branch() -> str:
     return clicked.split("private func", 1)[0]
 
 
-class TheBalloonIsFrostedGlass(unittest.TestCase):
-    """A frosted callout: the desktop's own colour through it, dark ink on top of it."""
+class TheBalloonIsSolidBlackWithWhiteInk(unittest.TestCase):
+    """A black callout: a fill that stays black over a bright wallpaper, white ink on top of it.
+
+    The owner ran this both ways. Frosted glass came first (0.1.630: "about 70 % see-through"), and
+    then the reverse: full black with white text. A material cannot be black — it samples what is
+    behind the window, so over a bright desktop it is a light panel whatever tint sits on it — which
+    is why the fill is a near-black colour at 0.97 and there is no material under it at all.
+    """
 
     @staticmethod
-    def _opacity(constant: str) -> float:
-        """The number in `static let <constant> = Color.white.opacity(<n>)`."""
-        tail = BALLOON.split(f"static let {constant} = Color.white.opacity(", 1)[1]
-        return float(tail.split(")", 1)[0])
+    def _code() -> str:
+        """`BALLOON` without its comments.
 
-    def test_the_callout_is_about_seventy_per_cent_see_through(self):
-        # The owner's number: only ~30 % of the surface should be visible on a dark desktop. A 0.16
-        # white tint on the thinnest frost is that; anything at 0.3 and up is the panel again.
-        self.assertIn("static let body = Color.white.opacity(0.16)", BALLOON,
-                      "the tint that sits over the material")
-        self.assertLessEqual(self._opacity("body"), 0.20,
-                             "above about a fifth the bubble stops being a callout")
-        self.assertGreater(self._opacity("body"), 0.05,
-                           "a tint of nothing leaves the ink floating on the wallpaper")
-        for opaque in ("Color.white.opacity(0.38)", "Color.white.opacity(0.82)"):
-            self.assertNotIn(opaque, BALLOON,
-                             f"{opaque} is the sheet the owner asked to see through")
+        The guards below ban old colours, and the doc comments name them on purpose ("the old
+        `#141413` parchment ink was for paper"). Banning the *code* keeps that explanation honest
+        without letting the sentence fail the guard that documents it.
+        """
+        return "\n".join(line for line in BALLOON.splitlines()
+                         if not line.lstrip().startswith("//"))
 
-    def test_the_material_is_the_thinnest_frost(self):
-        self.assertIn(".fill(.ultraThinMaterial)", BALLOON,
-                      "70 % see-through comes from the material, not just the tint")
-        self.assertNotIn(".fill(.regularMaterial)", BALLOON,
-                         "`.regular` is the thicker sheet the owner asked to be rid of")
-        self.assertNotIn(".fill(.thickMaterial)", BALLOON)
-        self.assertIn(".overlay(silhouette.fill(PetBalloonInk.body))", BALLOON,
-                      "the tint and the material have to be the same silhouette, or the tail "
-                      "blurs differently from the card")
+    @staticmethod
+    def _ink(name: str) -> tuple[float, float, float, float]:
+        """`(r, g, b, alpha)` for `static let <name> = ...`, however the colour is spelled."""
+        line = next(line for line in BALLOON.splitlines() if f"static let {name} =" in line)
+        rgb = re.search(r"Color\(red: ([\d.]+), green: ([\d.]+), blue: ([\d.]+)\)", line)
+        colour = ((float(rgb.group(1)), float(rgb.group(2)), float(rgb.group(3)))
+                  if rgb else (1.0, 1.0, 1.0))
+        alpha = re.search(r"opacity\(([\d.]+)\)", line)
+        return colour + ((float(alpha.group(1)) if alpha else 1.0),)
 
-    def test_the_glass_edge_is_a_light_inner_rim(self):
-        self.assertIn("static let highlight = Color.white.opacity(0.10)", BALLOON,
-                      "very light: a brighter rim would be the most solid thing on a 0.16 bubble")
-        self.assertIn(
-            "silhouette.inset(by: 1).strokeBorder(PetBalloonInk.highlight, lineWidth: 1)",
-            BALLOON, "one point inside the hairline: a rim, not a second outline")
-        self.assertIn("static let edge = Color.black.opacity(0.14)", BALLOON,
-                      "the 1 pt hairline still holds the shape against a bright desktop")
+    def test_the_fill_is_near_black_at_near_full_opacity(self):
+        self.assertIn("static let body = Color(red: 0.043, green: 0.043, blue: 0.047).opacity(0.97)",
+                      BALLOON, "the fill: the app's own dark canvas, not a tint over a material")
+        red, green, blue, alpha = self._ink("body")
+        for channel in (red, green, blue):
+            self.assertLessEqual(channel, 0.10, "anything lighter is charcoal, not black")
+        self.assertGreaterEqual(alpha, 0.95,
+                                "below about 0.95 the wallpaper starts to lift it off black")
+        # The owner's test is a bright wallpaper, so the composite is the number that matters:
+        # 0.97 black over white is still a near-black card.
+        self.assertLessEqual(alpha * red + (1 - alpha) * 1.0, 0.12,
+                             "composited over a white desktop the card still reads black")
+
+    def test_the_frosted_material_is_gone(self):
+        for frosted in (".ultraThinMaterial", ".thinMaterial", ".regularMaterial", ".thickMaterial"):
+            self.assertNotIn(frosted, self._code(),
+                             f"{frosted} samples the desktop, so it can never be black")
+        self.assertNotIn(".fill(.", self._code(),
+                         "no material or system fill anywhere in the balloon")
+        self.assertIn(".background(silhouette.fill(PetBalloonInk.body))", BALLOON,
+                      "the fill and the tail are the same silhouette, so the black cannot seam")
+
+    def test_the_ink_is_white(self):
+        self.assertEqual(self._ink("primary"), (1.0, 1.0, 1.0, 1.0), "the answer is pure white")
+        for secondary in ("secondary", "muted"):
+            red, green, blue, alpha = self._ink(secondary)
+            self.assertEqual((red, green, blue), (1.0, 1.0, 1.0),
+                             f"{secondary} has to be white too, only fainter")
+            self.assertGreaterEqual(alpha, 0.60, f"{secondary} at {alpha} is too faint on black")
+            self.assertLessEqual(alpha, 0.80, f"{secondary} at {alpha} is not a secondary")
+        # The danger ink is the one that had to change: #B3392B was picked for paper.
+        red, green, blue, alpha = self._ink("danger")
+        self.assertGreaterEqual(red * alpha, 0.9, "a refusal has to be legible on black")
+        self.assertGreaterEqual(green * alpha, 0.5, "...and still read as a warning")
+        # Every piece of text and every control draws from those inks, not from `Tokens`.
+        for view, marker in (
+            ("the answer", "private func answerText(_ answer: String) -> some View {"),
+            ("the header", "private var header: some View {"),
+            ("the field", "private var field: some View {"),
+            ("a button", "private struct CalloutButton: View {"),
+        ):
+            body = BALLOON.split(marker, 1)[1][:800]
+            self.assertIn("foregroundStyle(PetBalloonInk.", body, f"{view} lost its pinned ink")
+        self.assertIn("SpinningRing(color: PetBalloonInk.muted", BALLOON,
+                      "the thinking ring is white too")
+        self.assertIn(".foregroundColor(PetBalloonInk.muted)", BALLOON, "so is the placeholder")
+
+    def test_the_hairline_is_a_faint_white_border(self):
+        self.assertIn("static let edge = Color.white.opacity(0.18)", BALLOON)
+        red, green, blue, alpha = self._ink("edge")
+        self.assertEqual((red, green, blue), (1.0, 1.0, 1.0),
+                         "the hairline is white, not a black line on black")
+        self.assertGreaterEqual(alpha, 0.10, "faint, not invisible")
+        self.assertLessEqual(alpha, 0.30, "a line rather than a border")
         self.assertIn("silhouette.strokeBorder(PetBalloonInk.edge, lineWidth: 1)", BALLOON)
 
-    def test_contrast_never_comes_from_thickening_the_sheet(self):
-        # The owner's rule for a very dark wallpaper: a faint layer under the text block, never a
-        # more opaque bubble.
-        self.assertIn("static let backdropContrast = Color.black.opacity(0.07)", BALLOON)
-        self.assertIn(".shadow(color: PetBalloonInk.backdropContrast", BALLOON)
-        for opaque in ("Color.white.opacity(0.6", "Color.white.opacity(0.7",
-                       "Color.white.opacity(0.8", "Color.white.opacity(0.9",
-                       ".fill(Color.white)", ".fill(.background)"):
-            self.assertNotIn(opaque, BALLOON,
-                             f"{opaque} is the solid panel this bubble is not allowed to be")
+    def test_none_of_the_frosted_or_warm_palette_survives(self):
+        for old in ("Color.black.opacity(0.14)",    # the hairline drawn *for* a light frost
+                    "Color.black.opacity(0.05)",    # the field's well, a dark veil on paper
+                    "Color.black.opacity(0.07)",    # the backdrop-contrast layer under the text
+                    "red: 0.078, green: 0.078",     # #141413, the parchment ink
+                    "red: 0.24, green: 0.24",       # the warm secondary
+                    "red: 0.42, green: 0.416",      # the warm muted
+                    "red: 0.702, green: 0.224",     # #B3392B
+                    "red: 0.659, green: 0.31",      # #A84E30, the warm caret
+                    "static let highlight",         # the glass rim
+                    "backdropContrast",             # the contrast veil a material needed
+                    "parchment"):
+            self.assertNotIn(old, self._code(), f"{old} belongs to the frosted/warm palette")
+        self.assertNotIn(".shadow(color: PetBalloonInk.", self._code(),
+                         "nothing is drawn under the glyphs: on black a shadow only smears them")
 
-    def test_the_old_theme_tinted_fill_is_gone(self):
-        self.assertNotIn("Tokens.sheet.opacity(0.72)", BALLOON,
-                         "a theme sheet colour over a photo is the 'pasted on' look the owner "
-                         "asked to replace")
-
-    def test_the_balloon_forces_a_light_scheme_inside_itself(self):
-        self.assertIn(".environment(\\.colorScheme, .light)", BALLOON,
-                      "the app's theme is dark; the bubble is a light frost and has to say so")
-        self.assertIn("appearance = NSAppearance(named: .aqua)", BALLOON,
-                      "the field's insertion point and scrollers are drawn by AppKit for the "
-                      "window's appearance, not by SwiftUI")
+    def test_the_bubble_is_dark_inside_so_the_selection_can_be_read(self):
+        # The one legibility trap a black bubble has: AppKit's light-appearance selection highlight
+        # is a pale blue, and white ink disappears into it exactly while the owner is copying.
+        self.assertIn(".environment(\\.colorScheme, .dark)", BALLOON,
+                      "the bubble is black; its field and scroller have to be drawn for it")
+        self.assertIn("appearance = NSAppearance(named: .darkAqua)", BALLOON,
+                      "AppKit draws the insertion point, the selection and the scrollers")
+        self.assertNotIn(".environment(\\.colorScheme, .light)", BALLOON)
+        self.assertNotIn("NSAppearance(named: .aqua)", BALLOON)
+        self.assertIn(".textSelection(.enabled)", BALLOON, "the answer is still selectable")
+        self.assertIn(".tint(PetBalloonInk.accent)", BALLOON, "the caret is pinned white as well")
 
     def test_the_text_is_pinned_ink_rather_than_theme_colour(self):
-        # `Tokens` follows ThemeRuntime, not `colorScheme`, so a dark theme would put near-white
-        # text on white paper: the reason the balloon has its own palette.
+        # `Tokens` follows ThemeRuntime, not `colorScheme`, so a light theme would put near-black
+        # text on a black bubble: the reason the balloon has its own palette.
         self.assertIn("enum PetBalloonInk", BALLOON)
         for banned in ("foregroundStyle(Tokens.textPrimary)",
                        "foregroundStyle(Tokens.textSecondary)",

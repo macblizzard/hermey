@@ -145,39 +145,39 @@ final class PetBalloonAnchor: ObservableObject {
 
 /// The balloon's palette, pinned rather than read from `Tokens`.
 ///
-/// The bubble is frosted glass: the desktop's own colour comes through it (a dark wallpaper tints
-/// it grey-blue, a bright one cream) while the ink stays dark enough to read. `Tokens` follows
-/// `ThemeRuntime` instead, so on the app's dark theme `textPrimary` is near-white and would vanish
-/// into it. These are the light palette's warm inks (`ThemeCatalog.parchment`) on glass, spelled
-/// out so the bubble cannot change colour when the owner changes the app's theme.
+/// The bubble is a solid black callout with white ink. The owner ran it both ways: frosted glass
+/// first, and now the reverse — **full black, white text**. Black is the one fill a bright wallpaper
+/// cannot defeat: a material always samples what is behind it, so `.ultraThinMaterial` over a white
+/// desktop is a white panel no matter what tint is laid on top. The fill is therefore the app's own
+/// dark canvas at 0.97 — the last 3 % is the only thing that keeps it looking like part of the
+/// screen rather than a hole in it — and a bright wallpaper moves it by about one step in
+/// luminance (composited over white it lands near #121212).
+///
+/// `Tokens` is still refused: it follows `ThemeRuntime`, so on the app's light theme `textPrimary`
+/// would be near-black text on a black bubble. Every value here is spelled out, so the bubble cannot
+/// change colour with the app's theme.
 enum PetBalloonInk {
-    /// The sheet's tint over the material: 0.16 of white, on the thinnest frost macOS offers, so
-    /// about 30 % of the bubble's surface is visible and the desktop shows through the other 70 %.
-    /// The earlier 0.38 on `.regularMaterial` read as a solid light panel on a dark wallpaper, which
-    /// is the one thing a callout must not look like — the owner asked for a third of the surface,
-    /// and this is it. The material does the frosting; this only warms it toward paper.
-    static let body = Color.white.opacity(0.16)
-    static let primary = Color(red: 0.078, green: 0.078, blue: 0.075)     // #141413
-    static let secondary = Color(red: 0.24, green: 0.24, blue: 0.235)
-    static let muted = Color(red: 0.42, green: 0.416, blue: 0.39)
-    static let danger = Color(red: 0.702, green: 0.224, blue: 0.169)      // #B3392B
-    static let accent = Color(red: 0.659, green: 0.31, blue: 0.196)       // #A84E30
-    /// The field's well and the tail's inner shading: a black veil, not a theme surface.
-    static let well = Color.black.opacity(0.05)
-    /// The one hard edge the bubble has: the hairline that holds the silhouette against a bright
-    /// desktop, at 0.14 so it is a line rather than a border.
-    static let edge = Color.black.opacity(0.14)
-    /// The glass edge, drawn just inside the hairline. Very light on purpose: at a 0.16 tint a
-    /// brighter rim would be the most solid thing on the bubble. It is there to catch the light, not
-    /// to redraw the outline.
-    static let highlight = Color.white.opacity(0.10)
-    /// The last-resort backdrop-contrast layer, under the words only.
-    ///
-    /// Every material is a light frost here because the bubble forces a light appearance, so dark
-    /// ink reads on a dark wallpaper already. This is the belt to that braces: a faint shade behind
-    /// the text block keeps a busy or very dark backdrop from reaching the glyphs. It is deliberately
-    /// **not** a thicker sheet — the answer to weak contrast is never a more opaque bubble.
-    static let backdropContrast = Color.black.opacity(0.07)
+    /// The fill: the app's dark canvas (`ThemeCatalog.ink`'s `#0A0A0A`) at 0.97, so it reads as
+    /// solid black over a bright wallpaper and still catches a hint of a dark one.
+    static let body = Color(red: 0.043, green: 0.043, blue: 0.047).opacity(0.97)
+    /// The ink. Pure white, because the surface is pure black and there is nothing to warm it
+    /// against — the old `#141413` parchment ink was for paper.
+    static let primary = Color.white
+    /// Headers, the retry line and anything that is present but not the thing being read.
+    static let secondary = Color.white.opacity(0.72)
+    /// The placeholder, the thinking state and the disabled field: still read, never competing.
+    static let muted = Color.white.opacity(0.70)
+    /// A refusal, on black. The old `#B3392B` was picked for paper and is nearly invisible here, so
+    /// it is lifted to a light coral: 8:1 against the fill, still unmistakably a warning.
+    static let danger = Color(red: 1.0, green: 0.56, blue: 0.50)          // #FF8F80
+    /// The field's caret. A warm accent would be the last of the old palette, so it is white.
+    static let accent = Color.white.opacity(0.90)
+    /// The field's well and the button chips: a white veil, not a theme surface. On black the
+    /// relationship is inverted — a control is *lighter* than its card, not darker.
+    static let well = Color.white.opacity(0.08)
+    /// The hairline: white at low alpha, faint enough to be a line rather than a border. On a bright
+    /// desktop the black fill holds the silhouette; on a black one this does.
+    static let edge = Color.white.opacity(0.18)
 }
 
 /// The callout's fixed sizes, so the shape and the content agree about how much of the box the tail
@@ -234,9 +234,10 @@ enum PetCalloutMetrics {
 
 /// The balloon's outline: a rounded card with a curved tail hanging off its bottom edge.
 ///
-/// One closed path rather than a card with a tail drawn on top of it: the fill is a material, and
-/// two shapes each filled with a material double the blur where they overlap. The tail is part of the
-/// outline, so there is also no second subpath whose winding could cut a hole in the body. Corners are
+/// One closed path rather than a card with a tail drawn on top of it: the fill is opaque, so two
+/// shapes would double the alpha along the overlap and show as a darker band where the tail meets
+/// the body. The tail is part of the outline, so there is also no second subpath whose winding could
+/// cut a hole in the body. Corners are
 /// quad curves — at this radius they are indistinguishable from arcs and there is no angle convention
 /// to get wrong.
 struct PetBalloonShape: InsettableShape {
@@ -310,7 +311,7 @@ struct PetBalloonShape: InsettableShape {
 /// The balloon: a field, then thinking, then the answer — or the timeout, or the host's refusal.
 ///
 /// Its own window, floating a point above the pet's, so the pet's window stays icon-sized and the
-/// bubble is the only frosted thing on screen.
+/// bubble is the only ink on screen.
 struct PetBalloonView: View {
     @ObservedObject var model: PetBalloonModel
     let botName: String
@@ -363,31 +364,23 @@ struct PetBalloonView: View {
         // no line of text ever reaches down into the curve.
         .padding(.bottom, PetCalloutMetrics.tailHeight)
         .frame(width: Self.width)
-        // A callout, not a card — and now a *see-through* one. `.ultraThinMaterial` is the thinnest
-        // frost macOS offers and the white sits on it at 0.16, so roughly a third of the surface is
-        // visible and the desktop reads through the rest. The material still frosts what is behind
-        // the window (which is what keeps dark ink legible on a busy wallpaper), but it no longer
-        // makes a panel: a dark desktop tints the bubble grey-blue through it, a bright one cream.
-        // Anything thicker here — a higher tint, `.regularMaterial` — is the opaque sheet the owner
-        // asked to be rid of.
-        .background(
-            silhouette
-                .fill(.ultraThinMaterial)
-                .overlay(silhouette.fill(PetBalloonInk.body))
-        )
+        // One fill, one silhouette: the card and the tail are the same path, so the black cannot
+        // seam where the tail leaves the body. No material under the colour — a material samples
+        // what is behind the window, and `.ultraThinMaterial` over a bright desktop is a light
+        // panel that a near-black veil only greys. A flat fill is the only thing that reads black
+        // on a bright wallpaper; 0.97 keeps a hint of the desktop at the rim.
+        .background(silhouette.fill(PetBalloonInk.body))
         .overlay(
-            // The glass edge: a light rim one point inside the hairline, so the sheet reads as
-            // frosted rather than painted.
-            silhouette.inset(by: 1).strokeBorder(PetBalloonInk.highlight, lineWidth: 1)
-        )
-        .overlay(
+            // The hairline: a faint white border. It is the whole edge now - there is no second,
+            // brighter rim to catch the light, because on black that rim would read as a bevel.
             silhouette.strokeBorder(PetBalloonInk.edge, lineWidth: 1)
         )
-        // Light inside, always. The app's theme dresses the app's windows; this bubble is frosted
-        // paper and its scroller, insertion point and selection have to be drawn for it. The inks
-        // above are pinned as well, so a dark theme cannot put near-white text on it even if this
-        // environment were lost.
-        .environment(\.colorScheme, .light)
+        // Dark inside, always. The bubble is black, so the field's insertion point, scroller and
+        // selection have to be drawn for a dark surface: in the light appearance the selection
+        // highlight is a pale blue that white ink disappears into, which is the one legibility
+        // failure a black bubble could still have. The inks above are pinned as well, so a light
+        // theme cannot put near-black text on it even if this environment were lost.
+        .environment(\.colorScheme, .dark)
         // Escape closes the balloon; the window's monitor catches it even while the field has focus.
         .onExitCommand { model.dismiss() }
         .onAppear { fieldFocused = true }
@@ -422,14 +415,17 @@ struct PetBalloonView: View {
 
     /// The answer's words — the same in both branches, so a short reply and a long one read the
     /// same way: selectable, left-aligned, the bubble's full width.
+    ///
+    /// Legibility on black comes from the fill and the appearance, not from anything drawn over the
+    /// glyphs: the surface is 0.97 black, so white clears 17:1, and the dark appearance gives the
+    /// selection a deep blue highlight that the white ink still reads on (a light-appearance
+    /// selection would be pale blue — white on it, and the answer would vanish exactly while the
+    /// owner is copying it). The old black text shadow existed to darken a light frost behind the
+    /// words; on a black card it would only smear them.
     private func answerText(_ answer: String) -> some View {
         Text(answer)
             .font(TypeScale.font(Tokens.textSM))
             .foregroundStyle(PetBalloonInk.primary)
-            // The backdrop-contrast layer: a faint shade under the words themselves, so a busy or
-            // very dark desktop cannot sit directly behind a glyph. It is the only place the sheet
-            // is allowed to darken — the answer to weak contrast is never a more opaque bubble.
-            .shadow(color: PetBalloonInk.backdropContrast, radius: 7, x: 0, y: 1)
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
@@ -497,8 +493,8 @@ struct PetBalloonView: View {
 ///
 /// The same labels, the same actions and the same height as the `HermeyButton`s they replace — but
 /// `HermeyButton` paints from `Tokens`, which follow the app's theme rather than this window's, so on
-/// a dark theme it would be a dark chip on white paper: the one part of the bubble still dressed for
-/// a different surface.
+/// a light theme it would be a light chip on the black card: the one part of the bubble still dressed
+/// for a different surface.
 private struct CalloutButton: View {
     private let title: String
     private let action: () -> Void
@@ -553,9 +549,10 @@ final class PetBalloonPanel: NSPanel {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         becomesKeyOnlyIfNeeded = true
-        // White paper inside a dark app: without this the field's insertion point, focus ring and
-        // scrollers would be drawn by AppKit for the app's dark appearance, on top of a white bubble.
-        appearance = NSAppearance(named: .aqua)
+        // Black card inside a light or dark app: without this the field's insertion point, focus
+        // ring, selection and scrollers would be drawn by AppKit for the app's appearance, and a
+        // light appearance puts pale-blue selection behind white text.
+        appearance = NSAppearance(named: .darkAqua)
     }
 
     /// Typing is the balloon's whole job, and it is only ever asked for by a click on the pet.
