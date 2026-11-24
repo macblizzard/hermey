@@ -118,8 +118,11 @@ struct SidebarBotList: View {
         return bots + (showsHiddenBots ? hiddenBots.count : 0)
     }
 
-    /// One heading per group, drawn above its rows.
-    private var captionCount: Int { isSearching ? 0 : model.botGroups.count }
+    /// One heading per group, drawn above its rows — plus the group chats' own caption, which is
+    /// only drawn when there are rooms to head.
+    private var captionCount: Int {
+        isSearching ? 0 : model.botGroups.count + (roomRows.isEmpty ? 0 : 1)
+    }
 
     /// Group chats sit above the bots and are searchable only by their own names' absence: the
     /// search box filters bots, so a search hides the rooms instead of pretending to match them.
@@ -128,7 +131,10 @@ struct SidebarBotList: View {
     /// The block sizes to its content and stops growing at about five rows, then scrolls.
     private var listHeight: CGFloat {
         let hiddenExtra = showsHiddenBots && !hiddenBots.isEmpty ? 24 : 0
-        let roomExtra = roomRows.isEmpty ? 0 : CGFloat(roomRows.count) * 44 + 34
+        // Folded, the rooms contribute their heading and nothing else — the divider goes with the
+        // rows, the way every category's does.
+        let roomExtra = roomRows.isEmpty || roomsCollapsed
+            ? 0 : CGFloat(roomRows.count) * 44 + 34
         let rowHeight = SidebarBotList.rowHeight * listScale
         return min(CGFloat(max(rowCount, 1)) * rowHeight
                    + CGFloat(captionCount) * SidebarBotList.captionHeight
@@ -213,43 +219,49 @@ struct SidebarBotList: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     if !roomRows.isEmpty {
-                        // No caption over either list. "CHATS" over a list of chats told the reader
-                        // what they were already looking at, and it cost a line above the first row.
-                        // The divider below the group chats is the whole separation.
-                        ForEach(roomRows) { room in
-                            Button { onOpenRoom?(room) } label: {
-                                GroupChatRow(room: room,
-                                             icons: icons,
-                                             unread: model.roomUnreadCount(room.id))
-                                    .padding(.horizontal, Geometry.rosterRowPadding)
-                                    .padding(.vertical, Geometry.rosterRowPadding)
-                                    .frame(height: Geometry.rosterRow)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                                            .fill(roomFill(room))
-                                    )
-                                    .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            // The same fill a selected bot uses, so "which conversation is open" reads
-                            // the same whether it is a bot or a room.
-                            .onHover { inside in
-                                if inside { hoveredRow = roomKey(room.id) }
-                                else if hoveredRow == roomKey(room.id) { hoveredRow = nil }
-                            }
-                            .contextMenu {
-                                Button { onRenameRoom?(room) } label: {
-                                    Label("Rename group chat…", systemImage: "pencil")
-                                }
-                                Button(role: .destructive) { onDeleteRoom?(room) } label: {
-                                    Label("Delete group chat", systemImage: "trash")
-                                }
-                            }
-                        }
+                        // The phone has always drawn a heading over its rooms; the Mac drew them
+                        // bare, under a "no caption over either list" note that left the reader
+                        // guessing what the rows above the divider were. It is now the same caption
+                        // as every bot group — chevron, name, count, remembered fold — because a
+                        // second kind of heading on one list is a second thing to learn.
+                        roomsCaption
 
-                        Divider().padding(.horizontal, 8).padding(.vertical, 4)
+                        if !roomsCollapsed {
+                            ForEach(roomRows) { room in
+                                Button { onOpenRoom?(room) } label: {
+                                    GroupChatRow(room: room,
+                                                 icons: icons,
+                                                 unread: model.roomUnreadCount(room.id))
+                                        .padding(.horizontal, Geometry.rosterRowPadding)
+                                        .padding(.vertical, Geometry.rosterRowPadding)
+                                        .frame(height: Geometry.rosterRow)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                                                .fill(roomFill(room))
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                // The same fill a selected bot uses, so "which conversation is open" reads
+                                // the same whether it is a bot or a room.
+                                .onHover { inside in
+                                    if inside { hoveredRow = roomKey(room.id) }
+                                    else if hoveredRow == roomKey(room.id) { hoveredRow = nil }
+                                }
+                                .contextMenu {
+                                    Button { onRenameRoom?(room) } label: {
+                                        Label("Rename group chat…", systemImage: "pencil")
+                                    }
+                                    Button(role: .destructive) { onDeleteRoom?(room) } label: {
+                                        Label("Delete group chat", systemImage: "trash")
+                                    }
+                                }
+                            }
+
+                            Divider().padding(.horizontal, 8).padding(.vertical, 4)
+                        }
                     }
 
                     // What the search found inside the conversations, above the rows: a phrase is the
@@ -490,12 +502,55 @@ struct SidebarBotList: View {
 
     private func isCollapsed(_ group: BotGroup) -> Bool { collapsedGroups[group.id] == true }
 
-    private func toggleCollapsed(_ group: BotGroup) {
+    /// The group-chats heading folds and stays folded exactly like a category's: same map, same
+    /// animation, its own reserved id. A room has no category on the host, so this heading is the
+    /// app's own — and the Mac drew the rows with no caption at all, so a reader coming from the
+    /// phone (which has always drawn one) could not tell what the rows above the divider were.
+    private var roomsCollapsed: Bool { collapsedGroups[BotGrouping.roomsID] == true }
+
+    private func toggleCollapsed(_ group: BotGroup) { setCollapsed(group.id) }
+
+    private func toggleRoomsCollapsed() { setCollapsed(BotGrouping.roomsID) }
+
+    private func setCollapsed(_ id: String) {
         var map = collapsedGroups
-        map[group.id] = !(map[group.id] ?? false)
+        map[id] = !(map[id] ?? false)
         guard let data = try? JSONEncoder().encode(map),
               let json = String(data: data, encoding: .utf8) else { return }
         collapsedGroupsJSON = json
+    }
+
+    /// The heading over the group chats: the phone's caption, with the Mac's own fold.
+    ///
+    /// Deliberately the same control the categories use — chevron, name, count, `help`, a remembered
+    /// fold — rather than a label. Two kinds of heading in one list would be two things to learn, and
+    /// this one has to be collapsible because rooms are now a group like any other.
+    private var roomsCaption: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.12)) { toggleRoomsCollapsed() }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: roomsCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Tokens.textDim)
+                Text(BotGrouping.roomsName.uppercased())
+                    .font(TypeScale.font(TypeScale.caption, weight: .semibold))
+                    .foregroundStyle(Tokens.textMuted)
+                Text("\(roomRows.count)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Tokens.textDim)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
+        .help(roomsCollapsed ? "Expand \(BotGrouping.roomsName)" : "Collapse \(BotGrouping.roomsName)")
+        .accessibilityLabel("\(BotGrouping.roomsName), \(roomRows.count) group chats")
+        .accessibilityHint(roomsCollapsed ? "Expand" : "Collapse")
     }
 
     /// A heading is a control, not a label: clicking it folds the group away, and right-clicking
