@@ -58,7 +58,10 @@ class TheFaceIsAShippedBody(unittest.TestCase):
         # did; that difference is reported with this change.
         self.assertIn('const DOC_ICONS: &str = "bot_icons"', BRIDGE)
         self.assertIn('body.get("avatar").and_then(|v| v.as_str())', BRIDGE)
-        self.assertIn("faces.insert(bot, json!({\"avatar\": avatar}))", BRIDGE)
+        # The entry is merged rather than replaced, because a face can now travel beside a generated
+        # avatar (`definition`/`color`); the string is still stored under `avatar`, unchanged.
+        self.assertIn('entry["avatar"] = json!(avatar)', BRIDGE)
+        self.assertIn("faces.insert(bot, entry)", BRIDGE)
 
     def test_the_picker_offers_eight_bodies_and_the_palette(self) -> None:
         picker = GALLERY.split("public struct BotFacePicker", 1)[1]

@@ -89,6 +89,47 @@ struct BotIconService {
         let url = baseURL.appendingPathComponent("v1/bot-icons").appendingPathComponent(try BotIconPath.component(for: botID))
         _ = try await request(url, method: "PUT", body: JSONEncoder().encode(Change(avatar: face?.raw)))
     }
+
+    /// The bots' own generated avatars, from the same document `load()` reads.
+    ///
+    /// The definition is arbitrary JSON, so it is read with `JSONSerialization` and handed to the
+    /// avatar model: its shape belongs to the avatar contract, not to a struct declared here.
+    func loadAvatars() async throws -> [String: BotAvatarDocument] {
+        let data = try await request(baseURL.appendingPathComponent("v1/bot-icons"), method: "GET")
+        return Self.avatars(in: data)
+    }
+
+    static func avatars(in data: Data) -> [String: BotAvatarDocument] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let faces = root["faces"] as? [String: Any] else { return [:] }
+        var documents: [String: BotAvatarDocument] = [:]
+        for (botID, value) in faces {
+            guard let face = value as? [String: Any],
+                  let definition = face["definition"],
+                  JSONSerialization.isValidJSONObject(definition),
+                  let encoded = try? JSONSerialization.data(withJSONObject: definition,
+                                                            options: [.sortedKeys, .withoutEscapingSlashes]),
+                  let text = String(data: encoded, encoding: .utf8),
+                  let document = BotAvatarDocument(json: text, color: face["color"] as? String) else { continue }
+            documents[botID] = document
+        }
+        return documents
+    }
+
+    /// Save or clear one bot's avatar, sending only the avatar's two fields.
+    func saveAvatar(botID: String, document: BotAvatarDocument?) async throws {
+        let url = baseURL.appendingPathComponent("v1/bot-icons").appendingPathComponent(try BotIconPath.component(for: botID))
+        let definition: Any
+        if let document,
+           let parsed = try? JSONSerialization.jsonObject(with: Data(document.definitionJSON().utf8)) {
+            definition = parsed
+        } else {
+            definition = NSNull()
+        }
+        let body: [String: Any] = ["definition": definition, "color": document?.color ?? NSNull()]
+        let data = try JSONSerialization.data(withJSONObject: body, options: [])
+        _ = try await request(url, method: "PUT", body: data)
+    }
 }
 
 /// Caller refreshes its shared dictionary after saving; errors stay visible.

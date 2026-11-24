@@ -84,6 +84,52 @@ struct MacBotIconService {
             .appendingPathComponent(BotIconPath.component(for: botID))
         _ = try await request(url: url, method: "PUT", body: JSONEncoder().encode(Change(avatar: face?.raw)))
     }
+
+    /// The avatars the host has, from the same document `load()` reads.
+    ///
+    /// Parsed with `JSONSerialization` rather than `Decodable` because a definition is arbitrary
+    /// JSON: its shape belongs to the avatar contract, not to a struct this app declares for it.
+    func loadAvatars() async throws -> [String: BotAvatarDocument] {
+        let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
+        let data = try await request(url: url, method: "GET")
+        return Self.avatars(in: data)
+    }
+
+    /// One document per bot, from a `GET /v1/bot-icons` answer. Static so the shape can be tested
+    /// without a host.
+    static func avatars(in data: Data) -> [String: BotAvatarDocument] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let faces = root["faces"] as? [String: Any] else { return [:] }
+        var documents: [String: BotAvatarDocument] = [:]
+        for (botID, value) in faces {
+            guard let face = value as? [String: Any],
+                  let definition = face["definition"],
+                  JSONSerialization.isValidJSONObject(definition),
+                  let encoded = try? JSONSerialization.data(withJSONObject: definition,
+                                                            options: [.sortedKeys, .withoutEscapingSlashes]),
+                  let text = String(data: encoded, encoding: .utf8),
+                  let document = BotAvatarDocument(json: text, color: face["color"] as? String) else { continue }
+            documents[botID] = document
+        }
+        return documents
+    }
+
+    /// Save or clear one bot's avatar. Only `definition` and `color` are sent: the chosen face is
+    /// the picker's, and a save here must not disturb it.
+    func saveAvatar(botID: String, document: BotAvatarDocument?) async throws {
+        let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
+            .appendingPathComponent(BotIconPath.component(for: botID))
+        let definition: Any
+        if let document,
+           let parsed = try? JSONSerialization.jsonObject(with: Data(document.definitionJSON().utf8)) {
+            definition = parsed
+        } else {
+            definition = NSNull()
+        }
+        let body: [String: Any] = ["definition": definition, "color": document?.color ?? NSNull()]
+        let data = try JSONSerialization.data(withJSONObject: body, options: [])
+        _ = try await request(url: url, method: "PUT", body: data)
+    }
 }
 
 struct MacBotIconPicker: View {

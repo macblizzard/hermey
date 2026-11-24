@@ -109,7 +109,9 @@ class ABotCanBeDeletedFromItsSettings(unittest.TestCase):
         # Both iOS doors — the list's long press and a conversation's Edit — build the sheet through
         # `BotSettingsDoor`, so the delete writer lives there once and cannot be missing from one of them.
         door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
-        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) })", door)
+        # The avatar's two arguments follow the delete writer, so the call now ends on `saveAvatar:`;
+        # what this guard is about is that the delete writer is still on the one shared door.
+        self.assertIn("deleteBot: { try await model.deleteBot(bot.id) },", door)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_LIST)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", IOS_CHAT)
         self.assertNotIn("BotModelSettingsScreen(", IOS_CHAT,

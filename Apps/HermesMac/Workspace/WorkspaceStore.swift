@@ -62,6 +62,9 @@ final class WorkspaceStore: ObservableObject {
     /// sheet and one owner.
     @Published var botSettingsBot: Bot? = nil
     @Published private(set) var botFaces: [String: BotFaceChoice] = [:]
+    /// The bots' own generated avatars, by bot id, from the same `bot_icons` document. A bot with
+    /// one draws it everywhere instead of its picture or shape face; a bot without one is untouched.
+    @Published private(set) var botAvatars: [String: BotAvatarDocument] = [:]
     @Published private(set) var botFacesError: String?
     private var iconGeneration = 0
 
@@ -484,6 +487,7 @@ final class WorkspaceStore: ObservableObject {
     private func clearBotFaces() {
         iconGeneration += 1
         botFaces = [:]
+        botAvatars = [:]
         botFacesError = nil
     }
 
@@ -492,9 +496,12 @@ final class WorkspaceStore: ObservableObject {
         iconGeneration += 1
         let generation = iconGeneration
         do {
-            let icons = try await MacBotIconService(address: address).load()
+            let service = MacBotIconService(address: address)
+            let icons = try await service.load()
+            let avatars = try await service.loadAvatars()
             guard generation == iconGeneration, pairing == address else { return }
             botFaces = icons
+            botAvatars = avatars
             botFacesError = nil
         } catch {
             guard generation == iconGeneration, pairing == address else { return }
@@ -509,6 +516,22 @@ final class WorkspaceStore: ObservableObject {
         iconGeneration += 1
         let generation = iconGeneration
         try await MacBotIconService(address: address).save(botID: botID, face: face)
+        guard generation == iconGeneration, pairing == address else { return }
+        await loadBotFaces()
+        if let error = botFacesError {
+            throw MacBotIconService.Failure.refresh(error)
+        }
+    }
+
+    /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
+    /// answers a 400 with its reason, which surfaces here as a thrown message.
+    func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
+        guard let address = pairing, !address.isTicketOnly else {
+            throw MacBotIconService.Failure.devicePairingRequired
+        }
+        iconGeneration += 1
+        let generation = iconGeneration
+        try await MacBotIconService(address: address).saveAvatar(botID: botID, document: document)
         guard generation == iconGeneration, pairing == address else { return }
         await loadBotFaces()
         if let error = botFacesError {
