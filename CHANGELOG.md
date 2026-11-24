@@ -1229,3 +1229,20 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - The Live Activity's coordinator now publishes the phase alongside the step, so the pill cannot show a word
   the card disagrees with.
+
+## [0.1.645] — 2026-11-24
+
+### Changed
+- **The bot panel's buttons sit evenly in their corners.** The bell, ＋, Settings, search and the sidebar
+  toggle were 12 pt in from the sides but only 4 pt from the top and bottom, so a corner button looked twice
+  as far across as it was up. Both chrome rows use one 10 pt margin on every side now, and the rows grew by
+  the difference.
+- **Settings ▸ About states the host version on one line with its action.** Version and state together, and
+  `Check now` is a real button on that same line instead of muted text stranded at the far right; the state
+  is toned — normal when current, accent when an update is available, warning when the host cannot be asked.
+
+### Fixed
+- **An error from another conversation no longer appears in yours.** Host errors were drawn in whichever
+  chat was open, because the event did not say which session it belonged to — which is how "No LLM provider
+  configured" appeared over a healthy conversation. An error is now shown only in the conversation it
+  belongs to; anything else goes to the log.
