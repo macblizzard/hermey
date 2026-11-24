@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.656",
-          "buildVersion": "656",
-          "date": "2026-11-24T22:21:55Z",
-          "localizedDescription": "### Fixed\n- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own inset was missing from its leading padding.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.656/Hermey-0.1.656-b656.ipa",
-          "size": 5516246,
+          "version": "0.1.657",
+          "buildVersion": "657",
+          "date": "2026-11-24T22:46:33Z",
+          "localizedDescription": "### Fixed\n- **The token count shows on the phone too.** A narrow pill used to drop the whole count and keep only the model name, so the number lived on the Mac and not on the iPhone. The count now holds its room and the model name truncates instead.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.657/Hermey-0.1.657-b657.ipa",
+          "size": 5516157,
           "minOSVersion": "17.0",
-          "sha256": "a655805f0c580e412070840489651c4d10165f688a9be443b585f53b450feb5f"
+          "sha256": "c81a5d7034231e28ee633886f91c874cebd8f17f5e3769505e5f1cbe1d554b8e"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.656 (656)",
-      "identifier": "hermes-0.1.656-656",
-      "caption": "### Fixed\n- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own inset was missing from its leading padding.",
-      "date": "2026-11-24T22:21:55Z",
+      "title": "Hermes 0.1.657 (657)",
+      "identifier": "hermes-0.1.657-657",
+      "caption": "### Fixed\n- **The token count shows on the phone too.** A narrow pill used to drop the whole count and keep only the model name, so the number lived on the Mac and not on the iPhone. The count now holds its room and the model name truncates instead.",
+      "date": "2026-11-24T22:46:33Z",
       "tintColor": "#9A9AA0"
     }
   ],
