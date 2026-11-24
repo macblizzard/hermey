@@ -10,13 +10,13 @@
   message menu is now built by `MessageMenuRow`, whose constructors *require* a symbol — so the next
   row cannot ship without one — and a row whose title is conditional carries the glyph from the same
   condition.
-* **The line.** `provider/model · 540k/1M Tokens` over the compose box, on both apps, in muted
-  chrome outside the field: one formatter (`SessionLine` over `TokenCount`), one view
-  (`ComposerSessionLine`), no wrapping, truncated before the composer can grow, model-only on a
-  narrow window, and `Equatable` so typing cannot re-lay it out per character. *(Moved again on
-  2026-11-24: Mohammad's sample put it **inside** the composer, as a pill in the control row, so the
-  same formatter now feeds `ComposerModelPill`. Its own guards are in
-  `test_composer_pill_and_row_menu.py`; what stays here is the rule both apps share.)*
+* **The session row.** `provider/model` and `540k/1M Tokens`, on both apps, in the composer's own
+  chrome under the field: one formatter (`SessionLine` over `TokenCount`) feeding two halves of one
+  row — `ComposerModelPill` (glyph, model, chevron) leading, the count trailing from
+  `ComposerSessionRow`. No wrapping, the model truncates at the tail, the count keeps its width,
+  and both are `Equatable` so typing cannot re-lay them out per character. *(Revised again on
+  2026-11-24: the count moved out of the pill so it could not squeeze the model name. Its own
+  guards are in `test_composer_pill_and_row_menu.py`; what stays here is the rule both apps share.)*
 """
 from __future__ import annotations
 
@@ -174,9 +174,10 @@ class EveryMenuRowCarriesItsGlyph(unittest.TestCase):
 
 
 class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
-    """`provider/model · used/limit Tokens`, from one formatter, on one pill, on both apps."""
+    """`provider/model` and `used/limit Tokens`: one formatter, two halves of one row, both apps."""
 
     LINE = read(SESSION_LINE)
+    ROW = read(UI / "ComposerSessionRow.swift")
     MAC = read(MAC_BAR)
     PHONE = read(PHONE)
     MODEL = read(APP_MODEL)
@@ -184,10 +185,15 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
     def test_both_apps_draw_the_same_view_from_the_same_values(self) -> None:
         for name, source in (("the Mac's composer bar", self.MAC),
                              ("the phone's conversation", self.PHONE)):
-            self.assertIn("ComposerModelPill(provider: model.modelProvider", source, name)
-            self.assertIn("model: model.modelLabel", source, name)
-            self.assertIn("used: model.contextUsed", source, name)
-            self.assertIn("limit: model.contextMax", source, name)
+            # One row per composer, built from the same five values; the action is each app's own.
+            self.assertEqual(source.count("sessionRow: ComposerSessionRow("), 1, name)
+            call = between(source, "sessionRow: ComposerSessionRow(", "onOpen:")
+            for value in ("provider: model.modelProvider", "model: model.modelLabel",
+                          "used: model.contextUsed", "limit: model.contextMax",
+                          "isEnabled:"):
+                self.assertIn(value, call, name)
+            # Neither app assembles a pill of its own: the row is the only door.
+            self.assertNotIn("ComposerModelPill(", source, name)
 
     def test_the_numbers_come_from_the_host_and_the_shared_token_rule(self) -> None:
         # `TokenCount`, the rule the phone's header already prints, not a second rounding.
@@ -215,36 +221,53 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
     def test_the_pill_is_a_row_of_the_composer_not_a_line_above_it(self) -> None:
         for field in ("TextField(", "TextEditor(", "ComposerTextView(", "Composer(text:"):
             self.assertNotIn(field, self.LINE)
-        # Drawn *by* the composer, in the control row: the design system takes the pill as a row
-        # sibling, and neither app draws it outside the `Composer(` call any more.
+        # Drawn *by* the composer, on its own band under the field: the design system takes the
+        # whole two-part row, and neither app draws it outside the `Composer(` call any more.
         composer = read(UI / "Composer.swift")
-        self.assertIn("private let sessionPill: ComposerModelPill?", composer)
-        self.assertIn("if let sessionPill {", composer)
+        self.assertIn("private let sessionRow: ComposerSessionRow?", composer)
+        self.assertIn("if let sessionRow {", composer)
+        band = between(composer, "private var sessionPillBand", "private var trimmed")
+        self.assertIn(".equatable()", band)
+        self.assertIn("showsAttach ? 8 + controlSide + 8 : 10", band,
+                      "the row must start where the typed text starts")
         for name, source in (("the Mac's composer bar", self.MAC),
                              ("the phone's conversation", self.PHONE)):
             self.assertLess(source.index("Composer(text: $model.draft"),
-                            source.index("ComposerModelPill("), name)
+                            source.index("ComposerSessionRow("), name)
             self.assertNotIn("ComposerSessionLine", source, name)
+            self.assertNotIn("ComposerModelPill(", source, name)
 
     def test_it_cannot_wrap_grow_or_truncate_the_message(self) -> None:
-        # One line, truncated at the tail, and the full line gives way to the model alone rather
-        # than to a squeezed one.
+        # The pill is one line and the model is the half that gives way: it truncates at the tail.
         self.assertIn(".lineLimit(1)", self.LINE)
         self.assertIn(".truncationMode(.tail)", self.LINE)
-        # The count keeps its room; the model name is the half that gives way.
-        self.assertIn("context(tokens)", self.LINE)
         self.assertNotIn("ViewThatFits(in: .horizontal)", self.LINE)
-        self.assertIn(".fixedSize(horizontal: true, vertical: false)", self.LINE)
-        # No geometry, no draft: it cannot read the width or the text, so it cannot reflow either.
-        self.assertNotIn("GeometryReader", self.LINE)
-        self.assertNotIn("model.draft", self.LINE)
+        # The count, drawn by the row, is the half that never shrinks or truncates.
+        count = between(self.ROW, "if let tokens =", "\n        }\n    }")
+        self.assertIn("SessionLine.context(used: used, limit: limit)", self.ROW)
+        self.assertIn("Text(tokens)", count)
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)", count)
+        self.assertNotIn(".truncationMode", count)
+        self.assertIn("Spacer(minLength: 8)", self.ROW)
+        self.assertLess(self.ROW.index("ComposerModelPill("), self.ROW.index("Text(tokens)"))
+        # No geometry, no draft: neither half can read the width or the text, so neither reflows.
+        for source in (self.LINE, self.ROW):
+            self.assertNotIn("GeometryReader", source)
+            self.assertNotIn("model.draft", source)
 
     def test_a_keystroke_cannot_re_lay_it_out(self) -> None:
-        # The pill is `Equatable` and the composer applies `.equatable()` once, for both apps:
-        # typing changes the draft binding, not these four values, so SwiftUI skips its body (and
-        # its ViewThatFits pass).
+        # The pill is `Equatable` on the model, the row on the model and the count, and the composer
+        # applies `.equatable()` once, for both apps: typing changes the draft binding, not these
+        # values, so SwiftUI skips the body.
         self.assertIn("public struct ComposerModelPill: View, Equatable", self.LINE)
         self.assertIn("public static func == (lhs: ComposerModelPill", self.LINE)
+        self.assertIn("public struct ComposerSessionRow: View, Equatable", self.ROW)
+        row_comparator = between(self.ROW,
+                                 "public static func == (lhs: ComposerSessionRow",
+                                 "public var body: some View {")
+        for field in ("provider", "model", "used", "limit", "isEnabled"):
+            self.assertIn(f"lhs.{field} == rhs.{field}", row_comparator)
+        self.assertNotIn("onOpen", row_comparator)
         composer = read(UI / "Composer.swift")
         block = composer.split("private var sessionPillBand", 1)[1]
         self.assertIn(".equatable()", block)

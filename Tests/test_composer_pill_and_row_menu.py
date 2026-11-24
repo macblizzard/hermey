@@ -4,12 +4,13 @@
   using — hovered, keyboard-focused, selected or highlighted — and it is an overlay, so revealing it
   moves nothing: no reserved gutter, and a long name simply truncates underneath it. The row's own
   button, its context menu and its hit target are untouched.
-* **The composer's model pill.** The session line that floated above the capsule is now *inside* the
-  composer: a dark rounded pill in the same control row as the paperclip and the send arrow, right of
-  the attach control, with a tinted round glyph, the model in semibold, the context count quieter
-  beside it and a chevron. The whole pill is one button and it opens the existing model picker for
-  the bot being written to. It stays `Equatable`, one line, model-only on a narrow window — and it is
-  a row sibling, so it can never cover a character of what is being typed.
+* **The composer's session row.** The session line that floated above the capsule is now *inside*
+  the composer, as one row under the field with two halves: a dark rounded pill holding only the
+  model (tinted round glyph, the name in semibold, a chevron, all one button that opens the existing
+  model picker), and the context count as its own text at the row's trailing edge. The count is
+  `fixedSize`, so it keeps its room; the model name truncates at the tail; a `Spacer` between them
+  means neither half can squeeze the other. The row is `Equatable` and one line — chrome below the
+  text, never a character of it covered.
 * **The Lock Screen card's left edge.** Inside the Live Activity card, `HERMEY` and `Working · …` had
   two different left edges, because the status line led with its phase symbol. Both rows now start at
   the same point of the text column, nothing indents a line, the card's vertical padding is one
@@ -27,6 +28,7 @@ MAC = ROOT / "Apps" / "HermesMac"
 PHONE = ROOT / "Apps" / "HermesMobile"
 
 PILL = UI / "ComposerModelPill.swift"
+ROW = UI / "ComposerSessionRow.swift"
 COMPOSER = UI / "Composer.swift"
 
 MAC_BAR = MAC / "Conversation" / "MacComposerBar.swift"
@@ -57,9 +59,10 @@ def without_comments(text: str) -> str:
 
 
 class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
-    """A pill in the control row — the chrome language of a control, never a link or a caption."""
+    """The session row's two halves — model pill leading, context count trailing — in the composer."""
 
     PILL_SOURCE = read(PILL)
+    ROW_SOURCE = read(ROW)
     COMPOSER_SOURCE = read(COMPOSER)
     MAC_SOURCE = read(MAC_BAR)
     PHONE_SOURCE = read(PHONE_SCREEN)
@@ -70,6 +73,22 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
                        "Button(action: onOpen) {",
                        ".buttonStyle(PressableButtonStyle())")
 
+    def pill_struct(self) -> str:
+        """The pill type alone: `SessionLine` shares the file, and its `TokenCount` is not the pill's."""
+        return self.PILL_SOURCE.split("public struct ComposerModelPill", 1)[1]
+
+    def row_body(self) -> str:
+        """The row's `body`: both halves, in the order the row draws them."""
+        return between(self.ROW_SOURCE,
+                       "public var body: some View {",
+                       "\n    }\n}")
+
+    def count_view(self) -> str:
+        """The row's trailing half: the count it draws after the pill."""
+        return between(self.ROW_SOURCE,
+                       "if let tokens =",
+                       "\n        }\n    }")
+
     def glyph_view(self) -> str:
         return between(self.PILL_SOURCE,
                        "private var glyph: some View {",
@@ -78,28 +97,27 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
     def chevron_view(self) -> str:
         return between(self.PILL_SOURCE,
                        "private var chevron: some View {",
-                       "private func accessibilityLabel")
+                       "\n\n}")
 
     def model_name_view(self) -> str:
         return between(self.PILL_SOURCE,
                        "private func modelName(_ name: String) -> some View {",
-                       "/// The count, quieter than the name")
-
-    def context_view(self) -> str:
-        return between(self.PILL_SOURCE,
-                       "private func context(_ tokens: String) -> some View {",
                        "/// A small round tinted glyph")
 
     def test_it_is_one_button_and_the_chevron_is_inside_it(self) -> None:
         self.assertEqual(self.PILL_SOURCE.count("Button(action: onOpen)"), 1)
         # No bare `Button {` and no second control: the chevron is part of the same label, so a tap
-        # anywhere on the pill (glyph, name, count, chevron) opens the same picker.
+        # anywhere on the pill (glyph, name, chevron) opens the same picker.
         self.assertNotIn("Button {", self.PILL_SOURCE)
         label = self.pill_label()
         self.assertIn("\n                    chevron\n", label)
         self.assertIn('Image(systemName: "chevron.down")', self.chevron_view())
         self.assertNotIn("Button", label)
         self.assertNotIn("Button", self.chevron_view())
+        # The row draws exactly one pill, and the pill is the row's leading half.
+        self.assertEqual(self.ROW_SOURCE.count("ComposerModelPill(provider: provider"), 1)
+        self.assertLess(self.row_body().index("ComposerModelPill("),
+                        self.row_body().index("Spacer(minLength: 8)"))
 
     def test_it_is_chrome_not_a_link(self) -> None:
         label = self.pill_label()
@@ -124,37 +142,48 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
 
     def test_the_sample_s_anatomy_inside_the_pill(self) -> None:
         label = self.pill_label()
-        # A small circular tinted glyph, then the model in semibold, then the count quieter beside
-        # it — a gap, not a divider — then the chevron.
+        # The pill is the model alone: a small circular tinted glyph, then the model in semibold,
+        # then the chevron — a gap, not a divider. The count is the row's other half, not this one's.
         self.assertIn("Circle().fill(Tokens.accentSoft)", self.glyph_view())
         self.assertIn('Image(systemName: "cpu")', self.glyph_view())
         self.assertIn("TypeScale.font(TypeScale.label, weight: .semibold)",
                       self.model_name_view())
         self.assertIn("Tokens.textPrimary", self.model_name_view())
-        self.assertIn("TypeScale.font(TypeScale.caption)", self.context_view())
-        self.assertIn("Tokens.textMuted", self.context_view())
+        self.assertIn('Image(systemName: "chevron.down")', self.chevron_view())
         self.assertNotIn("Divider", self.PILL_SOURCE)
         self.assertNotIn('Text("·")', self.PILL_SOURCE)
-        # Glyph, name, count, chevron: the order the sample has them in, and both labels live inside
-        # the pill's single HStack.
-        order = ["glyph", "modelName(name)", "context(tokens)", "\n                    chevron\n"]
+        # Glyph, name, chevron: three parts, in that order, inside the pill's single HStack.
+        order = ["glyph", "modelName(name)", "\n                    chevron\n"]
         positions = [label.index(token) for token in order]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn(".padding(.horizontal, 14)", label)
+        self.assertIn(".padding(.horizontal, 12)", label)
+        # No token text survives in the pill type: the count moved to the row.
+        pill = without_comments(self.pill_struct())
+        for count in ("SessionLine.context", "Text(tokens)", "context(tokens)"):
+            self.assertNotIn(count, pill)
 
     def test_the_count_keeps_its_room_and_the_model_truncates(self) -> None:
-        # ViewThatFits used to drop the whole count on a narrow pill, so the phone lost the number the
-        # Mac kept. The count now holds its width and the model name is what gives way.
-        body = self.pill_label()
-        self.assertNotIn("ViewThatFits", body,
+        # The count used to ride inside the pill, where it could squeeze the model name. It is now
+        # the row's trailing half: `fixedSize` holds its width, and the model is what gives way.
+        self.assertNotIn("ViewThatFits", without_comments(self.pill_struct()),
                          "a fallback that drops the count comes back the moment this returns")
-        self.assertIn("context(tokens)", body)
-        self.assertIn(".fixedSize(horizontal: true, vertical: false)", body,
-                      "the count must not be squeezed")
-        self.assertIn(".layoutPriority(1)", body)
+        self.assertNotIn("Text(tokens)", self.pill_label())
         # The name truncates where it is drawn, in `modelName(_:)`.
         self.assertIn(".truncationMode(.tail)", read(PILL),
                       "the model truncates rather than widening the pill")
+        count = self.count_view()
+        self.assertIn("SessionLine.context(used: used, limit: limit)", self.ROW_SOURCE,
+                      "the count comes from the one formatter both apps already share")
+        self.assertIn("Text(tokens)", count)
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)", count,
+                      "the count must not be squeezed or truncated")
+        self.assertNotIn(".truncationMode", count,
+                         "the count is not the half that gives way")
+        # A spacer between the halves, not one half's width: neither can squeeze the other.
+        body = self.row_body()
+        self.assertIn("HStack(spacing: 8)", body)
+        self.assertLess(body.index("ComposerModelPill("), body.index("Spacer(minLength: 8)"))
+        self.assertLess(body.index("Spacer(minLength: 8)"), body.index("Text(tokens)"))
 
     def test_the_pill_is_not_in_the_field_row(self) -> None:
         # It used to sit between the paperclip and the text, which read as part of the field and put
@@ -163,9 +192,10 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
                       "HStack(alignment: .bottom, spacing: 8) {",
                       "// One tap clears everything typed.")
         self.assertIn("rowCentred(attachControl)", row)
-        self.assertNotIn("sessionPill", row,
-                         "the pill is back on the field's line")
-        self.assertNotIn("rowCentred(sessionPill", row)
+        self.assertNotIn("sessionRow", row,
+                         "the session row is back on the field's line")
+        self.assertNotIn("sessionPill", row)
+        self.assertNotIn("rowCentred(sessionRow", row)
 
     def test_the_pill_sits_on_its_own_row_under_the_text_on_both_platforms(self) -> None:
         # One band, no per-platform split: under the field row, inside the same rounded container,
@@ -178,14 +208,17 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         band = between(self.COMPOSER_SOURCE,
                        "private var sessionPillBand: some View {",
                        "private var trimmed: String {")
-        self.assertIn("if let sessionPill {", band)
-        self.assertIn(".equatable()", band)
+        self.assertIn("if let sessionRow {", band)
+        self.assertIn("sessionRow\n                .equatable()", band,
+                      "the row is what the composer lays out, not a pill the apps assemble")
         self.assertIn(".frame(height: controlSide)", band)
         # Its own row, aligned with the text rather than the card's edge — not an overlay.
         self.assertIn(".frame(maxWidth: .infinity, alignment: .leading)", band)
         self.assertIn("showsAttach ? 8 + controlSide + 8 : 10", band,
-                      "the pill must start where the typed text starts, including the row's inset")
+                      "the row must start where the typed text starts, including its inset")
         self.assertNotIn("overlay", band)
+        self.assertNotIn("ComposerModelPill", band,
+                         "the band draws the row; the row is what draws the pill")
         self.assertLess(self.COMPOSER_SOURCE.index("            HStack(alignment: .bottom, spacing: 8) {"),
                         self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"))
         self.assertLess(self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"),
@@ -203,25 +236,47 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
 
     def test_typing_cannot_re_lay_the_pill_out(self) -> None:
         self.assertIn("public struct ComposerModelPill: View, Equatable", self.PILL_SOURCE)
-        # The closure is not compared: it is rebuilt every parent pass, and comparing it would make
-        # `.equatable()` pointless.
+        self.assertIn("public struct ComposerSessionRow: View, Equatable", self.ROW_SOURCE)
+        # The closures are not compared: they are rebuilt every parent pass, and comparing them
+        # would make `.equatable()` pointless. The pill compares the model it draws; the row
+        # compares the model and the count its two halves draw.
         comparator = between(self.PILL_SOURCE,
                              "public static func == (lhs: ComposerModelPill",
                              "/// The tinted round glyph")
-        for field in ("provider", "model", "used", "limit", "isEnabled"):
+        for field in ("provider", "model", "isEnabled"):
             self.assertIn(f"lhs.{field} == rhs.{field}", comparator)
         self.assertNotIn("onOpen", comparator)
-        # Applied once, in the composer — so both apps inherit it rather than each remembering.
-        block = between(self.COMPOSER_SOURCE, "if let sessionPill {", "field\n")
-        self.assertIn(".equatable()", block)
-        self.assertNotIn("model.draft", self.PILL_SOURCE)
-        self.assertNotIn("GeometryReader", self.PILL_SOURCE)
+        row_comparator = between(self.ROW_SOURCE,
+                                 "public static func == (lhs: ComposerSessionRow",
+                                 "public var body: some View {")
+        for field in ("provider", "model", "used", "limit", "isEnabled"):
+            self.assertIn(f"lhs.{field} == rhs.{field}", row_comparator)
+        self.assertNotIn("onOpen", row_comparator)
+        # Applied once, in the composer, where the row is drawn — so both apps inherit it rather
+        # than each remembering.
+        band = between(self.COMPOSER_SOURCE,
+                       "private var sessionPillBand: some View {",
+                       "private var trimmed: String {")
+        self.assertIn(".equatable()", band)
+        for source in (self.PILL_SOURCE, self.ROW_SOURCE):
+            self.assertNotIn("model.draft", source)
+            self.assertNotIn("GeometryReader", source)
 
     def test_both_apps_draw_it_and_open_the_picker_they_already_have(self) -> None:
         for name, source in (("the Mac", self.MAC_SOURCE), ("the phone", self.PHONE_SOURCE)):
-            self.assertEqual(source.count("sessionPill: ComposerModelPill("), 1, name)
+            # One row per composer, built with the same five values (the action is each app's own).
+            self.assertEqual(source.count("sessionRow: ComposerSessionRow("), 1, name)
+            call = between(source, "sessionRow: ComposerSessionRow(", "onOpen:")
+            for value in ("provider: model.modelProvider",
+                          "model: model.modelLabel",
+                          "used: model.contextUsed",
+                          "limit: model.contextMax",
+                          "isEnabled:"):
+                self.assertIn(value, call, name)
+            # Neither app assembles the pill itself: the row is the only door to it.
+            self.assertNotIn("ComposerModelPill(", source, name)
 
-        # The Mac: the pill calls `store.openModel`, which is the one door the bot panel's Model
+        # The Mac: the row calls `store.openModel`, which is the one door the bot panel's Model
         # row uses, and that flag presents `MacModelSheet` at the window's root. No second picker.
         self.assertIn("guard let bot = model.selectedBot else { return }", self.MAC_SOURCE)
         self.assertIn("store.openModel(bot)", self.MAC_SOURCE)
@@ -235,6 +290,25 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         phone = self.PHONE_SOURCE
         self.assertIn(".sheet(isPresented: $showModel) {", phone)
         self.assertIn("BotModelSheet(bot: bot, model: model)", phone)
+
+    def test_the_pill_has_no_count_left_in_it(self) -> None:
+        # The two halves cannot silently merge back: `used`/`limit` live on `ComposerSessionRow`,
+        # which draws the count, and the init through which the row builds the pill passes neither.
+        pill = without_comments(self.pill_struct())
+        for field in ("used", "limit", "contextUsed", "contextMax"):
+            self.assertIsNone(re.search(rf"\b{field}\b", pill),
+                              "the pill type must not carry the context count again")
+        row_init = between(self.ROW_SOURCE,
+                           "public init(provider: String?",
+                           "self.provider = provider")
+        for field in ("used: Int?", "limit: Int?"):
+            self.assertIn(field, row_init, "the row is where the count's inputs belong")
+        pill_call = between(self.ROW_SOURCE,
+                            "ComposerModelPill(provider: provider",
+                            "onOpen: onOpen)")
+        for field in ("used:", "limit:"):
+            self.assertNotIn(field, pill_call,
+                             "the row must not hand the pill the count it draws itself")
 
     def test_the_name_on_the_pill_is_the_host_s_number(self) -> None:
         # The pill reads the same two published values the header does, and the picker writes

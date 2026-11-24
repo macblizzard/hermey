@@ -30,7 +30,7 @@ public struct Composer: View {
     /// of it however long the message gets. The caller supplies the values and the action, so this
     /// view still knows nothing about pickers — and `Composer` applies `.equatable()` for both
     /// apps, so a keystroke cannot re-lay it out.
-    private let sessionPill: ComposerModelPill?
+    private let sessionRow: ComposerSessionRow?
     private let onSend: () -> Void
     private let onAttach: (() -> Void)?
     private let onMic: (() -> Void)?
@@ -103,7 +103,7 @@ public struct Composer: View {
                 micAccessibilityLabel: String = "Record a voice message",
                 isMicEnabled: Bool = true,
                 hint: String? = Composer.defaultHint,
-                sessionPill: ComposerModelPill? = nil,
+                sessionRow: ComposerSessionRow? = nil,
                 onSend: @escaping () -> Void,
                 onAttach: (() -> Void)? = nil,
                 onMic: (() -> Void)? = nil,
@@ -127,7 +127,7 @@ public struct Composer: View {
         self.micAccessibilityLabel = micAccessibilityLabel
         self.isMicEnabled = isMicEnabled
         self.hint = hint
-        self.sessionPill = sessionPill
+        self.sessionRow = sessionRow
         self.onSend = onSend
         self.onAttach = onAttach
         self.onMic = onMic
@@ -194,8 +194,8 @@ public struct Composer: View {
     /// both platforms: the pill is chrome below the text, never beside it.
     @ViewBuilder
     private var sessionPillBand: some View {
-        if let sessionPill {
-            sessionPill
+        if let sessionRow {
+            sessionRow
                 .equatable()
                 .frame(height: controlSide)
                 // Flush with the text, not the card: the row's own 8 pt inset, the paperclip, and

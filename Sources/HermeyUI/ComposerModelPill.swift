@@ -64,8 +64,6 @@ public enum SessionLine {
 public struct ComposerModelPill: View, Equatable {
     private let provider: String?
     private let model: String?
-    private let used: Int?
-    private let limit: Int?
     private let isEnabled: Bool
     /// Opening the picker is the caller's business: the Mac opens the same sheet the bot panel's
     /// Model row does, the phone the same sheet its drawer does. This view knows none of that.
@@ -82,14 +80,10 @@ public struct ComposerModelPill: View, Equatable {
 
     public init(provider: String?,
                 model: String?,
-                used: Int?,
-                limit: Int?,
                 isEnabled: Bool = true,
                 onOpen: @escaping () -> Void) {
         self.provider = provider
         self.model = model
-        self.used = used
-        self.limit = limit
         self.isEnabled = isEnabled
         self.onOpen = onOpen
     }
@@ -99,8 +93,6 @@ public struct ComposerModelPill: View, Equatable {
     public static func == (lhs: ComposerModelPill, rhs: ComposerModelPill) -> Bool {
         lhs.provider == rhs.provider
             && lhs.model == rhs.model
-            && lhs.used == rhs.used
-            && lhs.limit == rhs.limit
             && lhs.isEnabled == rhs.isEnabled
     }
 
@@ -110,7 +102,6 @@ public struct ComposerModelPill: View, Equatable {
 
     public var body: some View {
         let name = SessionLine.model(provider: provider, model: model)
-        let tokens = SessionLine.context(used: used, limit: limit)
 
         // No model name, no pill: an empty dark lozenge would be a control that says nothing and
         // opens a picker for a bot whose model the host never named.
@@ -118,31 +109,15 @@ public struct ComposerModelPill: View, Equatable {
             Button(action: onOpen) {
                 HStack(spacing: 5) {
                     glyph
-
-                    // Both parts, always: the model gives up width first and truncates, the count
-                    // keeps its room. The old fit-based fallback dropped the whole count on a narrow
-                    // pill, which is why the phone lost it while the Mac kept it — the number is what
-                    // the reader came for, so it is not the thing that disappears.
-                    HStack(spacing: 4) {
-                        modelName(name)
-                            .layoutPriority(0)
-                        if let tokens {
-                            context(tokens)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .layoutPriority(1)
-                        }
-                    }
-
+                    // The pill holds the model alone. The context count is its own text at the far
+                    // right of the same row (`ComposerSessionRow`), so neither half can squeeze the
+                    // other: the name truncates here, the count keeps its room there.
+                    modelName(name)
                     chevron
                 }
-                // About the sample's 14 pt, trimmed to 12 because this pill is the height of the
-                // Mac's 26 pt row controls and a wider inset reads as a lozenge rather than a chip.
-                .padding(.horizontal, 14)
-                // Fills the row's control height. `fixedSize(vertical:)` used to sit below this and
-                // pinned the lozenge to its text height, so it read as a slim bar beside round
-                // buttons twice its height — the row's height is the pill's height.
+                .padding(.horizontal, 12)
+                // Fills the row's control height — the row's height is the pill's height.
                 .frame(maxHeight: .infinity)
-                .frame(minHeight: 0)
                 // Dark lozenge, no border: the fill the bar composer already uses, one step lighter
                 // under the pointer — and on keyboard focus, which is why focus needs no rim here
                 // and gets none: a rim inside the field would read as a text field inside the field.
@@ -157,9 +132,9 @@ public struct ComposerModelPill: View, Equatable {
             .disabled(!isEnabled)
             .opacity(isEnabled ? 1 : 0.55)
             .lineLimit(1)
-            // One element to VoiceOver: glyph, name, count and chevron are a single control.
+            // One element to VoiceOver. The count is announced by the row that draws it, not here.
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(accessibilityLabel(name: name))
+            .accessibilityLabel("Model \(name)")
             .accessibilityHint("Opens this bot's model picker")
             .accessibilityAddTraits(.isButton)
             .hermeyFocusQuiet()
@@ -173,15 +148,6 @@ public struct ComposerModelPill: View, Equatable {
         Text(name)
             .font(TypeScale.font(TypeScale.label, weight: .semibold))
             .foregroundStyle(Tokens.textPrimary)
-            .lineLimit(1)
-            .truncationMode(.tail)
-    }
-
-    /// The count, quieter than the name and beside it — a gap, not a divider.
-    private func context(_ tokens: String) -> some View {
-        Text(tokens)
-            .font(TypeScale.font(TypeScale.caption))
-            .foregroundStyle(Tokens.textMuted)
             .lineLimit(1)
             .truncationMode(.tail)
     }
@@ -206,10 +172,4 @@ public struct ComposerModelPill: View, Equatable {
             .accessibilityHidden(true)
     }
 
-    private func accessibilityLabel(name: String) -> String {
-        if let tokens = SessionLine.context(used: used, limit: limit) {
-            return "Model \(name), \(tokens)"
-        }
-        return "Model \(name)"
-    }
 }

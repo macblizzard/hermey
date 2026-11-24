@@ -162,7 +162,7 @@ struct MacComposerBar: View {
                      // values come from the host (`contextUsed` arrives with a completed turn's
                      // usage, so until then the pill is the model alone), and the pill is
                      // `Equatable`, so typing cannot lay it out again.
-                     sessionPill: ComposerModelPill(provider: model.modelProvider,
+                     sessionRow: ComposerSessionRow(provider: model.modelProvider,
                                                     model: model.modelLabel,
                                                     used: model.contextUsed,
                                                     limit: model.contextMax,
