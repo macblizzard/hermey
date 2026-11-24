@@ -89,6 +89,16 @@ public struct BotAvatarView: View {
     /// `false` for its idle rows, which is the difference between one face rebuilding per frame and
     /// twenty.
     public var animates: Bool
+    /// The pointer is on this face's row: wake it up.
+    ///
+    /// A woken face greets once — a short hop and lean with the eyes turned toward the row's content
+    /// (`BotAvatarWake`) — and then settles into the reference's idle float for as long as the pointer
+    /// stays. Two things keep it honest: it lifts the *resting* rule (the `animates` flag and the size
+    /// floor) only while this is true, never as a permanent change; and it never borrows the busy
+    /// performance, because a hovered row is idle, not working. Reduce Motion refuses the greeting.
+    ///
+    /// The phone has no pointer, so only the Mac passes `true`.
+    public var wakesOnHover: Bool
     /// The size at which this face starts moving. Defaults to the house floor; a surface where the
     /// face *is* the status (the working row) passes `0` so even a 16 pt icon moves.
     public var animatingFrom: Double
@@ -120,12 +130,17 @@ public struct BotAvatarView: View {
     /// helper so flipping it redraws the faces that are on screen.
     @AppStorage(BotAvatarMotion.defaultsKey) private var appAllowsMotion = true
 
+    /// When the pointer arrived, so the greeting has a start instant. Cleared on the way out, so
+    /// coming back plays the hello again.
+    @State private var wokeAt: Double?
+
     public init(identity: String,
                 color: String? = nil,
                 activity: BotAvatarActivity = .idle,
                 size: CGFloat = 36,
                 reduceMotion: Bool = false,
                 animates: Bool = true,
+                wakesOnHover: Bool = false,
                 animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize,
                 label: String? = nil,
                 pageBackground: Color? = nil,
@@ -137,6 +152,7 @@ public struct BotAvatarView: View {
         self.size = size
         self.reduceMotion = reduceMotion
         self.animates = animates
+        self.wakesOnHover = wakesOnHover
         self.animatingFrom = animatingFrom
         self.label = label
         self.pageBackground = pageBackground
@@ -152,13 +168,32 @@ public struct BotAvatarView: View {
     static let lightEyeInk = Color.white
 
     public var body: some View {
-        if let face = self.face {
-            // The generated avatar draws itself, in its own volume; the shape-and-palette face below
-            // is untouched, which is what keeps a bot without one looking exactly as it did.
-            drawnBody(face)
-        } else {
-            shapeBody
+        Group {
+            if let face = self.face {
+                // The generated avatar draws itself, in its own volume; the shape-and-palette face below
+                // is untouched, which is what keeps a bot without one looking exactly as it did.
+                drawnBody(face)
+            } else {
+                shapeBody
+            }
         }
+        // A new arrival is a new hello: the greeting runs from the instant the pointer lands, and
+        // the face goes back to its resting look the moment it leaves.
+        .onChange(of: wakesOnHover) { _, awake in
+            wokeAt = awake ? Date().timeIntervalSinceReferenceDate : nil
+        }
+    }
+
+    /// Whether the pointer is holding this face awake.
+    ///
+    /// It answers nothing about `animates` or the size floor on purpose — those keep the *resting*
+    /// list cheap, and a hover lifts them only for as long as it lasts. Reduce Motion, the app's own
+    /// switch and a backgrounded window still say no.
+    private var isAwake: Bool {
+        BotAvatarWake.allows(wakesOnHover: wakesOnHover,
+                             reduceMotion: reduceMotion || systemReduceMotion,
+                             appAllowsMotion: appAllowsMotion,
+                             isActiveScene: scenePhase == .active)
     }
 
     /// The generated avatar, performing the motions the shape face already has.
@@ -190,19 +225,19 @@ public struct BotAvatarView: View {
                                                && scenePhase == .active,
                                            size: size,
                                            minimumSize: animatingFrom)
+        let awake = isAwake
         let traits = BotAvatarMotionTraits(identity: resolved.identity)
         let state = OpenBotAvatarState(activity: activity)
 
-        return TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
-                                       paused: !moves)) { context in
+        return TimelineView(.animation(minimumInterval: awake ? BotAvatarWake.frameInterval
+                                                              : BotAvatarMotion.frameInterval(for: activity),
+                                       paused: !moves && !awake)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
             // One frame, the same call the shape face makes: the state's own acting with the jump,
-            // flip, darts and squint performed over it.
-            let frame = moves
-                ? BotAvatarMotion.performedFrame(activity: activity,
-                                                 traits: traits,
-                                                 at: context.date.timeIntervalSinceReferenceDate,
-                                                 side: Double(size))
-                : .rest
+            // flip, darts and squint performed over it — or, while the pointer is on the row, the
+            // one-off greeting that settles into the reference's idle float. Resolved by one helper,
+            // because a result builder cannot take an `if` that assigns.
+            let frame = motionFrame(at: time, traits: traits, moves: moves, awake: awake)
 
             OpenBotAvatarView(definition: face.definition,
                               color: face.color,
@@ -211,17 +246,34 @@ public struct BotAvatarView: View {
                               mood: OpenBotAvatarState.mood(for: activity),
                               size: size,
                               // The app's own motion switch stops the drawn breath too; it never
-                              // reached this branch before.
-                              animates: animates && appAllowsMotion,
+                              // reached this branch before. A woken face breathes whatever the
+                              // resting rule said, and below the size floor too — for the length of
+                              // the hover only.
+                              animates: (animates || awake) && appAllowsMotion,
                               reduceMotion: reduceMotion,
-                              animatingFrom: animatingFrom,
+                              animatingFrom: awake ? 0 : animatingFrom,
                               label: label,
-                              eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
+                              eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
                 .scaleEffect(x: frame.body.scaleX, y: frame.body.scaleY)
                 .rotationEffect(.degrees(frame.body.rotate))
                 .offset(x: frame.body.translateX * size, y: frame.body.translateY * size)
                 .brightness(frame.body.brightness)
         }
+    }
+
+    /// The one place a frame is chosen for either face: woken (the pointer is on the row), acting
+    /// (the state and its performance), or at rest. A result builder cannot hold an `if` that
+    /// assigns, which is why this is a function and not a statement list.
+    private func motionFrame(at time: Double,
+                             traits: BotAvatarMotionTraits,
+                             moves: Bool,
+                             awake: Bool) -> BotAvatarMotion.Frame {
+        if awake { return BotAvatarWake.frame(at: time, since: wokeAt, traits: traits) }
+        if moves {
+            return BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time,
+                                                   side: Double(size))
+        }
+        return .rest
     }
 
     /// The face this view draws: the definition it was handed (a preview, the editor), else what the
@@ -247,6 +299,7 @@ public struct BotAvatarView: View {
                                                && scenePhase == .active,
                                            size: size,
                                            minimumSize: animatingFrom)
+        let awake = isAwake
         let traits = BotAvatarMotionTraits(identity: resolved.identity)
 
         // Built once per body evaluation, not once per tick: the shape's arcs were being re-rastered
@@ -255,10 +308,11 @@ public struct BotAvatarView: View {
 
         // `body` gets result-builder semantics from the protocol; this property does not, so a body
         // with more than one statement needs the return spelled out.
-        return TimelineView(.animation(minimumInterval: BotAvatarMotion.frameInterval(for: activity),
-                                paused: !moves)) { context in
+        return TimelineView(.animation(minimumInterval: awake ? BotAvatarWake.frameInterval
+                                                             : BotAvatarMotion.frameInterval(for: activity),
+                                paused: !moves && !awake)) { context in
             content(resolved: resolved, facePath: facePath, traits: traits, moves: moves,
-                    date: context.date)
+                    awake: awake, date: context.date)
         }
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
@@ -273,6 +327,7 @@ public struct BotAvatarView: View {
                          facePath: Path,
                          traits: BotAvatarMotionTraits,
                          moves: Bool,
+                         awake: Bool = false,
                          date: Date) -> some View {
         let time = date.timeIntervalSinceReferenceDate
         // One frame, evaluated exactly as the reference's `logoAvatarFrame`, with the state's stunts
@@ -280,9 +335,10 @@ public struct BotAvatarView: View {
         // state's authored track, a scheduled blink closes them, and — in every busy state — the face
         // also jumps, flips, darts and squints between the acting (`BotAvatarPerformance`, asked for
         // 2026-11-16). Idle, waiting and error keep the reference's own stillness.
-        let frame = moves
-            ? BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time, side: Double(size))
-            : .rest
+        //
+        // A woken face (the pointer is on its row) replaces all of that with one greeting and then
+        // the reference's idle float — the row is being looked at, not working.
+        let frame = motionFrame(at: time, traits: traits, moves: moves, awake: awake)
         let body = frame.body
         let eyes = frame.eyes
 

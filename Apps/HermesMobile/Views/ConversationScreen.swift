@@ -544,8 +544,9 @@ struct ConversationScreen: View {
     ///
     /// The model and the context count used to be formatted here (`modelChipLabel`, `contextUsage`,
     /// `contextTint`) for chips under the pill. Those chips are gone, and the two facts now live in
-    /// the composer's chrome — printed by `ComposerSessionLine`/`SessionLine` for **both** apps, so
-    /// there is one `540k/1M Tokens` rule rather than a phone copy and a desktop copy of it.
+    /// the composer itself, on the model pill — printed by `ComposerModelPill`/`SessionLine` for
+    /// **both** apps, so there is one `540k/1M Tokens` rule rather than a phone copy and a desktop
+    /// copy of it.
 
     /// How much conversation is on screen, the same count the desktop's subtitle carries.
     private var entryCountLabel: String? {
@@ -1080,19 +1081,10 @@ struct ConversationScreen: View {
                     .transition(.opacity)
             }
 
-            // The model and how full its context is: the composer's chrome, over the field and
-            // outside it, so it can truncate to the model alone on a narrow phone without ever
-            // touching what is being typed. Same view, same formatter as the desktop's line.
-            ComposerSessionLine(provider: model.modelProvider,
-                                model: model.modelLabel,
-                                used: model.contextUsed,
-                                limit: model.contextMax)
-                .equatable()
-                .padding(.leading, Geometry.chatGutter + 10)
-                .padding(.trailing, Geometry.chatGutter)
-                .padding(.bottom, 2)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+            // The model and how full its context is: inside the composer, in the row the paperclip
+            // and the send arrow live in, as one pill that opens this bot's model picker. Same
+            // view, same formatter as the desktop's pill — and a narrow phone drops the count and
+            // keeps the model name and the chevron.
             Composer(text: $model.draft,
                      // Floating, like the desktop's: the field is a capsule over the transcript,
                      // not a bordered box standing on the floor of a bar.
@@ -1105,6 +1097,15 @@ struct ConversationScreen: View {
                      micTint: voice.state == .recording ? Tokens.danger : nil,
                      micAccessibilityLabel: micLabel,
                      isMicEnabled: sessionID != nil,
+                     // The same pill the desktop draws, for this bot: tapping it opens the sheet
+                     // the drawer's Model row opens (`BotModelSheet`), which writes through
+                     // `configureModel` and refreshes `modelLabel` for the open bot.
+                     sessionPill: ComposerModelPill(provider: model.modelProvider,
+                                                    model: model.modelLabel,
+                                                    used: model.contextUsed,
+                                                    limit: model.contextMax,
+                                                    isEnabled: sessionID != nil,
+                                                    onOpen: { showModel = true }),
                      onSend: { Task { await model.send() } },
                      onAttach: {
                          withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {

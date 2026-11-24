@@ -22,6 +22,15 @@ public struct Composer: View {
     private let showsAttach: Bool
     private let showsMic: Bool
     private let hint: String?
+    /// The session's model, drawn as a pill in the control row — right of the paperclip, on the
+    /// same line as the send arrow.
+    ///
+    /// It is a row *sibling*, not an overlay and not a strip above the card: the field's own height
+    /// and padding are the field's, and a pill that lives beside the text cannot cover a character
+    /// of it however long the message gets. The caller supplies the values and the action, so this
+    /// view still knows nothing about pickers — and `Composer` applies `.equatable()` for both
+    /// apps, so a keystroke cannot re-lay it out.
+    private let sessionPill: ComposerModelPill?
     private let onSend: () -> Void
     private let onAttach: (() -> Void)?
     private let onMic: (() -> Void)?
@@ -94,6 +103,7 @@ public struct Composer: View {
                 micAccessibilityLabel: String = "Record a voice message",
                 isMicEnabled: Bool = true,
                 hint: String? = Composer.defaultHint,
+                sessionPill: ComposerModelPill? = nil,
                 onSend: @escaping () -> Void,
                 onAttach: (() -> Void)? = nil,
                 onMic: (() -> Void)? = nil,
@@ -117,6 +127,7 @@ public struct Composer: View {
         self.micAccessibilityLabel = micAccessibilityLabel
         self.isMicEnabled = isMicEnabled
         self.hint = hint
+        self.sessionPill = sessionPill
         self.onSend = onSend
         self.onAttach = onAttach
         self.onMic = onMic
@@ -176,6 +187,26 @@ public struct Composer: View {
         view.padding(.bottom, controlInset)
     }
 
+    #if os(iOS)
+    /// The phone's band for the session pill, under the field row.
+    ///
+    /// A phone's control row cannot hold both the field and a pill that carries a model name: the
+    /// remaining width would be too small to type in. So the phone stacks the same pill in its own
+    /// row of the same container — still composer chrome, still one row, still nothing drawn over
+    /// the text — while the Mac puts it in the control row itself.
+    @ViewBuilder
+    private var sessionPillBand: some View {
+        if let sessionPill {
+            sessionPill
+                .equatable()
+                .frame(height: controlSide)
+                .padding(.leading, 8)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+    #endif
+
     private var trimmed: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -226,6 +257,24 @@ public struct Composer: View {
                 if showsAttach {
                     rowCentred(attachControl)
                 }
+
+                // The session's model, where the sample put it: in this row, after the paperclip.
+                // It rides the last line with the other controls and takes the row's own control
+                // height, so the lozenge, the clip and the arrow are one line of chrome — and the
+                // field beside it keeps its height and padding untouched, because this is a
+                // sibling rather than something drawn over the text.
+                //
+                // The Mac only. A phone's row is ~340 pt wide, and a pill carrying a model name
+                // would leave the field about 80 pt to type in — so on iOS the same pill gets the
+                // band under the field instead (`sessionPillBand`), still inside the composer and
+                // still its own row.
+                #if os(macOS)
+                if let sessionPill {
+                    rowCentred(sessionPill
+                        .equatable()
+                        .frame(height: controlSide))
+                }
+                #endif
 
                 field
                     .frame(minHeight: rowHeight)
@@ -283,6 +332,14 @@ public struct Composer: View {
             .padding(.horizontal, 8)
             .padding(.top, 6)
             .padding(.bottom, hint == nil ? 8 : 2)
+
+            // The phone's own band for the same pill, inside the same container: a row of the
+            // composer rather than a line near it — under the field's row and above the card's
+            // hint, so it can never cover a character being typed. (The Mac has room for the pill
+            // in the control row itself — see above.)
+            #if os(iOS)
+            sessionPillBand
+            #endif
 
             if let hint, !hint.isEmpty {
                 Text(hint)

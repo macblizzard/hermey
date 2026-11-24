@@ -13,7 +13,10 @@
 * **The line.** `provider/model · 540k/1M Tokens` over the compose box, on both apps, in muted
   chrome outside the field: one formatter (`SessionLine` over `TokenCount`), one view
   (`ComposerSessionLine`), no wrapping, truncated before the composer can grow, model-only on a
-  narrow window, and `Equatable` so typing cannot re-lay it out per character.
+  narrow window, and `Equatable` so typing cannot re-lay it out per character. *(Moved again on
+  2026-11-24: Mohammad's sample put it **inside** the composer, as a pill in the control row, so the
+  same formatter now feeds `ComposerModelPill`. Its own guards are in
+  `test_composer_pill_and_row_menu.py`; what stays here is the rule both apps share.)*
 """
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ UI = ROOT / "Sources" / "HermeyUI"
 STACK = UI / "StackedBotFaces.swift"
 GROUP = UI / "GroupChatViews.swift"
 MENU_ROW = UI / "MessageMenuRow.swift"
-SESSION_LINE = UI / "ComposerSessionLine.swift"
+SESSION_LINE = UI / "ComposerModelPill.swift"
 MAC_ROW = ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptRowView.swift"
 MAC_BAR = ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerBar.swift"
 PHONE = ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift"
@@ -171,7 +174,7 @@ class EveryMenuRowCarriesItsGlyph(unittest.TestCase):
 
 
 class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
-    """`provider/model · used/limit Tokens`, from one formatter, in chrome that cannot move text."""
+    """`provider/model · used/limit Tokens`, from one formatter, on one pill, on both apps."""
 
     LINE = read(SESSION_LINE)
     MAC = read(MAC_BAR)
@@ -181,7 +184,7 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
     def test_both_apps_draw_the_same_view_from_the_same_values(self) -> None:
         for name, source in (("the Mac's composer bar", self.MAC),
                              ("the phone's conversation", self.PHONE)):
-            self.assertIn("ComposerSessionLine(provider: model.modelProvider", source, name)
+            self.assertIn("ComposerModelPill(provider: model.modelProvider", source, name)
             self.assertIn("model: model.modelLabel", source, name)
             self.assertIn("used: model.contextUsed", source, name)
             self.assertIn("limit: model.contextMax", source, name)
@@ -209,14 +212,19 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
         self.assertNotIn("private var contextUsage: String?", self.PHONE)
         self.assertNotIn("private var modelChipLabel: String?", self.PHONE)
 
-    def test_the_line_is_chrome_outside_the_field(self) -> None:
+    def test_the_pill_is_a_row_of_the_composer_not_a_line_above_it(self) -> None:
         for field in ("TextField(", "TextEditor(", "ComposerTextView(", "Composer(text:"):
             self.assertNotIn(field, self.LINE)
-        # Drawn above the composer, not inside it — in both apps.
+        # Drawn *by* the composer, in the control row: the design system takes the pill as a row
+        # sibling, and neither app draws it outside the `Composer(` call any more.
+        composer = read(UI / "Composer.swift")
+        self.assertIn("private let sessionPill: ComposerModelPill?", composer)
+        self.assertIn("if let sessionPill {", composer)
         for name, source in (("the Mac's composer bar", self.MAC),
                              ("the phone's conversation", self.PHONE)):
-            self.assertLess(source.index("ComposerSessionLine("),
-                            source.index("Composer(text: $model.draft"), name)
+            self.assertLess(source.index("Composer(text: $model.draft"),
+                            source.index("ComposerModelPill("), name)
+            self.assertNotIn("ComposerSessionLine", source, name)
 
     def test_it_cannot_wrap_grow_or_truncate_the_message(self) -> None:
         # One line, truncated at the tail, and the full line gives way to the model alone rather
@@ -230,13 +238,14 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
         self.assertNotIn("model.draft", self.LINE)
 
     def test_a_keystroke_cannot_re_lay_it_out(self) -> None:
-        # The line is `Equatable` and both call sites use `.equatable()`: typing changes the draft
-        # binding, not these four values, so SwiftUI skips its body (and its ViewThatFits pass).
-        self.assertIn("public struct ComposerSessionLine: View, Equatable", self.LINE)
-        for name, source in (("the Mac's composer bar", self.MAC),
-                             ("the phone's conversation", self.PHONE)):
-            block = source.split("ComposerSessionLine(", 1)[1].split("Composer(text:", 1)[0]
-            self.assertIn(".equatable()", block, name)
+        # The pill is `Equatable` and the composer applies `.equatable()` once, for both apps:
+        # typing changes the draft binding, not these four values, so SwiftUI skips its body (and
+        # its ViewThatFits pass).
+        self.assertIn("public struct ComposerModelPill: View, Equatable", self.LINE)
+        self.assertIn("public static func == (lhs: ComposerModelPill", self.LINE)
+        composer = read(UI / "Composer.swift")
+        block = composer.split("if let sessionPill {", 1)[1].split("field\n", 1)[0]
+        self.assertIn(".equatable()", block)
 
 
 if __name__ == "__main__":

@@ -49,7 +49,15 @@ MAC_PET = ROOT / "Apps" / "HermesMac" / "Pets" / "PetView.swift"
 RUST_AVATAR = ROOT / "hermeyd" / "src" / "bot_avatar.rs"
 RUST_ROUTES = ROOT / "hermeyd" / "src" / "bridge_routes.rs"
 
+PRESETS = AVATAR / "OpenBotAvatarPresets.swift"
+RANDOM = AVATAR / "OpenBotAvatarRandom.swift"
+PALETTE = UI / "BotAvatarPalette.swift"
+
 STATES = ["idle", "thinking", "reading", "working", "computer", "waiting", "blocked", "done"]
+
+#: The fields a material's spec has to fill in, because the painter reads every one of them.
+SPEC_FIELDS = ["material:", "name:", "summary:", "fill:", "halo:", "sheens:", "streaks:",
+               "rim:", "contact:", "texture:", "desaturatesWhenBlocked:", "addsEyeCatchlight:"]
 
 
 def read(path: Path) -> str:
@@ -59,6 +67,50 @@ def read(path: Path) -> str:
 def prose(text: str) -> str:
     """The comments of a Swift file as running text, so a sentence that wraps is still one string."""
     return " ".join(text.replace("///", " ").replace("//", " ").split())
+
+
+def material_cases() -> list[str]:
+    """The cases `BotAvatarMaterial` declares, in order."""
+    enum = read(MATERIAL).split("public enum BotAvatarMaterial")[1].split("/// Why a stored material")[0]
+    return re.findall(r"^    case (\w+)$", enum, re.MULTILINE)
+
+
+def table_materials() -> list[str]:
+    """The rows of `BotAvatarMaterialSpec.all`, in the order the editor lists them."""
+    table = read(MATERIAL).split("static let all: [BotAvatarMaterialSpec] = [")[1].split("]")[0]
+    return [row.strip().lstrip(".") for row in table.split(",") if row.strip()]
+
+
+def rust_materials() -> list[str]:
+    """`MATERIALS` from the host, checked against the length its type states."""
+    match = re.search(r"pub const MATERIALS: \[&str; (\d+)\] = \[([^\]]+)\]", read(RUST_AVATAR))
+    if match is None:
+        raise AssertionError("bot_avatar.rs no longer declares MATERIALS")
+    names = re.findall(r'"([a-z]+)"', match.group(2))
+    assert len(names) == int(match.group(1)), "MATERIALS' length and its entries disagree"
+    return names
+
+
+def material_sentence(materials: list[str]) -> str:
+    """The refusal's list, as both sides build it: `"a", "b" or "c"`."""
+    quoted = [f'"{material}"' for material in materials]
+    return quoted[0] if len(quoted) == 1 else f"{', '.join(quoted[:-1])} or {quoted[-1]}"
+
+
+def spec_rows() -> dict[str, str]:
+    """Each `static let <name> = BotAvatarMaterialSpec(...)` block, by name."""
+    source = read(MATERIAL)
+    rows: dict[str, str] = {}
+    for name in material_cases():
+        block = source.split(f"static let {name} = BotAvatarMaterialSpec(")
+        if len(block) > 1:
+            rows[name] = block[1].split("\n    )")[0]
+    return rows
+
+
+def code(text: str) -> str:
+    """The text with its comments removed, so an example written in a doc comment is not a literal."""
+    return "\n".join(line.split("///")[0].split("//")[0] for line in text.splitlines())
 
 
 def case_block(text: str, case: str) -> str:
@@ -94,14 +146,38 @@ class TheSixLayers(unittest.TestCase):
     def test_the_body_is_a_three_stop_vertical_ramp(self):
         material = read(MATERIAL)
         glass = material.split("static let glass")[1]
-        self.assertRegex(glass, r"fill: \.ramp\(lightness: 0\.18, mid: 0\.55, darkness: 0\.15\)")
+        self.assertRegex(glass, r"fill: \.ramp\(lightness: 0\.18, mid: 0\.55, darkness: 0\.15, step: nil\)")
         paint = read(PAINT)
         ramp = paint.split("// 2 — the body")[1].split("// 3 —")[0]
         # Vertical: same x at both ends, top to bottom of the shape's own bounds.
         self.assertIn("x: bounds.midX, y: bounds.minY", ramp)
         self.assertIn("x: bounds.midX, y: bounds.maxY", ramp)
-        self.assertIn("mixed(with: .white, lightness)", ramp)
-        self.assertIn("mixed(with: .black, darkness)", ramp)
+        # The three stops themselves live in `rampStops`, one function shared by every ramp fill.
+        stops = paint.split("static func rampStops")[1].split("static func haloRadius")[0]
+        self.assertIn("let light = base.mixed(with: .white, lightness).color", stops)
+        self.assertIn("let dark = base.mixed(with: .black, darkness).color", stops)
+        three = stops.split("guard let step else {")[1].split("}")[0]
+        self.assertEqual(three.count(".init(color:"), 3, "glass's ramp is three stops")
+        for stop in (".init(color: light, location: 0)",
+                     ".init(color: base.color, location: CGFloat(mid))",
+                     ".init(color: dark, location: 1)"):
+            self.assertIn(stop, three)
+
+    def test_a_horizon_turns_the_ramp_into_a_hard_line(self):
+        # The one fill behaviour the new materials needed: `step` compresses the crossing through
+        # the tint instead of blending it, which is what makes metal's horizon read at 26 pt.
+        paint = read(PAINT)
+        stops = paint.split("static func rampStops")[1].split("static func haloRadius")[0]
+        horizon = stops.split("let seam =")[1]
+        self.assertIn("min(1, seam + width)", horizon, "the dark half starts `step` past the seam")
+        self.assertIn("location: seam", horizon)
+        self.assertIn("base.mixed(with: .black, min(1, darkness * 1.35))", horizon,
+                      "the dark half keeps some form at the foot")
+        material = read(MATERIAL)
+        metal = material.split("static let metal")[1]
+        self.assertRegex(metal, r"fill: \.ramp\(lightness: 0\.58, mid: 0\.5, darkness: 0\.52, step: 0\.03\)")
+        matte = material.split("static let matte")[1]
+        self.assertIn("step: nil", matte, "matte is a soft ramp, not a horizon")
 
     def test_one_sheen_at_the_specs_centre_and_radius(self):
         glass = read(MATERIAL).split("static let glass")[1]
@@ -359,7 +435,9 @@ class SolidIsTheDefaultAndUntouched(unittest.TestCase):
 
     def test_solid_is_the_first_row_and_its_spec_is_empty(self):
         material = read(MATERIAL)
-        self.assertIn("static let all: [BotAvatarMaterialSpec] = [.solid, .glass]", material)
+        self.assertIn("static let all: [BotAvatarMaterialSpec] = [.solid, .glass, .matte, .metal]",
+                      material)
+        self.assertEqual(table_materials()[0], "solid", "Solid is still the default row")
         solid = material.split("static let solid = BotAvatarMaterialSpec(")[1].split("static let glass")[0]
         self.assertIn("fill: .flat", solid)
         for empty in ["halo: nil", "sheens: []", "streaks: []", "rim: nil", "contact: nil",
@@ -385,18 +463,42 @@ class SolidIsTheDefaultAndUntouched(unittest.TestCase):
 
 
 class TheMaterialIsStored(unittest.TestCase):
-    """`material` travels beside `definition` and `color`, refused when it is neither value."""
+    """`material` travels beside `definition` and `color`, refused when it is not one of the table."""
 
-    def test_the_two_sides_agree_on_the_values_and_the_refusal(self):
+    def test_the_two_sides_agree_on_the_values(self):
+        # The host's list is the authority a stored value is checked against, so the table the
+        # editor draws from has to be a subset of it — one material that is drawable but unstorable
+        # is a face a person can design and cannot save.
+        table = table_materials()
+        host = rust_materials()
+        for material in table:
+            self.assertIn(material, host,
+                          f"{material!r} is in the editor's table but the host would answer 400")
+        self.assertEqual(table, material_cases(),
+                         "the table and the enum's cases have drifted apart")
+        self.assertEqual(sorted(set(table)), sorted(set(host)),
+                         "the editor and the host accept different sets of materials")
+        # An old client's two values are still there, and still first: nothing it sends is refused.
+        self.assertEqual(host[:2], ["solid", "glass"])
+        self.assertIn("public static let accepted: [String] = allCases.map(\\.rawValue)", read(MATERIAL))
+
+    def test_both_sides_build_the_same_sentence_and_draw_it_from_their_list(self):
+        host = rust_materials()
+        spoken = material_sentence(host)              # "solid", "glass", "matte" or "metal"
+        literal = spoken.replace('"', '\\"')          # the same inside a Rust string literal
+        self.assertEqual(len(host), 4, "the list the sentence is built from changed; update the test")
+        # Rust: the sentence is built from `MATERIALS`, and the test pins the exact wording.
         rust = read(RUST_AVATAR)
+        self.assertIn("let quoted: Vec<String> = MATERIALS.iter()", rust)
+        self.assertIn('"material must be {}, not {raw:?}"', rust)
+        self.assertIn(spoken, rust, "the refusal's list is not the one MATERIALS holds")
+        self.assertIn(f'material must be {literal}, not \\"chrome\\"', rust)
+        self.assertIn(f'material must be a string, {literal}', rust)
+        # Swift: the sentence is built from `accepted`, which is built from the cases.
         swift = read(MATERIAL)
-        self.assertIn('pub const MATERIALS: [&str; 2] = ["solid", "glass"];', rust)
-        self.assertIn("public static let accepted: [String] = allCases.map(\\.rawValue)", swift)
-        # …and the cases are the two the host knows.
-        enum = swift.split("public enum BotAvatarMaterial")[1].split("/// Why a stored material")[0]
-        self.assertEqual(enum.count("\n    case "), 2, "exactly two materials ship")
-        for text in (rust, swift):
-            self.assertIn('material must be \\"solid\\" or \\"glass\\", not', text)
+        self.assertIn("let quoted = accepted.map { \"\\\"\\($0)\\\"\" }", swift)
+        self.assertIn('"material must be \\(allowedDescription), not \\"\\(raw)\\""', swift)
+        self.assertIn("quoted.dropLast().joined(separator: \", \") + \" or \" + last", swift)
 
     def test_the_host_validates_and_stores_it(self):
         routes = read(RUST_ROUTES)
@@ -436,6 +538,128 @@ class TheMaterialIsStored(unittest.TestCase):
         self.assertIn("public var material: BotAvatarMaterial", document)
         self.assertIn("material: BotAvatarMaterial = .solid", document)
         self.assertIn("case material", document)
+
+
+class EveryRowIsAWholeSpec(unittest.TestCase):
+    """A material is a row that fills in every field the painter reads — no half a spec."""
+
+    def test_each_row_fills_every_field_the_painter_reads(self):
+        rows = spec_rows()
+        self.assertEqual(sorted(rows), sorted(material_cases()), "a material has no spec row")
+        self.assertEqual(table_materials(), material_cases(),
+                         "a case is missing from the table, so `spec(for:)` would fall back to solid")
+        for name, row in rows.items():
+            with self.subTest(material=name):
+                for field in SPEC_FIELDS:
+                    self.assertIn(field, row, f"{name} does not set {field}")
+                self.assertIn(f"material: .{name}", row, f"{name}'s row names another material")
+                self.assertIn("name: \"", row)
+                self.assertIn("summary: \"", row)
+
+    def test_every_row_still_reads_at_26pt(self):
+        # 26 pt is a list row, and the plan draws three layers there: the fill, the rim and the
+        # contact band. Every material except the deliberately empty solid must own all three.
+        for name, row in spec_rows().items():
+            with self.subTest(material=name):
+                if name == "solid":
+                    self.assertIn("fill: .flat", row)
+                    continue
+                self.assertIn("fill: .ramp(", row)
+                self.assertIn("rim: MaterialRim(", row,
+                              "the rim is what holds a silhouette at 26 pt")
+                self.assertIn("contact: MaterialContact(", row,
+                              "without a contact band the shape looks pasted on")
+                self.assertIn("minimumWidth: 1", row, "a rim thinner than a point is not there")
+                self.assertIn("width: 0.", row)
+
+    def test_the_new_rows_are_told_apart_by_what_they_draw(self):
+        rows = spec_rows()
+        matte, metal, glass = rows["matte"], rows["metal"], rows["glass"]
+        # Matte: no specular at all, a grain only the full stack draws, and a rim that takes light
+        # away rather than adding it.
+        self.assertIn("halo: nil", matte, "a matte surface throws no light")
+        self.assertIn("sheens: []", matte)
+        self.assertIn("streaks: []", matte)
+        self.assertIn("texture: MaterialTexture(pattern: .grain", matte)
+        self.assertIn("blend: .normal", matte)
+        self.assertNotIn(".white", matte, "nothing on a matte body is white")
+        self.assertIn("addsEyeCatchlight: false", matte)
+        self.assertIn("desaturatesWhenBlocked: true", matte)
+        # Metal: the horizon, a narrow bright rim, no halo, no streak.
+        self.assertIn("step: 0.03", metal)
+        self.assertIn("halo: nil", metal, "a halo would wash out the horizon")
+        self.assertIn("streaks: []", metal, "a long streak is glass's signature")
+        self.assertIn("width: 0.012", metal)
+        self.assertIn("addsEyeCatchlight: true", metal)
+        self.assertIn("desaturatesWhenBlocked: false", metal)
+        # Glass keeps its own: a halo, one streak, a wide soft rim and no horizon.
+        self.assertIn("halo: MaterialHalo(", glass)
+        self.assertIn("MaterialStreak(", glass)
+        self.assertIn("width: 0.035", glass)
+        self.assertIn("step: nil", glass)
+
+
+class TheRandomButtonUsesTheTables(unittest.TestCase):
+    """Random is three tables read once — not a fourth palette, a fifth material list or a shape."""
+
+    def test_the_button_exists_and_applies_all_three_at_once(self):
+        editor = read(EDITOR)
+        self.assertIn('Button("Random") { randomise() }', editor)
+        self.assertIn("OpenBotAvatarRandom.pick(avoiding: lastRandomPick)", editor)
+        self.assertIn("material = pick.material", editor)
+        self.assertIn("colorHex = pick.colorHex", editor)
+        self.assertIn("adopt(pick.definition)", editor,
+                      "the preview and the JSON box must change together")
+        self.assertIn("private func randomise()", editor)
+
+    def test_the_pick_draws_shape_material_and_colour_from_the_tables(self):
+        random = read(RANDOM)
+        self.assertIn("try? OpenBotAvatarPresets.validated()", random,
+                      "a random shape must be a validated preset")
+        self.assertIn("BotAvatarMaterialSpec.all.map(\\.material)", random,
+                      "a random material must be a row of the table")
+        self.assertIn("BotAvatarPalette.colors.filter", random,
+                      "a random colour must come from the app's palette")
+        self.assertIn(".map(\\.hex)", random,
+                      "the colour is a palette entry's hex, not a new value")
+        # …and nothing of its own.
+        self.assertNotRegex(code(random), r"#[0-9A-Fa-f]{3,6}\b",
+                            "the randomiser has a colour list of its own")
+        self.assertNotIn("M50", random, "the randomiser has shapes of its own")
+
+    def test_it_cannot_repeat_the_last_pick(self):
+        random = read(RANDOM)
+        self.assertIn("all.filter { $0.combination != key }", random,
+                      "the pick comes from the set minus the last one, not a re-roll")
+        self.assertIn("guard !all.isEmpty else { return nil }", random)
+        self.assertIn("public var combination: String", random)
+        editor = read(EDITOR)
+        self.assertIn("@State private var lastRandomPick: String?", editor)
+        self.assertIn("lastRandomPick = pick.combination", editor)
+
+    def test_a_random_pick_cannot_leave_the_editor_invalid(self):
+        # The pick's three parts are a validated definition, a table material and a palette hex, and
+        # the editor adopts it through the same path a preset takes — so the JSON box follows and
+        # Save cannot be refused for something Random did.
+        editor = read(EDITOR)
+        randomise = editor.split("private func randomise() {")[1].split("\n    }")[0]
+        self.assertIn("adopt(pick.definition)", randomise)
+        self.assertIn("guard let pick = OpenBotAvatarRandom.pick", randomise)
+        adopt = editor.split("private func adopt(")[1].split("\n    }")[0]
+        self.assertIn("jsonStatus = .ok", adopt)
+        self.assertIn("syncJSONText()", adopt)
+
+    def test_the_editor_has_no_second_colour_list(self):
+        editor = code(read(EDITOR))
+        self.assertNotRegex(editor, r"#[0-9A-Fa-f]{3,6}", "a hex literal is a second palette")
+        self.assertNotIn("BotAvatarPalette.colors", editor,
+                         "the palette belongs to the randomiser, not the view")
+        for name in ("palette", "swatches", "colours", "colors"):
+            self.assertNotRegex(editor, rf"\b{name}\b\s*:\s*\[",
+                                f"the editor grew its own {name} list")
+        # The one place a colour is chosen by hand is the system picker, and it stores a hex.
+        self.assertIn("ColorPicker(\"Body colour\"", editor)
+        self.assertIn("colorHex = OpenBotAvatarColor.hex(of: $0)", editor)
 
 
 class TheEditorOffersEveryRow(unittest.TestCase):

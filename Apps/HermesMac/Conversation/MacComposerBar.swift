@@ -140,22 +140,6 @@ struct MacComposerBar: View {
                 pendingAttachmentsBar
             }
 
-            // The session's own facts, over the field: which model answers, and how full its context
-            // is. Chrome, not message — it sits outside the field and cannot reflow a character.
-            // `.equatable()` keeps a keystroke from laying this out again; both values come from the
-            // host (`contextUsed` arrives with a completed turn's usage, so until then the line is
-            // the model alone).
-            ComposerSessionLine(provider: model.modelProvider,
-                                model: model.modelLabel,
-                                used: model.contextUsed,
-                                limit: model.contextMax)
-                .equatable()
-                .padding(.horizontal, 8)
-                .frame(maxWidth: Geometry.conversationMeasure, alignment: .leading)
-                .padding(.horizontal, Geometry.readingInset)
-                .padding(.bottom, 4)
-                .frame(maxWidth: .infinity)
-
             Composer(text: $model.draft,
                      // A capsule over the transcript: no bar, no frame at rest.
                      floats: true,
@@ -171,6 +155,17 @@ struct MacComposerBar: View {
                      micAccessibilityLabel: micLabel,
                      isMicEnabled: canRecordVoice && !voice.isBusy,
                      hint: hint,
+                     // The session's own facts, inside the composer: which model answers, how full
+                     // its context is, and the door to the one picker the Mac already has. Both
+                     // values come from the host (`contextUsed` arrives with a completed turn's
+                     // usage, so until then the pill is the model alone), and the pill is
+                     // `Equatable`, so typing cannot lay it out again.
+                     sessionPill: ComposerModelPill(provider: model.modelProvider,
+                                                    model: model.modelLabel,
+                                                    used: model.contextUsed,
+                                                    limit: model.contextMax,
+                                                    isEnabled: model.selectedBot != nil,
+                                                    onOpen: openModelPicker),
                      onSend: { store.send() },
                      onAttach: { showsAttachmentMenu = true },
                      onMic: { toggleVoice() },
@@ -240,6 +235,15 @@ struct MacComposerBar: View {
                 model.draft = existing + " " + text
             }
         }
+    }
+
+    /// The pill's one action: the same sheet the bot panel's Model row opens, for the bot this
+    /// composer writes to. `store.openModel` is the Mac's only model door — nothing new is
+    /// presented, and the sheet writes through `configureModel`, which refreshes `modelLabel` for
+    /// the open bot, so the pill's own name changes as soon as the pick lands.
+    private func openModelPicker() {
+        guard let bot = model.selectedBot else { return }
+        store.openModel(bot)
     }
 
     private func toggleVoice() {

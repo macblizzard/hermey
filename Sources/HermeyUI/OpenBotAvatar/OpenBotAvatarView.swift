@@ -181,14 +181,14 @@ public extension OpenBotAvatarState {
 /// ```
 ///
 /// `material` is absent or null on every document written before it existed, and that means
-/// `solid` — so nothing already saved changes and there is no migration. A value that is neither
-/// `solid` nor `glass` is refused by `BotAvatarMaterial(validating:)`, the same rule (and the same
-/// sentence) the host applies when it answers 400.
+/// `solid` — so nothing already saved changes and there is no migration. A value that is none of
+/// `solid`, `glass`, `matte` or `metal` is refused by `BotAvatarMaterial(validating:)`, the same rule
+/// (and the same sentence) the host applies when it answers 400.
 public struct BotAvatarDocument: Hashable, Sendable, Codable {
     public var definition: BotAvatarDefinition
     /// `#RRGGBB`, or nil to draw the house colour.
     public var color: String?
-    /// `solid` or `glass`. Absent means `solid`.
+    /// One of `BotAvatarMaterial`'s values. Absent means `solid`.
     public var material: BotAvatarMaterial
 
     public init(definition: BotAvatarDefinition,

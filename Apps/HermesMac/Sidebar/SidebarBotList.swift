@@ -47,6 +47,17 @@ struct SidebarBotList: View {
     /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
     @State private var hoveredRow: String?
 
+    /// The row the keyboard is actually on — tab focus, not the search list's highlight — so the
+    /// ⋯ can be revealed for a keyboard user who has never touched the pointer. `nil` while no row
+    /// holds focus, which is the resting case: a focused key is a per-row fact, so it cannot be read
+    /// off a single `hoveredRow`.
+    @FocusState private var focusedRow: String?
+
+    /// The row whose ⋯ itself holds focus. Without it, tabbing from the row into the menu would take
+    /// the focus off the row, hide the button under the focus ring, and leave a keyboard user with an
+    /// invisible control.
+    @FocusState private var focusedOverflow: String?
+
     /// Arrow/Page/Home keys for the roster. The list already scrolls to `highlighted`; this is the
     /// pointer-free way to move through what is on screen.
     @State private var keyboardScroll = KeyboardScrollHandle()
@@ -645,6 +656,15 @@ private struct HoverRow<Content: View>: View {
         // transitions continuously. That is the sticky feel the conversation pane no longer has.
         let isPinned = model.isPinned(botID: bot.id)
 
+        // The ⋯ is not on every row all the time: it belongs to the row the person is on — under
+        // the pointer, holding keyboard focus, or the one the list has selected or highlighted.
+        // At rest the row is just the bot, and nothing is reserved for a control that is not there.
+        let showsOverflow = isHovered
+            || isSelected
+            || isKeyboardSelected
+            || focusedRow == bot.id
+            || focusedOverflow == bot.id
+
         return Button {
             guard !isSelected else { return }
             Haptics.selection()
@@ -662,7 +682,13 @@ private struct HoverRow<Content: View>: View {
                               color: store.botFaces[bot.id]?.raw,
                               activity: store.activity(for: bot.id),
                               size: metrics.avatar,
-                              animates: store.activity(for: bot.id) != .idle)
+                              animates: store.activity(for: bot.id) != .idle,
+                              // The pointer is on this row, so its face wakes: one greeting, then the
+                              // reference's own idle float, for as long as the pointer stays. This is
+                              // the same hover the ⋯ appears on — one state, two things that answer it.
+                              // It lifts the resting `animates` rule for this row only, and the row's
+                              // frame never changes size, so nothing re-lays while the face moves.
+                              wakesOnHover: isHovered)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
@@ -734,7 +760,9 @@ private struct HoverRow<Content: View>: View {
 
                 if model.hasUnread(bot.id) {
                     UnreadBeacon(diameter: 7)
-                        .opacity(isHovered ? 0 : 1)
+                        // One trailing affordance at a time: while the ⋯ is on the row it owns that
+                        // corner, or the two would be drawn on top of each other.
+                        .opacity(showsOverflow ? 0 : 1)
                 }
             }
             .padding(.horizontal, metrics.rowPadding)
@@ -757,11 +785,18 @@ private struct HoverRow<Content: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // The keyboard's own row: tab focus is what reveals the ⋯ without a pointer, and the
+        // binding is keyed by bot id so exactly one row can hold it.
+        .focused($focusedRow, equals: bot.id)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
         // The ⋯ is a sibling of the row's button, not a button inside it: a control nested in a
         // button's label is a control macOS never delivers a click to.
+        //
+        // An *overlay*, so it reserves no gutter: the row's title and timestamp are laid out as if
+        // the ⋯ were not there, and a long title simply truncates underneath it. A reserved trailing
+        // slot instead would re-wrap names as the pointer moved and leave a permanent hole at rest.
         .overlay(alignment: .trailing) {
-            overflowButton(for: bot, isVisible: isHovered)
+            overflowButton(for: bot, isVisible: showsOverflow)
                 .padding(.trailing, metrics.rowPadding + 2)
         }
         .contextMenu {
@@ -775,8 +810,12 @@ private struct HoverRow<Content: View>: View {
     /// popover the row drew itself, because ⌘E could not raise a `Menu` from the menu bar — ⌘E opens
     /// the bot's panel now, so the pointer's menu went back to being a menu.
     ///
-    /// Hidden until the pointer is on the row (or a menu is open), in a fixed slot so revealing it
-    /// moves nothing.
+    /// **Not on every row all the time.** It exists only while the row is the one being used —
+    /// hovered, keyboard-focused, selected or highlighted — and at rest the row is the bot alone. It
+    /// still occupies no layout: the button is an overlay, so nothing re-flows when it arrives, and
+    /// `allowsHitTesting` follows visibility so a click over the invisible corner belongs to the row.
+    /// It stays in the accessibility tree regardless, so VoiceOver and the accessibility "Show Menu"
+    /// action reach it without a pointer, exactly as the right-click menu does.
     @ViewBuilder
     private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {
         Menu {
@@ -799,6 +838,9 @@ private struct HoverRow<Content: View>: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // Focus inside the menu is still "this row's ⋯": the row's own focus is gone the moment the
+        // keyboard steps into the menu, and the button must not vanish under the focus ring.
+        .focused($focusedOverflow, equals: bot.id)
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
         .help("Bot menu")

@@ -1,0 +1,498 @@
+"""Two more reports from Mohammad, 2026-11-24, and the rule each one is held to.
+
+* **The row's ⋯.** It sat on every bot row all the time. It now exists only on the row a person is
+  using — hovered, keyboard-focused, selected or highlighted — and it is an overlay, so revealing it
+  moves nothing: no reserved gutter, and a long name simply truncates underneath it. The row's own
+  button, its context menu and its hit target are untouched.
+* **The composer's model pill.** The session line that floated above the capsule is now *inside* the
+  composer: a dark rounded pill in the same control row as the paperclip and the send arrow, right of
+  the attach control, with a tinted round glyph, the model in semibold, the context count quieter
+  beside it and a chevron. The whole pill is one button and it opens the existing model picker for
+  the bot being written to. It stays `Equatable`, one line, model-only on a narrow window — and it is
+  a row sibling, so it can never cover a character of what is being typed.
+* **The Lock Screen card's left edge.** Inside the Live Activity card, `HERMEY` and `Working · …` had
+  two different left edges, because the status line led with its phase symbol. Both rows now start at
+  the same point of the text column, nothing indents a line, the card's vertical padding is one
+  symmetric number, and the block is centred against the mark and the timer in all three phases.
+"""
+from __future__ import annotations
+
+import re
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+UI = ROOT / "Sources" / "HermeyUI"
+MAC = ROOT / "Apps" / "HermesMac"
+PHONE = ROOT / "Apps" / "HermesMobile"
+
+PILL = UI / "ComposerModelPill.swift"
+COMPOSER = UI / "Composer.swift"
+
+MAC_BAR = MAC / "Conversation" / "MacComposerBar.swift"
+PHONE_SCREEN = PHONE / "Views" / "ConversationScreen.swift"
+MAC_ROOT = MAC / "Workspace" / "WorkspaceRoot.swift"
+
+SIDEBAR = MAC / "Sidebar" / "SidebarBotList.swift"
+PHONE_LIST = PHONE / "Views" / "BotListScreen.swift"
+
+LIVE_ACTIVITY = ROOT / "Apps" / "HermesLiveActivity" / "HermeyTurnLiveActivity.swift"
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def between(text: str, start: str, end: str) -> str:
+    """The source between two markers, exclusive of `end`."""
+    assert start in text, f"missing start marker: {start!r}"
+    body = text.split(start, 1)[1]
+    assert end in body, f"missing end marker: {end!r}"
+    return body.split(end, 1)[0]
+
+
+def without_comments(text: str) -> str:
+    """The source with its `//` lines stripped: a guard about code must not read prose."""
+    return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
+
+
+class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
+    """A pill in the control row — the chrome language of a control, never a link or a caption."""
+
+    PILL_SOURCE = read(PILL)
+    COMPOSER_SOURCE = read(COMPOSER)
+    MAC_SOURCE = read(MAC_BAR)
+    PHONE_SOURCE = read(PHONE_SCREEN)
+
+    def pill_label(self) -> str:
+        """The button's label: everything the pill draws, minus the button's own modifiers."""
+        return between(self.PILL_SOURCE,
+                       "Button(action: onOpen) {",
+                       ".buttonStyle(PressableButtonStyle())")
+
+    def glyph_view(self) -> str:
+        return between(self.PILL_SOURCE,
+                       "private var glyph: some View {",
+                       "private var chevron: some View {")
+
+    def chevron_view(self) -> str:
+        return between(self.PILL_SOURCE,
+                       "private var chevron: some View {",
+                       "private func accessibilityLabel")
+
+    def model_name_view(self) -> str:
+        return between(self.PILL_SOURCE,
+                       "private func modelName(_ name: String) -> some View {",
+                       "/// The count, quieter than the name")
+
+    def context_view(self) -> str:
+        return between(self.PILL_SOURCE,
+                       "private func context(_ tokens: String) -> some View {",
+                       "/// A small round tinted glyph")
+
+    def test_it_is_one_button_and_the_chevron_is_inside_it(self) -> None:
+        self.assertEqual(self.PILL_SOURCE.count("Button(action: onOpen)"), 1)
+        # No bare `Button {` and no second control: the chevron is part of the same label, so a tap
+        # anywhere on the pill (glyph, name, count, chevron) opens the same picker.
+        self.assertNotIn("Button {", self.PILL_SOURCE)
+        label = self.pill_label()
+        self.assertIn("\n                    chevron\n", label)
+        self.assertIn('Image(systemName: "chevron.down")', self.chevron_view())
+        self.assertNotIn("Button", label)
+        self.assertNotIn("Button", self.chevron_view())
+
+    def test_it_is_chrome_not_a_link(self) -> None:
+        label = self.pill_label()
+        # A dark rounded fill of the app's own token, lightened under the pointer; nothing stroked,
+        # no underline, no accent-coloured text that would read as a link.
+        self.assertIn("Capsule().fill(isHovered && isEnabled ? Tokens.controlHover", label)
+        self.assertIn(": Tokens.control))", label)
+        self.assertNotIn("strokeBorder", self.PILL_SOURCE)
+        self.assertNotIn("underline(", self.PILL_SOURCE)
+        # The shared press feedback every other control uses.
+        self.assertIn(".buttonStyle(PressableButtonStyle())", self.PILL_SOURCE)
+        # Hover only where there is a pointer — the app's own cross-platform helper.
+        self.assertIn(".onHoverCompat { isHovered = $0 }", self.PILL_SOURCE)
+
+    def test_the_sample_s_anatomy_inside_the_pill(self) -> None:
+        label = self.pill_label()
+        # A small circular tinted glyph, then the model in semibold, then the count quieter beside
+        # it — a gap, not a divider — then the chevron.
+        self.assertIn("Circle().fill(Tokens.accentSoft)", self.glyph_view())
+        self.assertIn('Image(systemName: "cpu")', self.glyph_view())
+        self.assertIn("TypeScale.font(TypeScale.label, weight: .semibold)",
+                      self.model_name_view())
+        self.assertIn("Tokens.textPrimary", self.model_name_view())
+        self.assertIn("TypeScale.font(TypeScale.caption)", self.context_view())
+        self.assertIn("Tokens.textMuted", self.context_view())
+        self.assertNotIn("Divider", self.PILL_SOURCE)
+        self.assertNotIn('Text("·")', self.PILL_SOURCE)
+        # Glyph, name, count, chevron: the order the sample has them in, and both labels live inside
+        # the pill's single HStack.
+        order = ["glyph", "modelName(name)", "context(tokens)", "\n                    chevron\n"]
+        positions = [label.index(token) for token in order]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn(".padding(.horizontal, 12)", label)
+
+    def test_a_narrow_window_drops_the_count_and_keeps_the_model_and_chevron(self) -> None:
+        label = self.pill_label()
+        fits = between(label, "ViewThatFits(in: .horizontal) {", "chevron")
+        self.assertIn(".fixedSize(horizontal: true, vertical: false)", fits)
+        # Candidate one: name and count. Candidate two: the name alone. Both still carry the glyph
+        # and the chevron, which sit outside the `ViewThatFits`.
+        candidates = fits.split(".fixedSize(horizontal: true, vertical: false)")
+        self.assertIn("context(tokens)", candidates[0])
+        self.assertIn("modelName(name)", candidates[1])
+        self.assertNotIn("context(tokens)", candidates[1])
+        self.assertIn(".truncationMode(.tail)", self.PILL_SOURCE)
+        self.assertIn(".lineLimit(1)", self.PILL_SOURCE)
+
+    def test_the_composer_draws_it_in_the_control_row_before_the_field(self) -> None:
+        body = between(self.COMPOSER_SOURCE,
+                       "HStack(alignment: .bottom, spacing: 8) {",
+                       "// One tap clears everything typed.")
+        # After the paperclip, before the field: a sibling in the row, never an overlay over the text.
+        self.assertIn("rowCentred(attachControl)", body)
+        self.assertIn("#if os(macOS)\n                if let sessionPill {", body)
+        self.assertIn("field\n                    .frame(minHeight: rowHeight)", body)
+        self.assertLess(body.index("rowCentred(attachControl)"), body.index("if let sessionPill {"))
+        self.assertLess(body.index("if let sessionPill {"),
+                        body.index("field\n                    .frame(minHeight: rowHeight)"))
+        # The row's own control height, so the lozenge lines up with the clip and the arrow.
+        self.assertIn(".frame(height: controlSide))", body)
+        # An overlay would be drawn over the field; there is none around the pill.
+        pill_block = between(body, "if let sessionPill {", "field\n                    .frame")
+        self.assertNotIn("overlay", pill_block)
+
+    def test_the_phone_stacks_the_same_pill_in_its_own_row_inside_the_composer(self) -> None:
+        # A phone's row cannot hold the field and a pill with a model name in it, so iOS stacks the
+        # pill under the field — inside the same rounded container, before the card's own `hint`.
+        body = between(self.COMPOSER_SOURCE,
+                       "            .padding(.bottom, hint == nil ? 8 : 2)\n",
+                       "if let hint, !hint.isEmpty {")
+        self.assertIn("#if os(iOS)", body)
+        self.assertIn("sessionPillBand", body)
+        band = between(self.COMPOSER_SOURCE,
+                       "private var sessionPillBand: some View {",
+                       "private var trimmed: String {")
+        self.assertIn("if let sessionPill {", band)
+        self.assertIn(".equatable()", band)
+        self.assertIn(".frame(height: controlSide)", band)
+        # Its own row, on the container's leading edge — not an overlay on the field.
+        self.assertIn(".frame(maxWidth: .infinity, alignment: .leading)", band)
+        self.assertNotIn("overlay", band)
+        self.assertLess(self.COMPOSER_SOURCE.index("            HStack(alignment: .bottom, spacing: 8) {"),
+                        self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"))
+        self.assertLess(self.COMPOSER_SOURCE.index("\n            sessionPillBand\n"),
+                        self.COMPOSER_SOURCE.index("\n        .background {"))
+
+    def test_the_field_keeps_its_height_and_padding(self) -> None:
+        body = between(self.COMPOSER_SOURCE,
+                       "HStack(alignment: .bottom, spacing: 8) {",
+                       "if let hint, !hint.isEmpty {")
+        self.assertIn("field\n                    .frame(minHeight: rowHeight)", body)
+        # The field row's own padding is untouched by the pill: it is still the same 8/6/8 the card
+        # has always used.
+        self.assertIn(".padding(.horizontal, 8)\n            .padding(.top, 6)\n"
+                      "            .padding(.bottom, hint == nil ? 8 : 2)", body)
+
+    def test_typing_cannot_re_lay_the_pill_out(self) -> None:
+        self.assertIn("public struct ComposerModelPill: View, Equatable", self.PILL_SOURCE)
+        # The closure is not compared: it is rebuilt every parent pass, and comparing it would make
+        # `.equatable()` pointless.
+        comparator = between(self.PILL_SOURCE,
+                             "public static func == (lhs: ComposerModelPill",
+                             "/// The tinted round glyph")
+        for field in ("provider", "model", "used", "limit", "isEnabled"):
+            self.assertIn(f"lhs.{field} == rhs.{field}", comparator)
+        self.assertNotIn("onOpen", comparator)
+        # Applied once, in the composer — so both apps inherit it rather than each remembering.
+        block = between(self.COMPOSER_SOURCE, "if let sessionPill {", "field\n")
+        self.assertIn(".equatable()", block)
+        self.assertNotIn("model.draft", self.PILL_SOURCE)
+        self.assertNotIn("GeometryReader", self.PILL_SOURCE)
+
+    def test_both_apps_draw_it_and_open_the_picker_they_already_have(self) -> None:
+        for name, source in (("the Mac", self.MAC_SOURCE), ("the phone", self.PHONE_SOURCE)):
+            self.assertEqual(source.count("sessionPill: ComposerModelPill("), 1, name)
+
+        # The Mac: the pill calls `store.openModel`, which is the one door the bot panel's Model
+        # row uses, and that flag presents `MacModelSheet` at the window's root. No second picker.
+        self.assertIn("guard let bot = model.selectedBot else { return }", self.MAC_SOURCE)
+        self.assertIn("store.openModel(bot)", self.MAC_SOURCE)
+        self.assertIn("onOpen: openModelPicker", self.MAC_SOURCE)
+        root = read(MAC_ROOT)
+        self.assertIn("if let bot = store.modelBot { return .model(bot) }", root)
+        self.assertIn("MacModelSheet(model: store.model,", root)
+
+        # The phone: the same sheet the drawer's Model row opens, for the bot the screen is about.
+        self.assertIn("onOpen: { showModel = true }", self.PHONE_SOURCE)
+        phone = self.PHONE_SOURCE
+        self.assertIn(".sheet(isPresented: $showModel) {", phone)
+        self.assertIn("BotModelSheet(bot: bot, model: model)", phone)
+
+    def test_the_name_on_the_pill_is_the_host_s_number(self) -> None:
+        # The pill reads the same two published values the header does, and the picker writes
+        # through the same route, so a pick updates the label without a second source.
+        app_model = read(ROOT / "Sources" / "HermesAppKit" / "AppModel.swift")
+        self.assertIn("public private(set) var modelLabel: String?", app_model)
+        self.assertIn("public private(set) var modelProvider: String?", app_model)
+        self.assertIn("if case .applied = change, botID == selectedBotID {", app_model)
+        self.assertIn("await loadModelLabel()", app_model)
+
+
+class TheRowOverflowBelongsToTheRowYouAreUsing(unittest.TestCase):
+    """Mac: hover, focus, selection or highlight. Phone: unchanged — there is no hover to hide behind."""
+
+    MAC_SOURCE = read(SIDEBAR)
+    PHONE_SOURCE = read(PHONE_LIST)
+
+    def mac_row(self) -> str:
+        return between(self.MAC_SOURCE,
+                       "private func row(for bot: Bot, isHovered: Bool = false,",
+                       "/// The row's ⋯:")
+
+    def overflow_button(self) -> str:
+        return between(self.MAC_SOURCE,
+                       "private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {",
+                       "/// A hidden bot is not gone")
+
+    def test_it_is_conditional_on_being_used_not_always_visible(self) -> None:
+        row = self.mac_row()
+        condition = between(row, "let showsOverflow =", "return Button {")
+        for reason in ("isHovered", "isSelected", "isKeyboardSelected", "focusedRow == bot.id"):
+            self.assertIn(reason, condition, "the ⋯ must appear for this reason too")
+        # And the button itself is told that condition — never `true`, never the hover flag alone.
+        self.assertIn("overflowButton(for: bot, isVisible: showsOverflow)", row)
+        self.assertNotIn("isVisible: true", self.MAC_SOURCE)
+        button = self.overflow_button()
+        self.assertIn(".opacity(isVisible ? 1 : 0)", button)
+        self.assertIn(".allowsHitTesting(isVisible)", button)
+
+    def test_the_keyboard_reaches_it_without_a_pointer(self) -> None:
+        self.assertIn("@FocusState private var focusedRow: String?", self.MAC_SOURCE)
+        self.assertIn("@FocusState private var focusedOverflow: String?", self.MAC_SOURCE)
+        self.assertIn(".focused($focusedRow, equals: bot.id)", self.mac_row())
+        # Tabbing into the ⋯ must not hide it: focus *inside* the menu keeps the row's button visible.
+        self.assertIn("focusedOverflow == bot.id", self.mac_row())
+        self.assertIn(".focused($focusedOverflow, equals: bot.id)", self.overflow_button())
+        # Still in the accessibility tree at rest: `opacity`/`allowsHitTesting` are the pointer's
+        # business, and VoiceOver keeps its own door to the menu.
+        self.assertIn('.accessibilityLabel("Bot menu")', self.overflow_button())
+
+    def test_it_reserves_no_gutter_and_the_title_truncates_under_it(self) -> None:
+        row = self.mac_row()
+        # An overlay on the row's trailing edge: layout is computed as if the ⋯ were absent.
+        self.assertIn(".overlay(alignment: .trailing) {", row)
+        overlay = between(row, ".overlay(alignment: .trailing) {", ".contextMenu {")
+        self.assertIn("overflowButton(for: bot, isVisible: showsOverflow)", overlay)
+        # The name's own slot is unchanged: one line, tail truncation, no trailing reservation for
+        # the button in the title's HStack.
+        self.assertIn(".truncationMode(.tail)", row)
+        title_row = between(row, "HStack(spacing: 6) {", "// A flat search list has no headings")
+        self.assertIn("Text(bot.displayName)", title_row)
+        self.assertNotIn("overflowButton", title_row)
+        self.assertNotIn(".padding(.trailing", title_row)
+
+    def test_the_row_still_works_as_a_row(self) -> None:
+        row = self.mac_row()
+        # One hit target: the whole row is still a `Button` with a plain style and a shape, and the
+        # ⋯ is a sibling overlay (a control inside a button's label never receives the click).
+        self.assertIn("return Button {", row)
+        self.assertIn(".buttonStyle(.plain)", row)
+        self.assertIn(".contentShape(Rectangle())", row)
+        # The right-click menu is still the row's, with the same entries the ⋯ lists.
+        self.assertIn(".contextMenu {\n            BotRowMenu(menu: rowMenu(for: bot))", row)
+
+    def test_the_beacon_yields_its_corner_while_the_button_is_there(self) -> None:
+        row = self.mac_row()
+        beacon = between(row, "UnreadBeacon(diameter: 7)", "}\n            }")
+        self.assertIn(".opacity(showsOverflow ? 0 : 1)", beacon)
+
+    def test_the_phone_keeps_what_it_has(self) -> None:
+        # No hover on a phone, and no ⋯ on its rows either: the long-press menu and the two swipe
+        # actions are the row's doors, so nothing is hidden behind a pointer that never comes.
+        phone_row = between(self.PHONE_SOURCE,
+                            "private func row(for bot: Bot) -> some View {",
+                            "/// A description written on the host is the useful line")
+        self.assertNotIn('Image(systemName: "ellipsis")', phone_row)
+        self.assertNotIn("overflowButton", phone_row)
+        self.assertNotIn(".overlay(alignment: .trailing)", phone_row)
+        # The trailing edge is still the beacon's, and the menus are still the row's own.
+        self.assertIn("UnreadBeacon(diameter: 8)", phone_row)
+        self.assertIn(".contextMenu {", phone_row)
+        self.assertEqual(phone_row.count(".swipeActions("), 2)
+        self.assertIn(".accessibilityHint(\"Opens the conversation with this bot\")", phone_row)
+
+
+class TheLockScreenCardHasOneLeftEdge(unittest.TestCase):
+    """`HERMEY` and `Working · …` start at the same point, and the block is centred in the card."""
+
+    SOURCE = read(LIVE_ACTIVITY)
+
+    def card(self) -> str:
+        return between(self.SOURCE,
+                       "private struct HermeyTurnLockScreen: View {",
+                       "    /// The snippet is read after the sentence rather than as a separate element")
+
+    def status_line(self) -> str:
+        return between(self.SOURCE,
+                       "private struct HermeyTurnStatusLine: View {",
+                       "    private var symbol: String {")
+
+    def test_the_two_text_rows_share_one_leading_edge(self) -> None:
+        card = self.card()
+        # Nothing indents a single row: no leading padding, no tracking/kerning that could nudge the
+        # brand word's first glyph off the column's edge…
+        self.assertNotIn(".kerning(", card)
+        self.assertNotIn(".tracking(", card)
+        self.assertNotIn(".padding(.leading", card)
+        # …and the status line no longer leads with its symbol, which is what pushed "Working" right.
+        self.assertIn("showsSymbol: false", card)
+        self.assertNotIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
+                         card)
+
+    def test_the_symbol_is_gated_so_the_island_keeps_it(self) -> None:
+        status = self.status_line()
+        self.assertIn("var showsSymbol: Bool = true", status)
+        self.assertIn("if showsSymbol {", status)
+        # The expanded island passes neither flag, so its row is unchanged.
+        island = between(self.SOURCE,
+                         "private struct HermeyTurnExpandedCenter: View {",
+                         "/// The state in words:")
+        self.assertIn("leadsWithWord: false", island)
+        self.assertNotIn("showsSymbol", island)
+
+    def test_the_vertical_padding_is_symmetric(self) -> None:
+        card = self.card()
+        # One number, used for both sides, and no per-edge padding anywhere in the card.
+        self.assertEqual(card.count(".padding(.vertical, HermeyTurnGlass.cardVertical)"), 1)
+        self.assertNotIn(".padding(.top", card)
+        self.assertNotIn(".padding(.bottom", card)
+        # `cardVertical` itself is one value, so the two sides cannot drift apart.
+        glass = between(self.SOURCE,
+                        "private enum HermeyTurnGlass {",
+                        "    /// The island's leading/trailing regions")
+        self.assertIn("static let cardVertical: CGFloat = 8", glass)
+        self.assertNotIn("cardVerticalTop", glass)
+
+    def test_the_block_is_centred_against_the_mark_and_the_timer(self) -> None:
+        card = self.card()
+        # The row centres vertically, and the text column reports its own height rather than being
+        # stretched to the card's — which is how a block ends up riding low inside it.
+        self.assertIn("HStack(alignment: .center, spacing: 10)", card)
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", card)
+        self.assertIn("Spacer(minLength: 8)", card)
+        self.assertLess(card.index("HermeyTurnMark(phase: state.phase, size: 22)"),
+                        card.index("HermeyTurnElapsedLabel(state: state, tone: .card)"))
+
+    def test_every_phase_and_the_stale_card_are_aligned_the_same_way(self) -> None:
+        card = self.card()
+        # Nothing in the card branches on the phase: the alignment is the layout's, not a per-state
+        # patch, so working / needs you / done and the stale card all draw the same two rows.
+        self.assertNotIn("switch state.phase", card)
+        self.assertNotIn("if state.phase", card)
+        self.assertNotIn("state.phase ==", card)
+        # The three phases and the stale sentence still exist — in the one place they always did.
+        symbol = between(self.SOURCE,
+                         "    private var symbol: String {",
+                         "    /// The word, then the step")
+        for phase in (".working", ".needsYou", ".done"):
+            self.assertIn(f"case {phase}:", symbol)
+        self.assertIn('if isStale { return "Still waiting on \\(botName)" }', self.SOURCE)
+
+    def test_one_line_per_row_with_tail_truncation(self) -> None:
+        card = self.card()
+        self.assertEqual(card.count(".lineLimit(1)"), 2)   # the brand word and the bot's name
+        self.assertEqual(card.count(".truncationMode(.tail)"), 2)
+        self.assertIn(".truncationMode(.tail)", self.status_line())
+
+
+class AHoveredRowWakesItsFace(unittest.TestCase):
+    """Pointer on the row: the face greets, then floats — one row, never a busy performance."""
+
+    WAKE = read(UI / "BotAvatarWake.swift")
+    AVATAR = read(UI / "BotAvatarView.swift")
+    SIDEBAR = read(SIDEBAR)
+    PHONE = read(PHONE_LIST)
+
+    def awake_rule(self) -> str:
+        return between(self.AVATAR, "private var isAwake: Bool {", "    /// The generated avatar")
+
+    def row(self) -> str:
+        return between(self.SIDEBAR,
+                       "private func row(for bot: Bot, isHovered: Bool = false,",
+                       "/// The row's ⋯:")
+
+    def test_the_row_hands_its_hover_to_the_avatar(self) -> None:
+        row = self.row()
+        self.assertIn("wakesOnHover: isHovered", row)
+        # The resting rule is the one it always was: only a *busy* row animates at rest, and the
+        # face is drawn at the row's fixed size, so nothing about the row moves as it greets.
+        self.assertIn("animates: store.activity(for: bot.id) != .idle", row)
+        self.assertIn("size: metrics.avatar", row)
+        self.assertEqual(row.count("wakesOnHover:"), 1)
+
+    def test_the_rest_rule_is_relaxed_only_while_hovered(self) -> None:
+        rule = self.awake_rule()
+        self.assertIn("wakesOnHover: wakesOnHover", rule)
+        # Deliberately not part of it: the resting floor and flags are lifted by the hover itself,
+        # never edited, so a row that is not hovered behaves exactly as it does today.
+        for resting in ("animates", "animatingFrom", "size:", "minimumSize"):
+            self.assertNotIn(resting, rule, f"the wake rule consults {resting!r}")
+        # Every calm case still says no.
+        self.assertIn("reduceMotion: reduceMotion || systemReduceMotion", rule)
+        self.assertIn("appAllowsMotion: appAllowsMotion", rule)
+        self.assertIn("isActiveScene: scenePhase == .active", rule)
+        # And a face with `animates: false` still holds its rest pose: `moves` is unchanged.
+        shape = between(self.AVATAR, "private var shapeBody: some View {", "// Built once per body")
+        self.assertIn("animates: animates && appAllowsMotion", shape)
+        self.assertIn("minimumSize: animatingFrom", shape)
+
+    def test_reduce_motion_suppresses_the_hop(self) -> None:
+        allows = between(self.WAKE, "public static func allows(", "/// The frame at an instant.")
+        self.assertIn("wakesOnHover && !reduceMotion && appAllowsMotion && isActiveScene", allows)
+        # The greeting is only ever sampled through `isAwake`, which is that function.
+        for branch in (between(self.AVATAR, "private var shapeBody: some View {",
+                               "// Built once per body"),
+                       between(self.AVATAR, "private func drawnBody(", "/// The face this view draws:")):
+            self.assertIn("let awake = isAwake", branch)
+
+    def test_the_wake_never_borrows_the_busy_performance(self) -> None:
+        wake = without_comments(self.WAKE)
+        self.assertNotIn("performedFrame", wake)
+        self.assertNotIn("BotAvatarPerformance", wake)
+        self.assertNotIn(".working", wake)
+        # The hello settles into the reference's own idle float, which is reused, not re-authored.
+        self.assertIn("BotAvatarMotion.bodyPose(activity: .idle, at: time, traits: traits)", wake)
+        self.assertIn("BotAvatarMotion.eyePose(traits: traits, at: time)", wake)
+        self.assertIn("return settled", wake)
+
+    def test_the_hop_is_small_and_never_lays_out_the_row(self) -> None:
+        # Fractions of the face's own side, like every other pose here — so they move the drawing,
+        # not the layout: a translate/rotate/scale cannot change the row's height or hit target.
+        self.assertIn("translateY: -0.10 * arc", self.WAKE)
+        self.assertIn("rotate: gaze * 3.0 * arc", self.WAKE)
+        # The eyes lead the hop and then come home.
+        self.assertIn("offsetX: gaze * 0.20 * min(1, t * 4)", self.WAKE)
+        self.assertIn("guard elapsed < greetingDuration else { return settled }", self.WAKE)
+        # Applied as transforms over a fixed frame, exactly as the shape face already does it.
+        self.assertIn(".frame(width: size, height: size)", self.AVATAR)
+
+    def test_the_cost_is_one_row_at_the_busy_beat(self) -> None:
+        self.assertIn("public static let frameInterval: Double = BotAvatarMotion.frameInterval", self.WAKE)
+        # The woken timeline is the only place the beat is raised, and never past 30 Hz.
+        timeline = self.AVATAR.count("minimumInterval: awake ? BotAvatarWake.frameInterval")
+        self.assertEqual(timeline, 2, "both branches must use the woken beat")
+        self.assertIn("paused: !moves && !awake", self.AVATAR)
+        self.assertNotIn("1.0 / 60", self.AVATAR)
+        self.assertNotIn("1.0 / 60", self.WAKE)
+        # Nothing else in the Mac app wakes a face: one hovered row, one animating face.
+        self.assertNotIn("wakesOnHover: true", self.SIDEBAR)
+
+    def test_the_phone_has_no_pointer_so_it_passes_nothing(self) -> None:
+        self.assertNotIn("wakesOnHover", self.PHONE)
+
+
+if __name__ == "__main__":
+    unittest.main()

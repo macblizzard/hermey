@@ -11,7 +11,11 @@ import SwiftUI
 ///   streak and catchlight are visible, because a material chosen at thumbnail size is a guess;
 /// * a **material** choice — the rows of `BotAvatarMaterialSpec.all`, so the list grows with the
 ///   table and this view never hard-codes two cases;
-/// * six **presets** to start from (a blob, a box, a mug, a sprout, a cat, an egg);
+/// * **twelve presets** to start from (a blob, a box, a mug, a sprout, a cat, an egg, a bottle, a
+///   star, a droplet, an hourglass, an open book and a mushroom) and a **Random** button beside
+///   them that applies a shape, a material and a colour at once — all three read from the tables
+///   this view already draws from (`OpenBotAvatarRandom`), so there is no second palette here and a
+///   random face is always one Save can store;
 /// * a **JSON box** for a definition copied from upstream's editor, with the contract's own reasons
 ///   shown inline when it cannot be imported;
 /// * **colour and eye placement** — x, y, spacing, scale — which edit the definition live;
@@ -41,6 +45,9 @@ public struct OpenBotAvatarEditor: View {
     @State private var saveError: String?
     @State private var savedNote: String?
     @State private var state: OpenBotAvatarState
+    /// The last pick the Random button applied, as `OpenBotAvatarRandomPick.combination`, so the
+    /// next press cannot land on the same shape + material + colour.
+    @State private var lastRandomPick: String?
 
     private enum JSONStatus: Equatable {
         case ok
@@ -158,9 +165,24 @@ public struct OpenBotAvatarEditor: View {
 
     // MARK: - Presets
 
+    /// The shapes to start from, and Random.
+    ///
+    /// Random sits on the section's own line rather than under the grid because it is not one more
+    /// shape — it is the other way to start, and it sets the material and the colour too. It picks
+    /// from `OpenBotAvatarRandom`, which reads the presets, the material table and the app's palette;
+    /// nothing about a random face is written here, which is what keeps this view from growing a
+    /// second colour list beside `BotAvatarPalette`.
     private var presets: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionCaption("START FROM")
+            HStack(alignment: .firstTextBaseline) {
+                SectionCaption("START FROM")
+                Spacer(minLength: 8)
+                Button("Random") { randomise() }
+                    .buttonStyle(.plain)
+                    .font(TypeScale.font(TypeScale.sm, weight: .semibold))
+                    .foregroundStyle(Tokens.accent)
+                    .help("A random shape, material and colour")
+            }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
                 ForEach(OpenBotAvatarPresets.all, id: \.id) { preset in
                     Button {
@@ -323,6 +345,22 @@ public struct OpenBotAvatarEditor: View {
         jsonStatus = .ok
         syncJSONText()
         savedNote = nil
+    }
+
+    /// The Random button: a shape, a material and a colour, all three at once.
+    ///
+    /// The pick comes from `OpenBotAvatarRandom`, so every part of it is already storable: the shape
+    /// is a validated preset, the material is a row of the table (hence a value the host accepts) and
+    /// the colour is a `BotAvatarPalette` hex. Applying it goes through `adopt`, so the JSON box
+    /// follows the preview and any error the box was showing is cleared — the editor cannot be left
+    /// describing a draft it no longer has. `lastRandomPick` is what makes the next press different.
+    private func randomise() {
+        guard let pick = OpenBotAvatarRandom.pick(avoiding: lastRandomPick) else { return }
+        lastRandomPick = pick.combination
+        material = pick.material
+        colorHex = pick.colorHex
+        adopt(pick.definition)
+        saveError = nil
     }
 
     /// Both boxes describe one draft, so a control change writes the JSON back.

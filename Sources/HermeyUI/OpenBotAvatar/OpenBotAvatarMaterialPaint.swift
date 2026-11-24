@@ -13,7 +13,7 @@ import SwiftUI
 /// ## The layers, bottom to top
 ///
 /// 1. **halo** — the silhouette in the tint, offset down and blurred, inside the box only;
-/// 2. **fill** — a three-stop vertical ramp (the volume illusion) or a flat tint;
+/// 2. **fill** — a vertical ramp (the volume illusion), a horizoned ramp (metal) or a flat tint;
 /// 3. **sheens** — a soft radial highlight, clipped to the shape, added light;
 /// 4. **streaks** — a rotated capsule of white, faded along its short axis, added light;
 /// 5. **rim** — the silhouette stroked with a gradient; this is what reads as glass in 2-D;
@@ -63,13 +63,10 @@ enum OpenBotAvatarMaterialPaint {
         switch spec.fill {
         case .flat:
             context.fill(silhouette, with: .color(base.color))
-        case .ramp(let lightness, let mid, let darkness):
+        case .ramp(let lightness, let mid, let darkness, let step):
             context.fill(silhouette, with: .linearGradient(
-                Gradient(stops: [
-                    .init(color: base.mixed(with: .white, lightness).color, location: 0),
-                    .init(color: base.color, location: CGFloat(mid)),
-                    .init(color: base.mixed(with: .black, darkness).color, location: 1),
-                ]),
+                Gradient(stops: rampStops(lightness: lightness, mid: mid, darkness: darkness,
+                                          step: step, base: base)),
                 startPoint: CGPoint(x: bounds.midX, y: bounds.minY),
                 endPoint: CGPoint(x: bounds.midX, y: bounds.maxY)))
         }
@@ -168,6 +165,39 @@ enum OpenBotAvatarMaterialPaint {
         }
     }
 
+    /// The body's vertical gradient, from the material's own four numbers.
+    ///
+    /// Three stops is the reference's glass ramp: white-mixed, the tint at `mid`, black-mixed. A
+    /// material that names a `step` gets four: the light half falls to the tint at `mid`, the dark
+    /// half starts `step` of the height later, and the crossing between them is that narrow — a
+    /// metal's horizon — before the dark half deepens once more at the foot. Glass passes nil and its
+    /// three stops are exactly the three it always had.
+    static func rampStops(lightness: Double,
+                          mid: Double,
+                          darkness: Double,
+                          step: Double?,
+                          base: MaterialColor) -> [Gradient.Stop] {
+        let light = base.mixed(with: .white, lightness).color
+        let dark = base.mixed(with: .black, darkness).color
+        guard let step else {
+            return [
+                .init(color: light, location: 0),
+                .init(color: base.color, location: CGFloat(mid)),
+                .init(color: dark, location: 1),
+            ]
+        }
+        let seam = CGFloat(max(0, min(1, mid)))
+        let width = CGFloat(max(0, min(1, step)))
+        // The dark half keeps a little form: it deepens toward the bottom instead of sitting flat.
+        let foot = base.mixed(with: .black, min(1, darkness * 1.35)).color
+        return [
+            .init(color: light, location: 0),
+            .init(color: base.color, location: seam),
+            .init(color: dark, location: min(1, seam + width)),
+            .init(color: foot, location: 1),
+        ]
+    }
+
     /// The halo's blur in points, capped for the pet. A glow that is bigger than the pet's clear
     /// margin is cut by the window and shows as a hard edge on the wallpaper.
     static func haloRadius(_ halo: MaterialHalo, side: CGFloat, backdrop: OpenBotAvatarBackdrop) -> CGFloat {
@@ -175,7 +205,8 @@ enum OpenBotAvatarMaterialPaint {
         return backdrop == .pet ? min(radius, CGFloat(MaterialDetail.petHaloBlurCap)) : radius
     }
 
-    /// A pattern over the fill. No shipped material asks for one; a matte or a fabric would.
+    /// A pattern over the fill. Matte is the one shipped material that asks for one (its grain); the
+    /// row below is what a fabric would add.
     static func paintTexture(_ texture: MaterialTexture,
                              in context: inout GraphicsContext,
                              silhouette: Path,

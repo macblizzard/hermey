@@ -360,17 +360,28 @@ private struct HermeyTurnStatusLine: View {
     /// Whether this line prints the phase word itself. False in the expanded island, where the word
     /// is drawn beside the bot's name.
     var leadsWithWord: Bool = true
+    /// Whether the line leads with its phase symbol.
+    ///
+    /// True in the island, where the symbol is the only phase mark in the region. **False on the
+    /// Lock Screen card**, which draws `HermeyTurnMark` beside the column: a leading glyph there
+    /// pushed "Working…" one symbol-width right of `HERMEY`, giving the card two left edges.
+    var showsSymbol: Bool = true
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: symbol)
-                .font(.caption2)
-                .foregroundStyle(isStale ? tone.secondary : HermeyTurnAccent.amber)
+            if showsSymbol {
+                Image(systemName: symbol)
+                    .font(.caption2)
+                    .foregroundStyle(isStale ? tone.secondary : HermeyTurnAccent.amber)
+            }
             Text(line)
                 .font(.caption2)
                 .foregroundStyle(tone.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                // Tail, explicitly: the step is the end of the sentence, and a mid-word truncation
+                // would read as a second, shorter sentence.
+                .truncationMode(.tail)
                 // The line the card exists for: it keeps its height even when the row is tight, so
                 // a running turn can never render as a panel with no words on it.
                 .fixedSize(horizontal: false, vertical: true)
@@ -435,33 +446,58 @@ private struct HermeyTurnSnippet: View {
 /// end was the reply snippet, so a working card was the name row and a line the layout could squeeze
 /// out. Nothing in this body branches on `phase`, and the text column carries `.layoutPriority(1)`
 /// so the trailing number can never take the width the words need.
+///
+/// **One hard left edge.** The owner's screenshot (2026-11-24) showed two left edges inside one
+/// card: `HERMEY` started at the column's edge and `Working · …` started one glyph-width right of
+/// it, because the status line led with its phase symbol. The column is one column, so both rows now
+/// begin at the same point of the `VStack` and nothing is allowed to indent a line — no leading
+/// symbol on the card's status line (the mark at the left already carries the phase, in the same
+/// amber), and no kerning on the brand word, since tracking is the one thing that could nudge the
+/// first glyph off that edge.
+///
+/// **Equal air above and below.** The row is centred on the card (`.center`), the card's own
+/// vertical padding is one number used for both sides, and the text column reports its own height
+/// rather than stretching — so the block sits between the mark and the timer with the same space
+/// over it as under it, in all three phases and in the stale card alike.
 private struct HermeyTurnLockScreen: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
     let isStale: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 10) {
             HermeyTurnMark(phase: state.phase, size: 22)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    // Text-only modifiers first, then the View ones: `kerning` exists on `Text`
-                    // and not on the `some View` that `textCase` hands back.
+                    // Text-only modifiers first, then the View ones: `tracking`/`kerning` exist on
+                    // `Text` and not on the `some View` that `textCase` hands back. No kerning: it
+                    // is the brand word that has to start on the column's edge.
                     Text("Hermey")
                         .font(.caption2)
                         .fontWeight(.semibold)
-                        .kerning(0.6)
                         .textCase(.uppercase)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(HermeyTurnTone.card.secondary)
                     Text(botName)
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(HermeyTurnTone.card.primary)
                 }
-                HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)
+                // No leading symbol on the card: the phase is the mark's job here, and a glyph in
+                // front of the sentence is what indented the second line away from the first.
+                HermeyTurnStatusLine(state: state,
+                                     botName: botName,
+                                     isStale: isStale,
+                                     tone: .card,
+                                     showsSymbol: false)
                 HermeyTurnSnippet(state: state, tone: .card)
             }
+            // The column is its content, never the leftover height: the card pads symmetrically and
+            // the row centres, so the block cannot ride low inside it.
+            .fixedSize(horizontal: false, vertical: true)
             .layoutPriority(1)
             Spacer(minLength: 8)
             HermeyTurnElapsedLabel(state: state, tone: .card)
