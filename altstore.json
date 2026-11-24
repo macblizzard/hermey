@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.652",
-          "buildVersion": "652",
-          "date": "2026-11-24T20:40:49Z",
-          "localizedDescription": "### Added\n- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all \u2014\n  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow\n  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.\n- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,\n  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a\n  colour together \u2014 never the same combination twice.\n\n### Fixed\n- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,\n  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now\n  gives the face up entirely, as the reference does.\n- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase\n  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.\n\n### Changed\n- **The row menu hides until you need it.** On the Mac the \u22ef on a bot row appears on hover, selection or\n  keyboard focus and no longer reserves space \u2014 and hovering a row wakes its avatar for a small hop and a look\n  toward the pointer.\n- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model\n  name, how much context it is using, and a chevron. Click the pill to open the model picker.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.652/Hermey-0.1.652-b652.ipa",
-          "size": 5469953,
+          "version": "0.1.653",
+          "buildVersion": "653",
+          "date": "2026-11-24T21:03:05Z",
+          "localizedDescription": "### Fixed\n- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its own text, which made it read as a slim bar next to the round attach and send controls.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.653/Hermey-0.1.653-b653.ipa",
+          "size": 5469938,
           "minOSVersion": "17.0",
-          "sha256": "330fe6c1876841aa2b04a80917b38f78da9c9fe42a013c7e57b786f2b1fa02bc"
+          "sha256": "7f131f932d82a91e6a0d886e2cde4106e0fdd30fc0d80cc7c56dc09c043f6ae1"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.652 (652)",
-      "identifier": "hermes-0.1.652-652",
-      "caption": "### Added\n- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all \u2014\n  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow\n  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.\n- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,\n  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a\n  colour together \u2014 never the same combination twice.\n\n### Fixed\n- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,\n  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now\n  gives the face up entirely, as the reference does.\n- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase\n  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.\n\n### Changed\n- **The row menu hides until you need it.** On the Mac the \u22ef on a bot row appears on hover, selection or\n  keyboard focus and no longer reserves space \u2014 and hovering a row wakes its avatar for a small hop and a look\n  toward the pointer.\n- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model\n  name, how much context it is using, and a chevron. Click the pill to open the model picker.",
-      "date": "2026-11-24T20:40:49Z",
+      "title": "Hermes 0.1.653 (653)",
+      "identifier": "hermes-0.1.653-653",
+      "caption": "### Fixed\n- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its own text, which made it read as a slim bar next to the round attach and send controls.",
+      "date": "2026-11-24T21:03:05Z",
       "tintColor": "#9A9AA0"
     }
   ],
