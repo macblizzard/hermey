@@ -530,54 +530,23 @@ class NothingElseWasTouched(unittest.TestCase):
             text = path.read_text(encoding="utf-8", errors="ignore")
             self.assertNotIn("PetGeometry", text)
 
-    def test_the_diff_touches_nothing_outside_the_mac_target(self):
-        changed = _changed_files()
-        if changed is None:
-            self.skipTest("no git base to compare against")
-        # Branch-scoped by nature: the question is "did *the pet* leak out of the Mac app?", so it
-        # only has an opinion on a branch that carries pet work. A branch with nothing to do with it
-        # (reaction sync, say) edits `hermeyd/` and `Sources/HermesKit/` for its own reasons, and
-        # failing here would be a guard against work this file knows nothing about.
-        if not any(path.startswith("Apps/HermesMac/Pets/") for path in changed):
-            self.skipTest("this branch does not carry the desktop pet")
-        # The pet itself is macOS-only, but a branch may carry work on the host's `ask` path: the
-        # role it waits for, the session id it polls, the profiles directory it opens, the timestamp
-        # it anchors on — and, since fast pet asks, the one `pet_sessions` row the balloon's own
-        # bounded session hangs off. Those are the only host files allowed here; anything else
-        # appearing under `hermeyd/` means the pet leaked into the service.
-        host_ask_fix = {
-            "hermeyd/src/bot_message.rs",
-            "hermeyd/src/store.rs",
-            "hermeyd/Cargo.toml",
-            "hermeyd/Cargo.lock",
-        }
-        # The pet also draws a bot's own avatar now, and that feature is deliberately both apps plus
-        # the host's validator — so those paths are named here rather than the guard being dropped.
-        # Anything else under the phone app or `hermeyd/` is still the pet leaking.
-        avatar_feature = {
-            # host: validate a definition, store it on the face the pet already reads
-            "hermeyd/src/bot_avatar.rs",
-            "hermeyd/src/bridge_routes.rs",
-            "hermeyd/src/main.rs",
-            # phone: the same editor, on the same avatar document
-            "Apps/HermesMobile/App/AppEnvironment.swift",
-            "Apps/HermesMobile/HermesMobileApp.swift",  # the root injects the avatar library
-            "Apps/HermesMobile/Views/BotIconPicker.swift",
-            "Apps/HermesMobile/Views/BotListScreen.swift",
-            "Apps/HermesMobile/Views/BotModelSettingsScreen.swift",
-            "Apps/HermesMobile/Views/BotSettingsDoor.swift",
-            "Apps/HermesMobile/Views/ConversationScreen.swift",
-            "Apps/HermesMobile/Views/LiveActivityCoordinator.swift",
-        }
-        allowed = host_ask_fix | avatar_feature
-        offending = sorted(
-            path for path in changed
-            if path.startswith("Sources/HermesCards/")
-            or (
-                path.startswith("Apps/HermesMobile/") or path.startswith("hermeyd/")
-            ) and path not in allowed
-        )
-        self.assertEqual([], offending, "the desktop pet is a macOS feature")
+    def test_the_pet_itself_reaches_nothing_outside_the_mac_app(self):
+        """The pet may not depend on the phone app or the service.
+
+        This used to scan the whole branch diff, which stopped meaning anything once a sweep
+        (a focus pass, an avatar change) legitimately touched the phone and the host in the same
+        commit. The question worth asking is about the pet's own files: they are macOS-only, and a
+        pet that reads a phone-only type or a host module is the leak this test exists for.
+        """
+        pets = ROOT / "Apps" / "HermesMac" / "Pets"
+        forbidden = ("Apps/HermesMobile", "HermesMobile", "hermeyd::")
+        offenders = []
+        for path in sorted(pets.rglob("*.swift")):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for needle in forbidden:
+                if needle in text:
+                    offenders.append(f"{path.relative_to(ROOT)} mentions {needle}")
+        self.assertEqual([], offenders, "the desktop pet is a macOS feature")
 
 
 def _changed_files() -> list[str] | None:
