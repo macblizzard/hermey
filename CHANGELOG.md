@@ -3,8 +3,6 @@
 All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
-## [Unreleased]
-
 ### Added
 - **PDF, Word and Excel files are read by the host, and a file a bot writes comes back to you.** A
   `.pdf`, `.docx` or `.xlsx` (plus `.csv`/`.txt`) sent to a bot is converted **once** by hermeyd — the
@@ -1312,3 +1310,20 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed
 - `hermeyd` 0.6.0: the bot icon document accepts a `definition` and `color` per bot, validated on the way in.
+
+## [0.1.648] — 2026-11-24
+
+### Added
+- **A bot's own avatar.** Give any bot a generated face and it draws itself everywhere — the bot list, the
+  chat header, and on your desktop as its pet. Bot settings has a new **Avatar** tab on both the Mac and the
+  phone: pick one of six presets, paste a definition from the open-bot-avatar editor, or nudge the eyes and
+  colour with a live preview. The shape is a small JSON definition (one outline plus where the eyes sit), so
+  an avatar is portable and tiny. A bot without one keeps exactly the picture it had.
+- **Eight bot states, one vocabulary.** idle, thinking, reading, working, computer, waiting, blocked and
+  done. A finished turn now reads **Done** for a few seconds instead of vanishing, and a failed one reads
+  **Blocked**. The same words drive the sidebar chip, the pet's badge and the Live Activity, so a face, a
+  badge and your lock screen can no longer disagree.
+
+### Changed
+- `hermeyd` **0.6.0**: the bot icon document accepts a `definition` and `color` per bot, and refuses an
+  invalid definition with the reason (so the editor can show it instead of silently saving).
