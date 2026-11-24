@@ -1295,7 +1295,10 @@ public actor GatewayClient: GatewayClientProtocol {
             return generation == connectionGeneration
         case .malformed(let line):
             // -32700 is the gateway's own parse-error code; a torn frame is the same class of event.
-            yield(.error(code: -32700, message: "malformed frame: \(line)"))
+            // A torn frame names no conversation, so it carries the attached one — `""` when there is
+            // none — and the app decides whether that is the pane on screen.
+            yield(.error(session: attachedStoredID ?? "", code: -32700,
+                         message: "malformed frame: \(line)"))
             return true
         }
     }
@@ -1664,7 +1667,9 @@ public actor GatewayClient: GatewayClientProtocol {
             watermarks[resumed.runtimeID] = Watermark(seq: replay.latestSeq, epoch: epoch)
         } catch {
             yield(.sessionUpdated(resumed.runtimeID))
-            yield(.error(code: nil, message: "event replay failed: \(error)"))
+            yield(.error(session: attributedSession(resumed.runtimeID),
+                         code: nil,
+                         message: "event replay failed: \(error)"))
         }
     }
 

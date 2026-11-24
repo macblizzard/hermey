@@ -189,7 +189,12 @@ enum GatewayEventDecoder {
                                      by: payload["by"]?.stringValue ?? "")]
 
         case "error":
-            return [.error(code: payload["code"]?.intValue.map { Int($0) },
+            // The frame's session travels with the error. One socket is shared by every conversation
+            // the app opens — including the bots it opens in the background — so a message without
+            // the session it is about cannot be placed, and the app would paint one bot's failure
+            // over another bot's transcript. An empty string is the honest "the frame named none".
+            return [.error(session: session,
+                           code: payload["code"]?.intValue.map { Int($0) },
                            message: payload["message"]?.stringValue ?? "unknown gateway error")]
 
         default:

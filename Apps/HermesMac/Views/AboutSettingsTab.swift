@@ -133,71 +133,113 @@ struct AboutSettingsTab: View {
     /// The other half of "which version am I running": the **host** service, which updates on its
     /// own schedule and whose version is not this app's.
     ///
-    /// Same row, same words as the bell's, and the same button: an update is never applied from
-    /// here without a press, and the button is the only thing on this page that changes the machine.
+    /// One line, in the order a person asks the question: the version, what it means, and the press
+    /// that answers it. The action sits on that same line, right-aligned in a fixed-width slot, so
+    /// `Check now` visibly acts on the number beside it instead of floating at the far right of a
+    /// heading — and so the row does not move when an update turns `Check now` into `Update`. The
+    /// words for each answer are the ones this row has always used; what changed is that each answer
+    /// has its own colour, because muted grey for "up to date" and "could not check" alike told the
+    /// reader nothing.
     private var hostSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                SectionCaption("HOST SERVICE")
-                Spacer(minLength: 0)
-                Button("Check now") {
-                    Task { await self.store.model.checkHostUpdate(refresh: true) }
+            SectionCaption("HOST SERVICE")
+
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(hostLine)
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(hostLineTone)
+                    .monospacedDigit()
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("aboutHostVersion")
+
+                Spacer(minLength: 8)
+
+                // Before the button, never in its place: the link is quiet and optional, and the
+                // press has to stay in the same spot whether or not a release page exists.
+                if let update = store.model.hostUpdate, update.showsNotes, let notes = update.notesURL {
+                    Link("What's new", destination: notes)
+                        .font(TypeScale.font(TypeScale.micro))
                 }
-                .buttonStyle(.plain)
-                .font(TypeScale.font(TypeScale.micro))
-                .foregroundStyle(Tokens.textDim)
-                .accessibilityIdentifier("aboutHostCheck")
+
+                hostAction
+                    .frame(width: Self.hostActionWidth, alignment: .trailing)
             }
 
-            if let update = store.model.hostUpdate {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(update.versionLine)
-                            .font(TypeScale.font(TypeScale.caption))
-                            .foregroundStyle(Tokens.textPrimary)
-                            .monospacedDigit()
-                            .textSelection(.enabled)
-                        if let state = update.stateText {
-                            Text(state)
-                                .font(TypeScale.font(TypeScale.micro))
-                                .foregroundStyle(update.isSettled ? Tokens.textMuted : Tokens.textDim)
-                                .accessibilityIdentifier("aboutHostState")
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    if let notes = update.notesURL, update.showsNotes {
-                        Link("What's new", destination: notes)
-                            .font(TypeScale.font(TypeScale.micro))
-                    }
-                    if update.isBusy {
-                        ProgressView().controlSize(.small)
-                    } else if let title = update.buttonTitle {
-                        Button(title) {
-                            Task { await self.store.model.beginHostUpdate() }
-                        }
-                        .controlSize(.small)
-                        .disabled(!update.canStartPress)
-                        .accessibilityIdentifier("aboutHostUpdate")
-                    } else if update.isSettled {
-                        Button("Dismiss") { self.store.model.dismissHostUpdate() }
-                            .controlSize(.small)
-                    }
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(hostLine)
-                        .font(TypeScale.font(TypeScale.caption))
-                        .foregroundStyle(Tokens.textMuted)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("aboutHostVersion")
-                    Spacer(minLength: 0)
-                }
+            // Only a press has a second line: installing is the one thing here that reports stages,
+            // and the version line above stays the version line throughout it.
+            if let state = store.model.hostUpdate?.stateText {
+                Text(state)
+                    .font(TypeScale.font(TypeScale.micro))
+                    .foregroundStyle(store.model.hostUpdate?.isSettled == true ? Tokens.textMuted : Tokens.textDim)
+                    .accessibilityIdentifier("aboutHostState")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// The host line when no row is drawn: the version, and the truth about what it means.
+    /// The width every state of the action occupies. One number, not a per-state size: an update
+    /// must not nudge the line it belongs to.
+    private static let hostActionWidth: CGFloat = 104
+
+    /// The one control on the line, and the only thing on this page that changes the machine.
+    ///
+    /// Every branch draws the same class of control — a bordered `.small` button, as the rest of
+    /// this pane uses — so the slot reads as one button that changes its word, not as a status line
+    /// that sometimes grows a button out of it.
+    @ViewBuilder
+    private var hostAction: some View {
+        if let update = store.model.hostUpdate, update.isBusy {
+            // Downloading, verifying, restarting: the stage words are on the line below, and a press
+            // here would ask for what is already running.
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityIdentifier("aboutHostBusy")
+        } else if store.model.hostCheckRunning {
+            // It says so, and refuses a second press — here and in the model.
+            Button("Checking…") {}
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(true)
+                .accessibilityIdentifier("aboutHostCheck")
+        } else if let update = store.model.hostUpdate, let title = update.buttonTitle {
+            Button(title) {
+                Task { await self.store.model.beginHostUpdate() }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!update.canStartPress)
+            .accessibilityIdentifier("aboutHostUpdate")
+        } else if let update = store.model.hostUpdate, update.isSettled {
+            Button("Dismiss") { self.store.model.dismissHostUpdate() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("aboutHostDismiss")
+        } else {
+            Button("Check now") {
+                Task { await self.store.model.checkHostUpdate(refresh: true) }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(store.model.hostCheckRunning)
+            .accessibilityIdentifier("aboutHostCheck")
+        }
+    }
+
+    /// The colour the host line carries.
+    ///
+    /// Three answers, three tones: an available update is the accent because there is something to
+    /// press; a host that could not be asked, or that is behind and cannot install it itself, is the
+    /// warning because somebody has to look; a host that answered is plain muted text.
+    private var hostLineTone: Color {
+        guard store.isPaired, let status = store.model.hostStatus else { return Tokens.textMuted }
+        if status.latest == nil { return Tokens.warning }
+        // `accentText`, not `accent`: this is a 12 pt line of text, and the accent used as a wash
+        // behind a selected row is not always readable as a sentence on the canvas.
+        if status.available { return status.canSelfUpdate ? Tokens.accentText : Tokens.warning }
+        return Tokens.textMuted
+    }
+
+    /// The host line: the version, and the truth about what it means — on one line, always.
     ///
     /// Four different situations, four different sentences — "up to date" is only said when the host
     /// answered and nothing newer exists. A host that cannot update itself still gets the news it is

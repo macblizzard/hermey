@@ -1172,7 +1172,11 @@ public enum ClientEvent: Sendable {
     /// `message` is the message half of ``ReactionKey`` (`row:41`, `live:r3`), which is what the
     /// host keys its store by; the receiver adds its own host/bot/session to look it up.
     case reactionUpdated(bot: String, session: SessionID, message: String, emoji: String?, by: String)
-    case error(code: Int?, message: String)
+    /// A host-reported failure. `session` is the conversation the frame named — normalised to the
+    /// stored id, and `""` when the frame named none — because one socket serves every bot the app
+    /// opens: the app starts background sessions for other bots, and an error from one of those is
+    /// not news about the pane the reader is looking at.
+    case error(session: SessionID, code: Int?, message: String)
     /// Any event we do not model yet. Kept so a Hermes upgrade never breaks the client.
     case unknown(type: String, payload: JSONValue)
 }

@@ -391,8 +391,14 @@ enum EventDigest {
         events.compactMap { if case .state(let state) = $0 { return state } else { return nil } }
     }
 
-    static func errors(_ events: [ClientEvent]) -> [(code: Int?, message: String)] {
-        events.compactMap { if case .error(let code, let message) = $0 { return (code, message) } else { return nil } }
+    static func errors(_ events: [ClientEvent]) -> [(session: SessionID, code: Int?, message: String)] {
+        events.compactMap {
+            if case .error(let session, let code, let message) = $0 {
+                return (session, code, message)
+            } else {
+                return nil
+            }
+        }
     }
 
     static func readyEpochs(_ events: [ClientEvent]) -> [String] {
