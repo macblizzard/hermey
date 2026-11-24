@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.650",
-          "buildVersion": "650",
-          "date": "2026-11-24T19:38:03Z",
-          "localizedDescription": "### Fixed\n- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list\n  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you\n  saved \u2014 at rest, so it costs nothing per notification \u2014 and a bot without one keeps exactly the picture it had.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.650/Hermey-0.1.650-b650.ipa",
-          "size": 5444800,
+          "version": "0.1.651",
+          "buildVersion": "651",
+          "date": "2026-11-24T20:00:52Z",
+          "localizedDescription": "### Fixed\n- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked\n  wrong around a square or cat-shaped avatar \u2014 a dark ring with gaps. It now only draws that circle for the\n  old picture faces, and lets a drawn avatar be separated by its own outline.\n- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and\n  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.\n\n### Added\n- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's\n  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never\n  covers or reflows what you type, and drops to the model alone on a narrow window.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.651/Hermey-0.1.651-b651.ipa",
+          "size": 5451139,
           "minOSVersion": "17.0",
-          "sha256": "c5da4908a9a825bc0325010b95fa5ebbd3dae60b93fd9e2a2a42cf070525f1a3"
+          "sha256": "957786094474e1f3f14075f4f4238159caf6ec63ec1b953dc2578e76564f6a41"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.650 (650)",
-      "identifier": "hermes-0.1.650-650",
-      "caption": "### Fixed\n- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list\n  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you\n  saved \u2014 at rest, so it costs nothing per notification \u2014 and a bot without one keeps exactly the picture it had.",
-      "date": "2026-11-24T19:38:03Z",
+      "title": "Hermes 0.1.651 (651)",
+      "identifier": "hermes-0.1.651-651",
+      "caption": "### Fixed\n- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked\n  wrong around a square or cat-shaped avatar \u2014 a dark ring with gaps. It now only draws that circle for the\n  old picture faces, and lets a drawn avatar be separated by its own outline.\n- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and\n  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.\n\n### Added\n- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's\n  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never\n  covers or reflows what you type, and drops to the model alone on a narrow window.",
+      "date": "2026-11-24T20:00:52Z",
       "tintColor": "#9A9AA0"
     }
   ],
