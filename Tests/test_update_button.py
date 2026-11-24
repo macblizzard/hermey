@@ -144,7 +144,7 @@ class TheButtonSitsInTheRightHandGroupLeftOfSearch(unittest.TestCase):
         # here would be the cut the dissolve replaced.
         self.assertIn("Self.bottomBarHeight", self.bar)
         self.assertNotIn("Divider()", self.bar)
-        self.assertIn("private static let bottomBarHeight: CGFloat = 34", SIDEBAR)
+        self.assertIn("private static let bottomBarHeight: CGFloat = 30 + barInset * 2", SIDEBAR)
 
 
 class ThePressIsTheUserInitiatedCheck(unittest.TestCase):

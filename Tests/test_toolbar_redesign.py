@@ -83,7 +83,7 @@ class FloorHoldsTheOtherVerbs(unittest.TestCase):
     def test_the_bar_is_the_same_height_and_fill_as_the_window(self) -> None:
         self.assertIn("Self.bottomBarHeight", self.bar)
         self.assertIn(".background(Tokens.sidebar)", self.bar)
-        self.assertIn("private static let bottomBarHeight: CGFloat = 34", MAC)
+        self.assertIn("private static let bottomBarHeight: CGFloat = 30 + barInset * 2", MAC)
 
     def test_search_expands_above_the_bar_rather_than_inside_it(self) -> None:
         chrome = block(MAC, "private var bottomChrome: some View {", "    /// The live field")
