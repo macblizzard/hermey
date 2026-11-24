@@ -134,6 +134,26 @@ opens on the one you tapped and pages to its neighbours.
 Each picture still pinches to zoom, and the page turns only on a sideways drag — the pull-down that
 closes the viewer is deliberately not also a page turn.
 
+## Excel, Word and PDF files
+
+Attach a document in either app and the bot reads it. The composer takes a `.xlsx`, `.docx` or `.pdf`
+alongside pictures, the row in the transcript names the file and its size, and the text travels with your
+message: a spreadsheet sheet by sheet with its rows, a Word document paragraph by paragraph with tables
+flattened, a PDF page by page from its text layer.
+
+- **What is sent** is the document's text, once, extracted on the host — every bot and both devices see
+  the same thing. Bounds are stated rather than silent: 8 MiB per file, four files a message, 24 000
+  characters a document, 50 PDF pages, 2 000 Word paragraphs and table rows, 12 sheets of 500 rows. A file
+  cut at a bound says so in the host's log, and the block in the prompt names the sheet or page it came
+  from.
+- **Opening one** from the transcript needs no download step: the Mac opens Quick Look, the phone opens
+  the share sheet with a preview. A file you sent is already cached on the device that sent it.
+- **Scans are not read.** A PDF with no text layer is text-free to the host — no OCR runs, so photograph
+  the page and send it as an image instead.
+- **The way back.** A bot can write a file into its workspace and link it: the reply carries the same kind
+  of row, downloaded from the host when you press it. Bots learn this from the bundled `office-files`
+  skill, so a bot that has never read a file can still hand you one.
+
 ## Appearance and themes
 
 Settings → **Appearance**. Several dark palettes, with **Midnight** the default, and **Parchment**

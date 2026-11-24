@@ -120,6 +120,7 @@ python3 Tools/site/build_docs.py <the docs/ directory of the gh-pages branch>
 | **Group chats** | Several bots in one room, with tables, code and quotes rendered, per-message read-aloud, copy, reply and reactions. A room is renamed from its row, on either device. |
 | **Reactions that follow you** | One emoji per message, kept by the host — react on the Mac and the phone shows it. Unpaired, both apps still work locally. |
 | **Pictures** | An image in a reply opens with every other image on that message: swipe on the phone, arrow keys or chevrons on the Mac, and a swipe down puts it away. |
+| **Excel, Word and PDF** | Attach a spreadsheet, a Word document or a PDF and the bot reads what is in it — sheets by name, tables flattened row by row, PDF pages in order, with a stated limit and a log line when a file is too big to include whole. A file a bot writes comes back as a row in the reply: press it and it opens, Quick Look on the Mac and the share sheet on the phone. |
 | **Approvals in the app** | Tool approvals arrive as cards you can accept or reject, with the payload visible before you decide. |
 | **Agent cards** | A bot can draw an approval, a task with live status, or an email draft as a native card instead of prose. A draft is a form on arrival — edit the recipient, subject and body, then Send or Discard. |
 | **The Mac as a computer** | Full-screen computer use: a paired Mac runs commands, clicks, types and shares a workspace, with one sorted queue and a per-grant status row. |

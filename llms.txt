@@ -67,6 +67,7 @@ then install the app on a phone or Mac and pair it with a short code.
   one gateway per `HERMES_HOME`. `hermeyd --gateway-check` exits 75 on a duplicate.
 - Plugin: `hermes-genui` ships with this repo and is installed into `<engine>/plugins/hermes-genui`;
   upstream Hermes does not have it, and cards answer 503 without it.
+- Office files: `POST /v1/office/extract` (bearer) takes a base64 document and returns the text block a prompt would carry — content-sniffed `pdf`/`docx`/`xlsx`, 8 MiB, bounded by pages/sheets/characters. The apps attach the same bytes through `file.attach`; `GET /v1/attachments/{profile}/{name}` serves them back, and a bot hands a file over by linking its workspace path.
 - Requirements: Linux with systemd or macOS, Hermes installed, the service account sharing the
   engine's UID, Tailscale (or your own TLS proxy).
 - Versions: the apps are `0.1.<run>` (tag `v0.1.N`); `hermeyd` has its own series
