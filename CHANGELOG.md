@@ -1417,3 +1417,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the
   paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath
   the field, lined up with where the text starts.
+
+## [0.1.655] — 2026-11-24
+
+### Changed
+- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never
+  wears it. Every button, picker, toggle, menu and link now suppresses that drawing — and keyboard focus still
+  works: a focused bot row and the composer's model pill show the app's own quiet fill instead.
+
+### Removed
+- The old Hermes-to-Rakazo parity tasklist (`docs/LOCAL_COMPUTER_PARITY.md`) and its test, which outlived the
+  thing they tracked.
