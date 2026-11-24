@@ -1,5 +1,6 @@
 import AppKit
 import HermesAppKit
+import HermesKit
 import HermeyUI
 import SwiftUI
 

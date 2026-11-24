@@ -1,4 +1,5 @@
 import Foundation
+import HermesKit
 import SwiftUI
 
 /// One bot with replies the user has not looked at yet — the row a notification list is built from.
