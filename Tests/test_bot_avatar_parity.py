@@ -466,9 +466,10 @@ class TheModuleFitsTheRepo(unittest.TestCase):
         for surface in surfaces:
             self.assertIn("BotAvatarView(", read(ROOT / surface), surface)
         # The Mac's push icon renders the same face offscreen — through `PushIcon`, which is the one
-        # place a banner's picture is made.
+        # place a banner's picture is made, and which asks the bot's drawn avatar first.
         root = read(ROOT / "Apps/HermesMac/Workspace/WorkspaceRoot.swift")
-        self.assertIn("PushIcon.png(for: id, color: store.botFaces[id]?.raw)", root)
+        self.assertIn("PushIcon.png(for: id, avatar: store.botAvatars[id], color: store.botFaces[id]?.raw)",
+                      root)
         # The transcript's own working row does not draw the face itself: it hands the bot to
         # `WorkingStatus`, which does — one drawing, two surfaces.
         transcript = read(ROOT / "Apps/HermesMac/Conversation/TranscriptScroll.swift")

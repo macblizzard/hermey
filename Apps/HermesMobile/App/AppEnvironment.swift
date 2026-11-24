@@ -255,6 +255,9 @@ final class AppEnvironment: ObservableObject {
             botAvatars = avatars
             persistBotFaces(loaded, host: host)
             botFacesError = nil
+            // Every load is also what keeps the banners' pictures current: pairing, a launch or a
+            // save all pass through here, so a bot never waits for the next restart to get its face.
+            await MobileFaceCache.refresh(faces: botFaces, avatars: botAvatars)
         } catch {
             guard generation == iconGeneration, store.isPaired, !isDisconnectedByUser else { return }
             // Losing the credentials between the guard and the call is the same race in a smaller window.
@@ -276,11 +279,28 @@ final class AppEnvironment: ObservableObject {
 
     /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
     /// answers a 400 with its reason, which this throws to the editor.
+    ///
+    /// The banner cache follows immediately — invalidated and redrawn — so the first notification
+    /// after a save shows the new face, and the one after a clear goes back to the bot's shape.
     func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
         let (host, service) = try iconService()
         try await service.saveAvatar(botID: botID, document: document)
         guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }
+        // Drop the previous face outright — file and rendered bytes — before anything can read it.
+        // The reload below refreshes the cache, so the new face is drawn once, here, and never
+        // inside a notification.
+        MobileFaceCache.invalidate(botID: botID)
         await loadBotFaces()
+        await MobileFaceCache.refresh(faces: botFaces, avatars: botAvatars)
+        // The relay's own copy follows too: a Bark banner is drawn from the host's stored PNG, so
+        // leaving it until the next launch would show the previous face to a suspended app.
+        if UserDefaults.standard.string(forKey: PushRelay.urlKey)?.isEmpty == false {
+            let faces = botFaces
+            let avatars = botAvatars
+            await model.syncPushIcons { id in
+                PushIcon.png(for: id, avatar: avatars[id], color: faces[id]?.raw)
+            }
+        }
         if let error = botFacesError {
             throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"])
         }
@@ -431,6 +451,8 @@ final class AppEnvironment: ObservableObject {
         botFaces = [:]
         botAvatars = [:]
         botFacesError = nil
+        // The banners' pictures belong to the host that just went away.
+        MobileFaceCache.invalidateAll()
         await model.stop()
         store.clear()
         await box.update(host: nil, token: nil)

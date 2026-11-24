@@ -6,7 +6,6 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 NOTIFIER = (ROOT / "Apps" / "HermesMac" / "Support" / "ReplyNotifier.swift").read_text()
 CACHE = (ROOT / "Apps" / "HermesMac" / "Support" / "MacFaceCache.swift").read_text()
-ROOT_VIEW = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceRoot.swift").read_text()
 ICONS = ROOT / "Apps" / "HermesMac" / "Assets.xcassets" / "AppIcon.appiconset"
 
 
@@ -22,16 +21,20 @@ class TheBannerWearsTheBot(unittest.TestCase):
         self.assertIn("MacFaceCache.attachment(for: note.botID", NOTIFIER)
         self.assertIn("content.attachments = [face]", NOTIFIER)
 
-    def test_the_face_comes_from_the_stored_setting(self) -> None:
-        self.assertIn("var faceFor: ((String) -> String?)?", NOTIFIER)
-        self.assertIn("ReplyNotifier.shared.faceFor = { botID in store.botFaces[botID]?.raw }", ROOT_VIEW)
+    def test_the_face_comes_from_the_banner_cache(self) -> None:
+        # The notifier no longer asks the shell for a colour: the cache rendered every face from the
+        # bot's stored avatar (or its shape, when it has none) before any banner was posted.
+        self.assertIn("MacFaceCache.attachment(for: note.botID)", NOTIFIER)
+        self.assertNotIn("faceFor", NOTIFIER)
 
-    def test_the_cache_renders_a_still_and_keys_by_face(self) -> None:
+    def test_the_cache_renders_a_still_and_keys_by_bot(self) -> None:
         # `PushIcon` renders `BotAvatarStill`, not `BotAvatarView`: `ImageRenderer` cannot sample a
-        # `TimelineView`, and the blank render is what once cost every banner its face.
-        self.assertIn("PushIcon.png(for: botID, color: color)", CACHE)
+        # `TimelineView`, and the blank render is what once cost every banner its face. The drawn
+        # branch of the same function renders `BotAvatarIcon`.
+        self.assertIn("PushIcon.png(for: botID,", CACHE)
+        self.assertIn("avatar: avatars[botID],", CACHE)
         self.assertIn("BotAvatarStill", (ROOT / "Sources" / "HermeyUI" / "PushIcon.swift").read_text())
-        self.assertIn("slug(botID, color)", CACHE)
+        self.assertIn("stem(botID)", CACHE)
 
 
 class TheBundleIconIsCurrent(unittest.TestCase):

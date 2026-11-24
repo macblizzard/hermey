@@ -123,8 +123,8 @@ struct WorkspaceRoot: View {
         .task(id: ObjectIdentifier(store.model)) {
             ReplyNotifier.shared.onGraphite = { botID in store.selectBot(botID) }
             // The banner wears the bot's own face: the app icon cannot vary per notification, an
-            // attachment can (same trick as the phone's push icons).
-            ReplyNotifier.shared.faceFor = { botID in store.botFaces[botID]?.raw }
+            // attachment can (same trick as the phone's push icons). `MacFaceCache` renders it from
+            // the bot's drawn avatar, so nothing here has to hand the notifier a face.
             ReplyNotifier.shared.requestAuthorizationIfNeeded()
             ReplyNotifier.shared.updateBadge(store.model.badgeCount)
             store.model.replyNotificationSink = { note in
@@ -324,15 +324,20 @@ struct WorkspaceRoot: View {
     /// fixed frame the panel was not. Rather than guess at a fix, the app now names what it actually
     /// has open — its windows with their frames, plus every flag that could raise an overlay — so the
     /// culprit is read out of Settings → View log instead of inferred from a photograph.
-    /// Render and upload each bot's face once per change, only when a relay is registered.
+    /// Render each bot's face for the banner cache, and upload it when a relay is registered.
     ///
-    /// Nothing is sent without a relay: the image exists to be shown in a banner, and a host with no
-    /// Bark URL would only store bytes nobody reads.
+    /// The cache is filled whether or not a relay exists: it is what a *local* banner reads, and the
+    /// host's stored copy is only the relay's. Nothing is sent without a relay — a host with no Bark
+    /// URL would only store bytes nobody reads.
+    @MainActor
     private func uploadPushFaces() async {
+        // One render per face, at launch and after a save; `attachment(for:)` is a file read.
+        await MacFaceCache.refresh(faces: store.botFaces, avatars: store.botAvatars)
         let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey) ?? ""
         guard !relay.isEmpty else { return }
         await store.model.syncPushIcons { id in
-            PushIcon.png(for: id, color: store.botFaces[id]?.raw)
+            // The drawn avatar first, the shape face for a bot without one.
+            PushIcon.png(for: id, avatar: store.botAvatars[id], color: store.botFaces[id]?.raw)
         }
     }
 

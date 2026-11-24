@@ -157,20 +157,23 @@ struct BotsTab: View {
     /// room never records and must not share a session with a conversation.
     @StateObject private var roomVoice = VoiceController()
 
-    /// Render and upload each bot's face — only when a relay is registered.
+    /// Render each bot's face for the banner cache, and upload it when a relay is registered.
     ///
     /// A method rather than a closure inside `.task`: inline, the nested `@MainActor` closure and the
     /// `??` chain together outrun the type checker ("unable to type-check in reasonable time").
+    @MainActor
     private func uploadPushFaces() async {
         let faces = app.botFaces
+        let avatars = app.botAvatars
         // The banners' own pictures first: they are wanted whether or not a relay is registered.
-        await MobileFaceCache.refresh(faces: faces)
+        // `PushIcon` renders a stored definition (the drawn avatar) ahead of the shape face.
+        await MobileFaceCache.refresh(faces: faces, avatars: avatars)
         guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey), !relay.isEmpty else {
             return
         }
         await model.syncPushIcons { id in
-            // The stored face when there is one; otherwise the one this bot's id draws.
-            PushIcon.png(for: id, color: faces[id]?.raw)
+            // The drawn avatar when the bot has a definition; otherwise the shape face it always had.
+            PushIcon.png(for: id, avatar: avatars[id], color: faces[id]?.raw)
         }
     }
 

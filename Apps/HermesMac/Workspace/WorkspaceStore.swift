@@ -489,6 +489,8 @@ final class WorkspaceStore: ObservableObject {
         botFaces = [:]
         botAvatars = [:]
         botFacesError = nil
+        // The banners' pictures belong to the host that just went away.
+        MacFaceCache.invalidateAll()
     }
 
     func loadBotFaces() async {
@@ -503,6 +505,9 @@ final class WorkspaceStore: ObservableObject {
             botFaces = icons
             botAvatars = avatars
             botFacesError = nil
+            // Every load is also what keeps the banners' pictures current: pairing, a launch or a
+            // save all pass through here, so a bot never waits for the next restart to get its face.
+            await MacFaceCache.refresh(faces: botFaces, avatars: botAvatars)
         } catch {
             guard generation == iconGeneration, pairing == address else { return }
             botFacesError = error.localizedDescription
@@ -525,6 +530,10 @@ final class WorkspaceStore: ObservableObject {
 
     /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
     /// answers a 400 with its reason, which surfaces here as a thrown message.
+    ///
+    /// The banner cache is invalidated and redrawn here, not left for the next launch: a bot that
+    /// just changed its face must not wear the previous one in the very next notification, and a bot
+    /// whose definition was cleared must go back to its shape on the same terms.
     func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
         guard let address = pairing, !address.isTicketOnly else {
             throw MacBotIconService.Failure.devicePairingRequired
@@ -533,7 +542,21 @@ final class WorkspaceStore: ObservableObject {
         let generation = iconGeneration
         try await MacBotIconService(address: address).saveAvatar(botID: botID, document: document)
         guard generation == iconGeneration, pairing == address else { return }
+        // Drop the previous face outright — file and rendered bytes — before anything can read it.
+        // The reload below refreshes the cache, so the new face is drawn once, here, and never
+        // inside a notification.
+        MacFaceCache.invalidate(botID: botID)
         await loadBotFaces()
+        await MacFaceCache.refresh(faces: botFaces, avatars: botAvatars)
+        // The relay's own copy follows too: a Bark banner is drawn from the host's stored PNG, so
+        // leaving it until the next launch would show the previous face to a suspended app.
+        if UserDefaults.standard.string(forKey: PushRelay.urlKey)?.isEmpty == false {
+            let faces = botFaces
+            let avatars = botAvatars
+            await model.syncPushIcons { id in
+                PushIcon.png(for: id, avatar: avatars[id], color: faces[id]?.raw)
+            }
+        }
         if let error = botFacesError {
             throw MacBotIconService.Failure.refresh(error)
         }
