@@ -74,8 +74,9 @@ when the Mac wakes, which is a different thing.
 
 ## The model pill
 
-The composer's control row carries one pill: the bot's `provider/model` and how full its context is, as
-`540k/1M Tokens`. Press it and the model picker opens — the same sheet the bot panel's **Model** row
+On its own row under the message field, both apps show one pill: the bot's `provider/model` and how full
+its context is, as `540k/1M Tokens`. It sits under the field rather than inside it, so it never reads as
+part of what you type. Press it and the model picker opens — the same sheet the bot panel's **Model** row
 opens on the Mac, and the drawer's on the phone.
 
 - **The count arrives with a turn.** Usage comes back when a turn completes, so before the first reply
