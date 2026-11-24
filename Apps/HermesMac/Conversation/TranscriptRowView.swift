@@ -110,14 +110,23 @@ struct TranscriptRowView: View {
 
     @ViewBuilder private var messageMenu: some View {
         if entry.role == .user || entry.role == .assistant {
-            Button("Select Text") { onSelectText(entry.text) }
-            Button(isSpeaking ? "Stop Reading" : "Read Aloud") {
+            // Every row wears its glyph, and every row is built by `MessageMenuRow` so a row cannot
+            // be added without one. The speaker's row swaps title *and* symbol together: a row that
+            // says "Stop Reading" must not still show the speaking mark.
+            MessageMenuRow.action("Select Text", symbol: "text.cursor") { onSelectText(entry.text) }
+            MessageMenuRow.action(isSpeaking ? "Stop Reading" : "Read Aloud",
+                                  symbol: isSpeaking ? "speaker.slash" : "speaker.wave.2") {
                 speech.toggle(id: entry.id, text: entry.text)
             }
-            if reactionKey != nil { Button("Add Reaction…") { showingReactions = true } }
+            if reactionKey != nil {
+                MessageMenuRow.action("Add Reaction…", symbol: "face.smiling") { showingReactions = true }
+            }
         }
-        ShareLink(item: entry.text) { Label("Share", systemImage: "square.and.arrow.up") }
-        Button("Copy Message") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.text, forType: .string) }
+        MessageMenuRow.share(entry.text)
+        MessageMenuRow.action("Copy Message", symbol: "doc.on.doc") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(entry.text, forType: .string)
+        }
     }
 
     @ViewBuilder private var content: some View {

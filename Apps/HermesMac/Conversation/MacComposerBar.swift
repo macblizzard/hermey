@@ -140,6 +140,22 @@ struct MacComposerBar: View {
                 pendingAttachmentsBar
             }
 
+            // The session's own facts, over the field: which model answers, and how full its context
+            // is. Chrome, not message — it sits outside the field and cannot reflow a character.
+            // `.equatable()` keeps a keystroke from laying this out again; both values come from the
+            // host (`contextUsed` arrives with a completed turn's usage, so until then the line is
+            // the model alone).
+            ComposerSessionLine(provider: model.modelProvider,
+                                model: model.modelLabel,
+                                used: model.contextUsed,
+                                limit: model.contextMax)
+                .equatable()
+                .padding(.horizontal, 8)
+                .frame(maxWidth: Geometry.conversationMeasure, alignment: .leading)
+                .padding(.horizontal, Geometry.readingInset)
+                .padding(.bottom, 4)
+                .frame(maxWidth: .infinity)
+
             Composer(text: $model.draft,
                      // A capsule over the transcript: no bar, no frame at rest.
                      floats: true,

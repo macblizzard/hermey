@@ -539,43 +539,19 @@ struct ConversationScreen: View {
             .padding(.bottom, 2)
     }
 
-    // The status strip is gone: the pill carries the bot and its state, and the drawer carries
-    // the host's own facts. What is left of it is the two chips in `floatingTop`.
-
-    /// `deepseek-v4.1-flash` fits; a provider-qualified id does not, and the chip is
-    /// `fixedSize`, so it is shortened here rather than pushing the latency chip off.
-    private var modelChipLabel: String? {
-        guard let raw = model.modelLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else { return nil }
-        let words = raw.split(separator: " ")
-        let short = words.prefix(2).joined(separator: " ")
-        guard !short.isEmpty else { return nil }
-        return short.count <= 22 ? short : String(short.prefix(21)) + "…"
-    }
-
-    /// `12k / 1M` — only when the host has reported both halves of the window.
-    /// "43k / 200k" when the host reports a window, "43k" when it does not — the desktop shows
-    /// both facts and the phone showed neither.
-    private var contextUsage: String? {
-        guard let used = model.contextUsed else { return nil }
-        if let limit = model.contextMax, limit > 0 {
-            return "\(MobileTokens.short(used)) / \(MobileTokens.short(limit))"
-        }
-        return MobileTokens.short(used)
-    }
+    /// The status strip is gone: the pill carries the bot and its state, and the drawer carries
+    /// the host's own facts. What is left of it is the two chips in `floatingTop`.
+    ///
+    /// The model and the context count used to be formatted here (`modelChipLabel`, `contextUsage`,
+    /// `contextTint`) for chips under the pill. Those chips are gone, and the two facts now live in
+    /// the composer's chrome — printed by `ComposerSessionLine`/`SessionLine` for **both** apps, so
+    /// there is one `540k/1M Tokens` rule rather than a phone copy and a desktop copy of it.
 
     /// How much conversation is on screen, the same count the desktop's subtitle carries.
     private var entryCountLabel: String? {
         let count = model.transcript.count
         guard count > 0 else { return nil }
         return count == 1 ? "1 entry" : "\(count) entries"
-    }
-
-    private var contextTint: Color {
-        guard let fraction = model.contextFraction else { return Tokens.textDim }
-        if fraction >= 0.85 { return Tokens.danger }
-        if fraction >= 0.70 { return Tokens.warning }
-        return Tokens.textDim
     }
 
     // MARK: Transcript
@@ -1103,6 +1079,19 @@ struct ConversationScreen: View {
                     .padding(.top, 4)
                     .transition(.opacity)
             }
+
+            // The model and how full its context is: the composer's chrome, over the field and
+            // outside it, so it can truncate to the model alone on a narrow phone without ever
+            // touching what is being typed. Same view, same formatter as the desktop's line.
+            ComposerSessionLine(provider: model.modelProvider,
+                                model: model.modelLabel,
+                                used: model.contextUsed,
+                                limit: model.contextMax)
+                .equatable()
+                .padding(.leading, Geometry.chatGutter + 10)
+                .padding(.trailing, Geometry.chatGutter)
+                .padding(.bottom, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             Composer(text: $model.draft,
                      // Floating, like the desktop's: the field is a capsule over the transcript,

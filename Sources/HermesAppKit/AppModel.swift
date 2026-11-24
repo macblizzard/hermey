@@ -227,6 +227,13 @@ public final class AppModel: ObservableObject {
     /// the menu, and on this host that is an Anthropic model the app was never using.
     @Published public private(set) var modelLabel: String?
 
+    /// The provider beside it (`opencode-go` for `deepseek-v4.1-flash`), as the host named it.
+    ///
+    /// Kept apart from the label because the composer's chrome prints `provider/model`, and the
+    /// label the host sends is the model alone. Nil whenever `modelLabel` is: a provider with no
+    /// model is not a model name, and the line shows nothing rather than half of one.
+    @Published public private(set) var modelProvider: String?
+
     /// Tokens the context held after the last completed turn, and the window it is filling.
     @Published public private(set) var contextUsed: Int?
     @Published public private(set) var contextMax: Int?
@@ -3504,9 +3511,14 @@ public final class AppModel: ObservableObject {
             // Scoped to the open bot: an unscoped catalogue answers for whichever profile the
             // gateway defaults to, which is why the chip kept saying deepseek after a bot's own
             // default had been changed to something else.
-            modelLabel = try await client.modelCatalog(profile: selectedBotID).current?.label
+            let current = try await client.modelCatalog(profile: selectedBotID).current
+            modelLabel = current?.label
+            // The provider travels with the model: the composer's chrome prints `provider/model`,
+            // and a label on its own cannot say which provider is answering.
+            modelProvider = current?.provider
         } catch {
             modelLabel = nil
+            modelProvider = nil
         }
     }
 

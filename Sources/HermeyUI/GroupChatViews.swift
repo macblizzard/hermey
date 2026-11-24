@@ -455,14 +455,12 @@ public struct RoomChatView: View {
             }
 
             // The room's faces, not one bot's: this is the header's answer to "who is here".
-            HStack(spacing: -7) {
-                ForEach(Array(room.members.prefix(3))) { member in
-                    BotAvatarView(identity: member.profile, color: icons[member.profile]?.raw,
-                                      activity: .idle, size: 24, animates: false)
-                        .overlay(Circle().stroke(Tokens.canvas, lineWidth: 1.5))
-                }
-            }
-            .fixedSize()
+            // One stack for both heads, so the plate behind a face is decided in one place.
+            StackedBotFaces(faces: room.members.prefix(3).map {
+                                StackedBotFaces.Face(id: $0.profile, color: icons[$0.profile]?.raw)
+                            },
+                            size: 24,
+                            spacing: -7)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title.isEmpty ? room.name : title)
@@ -724,14 +722,12 @@ public struct RoomChatView: View {
                     }
                 }
                 // Long press a line: the two verbs a bot's message offers, so a room's transcript is
-                // as quotable as a conversation's.
+                // as quotable as a conversation's. Same rows, same glyphs as the conversation's menu.
                 .contextMenu {
-                    Button { copy(message.text) } label: {
-                        Label("Copy Message", systemImage: "doc.on.doc")
+                    MessageMenuRow.action("Copy Message", symbol: "doc.on.doc") {
+                        copy(message.text)
                     }
-                    ShareLink(item: message.text) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
+                    MessageMenuRow.share(message.text)
                 }
                 // Under every message: when it was said, and the four things one does with a
                 // message — listen, copy, answer it, mark it. Small and dim, because they are
@@ -1179,14 +1175,15 @@ public struct GroupChatRow: View {
     }
 
     /// Up to three faces, each tucked under the one before it, sized so the stack reads as one
-    /// portrait beside a 38 pt bot face.
+    /// portrait beside a 38 pt bot face. The plate behind each face is `StackedBotFaces`' question:
+    /// a drawn avatar carries its own outline and gets none.
     private var faces: some View {
         HStack(spacing: -8) {
-            ForEach(Array(room.members.prefix(3))) { member in
-                BotAvatarView(identity: member.profile, color: icons[member.profile]?.raw,
-                                  activity: .idle, size: 30, animates: false)
-                    .overlay(Circle().stroke(Tokens.canvas, lineWidth: 1.5))
-            }
+            StackedBotFaces(faces: room.members.prefix(3).map {
+                                StackedBotFaces.Face(id: $0.profile, color: icons[$0.profile]?.raw)
+                            },
+                            size: 30,
+                            spacing: -8)
             if room.members.count > 3 {
                 Text("+\(room.members.count - 3)")
                     .font(TypeScale.font(TypeScale.micro, weight: .semibold))
