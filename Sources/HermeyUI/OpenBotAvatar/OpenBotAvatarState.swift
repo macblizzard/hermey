@@ -163,6 +163,9 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.arch = mood == .happy ? 1 : 0
             pose.blink = reducedMotion ? 0 : Self.blink(seed: seed, time: t * 0.8)
         }
+        // The material's light rides the pose: same clock, same seed, same freeze under Reduce
+        // Motion, so one frame is still a pure function of (state, mood, time, seed).
+        pose.light = light(time: t, reducedMotion: reducedMotion)
         return pose
     }
 
@@ -275,4 +278,7 @@ public struct OpenBotAvatarPose: Hashable, Sendable {
     public var bodyScale: Double = 1
     public var mark: OpenBotAvatarMark?
     public var markScale: Double = 1
+    /// How lit the body's material is in this frame. A glass face reads it for its rim and its
+    /// halo; a solid face has neither and ignores it.
+    public var light: OpenBotAvatarLight = OpenBotAvatarLight(rim: 0.55, halo: 0.20)
 }

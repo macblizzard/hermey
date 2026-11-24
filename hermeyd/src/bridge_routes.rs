@@ -199,10 +199,12 @@ pub async fn put_defaults_soul(
 // ---- bot icons --------------------------------------------------------------------
 
 /// A face's own entry: the chosen face (`avatar`), and optionally the avatar it draws itself with
-/// (`definition`, the open-bot-avatar v1 JSON) and that avatar's colour (`color`).
+/// (`definition`, the open-bot-avatar v1 JSON), that avatar's colour (`color`) and the material it
+/// is painted in (`material`: `solid` or `glass`).
 ///
-/// The document predates both, so every field is optional and a missing one is not a change. The
-/// shapes are decoded by the apps' `BotIconService` / `MacBotIconService` field-for-field.
+/// The document predates all three, so every field is optional and a missing one is not a change;
+/// an absent `material` is `solid`, which is what every stored face already is. The shapes are
+/// decoded by the apps' `BotIconService` / `MacBotIconService` field-for-field.
 fn face_entry(doc: &Value, bot: &str) -> Value {
     doc.get("faces")
         .and_then(|faces| faces.get(bot))
@@ -253,12 +255,15 @@ pub async fn put_icon(
         }
     }
 
-    // The generated avatar: `null` clears it, an object must validate.
+    // The generated avatar: `null` clears it, an object must validate. The material is cleared with
+    // it: a material describes how to paint a definition, and one left behind would be a setting
+    // for a face that no longer exists.
     if has("definition") {
         match body.get("definition") {
             Some(Value::Null) | None => {
                 if let Some(object) = entry.as_object_mut() {
                     object.remove("definition");
+                    object.remove("material");
                 }
             }
             Some(definition) => match crate::bot_avatar::validate(definition) {
@@ -291,6 +296,22 @@ pub async fn put_icon(
                     object.remove("color");
                 }
             }
+        }
+    }
+
+    // The material: `null` falls back to `solid` (the field is simply dropped), and anything that is
+    // neither `solid` nor `glass` is refused with the contract's reason and nothing is written.
+    if has("material") {
+        match body.get("material") {
+            Some(Value::Null) | None => {
+                if let Some(object) = entry.as_object_mut() {
+                    object.remove("material");
+                }
+            }
+            Some(value) => match crate::bot_avatar::parse_material(value) {
+                Ok(material) => entry["material"] = json!(material),
+                Err(reason) => return Err(bad_request(reason)),
+            },
         }
     }
 
@@ -507,6 +528,84 @@ mod tests {
         put(&st, "cody", json!({ "definition": null }))
             .await
             .expect("cleared avatar");
+        assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn a_material_round_trips_beside_the_definition() {
+        let dir = crate::test_support::scratch("bot-avatar-material");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        put(&st, "cody", json!({
+            "definition": definition(),
+            "color": "#A97EFE",
+            "material": "glass",
+        }))
+        .await
+        .expect("glass is a material");
+
+        let stored = get(&st).await;
+        assert_eq!(stored["faces"]["cody"]["material"], json!("glass"));
+        // …and it is in SQLite, which is what a paired device reads on the next launch.
+        assert_eq!(get(&st).await["faces"]["cody"]["material"], json!("glass"));
+
+        // Back to solid: the field is stored, not dropped, because a bot may choose it explicitly.
+        put(&st, "cody", json!({ "material": "solid" }))
+            .await
+            .expect("solid is a material");
+        assert_eq!(get(&st).await["faces"]["cody"]["material"], json!("solid"));
+    }
+
+    #[tokio::test]
+    async fn an_absent_material_is_not_written_and_means_solid() {
+        let dir = crate::test_support::scratch("bot-avatar-material-absent");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        put(&st, "cody", json!({ "definition": definition(), "color": "#A97EFE" }))
+            .await
+            .expect("stored");
+        // Absent, not defaulted into the document: nothing already saved is rewritten, and every
+        // reader treats a missing field as solid.
+        assert!(get(&st).await["faces"]["cody"].get("material").is_none());
+
+        // An explicit null is the same thing: solid, and not a value in the document.
+        put(&st, "cody", json!({ "material": null })).await.expect("null clears");
+        assert!(get(&st).await["faces"]["cody"].get("material").is_none());
+    }
+
+    #[tokio::test]
+    async fn an_unknown_material_is_refused_and_nothing_is_written() {
+        let dir = crate::test_support::scratch("bot-avatar-material-refusal");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        let (status, body) = put(&st, "cody", json!({
+            "definition": definition(),
+            "material": "matte",
+        }))
+        .await
+        .expect_err("matte is not a material");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let detail = body.0["detail"].as_str().unwrap_or_default();
+        assert_eq!(detail, "material must be \"solid\" or \"glass\", not \"matte\"");
+        // The whole write is refused, not just the field: a bot must not keep half a change.
+        assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
+    }
+
+    #[tokio::test]
+    async fn clearing_the_definition_clears_the_material_with_it() {
+        let dir = crate::test_support::scratch("bot-avatar-material-clear");
+        let st = Arc::new(crate::test_support::state(&dir));
+
+        put(&st, "cody", json!({ "definition": definition(), "material": "glass" }))
+            .await
+            .expect("stored");
+        assert_eq!(get(&st).await["faces"]["cody"]["material"], json!("glass"));
+
+        put(&st, "cody", json!({ "definition": null }))
+            .await
+            .expect("cleared");
+        // A material describes how to paint a definition; with the definition gone it is a setting
+        // for a face that does not exist, and the whole entry goes.
         assert_eq!(get(&st).await["faces"].as_object().map(|f| f.len()), Some(0));
     }
 }

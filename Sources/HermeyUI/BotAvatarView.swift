@@ -151,6 +151,7 @@ public struct BotAvatarView: View {
             // is untouched, which is what keeps a bot without one looking exactly as it did.
             OpenBotAvatarView(definition: face.definition,
                               color: face.color,
+                              material: face.material,
                               state: OpenBotAvatarState(activity: activity),
                               mood: OpenBotAvatarState.mood(for: activity),
                               size: size,

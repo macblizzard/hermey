@@ -4,6 +4,15 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **A bot's face can be made of glass.** A new `material` on the avatar document (`solid` | `glass`,
+  absent meaning solid) picks between the 0.1.648 flat body and the reference's lit one: a three-stop
+  ramp, one specular streak, a Fresnel rim and a contact shadow, with the eight states as an accent
+  on that material — the rim and halo pulse per state, and `blocked` calms the tint instead of
+  turning it red. What is drawn follows the size: a 26 pt row gets only the ramp, rim and contact
+  band, the 96 pt pet gets everything with its glow capped to the window's clear margin, and the
+  editor's 200 pt preview adds the eye's catchlight. Materials are a table, not a flag — the renderer
+  paints whatever spec the table holds and the editor lists it, so the next material is a row.
+  Everything already saved is Solid: no migration, and the open-bot-avatar definition is untouched.
 - **PDF, Word and Excel files are read by the host, and a file a bot writes comes back to you.** A
   `.pdf`, `.docx` or `.xlsx` (plus `.csv`/`.txt`) sent to a bot is converted **once** by hermeyd — the
   text layer page by page, paragraphs with their headings, every sheet's used range as pipe-separated

@@ -489,7 +489,8 @@ class BothAppsOfferTheAvatarTab(unittest.TestCase):
     def test_the_editor_can_only_write_an_avatar(self) -> None:
         source = read(EDITOR)
         # The only thing the editor saves is a document; there is no soul or config vocabulary in it.
-        self.assertIn("save(BotAvatarDocument(definition: draft, color: colorHex))", source)
+        # The document carries the definition, its colour and now its material, in one call.
+        self.assertRegex(source, r"save\(BotAvatarDocument\(definition: draft, color: colorHex,\s*\n\s*material: material\)\)")
         self.assertIn("try await save(nil)", source)
         # Look at the code, not the prose: the doc comment above explains *why* it never touches them.
         code = "\n".join(line.split("//")[0] for line in source.splitlines())

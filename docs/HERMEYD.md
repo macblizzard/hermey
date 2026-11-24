@@ -129,7 +129,7 @@ swap. Shapes were taken from the Swift decoders, not invented.
 | `PATCH/DELETE /v1/bot-categories/{id}` | rename / reassign / delete |
 | `PUT /v1/bot-categories/order` | `{order:[…]}` |
 | `GET /v1/bot-defaults` · `PUT /v1/bot-defaults/soul` | `{soul:{text,chars,present,updated_at}, built_in}` |
-| `GET /v1/bot-icons` · `PUT /v1/bot-icons/{bot}` | `{faces:{bot:{avatar}}, icons:{}}` |
+| `GET /v1/bot-icons` · `PUT /v1/bot-icons/{bot}` | `{faces:{bot:{avatar, definition?, color?, material?}}, icons:{}}` — `material` is `solid` (absent means this) or `glass`; anything else is a 400, and clearing `definition` clears it |
 | `GET /v1/bots/disabled` · `POST /v1/bots/{bot}/state` | `{disabled:[…]}` / `{enabled:bool}` |
 | `GET/PUT /v1/bots/approvals` | `{mode, profiles, unset, updated, failed}` |
 | `GET/POST /v1/rooms` | the engine's rooms (`groups.list`, limit 50); create names one and picks 2–6 members |

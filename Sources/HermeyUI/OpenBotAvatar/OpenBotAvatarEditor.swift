@@ -7,7 +7,10 @@ import SwiftUI
 /// What it offers, in the order a person moves through it:
 ///
 /// * a **live preview** of the draft, at the bot's current state, which is the only thing here that
-///   answers "what will it look like";
+///   answers "what will it look like"; it is drawn large enough (200 pt) that a glass body's
+///   streak and catchlight are visible, because a material chosen at thumbnail size is a guess;
+/// * a **material** choice — the rows of `BotAvatarMaterialSpec.all`, so the list grows with the
+///   table and this view never hard-codes two cases;
 /// * six **presets** to start from (a blob, a box, a mug, a sprout, a cat, an egg);
 /// * a **JSON box** for a definition copied from upstream's editor, with the contract's own reasons
 ///   shown inline when it cannot be imported;
@@ -30,6 +33,7 @@ public struct OpenBotAvatarEditor: View {
 
     @State private var draft: BotAvatarDefinition
     @State private var colorHex: String?
+    @State private var material: BotAvatarMaterial
     @State private var jsonText: String
     @State private var jsonStatus: JSONStatus = .ok
     @State private var saving = false
@@ -50,7 +54,7 @@ public struct OpenBotAvatarEditor: View {
 
     private var dirty: Bool {
         guard let stored else { return true }
-        return stored.definition != draft || stored.color != colorHex
+        return stored.definition != draft || stored.color != colorHex || stored.material != material
     }
 
     public init(botID: String,
@@ -68,6 +72,8 @@ public struct OpenBotAvatarEditor: View {
         let seed = stored?.definition ?? OpenBotAvatarPresets.blob
         _draft = State(initialValue: seed)
         _colorHex = State(initialValue: stored?.color)
+        // Solid first: a bot that has never chosen a material is the face it already wears.
+        _material = State(initialValue: stored?.material ?? .solid)
         _jsonText = State(initialValue: (try? seed.jsonText()) ?? "")
         _state = State(initialValue: previewState)
     }
@@ -75,6 +81,7 @@ public struct OpenBotAvatarEditor: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             preview
+            materialRow
             presets
             jsonBox
             controls
@@ -86,35 +93,63 @@ public struct OpenBotAvatarEditor: View {
 
     private var preview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 14) {
-                OpenBotAvatarView(definition: draft,
-                                  color: colorHex,
-                                  state: state,
-                                  size: 92,
-                                  label: "\(botName)'s avatar")
-                    .background(
-                        RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
-                            .fill(Tokens.canvas)
-                    )
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(draft.name)
-                        .font(TypeScale.font(TypeScale.md, weight: .semibold))
-                        .foregroundStyle(Tokens.textPrimary)
-                    Text("\(Int(draft.eyes.x.rounded())) · \(Int(draft.eyes.y.rounded())) · spacing \(String(format: "%.1f", draft.eyes.spacing)) · ×\(String(format: "%.2f", draft.eyes.scale))")
-                        .font(TypeScale.font(TypeScale.sm))
-                        .foregroundStyle(Tokens.textSecondary)
-                    Picker("Preview state", selection: $state) {
-                        ForEach(OpenBotAvatarState.allCases, id: \.self) { state in
-                            Text(state.rawValue.capitalized).tag(state)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                }
+            // 200 pt, not a thumbnail: a glass body's streak is ~1.5 pt wide and its eye
+            // catchlight is 1 pt, and both vanish below the thresholds the renderer applies, which
+            // would make the choice a guess. It sits on its own row so the same layout works in a
+            // 520 pt sheet and on a phone. The preview is a themed surface, so its rim follows the
+            // scheme like every other drawing in the app.
+            OpenBotAvatarView(definition: draft,
+                              color: colorHex,
+                              material: material,
+                              state: state,
+                              size: 200,
+                              label: "\(botName)'s avatar")
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
+                        .fill(Tokens.canvas)
+                )
+                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(alignment: .center, spacing: 10) {
+                Text(draft.name)
+                    .font(TypeScale.font(TypeScale.md, weight: .semibold))
+                    .foregroundStyle(Tokens.textPrimary)
+                Text("\(Int(draft.eyes.x.rounded())) · \(Int(draft.eyes.y.rounded())) · spacing \(String(format: "%.1f", draft.eyes.spacing)) · ×\(String(format: "%.2f", draft.eyes.scale))")
+                    .font(TypeScale.font(TypeScale.sm))
+                    .foregroundStyle(Tokens.textSecondary)
                 Spacer(minLength: 0)
+                Picker("Preview state", selection: $state) {
+                    ForEach(OpenBotAvatarState.allCases, id: \.self) { state in
+                        Text(state.rawValue.capitalized).tag(state)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .controlSize(.small)
             }
             Text("Preview shows the state you pick. Every state edits the same definition — the avatar is one drawing, not eight.")
+                .font(TypeScale.font(TypeScale.sm))
+                .foregroundStyle(Tokens.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Material
+
+    /// The materials the table holds, as a choice. Driven by `BotAvatarMaterialSpec.all` rather than
+    /// by a hard-coded pair, so the next material is a row there and a word here, not a new control.
+    private var materialRow: some View {
+        let current = BotAvatarMaterialSpec.spec(for: material)
+        return VStack(alignment: .leading, spacing: 8) {
+            SectionCaption("MATERIAL")
+            Picker("Material", selection: $material) {
+                ForEach(BotAvatarMaterialSpec.all, id: \.material) { spec in
+                    Text(spec.name).tag(spec.material)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            Text(current.summary)
                 .font(TypeScale.font(TypeScale.sm))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -134,6 +169,7 @@ public struct OpenBotAvatarEditor: View {
                         VStack(spacing: 4) {
                             OpenBotAvatarView(definition: preset,
                                               color: colorHex,
+                                              material: material,
                                               state: .idle,
                                               size: 34,
                                               animates: false,
@@ -335,7 +371,8 @@ public struct OpenBotAvatarEditor: View {
         saving = true
         Task {
             do {
-                try await save(BotAvatarDocument(definition: draft, color: colorHex))
+                try await save(BotAvatarDocument(definition: draft, color: colorHex,
+                                                 material: material))
                 savedNote = "Saved for \(botName)."
             } catch {
                 saveError = error.localizedDescription

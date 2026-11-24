@@ -242,8 +242,13 @@ struct PetView: View {
                 // for a picture.
                 OpenBotAvatarView(definition: avatar.definition,
                                   color: avatar.color,
+                                  material: avatar.material,
                                   state: pet.state,
                                   size: side,
+                                  // The pet floats over a wallpaper nobody knows, so its rim is
+                                  // always two-tone and its halo blur is capped to the window's
+                                  // 12 pt clear margin.
+                                  backdrop: .pet,
                                   animates: pet.isVisible,
                                   label: "\(pet.botName), a desktop pet")
             } else {

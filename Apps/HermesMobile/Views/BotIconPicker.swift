@@ -110,7 +110,9 @@ struct BotIconService {
                   let encoded = try? JSONSerialization.data(withJSONObject: definition,
                                                             options: [.sortedKeys, .withoutEscapingSlashes]),
                   let text = String(data: encoded, encoding: .utf8),
-                  let document = BotAvatarDocument(json: text, color: face["color"] as? String) else { continue }
+                  let document = BotAvatarDocument(json: text,
+                                                   color: face["color"] as? String,
+                                                   material: face["material"] as? String) else { continue }
             documents[botID] = document
         }
         return documents
@@ -126,7 +128,11 @@ struct BotIconService {
         } else {
             definition = NSNull()
         }
-        let body: [String: Any] = ["definition": definition, "color": document?.color ?? NSNull()]
+        // `material` travels with the definition and is cleared with it: the host drops the
+        // material when the definition is null, so a reset leaves nothing behind.
+        let body: [String: Any] = ["definition": definition,
+                                   "color": document?.color ?? NSNull(),
+                                   "material": document?.material.rawValue ?? NSNull()]
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
         _ = try await request(url, method: "PUT", body: data)
     }

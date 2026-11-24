@@ -19,10 +19,11 @@ import SwiftUI
 /// still there.
 ///
 /// It carries `BotAvatarDocument`s rather than bare definitions because a stored face is a body
-/// **and** a colour, and the colour has to travel with the body: a call site that passes a stale
-/// `bots.color` beside a new definition must not repaint the new face. For a bot with a definition
-/// the stored colour wins; for one without, nothing here applies and the call site's colour is
-/// still what draws its shape.
+/// **and** a colour **and** a material, and all three have to travel together: a call site that
+/// passes a stale `bots.color` beside a new definition must not repaint the new face, and a bot
+/// that chose glass must not be drawn solid on one surface because that surface passed its own
+/// arguments. For a bot with a definition the stored colour and material win; for one without,
+/// nothing here applies and the call site's colour is still what draws its shape.
 ///
 /// This is a value, not a cache. The maps it is built from — `WorkspaceStore.botAvatars` on the
 /// Mac, `AppEnvironment.botAvatars` on the phone — are `@Published`, and the roots that inject it
