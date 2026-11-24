@@ -1434,3 +1434,10 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own
   inset was missing from its leading padding.
+
+## [0.1.657] — 2026-11-24
+
+### Fixed
+- **The token count shows on the phone too.** A narrow pill used to drop the whole count and keep only the model
+  name, so the number lived on the Mac and not on the iPhone. The count now holds its room and the model name
+  truncates instead.
