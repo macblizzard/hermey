@@ -95,8 +95,11 @@ public struct OpenBotAvatarVolume {
         var builtParts: [Part] = []
         for (index, outline) in subpaths.enumerated() where !holeFlags[index] {
             let cuts = subpaths.indices.filter { holeFlags[$0] && Self.containsProbe(outline, subpaths[$0]) }
-            var partPolygons = outline
-            for cut in cuts { partPolygons.append(contentsOf: subpaths[cut]) }
+            // A part is its own outline plus the polygons of every hole cut inside it: the field the
+            // volume is inferred from has to see each as its own ring, so these are polygons, not
+            // points appended to one.
+            var partPolygons: [[OpenBotAvatarGeometry.Point]] = [outline]
+            for cut in cuts { partPolygons.append(subpaths[cut]) }
             builtParts.append(Self.makePart(polygons: partPolygons, outline: outline))
         }
         if builtParts.isEmpty {
