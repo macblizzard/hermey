@@ -459,12 +459,16 @@ struct TranscriptRowView: View {
 
             replyFileRows(files.links)
 
-            messageTime
-
-            // Three glyphs on the message itself: speak, copy, answer. Visible at rest — at 45 %
-            // they were invisible on a dark surface, which is why they looked absent altogether.
-            messageActions
-                .opacity(isHovered || isSpeaking ? 1 : 0.8)
+            // The stamp and the glyphs are one line, not two. Stacked, every reply spent a whole
+            // extra line on a time and three verbs that belong together — and the user row already
+            // reads that way, at this spacing, so the two roles now share one shape.
+            HStack(spacing: 8) {
+                messageTime
+                // Three glyphs on the message itself: speak, copy, answer. Visible at rest — at 45 %
+                // they were invisible on a dark surface, which is why they looked absent altogether.
+                messageActions
+                    .opacity(isHovered || isSpeaking ? 1 : 0.8)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onHover { isHovered = $0 }
