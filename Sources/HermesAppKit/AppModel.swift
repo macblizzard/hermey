@@ -656,6 +656,12 @@ public final class AppModel: ObservableObject {
     /// call, exactly like `BotComputerClient`.
     public var hostUpdateClient: HostUpdateClient?
 
+    /// A manual check is in flight. Settings ▸ About's button reads it for its own word ("Checking…")
+    /// and disables itself: a second press would put two questions on the wire and could paint the
+    /// older answer over the newer one. Launch and reconnect checks never set it — they are not a
+    /// press anyone is waiting on.
+    @Published public private(set) var hostCheckRunning = false
+
     private var updateTracker = HostUpdateTracker()
     private var updatePoll: Task<Void, Never>?
 
@@ -666,6 +672,14 @@ public final class AppModel: ObservableObject {
     /// used only by Settings ▸ About's explicit check.
     public func checkHostUpdate(refresh: Bool = false) async {
         guard let client = hostUpdateClient else { return }
+        if refresh {
+            // One press at a time, and the flag is what the button reads to say "Checking…".
+            guard !hostCheckRunning else { return }
+            hostCheckRunning = true
+        }
+        // Cleared on every exit from here, including a thrown request: `defer` must live in the
+        // function's scope, not inside the `if` above, or it would run the moment that block ended.
+        defer { if refresh { hostCheckRunning = false } }
         do {
             let status = try await client.status(refresh: refresh)
             updateTracker.checked(status, at: Date(), socketDropped: !connection.isLive)
@@ -4930,7 +4944,20 @@ public final class AppModel: ObservableObject {
                   let botID = selectedBotID else { return }
             let key = ReactionKey(host: hostName, bot: botID, session: session, message: message)
             apply(emoji, to: key.storageKey)
-        case .error(_, let message):
+        case .error(let session, _, let message):
+            // The host's failure text belongs to the conversation it names, and one socket serves
+            // every bot this app opens — including the ones it opens in the background to read their
+            // previews. Painting those without asking which session they were about put "could not
+            // start the assistant … no LLM provider configured" from another bot's session into the
+            // `cody` pane, whose own conversation was fine.
+            let named = sessionAliases[session] ?? session
+            guard !named.isEmpty, named == selectedSessionID else {
+                ClientLog.note("host error for \(named.isEmpty ? "no session" : named) while "
+                               + "\(selectedSessionID ?? "nothing") is open: \(message)",
+                               level: .info, category: "session")
+                return
+            }
+            // The conversation on screen: unchanged, banner and all.
             lastSendError = message
             ClientLog.note("host reported an error: \(message)", level: .error, category: "gateway")
         case .unknown:
