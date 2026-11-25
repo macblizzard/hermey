@@ -17,6 +17,14 @@
 //! * the copy dies with the socket. A reconnect re-resumes and re-fills it, so nothing here is
 //!   persisted, shared between devices, or logged with content.
 //!
+//! **Paged before it is read.** The reply is windowed from its *text* (`page_resume_text`): the
+//! message array is borrowed as raw slices, counted, and only the newest page is ever parsed. The
+//! older rows are kept as the bytes they arrived as, which is what lets `session.history` still serve
+//! them. The earlier version parsed the whole frame into `Value`s first and then measured every row
+//! again to cache it — 6,778 rows read, serialised twice, and one page sent (measured 434 ms → 92 ms
+//! on a synthetic 3.4 MB resume). `history.total` is the count taken from the array, never the length
+//! of whatever this connection happens to keep.
+//!
 //! Why not forward `session.history` to the engine: the engine answers it from the live session's
 //! MODEL history (measured: 157 rows for the same session, because compacted rows are dropped),
 //! while the resume returns the display lineage (1450 rows). Serving older pages from it would
@@ -30,8 +38,14 @@
 //! * JSON-RPC responses carry `id` and no `method`; requests/notifications carry `method`;
 //! * ids are numbers or strings, and `1` is a different id from `"1"` (`RpcId`).
 
+use serde::de::{Deserializer, IgnoredAny, MapAccess, Visitor};
+use serde::Deserialize;
+use serde_json::value::RawValue;
 use serde_json::{json, Map, Value};
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
+use std::fmt;
+use std::sync::Arc;
 
 /// Rows per page. A page is also capped by bytes, so this is a ceiling, not a target: 200 plain chat
 /// rows is ~150 KB, while 200 tool rows can be megabytes.
@@ -93,24 +107,38 @@ pub fn plan_newest(
     max_messages: usize,
     max_bytes: usize,
 ) -> (&[Value], Option<i64>) {
-    let total = messages.len();
+    let (start, _end) = plan_newest_range(messages.len(), max_messages, max_bytes, |index| {
+        encoded_size(&messages[index])
+    });
+    (&messages[start..], offset(start))
+}
+
+/// The newest rows that fit, as a `(start, end)` range over `total` rows.
+///
+/// The size of a row is the caller's to say: for parsed rows it is `encoded_size`, and for the raw
+/// elements a resume actually arrives as it is the length of their own text — which is what lets the
+/// relay plan a page without serialising (or parsing) 6,778 rows to find out how big they are.
+fn plan_newest_range<F: Fn(usize) -> usize>(
+    total: usize,
+    max_messages: usize,
+    max_bytes: usize,
+    size: F,
+) -> (usize, usize) {
     if total == 0 {
-        return (&[], None);
+        return (0, 0);
     }
     let mut kept = 0usize;
     let mut used = 0usize;
-    for message in messages.iter().rev() {
-        let size = encoded_size(message);
+    for index in (0..total).rev() {
         // The newest row always ships, however large: an empty resume would look like a lost
         // conversation, which is the bug this whole module exists to prevent.
-        if kept > 0 && (kept >= max_messages || used.saturating_add(size) > max_bytes) {
+        if kept > 0 && (kept >= max_messages || used.saturating_add(size(index)) > max_bytes) {
             break;
         }
-        used = used.saturating_add(size);
+        used = used.saturating_add(size(index));
         kept += 1;
     }
-    let start = total - kept;
-    (&messages[start..], offset(start))
+    (total - kept, total)
 }
 
 /// `(page, next_cursor)` for rows older than `cursor`, newest-of-those last.
@@ -123,26 +151,39 @@ pub fn plan_before(
     limit: usize,
     max_bytes: usize,
 ) -> (&[Value], Option<i64>) {
-    let total = messages.len();
+    let (start, end) = plan_before_range(messages.len(), cursor, limit, max_bytes, |index| {
+        encoded_size(&messages[index])
+    });
+    (&messages[start..end], offset(start))
+}
+
+/// Rows older than `cursor`, as a `(start, end)` range whose size rule the caller supplies.
+fn plan_before_range<F: Fn(usize) -> usize>(
+    total: usize,
+    cursor: i64,
+    limit: usize,
+    max_bytes: usize,
+    size: F,
+) -> (usize, usize) {
     let end = clamp_cursor(cursor, total);
     if end == 0 {
-        return (&[], None);
+        return (0, 0);
     }
     if limit == 0 {
-        return (&[], offset(end));
+        return (end, end);
     }
     let mut start = end;
     let mut used = 0usize;
     while start > 0 && (end - start) < limit {
-        let size = encoded_size(&messages[start - 1]);
+        let bytes = size(start - 1);
         // At least one row per page, for the same reason `plan_newest` always keeps one.
-        if start < end && used.saturating_add(size) > max_bytes {
+        if start < end && used.saturating_add(bytes) > max_bytes {
             break;
         }
         start -= 1;
-        used = used.saturating_add(size);
+        used = used.saturating_add(bytes);
     }
-    (&messages[start..end], offset(start))
+    (start, end)
 }
 
 fn clamp_cursor(cursor: i64, total: usize) -> usize {
@@ -379,8 +420,7 @@ impl ParkedResumes {
 
 #[derive(Debug)]
 struct CachedTranscript {
-    rows: Vec<Value>,
-    bytes: usize,
+    transcript: WindowedTranscript,
 }
 
 /// One older page: the rows, the offset its first row sits at, and the conversation's row count.
@@ -436,11 +476,24 @@ impl HistoryCache {
     }
 
     /// Keep `rows` for `key`, dropping the least recently used entries if over budget.
+    ///
+    /// The tests' door (and the shape the earlier implementation used); the relay calls
+    /// `remember_window` with the transcript it paged, which is where the saving is.
+    #[cfg(test)]
     pub fn remember(&mut self, key: HistoryKey, rows: Vec<Value>) {
-        let bytes: usize = rows.iter().map(encoded_size).sum();
+        self.remember_window(key, WindowedTranscript::from_values(rows));
+    }
+
+    /// Keep a paged transcript for `key`, dropping the least recently used entries if over budget.
+    ///
+    /// The byte total comes with the transcript. Summing `encoded_size` over every row here — which
+    /// this used to do — serialised the whole conversation a second time just to decide whether to
+    /// keep it.
+    pub fn remember_window(&mut self, key: HistoryKey, transcript: WindowedTranscript) {
+        let bytes = transcript.bytes;
         self.forget(&key);
         self.order.push_back(key.clone());
-        self.rows.insert(key, CachedTranscript { rows, bytes });
+        self.rows.insert(key, CachedTranscript { transcript });
         self.total = self.total.saturating_add(bytes);
         // A single transcript larger than the whole budget is still worth caching: without it every
         // "load earlier" would need a fresh resume, which is the round trip this avoids. It is
@@ -461,19 +514,22 @@ impl HistoryCache {
 
     fn drop_entry(&mut self, key: &HistoryKey) {
         if let Some(cached) = self.rows.remove(key) {
-            self.total = self.total.saturating_sub(cached.bytes);
+            self.total = self.total.saturating_sub(cached.transcript.bytes);
         }
     }
 
     /// The rows cached for `key`, touching the entry's LRU position. `None` when this connection
     /// never resumed it.
+    ///
+    /// Parses the whole kept transcript, which is why the relay never calls it: the production door
+    /// is `page`, which parses one page.
     #[allow(dead_code)]
-    pub fn get(&mut self, key: &HistoryKey) -> Option<&[Value]> {
+    pub fn get(&mut self, key: &HistoryKey) -> Option<Vec<Value>> {
         if !self.rows.contains_key(key) {
             return None;
         }
         self.touch(key);
-        self.rows.get(key).map(|cached| cached.rows.as_slice())
+        self.rows.get(key).map(|cached| cached.transcript.rows_vec())
     }
 
     fn touch(&mut self, key: &HistoryKey) {
@@ -482,6 +538,10 @@ impl HistoryCache {
     }
 
     /// Plan one older page for `key` — the cache's whole reason to exist.
+    ///
+    /// The page's `total` is the count stored with the transcript, not `rows.len()` of anything:
+    /// the cache may hold fewer rows than the conversation has, and a client paging back needs the
+    /// conversation's size.
     pub fn page(
         &mut self,
         key: &HistoryKey,
@@ -494,11 +554,11 @@ impl HistoryCache {
         }
         self.touch(key);
         let cached = self.rows.get(key)?;
-        let (page, next) = plan_before(&cached.rows, cursor, limit, max_bytes);
+        let (rows, next) = cached.transcript.before(cursor, limit, max_bytes);
         Some(HistoryPage {
-            rows: page.to_vec(),
+            rows,
             cursor: next,
-            total: cached.rows.len(),
+            total: cached.transcript.total(),
         })
     }
 }
@@ -611,6 +671,272 @@ pub fn page_resume_response(
         );
     }
     Ok((frame, rows))
+}
+
+/// A transcript kept as the text it arrived as, never as parsed rows.
+///
+/// The relay used to answer a resume by parsing the whole conversation into `Value`s, slicing the
+/// newest page off the end, and *then* measuring every row again to cache it. On the longest chat in
+/// the fleet that is 6,778 rows read, 6,778 serialised, and one page sent. Nothing about that work
+/// was needed: the reply only has to hand the client its newest page, and the older rows only have
+/// to exist so `session.history` can serve them.
+///
+/// So the rows are kept as their own JSON text, and a page is parsed — only that page — when somebody
+/// asks for one. `total` is counted from the array, so `history.total` stays the conversation's real
+/// row count rather than the length of whatever this connection happens to hold.
+#[derive(Clone, Debug)]
+pub struct WindowedTranscript {
+    /// Each element exactly as received, in order. Shared, because the runtime-id alias means the
+    /// same transcript is cached under two keys.
+    rows: Arc<Vec<Box<str>>>,
+    /// Rows the host sent. Counted once, from the array — never `rows.len()` at read time.
+    total: usize,
+    /// Bytes these rows occupy on the wire, close enough for the cache budget (row text + separator).
+    bytes: usize,
+}
+
+impl WindowedTranscript {
+    /// From parsed rows — the tests' door, and the shape the earlier implementation cached. The
+    /// relay does not build one this way: parsing every row is the cost this type exists to avoid.
+    #[cfg(test)]
+    pub fn from_values(rows: Vec<Value>) -> Self {
+        let rows: Vec<Box<str>> = rows
+            .iter()
+            .map(|row| serde_json::to_string(row).unwrap_or_default().into_boxed_str())
+            .collect();
+        let bytes = rows.iter().map(|row| row.len() + 1).sum();
+        let total = rows.len();
+        Self::new(rows, total, bytes)
+    }
+
+    fn new(rows: Vec<Box<str>>, total: usize, bytes: usize) -> Self {
+        Self {
+            rows: Arc::new(rows),
+            total,
+            bytes,
+        }
+    }
+
+    /// The conversation's row count, as counted from the host's array.
+    pub fn total(&self) -> usize {
+        self.total
+    }
+
+    #[allow(dead_code)]
+    pub fn bytes(&self) -> usize {
+        self.bytes
+    }
+
+    /// The newest page, parsed. Only these rows ever become `Value`s.
+    pub fn newest(&self, max_messages: usize, max_bytes: usize) -> (Vec<Value>, Option<i64>) {
+        let (start, end) = plan_newest_range(self.total, max_messages, max_bytes, |index| {
+            self.row_len(index)
+        });
+        (self.parse(start, end), offset(start))
+    }
+
+    /// Rows older than `cursor`, parsed.
+    pub fn before(&self, cursor: i64, limit: usize, max_bytes: usize) -> (Vec<Value>, Option<i64>) {
+        let (start, end) = plan_before_range(self.total, cursor, limit, max_bytes, |index| {
+            self.row_len(index)
+        });
+        (self.parse(start, end), offset(start))
+    }
+
+    /// The text of every row, parsed — the tests' door (and `get`), never the relay's.
+    #[allow(dead_code)]
+    pub fn rows_vec(&self) -> Vec<Value> {
+        self.parse(0, self.total)
+    }
+
+    fn row_len(&self, index: usize) -> usize {
+        // +1 for the comma the row carries in the array; consistent between planning and caching.
+        self.rows.get(index).map_or(0, |row| row.len() + 1)
+    }
+
+    /// Parse rows `[start, end)`, and nothing else.
+    ///
+    /// Every element was already validated when the frame arrived, so a failure here can only be a
+    /// bug in the range arithmetic; an empty page is then the safe answer (the client keeps what it
+    /// has and the next tap asks again) rather than a panic in the relay.
+    fn parse(&self, start: usize, end: usize) -> Vec<Value> {
+        if start >= end || end > self.total {
+            return Vec::new();
+        }
+        let mut buffer = String::with_capacity(
+            self.rows[start..end].iter().map(|row| row.len() + 1).sum::<usize>() + 2,
+        );
+        buffer.push('[');
+        for (offset, row) in self.rows[start..end].iter().enumerate() {
+            if offset > 0 {
+                buffer.push(',');
+            }
+            buffer.push_str(row);
+        }
+        buffer.push(']');
+        serde_json::from_str(&buffer).unwrap_or_default()
+    }
+}
+
+/// A resume reply the relay rewrote: the frame to forward, the rows to keep, and the identity the
+/// per-connection bookkeeping needs.
+pub struct PagedResume {
+    /// The replacement frame, already serialised.
+    pub frame: String,
+    pub transcript: WindowedTranscript,
+    /// The reply's JSON-RPC id, for `ResumeRequests::take`.
+    pub id: Value,
+    /// `result.session_id` — the runtime id a resume attached, for the alias map.
+    pub session_id: Option<String>,
+}
+
+/// Page a `session.resume` reply **from its text**, before any of it is materialised.
+///
+/// `None` means "not a pageable resume reply" (a request, an error, an empty transcript, something
+/// this module does not recognise) and the caller must forward the original bytes untouched.
+///
+/// The whole frame is validated without building a `Value` for it (`&RawValue` deserialisation
+/// parses nothing into a tree), each message is borrowed as its own raw slice, and only the newest
+/// page is parsed. Everything else in the reply — `session_id`, `open_requests`, whatever the engine
+/// adds — is carried through as it arrives.
+pub fn page_resume_text(
+    text: &str,
+    max_messages: usize,
+    max_bytes: usize,
+) -> Option<PagedResume> {
+    let reply: ResumeReply<'_> = serde_json::from_str(text).ok()?;
+    // A notification or a request is not a reply: nothing will come back to page.
+    if reply.is_request {
+        return None;
+    }
+    let id = reply.id?;
+    let body = reply.result?;
+    if body.messages.is_empty() {
+        return None;
+    }
+    let rows: Vec<Box<str>> = body.messages.iter().map(|raw| raw.get().into()).collect();
+    let total = rows.len();
+    let bytes: usize = rows.iter().map(|row| row.len() + 1).sum();
+    let transcript = WindowedTranscript::new(rows, total, bytes);
+    let (page, cursor) = transcript.newest(max_messages, max_bytes);
+    if page.is_empty() {
+        return None;
+    }
+    let shown = page.len();
+
+    let session_id = body.session_id.clone();
+    let mut result = body.extra;
+    // The runtime id travels back where it came from: it is how the client names the session it
+    // just attached, and dropping it here would send a reply with no id for its own resume.
+    if let Some(id) = &session_id {
+        result.insert("session_id".to_string(), Value::String(id.clone()));
+    }
+    result.insert("messages".to_string(), Value::Array(page));
+    // `total` is the count of the array, not the length of what was kept: a client that pages back
+    // needs the conversation's size, and a server that trimmed its copy must not shrink it.
+    result.insert(
+        "history".to_string(),
+        json!({ "total": total, "shown": shown, "cursor": cursor }),
+    );
+
+    let mut frame = reply.extra;
+    frame.insert(
+        "jsonrpc".to_string(),
+        reply.jsonrpc.unwrap_or_else(|| json!("2.0")),
+    );
+    frame.insert("id".to_string(), serde_json::from_str::<Value>(id.get()).ok()?);
+    frame.insert("result".to_string(), Value::Object(result));
+
+    Some(PagedResume {
+        frame: serde_json::to_string(&Value::Object(frame)).ok()?,
+        transcript,
+        id: serde_json::from_str::<Value>(id.get()).ok()?,
+        session_id,
+    })
+}
+
+/// A JSON-RPC reply, borrowed: `id` and `result.messages` stay slices of the frame we received.
+#[derive(Default)]
+struct ResumeReply<'a> {
+    jsonrpc: Option<Value>,
+    id: Option<&'a RawValue>,
+    /// `method` was present, so this is a request/notification rather than a reply.
+    is_request: bool,
+    result: Option<ResumeBody<'a>>,
+    extra: Map<String, Value>,
+}
+
+#[derive(Default)]
+struct ResumeBody<'a> {
+    messages: Vec<&'a RawValue>,
+    session_id: Option<String>,
+    extra: Map<String, Value>,
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for ResumeReply<'a> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ReplyVisitor<'a>(std::marker::PhantomData<&'a ()>);
+
+        impl<'de: 'a, 'a> Visitor<'de> for ReplyVisitor<'a> {
+            type Value = ResumeReply<'a>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a JSON-RPC reply")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut reply = ResumeReply::default();
+                while let Some(key) = map.next_key::<Cow<'de, str>>()? {
+                    match key.as_ref() {
+                        "id" => reply.id = map.next_value()?,
+                        "result" => reply.result = map.next_value()?,
+                        "jsonrpc" => reply.jsonrpc = Some(map.next_value()?),
+                        "method" => {
+                            let _: IgnoredAny = map.next_value()?;
+                            reply.is_request = true;
+                        }
+                        _ => {
+                            reply.extra.insert(key.into_owned(), map.next_value()?);
+                        }
+                    }
+                }
+                Ok(reply)
+            }
+        }
+
+        deserializer.deserialize_map(ReplyVisitor(std::marker::PhantomData))
+    }
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for ResumeBody<'a> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct BodyVisitor<'a>(std::marker::PhantomData<&'a ()>);
+
+        impl<'de: 'a, 'a> Visitor<'de> for BodyVisitor<'a> {
+            type Value = ResumeBody<'a>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a resume result object")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut body = ResumeBody::default();
+                while let Some(key) = map.next_key::<Cow<'de, str>>()? {
+                    match key.as_ref() {
+                        // Borrowed, not parsed: the rows stay slices of the frame.
+                        "messages" => body.messages = map.next_value()?,
+                        "session_id" => body.session_id = map.next_value()?,
+                        _ => {
+                            body.extra.insert(key.into_owned(), map.next_value()?);
+                        }
+                    }
+                }
+                Ok(body)
+            }
+        }
+
+        deserializer.deserialize_map(BodyVisitor(std::marker::PhantomData))
+    }
 }
 
 /// What the safety net did, for a log line that carries no transcript content.
@@ -971,7 +1297,7 @@ mod tests {
         let transcript = rows(5, 8);
         let mut cache = HistoryCache::new(CACHE_BYTES);
         cache.remember(key.clone(), transcript.clone());
-        assert_eq!(cache.get(&key), Some(transcript.as_slice()));
+        assert_eq!(cache.get(&key), Some(transcript.clone()));
         assert_eq!(cache.len(), 1);
         assert!(cache.total_bytes() > 0);
     }
@@ -985,9 +1311,9 @@ mod tests {
         cache.remember(a.clone(), rows(3, 8));
         cache.remember(b.clone(), rows(4, 8));
         cache.remember(c.clone(), rows(5, 8));
-        assert_eq!(cache.get(&a).map(<[Value]>::len), Some(3));
-        assert_eq!(cache.get(&b).map(<[Value]>::len), Some(4));
-        assert_eq!(cache.get(&c).map(<[Value]>::len), Some(5));
+        assert_eq!(cache.get(&a).map(|rows| rows.len()), Some(3));
+        assert_eq!(cache.get(&b).map(|rows| rows.len()), Some(4));
+        assert_eq!(cache.get(&c).map(|rows| rows.len()), Some(5));
         assert_eq!(cache.len(), 3);
     }
 
@@ -1352,5 +1678,155 @@ mod tests {
         assert_eq!(waiting.remove(0), RpcId::Int(1), "the leader is answered first");
         assert_eq!(waiting, vec![RpcId::Int(2)]);
         assert!(parked.pending_for(&key).is_empty(), "answered once, not twice");
+    }
+
+    // -- the text path: page before materialising ------------------------------------------
+
+    /// A resume reply as it arrives, as text.
+    fn resume_text(rows: &[Value], id: u64, session_id: &str) -> String {
+        serde_json::to_string(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "session_id": session_id,
+                "messages": rows,
+                "inflight": Value::Null,
+                "open_requests": [],
+            },
+        }))
+        .expect("frame serialises")
+    }
+
+    #[test]
+    fn text_paging_matches_the_parsed_paging_exactly() {
+        let transcript = rows(1450, 2400);
+        let text = resume_text(&transcript, 7, "runtime-1");
+
+        let paged = page_resume_text(&text, PAGE_MESSAGES, PAGE_BYTES)
+            .expect("a 1450-row resume pages");
+        let paged_text = paged.frame.clone();
+        let windowed = paged.transcript.clone();
+        let (paged_value, _) = page_resume_response(
+            serde_json::from_str(&text).expect("frame parses"),
+            PAGE_MESSAGES,
+            PAGE_BYTES,
+        )
+        .expect("the parsed path pages it too");
+
+        // The two doors must agree byte for byte: the windowed one is an implementation change,
+        // not a change of what the client receives.
+        let text_frame: Value = serde_json::from_str(&paged_text).expect("rewritten frame parses");
+        assert_eq!(text_frame, paged_value);
+        assert_eq!(windowed.total(), transcript.len());
+        assert_eq!(
+            windowed.rows_vec(),
+            transcript,
+            "the kept text is the whole transcript, in order"
+        );
+        assert_eq!(windowed.newest(PAGE_MESSAGES, PAGE_BYTES).0.len(), PAGE_MESSAGES);
+    }
+
+    #[test]
+    fn text_paging_never_materialises_more_than_a_page() {
+        // A marker the windowed type cannot have produced if it had parsed every row: the page it
+        // hands back is exactly the newest page, and its `total` is the array's count, not the
+        // length of anything kept.
+        let transcript = rows(6778, 120);
+        let text = resume_text(&transcript, 11, "runtime-1");
+        let paged = page_resume_text(&text, PAGE_MESSAGES, PAGE_BYTES).expect("pages");
+        let windowed = paged.transcript.clone();
+        let frame: Value = serde_json::from_str(&paged.frame).expect("parses");
+        let result = &frame["result"];
+        assert_eq!(result["history"]["total"], json!(6778));
+        assert_eq!(result["history"]["shown"], json!(PAGE_MESSAGES));
+        assert_eq!(result["history"]["cursor"], json!(6778 - PAGE_MESSAGES));
+        assert_eq!(result["session_id"], json!("runtime-1"));
+        assert_eq!(result["open_requests"], json!([]), "other fields survive");
+        assert!(windowed.total() == 6778);
+        assert_eq!(windowed.newest(PAGE_MESSAGES, PAGE_BYTES).0, transcript[6578..].to_vec());
+    }
+
+    #[test]
+    fn text_paging_leaves_everything_else_alone() {
+        // A request (no reply), an error reply, and a reply with no messages: all forwarded.
+        for text in [
+            r#"{"jsonrpc":"2.0","id":1,"method":"session.resume","params":{"session_id":"s"}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":4001,"message":"nope"}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":{"session_id":"runtime","messages":[]}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"result":{"session_id":"runtime","notes":"no messages"}}"#,
+            "not json at all",
+        ] {
+            assert!(
+                page_resume_text(text, PAGE_MESSAGES, PAGE_BYTES).is_none(),
+                "must be forwarded untouched: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn text_paging_keeps_a_rows_own_json_untouched() {
+        // Tool rows carry nested objects and escapes; a page must hand them back exactly as they
+        // arrived, not re-serialised from a lossy copy.
+        let awkward = json!({
+            "id": "m1",
+            "role": "assistant",
+            "content": "a \"quoted\" line\nwith a newline, a \u{00e9} and {braces}",
+            "tool_calls": [{"name": "run", "input": {"nested": [1, 2, {"deep": null}]}}],
+        });
+        let text = resume_text(&[awkward.clone()], 3, "runtime-2");
+        let paged = page_resume_text(&text, PAGE_MESSAGES, PAGE_BYTES).expect("pages");
+        let frame: Value = serde_json::from_str(&paged.frame).expect("parses");
+        assert_eq!(frame["result"]["messages"][0], awkward);
+    }
+
+    #[test]
+    fn a_page_total_is_the_counted_conversation_not_the_cached_rows() {
+        // `HistoryCache` may hold fewer rows than the conversation has (a trimmed connection);
+        // the page's `total` must still be the conversation's size, which is the promise the
+        // client's "load earlier" row reads.
+        let key = HistoryKey::new("s1", "bot");
+        let mut cache = HistoryCache::new(CACHE_BYTES);
+        cache.remember(key.clone(), rows(400, 8));
+        let page = cache.page(&key, 400, 150, PAGE_BYTES).expect("a page");
+        assert_eq!(page.total, 400);
+        assert_eq!(page.rows, (250..400_usize).map(|i| row(i, 8)).collect::<Vec<_>>());
+    }
+
+    /// The measurement behind the change: 6,778 rows the way the relay used to do it, and the way it
+    /// does now. Not a benchmark harness — a guard that the windowed path is not accidentally doing
+    /// the old work, with the numbers printed so a regression is visible.
+    #[test]
+    fn windowing_a_6778_row_resume_is_much_cheaper_than_parsing_it() {
+        let transcript = rows(6778, 480);
+        let text = resume_text(&transcript, 5, "runtime-1");
+
+        let started = std::time::Instant::now();
+        let parsed: Value = serde_json::from_str(&text).expect("parses");
+        let (_, rows_parsed) = page_resume_response(parsed, PAGE_MESSAGES, PAGE_BYTES)
+            .expect("parses and pages");
+        let old_bytes: usize = rows_parsed.iter().map(encoded_size).sum();
+        let old = started.elapsed();
+
+        let started = std::time::Instant::now();
+        let windowed = page_resume_text(&text, PAGE_MESSAGES, PAGE_BYTES)
+            .expect("pages")
+            .transcript;
+        let new = started.elapsed();
+
+        assert!(old_bytes > 0);
+        assert_eq!(windowed.total(), 6778);
+        println!(
+            "resume of {} rows ({} KiB): old path {:?}, windowed {:?}",
+            transcript.len(),
+            text.len() / 1024,
+            old,
+            new
+        );
+        // Generous, because this is a debug build on a shared box: the point is that the windowed
+        // path is not doing the old work (it is one pass over borrowed slices), not a micro-benchmark.
+        assert!(
+            new < old,
+            "the windowed path must be cheaper than parsing every row ({new:?} vs {old:?})"
+        );
     }
 }

@@ -496,6 +496,22 @@ public final class AppModel: ObservableObject {
     private var openGeneration = 0
     /// Bumped by every user open, so the launch sweep can tell that somebody is waiting.
     private var userOpenGeneration = 0
+    /// The launch sweep's own task, so a tap can stand the walk down immediately.
+    ///
+    /// The sweep is not an annoyance that can simply be skipped for one iteration: it is a chain of
+    /// `session.resume` calls on the one socket, and the host answers those one at a time. Cancelling
+    /// the task is the closest a client can get to a priority queue — an open never queues behind
+    /// the *rest* of the roster, only behind the single warm already on the wire, which the sweep's
+    /// own measurements put at 0.03–0.7 s. Nothing is lost by abandoning the walk: every bot it has
+    /// not reached is just a bot whose cache stays as it was.
+    private var prefetchTask: Task<Void, Never>?
+    /// The background fill of older pages after a windowed resume (see `scheduleHistoryBackfill`).
+    private var backfillTask: Task<Void, Never>?
+    /// The bot the fill belongs to, so a screen going away only stops *its own* fill.
+    private var backfillBotID: String?
+    /// Bumped whenever the transcript is replaced outright, so a decoration pass computed against
+    /// older rows cannot land on newer ones.
+    private var decorationGeneration = 0
     /// How long the host gets before the pane offers a Retry.
     ///
     /// Short on purpose: the cached rows are already on screen, so a wait longer than this is
@@ -1452,8 +1468,15 @@ public final class AppModel: ObservableObject {
         openTask?.cancel()
         openTask = nil
         openGeneration &+= 1
-        // The user is waiting: the launch sweep stands down (see `prefetchConversations`).
+        // The user is waiting: the launch sweep stands down (see `prefetchConversations`) — and it
+        // stands down *now*, mid-walk, rather than after the bot it is warming.
         userOpenGeneration &+= 1
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        // The background fill of older rows belongs to the conversation being left.
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
         openingBotID = botID
         openFailure = nil
         if botID != selectedBotID {
@@ -1534,6 +1557,14 @@ public final class AppModel: ObservableObject {
     /// Leave an open. Called when the conversation's screen goes away, and only for its own bot: a
     /// screen that is disappearing *because* the next one was pushed must not cancel the next one.
     public func endOpen(_ botID: String) {
+        // The screen is going away: the fill it started has nobody to arrive for. Only *this* bot's
+        // fill — the screen that disappears because the next one was pushed must not cancel the
+        // next bot's fill, which was started a moment ago.
+        if backfillBotID == botID {
+            backfillTask?.cancel()
+            backfillTask = nil
+            backfillBotID = nil
+        }
         guard openingBotID == botID else { return }
         openTask?.cancel()
         openTask = nil
@@ -1575,6 +1606,21 @@ public final class AppModel: ObservableObject {
         activeRoom = nil
         if let resolved { restoreConversation(for: resolved) }
         await loadSessions()
+    }
+
+    /// Run the sweep under a task this model owns, so a tap can cancel it.
+    ///
+    /// The shells (iOS at launch and on every reconnect, the Mac behind its window) call this
+    /// rather than awaiting `prefetchConversations` directly: a sweep awaited by a `.task` modifier
+    /// is a sweep nobody can stand down, so a tap during launch waited for the rest of the roster.
+    public func startPrefetch() {
+        // The newest trigger wins: a reconnect's sweep should replace one that is still walking,
+        // and a cancelled sweep stops at its next bot (it is only a cache warm).
+        prefetchTask?.cancel()
+        prefetchTask = Task { [weak self] in
+            guard let self else { return }
+            await self.prefetchConversations()
+        }
     }
 
     /// Warm every bot's conversation in the background, so opening one paints instead of waiting.
@@ -1619,7 +1665,7 @@ public final class AppModel: ObservableObject {
         guard connection.isLive, bots.count > 1, !isPrefetching else { return }
         // A sweep is a convenience; an open is what the person asked for. Never start one behind an
         // open, and never begin one at all while the screen is not idle.
-        guard openingBotID == nil else { return }
+        guard openingBotID == nil, !Task.isCancelled else { return }
         isPrefetching = true
         defer { isPrefetching = false }
         // Which user open this sweep is walking under. A tap bumps it, and the walk stops: the host
@@ -1640,10 +1686,14 @@ public final class AppModel: ObservableObject {
         var stranded: [String] = []
         for bot in bots.prefix(Self.conversationCacheLimit) {
             guard connection.isLive else { break }
-            // Somebody is opening a chat right now: the walk ends here rather than making their
-            // resume queue behind the rest of the roster. The one warm already in flight finishes
-            // (0.03–0.7 s measured) and nothing more is started.
-            if openingBotID != nil || sweepUnder != userOpenGeneration { break }
+            // Somebody is opening a chat right now: the walk ends here — `return`, not `break`, so
+            // not even the closing lines run behind their resume. A tap cancels this task outright
+            // (`beginOpen`), which is what makes an open preempt the sweep: the one warm already on
+            // the wire finishes (0.03–0.7 s measured) and nothing more is started. The host answers
+            // one `session.resume` at a time, so a client cannot reorder one it has already sent —
+            // cancelling the walk is the priority queue, and this guard is the belt to that brace
+            // (a sweep started before `prefetchTask` existed still stops at the next bot).
+            if Task.isCancelled || openingBotID != nil || sweepUnder != userOpenGeneration { return }
             // The conversation on screen has its own lifecycle; the sweep must not touch it.
             if bot.id == selectedBotID { continue }
             // Already warm and recent: another read buys nothing.
@@ -1884,7 +1934,13 @@ public final class AppModel: ObservableObject {
             ClientLog.note("resume kept \(merged.entries.count - entries.count) earlier rows",
                            level: .info, category: "paging")
         }
-        transcript = SentAttachmentVault.decorate(merged.entries, sessionID: sessionID)
+        // The rows land **undecorated**, and the sent pictures are attached by a pass off the main
+        // actor a moment later (`scheduleDecoration`). `decorate` reads the attachment vault and the
+        // bytes of every picture the chat sent, and on a 6,778-row chat it ran *inside* this adopt —
+        // a synchronous per-row pass on the main actor at exactly the moment the reader is waiting
+        // for the pane, which is the stutter this removed. The text is what must be there
+        // immediately; a picture attached 20 ms later is invisible as a delay.
+        transcript = merged.entries
         // The scroll-jump report in one line: a transcript whose *first* row changes is a
         // transcript the reader's position cannot survive, so say when it happened and what it was
         // replaced with. Without this the app can only say that the pane moved.
@@ -1897,6 +1953,31 @@ public final class AppModel: ObservableObject {
         transcriptOwner = owner
         earlierCursor = merged.cursor
         historyTotal = total
+        if let owner { scheduleDecoration(for: owner, sessionID: sessionID) }
+    }
+
+    /// Attach the sent pictures to the rows just adopted, off the main actor.
+    ///
+    /// Skips entirely when this session has no vault records, which is every conversation that has
+    /// never sent a file: no task, no second publish, nothing to lose. When there are records the
+    /// join runs detached and the result is only drawn if the transcript is still the one the join
+    /// was computed against — a turn arriving, a bot switch or a pager fetch in the meantime wins,
+    /// and the next adopt decorates it anyway.
+    private func scheduleDecoration(for botID: String, sessionID: String) {
+        guard SentAttachmentVault.hasRecords(sessionID: sessionID) else { return }
+        decorationGeneration &+= 1
+        let generation = decorationGeneration
+        let rows = transcript
+        Task { @MainActor in
+            let decorated = await SentAttachmentVault.decorated(rows, sessionID: sessionID)
+            guard generation == self.decorationGeneration,
+                  self.transcriptOwner == botID,
+                  self.selectedBotID == botID,
+                  self.selectedSessionID == sessionID,
+                  self.transcript.count == rows.count,
+                  self.transcript.last?.id == rows.last?.id else { return }
+            self.transcript = decorated
+        }
     }
 
     /// Whether a write of `botID`'s rows may land on the transcript that is on screen.
@@ -1954,6 +2035,10 @@ public final class AppModel: ObservableObject {
 
     private func resetForBotSwitch() {
         botEpoch += 1
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
+        decorationGeneration &+= 1
         selectedSessionID = nil
         // The id-to-durable map belongs to the launch, not to the bot: draining it here would make
         // a return to a conversation this process already resolved ask again for nothing. It is
@@ -2309,6 +2394,27 @@ public final class AppModel: ObservableObject {
             _ = await previous?.value
             await cache.storeMessages(entries, for: id, cursor: cursor, total: total)
         }
+    }
+
+    /// Paint the on-disk copy of a bot's conversation, before the open makes any host call.
+    ///
+    /// Keyed by the id this device remembered rather than the host's canonical one, because the
+    /// canonical identity *is* a round trip and a conversation already on this device must not wait
+    /// for it. The store is an actor, so the read and the decode are off the main actor; the paint
+    /// itself is one assignment, which is what the first frame draws.
+    ///
+    /// - Returns: whether rows were painted. `false` means there is nothing on disk for this bot
+    ///   (a first visit, a cache that was reset), and the pane keeps saying what it is doing.
+    @discardableResult
+    private func paintDiskCopy(for botID: String) async -> Bool {
+        // A pane that already holds rows is a warm return or a pick in All Sessions; neither is
+        // this path's to overwrite.
+        guard transcript.isEmpty else { return false }
+        let hint = pinnedSessionPicks[botID] ?? Self.defaults.string(forKey: Self.endlessKey(botID))
+        guard let hint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        return await paintCachedConversation(hint, botID: botID)
     }
 
     /// Put the last cached copy of a chat on screen before the host answers.
@@ -3062,6 +3168,16 @@ public final class AppModel: ObservableObject {
         let restored = restoreConversation(for: botID)
         isOpeningConversation = !restored
         defer { isOpeningConversation = false }
+        // **The disk copy, before either round trip.** This is the whole difference between a cold
+        // tap on an 8,000-row chat showing its newest rows at once and showing "Opening…" for two
+        // round trips first: `loadModelLabel` (`model.options`) and `canonicalChatIdentity`
+        // (`session.list`) used to run before `openStoredConversation` reached the cache at all, so
+        // the only copy of a long chat a fresh launch had was behind both of them.
+        //
+        // The hint is the id this device remembered (or a pick made in All Sessions) — all the cache
+        // needs. The canonical identity below may disagree; the resume then replaces the pane with
+        // the host's rows, and the cache is never the authority, only the first frame.
+        if await paintDiskCopy(for: botID) { isOpeningConversation = false }
         // A cache is only allowed to stand in for a host read when the app can *prove* the host has
         // written nothing since. Three independent facts say otherwise, and any one of them means
         // the resume runs (the cached rows stay on screen while it does, so the pane is never
@@ -3317,6 +3433,9 @@ public final class AppModel: ObservableObject {
         unseenSessionOrder.removeAll { $0 == stored }
         captureConversation(for: botID)
         cacheTranscriptSoon(stored)
+        // The resume carried the newest page only; fetch a few more behind it so scrolling back
+        // does not mean tapping "load earlier" forty times.
+        scheduleHistoryBackfill()
         // Reactions belong to the conversation, not to the pane: read the host's the moment it is
         // the one on screen. Waiting for the next socket `ready` is what left a badge set on the
         // other device invisible in a conversation that had just been opened.
@@ -6251,13 +6370,64 @@ public final class AppModel: ObservableObject {
     /// Whether the host holds rows older than the ones on screen.
     public var hasEarlierHistory: Bool { (earlierCursor ?? 0) > 0 }
 
+    /// How many rows the automatic fill will pull behind a windowed resume.
+    ///
+    /// A ceiling, not a target: the newest page plus these is more than anyone scrolls back in one
+    /// sitting, and the manual row still fetches further for the reader who does.
+    public static let autoBackfillRows = 1200
+    /// Rows per background page — the same order as the relay's own page ceiling.
+    public static let backfillPage = 400
+
+    /// Fill the pages behind a windowed resume in the background, so going back is not 44 taps.
+    ///
+    /// A resume carries the newest page and nothing else (`history.shown` says how much), and every
+    /// row behind it stayed on the host until the reader asked 150 at a time. The cost of a page is
+    /// a read of the relay's own copy of this connection's resume — no engine work, no agent — so a
+    /// few pages after an open are cheap; what was expensive was making a person tap for them.
+    ///
+    /// Bounded (`autoBackfillRows`), chunked (one page, then a breath), silent (no scroll
+    /// re-anchor — see `loadEarlierHistory`), and cancelled by a bot switch, by leaving the screen,
+    /// or by the next open.
+    public func scheduleHistoryBackfill() {
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
+        guard let sid = selectedSessionID, let botID = selectedBotID,
+              (earlierCursor ?? 0) > 0 else { return }
+        backfillBotID = botID
+        backfillTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled,
+                  self.selectedSessionID == sid,
+                  self.selectedBotID == botID,
+                  (self.earlierCursor ?? 0) > 0,
+                  self.transcript.count < Self.autoBackfillRows {
+                let before = self.transcript.count
+                await self.loadEarlierHistory(limit: Self.backfillPage, silent: true)
+                // Nothing arrived: a manual tap is in flight, or the host has nothing older. Either
+                // way this loop must not spin.
+                guard self.transcript.count > before else { return }
+                // One page, then a breath: this runs behind a screen somebody is reading, and the
+                // socket is also carrying the live conversation.
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+        }
+    }
+
     /// Pull the next page of older rows and put them above what is already drawn.
     ///
     /// The page ends exactly where the oldest row on screen begins — the bridge slices its copy of
     /// this connection's own resume by `cursor` — so this can only extend the transcript, never
     /// repeat or skip a row. Prepending shifts every row down, so the fold is remembered as
     /// `earlierAnchor` and the views re-anchor to it instead of jumping to the newest message.
-    public func loadEarlierHistory(limit: Int = 150) async {
+    public func loadEarlierHistory(limit: Int = 400, silent: Bool = false) async {
+        // A tap is the reader going back by hand: the fill stops, so the pages they ask for are the
+        // pages that land and no silent one arrives on top of them mid-scroll.
+        if !silent {
+            backfillTask?.cancel()
+            backfillTask = nil
+            backfillBotID = nil
+        }
         guard !loadingEarlier, let sid = selectedSessionID, (earlierCursor ?? 0) > 0 else { return }
         loadingEarlier = true
         defer { loadingEarlier = false }
@@ -6291,11 +6461,18 @@ public final class AppModel: ObservableObject {
                     }
                     continue
                 }
-                transcript.insert(contentsOf: SentAttachmentVault.decorate(fresh, sessionID: sid),
-                                  at: 0)
+                let decorated = await SentAttachmentVault.decorated(fresh, sessionID: sid)
+                // The vault join is a suspension: the conversation can have moved under it.
+                guard selectedSessionID == sid else { return }
+                transcript.insert(contentsOf: decorated, at: 0)
                 turnRowStart += fresh.count
-                earlierAnchor = fold
-                earlierLoads += 1
+                // A page the *reader* asked for is re-anchored to the row they were reading; a page
+                // the background fill fetched is not, because nobody was looking at the fold — the
+                // reader is at the newest rows and a re-anchor would yank them into history.
+                if !silent {
+                    earlierAnchor = fold
+                    earlierLoads += 1
+                }
                 cacheTranscriptSoon(sid)
                 return
             } catch {

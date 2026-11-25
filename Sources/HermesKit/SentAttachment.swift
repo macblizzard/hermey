@@ -101,6 +101,15 @@ public enum SentAttachmentVault {
     private static var imageCache: [String: Data] = [:]
     private static let cacheLimit = 24
 
+    /// Whether this session has any sent-file records at all.
+    ///
+    /// The join is worth a task only when there is something to join. Cheap by construction (`read`
+    /// memoises the decoded records for the session), so the adopt path can ask before it schedules
+    /// anything — which is every conversation that has never sent a picture.
+    public static func hasRecords(sessionID: String) -> Bool {
+        !read(sessionID: sessionID).isEmpty
+    }
+
     /// `decorate`, off the caller's actor.
     ///
     /// The join itself is small but it is file I/O, and every caller of it is a `@MainActor` model

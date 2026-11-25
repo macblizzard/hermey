@@ -129,11 +129,12 @@ struct RootView: View {
             // Warm every bot's conversation behind the list, so opening one paints instead of
             // waiting. Runs on the shell's own task — after the launch gate, never during the
             // splash — and again when the socket comes back, which is the moment a cold start's
-            // empty cache is worth refilling.
-            .task { await app.model.prefetchConversations() }
+            // empty cache is worth refilling. `startPrefetch` rather than the sweep itself: the
+            // model owns the task so a tap can cancel the walk (see `beginOpen`).
+            .task { app.model.startPrefetch() }
             .onChange(of: app.model.connection.isLive) { _, live in
                 guard live else { return }
-                Task { await app.model.prefetchConversations() }
+                app.model.startPrefetch()
             }
             // Every bot's face on this phone resolves its stored avatar from here — the roster, the
             // chat header, the drawer, the settings sheet's title bar and every still row — so a bot

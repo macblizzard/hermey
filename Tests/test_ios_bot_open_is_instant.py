@@ -229,15 +229,23 @@ class TheSweepYieldsToThePerson(unittest.TestCase):
     def test_a_user_open_outranks_the_launch_sweep(self) -> None:
         prefetch = MODEL.split("public func prefetchConversations() async {", 1)[1]
         prefetch = prefetch.split("    /// The conversation the host says this bot has right now", 1)[0]
-        self.assertIn("guard openingBotID == nil else { return }", prefetch,
+        self.assertIn("guard openingBotID == nil, !Task.isCancelled else { return }", prefetch,
                       "never start the sweep behind an open")
         self.assertIn("let sweepUnder = userOpenGeneration", prefetch)
         loop = prefetch.split("for bot in bots", 1)[1].split("// One line for the whole sweep", 1)[0]
-        self.assertIn("if openingBotID != nil || sweepUnder != userOpenGeneration { break }", loop,
-                      "a tap has to end the walk, not queue behind it")
+        # `return`, not `break`: the walk stops *and* nothing behind the tapped resume runs, which
+        # is what "the sweep stands down on a tap" means now that the sweep has its own task.
+        self.assertIn(
+            "if Task.isCancelled || openingBotID != nil || sweepUnder != userOpenGeneration { return }",
+            loop,
+            "a tap has to end the walk, not queue behind it",
+        )
         self.assertIn("catch is CancellationError {", prefetch)
-        # And the bump itself lives in the gate the tap goes through.
-        self.assertIn("userOpenGeneration &+= 1", member(MODEL, OPEN_PATH["beginOpen"]))
+        # And the bump itself lives in the gate the tap goes through — which also cancels the walk.
+        gate = member(MODEL, OPEN_PATH["beginOpen"])
+        self.assertIn("userOpenGeneration &+= 1", gate)
+        self.assertIn("prefetchTask?.cancel()", gate,
+                      "a tap must cancel the walk mid-flight, not wait for its next iteration")
 
 
 if __name__ == "__main__":
