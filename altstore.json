@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.669",
-          "buildVersion": "669",
-          "date": "2026-11-25T19:54:32Z",
-          "localizedDescription": "### Fixed\n- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it \u2014 7.5 MiB in one\n  frame, ~10 s \u2014 while retries stacked more renders on top, which is how an open became a 120-second wait. The\n  host now pages the reply from its text before parsing it (434 ms \u2192 92 ms on a 3.4 MB resume), answers duplicate\n  resumes from one render, and the phone paints its own disk copy before any round trip.\n- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight\n  instead of waiting its turn.\n- **The pane says what it is doing** when the host is slow: \"sending this chat's history \u2014 14s \u00b7 every message is\n  kept\", with a Retry bar, instead of a silent spinner.\n\n### Added\n- **Start a new chat after** \u2014 Settings \u2192 Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the\n  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with\n  every message kept and its count and date shown.\n- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked\n  sheet, delete with a confirmation.\n\n### Changed (hermeyd)\n- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache\n  with its cursor, and serves the vault's name-only list.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.669/Hermey-0.1.669-b669.ipa",
-          "size": 5781686,
+          "version": "0.1.670",
+          "buildVersion": "670",
+          "date": "2026-11-25T21:22:47Z",
+          "localizedDescription": "Scrolling a long chat no longer freezes the app: rows are spliced instead of regrouped, and one giant log message now renders as a 24-line preview with Show full message. View Log can copy the last 100 or 500 lines (respecting your filter), and Send log to host writes it to /var/log/hermey and shows you the path. Needs hermeyd 0.8.6.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.670/Hermey-0.1.670-b670.ipa",
+          "size": 5755395,
           "minOSVersion": "17.0",
-          "sha256": "93e08f24ffdfbf74c6d3dae15a1383dd78cd510db9e16c67d7cd28d06c8e4619"
+          "sha256": "7bf753a2c3998f950223d6a084038824f5e1362bc6bff46a05b424fd1be0a669"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.669 (669)",
-      "identifier": "hermes-0.1.669-669",
-      "caption": "### Fixed\n- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it \u2014 7.5 MiB in one\n  frame, ~10 s \u2014 while retries stacked more renders on top, which is how an open became a 120-second wait. The\n  host now pages the reply from its text before parsing it (434 ms \u2192 92 ms on a 3.4 MB resume), answers duplicate\n  resumes from one render, and the phone paints its own disk copy before any round trip.\n- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight\n  instead of waiting its turn.\n- **The pane says what it is doing** when the host is slow: \"sending this chat's history \u2014 14s \u00b7 every message is\n  kept\", with a Retry bar, instead of a silent spinner.\n\n### Added\n- **Start a new chat after** \u2014 Settings \u2192 Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the\n  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with\n  every message kept and its count and date shown.\n- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked\n  sheet, delete with a confirmation.\n\n### Changed (hermeyd)\n- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache\n  with its cursor, and serves the vault's name-only list.",
-      "date": "2026-11-25T19:54:32Z",
+      "title": "Hermes 0.1.670 (670)",
+      "identifier": "hermes-0.1.670-670",
+      "caption": "Scrolling a long chat no longer freezes the app: rows are spliced instead of regrouped, and one giant log message now renders as a 24-line preview with Show full message. View Log can copy the last 100 or 500 lines (respecting your filter), and Send log to host writes it to /var/log/hermey and shows you the path. Needs hermeyd 0.8.6.",
+      "date": "2026-11-25T21:22:47Z",
       "tintColor": "#9A9AA0"
     }
   ],
