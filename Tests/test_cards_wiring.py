@@ -92,9 +92,12 @@ class GatewayReadTests(unittest.TestCase):
 
     def test_the_message_id_is_the_rows_own(self) -> None:
         # A host row is `row:<id>`; a message still streaming is `live:<id>`. Both are stable
-        # per message, which is what the snapshot key needs.
+        # per message, which is what the snapshot key needs. The halves are `ReactionKey.message`'s
+        # and nowhere else: a second spelling is how a card or a badge ends up keyed differently
+        # from the row it belongs to.
         self.assertIn("public var messageID: String", CLIENT)
-        self.assertIn('rowID.map { "row:\\($0)" } ?? "live:\\(id)"', CLIENT)
+        self.assertIn("ReactionKey.message(rowID: rowID, entryID: id)", CLIENT)
+        self.assertNotIn('rowID.map { "row:\\($0)" }', CLIENT)
 
     def test_the_request_itself_is_pinned_in_swift(self) -> None:
         # The Python assertions above can see the parameter in the source; only a request can see

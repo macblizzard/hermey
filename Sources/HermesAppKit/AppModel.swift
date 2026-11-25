@@ -169,6 +169,18 @@ public final class AppModel: ObservableObject {
     /// returned early because that id was not `selectedSessionID`.
     private var sessionAliases: [SessionID: SessionID] = [:]
 
+    /// The **durable** id for each id this model has held a conversation under.
+    ///
+    /// A reaction is filed by the durable id — the one the session list shows and a later resume
+    /// accepts — because that is the only id both devices know. The runtime id is minted per attach:
+    /// the Mac and the phone are attached at different moments, so the same conversation reaches
+    /// them under two different strings, and a reaction filed under a runtime id is one the other
+    /// device's read can never find.
+    ///
+    /// Normally `selectedSessionID` is already durable and this lookup is the identity. It is not
+    /// after the window adopts a *moved* conversation from an event, whose id is the runtime one.
+    private var durableIDs: [SessionID: SessionID] = [:]
+
     /// Moved session ids already asked about, so one idle id cannot cost a resume per event.
     private var adoptAttempted: Set<SessionID> = []
 
@@ -1841,6 +1853,9 @@ public final class AppModel: ObservableObject {
     private func resetForBotSwitch() {
         botEpoch += 1
         selectedSessionID = nil
+        // The id-to-durable map belongs to the launch, not to the bot: draining it here would make
+        // a return to a conversation this process already resolved ask again for nothing. It is
+        // cleared only by the model's own lifetime.
         // Drafts are scoped to the bot that created them (a draft has no profile on the host yet).
         draftSessionIDs = []
         sessions = []
@@ -2027,6 +2042,9 @@ public final class AppModel: ObservableObject {
         cacheTranscriptSoon(session)
         ClientLog.note("followed \(bot) into \(session) (\(open ?? "nothing") was on screen)",
                        level: .info, category: "session")
+        // The window moved to another conversation: its reactions are that conversation's, and the
+        // map still holds the ones it left behind.
+        refreshReactions()
     }
 
     /// Follow a bot's conversation to the id the host says it owns now.
@@ -2135,6 +2153,18 @@ public final class AppModel: ObservableObject {
         case .ready, .state, .request, .requestCancelled, .reactionUpdated, .error, .unknown:
             return nil
         }
+    }
+
+    /// One session id as this window knows it.
+    ///
+    /// `sessionAliases` is the map from the runtime id the host minted for an attach — and the
+    /// durable id it named beside it — to the id the conversation is held under. Every frame that
+    /// names a conversation has to go through it: the two apps are attached at different moments, so
+    /// the same conversation reaches each of them under a different runtime id, and comparing the
+    /// raw strings is how one device's frame was dropped by the other.
+    private static func resolveSession(_ session: SessionID,
+                                       aliases: [SessionID: SessionID]) -> SessionID {
+        aliases[session] ?? session
     }
 
     /// Record the transcript for a session so leaving and coming back is instant.
@@ -2359,6 +2389,12 @@ public final class AppModel: ObservableObject {
         if let stored = resumed.storedSessionID, stored != session {
             noteSessionOwner(stored)
             sessionAliases[stored] = session
+        }
+        // …and the durable id is remembered for this conversation, because that is the one a
+        // reaction is filed under on every device.
+        durableIDs[session] = resumed.storedSessionID ?? session
+        if let stored = resumed.storedSessionID, stored != session {
+            durableIDs[stored] = stored
         }
         setStreamed(resumed.liveText)
         isStreaming = resumed.isStreaming
@@ -3143,6 +3179,10 @@ public final class AppModel: ObservableObject {
         unseenSessionOrder.removeAll { $0 == stored }
         captureConversation(for: botID)
         cacheTranscriptSoon(stored)
+        // Reactions belong to the conversation, not to the pane: read the host's the moment it is
+        // the one on screen. Waiting for the next socket `ready` is what left a badge set on the
+        // other device invisible in a conversation that had just been opened.
+        refreshReactions()
         // Whatever actually opened is the best cache this device can keep — including a host id
         // that replaced a different local one. The DURABLE key is what gets stored: the runtime id
         // is minted per attach and stops resolving when the host's runtime goes away, which is how
@@ -4098,20 +4138,69 @@ public final class AppModel: ObservableObject {
     /// behaviour it had before they were synced. Everything else asks the host.
     public var reactionsAreHostBacked: Bool { client.bridgeAvailable }
 
-    /// The emoji on one message, in the conversation on screen.
+    /// The emoji on one message of the conversation on screen.
     ///
     /// One map serves both cases: the host's answer when paired, the device's own document when
     /// not. The views never touch `@AppStorage` — one place decides, so a reaction can no longer be
     /// "local" on one device and invisible on the other.
-    public func reaction(for key: ReactionKey) -> String? {
-        reactions[key.storageKey]
+    ///
+    /// The caller supplies only the message half, from the shared rule
+    /// (``ReactionKey/message(rowID:entryID:)``); the host, bot and session are this model's. A shell
+    /// that assembled the composite itself is how a badge could be stored under a name the row never
+    /// looked up.
+    public func reaction(forMessage message: String) -> String? {
+        guard let key = conversationReactionKey(message) else { return nil }
+        return reactions[key.storageKey]
+    }
+
+    /// Set or clear one message's reaction, given the message half of its key.
+    public func setReaction(_ emoji: String?, forMessage message: String) async {
+        guard let key = conversationReactionKey(message) else { return }
+        await setReaction(emoji, for: key)
+    }
+
+    /// The emoji on one transcript row of the conversation on screen.
+    public func reaction(forRowID rowID: Int64?, entryID: String) -> String? {
+        reaction(forMessage: ReactionKey.message(rowID: rowID, entryID: entryID))
+    }
+
+    /// Set or clear the reaction on one row of the conversation on screen.
+    ///
+    /// The toggle the pickers have always had: the emoji already there is removed, any other
+    /// replaces it — so a message can only ever wear one reaction, from either device.
+    public func react(_ emoji: String, rowID: Int64?, entryID: String) async {
+        let message = ReactionKey.message(rowID: rowID, entryID: entryID)
+        guard let key = conversationReactionKey(message) else { return }
+        await setReaction(reactions[key.storageKey] == emoji ? nil : emoji, for: key)
+    }
+
+    /// One message's full key: this model's host, bot and session, and the caller's message half.
+    ///
+    /// The session is the **durable** id, not whichever id this window happens to be attached as: a
+    /// runtime id is minted per attach, so a key built from it is one the other device can never
+    /// compute.
+    private func conversationReactionKey(_ message: String) -> ReactionKey? {
+        guard let bot = selectedBotID, let session = reactionSession else { return nil }
+        return ReactionKey(host: hostName, bot: bot, session: session, message: message)
+    }
+
+    /// The conversation on screen, as both devices know it.
+    ///
+    /// `selectedSessionID` is normally the durable id already; it is not when the window adopted a
+    /// moved conversation from an event. `durableIDs` is what `adopt` recorded for that id.
+    private var reactionSession: SessionID? {
+        guard let session = selectedSessionID else { return nil }
+        return durableIDs[session] ?? session
     }
 
     /// Set one reaction, or clear it with `nil` (the toggle is the caller's, as it always was).
     ///
-    /// Paired, the host is the truth: the badge moves now and is put back if the write fails, so a
-    /// reaction never looks saved when the other device will never see it. Unpaired, it is the
-    /// device's own document and no network is touched — the offline behaviour, unchanged.
+    /// Paired, the host is the truth: the badge moves now and is put back if the host **refuses**
+    /// it, so a reaction never looks saved when the other device will never see it. A host that
+    /// never answered — offline, a dead ticket — is a tap kept on this device and handed over on the
+    /// next open, because the reader's own reaction must not blink away under their finger.
+    /// Unpaired, it is the device's own document and no network is touched: the offline behaviour,
+    /// unchanged.
     public func setReaction(_ emoji: String?, for key: ReactionKey) async {
         guard ReactionKey.isValidMessage(key.message) else { return }
         guard client.bridgeAvailable else {
@@ -4124,32 +4213,46 @@ public final class AppModel: ObservableObject {
         do {
             try await client.setReaction(bot: key.bot, session: key.session,
                                          message: key.message, emoji: emoji, by: deviceName)
-        } catch {
-            // Revert: a badge the host does not have is a lie the other device will contradict at
-            // the next open.
+            // This device's copy follows the host's: an offline launch draws the same badge, and
+            // the next open has nothing left to hand over.
+            reactionLocal.set(emoji, for: key.storageKey)
+        } catch ReactionSyncError.refused(let status, let detail) {
+            // The host answered and said no (a key it cannot place, an emoji it will not store).
+            // Putting the badge back is what keeps the screen honest: the other device would
+            // contradict it at the next open.
             apply(previous, to: key.storageKey)
-            lastSendError = "could not save the reaction: \(error.localizedDescription)"
-            ClientLog.note("reaction write failed for \(key.message): \(error.localizedDescription)",
+            reactionLocal.set(previous, for: key.storageKey)
+            lastSendError = "could not save the reaction: "
+                + (detail ?? "the host refused it (\(status))")
+            ClientLog.note("reaction write refused for \(key.message): \(status) \(detail ?? "")",
+                           level: .warning, category: "reactions")
+        } catch {
+            // No answer at all: keep the tap, keep it on this device, and let the next open push it.
+            reactionLocal.set(emoji, for: key.storageKey)
+            reactionsImported.remove(conversationID(bot: key.bot, session: key.session))
+            lastSendError = "saved on this device; it will sync when the host is reached"
+            ClientLog.note("reaction write unreachable for \(key.message): \(error.localizedDescription)",
                            level: .warning, category: "reactions")
         }
     }
 
     /// Fill `reactions` for whatever conversation is on screen.
     ///
-    /// Called on every session open and bot switch. The transcript does not wait for it: this is a
-    /// separate read with its own timeout, and a badge arriving a moment late is better than a pane
-    /// held shut by an HTTP round trip.
-    private func refreshReactions() {
+    /// Called on every conversation open (`adoptStoredConversation`, `paintAdoptedConversation`), on
+    /// every bot pick that resumes one (`select`), on every socket `ready` — which is also what a
+    /// reconnect and a foreground arrive as — and by each shell when it comes back to the front. The
+    /// host is the truth, and this read is what makes a reaction set on the other device appear here
+    /// even when its live frame was missed while this app was asleep.
+    public func refreshReactions() {
         reactionsTask?.cancel()
-        guard let bot = selectedBotID, let session = selectedSessionID else {
+        guard let bot = selectedBotID, let session = reactionSession else {
             reactions = [:]
             return
         }
-        guard client.bridgeAvailable else {
-            // Unpaired: the device's own document, which is all there is.
-            reactions = localReactions(bot: bot, session: session)
-            return
-        }
+        // What this device already knows, at once. Paired, it is the last answer the host gave
+        // (mirrored on every read); unpaired, it is all there is.
+        reactions = localReactions(bot: bot, session: session)
+        guard client.bridgeAvailable else { return }
         let epoch = botEpoch
         reactionsTask = Task { [weak self] in
             await self?.loadReactions(bot: bot, session: session, epoch: epoch)
@@ -4157,25 +4260,41 @@ public final class AppModel: ObservableObject {
     }
 
     private func loadReactions(bot: String, session: SessionID, epoch: Int) async {
-        await importLocalReactions(bot: bot, session: session, epoch: epoch)
         do {
             let rows = try await client.reactions(bot: bot, session: session)
-            guard epoch == botEpoch, selectedSessionID == session, selectedBotID == bot else { return }
-            var next: [String: String] = [:]
+            guard epoch == botEpoch, reactionSession == session, selectedBotID == bot else { return }
+            var host: [String: String] = [:]
             for (message, reaction) in rows {
                 let key = ReactionKey(host: hostName, bot: bot, session: session, message: message)
-                next[key.storageKey] = reaction.emoji
+                host[key.storageKey] = reaction.emoji
             }
-            reactions = next
+            // Then hand over what this device holds and the host has never seen — a tap made
+            // offline, or a reaction from before the host owned them — once, and only where the
+            // host answered nothing. A key the host already has is the host's answer, not ours to
+            // overwrite with an older copy.
+            let known = Set(rows.keys)
+            let handed = await importLocalReactions(bot: bot, session: session,
+                                                    known: known, epoch: epoch)
+            guard epoch == botEpoch, reactionSession == session, selectedBotID == bot else { return }
+            for (message, emoji) in handed {
+                let key = ReactionKey(host: hostName, bot: bot, session: session, message: message)
+                host[key.storageKey] = emoji
+            }
+            // The device's copy becomes what the host just agreed to: an offline launch draws the
+            // same badges, and an entry the other device cleared cannot come back from this cache.
+            reactionLocal.replaceConversation(
+                ReactionKey.conversationPrefix(host: hostName, bot: bot, session: session),
+                with: host)
+            reactions = host
         } catch is CancellationError {
             return
         } catch ReactionSyncError.noBridge {
             // The route is not there (an older host): this device keeps its own copy, and the
             // behaviour is what it was before reactions were synced.
-            guard epoch == botEpoch, selectedSessionID == session else { return }
+            guard epoch == botEpoch, reactionSession == session else { return }
             reactions = localReactions(bot: bot, session: session)
         } catch {
-            guard epoch == botEpoch, selectedSessionID == session else { return }
+            guard epoch == botEpoch, reactionSession == session else { return }
             // The host could not answer. Draw what this device already had rather than nothing —
             // and do not treat it as an error the reader has to dismiss.
             reactions = localReactions(bot: bot, session: session)
@@ -4184,37 +4303,41 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    /// Hand the device's reactions for one conversation to the host, once.
+    /// Hand the device's reactions for one conversation to the host — once, and only the ones the
+    /// host has nothing for.
     ///
-    /// This is what stops an upgrade from losing them: a reaction set while unpaired (or before the
-    /// host owned them) is still in the local document, and the first paired open pushes it up. The
-    /// conversation is then marked imported and never pushed again — the host is the truth, and a
-    /// re-send would resurrect a reaction the other device has since cleared.
-    private func importLocalReactions(bot: String, session: SessionID, epoch: Int) async {
-        let conversation = "\(bot)\u{0}\(session)"
-        guard !reactionsImported.contains(conversation) else { return }
+    /// This is what stops an upgrade, or a tap made offline, from being lost: the reaction is still
+    /// in the local document, and the first open with the host reachable pushes it up. The
+    /// conversation is then marked imported — the host is the truth, and a re-send would resurrect a
+    /// reaction the other device has since cleared. A `known` key is never touched: overwriting the
+    /// host's copy with this device's older one is the same bug from the other side.
+    ///
+    /// Returns the ones that landed, keyed by the message half, so the caller can draw them without
+    /// a second round trip.
+    private func importLocalReactions(bot: String, session: SessionID,
+                                      known: Set<String>, epoch: Int) async -> [String: String] {
+        let conversation = conversationID(bot: bot, session: session)
+        guard !reactionsImported.contains(conversation) else { return [:] }
         var pending: [(key: ReactionKey, emoji: String)] = []
         for (storageKey, emoji) in reactionLocal.all() {
             guard let key = ReactionKey.parse(storageKey),
                   key.host == hostName, key.bot == bot, key.session == session,
-                  ReactionKey.isValidMessage(key.message) else { continue }
+                  ReactionKey.isValidMessage(key.message),
+                  !known.contains(key.message) else { continue }
             pending.append((key: key, emoji: emoji))
         }
         guard !pending.isEmpty else {
             reactionsImported.insert(conversation)
-            return
+            return [:]
         }
-        // Show them at once: a badge this device set is the reader's, and it must not blink while
-        // the host is told.
-        for (key, emoji) in pending where reactions[key.storageKey] == nil {
-            reactions[key.storageKey] = emoji
-        }
+        var landed: [String: String] = [:]
         var allLanded = true
         for (key, emoji) in pending {
-            if epoch != botEpoch { return }
+            if epoch != botEpoch { return landed }
             do {
                 try await client.setReaction(bot: key.bot, session: key.session,
                                              message: key.message, emoji: emoji, by: deviceName)
+                landed[key.message] = emoji
             } catch {
                 // Offline, or the host refused one: try the whole set again on the next open
                 // rather than marking the conversation imported and losing it.
@@ -4224,6 +4347,7 @@ public final class AppModel: ObservableObject {
         if allLanded {
             reactionsImported.insert(conversation)
         }
+        return landed
     }
 
     /// The device's own reactions for one conversation, keyed by storage key.
@@ -4235,6 +4359,12 @@ public final class AppModel: ObservableObject {
             out[storageKey] = emoji
         }
         return out
+    }
+
+    /// One conversation, as the imported-set spells it. A NUL cannot appear in a profile name or a
+    /// session id, so two different pairs cannot share one string.
+    private func conversationID(bot: String, session: SessionID) -> String {
+        "\(bot)\u{0}\(session)"
     }
 
     /// Put one emoji in the in-memory map (or take it out).
@@ -5325,18 +5455,32 @@ public final class AppModel: ObservableObject {
             // The other device reacted. Applied only to the conversation on screen and only for the
             // bot it names: `reactions` holds one conversation, and a frame for another one must
             // not decorate this transcript. A removal arrives as `emoji == nil`.
+            //
+            // The frame names the session the reacting device sent — the durable id it filed under.
+            // `sessionAliases` is the map between that and the runtime id this socket may be
+            // attached as, and this is the same resolution the error branch does: comparing the raw
+            // string is how a reaction made on one device was dropped by the other because the two
+            // apps had spelled one conversation two ways. The badge also goes in under the durable
+            // id the rows look up (`filed`), never under the frame's spelling of it.
             guard bot.isEmpty || bot == selectedBotID,
-                  session == selectedSessionID,
-                  let botID = selectedBotID else { return }
-            let key = ReactionKey(host: hostName, bot: botID, session: session, message: message)
+                  let botID = selectedBotID,
+                  let filed = reactionSession else { return }
+            // The frame names the session the reacting device filed it under — its durable id. It is
+            // resolved through the alias table as well, in case this socket is attached to the same
+            // conversation under a runtime id.
+            let named = Self.resolveSession(session, aliases: sessionAliases)
+            guard named == filed || named == selectedSessionID else { return }
+            let key = ReactionKey(host: hostName, bot: botID, session: filed, message: message)
             apply(emoji, to: key.storageKey)
+            // And the device's copy follows, so a launch with no wire draws the same badge.
+            reactionLocal.set(emoji, for: key.storageKey)
         case .error(let session, _, let message):
             // The host's failure text belongs to the conversation it names, and one socket serves
             // every bot this app opens — including the ones it opens in the background to read their
             // previews. Painting those without asking which session they were about put "could not
             // start the assistant … no LLM provider configured" from another bot's session into the
             // `cody` pane, whose own conversation was fine.
-            let named = sessionAliases[session] ?? session
+            let named = Self.resolveSession(session, aliases: sessionAliases)
             guard !named.isEmpty, named == selectedSessionID else {
                 ClientLog.note("host error for \(named.isEmpty ? "no session" : named) while "
                                + "\(selectedSessionID ?? "nothing") is open: \(message)",

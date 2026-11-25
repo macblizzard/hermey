@@ -1044,8 +1044,12 @@ public struct TranscriptEntry: Identifiable, Hashable, Sendable {
     /// This row's stable message id, for anything the host keeps per message — a reaction, a card
     /// snapshot. A host row has one; a message still streaming has only its own id, and the two
     /// namespaces are kept apart so a live id can never collide with a durable one.
+    ///
+    /// The rule itself is ``ReactionKey/message(rowID:entryID:)``'s and nowhere else: a second
+    /// spelling here is what let a row keyed `row:41` on one device be `row:41` but `live:…` on the
+    /// other, so the badge was stored under a name nothing looked up.
     public var messageID: String {
-        rowID.map { "row:\($0)" } ?? "live:\(id)"
+        ReactionKey.message(rowID: rowID, entryID: id)
     }
 
     /// What travelled with a user message. The host returns no attachment metadata for the

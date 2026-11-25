@@ -344,9 +344,9 @@ struct TranscriptScroll: View {
                                       openAttachmentFile: { [model] location in
                                           try await model.attachmentFile(for: location)
                                       },
-                                      reaction: { model.reaction(for: $0) },
-                                      onReact: { key, emoji in
-                                          Task { await model.setReaction(emoji, for: key) }
+                                      reaction: { model.reaction(forMessage: $0) },
+                                      onReact: { message, emoji in
+                                          Task { await model.setReaction(emoji, forMessage: message) }
                                       })
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
@@ -367,9 +367,9 @@ struct TranscriptScroll: View {
                                           openAttachmentFile: { [model] location in
                                               try await model.attachmentFile(for: location)
                                           },
-                                          reaction: { model.reaction(for: $0) },
-                                          onReact: { key, emoji in
-                                              Task { await model.setReaction(emoji, for: key) }
+                                          reaction: { model.reaction(forMessage: $0) },
+                                          onReact: { message, emoji in
+                                              Task { await model.setReaction(emoji, forMessage: message) }
                                           })
                             .background(fill([entry.id], among: matched, selected: selected))
                     }

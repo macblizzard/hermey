@@ -863,7 +863,14 @@ struct ConversationScreen: View {
                                   running: runningToolIDs)) { row in
                 switch row {
                 case .entry(let entry):
-                    MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id)
+                    MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id,
+                                        reaction: model.reaction(forRowID: entry.rowID,
+                                                                 entryID: entry.id),
+                                        onReact: { emoji in
+                                            Task { await model.react(emoji, rowID: entry.rowID,
+                                                                     entryID: entry.id) }
+                                        },
+                                        canReact: model.selectedSessionID != nil)
                         .overlay {
                             if selectedSearchID == entry.id {
                                 RoundedRectangle(cornerRadius: 8)
@@ -874,7 +881,15 @@ struct ConversationScreen: View {
                         .id(entry.id)
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs, botID: bot.id)
+                        MobileTranscriptRow(entry: entry, botTint: botTint,
+                                            running: runningToolIDs, botID: bot.id,
+                                            reaction: model.reaction(forRowID: entry.rowID,
+                                                                     entryID: entry.id),
+                                            onReact: { emoji in
+                                                Task { await model.react(emoji, rowID: entry.rowID,
+                                                                         entryID: entry.id) }
+                                            },
+                                            canReact: model.selectedSessionID != nil)
                     }
                     .id(run.id)
                 }

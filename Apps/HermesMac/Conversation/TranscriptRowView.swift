@@ -48,8 +48,13 @@ struct TranscriptRowView: View {
     /// The host owns reactions now (`/v1/reactions`), so this is one conversation's shared state
     /// rather than this device's private copy — which is what makes a reaction set on the phone
     /// appear here, live, over `/v1/ws`.
-    var reaction: (ReactionKey) -> String? = { _ in nil }
-    var onReact: (ReactionKey, String?) -> Void = { _, _ in }
+    ///
+    /// Both take the **message half** of the key (`row:41` / `live:r3`), not a whole
+    /// `ReactionKey`: the host, bot and session are the model's business, and one place that builds
+    /// the composite is what keeps the Mac and the phone agreeing about which message a reaction
+    /// belongs to.
+    var reaction: (String) -> String? = { _ in nil }
+    var onReact: (String, String?) -> Void = { _, _ in }
     @State private var showingReactions = false
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
@@ -82,25 +87,24 @@ struct TranscriptRowView: View {
         let startIndex: Int
     }
 
-    /// This message's identity for a reaction: the one rule both apps share (`ReactionKey`), fed
-    /// from the row and the pane. `nil` for a row with no conversation to belong to.
-    private var reactionKey: ReactionKey? {
-        guard let session else { return nil }
-        return ReactionKey(host: host, bot: bot, session: session,
-                           message: ReactionKey.message(rowID: entry.rowID, entryID: entry.id))
+    /// This message's identity for a reaction: the message half of the key, from the one rule both
+    /// apps share (`ReactionKey.message`). `nil` for a row with no conversation to belong to.
+    private var reactionMessage: String? {
+        guard session != nil else { return nil }
+        return ReactionKey.message(rowID: entry.rowID, entryID: entry.id)
     }
 
     /// The emoji this message wears, from the conversation's shared state.
     private var currentReaction: String? {
-        guard let key = reactionKey else { return nil }
-        return reaction(key)
+        guard let message = reactionMessage else { return nil }
+        return reaction(message)
     }
 
     /// One emoji per message: picking the emoji already there removes it, exactly as before — only
     /// the storage changed (the host, not `@AppStorage`).
     private func toggleReaction(_ emoji: String) {
-        guard let key = reactionKey else { return }
-        onReact(key, currentReaction == emoji ? nil : emoji)
+        guard let message = reactionMessage else { return }
+        onReact(message, currentReaction == emoji ? nil : emoji)
     }
 
     var body: some View {
@@ -126,7 +130,7 @@ struct TranscriptRowView: View {
                                   symbol: isSpeaking ? "speaker.slash" : "speaker.wave.2") {
                 speech.toggle(id: entry.id, text: entry.text)
             }
-            if reactionKey != nil {
+            if reactionMessage != nil {
                 MessageMenuRow.action("Add Reaction…", symbol: "face.smiling") { showingReactions = true }
             }
         }
@@ -594,7 +598,7 @@ struct TranscriptRowView: View {
         HStack(spacing: 2) {
             // Six reactions on one press. It sits first because it is the lightest verb on the row
             // and the one a person reaches for while reading.
-            if reactionKey != nil {
+            if reactionMessage != nil {
                 // The popover hangs off this button, not off the row. On the row it anchored to the
                 // message's whole width — so it opened below and to the right of the smiley, 465 pt
                 // wide, pointing its arrow at nothing in particular.
