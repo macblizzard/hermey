@@ -123,6 +123,19 @@ struct ConversationPane: View {
                     }
                 )
             }
+
+            // The panel's door, while the panel is gone. On the floor, on the panel's own bar
+            // line, and drawn *over* the floor as an overlay: it adds no height, moves no
+            // transcript and shifts the composer by nothing. It used to be the chat header's
+            // leading button, which is the jump this replaces.
+            .overlay(alignment: .bottomLeading) {
+                if store.isSidebarHidden {
+                    SidebarFloorToggle { store.toggleSidebar() }
+                        // Fades with the panel's own slide rather than snapping in on its first
+                        // frame.
+                        .transition(.opacity)
+                }
+            }
         }
         .onPreferenceChange(ComposerHeightKey.self) { height in
             // A preference arrives on every layout pass; only a real change is worth a state write.
