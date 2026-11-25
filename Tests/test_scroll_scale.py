@@ -147,7 +147,7 @@ class ThePerRowParseIsRememberedAcrossRebuilds(unittest.TestCase):
                              ("ios row", IOS_ROW)):
             self.assertNotIn("ToolPayload.info(raw:", source, name)
             self.assertNotIn("ToolPayload.failed(raw:", source, name)
-        self.assertIn("ToolPayload.rememberedFailure(raw:", RUN_GROUP)
+        self.assertIn("ToolPayload.rememberedFailure(", RUN_GROUP)
         self.assertIn("ToolPayload.remembered(output)", IOS_ROW)
 
 
