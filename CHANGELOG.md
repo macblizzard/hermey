@@ -1593,3 +1593,13 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed (hermeyd)
 - `hermeyd` **0.8.2**: the vault, the masked fields, the store path, and the name-resolved fill.
+
+## [0.1.667] — 2026-11-25
+
+### Added
+- **Infographic cards.** A short query can come back as a card with one real picture: hero image with a caption,
+  three to eight facts, the number that matters in a tinted block (a price, with seller and availability), one
+  link and a source. The layout is shared by the Mac and the iPhone; a dead image falls back to the caption.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.3**: the infographic schema and its named rejections.
