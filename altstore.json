@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.664",
-          "buildVersion": "664",
-          "date": "2026-11-25T12:56:18Z",
-          "localizedDescription": "The Mac's message right-click menu now shows an icon on every row \u2014 it was a SwiftUI menu, which builds its items from a title and dropped the Label images, so only Share was marked. It is a real NSMenu now, and there is a new ... button on the action line so the same menu is reachable from the keyboard.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.664/Hermey-0.1.664-b664.ipa",
-          "size": 5571263,
+          "version": "0.1.665",
+          "buildVersion": "665",
+          "date": "2026-11-25T13:05:58Z",
+          "localizedDescription": "The Mac message menu's icons are visible now. They were present in 0.1.664 but tinted into the dark menu \u2014 a template image gets re-tinted by whatever draws it. The glyphs are coloured for the menu's own appearance, and the menu now draws in the app's appearance, so the icons stay legible.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.665/Hermey-0.1.665-b665.ipa",
+          "size": 5571257,
           "minOSVersion": "17.0",
-          "sha256": "7cd352b56c36e82c8b2e1b54b7b867131c82fb6fbc58592b15c2d2add8405a4c"
+          "sha256": "ddec3a39fc50c5a92f367f170fed2cac1bf85cdefccb384668dd156bc162c660"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.664 (664)",
-      "identifier": "hermes-0.1.664-664",
-      "caption": "The Mac's message right-click menu now shows an icon on every row \u2014 it was a SwiftUI menu, which builds its items from a title and dropped the Label images, so only Share was marked. It is a real NSMenu now, and there is a new ... button on the action line so the same menu is reachable from the keyboard.",
-      "date": "2026-11-25T12:56:18Z",
+      "title": "Hermes 0.1.665 (665)",
+      "identifier": "hermes-0.1.665-665",
+      "caption": "The Mac message menu's icons are visible now. They were present in 0.1.664 but tinted into the dark menu \u2014 a template image gets re-tinted by whatever draws it. The glyphs are coloured for the menu's own appearance, and the menu now draws in the app's appearance, so the icons stay legible.",
+      "date": "2026-11-25T13:05:58Z",
       "tintColor": "#9A9AA0"
     }
   ],
