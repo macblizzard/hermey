@@ -1572,3 +1572,10 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   SwiftUI's macOS menu builds its items from a button's title and dropped the image, so only `Share` (a system
   link) was marked. The menu is a real `NSMenu` now, with each item's image set from its row's own symbol, popped
   on right-click and reachable from the keyboard with the `⋯` on the action line.
+
+## [0.1.665] — 2026-11-25
+
+### Fixed
+- **The Mac's message menu icons are visible.** They were there in 0.1.664, tinted into the dark menu: a
+  template image is re-tinted by whatever draws it, and inside a menu that tint followed an appearance the app
+  was not showing. The glyph is now coloured for the menu's own appearance and the menu draws in the app's.

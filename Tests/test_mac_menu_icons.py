@@ -107,7 +107,8 @@ class TheMacMenuIsAnNSMenu(unittest.TestCase):
         self.assertIn("NSImage(systemSymbolName: symbol,", glyph)
         self.assertIn("accessibilityDescription: description)", glyph)
         self.assertIn("image.size = NSSize(width: 16, height: 16)", glyph)
-        self.assertIn("image.isTemplate = true", glyph)
+        self.assertIn("image.isTemplate = false", glyph,
+                      "a template glyph is re-tinted by the menu and can vanish into it")
 
     def test_no_item_can_be_built_without_an_image(self) -> None:
         # A literal title in an `NSMenuItem` would be a second, hand-made row — and the shape that
@@ -275,3 +276,22 @@ class TheKeyboardCanReachTheMenu(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TheGlyphsAreVisible(unittest.TestCase):
+    """A menu icon nobody can see is the fault this file exists to prevent, twice over.
+
+    The first Mac menu had no images at all (SwiftUI dropped them). The second had them as template
+    images, and a screenshot showed every glyph tinted into the dark menu — reported as "no icons".
+    """
+
+    SRC = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MessageContextMenu.swift").read_text(encoding="utf-8")
+
+    def test_the_glyph_is_coloured_for_the_dark_menu(self):
+        self.assertIn("paletteColors", self.SRC,
+                      "the symbol has no explicit ink: a template is re-tinted by whoever draws it")
+        self.assertIn("isTemplate = false", self.SRC,
+                      "the glyph is still a template, so its colour is out of our hands")
+
+    def test_the_menu_draws_in_the_apps_own_appearance(self):
+        self.assertIn("menu.appearance = NSApp.effectiveAppearance", self.SRC,
+                      "menu and glyph ink could disagree again")

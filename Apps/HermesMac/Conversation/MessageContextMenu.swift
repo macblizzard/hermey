@@ -164,6 +164,9 @@ final class MessageMenuHostView: NSView {
         guard !items.isEmpty else { return }
         let router = MessageMenuRouter(items: items, host: self, anchor: point)
         let menu = router.makeMenu()
+        // The menu draws in the app's appearance, not in whichever one AppKit guesses: without this the
+        // glyph ink and the menu's own background could disagree, which is how "icons missing" was reached.
+        menu.appearance = NSApp.effectiveAppearance
         // Retained for the life of the menu: the items' target is not a strong reference.
         self.router = router
         _ = menu.popUp(positioning: nil, at: point, in: self)
@@ -229,9 +232,21 @@ final class MessageMenuRouter: NSObject {
         return nsItem
     }
 
-    /// A menu-sized symbol: 16 pt box, template, so a menu in the dark appearance draws it light.
+    /// A menu-sized symbol, coloured for the appearance the menu will be drawn in.
+    ///
+    /// It used to be a template image and nothing else, and the result was reported from a screenshot as
+    /// "no icons at all": every glyph was there, drawn in a near-black that vanished into the dark menu.
+    /// A template is re-tinted by whatever draws it, and inside a menu that tint follows the appearance
+    /// the menu believes it is in — which is not always the one the app is actually showing. So the
+    /// colour is resolved here, from the menu's own effective appearance, and the image is not a
+    /// template: what we pick is what is drawn.
     private static func glyph(_ symbol: String, description: String) -> NSImage? {
+        let ink: NSColor = {
+            let match = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
+            return match == .darkAqua ? .white : .black
+        }()
         let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
         guard let image = NSImage(systemSymbolName: symbol,
                                   accessibilityDescription: description)?
             .withSymbolConfiguration(configuration) else {
@@ -241,7 +256,7 @@ final class MessageMenuRouter: NSObject {
             return nil
         }
         image.size = NSSize(width: 16, height: 16)
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }
 
