@@ -341,6 +341,10 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// `DELETE /v1/vault/{name}` — the name may hold one `/` (`doctolib.de/password`), which the client
     /// percent-encodes so the host's wildcard route reads it back as one name.
     func deleteVaultItem(name: String) async throws
+    /// `PATCH /v1/vault/{name}` — rename an item and, when `value` is given, replace what is stored
+    /// under it. One request and one host write for both halves; nothing is returned because a value
+    /// only ever travels towards the host.
+    func editVaultItem(name: String, rename: String, value: String?) async throws
     /// `POST /v1/credentials/cards` — ask the host for a card the owner answers.
     ///
     /// The Vault pane is the only caller and it asks for `store: true`: the value the owner types goes
@@ -589,6 +593,9 @@ extension GatewayClientProtocol {
     /// saved no secrets", which is the one thing this pane must never say by accident.
     public func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
     public func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        throw BotAdminUnavailable()
+    }
     public func createCredentialCard(site: String, fields: [String], store: Bool,
                                      saveAs: String?, note: String?) async throws -> CredentialCard {
         throw BotAdminUnavailable()

@@ -4859,6 +4859,16 @@ public final class AppModel: ObservableObject {
         try await client.deleteVaultItem(name: name)
     }
 
+    /// Rename a saved secret and, when `value` is given, replace what is stored under it
+    /// (`PATCH /v1/vault/{name}`).
+    ///
+    /// `value` is the only value this side ever handles on the vault's behalf, and it travels one way:
+    /// into the request. Nothing comes back to keep — the host answers with the item's new name — so a
+    /// sheet that calls this has nothing left to clear but the field it was typed into.
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        try await client.editVaultItem(name: name, rename: rename, value: value)
+    }
+
     /// Ask the host for a `store` card so the owner can type one value into the sheet that already
     /// exists. The value never passes through this call — only the name and the labels do.
     public func createVaultEntryCard(name: String, site: String?, note: String?) async throws -> CredentialCard {

@@ -112,26 +112,45 @@ That is the complete list. If a future feature needs more, it goes in this docum
 
 A card made with `store: true` writes its answer into the host's vault — `<state>/secrets.json`,
 `0600`, a name→value map, atomic write, never served in full by any route. The owner can now see what is
-in it from **Settings → Vault** on both the Mac and the phone, and that screen has exactly two verbs:
+in it from **Settings → Vault** on both the Mac and the phone, and that screen has exactly three verbs —
+list, edit, delete:
 
 ```
 GET    /v1/vault           → {"items": [{name, kind, addedAt, site?, note?}]}
+PATCH  /v1/vault/{*name}   → {"name": "<name after>", "renamed": bool, "replaced": bool}
+                           | 404 no such item | 422 bad name or nothing to change
+                           | 413 value too large | 409 name taken or unreadable store
 DELETE /v1/vault/{*name}   → {"deleted": "<name>"} | 404 | 422 | 409
 ```
+
+`PATCH` carries `{"rename": "<the new name>", "value": "<a replacement>"}`; both are optional and an
+absent one means "leave it alone". There is no `{id}`-style path parameter and neither name may be a
+path — both are held to the same `valid_name` pattern a card's `save_as` is, checked before any lookup.
 
 - **A value has nowhere to travel.** The item type the host serialises (`VaultItem` in
   `hermeyd/src/vault.rs`) has no member a value could occupy, and the module never calls
   `secrets::get`. The app's copy (`VaultItem` in `Sources/HermesKit/VaultItems.swift`) has no such field
-  either, so there is no reveal control to build and nothing for one to reveal.
+  either, so there is no reveal control to build and nothing for one to reveal. The edit's answer is a
+  name and two booleans — the type a reply is built from could not carry a value even by mistake.
 - **Adding has one door.** The pane does not post a value: "Add a secret" asks the host for a
   `store`-mode card (`POST /v1/credentials/cards` with `save_as: <the name>`) and presents the *same*
   masked sheet a bot's card opens. The value goes into that `SecureField`, to the host, and nowhere else.
+  A blank value is refused on that path (`secrets::put` will not store nothing).
+- **Editing is write-only, and it is one transaction.** `PATCH` hands both halves to `secrets::edit`,
+  which removes the old key and inserts the new one on **one** map and publishes it with the same
+  `save` an add uses — temp file, `0600`, rename — so a rename cannot land without the value it came
+  with, or the reverse. A value that is `null`/absent/empty keeps what is stored, which is what makes a
+  rename-only edit expressible; an edit that would change nothing is a 422 rather than a silent success.
+  No route returns the value, so the sheet's field starts empty and says *"Leave blank to keep the
+  current value."*
 - **Deleting is the store's own removal.** `secrets::remove` rewrites the map without the name, so the
   value stops existing; the route answers 404 for a name the vault does not have rather than pretending.
 - **Labels live beside the store, not in it.** `site`, `note`, `kind` and `addedAt` are kept in the host's
   document store under `vault:index`, keyed by name, written when a stored card is answered. That keeps
   `secrets.json` one format with no migration; an entry with no record (saved before this pane existed) is
-  still listed and dated by the file.
+  still listed and dated by the file. A rename moves that record rather than copying it, so the old name
+  cannot hand its labels to a later secret; a lost record degrades to the store's own timestamp, never to
+  a lost secret.
 - **A broken host is not an empty vault.** An unreachable host, a refused request and an unreadable store
   each produce an error sentence and no list; only a real answer renders the empty state.
 

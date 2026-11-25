@@ -8,9 +8,11 @@
 //! the one place `browser.rs` reads when a fill names a secret instead of carrying one. The rules that
 //! keep it a store and not a leak:
 //!
-//! * **No route serves it.** Nothing in the HTTP surface lists, reads or writes these values: the
-//!   owner's app writes through `/v1/credentials/cards/{id}/answer`, and the only reader is a `fill`
-//!   instruction, whose reply is the extension's own field names and booleans — never a value.
+//! * **No route reads it.** Nothing in the HTTP surface returns a value. Two doors write one — a
+//!   `store`-mode credential card's answer (`/v1/credentials/cards/{id}/answer`) and an edit of an item
+//!   that already exists (`PATCH /v1/vault/{name}`, `edit` below) — and both go through `save`. The only
+//!   reader is a `fill` instruction, whose reply is the extension's own field names and booleans — never
+//!   a value.
 //! * **A name, not a value, is what leaves here.** A bot learns `<site>/<field>` (an item label) and
 //!   can ask for a fill by that name; it never receives the text behind it.
 //! * **Owner-only, atomic.** The file is created `0600` (the same posture as `local.token` and
@@ -24,6 +26,20 @@
 use crate::routes::AppState;
 use serde_json::{Map, Value};
 use std::path::PathBuf;
+
+/// What an edit did, so the route above it can give each answer its own code.
+///
+/// Three cases, and none of them carries a value: an edit that reported *what* it moved would be the
+/// read-back this store exists not to have.
+#[derive(Debug, PartialEq, Eq)]
+pub enum EditOutcome {
+    /// The name — and, when one was given, the value — changed, in one write.
+    Changed,
+    /// Nothing is stored under the old name.
+    Missing,
+    /// Another secret already holds the new name.
+    Taken,
+}
 
 /// Longest single value. A password or an API key is a line, not a document; 4 KB is generous for a
 /// PEM key and still far below anything that could bloat the store or a card document.
@@ -158,6 +174,48 @@ pub fn put(st: &AppState, name: &str, value: &str) -> Result<(), String> {
     let mut map = load(st)?;
     map.insert(name.to_string(), Value::String(value.to_string()));
     save(st, &map)
+}
+
+/// Change a secret's name, and its value when a new one is given — in one write.
+///
+/// This is the only function that moves a value from one key to another, and it lives here rather than
+/// in `vault.rs` for the same reason `put` does: the route above it can neither see nor echo a value, so
+/// the bytes have to be handled by the module that owns them. `None` keeps the value under the old name,
+/// which is what a rename alone asks for; `Some` replaces it. Both happen on one map and are published by
+/// **one** `save` — the same temp-file-then-rename an add uses — so a rename whose value write fails
+/// cannot leave half an item behind, and a crash leaves the old item whole.
+///
+/// Refusals name the reason and the *name*; nothing here formats, returns or logs a value.
+pub fn edit(st: &AppState, from: &str, to: &str, value: Option<&str>) -> Result<EditOutcome, String> {
+    if !valid_name(from) || !valid_name(to) {
+        return Err(format!(
+            "a secret name is letters, digits, '.', '_', '-' and one '/', up to {MAX_NAME_BYTES} characters"
+        ));
+    }
+    if let Some(text) = value {
+        if text.is_empty() {
+            return Err("nothing to store: the value was empty".to_string());
+        }
+        if text.len() > MAX_VALUE_BYTES {
+            return Err(format!("that value is larger than {MAX_VALUE_BYTES} bytes"));
+        }
+    }
+    let mut map = load(st)?;
+    // Taken out of the map first, so the collision test below cannot see the item it is replacing.
+    let Some(current) = map.remove(from) else {
+        return Ok(EditOutcome::Missing);
+    };
+    if map.contains_key(to) {
+        // Nothing was written: the store on disk never learned about this attempt.
+        return Ok(EditOutcome::Taken);
+    }
+    let next = match value {
+        Some(text) => Value::String(text.to_string()),
+        None => current,
+    };
+    map.insert(to.to_string(), next);
+    save(st, &map)?;
+    Ok(EditOutcome::Changed)
 }
 
 /// The value behind a name, for a fill. `None` for a name that was never stored.
@@ -354,6 +412,64 @@ mod tests {
         assert!(err.contains("not readable JSON"), "{err}");
         // The corrupt bytes are still there: nothing was overwritten.
         assert_eq!(std::fs::read_to_string(path(&st)).unwrap(), "{not json");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The store's own edit: one map, one write, and an outcome that says which case happened without
+    /// ever naming a value.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_edit_moves_the_name_and_the_value_in_one_write() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = scratch("edit");
+        let st = state(&dir);
+        put(&st, "doctolib.de/password", VALUE).expect("stored");
+
+        assert_eq!(
+            edit(&st, "doctolib.de/password", "doctolib.de/login", Some("new-value")),
+            Ok(EditOutcome::Changed)
+        );
+        assert_eq!(get(&st, "doctolib.de/login").as_deref(), Some("new-value"));
+        assert!(!has(&st, "doctolib.de/password"), "the old name kept its value");
+
+        // `None` is a rename that leaves the value alone — the same request an edit sheet with a blank
+        // field makes.
+        assert_eq!(
+            edit(&st, "doctolib.de/login", "doctolib.de/primary", None),
+            Ok(EditOutcome::Changed)
+        );
+        assert_eq!(get(&st, "doctolib.de/primary").as_deref(), Some("new-value"));
+
+        // A name another secret holds is refused, and nothing is written for it.
+        put(&st, "api.openai.com/api-key", "sk-second").expect("stored");
+        assert_eq!(
+            edit(&st, "doctolib.de/primary", "api.openai.com/api-key", Some("third")),
+            Ok(EditOutcome::Taken)
+        );
+        assert_eq!(get(&st, "doctolib.de/primary").as_deref(), Some("new-value"));
+        assert_eq!(get(&st, "api.openai.com/api-key").as_deref(), Some("sk-second"));
+
+        // Nobody saved that: Missing, and no item appeared.
+        assert_eq!(
+            edit(&st, "no.such/name", "somewhere.else", Some("x")),
+            Ok(EditOutcome::Missing)
+        );
+        assert!(!has(&st, "somewhere.else"));
+
+        // An empty replacement is the create rule, not a wipe: refused, and the value stays.
+        assert!(edit(&st, "doctolib.de/primary", "doctolib.de/primary", Some("")).is_err());
+        assert_eq!(get(&st, "doctolib.de/primary").as_deref(), Some("new-value"));
+
+        // An edit lands in the same file an add does: owner-only, and no temp file left beside it.
+        let mode = std::fs::metadata(path(&st)).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "an edit must not loosen the store, was {mode:o}");
+        let leftovers: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with(".secrets."))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

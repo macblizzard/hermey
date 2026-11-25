@@ -134,4 +134,32 @@ public enum VaultFailure {
         }
         return "The host could not show the vault: \(error.localizedDescription)"
     }
+
+    /// One sentence for a change the host refused — an edit, not a read.
+    ///
+    /// `sentence(_:)` says the vault could not be *shown*, which is the wrong verb for a sheet that asked
+    /// the host to rename something; the reasons are the same, so they are answered the same way and only
+    /// the sentence changes. Both platforms show this text, so a refusal reads the same on a Mac and a
+    /// phone, and it always ends by saying that nothing was changed.
+    public static func refused(_ error: Error) -> String {
+        if error is URLError {
+            return "The host could not be reached, so nothing was changed."
+        }
+        if error is BotAdminUnavailable {
+            return "This host's bridge does not serve the vault yet, so nothing was changed. "
+                + "Update hermeyd on the host."
+        }
+        if let failure = error as? BridgeBotSessionPointer.Failure {
+            switch failure {
+            case .rejected(let status, let detail):
+                let why = detail.map { ": \($0)" } ?? "."
+                return "The host refused the change (\(status))\(why)"
+            case .notHTTP, .malformedResponse:
+                return "The host's answer was not what an edit gets, so nothing was changed."
+            case .noProfile:
+                return "This app is not pointed at a bot, so it cannot reach the host's vault."
+            }
+        }
+        return "The host could not make the change: \(error.localizedDescription)"
+    }
 }

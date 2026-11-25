@@ -4,6 +4,17 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **Edit a saved secret, and never see it.** Every row in **Settings → Vault** — the Mac's tab and the
+  phone's screen — now has **Edit**: rename the item, replace its value, or both, in one save. The value
+  field starts empty and says *"Leave blank to keep the current value"*, because there is nothing to
+  prefill it with: no route returns a stored value, and the new `PATCH /v1/vault/{name}` answers with the
+  item's new name and two booleans and nothing else. A rename and a replacement are one write
+  (`secrets::edit`, through the same temp-file-then-rename an add uses), so a rename cannot land without
+  its value or the reverse. A name another item already holds is refused (409) instead of swallowing it,
+  editing a name nobody saved is a 404, and an edit that would change nothing is a 422 rather than a silent
+  success. Adding is untouched — a new item still comes from the masked `store` card, where a blank value
+  is still refused — and the labels a row shows move with a rename rather than being copied to it.
+  `hermeyd` **0.8.8**.
 - **Copy a portion of the log, or leave the whole thing on the host.** View log's Copy is now a menu of
   four — **Copy last 100 lines**, **Copy last 500 lines**, **Copy shown**, **Copy all** — each labelled
   with the size of the list it would take ("Copy last 100 lines (of 812)"), and all four narrowed by

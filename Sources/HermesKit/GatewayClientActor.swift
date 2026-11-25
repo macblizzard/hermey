@@ -804,6 +804,11 @@ public actor GatewayClient: GatewayClientProtocol {
         try await sessionPointer.deleteVaultItem(name: name)
     }
 
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.editVaultItem(name: name, rename: rename, value: value)
+    }
+
     public func createCredentialCard(site: String, fields: [String], store: Bool,
                                      saveAs: String?, note: String?) async throws -> CredentialCard {
         guard let sessionPointer else { throw BotAdminUnavailable() }

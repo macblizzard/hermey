@@ -573,11 +573,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/credentials/cards/{card_id}/answer", post(credentials::answer_card))
         .route("/v1/credentials/cards/{card_id}/cancel", post(credentials::cancel_card))
         .route("/v1/credentials/cards/{card_id}/consume", post(credentials::consume_card))
-        // The vault's read and delete face: names and labels, never a value. A value enters only
-        // through the credential card above, so there is one door into the store and these two are
-        // the ones that can see what is in it. The name may hold one `/`, hence the wildcard.
+        // The vault's face to the owner: names and labels, never a value. Adding is still the
+        // `store` card above; an edit (PATCH) can only change an item that already exists — its name,
+        // its value, or both — and answers with the name it now has. The name may hold one `/`, hence
+        // the wildcard, and the client percent-encodes it.
         .route("/v1/vault", get(vault::list))
-        .route("/v1/vault/{*name}", axum::routing::delete(vault::delete_item))
+        .route(
+            "/v1/vault/{*name}",
+            axum::routing::delete(vault::delete_item).patch(vault::edit_item),
+        )
         // A device's own log, saved as a file on this host so it can be read here instead of pasted
         // into a chat. A plain bearer POST, unlike the socket it came from: see client_logs.rs. The
         // framework ceiling sits above the handler's own 2 MiB so a 413 carries its sentence.
