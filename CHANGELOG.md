@@ -23,6 +23,19 @@ All notable changes to Hermey are recorded here. The format follows
   the rakazo notice is untouched.
 
 ### Changed
+- **A long chat opens, and a slow open says so.** cody's Bot Chat holds 6,778 messages (~4.5 MB of
+  text) and took long enough to open that the phone's `session.resume` timer fired at 120 s and the
+  pane stayed empty. Measured on the host: reading the rows is 0.03 s; the engine's *display
+  projection* of the whole lineage is 6.2–9.2 s per resume, 7.5 MiB in one frame, and three sent
+  together answered at 6.2 s, 12.6 s and 18.5 s because the gateway renders them in turn. The app
+  retries an open it is waiting on, so a 6 s answer became a 120 s timeout. Now one conversation
+  being resumed is one engine request — a repeat is parked and answered from that reply, on both
+  the host (`hermeyd`) and the client — and the pane counts the wait out loud ("the host is sending
+  this chat's history — 14s") with a Retry beside it, instead of spinning in silence. Nothing is
+  trimmed: the phone still receives the newest page with `history{total,cursor}`, and every older
+  message stays reachable by scrolling back. A windowed *resume* on the engine side still needs an
+  upstream change (`omit_messages` is only an empty ack), so a cold open of a chat this size is one
+  render, not instant — but it is one, not one per retry.
 - **A bot's message is drawn in that bot's colour, not the app's.** One resolver
   (`BotAvatarTint.resolve`) now answers "what colour is this bot" — its drawn avatar's stored colour
   when it has one, its shape or photo face otherwise, the id's own otherwise — and every surface
