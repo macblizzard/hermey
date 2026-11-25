@@ -1,5 +1,4 @@
 import Foundation
-import HermesKit
 
 /// How far a body is moved, turned, stretched and lit at one instant.
 ///
