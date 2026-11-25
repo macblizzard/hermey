@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.659",
-          "buildVersion": "659",
-          "date": "2026-11-25T05:20:55Z",
-          "localizedDescription": "### Fixed\n- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count\n  keeps a clear margin inside the rounded corner instead of running to the card's edge.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.659/Hermey-0.1.659-b659.ipa",
-          "size": 5593670,
+          "version": "0.1.660",
+          "buildVersion": "660",
+          "date": "2026-11-25T08:53:31Z",
+          "localizedDescription": "### Added\n- **The bubble takes the bot's colour.** A bot's own messages are tinted with that bot's avatar colour \u2014 so a\n  green bot is green in the list, in the header and in its bubbles \u2014 with the ink measured against the fill for\n  contrast. Your own bubbles are unchanged.\n- **The classic faces are back as a choice.** The Avatar tab has a CLASSIC row of the eight original faces and\n  colours: pick one and the bot wears exactly the face it had before drawable avatars, or customise one instead.\n  The two never mix.\n\n### Changed\n- **Softer default shapes.** The twelve starting silhouettes are filleted \u2014 corners rounded by 5% of the shape's\n  size \u2014 so they read softly at 26 pt instead of knife-edged. A definition you paste yourself is left exactly as\n  you wrote it.\n\n### Fixed\n- **Opening a bot on the iPhone is instant.** The attachment vault was read from disk inside the open (and again\n  inside every transcript row's body), and the resume call queued behind the launch sweep \u2014 that was the 15\u201320\n  second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored\n  instead of pushing a second screen and crashing.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.660/Hermey-0.1.660-b660.ipa",
+          "size": 5635596,
           "minOSVersion": "17.0",
-          "sha256": "d307836915bb7e6cdd28d4f0158cc3c963cc2a742dab242b2c7b93426b22e7d6"
+          "sha256": "19d8a63c9f84fb46404dc77ec3a382e88cbceabad911f62a560c8389bd6e9c9b"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.659 (659)",
-      "identifier": "hermes-0.1.659-659",
-      "caption": "### Fixed\n- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count\n  keeps a clear margin inside the rounded corner instead of running to the card's edge.",
-      "date": "2026-11-25T05:20:55Z",
+      "title": "Hermes 0.1.660 (660)",
+      "identifier": "hermes-0.1.660-660",
+      "caption": "### Added\n- **The bubble takes the bot's colour.** A bot's own messages are tinted with that bot's avatar colour \u2014 so a\n  green bot is green in the list, in the header and in its bubbles \u2014 with the ink measured against the fill for\n  contrast. Your own bubbles are unchanged.\n- **The classic faces are back as a choice.** The Avatar tab has a CLASSIC row of the eight original faces and\n  colours: pick one and the bot wears exactly the face it had before drawable avatars, or customise one instead.\n  The two never mix.\n\n### Changed\n- **Softer default shapes.** The twelve starting silhouettes are filleted \u2014 corners rounded by 5% of the shape's\n  size \u2014 so they read softly at 26 pt instead of knife-edged. A definition you paste yourself is left exactly as\n  you wrote it.\n\n### Fixed\n- **Opening a bot on the iPhone is instant.** The attachment vault was read from disk inside the open (and again\n  inside every transcript row's body), and the resume call queued behind the launch sweep \u2014 that was the 15\u201320\n  second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored\n  instead of pushing a second screen and crashing.",
+      "date": "2026-11-25T08:53:31Z",
       "tintColor": "#9A9AA0"
     }
   ],
