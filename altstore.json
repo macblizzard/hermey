@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.668",
-          "buildVersion": "668",
-          "date": "2026-11-25T16:11:24Z",
-          "localizedDescription": "Infographic cards are in this build (0.1.667 announced them before they were committed): one real picture with a caption, three to eight facts, the number that matters highlighted \u2014 a price with seller and availability for a product \u2014 one link and a source. Needs hermeyd 0.8.3.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.668/Hermey-0.1.668-b668.ipa",
-          "size": 5620705,
+          "version": "0.1.669",
+          "buildVersion": "669",
+          "date": "2026-11-25T19:54:32Z",
+          "localizedDescription": "### Fixed\n- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it \u2014 7.5 MiB in one\n  frame, ~10 s \u2014 while retries stacked more renders on top, which is how an open became a 120-second wait. The\n  host now pages the reply from its text before parsing it (434 ms \u2192 92 ms on a 3.4 MB resume), answers duplicate\n  resumes from one render, and the phone paints its own disk copy before any round trip.\n- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight\n  instead of waiting its turn.\n- **The pane says what it is doing** when the host is slow: \"sending this chat's history \u2014 14s \u00b7 every message is\n  kept\", with a Retry bar, instead of a silent spinner.\n\n### Added\n- **Start a new chat after** \u2014 Settings \u2192 Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the\n  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with\n  every message kept and its count and date shown.\n- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked\n  sheet, delete with a confirmation.\n\n### Changed (hermeyd)\n- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache\n  with its cursor, and serves the vault's name-only list.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.669/Hermey-0.1.669-b669.ipa",
+          "size": 5781686,
           "minOSVersion": "17.0",
-          "sha256": "4336a4359897d6ca4c1c4efb46cc47f1bfa183742a36c3f3b7bea5d6a8ecf0d6"
+          "sha256": "93e08f24ffdfbf74c6d3dae15a1383dd78cd510db9e16c67d7cd28d06c8e4619"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.668 (668)",
-      "identifier": "hermes-0.1.668-668",
-      "caption": "Infographic cards are in this build (0.1.667 announced them before they were committed): one real picture with a caption, three to eight facts, the number that matters highlighted \u2014 a price with seller and availability for a product \u2014 one link and a source. Needs hermeyd 0.8.3.",
-      "date": "2026-11-25T16:11:24Z",
+      "title": "Hermes 0.1.669 (669)",
+      "identifier": "hermes-0.1.669-669",
+      "caption": "### Fixed\n- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it \u2014 7.5 MiB in one\n  frame, ~10 s \u2014 while retries stacked more renders on top, which is how an open became a 120-second wait. The\n  host now pages the reply from its text before parsing it (434 ms \u2192 92 ms on a 3.4 MB resume), answers duplicate\n  resumes from one render, and the phone paints its own disk copy before any round trip.\n- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight\n  instead of waiting its turn.\n- **The pane says what it is doing** when the host is slow: \"sending this chat's history \u2014 14s \u00b7 every message is\n  kept\", with a Retry bar, instead of a silent spinner.\n\n### Added\n- **Start a new chat after** \u2014 Settings \u2192 Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the\n  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with\n  every message kept and its count and date shown.\n- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked\n  sheet, delete with a confirmation.\n\n### Changed (hermeyd)\n- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache\n  with its cursor, and serves the vault's name-only list.",
+      "date": "2026-11-25T19:54:32Z",
       "tintColor": "#9A9AA0"
     }
   ],
