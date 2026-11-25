@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// Draws one native agent card — all three `card.v1` kinds.
+/// Draws one native agent card — all four `card.v1` kinds.
 ///
 /// * **approval** — the title, the body and the buttons. No status chip: the buttons *are* the
 ///   status, and the spec says not to repeat it.
@@ -11,9 +11,11 @@ import SwiftUI
 ///   a multi-line editor, and the card ends in exactly two buttons, Send and Discard. A bot drafts
 ///   so the owner can change a word before it goes; asking him to tap "Edit" first would only be a
 ///   second mode over the same four values.
+/// * **infographic** — a glance at a short query: one real picture, the number that matters and a
+///   few facts. Drawn by `InfographicCard`, the one layout both apps share.
 ///
-/// The body blocks are shared by all three (`text` paragraphs, `kv` rows, `fields` items), and so
-/// is the resolved note: once the file carries `resolved`, every button locks and the card says
+/// The body blocks are shared by the first three (`text` paragraphs, `kv` rows, `fields` items), and
+/// so is the resolved note: once the file carries `resolved`, every button locks and the card says
 /// which action was taken.
 ///
 /// All styling arrives through `CardTheme`; nothing here reads a colour from the design system,
@@ -74,6 +76,10 @@ public struct CardView: View {
                     } else {
                         surface(card, header: { draftEyebrow() }, extra: { draftDetails(card) }, controls: { actionRow(card) })
                     }
+                case .infographic:
+                    // One shared layout, in `InfographicCard`: both apps reach it through this view,
+                    // so the picture, the highlight and the rows cannot drift between them.
+                    InfographicCard(card: card, theme: theme)
                 }
             }
         }

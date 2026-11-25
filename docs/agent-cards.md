@@ -33,14 +33,23 @@ The file (`cards/<id>.json`, ≤ 32 KB):
 | Field | Rule |
 |---|---|
 | `schema` | required, exactly `"card.v1"` |
-| `kind` | required: `approval` \| `task` \| `draft-email` |
-| `title` | required, non-empty |
-| `status.state` | required: `pending` \| `running` \| `done` \| `error` \| `awaiting-approval` |
+| `kind` | required: `approval` \| `task` \| `draft-email` \| `infographic` |
+| `title` | required, non-empty (an `infographic`'s is ≤ 120 characters) |
+| `status.state` | required for the first three kinds: `pending` \| `running` \| `done` \| `error` \| `awaiting-approval`. Optional for `infographic`, which is finished the moment it is written |
 | `status.label` | optional chip text override |
 | `body[]` | optional: `{type:"text", text}` \| `{type:"kv", rows:[[label,value]]}` \| `{type:"fields", items:[{label,value}]}` |
 | `email` | for `draft-email`: `{to, cc, subject, bodyText}` |
 | `actions[]` | ≤ 3: `{label, send, style?: "primary"\|"danger"}` |
 | `resolved` | `null`, or `{action, at}` once the owner chose |
+| `image` / `imageCaption` | for `infographic`: an **http(s)** URL and its caption (≤ 120 chars). No URL, or a scheme that is not http(s), means no picture — and no caption either |
+| `facts[]` | for `infographic`: 3–8 `{label, value}` objects, label ≤ 40, value ≤ 80 |
+| `highlight` | for `infographic`: `{value, label?, seller?, availability?}` — the one number that matters, plus a seller/availability row for a product |
+| `link` | for `infographic`: `{label, url}` with an **http(s)** URL — the one row that leaves the app |
+| `source` | for `infographic`: the quiet last line (≤ 80 chars), e.g. `Wikipedia` or `amazon.de · checked just now` |
+
+The `infographic` schema is validated by the host on arrival: a file that breaks one of its bounds is
+refused with `422 bad_card` and a `detail` that names the field (`facts[2].value must be 1-80
+characters`), and nothing is snapshotted, so the fixed file is what the next read serves.
 
 Live behaviour the skill promises: while the chat is open, a card in one of the last eight
 messages re-reads its file every **3 s for up to 30 min**, and stops when the file is final
@@ -94,7 +103,9 @@ New target **`HermesCards`** (Foundation + SwiftUI, depends on `HermesKit` only)
 | `CardMarker` | finds `::card{…}` lines, returns refs `(id, kind, file)`; strips the line from prose |
 | `CardModel` | lenient `Decodable` for `card.v1`; unknown fields ignored, a broken file yields `.unavailable` |
 | `CardStore` | fetch + poll per card: every 3 s while pending/running/awaiting-approval and `resolved == nil`, stop at 30 min or when final; cache by `id` |
-| `CardView` | the three layouts, status chip, body blocks, ≤ 3 buttons |
+| `CardView` | the four layouts, status chip, body blocks, ≤ 3 buttons |
+| `InfographicCard` | the one `infographic` layout both apps draw: hero picture, highlight, facts, link, source |
+| `CardImageLoader` | the hero picture's bytes: `AttachmentImageStore` for the cache, `URLSession` for the read |
 | Transcript hook | same shape as the A2UI branch: if a card marker is present, draw prose then the card |
 
 Polling stops when the row scrolls out of the last eight messages, when the app backgrounds,
@@ -125,12 +136,19 @@ Tracked as an enhancement, not a blocker: the send strings are short by design.
   a multi-line editor, always, with no "Edit" step. The card ends in exactly two buttons, **Send**
   and **Discard**, whatever `actions[]` the file wrote; an action labelled `Edit` is not drawn.
   A draft with no `email` block cannot be typed into and draws as before.
+- **infographic** — a glance at a short query (a place, a product): one real picture on top (rounded,
+  aspect-filled, caption muted beneath), the title and optional subtitle, the `highlight` as a tinted
+  block with the seller and availability as two small rows, the `facts` as label/value rows with
+  right-aligned values that wrap, the `link` as one button-like row, and the `source` as a quiet last
+  line. One layout, shared by both apps; it narrows on the phone.
 - A resolved card is a receipt: no fields, no buttons, just the facts and the note.
 - A body that is one line under 200 characters and has no line breaks reads as the question
   under the title.
 - Styling comes from `HermeyUI` tokens, never from the card: `primary` maps to the accent
   fill, `danger` to the destructive tint. No model-chosen colours.
-- Text only. No HTML, no markdown injection, no remote images: a card is data.
+- Data, not markup: no HTML and no markdown injection. One remote **picture** (http(s) only) and one
+  remote **link** is the whole of an `infographic`'s reach, and a picture that fails to load shows
+  its caption alone — never a broken-image glyph and never an invented placeholder.
 
 Accessibility: the card is one element with `children: .contain`; each button is labelled by
 its `label`, not by `send`; the status chip reads its state in words.
@@ -151,6 +169,7 @@ its `label`, not by `send`; the status chip reads its state in words.
 | P3a | task layout, `body[]` blocks, draft-email layout | shipped — 0.1.622 |
 | P3b | an editable draft: fields on arrival, Send and Discard only | shipped — 0.1.623 |
 | P3c | task live updates: re-read a card in the last eight messages every 3 s, stop when final | **not built** |
+| P3d | the `infographic` kind: one real picture, a highlight, 3–8 facts, a link and a source; host-validated, one shared layout | **built, unshipped** |
 | P4 | a11y pass, snapshots, e2e with a live bot | partly — fixtures and guards only |
 
 What is on the wire today: `GET /v1/cards/{id}?session=&message=`, snapshotted per message, one read per

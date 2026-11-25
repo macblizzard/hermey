@@ -133,9 +133,75 @@ enum CardFixtures {
       "body": [{ "type": "text", "text": "REPLACED" }]
     }
     """#
+
+    /// `infographic`: a place as a glance — one picture, the span, four facts and a link. It carries
+    /// no `status`, which is this kind's normal shape.
+    ///
+    /// The picture URL is textual and never fetched: a test that reached the network would fail on a
+    /// train. A real one is a public Wikimedia Commons file, e.g.
+    /// `https://upload.wikimedia.org/wikipedia/commons/0/0c/GoldenGateBridge-001.jpg`.
+    static let infographic = #"""
+    {
+      "schema": "card.v1",
+      "kind": "infographic",
+      "title": "Golden Gate Bridge",
+      "subtitle": "San Francisco, California",
+      "image": "https://example.com/golden-gate.jpg",
+      "imageCaption": "The bridge from Fort Point",
+      "highlight": { "label": "Main span", "value": "1,280 m" },
+      "facts": [
+        { "label": "Opened", "value": "27 May 1937" },
+        { "label": "Total length", "value": "2,737 m" },
+        { "label": "Clearance", "value": "67 m" },
+        { "label": "Colour", "value": "International Orange" }
+      ],
+      "link": { "label": "Wikipedia", "url": "https://example.com/golden-gate" },
+      "source": "Wikipedia"
+    }
+    """#
+
+    /// A product: the same kind, with the price as the highlight and who sells it beneath it.
+    static let infographicProduct = #"""
+    {
+      "schema": "card.v1",
+      "kind": "infographic",
+      "title": "Anker 737 Power Bank",
+      "subtitle": "24,000 mAh, 140 W",
+      "image": "https://example.com/anker-737.jpg",
+      "highlight": {
+        "label": "Price",
+        "value": "€ 129.99",
+        "seller": "Sold by Anker Direct DE",
+        "availability": "In stock"
+      },
+      "facts": [
+        { "label": "Capacity", "value": "24,000 mAh" },
+        { "label": "Output", "value": "140 W" },
+        { "label": "Ports", "value": "2 × USB-C, 1 × USB-A" }
+      ],
+      "link": { "label": "Open on amazon.de", "url": "https://example.com/dp/B0B4Q1KZ2F" },
+      "source": "amazon.de"
+    }
+    """#
+
+    /// No picture and no link: the card is still a card, and the layout keeps its top and bottom.
+    static let infographicNoImage = #"""
+    {
+      "schema": "card.v1",
+      "kind": "infographic",
+      "title": "Borough Market",
+      "subtitle": "Southwark, London",
+      "facts": [
+        { "label": "Opens", "value": "07:00" },
+        { "label": "Closes", "value": "17:00" },
+        { "label": "Nearest", "value": "London Bridge" }
+      ],
+      "source": "boroughmarket.org.uk"
+    }
+    """#
 }
 
-/// The three layouts' documents: what each kind decodes into, and the states the view draws them
+/// The four layouts' documents: what each kind decodes into, and the states the view draws them
 /// with. The rendering itself is checked by `test_cards_client.py` and by the app's snapshots;
 /// here the guarantees are the ones a compiler can prove — every kind decodes, every status reads
 /// in words, and a resolved card names its action and locks the rest.
@@ -151,11 +217,12 @@ final class CardKindsTests: XCTestCase {
 
     // MARK: - The kinds
 
-    func testTheThreeKindsAreTheOnesTheSpecNames() {
-        XCTAssertEqual(Card.Kind.allCases, [.approval, .task, .draftEmail])
+    func testTheKindsAreTheOnesTheSpecNames() {
+        XCTAssertEqual(Card.Kind.allCases, [.approval, .task, .draftEmail, .infographic])
         XCTAssertEqual(Card.Kind(wire: "draft-email"), .draftEmail)
         XCTAssertEqual(Card.Kind(wire: "task"), .task)
-        for wire in ["draft_email", "Task", "quiz", ""] {
+        XCTAssertEqual(Card.Kind(wire: "infographic"), .infographic)
+        for wire in ["draft_email", "Task", "quiz", "Infographic", ""] {
             XCTAssertNil(Card.Kind(wire: wire), wire)
         }
     }
@@ -323,5 +390,102 @@ final class CardKindsTests: XCTestCase {
         let card = try card(CardFixtures.taskWithoutActions)
         XCTAssertTrue(card.body.isEmpty)
         XCTAssertNil(card.leadText)
+    }
+
+    // MARK: - Infographic
+
+    func testAnInfographicDecodesItsPictureFactsAndHighlight() throws {
+        let card = try card(CardFixtures.infographic)
+
+        XCTAssertEqual(card.kind, .infographic)
+        XCTAssertEqual(card.heading, "Golden Gate Bridge")
+        let info = try XCTUnwrap(card.infographic, "an infographic carries its own block")
+        XCTAssertEqual(info.subtitle, "San Francisco, California")
+        XCTAssertEqual(info.imageURL?.absoluteString, "https://example.com/golden-gate.jpg")
+        XCTAssertEqual(info.imageCaption, "The bridge from Fort Point")
+        XCTAssertEqual(info.highlight?.label, "Main span")
+        XCTAssertEqual(info.highlight?.value, "1,280 m")
+        XCTAssertEqual(info.facts.count, 4)
+        XCTAssertEqual(info.facts.first, Card.Row(label: "Opened", value: "27 May 1937"))
+        XCTAssertEqual(info.link?.label, "Wikipedia")
+        XCTAssertEqual(info.link?.url.absoluteString, "https://example.com/golden-gate")
+        XCTAssertEqual(info.source, "Wikipedia")
+    }
+
+    /// No `status` on the wire: an infographic is finished the moment it is written and draws no
+    /// chip, so the normal shape for this kind must not cost the card.
+    func testAnInfographicNeedsNoStatus() throws {
+        let card = try card(CardFixtures.infographic)
+
+        XCTAssertEqual(card.status.state, .done)
+        XCTAssertNil(card.email)
+        XCTAssertTrue(card.actions.isEmpty)
+        XCTAssertTrue(card.body.isEmpty)
+    }
+
+    func testAProductInfographicCarriesPriceSellerAndAvailability() throws {
+        let card = try card(CardFixtures.infographicProduct)
+        let info = try XCTUnwrap(card.infographic)
+
+        XCTAssertEqual(info.highlight?.value, "€ 129.99")
+        XCTAssertEqual(info.highlight?.seller, "Sold by Anker Direct DE")
+        XCTAssertEqual(info.highlight?.availability, "In stock")
+        XCTAssertEqual(info.facts.count, 3)
+        XCTAssertEqual(info.link?.url.absoluteString, "https://example.com/dp/B0B4Q1KZ2F")
+    }
+
+    /// A card with no picture still lays out: nothing about it is a placeholder.
+    func testAnInfographicWithoutAPictureStillDecodes() throws {
+        let card = try card(CardFixtures.infographicNoImage)
+        let info = try XCTUnwrap(card.infographic)
+
+        XCTAssertNil(info.imageURL)
+        XCTAssertNil(info.imageCaption)
+        XCTAssertNil(info.link)
+        XCTAssertEqual(info.facts.count, 3)
+        XCTAssertEqual(info.source, "boroughmarket.org.uk")
+    }
+
+    /// A picture is only ever a picture: an http(s) URL, or nothing. A caption over no picture would
+    /// claim something the card does not show, so it goes with it.
+    func testAnImageThatIsNotHTTPIsNoImageAndTakesItsCaption() throws {
+        for url in ["javascript:alert(1)",
+                    "file:///etc/passwd",
+                    "data:image/png;base64,AAAA",
+                    "example.com/golden-gate.jpg",
+                    "https://",
+                    "https://upload.wikimedia.org@evil.example/a.jpg"] {
+            let json = CardFixtures.infographic.replacingOccurrences(
+                of: "https://example.com/golden-gate.jpg",
+                with: url
+            )
+            let card = try card(json)
+            let info = try XCTUnwrap(card.infographic)
+
+            XCTAssertNil(info.imageURL, url)
+            XCTAssertNil(info.imageCaption, "a caption over no picture claims one: \(url)")
+        }
+    }
+
+    func testAFactWithNoValueOrLabelIsDroppedAndTheRestSurvive() throws {
+        let json = CardFixtures.infographic.replacingOccurrences(
+            of: #"{ "label": "Clearance", "value": "67 m" }"#,
+            with: #"{ "label": "Clearance" }"#
+        )
+        let card = try card(json)
+
+        XCTAssertEqual(card.infographic?.facts.count, 3)
+        XCTAssertEqual(card.infographic?.facts.last?.label, "Colour")
+    }
+
+    func testAnInfographicLinkThatCannotBeOpenedIsNotDrawn() throws {
+        let json = CardFixtures.infographic.replacingOccurrences(
+            of: #""label": "Wikipedia", "url": "https://example.com/golden-gate""#,
+            with: #""label": "Wikipedia", "url": "javascript:alert(1)""#
+        )
+        let card = try card(json)
+
+        XCTAssertNil(card.infographic?.link)
+        XCTAssertEqual(card.infographic?.facts.count, 4, "a bad link costs the link only")
     }
 }

@@ -8,7 +8,7 @@ license: MIT
 platforms: [linux, macos, windows]
 metadata:
   hermes:
-    tags: [desktop, cards, approval, task, email]
+    tags: [desktop, cards, approval, task, email, infographic]
   hermes-bot-kit:
     skill: agent-cards
 ---
@@ -16,9 +16,9 @@ metadata:
 # Agent Cards
 
 In a card-capable chat you show a card instead of describing things in prose: a question with buttons,
-an approval to confirm before you act, or a task whose progress updates in place. Hermes Desktop draws
-them, and so do the native Hermey apps (macOS/iOS); Slack, Telegram, the CLI, the TUI and the rest do
-not — there you write plain text.
+an approval to confirm before you act, a task whose progress updates in place, or a short answer with a
+picture. Hermes Desktop draws them, and so do the native Hermey apps (macOS/iOS); Slack, Telegram, the
+CLI, the TUI and the rest do not — there you write plain text.
 
 ## Cards first — the standing rule
 
@@ -133,7 +133,7 @@ You need no files for these. Call `clarify` with one to five questions:
 
 The answer comes back as the tool's result. Continue from it; do not ask the same thing again in text.
 
-## 2. Approval, task and email cards: a card file plus one line
+## 2. Approval, task, email and infographic cards: a card file plus one line
 
 These cards live in a JSON file in your working directory for this chat. Your reply only points at it.
 
@@ -163,14 +163,21 @@ Fields (anything else is ignored; a file that breaks a required rule shows "Card
 | Field | Rule |
 |---|---|
 | `schema` | Required. Exactly `"card.v1"`. |
-| `kind` | Required. `"approval"`, `"task"` or `"draft-email"`. |
-| `title` | Required, not empty. The card's bold heading. |
-| `status.state` | Required. `"pending"`, `"running"`, `"done"`, `"error"` or `"awaiting-approval"`. |
+| `kind` | Required. `"approval"`, `"task"`, `"draft-email"` or `"infographic"`. |
+| `title` | Required, not empty. The card's bold heading. For `infographic`, at most 120 characters. |
+| `status.state` | Required for `approval`, `task` and `draft-email`. `"pending"`, `"running"`, `"done"`, `"error"` or `"awaiting-approval"`. Leave it out of an `infographic` — that card is finished when you write it. |
 | `status.label` | Optional. Replaces the state's own wording in the status chip. |
-| `body` | Optional list of blocks, drawn in order (see below). |
+| `body` | Optional list of blocks, drawn in order (see below). Not used by `infographic`. |
 | `email` | For `draft-email`: `{ "to", "cc", "subject", "bodyText" }`, all strings. |
-| `actions` | Optional. At most 3 buttons: `{ "label", "send", "style"? }`. |
+| `actions` | Optional. At most 3 buttons: `{ "label", "send", "style"? }`. Not used by `infographic`. |
 | `resolved` | Optional. `null`, or `{ "action": "<clicked label>", "at": "<ISO-8601 time>" }` once you have acted. |
+| `subtitle` | For `infographic`: one short line under the title (at most 160 characters). |
+| `image` | For `infographic`: the picture's **http(s)** URL. No URL, or any other scheme (`file:`, `data:`), means the card draws no picture at all. |
+| `imageCaption` | For `infographic`: what the picture shows, at most 120 characters. It is dropped with the picture if there is no picture. |
+| `facts` | For `infographic`: 3 to 8 `{ "label", "value" }` objects. Label at most 40 characters, value at most 80. |
+| `highlight` | For `infographic`: `{ "value", "label"?, "seller"?, "availability"? }` — the one number that matters (a price, a length), plus the seller and stock line for a product. |
+| `link` | For `infographic`: `{ "label", "url" }` with an **http(s)** URL — the one row that leaves the app. |
+| `source` | For `infographic`: where the facts came from, at most 80 characters, e.g. `"Wikipedia"` or `"amazon.de · checked just now"`. |
 
 Body blocks:
 
@@ -196,6 +203,83 @@ How each kind is drawn:
   buttons (for example a `Stop` button with `"style": "danger"`).
 - `draft-email`: the subject as the heading (the title when there is no subject), To and Cc rows, the
   body text, then the buttons.
+- `infographic`: the picture on top with its caption under it, then the title and subtitle, the
+  highlight as a big value in a tinted block (with the seller and availability under it when you
+  wrote them), the facts as label/value rows, the link as one button-like row, and the source as the
+  quiet last line.
+
+### Infographics: a short answer, as a glance
+
+When the owner asks a question with a short answer that has a picture — "where is the Golden Gate
+Bridge", "what does this product cost on amazon.de", "how tall is the Eiffel Tower" — answer with an
+`infographic` card instead of a paragraph. It is a **summary**: one picture, the number that matters,
+three to eight facts, one link, one source. If you are writing a second paragraph of prose, the card
+is the wrong shape.
+
+A place:
+
+```json
+{
+  "schema": "card.v1",
+  "kind": "infographic",
+  "title": "Golden Gate Bridge",
+  "subtitle": "San Francisco, California",
+  "image": "https://upload.wikimedia.org/wikipedia/commons/0/0c/GoldenGateBridge-001.jpg",
+  "imageCaption": "The bridge from Fort Point",
+  "highlight": { "label": "Main span", "value": "1,280 m" },
+  "facts": [
+    { "label": "Opened", "value": "27 May 1937" },
+    { "label": "Total length", "value": "2,737 m" },
+    { "label": "Clearance", "value": "67 m" },
+    { "label": "Colour", "value": "International Orange" }
+  ],
+  "link": { "label": "Wikipedia", "url": "https://en.wikipedia.org/wiki/Golden_Gate_Bridge" },
+  "source": "Wikipedia"
+}
+```
+
+A product: the price is the highlight, and the seller and the stock line ride with it.
+
+```json
+{
+  "schema": "card.v1",
+  "kind": "infographic",
+  "title": "Anker 737 Power Bank",
+  "subtitle": "24,000 mAh, 140 W",
+  "image": "https://m.media-amazon.com/images/I/<the-image-id-from-the-page>.jpg",
+  "highlight": {
+    "label": "Price",
+    "value": "€ 129.99",
+    "seller": "Sold by Anker Direct DE",
+    "availability": "In stock"
+  },
+  "facts": [
+    { "label": "Capacity", "value": "24,000 mAh" },
+    { "label": "Output", "value": "140 W" },
+    { "label": "Ports", "value": "2 × USB-C, 1 × USB-A" }
+  ],
+  "link": { "label": "Open on amazon.de", "url": "https://www.amazon.de/dp/<the-asin-from-the-page>" },
+  "source": "amazon.de · checked just now"
+}
+```
+
+`<…>` is the part you copy from the page you just read — the image's own id, the product's own ASIN.
+The bridge's URL above is a real Commons file; the product's are templates, because a made-up image
+URL is exactly the failure this card exists to avoid.
+
+The rules that matter, in the owner's words:
+
+- **The picture must be real.** Use the picture the page itself serves (the product's own image URL,
+  a Commons photograph). Never write a URL you did not see, never a placeholder, never "an image of
+  X" from an unrelated page. If you could not find a picture, leave `image` out — the card still
+  lays out, and a card with no picture is honest where a made-up one is not.
+- **It is a summary.** Values are short by design: the host refuses a title over 120 characters, more
+  than 8 facts, and a fact value over 80. If a value does not fit, it belongs in your prose.
+- **One link.** The product page or the place's own page — not a list.
+- **The source line is where you say how fresh it is** (`amazon.de · checked just now`). A price with
+  no date is a price the owner cannot judge.
+- A card that breaks a bound is refused with `422 bad_card` and a `detail` naming the field, so fix
+  that field and write the file again.
 
 ### The line in your reply
 
