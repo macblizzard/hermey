@@ -1,6 +1,6 @@
 """A long conversation opens, and a slow open says so.
 
-Reported 2026-11-25 (iPhone 0.1.668, iOS 27.0.1, host hermes.corvus-vibes.ts.net): cody's Bot Chat
+Reported 2026-11-25 (iPhone 0.1.668, iOS 27.0.1, host the owner's tailnet host): cody's Bot Chat
 took very long to load, and the log repeated
 
     session.resume timed out after 120s
