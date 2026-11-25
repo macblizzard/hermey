@@ -1494,3 +1494,24 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count
   keeps a clear margin inside the rounded corner instead of running to the card's edge.
+
+## [0.1.660] — 2026-11-25
+
+### Added
+- **The bubble takes the bot's colour.** A bot's own messages are tinted with that bot's avatar colour — so a
+  green bot is green in the list, in the header and in its bubbles — with the ink measured against the fill for
+  contrast. Your own bubbles are unchanged.
+- **The classic faces are back as a choice.** The Avatar tab has a CLASSIC row of the eight original faces and
+  colours: pick one and the bot wears exactly the face it had before drawable avatars, or customise one instead.
+  The two never mix.
+
+### Changed
+- **Softer default shapes.** The twelve starting silhouettes are filleted — corners rounded by 5% of the shape's
+  size — so they read softly at 26 pt instead of knife-edged. A definition you paste yourself is left exactly as
+  you wrote it.
+
+### Fixed
+- **Opening a bot on the iPhone is instant.** The attachment vault was read from disk inside the open (and again
+  inside every transcript row's body), and the resume call queued behind the launch sweep — that was the 15–20
+  second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored
+  instead of pushing a second screen and crashing.
