@@ -7,9 +7,11 @@
   face that is actually drawn: a shape face keeps today's ring, a drawn avatar gets none and is
   separated by its own outline. Overlap, spacing and crop are untouched.
 * **The menu.** One row of five had an icon (`Share`), the rest were bare titles. Every row of a
-  message menu is now built by `MessageMenuRow`, whose constructors *require* a symbol — so the next
+  message menu is described by `MessageMenuItem`, whose constructors *require* a symbol — so the next
   row cannot ship without one — and a row whose title is conditional carries the glyph from the same
-  condition.
+  condition. `MessageMenuRow` draws that description on the phone; the Mac hands the same values to
+  AppKit, because SwiftUI's macOS menu dropped the image (its own guards, and the `NSMenu` itself,
+  are in `test_mac_menu_icons.py`).
 * **The session row.** `provider/model` and `540k/1M Tokens`, on both apps, in the composer's own
   chrome under the field: one formatter (`SessionLine` over `TokenCount`) feeding two halves of one
   row — `ComposerModelPill` (glyph, model, chevron) leading, the count trailing from
@@ -112,50 +114,53 @@ class TheGroupStackPlatesOnlyTheShapeFace(unittest.TestCase):
 
 
 class EveryMenuRowCarriesItsGlyph(unittest.TestCase):
-    """One helper builds every row, and no constructor can be called without a symbol."""
+    """One description of the rows, and no constructor can be called without a symbol."""
 
     HELPER = read(MENU_ROW)
     MAC = read(MAC_ROW)
     MOBILE = read(MOBILE_TRANSCRIPT)
     ROOMS = read(GROUP)
 
-    def message_menu(self) -> str:
+    def mac_rows(self) -> str:
         return between(self.MAC,
-                       "@ViewBuilder private var messageMenu: some View {",
+                       "private var menuItems: [MessageMenuItem] {",
                        "@ViewBuilder private var content: some View {")
 
     def test_the_mac_menu_has_no_bare_buttons_left(self) -> None:
-        menu = self.message_menu()
+        menu = self.mac_rows()
         self.assertNotIn("Button(", menu)
         self.assertNotIn("ShareLink(", menu)
-        self.assertIn("MessageMenuRow.share(entry.text)", menu)
-        # The five rows the owner photographed, in the order they were in.
-        titles = re.findall(r"MessageMenuRow\.(?:action|share)\(\s*(?:\"[^\"]*\"|isSpeaking[^,]*)?", menu)
-        self.assertGreaterEqual(len(titles), 5)
+        # Every row is named, in the order the owner photographed, through the shared constructors.
+        for verb in (".selectText {", ".readAloud(isSpeaking:", ".addReaction {",
+                     ".share(entry.text)", ".copyMessage {"):
+            self.assertIn(verb, menu)
 
     def test_every_verb_row_passes_its_own_symbol(self) -> None:
-        menu = self.message_menu()
-        verbs = call_arguments(menu, "MessageMenuRow.action")
-        self.assertGreaterEqual(len(verbs), 4)
-        for arguments in verbs:
-            self.assertIn("symbol:", arguments, f"a row without a glyph: {arguments!r}")
-            symbol = arguments.split("symbol:", 1)[1]
-            self.assertRegex(symbol, r'"[a-z0-9][a-z0-9.]*"|\?', "a glyph name, not an empty string")
-            self.assertNotIn('symbol: ""', arguments)
+        # The symbols moved with the verbs into the shared description, which is where the Mac's
+        # `NSMenuItem.image` and the phone's `Label` both read them from.
+        named = between(self.HELPER, "public extension MessageMenuItem {",
+                        "public struct MessageMenuRow: View {")
+        for verb, symbol in (("selectText", "text.cursor"),
+                             ("addReaction", "face.smiling"),
+                             ("copyMessage", "doc.on.doc"),
+                             ("reply", "arrowshape.turn.up.left"),
+                             ("copyCodeBlock", "chevron.left.forwardslash.chevron.right")):
+            body = between(named, f"static func {verb}(", "\n    }")
+            self.assertIn(f'symbol: "{symbol}"', body, f"{verb} must carry its glyph")
 
     def test_a_conditional_row_carries_a_conditional_glyph(self) -> None:
-        menu = self.message_menu()
         # The read-aloud verb swaps with the turn: "Stop Reading" must not keep the speaking mark.
-        self.assertIn('isSpeaking ? "Stop Reading" : "Read Aloud"', menu)
-        self.assertIn('symbol: isSpeaking ? "speaker.slash" : "speaker.wave.2"', menu)
+        self.assertIn('isSpeaking ? "Stop Reading" : "Read Aloud"', self.HELPER)
+        self.assertIn('symbol: isSpeaking ? "speaker.slash" : "speaker.wave.2"', self.HELPER)
+        self.assertIn(".readAloud(isSpeaking: isSpeaking)", self.mac_rows())
 
     def test_the_helper_cannot_build_a_row_without_a_symbol(self) -> None:
         # `symbol:` is a required parameter of both constructors — there is no default to forget.
         self.assertIn("public static func action(_ title: String, symbol: String,", self.HELPER)
         self.assertNotIn("symbol: String =", self.HELPER)
-        self.assertIn("Label(title, systemImage: symbol)", self.HELPER)
-        # Share is a `ShareLink`, and it is built here too, with the same Label — one row style.
-        self.assertIn("public static func share(_ text: String) -> MessageMenuRow", self.HELPER)
+        self.assertIn("Label(item.title, systemImage: item.symbol)", self.HELPER)
+        # Share is a `ShareLink` on the phone, and it is described here too — one row style.
+        self.assertIn("public static func share(_ text: String) -> MessageMenuItem", self.HELPER)
         self.assertIn('symbol: "square.and.arrow.up"', self.HELPER)
 
     def test_the_other_transcript_menus_build_rows_the_same_way(self) -> None:

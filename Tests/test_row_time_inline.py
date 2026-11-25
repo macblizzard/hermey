@@ -103,7 +103,9 @@ class RowTimeInline(unittest.TestCase):
         glyph = balanced(MAC, "private func actionGlyph")
         self.assertIn(".font(.system(size: 11, weight: .semibold))", glyph)
         self.assertIn(".frame(width: 24, height: 20)", glyph)
-        self.assertIn("hoveredAction == id ? Tokens.textPrimary : tint", glyph,
+        # Hovered — or carrying the keyboard's quiet fill, on the one glyph that is a tab stop —
+        # the glyph lifts; the resting tint is still the caller's.
+        self.assertIn("hoveredAction == id || isHighlighted ? Tokens.textPrimary : tint", glyph,
                       "a hovered glyph still lifts; the resting tint is the caller's")
 
     def test_a_long_bot_name_truncates_instead_of_growing_the_row(self) -> None:

@@ -56,6 +56,12 @@ struct TranscriptRowView: View {
     var reaction: (String) -> String? = { _ in nil }
     var onReact: (String, String?) -> Void = { _, _ in }
     @State private var showingReactions = false
+    /// The row's handle on the AppKit view that owns this message's menu, so the `⋯` in the action
+    /// line can raise the same `NSMenu` the right-click does — the keyboard's way into every verb,
+    /// including the ones SwiftUI's context menu never offered to a key.
+    @State private var menuAnchor = MessageMenuAnchor()
+    /// Where the keyboard is, on the one glyph that is a tab stop: the `⋯` that raises the menu.
+    @FocusState private var menuGlyphFocused: Bool
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
     @ObservedObject private var speech = SpeechReader.shared
@@ -109,7 +115,14 @@ struct TranscriptRowView: View {
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
-            content.contextMenu { messageMenu }
+            // The menu is an `NSMenu` the row presents itself. `.contextMenu` drew every row
+            // without its glyph on the Mac (SwiftUI's menu on macOS does not carry a `Label`'s
+            // image into its items), so the rows — the same `MessageMenuItem` descriptions the
+            // phone draws — go to AppKit, where `NSMenuItem.image` is the documented glyph and
+            // nothing downstream can drop it. The overlay is not a hit target: right-click is
+            // taken from the window's event stream, so selection and the glyphs still work.
+            content
+                .overlay { MessageContextMenu(items: menuItems, anchor: menuAnchor) }
                 .onAppear(perform: wireAttachmentOpener)
             if let emoji = currentReaction {
                 Button(emoji) { toggleReaction(emoji) }
@@ -120,25 +133,32 @@ struct TranscriptRowView: View {
         }
     }
 
-    @ViewBuilder private var messageMenu: some View {
+    /// This message's menu, as data: the same rows in the same order (five on a turn that can carry
+    /// all of them, the two every role has otherwise), described by the shared `MessageMenuItem`
+    /// constructors the phone's `MessageMenuRow` draws — so neither shell spells a verb of its own
+    /// and the two menus cannot drift apart.
+    ///
+    /// Rows that depend on this row's state keep their conditions: the speaker's row swaps title
+    /// and glyph with the turn, the reaction row exists only when the message can carry one, and
+    /// both run the same verbs they always did (the reaction row opens the popover; it does not
+    /// react).
+    private var menuItems: [MessageMenuItem] {
+        var rows: [MessageMenuItem] = []
         if entry.role == .user || entry.role == .assistant {
-            // Every row wears its glyph, and every row is built by `MessageMenuRow` so a row cannot
-            // be added without one. The speaker's row swaps title *and* symbol together: a row that
-            // says "Stop Reading" must not still show the speaking mark.
-            MessageMenuRow.action("Select Text", symbol: "text.cursor") { onSelectText(entry.text) }
-            MessageMenuRow.action(isSpeaking ? "Stop Reading" : "Read Aloud",
-                                  symbol: isSpeaking ? "speaker.slash" : "speaker.wave.2") {
+            rows.append(.selectText { onSelectText(entry.text) })
+            rows.append(.readAloud(isSpeaking: isSpeaking) {
                 speech.toggle(id: entry.id, text: entry.text)
-            }
+            })
             if reactionMessage != nil {
-                MessageMenuRow.action("Add Reaction…", symbol: "face.smiling") { showingReactions = true }
+                rows.append(.addReaction { showingReactions = true })
             }
         }
-        MessageMenuRow.share(entry.text)
-        MessageMenuRow.action("Copy Message", symbol: "doc.on.doc") {
+        rows.append(.share(entry.text))
+        rows.append(.copyMessage {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(entry.text, forType: .string)
-        }
+        })
+        return rows
     }
 
     @ViewBuilder private var content: some View {
@@ -632,27 +652,50 @@ struct TranscriptRowView: View {
                     onReply(entry)
                 }
             }
+
+            // The whole menu, reachable without a mouse — and the one glyph on this line that is a
+            // keyboard stop (the others are pointer shortcuts for verbs that all sit in this menu,
+            // which is why they are not tab stops). Tab reaches it, its quiet fill says where the
+            // keyboard is, and Space or Return opens the *same* `NSMenu` the right-click raises:
+            // once open it is AppKit's menu, so arrows, Return and Escape behave as in any Mac
+            // menu — including the rows SwiftUI's context menu never offered to a key.
+            actionGlyph("menu", systemImage: "ellipsis",
+                        tint: menuGlyphFocused ? Tokens.textPrimary : Tokens.textMuted,
+                        help: "All message actions",
+                        keyboardStop: true,
+                        isHighlighted: menuGlyphFocused) {
+                menuAnchor.present()
+            }
+            .focused($menuGlyphFocused)
         }
     }
 
+    /// One glyph of the action line.
+    ///
+    /// `keyboardStop` is the decision about whether Tab reaches the control at all — the row's
+    /// verbs are pointer shortcuts and are not tab stops, but the menu glyph is, because it is the
+    /// only way to the rows without a mouse. `isHighlighted` lets a keyboard stop carry the same
+    /// quiet fill the pointer gets, since `hermeyFocusQuiet()` leaves it no ring of its own.
     private func actionGlyph(_ id: String,
                              systemImage: String,
                              tint: Color = Tokens.textMuted,
                              help: String,
+                             keyboardStop: Bool = false,
+                             isHighlighted: Bool = false,
                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(hoveredAction == id ? Tokens.textPrimary : tint)
+                .foregroundStyle(hoveredAction == id || isHighlighted ? Tokens.textPrimary : tint)
                 .frame(width: 24, height: 20)
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
-                        .fill(hoveredAction == id ? Tokens.controlHover : .clear)
+                        .fill(hoveredAction == id || isHighlighted ? Tokens.controlHover : .clear)
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(false)
+        .focusable(keyboardStop)
         .onHover { inside in
             if inside { hoveredAction = id }
             else if hoveredAction == id { hoveredAction = nil }
