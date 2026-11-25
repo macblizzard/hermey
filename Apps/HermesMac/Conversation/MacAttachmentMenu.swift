@@ -115,6 +115,45 @@ struct MacAttachmentMenu: View {
     }
 }
 
+/// The composer's one door to disk: a single panel that takes any file the Finder offers.
+///
+/// It used to be a menu of two: "Photos…" and "Files…", the second narrowed to pictures, PDFs and the two
+/// Office formats because anything else could be staged as a file nothing would ever read. Mohammad asked
+/// for one button instead — the clip should just open the picker — so the panel takes `.item` and the
+/// host decides what it can read, refusing with a reason rather than the picker refusing silently.
+@MainActor
+enum MacComposerPicker {
+    static func chooseAttachments(for model: AppModel) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.item]
+        panel.prompt = "Attach"
+        panel.message = "Choose photos or files to attach"
+
+        guard panel.runModal() == .OK else { return }
+
+        var firstFailure: Error?
+        for url in panel.urls {
+            do {
+                let file = try MacAttachmentFile.read(url)
+                model.addPendingAttachment(name: file.name, data: file.data, isImage: file.isImage)
+            } catch {
+                if firstFailure == nil { firstFailure = error }
+            }
+        }
+        if let failure = firstFailure {
+            let alert = NSAlert()
+            alert.messageText = "Could not attach that file"
+            alert.informativeText = failure.localizedDescription
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+}
+
 /// One file read off disk, bounded by the host's own limit.
 struct MacAttachmentFile {
     let name: String

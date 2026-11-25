@@ -169,7 +169,8 @@ struct MacComposerBar: View {
                                                     isEnabled: model.selectedBot != nil,
                                                     onOpen: openModelPicker),
                      onSend: { store.send() },
-                     onAttach: { showsAttachmentMenu = true },
+                     // One button, one panel: any photo or file, multi-select.
+                     onAttach: { MacComposerPicker.chooseAttachments(for: model) },
                      onMic: { toggleVoice() },
                      onInterrupt: interrupt,
                      // A pasted screenshot or a file dropped on the field is an attachment, exactly
@@ -181,12 +182,10 @@ struct MacComposerBar: View {
                                                         isImage: item.isImage)
                          }
                      },
-                     // Anchored on the paperclip, not on the card: the menu used to drop from
-                     // the middle of the composer, under the field, nowhere near the clip.
-                     attachPopoverPresented: $showsAttachmentMenu,
-                     attachPopoverContent: AnyView(
-                        MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
-                     ),
+                     // No attachment menu any more: the clip opens the file panel itself
+                     // (`MacComposerPicker`), so there is nothing to present here.
+                     attachPopoverPresented: nil,
+                     attachPopoverContent: nil,
                      onCommand: runCommand)
                 // The card is its content: one row of text and controls, the hint under it. A
                 // fixed resting height used to hand the slack to the field, which left the
