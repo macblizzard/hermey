@@ -151,8 +151,9 @@ struct HermesMacApp: App {
                     // Last, so dialling the host is not delayed by the feed.
                     checkForUpdatesAtLaunch()
                     // Then warm every bot's conversation behind the window, so switching bots
-                    // paints instead of waiting on a resume.
-                    await store.model.prefetchConversations()
+                    // paints instead of waiting on a resume. The model owns the task so a click on
+                    // a bot can stand the walk down the way a tap does on the phone.
+                    store.model.startPrefetch()
                 }
         }
         .windowStyle(.hiddenTitleBar)

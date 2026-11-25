@@ -40,7 +40,12 @@ public actor HermesCacheStore {
     /// Rows kept per chat. A chat is the eviction unit (that is what the Limit counts), so one very
     /// long conversation still needs a ceiling of its own — otherwise the cache is bounded by the
     /// longest thread the user ever opened.
-    public static let maxMessagesPerChat = 500
+    ///
+    /// 2,000 rather than 500: a bot chat of 6,778 rows was cut to its newest 500, so opening it on a
+    /// phone showed a page and a half and the rest cost a round trip per 150 rows. Two thousand
+    /// rows is a few megabytes of JSON at worst and covers what a person scrolls through; the chat
+    /// limit above still bounds the whole cache.
+    public static let maxMessagesPerChat = 2000
 
     public nonisolated let host: String
     /// The host's own directory. Public for diagnostics and for tests that assert what landed on disk.
@@ -215,13 +220,18 @@ public actor HermesCacheStore {
         var wrote = false
         let kept = Array(entries.suffix(Self.maxMessagesPerChat))
         if preferences.messagesEnabled {
-            // A transcript shortened from the front has lost the row the host's cursor names, so the
-            // cursor goes with it: offering "load earlier" from an offset we no longer hold would
-            // fetch the wrong page.
+            // A transcript shortened from the front keeps its cursor, *moved forward* by the rows it
+            // lost. The cursor is the row offset (in the whole conversation) of the oldest row this
+            // copy holds, so dropping `d` rows from the front makes the surviving oldest row sit `d`
+            // rows later. Dropping the cursor instead — which this did — meant a trimmed cache could
+            // never page from disk at all: every tap for older rows needed a fresh resume first, and
+            // the "load earlier" row disappeared on the one chat long enough to need it.
             let truncated = kept.count < entries.count
+            let dropped = entries.count - kept.count
+            let pagingCursor = (truncated ? cursor.map { $0 + dropped } : cursor)
             let document = CachedTranscript(chatID: chatID,
                                             savedAt: clock().timeIntervalSince1970,
-                                            cursor: truncated ? nil : cursor,
+                                            cursor: pagingCursor,
                                             total: max(total, kept.count),
                                             entries: kept.map(CachedMessage.init))
             wrote = write(document, to: messagesURL(chatID)) || wrote

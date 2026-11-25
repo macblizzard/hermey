@@ -1644,6 +1644,37 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
     if !oversized && !awaiting_resume {
         return None;
     }
+
+    // A resume reply is paged **from its text**: the transcript is never materialised. Parsing the
+    // frame into a `Value` first — which this used to do before it could even find out whether the
+    // frame was the resume it was waiting for — meant a 6,778-row conversation was built as 6,778
+    // parsed rows, sliced, and measured a second time to be cached. Here the reply is borrowed, one
+    // page of it is parsed, and the rest is kept as the bytes it arrived as.
+    if awaiting_resume {
+        if let Some(paged) = history::page_resume_text(
+            text,
+            history::PAGE_MESSAGES,
+            history::PAGE_BYTES,
+        ) {
+            if let Some(key) = lock(&state.resumes).take(&paged.id) {
+                let alias = note_resume_alias_id(state, paged.session_id.as_deref(), &key);
+                // The transcript is shared, so the runtime-id alias costs a refcount, not a copy.
+                lock(&state.cache).remember_window(key.clone(), paged.transcript.clone());
+                if let Some(fresh) = &alias {
+                    // The app's later `session.history` names the *stored* id and is rewritten to
+                    // the runtime id before paging, so the page must be found under both keys or
+                    // "load earlier" answers -32001 after a resume.
+                    lock(&state.cache)
+                        .remember_window(HistoryKey::new(fresh, &key.profile), paged.transcript);
+                }
+                return Some(paged.frame);
+            }
+        }
+    }
+
+    // Everything below is the slow road, and it is now the rare one: a resume reply that could not
+    // be paged (an error, an empty transcript) still needs its alias recorded, and a monster frame
+    // that is not a resume at all still needs the trim safety net.
     let mut frame: Value = serde_json::from_str(text).ok()?;
 
     // A JSON-RPC response: `id`, no `method`. Its id decides whether it is the resume we paged for.
@@ -1661,11 +1692,7 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
                     let alias = note_resume_alias(state, &paged, &key);
                     lock(&state.cache).remember(key.clone(), rows.clone());
                     if let Some(fresh) = &alias {
-                        // The app's later `session.history` names the *stored* id and is
-                        // rewritten to the runtime id before paging, so the page must be found
-                        // under both keys or "load earlier" answers -32001 after a resume.
-                        lock(&state.cache)
-                            .remember(HistoryKey::new(fresh, &key.profile), rows);
+                        lock(&state.cache).remember(HistoryKey::new(fresh, &key.profile), rows);
                     }
                     return serde_json::to_string(&paged).ok();
                 }
@@ -1704,13 +1731,24 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
 /// Record the runtime id a tracked resume attached (`proxy.py:964-985`), so every later frame can
 /// be pointed at it. Returns the new id when an alias was recorded.
 fn note_resume_alias(state: &ConnectionState, frame: &Value, key: &HistoryKey) -> Option<String> {
-    if key.session_id.is_empty() {
-        return None;
-    }
     let fresh = frame
         .get("result")
         .and_then(|result| result.get("session_id"))
-        .and_then(Value::as_str)?;
+        .and_then(Value::as_str);
+    note_resume_alias_id(state, fresh, key)
+}
+
+/// The same, from the `session_id` the text path already read — so a paged reply never has to be
+/// parsed into a `Value` just to learn the id it attached.
+fn note_resume_alias_id(
+    state: &ConnectionState,
+    session_id: Option<&str>,
+    key: &HistoryKey,
+) -> Option<String> {
+    if key.session_id.is_empty() {
+        return None;
+    }
+    let fresh = session_id?;
     if fresh.is_empty() || fresh == key.session_id {
         return None;
     }

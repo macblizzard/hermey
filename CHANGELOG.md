@@ -115,6 +115,25 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **A long bot chat opens on its newest rows at once, and scrolling back does not mean forty taps.**
+  The disk copy of a chat was read *after* two round trips — `model.options` and `session.list` — so a
+  cold tap on a chat with thousands of rows showed "Opening…" for the length of both before the cache
+  was even opened. It is now the first `await` of the open, off the main actor and keyed by the id
+  this device remembered, so the newest rows are on screen before either call is made and the resume
+  replaces them when it lands. The launch sweep — which warmed up to 24 bots on the one socket, 150 ms
+  apart — is now a task the model owns, and a tap cancels it mid-flight instead of waiting for the
+  in-flight warm and then the rest of the roster. Behind a windowed resume the app fills older pages
+  itself (a page is a read of the relay's own copy, so no agent work), bounded, silent and
+  cancellable, and one "load earlier" is 400 rows rather than 150. The adopted transcript no longer
+  joins the attachment vault on the main actor — that per-row pass over every row is detached now, and
+  the rows are on screen while it happens.
+- **The host pages a resume before it reads it.** The relay used to parse the whole `session.resume`
+  frame into 6,778 rows, slice the newest page off the end, and measure every row a second time to
+  cache it. It now borrows the message array as raw text, counts it (which is what `history.total`
+  reports), parses only the newest page, and keeps the rest as the bytes it arrived as for
+  `session.history` to page from. Measured on a synthetic 6,778-row / 3.4 MB resume in a debug build:
+  **434 ms → 92 ms**. The device cache keeps 2,000 rows per chat instead of 500, and a trimmed
+  transcript keeps its paging cursor (moved forward by the rows it lost) instead of dropping it.
 - **Opening a bot from the phone's list is instant, and tapping it again does nothing.** The 15–20 s
   "stuck, then it loads" was four things at once. A tap started a `Task` per press and every one of
   them pushed another conversation screen, so a tap storm during the push animation stacked a screen
