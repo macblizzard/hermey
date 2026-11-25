@@ -1268,6 +1268,12 @@ final class WorkspaceStore: ObservableObject {
             guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
             return (try address.apiOrigin(), try await address.mintedTicket())
         })
+        // The log, saved on the host: the same plain bearer POST the phone uses, so a busy relay
+        // socket is not in its path.
+        model.clientLogUploader = ClientLogUploadClient(endpoint: {
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
         return model
     }
 }

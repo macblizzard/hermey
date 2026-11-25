@@ -153,6 +153,81 @@ public struct ClientLogQuery: Equatable, Sendable {
     public func apply(to entries: [ClientLogEntry]) -> [ClientLogEntry] {
         order.arrange(entries.filter(matches))
     }
+
+    /// The same list, keeping only the newest `limit` lines the filter admits.
+    ///
+    /// "Last 100 lines" means the newest hundred of the log **as filtered**, not the newest hundred of
+    /// the file: a reader who narrowed the sheet to errors and asked for the tail wants the tail of the
+    /// errors, which is the list in front of them. The tail is taken before the order is applied,
+    /// because "newest" is a fact about `at` and not about which end of the sheet is on screen —
+    /// otherwise "last 100" would copy the oldest hundred whenever the reader flipped to newest-first.
+    public func apply(to entries: [ClientLogEntry], limit: Int?) -> [ClientLogEntry] {
+        let matched = entries.filter(matches)
+        guard let limit, limit > 0, matched.count > limit else { return order.arrange(matched) }
+        return order.arrange(Array(matched.suffix(limit)))
+    }
+}
+
+/// Which of the four copies a press asked for.
+///
+/// The sheet used to offer two — *shown* and *all* — and the owner asked for a portion instead of the
+/// whole thing: "would be better if i could just copy a portion of the log like last 100 lines and so
+/// on instead of copying the whole thing and paste here on chat". A scope therefore carries both the
+/// list it copies (`lineLimit`) and the words the menu uses, because a label built anywhere else
+/// drifts from the list the press actually writes.
+///
+/// Every scope is applied to the *filtered* log: the level, category and search the reader chose
+/// narrow all four, which is what makes "the tail of what he sees" true rather than a tail of the
+/// whole file he had just narrowed away.
+public enum ClientLogCopyScope: String, CaseIterable, Identifiable, Sendable {
+    /// The newest 100 lines the filter admits.
+    case last100
+    /// The newest 500 — more than the ring holds today (400), so on a full log it is everything.
+    case last500
+    /// The lines on screen: the filter applied to the live feed.
+    case shown
+    /// Everything the filter admits in the log itself, paused-held lines included.
+    case all
+
+    public var id: String { rawValue }
+
+    /// How many of the newest lines this scope keeps, or `nil` for "all of them".
+    public var lineLimit: Int? {
+        switch self {
+        case .last100: return 100
+        case .last500: return 500
+        case .shown, .all: return nil
+        }
+    }
+
+    /// What the menu item says. `available` is the pool the press would read — the filtered log for
+    /// the tails and *all*, the filtered feed for *shown* — so the reader can see how much of what he
+    /// is looking at the item would take. Zero draws no parenthetical: "(of 0)" is a label that
+    /// invites a press that can only do nothing.
+    public func title(available: Int) -> String {
+        let base: String
+        switch self {
+        case .last100: base = "Copy last 100 lines"
+        case .last500: base = "Copy last 500 lines"
+        case .shown: base = "Copy shown"
+        case .all: base = "Copy all"
+        }
+        guard available > 0 else { return base }
+        // A tail is a *portion of* the pool; the other two are the pool.
+        return lineLimit == nil ? "\(base) (\(available))" : "\(base) (of \(available))"
+    }
+
+    /// What the count line says for a moment after the press: how much left the sheet, and which list.
+    public func receipt(count: Int) -> String {
+        let noun = count == 1 ? "line" : "lines"
+        switch self {
+        case .shown: return "Copied \(count) \(noun) shown"
+        // Short enough to survive a narrow phone at one line: the entry count is the other half of
+        // this column, and a message that truncates is a message that did not say what happened.
+        case .all: return "Copied all \(count) \(noun)"
+        case .last100, .last500: return "Copied last \(count) \(noun)"
+        }
+    }
 }
 
 /// One recorded fact: when, how loud, from which part of the app, and what happened.

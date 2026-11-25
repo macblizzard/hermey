@@ -4,6 +4,21 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **Copy a portion of the log, or leave the whole thing on the host.** View log's Copy is now a menu of
+  four — **Copy last 100 lines**, **Copy last 500 lines**, **Copy shown**, **Copy all** — each labelled
+  with the size of the list it would take ("Copy last 100 lines (of 812)"), and all four narrowed by
+  whatever level, category or search the sheet is filtered to, so a copy is the tail of what is on
+  screen rather than the whole file. The owner asked for exactly that: *"would be better if i could just
+  copy a portion of the log like last 100 lines and so on instead of copying the whole thing and paste
+  here on chat."* Beside it, **Send log to host** posts those same bytes — plus the device name, app
+  version and build, OS, capture time and active filters — to a new `POST /v1/client-logs` on the host,
+  which writes `/var/log/hermey/client-<device>-<UTC minute>.log` (0640 root:root, one file per device
+  per minute, never overwritten: a second upload inside the same minute answers 409 rather than
+  truncating) and answers with the path the sheet then shows. It is a plain bearer POST, not the relay
+  socket, so a busy conversation cannot delay it; 2 MiB on both ends with a sentence saying so; a
+  failure (403, 409, 413, unreachable) is shown in the sheet, which stays open. Nothing is ever uploaded
+  on its own — *"wouldn't it better if u save the log on server side as well so that i wont have to
+  paste the whole log for u to investigate?"*
 - **Your host has a vault, and Settings now shows it.** A new **Vault** tab on the Mac and a **Vault**
   row under **Settings → Secrets** on the phone list the secrets the host holds — by name, with where
   each is for and when it was added — and let you add one or delete one. The pane never shows a value:

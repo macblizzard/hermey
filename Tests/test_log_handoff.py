@@ -19,6 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = (ROOT / "Sources" / "HermeyUI" / "ClientLogView.swift").read_text(encoding="utf-8")
+# The model the sheet draws from: the four copy scopes and the words they are offered in.
+MODEL = (ROOT / "Sources" / "HermesKit" / "ClientLog.swift").read_text(encoding="utf-8")
 
 # The sheet's body: everything above the toolbar declaration. A control that appears down here is
 # rendered by the content; one that appears below it is at the mercy of the sheet's toolbar.
@@ -58,40 +60,49 @@ class TheRowsCanBeSelected(unittest.TestCase):
                                                         ".scrollDismissesKeyboard"))
 
 
-class CopyHasTwoScopes(unittest.TestCase):
+class CopyIsAMenuOfFour(unittest.TestCase):
+    """Two copies became four (build 0.1.663): a portion of the log, as well as all of it.
+
+    The menu itself is pinned in `test_log_tail_and_upload.py`; what this file has always guarded is
+    the *where* — a control in the sheet's body rather than in a toolbar the Mac sheet may not draw —
+    and that the four still hand over different lists through one formatter.
+    """
+
     def setUp(self) -> None:
-        self.shown = block(LOG, "private var copyShownButton", "/// The whole buffer")
-        self.everything = block(LOG, "private var copyAllButton", "/// The same text as Copy shown")
+        self.menu = block(LOG, "private var copyMenu: some View", "/// The sentence under each menu item")
 
-    def test_copy_shown_takes_the_filtered_list(self) -> None:
-        self.assertIn("copy(shown, scope: .shown)", self.shown)
-        self.assertIn('handoffLabel("Copy shown"', self.shown)
-        self.assertIn(".disabled(shown.isEmpty)", self.shown)
+    def test_the_copy_control_is_a_menu_in_the_body(self) -> None:
+        self.assertIn("Menu {", self.menu)
+        self.assertIn("ForEach(ClientLogCopyScope.allCases)", self.menu)
+        self.assertIn("Button(scope.title(available: availableCount(scope)))", self.menu)
+        self.assertIn('handoffLabel("Copy…"', self.menu)
 
-    def test_copy_all_takes_the_whole_buffer_not_the_feed(self) -> None:
-        # `feed.entries` holds back what a paused tail has not taken up, so "all" reads the log
-        # itself — and applies the reader's order without the reader's filter.
-        self.assertIn("copyAll()", self.everything)
-        self.assertIn('handoffLabel("Copy all"', self.everything)
-        self.assertIn(".disabled(feed.entries.isEmpty)", self.everything)
-        all_entries = block(LOG, "private func allEntries()", "private func copyAll()")
-        self.assertIn("ClientLog.shared.snapshot()", all_entries)
-        self.assertIn("ClientLogQuery(order: order).apply(to: buffer)", all_entries)
+    def test_copy_shown_takes_the_filtered_feed_and_the_others_the_log(self) -> None:
+        # `feed.entries` holds back what a paused tail has not taken up, so the tails and "all" read
+        # the log itself — one query, so the filter narrows every one of the four.
+        copy = block(LOG, "private func copy(_ scope: ClientLogCopyScope)", "private func copy(_ entries:")
+        self.assertIn("copy(shown, scope: .shown)", copy)
+        self.assertIn("copy(logEntries(limit: scope.lineLimit), scope: scope)", copy)
+        entries = block(LOG, "private func logEntries(limit: Int?)", "/// How many lines the log would hand")
+        self.assertIn("ClientLog.shared.snapshot()", entries)
+        self.assertIn("query.apply(to: buffer, limit: limit)", entries)
 
-    def test_the_two_actions_hand_over_different_lists(self) -> None:
-        # Not two labels on one behaviour: the scopes are passed to the same entry point and the
+    def test_the_four_actions_hand_over_different_lists(self) -> None:
+        # Not four labels on one behaviour: the scope is passed to the same entry point and the
         # receipt says which one was kept.
-        self.assertIn("copy(allEntries(), scope: .all)", LOG)
+        self.assertIn('handoffLabel("Copy…"', LOG)
+        self.assertIn("scope: .all", LOG)
         self.assertIn("scope: .shown", LOG)
-        self.assertNotEqual(self.shown, self.everything)
+        self.assertIn("case .all, .last100, .last500:", LOG)
 
     def test_there_is_still_one_formatter(self) -> None:
         self.assertEqual(LOG.count("ClientLog.text(of:"), 1)
         self.assertIn("private func exportText(_ entries: [ClientLogEntry]) -> String", LOG)
-        # Both actions go through it — one call site for the list on screen, one for the buffer —
-        # and neither builds its own string on the way.
+        # Every way out goes through it — the list on screen, the scopes read from the log, and the
+        # upload — and none of them builds its own string on the way. Two `exportText(entries)` call
+        # sites is the point: the copy and the file the host receives are the same bytes.
         self.assertEqual(LOG.count("exportText(shown)"), 1)
-        self.assertEqual(LOG.count("exportText(entries)"), 1)
+        self.assertEqual(LOG.count("exportText(entries)"), 2)
         self.assertNotIn("map(\\.line)", LOG)
 
     def test_a_copy_of_nothing_is_not_announced(self) -> None:
@@ -102,9 +113,13 @@ class CopyHasTwoScopes(unittest.TestCase):
 
 class TheReceiptSaysHowMuchWasCopied(unittest.TestCase):
     def test_the_confirmation_carries_a_count(self) -> None:
-        self.assertIn(r'"Copied \(copied.count) \(noun) shown"', LOG)
-        self.assertIn(r'"Copied all \(copied.count) \(noun)"', LOG)
-        self.assertIn('let noun = copied.count == 1 ? "line" : "lines"', LOG)
+        # The sentences live with the scopes now, so the menu, the copy and the receipt cannot
+        # describe three different lists. All three still count.
+        self.assertIn("return copied.scope.receipt(count: copied.count)", LOG)
+        self.assertIn(r'"Copied \(count) \(noun) shown"', MODEL)
+        self.assertIn(r'"Copied all \(count) \(noun)"', MODEL)
+        self.assertIn(r'"Copied last \(count) \(noun)"', MODEL)
+        self.assertIn('let noun = count == 1 ? "line" : "lines"', MODEL)
 
     def test_no_bare_copied_label_survives(self) -> None:
         # "Copied" alone was both uninformative and able to stand for a write that never happened.
@@ -139,8 +154,8 @@ class TheControlsAreInTheSheetsBody(unittest.TestCase):
         self.assertIn("handoffControls", self.controls)
 
     def test_every_action_is_a_word_in_the_body(self) -> None:
-        for label in ('handoffLabel("Copy shown"', 'handoffLabel("Copy all"',
-                      'handoffLabel("Share log"', 'handoffLabel("Clear"'):
+        for label in ('handoffLabel("Copy…"', 'handoffLabel("Share log"',
+                      'handoffLabel("Send log to host"', 'handoffLabel("Clear"'):
             self.assertIn(label, BODY)
             # A title and a glyph: an icon alone is what the owner could not find.
             self.assertIn("Label(title, systemImage: symbol)", LOG)
@@ -158,11 +173,16 @@ class TheControlsAreInTheSheetsBody(unittest.TestCase):
         self.assertNotIn("#if os(", handoff)
 
     def test_each_action_explains_itself(self) -> None:
-        for help_text in ("Copy the lines on screen",
-                          "Copy every line in the log, including lines a paused tail is holding back",
-                          "Send the lines on screen to another app",
+        # The copy menu's four sentences come from `copyHelp`, one per scope, so an item cannot be
+        # offered without saying which list it takes.
+        for help_text in ("Copy the newest 100 lines the filter admits",
+                          "Copy the newest 500 lines the filter admits",
+                          "Copy every line the filter admits, including lines a paused tail is holding back"):
+            self.assertIn(f'return "{help_text}"', LOG)
+        for help_text in ("Send the lines on screen to another app",
+                          "Save this log as a file on the host, where it can be read without pasting it",
                           "Delete the entries on this device"):
-            self.assertIn(f'.help("{help_text}")', LOG)
+            self.assertIn(help_text, LOG)
 
 
 class TheLogCanBeSentToAnotherApp(unittest.TestCase):
