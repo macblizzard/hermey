@@ -2756,14 +2756,14 @@ mod tests {
             client(
                 &state,
                 &json!({"jsonrpc": "2.0", "id": 3, "method": "session.list",
-                        "params": {"token": "sk-live-SUPER-SECRET"}}),
+                        "params": {"token": "test-secret-value"}}),
             ),
             ClientAction::Forward(_)
         ));
 
         let text = std::fs::read_to_string(log.path()).expect("audit file");
         assert!(!text.contains("/etc/passwd"), "a refused path reached the log: {text}");
-        assert!(!text.contains("sk-live-SUPER-SECRET"), "a credential reached the log");
+        assert!(!text.contains("test-secret-value"), "a credential reached the log");
         assert!(!text.contains("data:application"), "an attachment payload reached the log");
 
         let allowed = log.last("client_request").expect("allowed request recorded");

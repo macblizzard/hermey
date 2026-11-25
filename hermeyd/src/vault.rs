@@ -198,7 +198,7 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     const LOCAL: &str = "local-cli-token-0123456789abcdef0123456789abcdef";
-    const SECRET: &str = "sk-live-5f3a9d-not-a-real-key";
+    const SECRET: &str = "test-secret-value";
 
     fn scratch(tag: &str) -> PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
