@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.667",
-          "buildVersion": "667",
-          "date": "2026-11-25T15:37:58Z",
-          "localizedDescription": "Infographic cards: ask a short question and get a card back \u2014 one real picture with a caption, three to eight key facts, the number that matters highlighted (a price, with seller and availability), one link and a source. Shared layout on Mac and iPhone; a dead image falls back to the caption. Needs hermeyd 0.8.3.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.667/Hermey-0.1.667-b667.ipa",
-          "size": 5570708,
+          "version": "0.1.668",
+          "buildVersion": "668",
+          "date": "2026-11-25T16:11:24Z",
+          "localizedDescription": "Infographic cards are in this build (0.1.667 announced them before they were committed): one real picture with a caption, three to eight facts, the number that matters highlighted \u2014 a price with seller and availability for a product \u2014 one link and a source. Needs hermeyd 0.8.3.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.668/Hermey-0.1.668-b668.ipa",
+          "size": 5620705,
           "minOSVersion": "17.0",
-          "sha256": "4d129fc2c0db5f65d7e4f948170f1df03ec59d290c3f466c16603eef8d36d853"
+          "sha256": "4336a4359897d6ca4c1c4efb46cc47f1bfa183742a36c3f3b7bea5d6a8ecf0d6"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.667 (667)",
-      "identifier": "hermes-0.1.667-667",
-      "caption": "Infographic cards: ask a short question and get a card back \u2014 one real picture with a caption, three to eight key facts, the number that matters highlighted (a price, with seller and availability), one link and a source. Shared layout on Mac and iPhone; a dead image falls back to the caption. Needs hermeyd 0.8.3.",
-      "date": "2026-11-25T15:37:58Z",
+      "title": "Hermes 0.1.668 (668)",
+      "identifier": "hermes-0.1.668-668",
+      "caption": "Infographic cards are in this build (0.1.667 announced them before they were committed): one real picture with a caption, three to eight facts, the number that matters highlighted \u2014 a price with seller and availability for a product \u2014 one link and a source. Needs hermeyd 0.8.3.",
+      "date": "2026-11-25T16:11:24Z",
       "tintColor": "#9A9AA0"
     }
   ],
