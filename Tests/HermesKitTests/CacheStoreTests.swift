@@ -517,7 +517,8 @@ final class CacheStoreTests: XCTestCase {
         let transcript = try XCTUnwrap(cached)
         XCTAssertEqual(transcript.entries.count, HermesCacheStore.maxMessagesPerChat)
         XCTAssertEqual(transcript.entries.first?.id, "m40", "the oldest rows are the ones dropped")
-        XCTAssertNil(transcript.cursor, "the host cursor names a row we no longer hold")
+        XCTAssertEqual(transcript.cursor, 940,
+                       "the cursor moves forward by the rows dropped, so paging back still lines up")
     }
 
     // MARK: - Usage

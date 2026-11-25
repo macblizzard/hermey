@@ -291,8 +291,9 @@ struct VaultAddSheet: View {
             await center.adopt(made)
             card = made
             error = nil
-        } catch {
-            error = VaultFailure.sentence(error)
+        } catch let failure {
+            // `error` here is the property; the catch binding would shadow it and cannot be assigned.
+            error = VaultFailure.sentence(failure)
         }
     }
 }
