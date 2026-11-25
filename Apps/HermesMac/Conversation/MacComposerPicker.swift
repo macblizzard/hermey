@@ -238,7 +238,7 @@ struct MacAttachmentFile {
         var ext = ImageTranscoding.jpegExtension
         if let source = CGImageSourceCreateWithData(data as CFData, nil),
            let raw = CGImageSourceGetType(source),
-           let preferred = UTType(raw as String).preferredFilenameExtension {
+           let preferred = UTType(raw as String)?.preferredFilenameExtension {
             ext = preferred
         }
         return "Photo \(index + 1).\(ext)"
