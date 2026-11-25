@@ -257,6 +257,12 @@ targets:
       # `HermesKit`, no design-system tokens.
       - path: Sources/HermeyUI/BotAvatarIdentity.swift
       - path: Sources/HermeyUI/BotAvatarShape.swift
+      # The shape's own vocabulary: path commands and the parser that reads them, the rect and eye
+      # pose types, and the motion constants the eight states are paced by. Split across four files in
+      # HermeyUI; the extension needs all four or the renderer compiles against names it cannot see.
+      - path: Sources/HermeyUI/BotAvatarPathParser.swift
+      - path: Sources/HermeyUI/BotAvatarGeometry.swift
+      - path: Sources/HermeyUI/BotAvatarMotion.swift
       - path: Sources/HermeyUI/BotAvatarPalette.swift
       - path: Sources/HermeyUI/BotAvatarLibrary.swift
       # No BrandAssets: the island is black in both appearances and an asset catalog here would be a
