@@ -330,7 +330,12 @@ class TheHostVersion(unittest.TestCase):
     def test_hermeyd_moved_its_patch_version(self) -> None:
         # Host code changed, so `hermeyd --version` has to say so — that is how a deployed binary is
         # told apart from the one in the repo (Tools/check_hermeyd_version_bump.py enforces it in CI).
-        self.assertIn('version = "0.8.8"', CARGO)
+        # At least the version this feature arrived in: later releases bump past it, and pinning the
+        # literal here made the guard fail on the next unrelated bump instead of on a missing one.
+        found = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"', CARGO, re.M)
+        self.assertIsNotNone(found, "hermeyd's Cargo.toml has no version")
+        self.assertGreaterEqual(tuple(int(part) for part in found.groups()), (0, 8, 8),
+                                "hermeyd must be at least 0.8.8: the message routes are host code")
 
     def test_the_routes_are_documented(self) -> None:
         self.assertIn("## Editing and deleting a message — `POST /v1/messages/delete`", DOCS)

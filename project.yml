@@ -241,6 +241,24 @@ targets:
       # stack), and a second copy of the eight strings is exactly how the pill came to say "Finished"
       # while the list said "Done". One file, both processes.
       - path: Sources/HermesKit/BotStateWord.swift
+      # The bot's *drawing*, compiled into the extension as well as into `HermeyUI` — the same
+      # argument as `BotStateWord.swift` one line up, for the same reason. The card now draws the
+      # bot's own face, and a second renderer inside the extension is exactly how the eyes on the
+      # Lock Screen come to blink on a different clock from the eyes in the chat header. These are
+      # the renderer's own files, unchanged: one implementation, two processes. What is *not* here
+      # is the editor (`OpenBotAvatarEditor`), which is inert in a widget and drags the shape
+      # picker's catalogue in with it.
+      - path: Sources/HermeyUI/OpenBotAvatar
+        excludes:
+          - "OpenBotAvatarEditor.swift"
+      # What the drawing needs and the extension would otherwise link the package for: the avatar
+      # hash and colour definitions, the eight shipped bodies, the palette they are drawn from, and
+      # the library a stored face is resolved through. All Foundation-only — no networking, no
+      # `HermesKit`, no design-system tokens.
+      - path: Sources/HermeyUI/BotAvatarIdentity.swift
+      - path: Sources/HermeyUI/BotAvatarShape.swift
+      - path: Sources/HermeyUI/BotAvatarPalette.swift
+      - path: Sources/HermeyUI/BotAvatarLibrary.swift
       # No BrandAssets: the island is black in both appearances and an asset catalog here would be a
       # second palette to keep in sync for no visible gain.
     info:

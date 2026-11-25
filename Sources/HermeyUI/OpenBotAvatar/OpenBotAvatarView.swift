@@ -1,5 +1,11 @@
 import Foundation
+// Conditional, and the only conditional import in this file: `init(activity:)` below maps the app's
+// vocabulary onto these eight states, and that mapping needs `HermesKit`. Everything else here — the
+// view, the document, the ink — is drawing, and the iOS Live Activity compiles this same file into
+// its own module (`project.yml`) so the card can hold the face without linking the networking stack.
+#if canImport(HermesKit)
 import HermesKit
+#endif
 import SwiftUI
 
 /// A bot's generated avatar, drawn natively: the definition's outline given the volume upstream
@@ -140,6 +146,7 @@ public struct OpenBotAvatarView: View {
 
 // MARK: - The app's vocabulary, mapped
 
+#if canImport(HermesKit)
 public extension OpenBotAvatarState {
     /// The avatar pose for an activity the app already tracks.
     ///
@@ -167,6 +174,7 @@ public extension OpenBotAvatarState {
         activity.rawValue == "done" ? .happy : .neutral
     }
 }
+#endif
 
 // MARK: - What is stored
 

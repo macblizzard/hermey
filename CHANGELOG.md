@@ -15,6 +15,19 @@ All notable changes to Hermey are recorded here. The format follows
   success. Adding is untouched — a new item still comes from the masked `store` card, where a blank value
   is still refused — and the labels a row shows move with a rename rather than being copied to it.
   `hermeyd` **0.8.8**.
+- **The bot's own face on the Live Activity — and it moves.** The Lock Screen card and the island's
+  expanded leading slot now draw the *same* avatar as the chat header: the same renderer, the same
+  eight-state motion, so a thinking bot leans and looks up on the Lock Screen instead of showing a
+  generic speech bubble, a blocked one stares back, and one on the computer leans aside with its eyes
+  on the screen. The drawing is compiled into the extension from `HermeyUI`'s own `OpenBotAvatar`
+  sources — one implementation, two processes, the arrangement `BotStateWord` already had — and it is
+  resolved from the definition the activity carries, through `BotAvatarLibrary` and the same document
+  initialiser the host's answer goes through, so there is no bitmap and nothing is decoded per frame.
+  The pose is `OpenBotAvatarState`'s, driven by `TimelineView(.animation)` at the app's own 10 Hz;
+  an Always-On Lock Screen or a stale card holds the stance rather than asking for frames the system
+  will not composite. A bot with no drawn avatar keeps exactly the card it had — the phase's symbol,
+  at the size it always was. The compact pill and `minimal` keep that symbol too: a face below the
+  avatar's 24 pt floor is mud, and its width would widen the island.
 - **Copy a portion of the log, or leave the whole thing on the host.** View log's Copy is now a menu of
   four — **Copy last 100 lines**, **Copy last 500 lines**, **Copy shown**, **Copy all** — each labelled
   with the size of the list it would take ("Copy last 100 lines (of 812)"), and all four narrowed by
@@ -1762,3 +1775,16 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   menu the row's right-click already opens, so it is gone; the hover fill and hairline stay.
 - **The group-chat composer stopped explaining itself**: no "⏎ send · ⇧⏎ newline" line, placeholder is
   just "Message the group". Direct messages are unchanged.
+
+## [0.1.673] — 2026-11-26
+
+### Added
+- **Edit and resend, and delete.** Any message's menu — right-click on the Mac, long-press on the phone —
+  now has **Edit and resend** on your own messages and **Delete** on any of them. Edit prefills the composer
+  with that text; sending retires it and everything after it and runs the edit as a fresh turn. Both ask
+  once, in a card that says exactly how many messages are involved, and both are withheld while a turn is
+  still streaming.
+- `hermeyd` **0.8.9**: `POST /v1/messages/delete` and `POST /v1/messages/truncate`. They refuse unless the
+  engine says that conversation is idle, close the session first so nothing keeps serving the old copy, and
+  then *retire* rows (`active = 0, compacted = 0`) — the same write the engine's own undo makes. Nothing is
+  ever deleted from the database.
