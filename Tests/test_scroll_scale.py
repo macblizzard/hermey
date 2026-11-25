@@ -38,6 +38,7 @@ SPLICE = (ROOT / "Sources/HermesKit/TranscriptSplice.swift").read_text(encoding=
 ROWS = (ROOT / "Sources/HermesKit/IncrementalTranscriptRows.swift").read_text(encoding="utf-8")
 GROUPING = (ROOT / "Sources/HermesKit/TranscriptGrouping.swift").read_text(encoding="utf-8")
 CLAMP = (ROOT / "Sources/HermesKit/TranscriptClamp.swift").read_text(encoding="utf-8")
+LONG_BODY = (ROOT / "Sources/HermeyUI/LongMessageBody.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources/HermesAppKit/AppModel.swift").read_text(encoding="utf-8")
 IOS_SCREEN = (ROOT / "Apps/HermesMobile/Views/ConversationScreen.swift").read_text(encoding="utf-8")
 IOS_ROW = (ROOT / "Apps/HermesMobile/Views/MobileTranscript.swift").read_text(encoding="utf-8")
@@ -170,72 +171,64 @@ class TheBackgroundFillYields(unittest.TestCase):
 
 
 class ALongRowIsDrawnAsAPreview(unittest.TestCase):
-    """The 'got stuck scrolling past the long log' case."""
+    """The 'got stuck scrolling past the long log' case — and, on 0.1.670, past the code-dense one.
 
-    def test_the_threshold_is_defined_once(self) -> None:
-        self.assertIn("public static let maxPreviewCharacters = 4_000", CLAMP)
-        self.assertIn("public static let maxPreviewLines = 60", CLAMP)
+    The shape moved in 0.1.671: the thresholds and the decision live in `TranscriptClamp`, and the
+    collapse itself is one view in `HermeyUI` that both shells use (`LongMessageBody` /
+    `ClampedBody`). `Tests/test_long_message_clamp.py` holds the whole shape — every row kind, the
+    collapsed path's cost, the count, the per-message memory. What stays here is the part this file
+    is about: the row that used to be measured in full is not.
+    """
+
+    def test_the_threshold_has_one_home(self) -> None:
+        self.assertIn("public static let maxBodyLines = 50", CLAMP)
+        self.assertIn("public static let maxBodyCharacters = 4_000", CLAMP)
+        self.assertIn("public static let maxBodyInlineSpans = 40", CLAMP)
         # Nobody else keeps a copy of the numbers.
         for name, source in (("row", IOS_ROW), ("model", MODEL), ("screen", IOS_SCREEN)):
             self.assertNotIn("4_000", source, name)
+            self.assertNotIn("maxBodyLines", source, name)
 
     def test_a_long_message_takes_the_preview_path(self) -> None:
-        # Both doors — the owner's bubble and the bot's reply — ask the clamp first, and the ordinary
-        # renderer is only reached when it says no. One door per kind of message, as before.
+        # Both doors — the owner's bubble and the bot's reply — ask the shared view, which asks the
+        # clamp; the ordinary renderer is only reached when the answer is "short".
         bubble = body(IOS_ROW, "private var bubbleText: some View {")
-        self.assertIn("if let preview = clampedPreview {", bubble)
-        self.assertIn("clampedBody(preview)", bubble)
-        self.assertLess(bubble.index("clampedPreview"), bubble.index("MobileSelectableText"))
+        self.assertIn("ClampedBody(TranscriptClamp.Body(text: entry.displayText)", bubble)
+        # The clamp is asked first; the attributed-string bubble is only the short branch.
+        self.assertLess(bubble.index("ClampedBody("), bubble.index("MobileSelectableText(attributed:"))
+
         reply = body(IOS_ROW, "private var assistant: some View {")
-        self.assertIn("if let preview = clampedPreview {", reply)
-        # The plain-prose branch is the last one (a card or a board has its own earlier branch), and
-        # there the clamp is asked before the markdown renderer.
-        prose = reply[reply.index("} else {\n                Group {"):]
-        self.assertLess(prose.index("clampedPreview"),
-                        prose.index("MobileMarkdownText(blocks: markdownCache.parse"))
-        # The card/surface paths are never clamped, so a plugin's board still draws.
-        self.assertIn('entry.text.contains("::")', body(IOS_ROW, "private var clampedPreview:"))
+        self.assertIn("ClampedBody(TranscriptClamp.Body(text: files.prose)", reply)
+        self.assertLess(reply.index("ClampedBody("),
+                        reply.index("MobileMarkdownText(blocks: markdownCache.parse"))
 
     def test_the_collapsed_preview_never_reaches_the_markdown_renderer(self) -> None:
-        # The 20,000-character assertion. The clamp's own body is extracted, and the *collapsed*
-        # branch — the one that runs while the row is not open — must contain no markdown renderer
-        # and no markdown parse. A `Text` of 24 whole lines is all it draws.
-        clamped = body(IOS_ROW, "private func clampedBody(")
-        collapsed = clamped[clamped.index("} else {\n                Text(preview.text)"):]
-        opened = clamped[clamped.index("} else if longRowIsOpen, let blocks = fullBlocks"):]
-        self.assertIn("MobileMarkdownText(blocks: blocks", opened)     # the *opened* state only
-        self.assertIn("Text(preview.text)", collapsed)
-        self.assertNotIn("markdownCache.parse", clamped)
-        self.assertNotIn("MobileMarkdownText", collapsed)
-        self.assertNotIn("fixedSize", clamped)
-        self.assertNotIn("ToolPayload", clamped)
+        # The 20,000-character assertion, now made once for both shells: the preview is one `Text`,
+        # and `HermesKit` cannot parse markdown at all (the module boundary, not a promise).
+        self.assertIn("Text(preview.text)", LONG_BODY)
+        self.assertNotIn("MarkdownTextView", LONG_BODY)
+        self.assertNotIn("IncrementalMarkdown", LONG_BODY)
+        self.assertIn("expandedReady", LONG_BODY)
 
     def test_the_preview_is_a_clamp_and_not_a_truncation(self) -> None:
-        # The stored row is untouched: the preview is built from it, and the full text is still
-        # selectable and still what the message's actions copy.
-        self.assertIn("TranscriptClamp.preview(clampSource)", IOS_ROW)
-        self.assertIn("private var clampSource: String", IOS_ROW)
-        self.assertIn(".textSelection(.enabled)", IOS_ROW)
-        self.assertIn("never a truncation", IOS_ROW)
+        # The stored row is untouched: the preview is built from it, and the full text is still what
+        # the message's actions copy and what the opened row draws.
+        self.assertIn('Text(entry.displayText)', IOS_ROW)
+        self.assertIn("The stored text is untouched", CLAMP)
+        self.assertIn("never a truncation", LONG_BODY)
 
     def test_opening_a_long_row_parses_off_the_main_actor_once(self) -> None:
-        parse = body(IOS_ROW, "private func parseIfOpen() async {")
+        parse = body(IOS_ROW, "private func parseLongBody(")
         self.assertIn("await Task.detached(priority: .userInitiated)", parse)
         self.assertIn("IncrementalMarkdown.parse(text)", parse)
         # Once: the state is the guard, and the store makes a second visit a lookup.
-        self.assertIn("guard entry.role == .assistant, longRowIsOpen, fullBlocks == nil else { return }",
-                      parse)
-        self.assertIn("await Task.detached", IOS_ROW)
+        self.assertIn("guard entry.role == .assistant, fullBlocks == nil else { return }", parse)
 
     def test_the_expansion_is_remembered_by_message_id(self) -> None:
         store = (ROOT / "Sources/HermesKit/ExpandedLongRows.swift").read_text(encoding="utf-8")
         self.assertIn("public final class ExpandedLongRows", store)
-        self.assertIn("ExpandedLongRows.shared.insert(entry.id)", IOS_ROW)
-        self.assertIn("showsFullContent ?? ExpandedLongRows.shared.contains(entry.id)", IOS_ROW)
-
-    def test_a_card_or_a_surface_is_never_clamped(self) -> None:
-        # `::` rows are the plugin's boards and cards: their own views decide what to draw.
-        self.assertIn('if entry.role == .assistant, entry.text.contains("::") { return nil }', IOS_ROW)
+        self.assertIn("ExpandedLongRows.shared.insert(messageID)", LONG_BODY)
+        self.assertIn("ExpandedLongRows.shared.contains(messageID)", LONG_BODY)
 
 
 class TheClampNumbersBehave(unittest.TestCase):
@@ -246,27 +239,44 @@ class TheClampNumbersBehave(unittest.TestCase):
         def is_long(value: str) -> bool:
             if not value:
                 return False
-            seen, lines = 0, 1          # lines, not newlines: 60 lines, 61 is a log
+            seen, lines, runs, spans = 0, 1, 0, 0
+            was_backtick = False
             for character in value:
                 seen += 1
-                if seen > 4_000:
-                    return True
                 if character == "\n":
                     lines += 1
-                    if lines > 60:
-                        return True
+                if character == "`":
+                    if not was_backtick:
+                        runs += 1
+                        if runs % 2 == 0:
+                            spans += 1
+                            if spans > 40:
+                                return True
+                    was_backtick = True
+                else:
+                    was_backtick = False
+                if seen > 4_000:
+                    return True
+                if lines > 50:
+                    return True
             return False
 
         if not is_long(text):
             return None
-        out, lines, hidden = [], 0, 0
+        drawn, used, whole = [], 0, 0
         for line in text.split("\n"):
-            if lines >= 24 or sum(len(x) for x in out) + len(line) > 1_600:
-                hidden += 1
+            if len(drawn) >= 50:
+                break
+            cost = len(line) if not drawn else len(line) + 1
+            if used + cost <= 4_000:
+                drawn.append(line)
+                used += cost
+                whole += 1
                 continue
-            out.append(line)
-            lines += 1
-        return "\n".join(out), hidden
+            if not drawn:
+                drawn.append(line[:4_000] + "…")
+            break
+        return "\n".join(drawn), max(0, len(text.split("\n")) - whole)
 
     def test_a_twenty_thousand_character_message_is_clamped(self) -> None:
         text = "\n".join(f"log line {i}: the run said something it had already said before"
@@ -276,19 +286,30 @@ class TheClampNumbersBehave(unittest.TestCase):
         self.assertIsNotNone(clamped)
         assert clamped is not None
         shown, hidden = clamped
-        self.assertLessEqual(shown.count("\n") + 1, 24)
-        self.assertLessEqual(len(shown), 1_600 + 60)
+        self.assertLessEqual(shown.count("\n") + 1, 50)
+        self.assertLessEqual(len(shown), 4_000 + 60)
         self.assertGreater(hidden, 400)
+
+    def test_a_dense_message_of_ordinary_length_is_clamped(self) -> None:
+        # The 0.1.670 miss: 200 inline spans, under four thousand characters of prose in the old
+        # accounting but one styled run per identifier in the view.
+        text = "\n".join(f"`display_order` and `live_message_count` in `messages` ({i})"
+                         for i in range(60))
+        self.assertLess(len(text), 4_000)
+        clamped = self.preview(text)
+        self.assertIsNotNone(clamped)
+        assert clamped is not None
+        self.assertGreater(clamped[1], 0)
 
     def test_an_ordinary_message_is_not(self) -> None:
         self.assertIsNone(self.preview("Done. The vault is snapshotted."))
         self.assertIsNone(self.preview("\n".join("short line" for _ in range(40))))
 
-    def test_the_line_threshold_is_sixty_lines(self) -> None:
-        sixty = "\n".join("x" for _ in range(60))
-        sixty_one = "\n".join("x" for _ in range(61))
-        self.assertIsNone(self.preview(sixty))
-        self.assertIsNotNone(self.preview(sixty_one))
+    def test_the_line_threshold_is_fifty_lines(self) -> None:
+        fifty = "\n".join("x" for _ in range(50))
+        fifty_one = "\n".join("x" for _ in range(51))
+        self.assertIsNone(self.preview(fifty))
+        self.assertIsNotNone(self.preview(fifty_one))
 
 
 if __name__ == "__main__":

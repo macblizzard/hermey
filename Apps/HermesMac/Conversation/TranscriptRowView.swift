@@ -225,8 +225,17 @@ struct TranscriptRowView: View {
             .help("Show the conversation between these two bots")
             .hermeyFocusQuiet()
             // The same rendering an assistant reply gets: a bot's message to another bot is prose
-            // written in the same editor, so its lists, bold and code blocks belong as markup.
-            MarkdownTextView(text: label.body, metrics: .macOSScaled)
+            // written in the same editor, so its lists, bold and code blocks belong as markup —
+            // and, like a reply, past fifty lines it opens behind the same button.
+            ClampedBody(TranscriptClamp.Body(text: label.body),
+                        messageID: entry.id,
+                        font: TypeScale.font(TypeScale.chatBody),
+                        expandedReady: fullBody != nil,
+                        onOpen: { openLongBody(label.body) },
+                        whole: {
+                            MarkdownTextView(text: label.body, metrics: .macOSScaled)
+                        },
+                        expanded: { expandedBody })
                 .foregroundStyle(bubble.ink)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
@@ -268,13 +277,30 @@ struct TranscriptRowView: View {
                 }
 
                 if !entry.displayText.isEmpty {
-                Text(entry.displayText)
-                .font(TypeScale.font(TypeScale.chatBody))
-                // The same leading the assistant's prose gets: one table for chat text.
-                .lineSpacing(TypeScale.chatLineSpacing)
-                .foregroundStyle(Tokens.textPrimary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+                // The owner's own words: plain text, and past fifty lines the same clamp a reply
+                // gets. Opening needs no parse — there is no markdown in a message you typed.
+                ClampedBody(TranscriptClamp.Body(text: entry.displayText),
+                            messageID: entry.id,
+                            alignment: .leading,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            lineSpacing: TypeScale.chatLineSpacing,
+                            whole: {
+                                Text(entry.displayText)
+                                    .font(TypeScale.font(TypeScale.chatBody))
+                                    // The same leading the assistant's prose gets: one table for chat text.
+                                    .lineSpacing(TypeScale.chatLineSpacing)
+                                    .foregroundStyle(Tokens.textPrimary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            },
+                            expanded: {
+                                Text(entry.displayText)
+                                    .font(TypeScale.font(TypeScale.chatBody))
+                                    .lineSpacing(TypeScale.chatLineSpacing)
+                                    .foregroundStyle(Tokens.textPrimary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            })
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 // The bot's own colour, at the opacity a bubble can carry behind body text, with
@@ -430,6 +456,46 @@ struct TranscriptRowView: View {
 
     // MARK: Assistant
 
+    /// One long body's blocks, compiled for drawing.
+    ///
+    /// `IncrementalMarkdown.parse` and `BlockText.attributed` are both pure and `Block` and
+    /// `AttributedString` are `Sendable`, so the whole message a reader asked for is built **off**
+    /// the main actor: opening a wall of text must not be the freeze the collapse just removed. The
+    /// answer is this row's own `@State`, so no other row re-renders when it lands.
+    @State private var fullBody: [(block: Block, text: AttributedString)]?
+
+    /// Parse one opened body, once. `fullBody == nil` is the guard, so a row redrawn by the lazy
+    /// stack after a scroll does not re-parse a message whose blocks are already here.
+    private func openLongBody(_ text: String) {
+        Task { await parseLongBody(text) }
+    }
+
+    private func parseLongBody(_ text: String) async {
+        guard fullBody == nil else { return }
+        let compiled = await Task.detached(priority: .userInitiated) {
+            IncrementalMarkdown.parse(text).map { block in
+                (block: block, text: BlockText.attributed(for: block))
+            }
+        }.value
+        fullBody = compiled
+    }
+
+    /// The opened body, drawn block for block exactly as a finished reply is.
+    ///
+    /// Nothing when the parse has not landed: the shared view keeps the preview on screen until
+    /// `expandedReady` says the blocks are here, so this is never the only thing a row draws.
+    @ViewBuilder
+    private var expandedBody: some View {
+        if let fullBody {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(fullBody.enumerated()), id: \.offset) { _, pair in
+                    MacBlockView(block: pair.block, attributed: pair.text, metrics: .macOSScaled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// Every A2UI surface this reply carries, in order. Parsed once per body evaluation.
     private var surfacePayloads: [A2UISurfacePayload] { A2UIMarker.surfaces(in: entry.text) }
 
@@ -483,8 +549,16 @@ struct TranscriptRowView: View {
             if A2UISurfaceSettings.isEnabled, !surfacePayloads.isEmpty {
                 let prose = A2UIMarker.textWithoutMarkers(files.prose)
                 if !prose.isEmpty {
-                    MarkdownTextView(text: prose)
-                        .accessibilityLabel("Hermes said: \(prose)")
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBody != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MarkdownTextView(text: prose)
+                                        .accessibilityLabel("Hermes said: \(prose)")
+                                },
+                                expanded: { expandedBody })
                 }
                 // Every surface, not just the first: a reply that compares three cards is one
                 // reply, and dropping all but the first made the rest vanish with their markers.
@@ -502,14 +576,30 @@ struct TranscriptRowView: View {
                 // the directive itself must never be read as text.
                 let prose = GenUITag.textWithoutTags(files.prose)
                 if !prose.isEmpty {
-                    MarkdownTextView(text: prose)
-                        .accessibilityLabel("Hermes said: \(prose)")
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBody != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MarkdownTextView(text: prose)
+                                        .accessibilityLabel("Hermes said: \(prose)")
+                                },
+                                expanded: { expandedBody })
                 }
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MarkdownTextView(text: files.prose)
-                    .accessibilityLabel("Hermes said: \(files.prose)")
+                ClampedBody(TranscriptClamp.Body(text: files.prose),
+                            messageID: entry.id,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            expandedReady: fullBody != nil,
+                            onOpen: { openLongBody(files.prose) },
+                            whole: {
+                                MarkdownTextView(text: files.prose)
+                                    .accessibilityLabel("Hermes said: \(files.prose)")
+                            },
+                            expanded: { expandedBody })
             }
 
             replyFileRows(files.links)
@@ -538,8 +628,18 @@ struct TranscriptRowView: View {
     private func cardBubble(_ scan: CardScan) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !scan.prose.isEmpty {
-                MarkdownTextView(text: scan.prose)
-                    .accessibilityLabel("Hermes said: \(scan.prose)")
+                // The prose around the cards is prose: clamped like any other body, with the card
+                // kinds travelling in so a message that is *only* a small structured card is exempt.
+                ClampedBody(TranscriptClamp.Body(text: scan.prose, cardKinds: scan.refs.map(\.kind)),
+                            messageID: entry.id,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            expandedReady: fullBody != nil,
+                            onOpen: { openLongBody(scan.prose) },
+                            whole: {
+                                MarkdownTextView(text: scan.prose)
+                                    .accessibilityLabel("Hermes said: \(scan.prose)")
+                            },
+                            expanded: { expandedBody })
             }
             // The offset, not the ref: two identical markers in one reply are still two cards, and
             // `CardRef` would give them one identity.
@@ -754,7 +854,8 @@ struct TranscriptRowView: View {
                     ?? toolProjection.summary,
                  status: ToolCard.status(ok: !ToolPayload.rememberedFailure(toolProjection.output)),
                  output: toolProjection.output,
-                 startsExpanded: false)
+                 startsExpanded: false,
+                 messageID: entry.id)
     }
 
     /// A history tool row from the host's projection carries its own `name`, `context` and `args`
@@ -792,12 +893,29 @@ struct TranscriptRowView: View {
                 .foregroundStyle(Tokens.textDim)
                 .padding(.top, 3)
 
-            Text(entry.text)
-                .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(Tokens.textMuted)
-                .lineSpacing(3)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            // Reasoning can be as long as the answer: a body like any other, clamped past fifty
+            // lines, and plain text either way so opening it needs no parse.
+            ClampedBody(TranscriptClamp.Body(text: entry.text),
+                        messageID: entry.id,
+                        font: TypeScale.font(TypeScale.label),
+                        color: Tokens.textMuted,
+                        lineSpacing: 3,
+                        whole: {
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        },
+                        expanded: {
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        })
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("Reasoning: \(entry.text)")
@@ -805,19 +923,44 @@ struct TranscriptRowView: View {
 
     // MARK: System
 
+    /// A system line: punctuation, usually — and on 2026-11-25 a whole delegation batch report,
+    /// which is why it takes the clamp like any other body. Plain text in both states.
     private var systemRow: some View {
-        HStack(spacing: 8) {
-            Hairline(color: Tokens.borderStrong)
-                .frame(width: 18)
-            Text(entry.text)
-                .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(Tokens.textDim)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Hairline(color: Tokens.borderStrong)
-                .frame(width: 18)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
+        ClampedBody(TranscriptClamp.Body(text: entry.text),
+                    messageID: entry.id,
+                    alignment: .center,
+                    font: TypeScale.font(TypeScale.label),
+                    color: Tokens.textDim,
+                    lineSpacing: 0,
+                    whole: {
+                        HStack(spacing: 8) {
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textDim)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    },
+                    expanded: {
+                        HStack(spacing: 8) {
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textDim)
+                                .multilineTextAlignment(.center)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    })
     }
 }
 

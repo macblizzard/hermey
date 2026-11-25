@@ -41,14 +41,11 @@ struct MobileTranscriptRow: View {
     /// parsing every visible row's markdown on each of those was the single most expensive thing the
     /// phone did while reading a conversation (the jitter reported 2026-11-14).
     @State private var markdownCache = RowMarkdownCache()
-    /// Whether this long message has been opened out, remembered by message id.
-    ///
-    /// A row inside a lazy stack is torn down when it leaves the viewport, so an ordinary `@State`
-    /// would forget the expansion the moment the reader scrolled past. `nil` means "not decided in
-    /// this instance yet", and the store answers — keyed by the message's own id for the same reason
-    /// the `ForEach` is.
-    @State private var showsFullContent: Bool?
     /// The blocks of a long message, parsed off the main actor when the reader opens it.
+    ///
+    /// Whether the row is open is `LongMessageBody`'s business — remembered per message id, so a row
+    /// the lazy stack rebuilds agrees with the one that was tapped. This is only the work that answer
+    /// asks for, and it is held here because it must not be shared with any other row.
     @State private var fullBlocks: [Block]?
     /// What the card markers in this row resolved to, keyed by card id.
     ///
@@ -188,106 +185,27 @@ struct MobileTranscriptRow: View {
         case .tool:
             toolResult
         case .reasoning:
-            MobileReasoningBlock(text: entry.text, standaloneMenu: false)
+            MobileReasoningBlock(text: entry.text, standaloneMenu: false, messageID: entry.id)
         case .system:
             systemNote
         }
     }
 
-    /// The preview for a message long enough to be clamped, and `nil` for every other message.
-    ///
-    /// `nil` on the common path after one bounded scan — `TranscriptClamp.isLong` stops at 4,000
-    /// characters — so ordinary drawing is untouched. A reply carrying a `::` marker (an A2UI
-    /// surface, a board, a card) is never clamped: those are the parts of a message that are not
-    /// prose, and their own views already decide what to fetch and how much to draw.
-    private var clampedPreview: (text: String, hiddenLines: Int)? {
-        if entry.role == .assistant, entry.text.contains("::") { return nil }
-        return TranscriptClamp.preview(clampSource)
-    }
-
-    /// The text the clamp reads: a user row is drawn from `displayText` (the @image:/@file:
-    /// references resolved away), so the preview must be that same text.
-    private var clampSource: String {
-        entry.role == .user ? entry.displayText : entry.text
-    }
-
-    /// Whether the reader has opened this long row out — in this row instance, or earlier, by id.
-    private var longRowIsOpen: Bool {
-        showsFullContent ?? ExpandedLongRows.shared.contains(entry.id)
-    }
-
-    /// A long message, clamped — the body only, because the bubble and the long press belong to
-    /// the door that draws it (`bubbleText`, or the reply's prose).
-    ///
-    /// Three states, and the main actor never parses in any of them:
-    ///
-    /// * collapsed — **plain text**, no markdown, no table measurement, no `fixedSize` over the
-    ///   whole body, no card/surface scan. A 20,000-character log costs what a two-line message
-    ///   costs, which is the point: this is the row that froze the phone when it scrolled past.
-    /// * opening — the same preview, so the row does not change height under the finger that tapped
-    ///   it while the blocks are parsed off the main actor.
-    /// * open — the markdown the message always had, from those blocks.
-    ///
-    /// The preview is selectable, and the message's actions still copy the stored text: this is a
-    /// drawing clamp, never a truncation.
-    @ViewBuilder
-    private func clampedBody(_ preview: (text: String, hiddenLines: Int)) -> some View {
-        VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 8) {
-            if longRowIsOpen, entry.role == .user {
-                // The owner's own words were never markdown: opened out, they are one plain,
-                // selectable text — no parse, no blocks, nothing to measure but lines.
-                Text(clampSource)
-                    .font(TypeScale.font(TypeScale.chatBody))
-                    .foregroundStyle(Tokens.textPrimary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if longRowIsOpen, let blocks = fullBlocks {
-                MobileMarkdownText(blocks: blocks, rawText: clampSource)
-            } else {
-                Text(preview.text)
-                    .font(TypeScale.font(TypeScale.chatBody))
-                    .foregroundStyle(Tokens.textPrimary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if longRowIsOpen {
-                    Text("Opening…")
-                        .font(TypeScale.font(TypeScale.sm))
-                        .foregroundStyle(Tokens.textMuted)
-                } else {
-                    Button {
-                        openLongRow()
-                    } label: {
-                        Label(TranscriptClamp.showFullTitle(hiddenLines: preview.hiddenLines),
-                              systemImage: "arrow.down.right.and.arrow.up.left")
-                            .font(TypeScale.font(TypeScale.sm, weight: .semibold))
-                            .foregroundStyle(Tokens.accentText)
-                    }
-                    .buttonStyle(.plain)
-                    .hermeyFocusQuiet()
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: entry.role == .user ? .trailing : .leading)
-        // A remembered row is parsed when it is drawn again, so scrolling back to a message the
-        // reader opened does not silently collapse it.
-        .task(id: entry.id) { await parseIfOpen() }
-    }
-
-    /// Open one long row: parse once, off the main actor, then draw.
+    /// Open one long body: parse once, off the main actor, then draw.
     ///
     /// `IncrementalMarkdown.parse` is pure and `Block` is `Sendable`, so the parse does not need the
-    /// main actor. The row is remembered by message id, and nothing else in the transcript is
-    /// touched — every other row's markdown is keyed by its own text.
-    private func openLongRow() {
-        showsFullContent = true
-        ExpandedLongRows.shared.insert(entry.id)
-        Task { await parseIfOpen() }
+    /// main actor. `fullBlocks == nil` is the guard, so a remembered row that is drawn again parses
+    /// once and not once per body pass — and the answer is this row's own `@State`, so no other row
+    /// re-renders when it lands. Nothing here touches the transcript: every other row's markdown is
+    /// its own, keyed by its own text.
+    private func openLongBody(_ text: String) {
+        Task { await parseLongBody(text) }
     }
 
-    private func parseIfOpen() async {
-        // Only a bot's reply is markdown; the owner's words are plain text whatever their length.
-        guard entry.role == .assistant, longRowIsOpen, fullBlocks == nil else { return }
-        let text = clampSource
+    private func parseLongBody(_ text: String) async {
+        // Only a bot's prose is markdown; the owner's words and a system line are plain text,
+        // whatever their length, so they need no blocks and report themselves ready at once.
+        guard entry.role == .assistant, fullBlocks == nil else { return }
         let blocks = await Task.detached(priority: .userInitiated) {
             IncrementalMarkdown.parse(text)
         }.value
@@ -707,16 +625,30 @@ struct MobileTranscriptRow: View {
     private var bubbleText: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Group {
-                if let preview = clampedPreview {
-                    // A pasted log the owner sent. Same bubble, same door, 24 plain lines: the
-                    // `MobileSelectableText` below would build an attributed string and a text view
-                    // over the whole message, which is the row that froze the scroll.
-                    clampedBody(preview)
-                } else {
-                    MobileSelectableText(attributed: MobileProse.plain(entry.displayText,
-                                                                       color: Tokens.textPrimary,
-                                                                       size: TypeScale.chatBody))
-                }
+                // A pasted log the owner sent: the same bubble, and past fifty lines the same
+                // clamp every other body takes. Collapsed it is plain `Text` — the
+                // `MobileSelectableText` below would build an attributed string over the whole
+                // message, which is the row that froze the scroll.
+                ClampedBody(TranscriptClamp.Body(text: entry.displayText),
+                            messageID: entry.id,
+                            alignment: .leading,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            whole: {
+                                MobileSelectableText(attributed: MobileProse.plain(entry.displayText,
+                                                                                   color: Tokens.textPrimary,
+                                                                                   size: TypeScale.chatBody))
+                            },
+                            expanded: {
+                                // The owner's own words were never markdown: opened out, they are
+                                // one plain, selectable text — no blocks, nothing to parse.
+                                Text(entry.displayText)
+                                    .font(TypeScale.font(TypeScale.chatBody))
+                                    .foregroundStyle(Tokens.textPrimary)
+                                    .lineSpacing(TypeScale.chatLineSpacing)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            })
             }
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
@@ -790,8 +722,18 @@ struct MobileTranscriptRow: View {
             if A2UISurfaceSettings.isEnabled, !surfacePayloads.isEmpty {
                 let prose = A2UIMarker.textWithoutMarkers(files.prose)
                 if !prose.isEmpty {
-                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
-                        .accessibilityLabel(prose)
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBlocks != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
+                                        .accessibilityLabel(prose)
+                                },
+                                expanded: {
+                                    MobileMarkdownText(blocks: fullBlocks ?? [], rawText: prose)
+                                })
                         .padding(.vertical, 4)
                 }
                 // Every surface, not just the first: dropping the rest made their cards vanish.
@@ -808,24 +750,40 @@ struct MobileTranscriptRow: View {
                 // its place, and the tag itself never appears in the transcript.
                 let prose = GenUITag.textWithoutTags(files.prose)
                 if !prose.isEmpty {
-                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
-                        .accessibilityLabel(prose)
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBlocks != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(prose)), rawText: prose)
+                                        .accessibilityLabel(prose)
+                                },
+                                expanded: {
+                                    MobileMarkdownText(blocks: fullBlocks ?? [], rawText: prose)
+                                })
                         .padding(.vertical, 4)
                 }
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
                 Group {
-                    if let preview = clampedPreview {
-                        // A log the bot printed, or a wall of tool output it pasted. Collapsed it is
-                        // 24 plain lines — no markdown parse, no table measurement, no `fixedSize`
-                        // over the whole message — and "Show full message" opens it.
-                        clampedBody(preview)
-                    } else {
-                        MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(files.prose)),
-                                           rawText: files.prose)
-                            .accessibilityLabel(files.prose)
-                    }
+                    // The reply's prose, clamped: past fifty lines (or four thousand characters, or
+                    // forty code spans) it is the shared preview, and the markdown renderer is not
+                    // built at all until the reader asks for it. Below the line, nothing changed.
+                    ClampedBody(TranscriptClamp.Body(text: files.prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBlocks != nil,
+                                onOpen: { openLongBody(files.prose) },
+                                whole: {
+                                    MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(files.prose)),
+                                                       rawText: files.prose)
+                                        .accessibilityLabel(files.prose)
+                                },
+                                expanded: {
+                                    MobileMarkdownText(blocks: fullBlocks ?? [], rawText: files.prose)
+                                })
                 }
                 .padding(.vertical, 4)
                 .contentShape(Rectangle())
@@ -847,8 +805,20 @@ struct MobileTranscriptRow: View {
     private func cardBubble(_ scan: CardScan) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !scan.prose.isEmpty {
-                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(scan.prose)), rawText: scan.prose)
-                    .accessibilityLabel(scan.prose)
+                // The prose around the cards is prose: clamped like any other, and the card kinds
+                // travel with it so a message that is *only* a small structured card is exempt.
+                ClampedBody(TranscriptClamp.Body(text: scan.prose, cardKinds: scan.refs.map(\.kind)),
+                            messageID: entry.id,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            expandedReady: fullBlocks != nil,
+                            onOpen: { openLongBody(scan.prose) },
+                            whole: {
+                                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(scan.prose)), rawText: scan.prose)
+                                    .accessibilityLabel(scan.prose)
+                            },
+                            expanded: {
+                                MobileMarkdownText(blocks: fullBlocks ?? [], rawText: scan.prose)
+                            })
                     .padding(.vertical, 4)
             }
             // Offsets, not refs: two identical markers are still two cards.
@@ -937,16 +907,40 @@ struct MobileTranscriptRow: View {
                              output: entry.tool?.detail,
                              isRunning: running.contains(entry.id),
                              durationMS: nil,
-                             standaloneMenu: false)
+                             standaloneMenu: false,
+                             messageID: entry.id)
     }
 
+    /// A system line: punctuation, usually — and on 2026-11-25 a whole delegation batch report,
+    /// which is why it takes the clamp like any other body. It is plain text either way, so the
+    /// expansion needs no parse and is ready the moment it is tapped.
     private var systemNote: some View {
-        Text(entry.text)
-            .font(TypeScale.font(TypeScale.sm))
-            .foregroundStyle(Tokens.textDim)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 2)
+        ClampedBody(TranscriptClamp.Body(text: entry.text),
+                    messageID: entry.id,
+                    alignment: .center,
+                    font: TypeScale.font(TypeScale.sm),
+                    color: Tokens.textDim,
+                    lineSpacing: 0,
+                    whole: {
+                        Text(entry.text)
+                            .font(TypeScale.font(TypeScale.sm))
+                            .foregroundStyle(Tokens.textDim)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 2)
+                    },
+                    expanded: {
+                        VStack(alignment: .center, spacing: 6) {
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.sm))
+                                .foregroundStyle(Tokens.textDim)
+                                .multilineTextAlignment(.center)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .padding(.vertical, 2)
+                    })
     }
 }
 
@@ -966,6 +960,9 @@ struct MobileToolRow: View {
     var isRunning: Bool = false
     var durationMS: Int? = nil
     var standaloneMenu = true
+    /// This row's message id: the tool body's clamp remembers an expansion by it, so a card the
+    /// reader opened out stays open when the lazy stack rebuilds it.
+    var messageID = ""
 
     @State private var expanded = false
 
@@ -994,10 +991,27 @@ struct MobileToolRow: View {
             if expanded, let shownOutput {
                 Hairline()
                 VStack(alignment: .leading, spacing: 6) {
-                    ToolBodyView(text: shownOutput,
-                                 font: Tokens.mono,
-                                 color: Tokens.textSecondary,
-                                 gutterColor: Tokens.textMuted)
+                    // The output, clamped. A 400-line `read_file` result is four hundred rows of
+                    // gutter and text laid out in one card; past fifty lines the rest waits behind
+                    // the same button a long message has. The card's own disclosure still decides
+                    // whether the body is drawn at all — this bounds what it costs when it is.
+                    ClampedBody(TranscriptClamp.Body(text: shownOutput),
+                                messageID: messageID.isEmpty ? name + ":output" : messageID + ":output",
+                                font: Tokens.mono,
+                                color: Tokens.textSecondary,
+                                lineSpacing: 5,
+                                whole: {
+                                    ToolBodyView(text: shownOutput,
+                                                 font: Tokens.mono,
+                                                 color: Tokens.textSecondary,
+                                                 gutterColor: Tokens.textMuted)
+                                },
+                                expanded: {
+                                    ToolBodyView(text: shownOutput,
+                                                 font: Tokens.mono,
+                                                 color: Tokens.textSecondary,
+                                                 gutterColor: Tokens.textMuted)
+                                })
 
                     // Counts and sizes belong under the text, not inside it.
                     if let notes = payload?.notes, !notes.isEmpty {
@@ -1152,13 +1166,16 @@ struct MobileReasoningBlock: View {
     var standaloneMenu = true
     /// The user's preference (Settings ▸ Chat): open on arrival rather than on a tap.
     var startsExpanded = false
+    /// This row's message id, so a reasoning body over fifty lines can be opened out and stay open.
+    var messageID = ""
 
     @State private var expanded: Bool
 
-    init(text: String, standaloneMenu: Bool = true, startsExpanded: Bool = false) {
+    init(text: String, standaloneMenu: Bool = true, startsExpanded: Bool = false, messageID: String = "") {
         self.text = text
         self.standaloneMenu = standaloneMenu
         self.startsExpanded = startsExpanded
+        self.messageID = messageID
         _expanded = State(initialValue: startsExpanded)
     }
 
@@ -1191,13 +1208,31 @@ struct MobileReasoningBlock: View {
             .hermeyFocusQuiet()
 
             if expanded {
-                Text(text)
-                    .font(TypeScale.font(TypeScale.md))
-                    .foregroundStyle(Tokens.textMuted)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Reasoning can be as long as the answer, and it is a body like any other: past
+                // fifty lines the tail waits behind the same button.
+                ClampedBody(TranscriptClamp.Body(text: text),
+                            messageID: messageID.isEmpty ? "reasoning" : messageID + ":reasoning",
+                            font: TypeScale.font(TypeScale.md),
+                            color: Tokens.textMuted,
+                            lineSpacing: 3,
+                            whole: {
+                                Text(text)
+                                    .font(TypeScale.font(TypeScale.md))
+                                    .foregroundStyle(Tokens.textMuted)
+                                    .lineSpacing(3)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            },
+                            expanded: {
+                                Text(text)
+                                    .font(TypeScale.font(TypeScale.md))
+                                    .foregroundStyle(Tokens.textMuted)
+                                    .lineSpacing(3)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            })
                     .padding(.horizontal, 11)
                     .padding(.bottom, 10)
                     .transition(.opacity)
