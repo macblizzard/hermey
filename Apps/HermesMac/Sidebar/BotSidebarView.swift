@@ -1,7 +1,21 @@
+import AppKit
 import HermesAppKit
 import HermesKit
 import HermeyUI
 import SwiftUI
+
+/// How wide the top row's two verbs are.
+///
+/// The title-bar band behind that row is laid out to stop here. `TitlebarDragArea` is an AppKit
+/// view, and its `mouseDown` takes the press and runs the window's own drag loop — an event that
+/// lands on it is gone before SwiftUI hears about it. So the band ends where the verbs begin
+/// instead of being drawn under them and hoping the controls win the hit test.
+private struct VerbsWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
 
 /// The left panel: **bots, and the conversations behind them**.
 ///
@@ -47,6 +61,13 @@ struct BotSidebarView: View {
     @State private var searchSelection = SidebarSearchSelection()
     /// The debounce in flight. Cancelled by the next keystroke, so a fast typist asks the host once.
     @State private var searchTask: Task<Void, Never>?
+
+    /// The ＋'s hover. Its own state rather than `hoverFill` because the fill also has to go back
+    /// to rest when a menu opens over it, which only this view can see.
+    @State private var isAddMenuHovered = false
+    /// How wide the row's two verbs are, measured by the header. The title-bar band behind the row
+    /// is laid out to stop at this width — see `header` and `VerbsWidthKey`.
+    @State private var verbsWidth: CGFloat = 0
 
 
     @State private var pendingRoomDelete: RoomSummary?
@@ -167,13 +188,22 @@ struct BotSidebarView: View {
             // The empty left half of this row is a title bar, not dead space: drag it to move the
             // window and double-click it to zoom/restore. The system 6 pt strip above the row works,
             // but that is a very small target — "I can't double click anywhere on the sidebar top"
-            // (reported 2026-11-17). Buttons stay on top and keep their own clicks.
+            // (reported 2026-11-17).
             TitlebarDragArea()
                 .frame(maxWidth: .infinity)
 
-            notificationsButton
-
-            addMenu
+            // The verbs as one measured box. The band drawn below stops at this box's leading
+            // edge; it used to run under it, and an AppKit drag view under a control is a view
+            // that eats the control's press (see the band's own comment).
+            HStack(spacing: 2) {
+                notificationsButton
+                addMenu
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: VerbsWidthKey.self, value: proxy.size.width)
+                }
+            )
         }
         .padding(.horizontal, Self.barInset)
         // The traffic-light strip: the panel's fill runs to the window's top edge and the row
@@ -181,11 +211,29 @@ struct BotSidebarView: View {
         // same line as the chat header's pill.
         .padding(.top, WorkspaceShell.titlebarStrip + Self.barInset)
         .frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)
-        // Gaps between the buttons belong to the title bar too — one 38 pt band across the whole
-        // sidebar top, with the controls still hit-tested above it.
+        // Gaps between the buttons belong to the title bar too — one band across the sidebar top,
+        // so a double-click on the empty row zooms the window — but **never the buttons' own
+        // boxes**. `TitlebarDragArea` is an AppKit view whose `mouseDown` takes the press and runs
+        // the window's drag loop, so a band under a control is a band that eats that control's
+        // click: the ＋ opened on some presses and not others, depending on which of the two won
+        // the hit test at that pixel, and a click on the box's edge was lost outright.
+        // So the band is [the row's empty width][the verbs' width], and the second half is
+        // nothing at all — not a view that declines the press, but no view.
         .background(alignment: .top) {
-            TitlebarDragArea()
-                .frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)
+            HStack(spacing: 0) {
+                TitlebarDragArea()
+                    .frame(maxWidth: .infinity)
+                // The verbs, plus the row's own trailing inset: the hole has to begin at the
+                // verbs' **leading** edge, which is `barInset` in from the band's right edge. Sized
+                // to the glyphs alone it would still cover the bell's outer 10 pt.
+                Color.clear
+                    .frame(width: verbsWidth + Self.barInset)
+            }
+            .frame(height: WorkspaceShell.titlebarStrip + 30 + Self.barInset * 2)
+        }
+        .onPreferenceChange(VerbsWidthKey.self) { width in
+            // One extra layout pass after the first, and a state write only on a real change.
+            if abs(width - verbsWidth) > 0.5 { verbsWidth = width }
         }
         .padding(.bottom, Self.barInset)
     }
@@ -476,6 +524,11 @@ struct BotSidebarView: View {
 
     /// The plus, in the filled square Midnight gives it: the one button in the row that is a verb
     /// rather than a view control. The verbs are ours — add, group chat, manage, hidden, read.
+    ///
+    /// Hand-built rather than a `HermeyIconButton`, because the square is the owner's — but it wears
+    /// the same hover every other control in the app does: `control` at rest, `controlHover` under
+    /// the pointer. That is the pair `hoverFill` puts on the bell beside it, so the two verbs
+    /// brighten by the same amount and at the same moment.
     private var addMenu: some View {
         Menu {
             Button { store.isAddBotPresented = true } label: { Label("Add bot…", systemImage: "plus.circle") }
@@ -507,17 +560,39 @@ struct BotSidebarView: View {
                 .frame(width: BarIconScale.of(24), height: BarIconScale.of(24))
                 .background(
                     RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
-                        .fill(Tokens.surface)
+                        .fill(isAddMenuHovered ? Tokens.controlHover : Tokens.control)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
                         .strokeBorder(Tokens.border, lineWidth: 1)
                 )
+                // A rectangle over a square: the glyph's whole box is the target, corners
+                // included. A circular shape on a 30 pt square leaves its four corners dead, and
+                // the corner is exactly where a hand lands when it is aiming at the glyph.
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // The click box is the drawn box: the whole 30 pt square, edge and corner, not the glyph's
+        // own strokes. Declared here as well as on the label so the control's box is stated rather
+        // than inferred from an AppKit cell's idea of where its glyph is.
+        .contentShape(Rectangle())
+        // The hover goes on the control, not inside the menu's label, so it covers the box the
+        // click covers. Assigned straight through rather than only on `true`: a hover that never
+        // hears `false` stays bright, and a pointer leaving fast is when that goes unnoticed.
+        .onHoverCompat { isAddMenuHovered = $0 }
+        // A menu opens in its own window with its own event loop, and the pointer leaves this
+        // button the moment it does: the `false` that would put the fill back can be suspended
+        // while that window is up, which would leave the ＋ stuck bright behind its own menu.
+        // Tracking beginning or ending both mean the pointer is not on this button, so both put it
+        // back to rest — an open menu can neither hold it bright nor leave it dim.
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+            isAddMenuHovered = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
+            isAddMenuHovered = false
+        }
         // The first focusable control in a new window wears the system focus ring, and a ring on
         // the list's "+" at launch reads as "this is selected" when nothing is. The + is a verb,
         // not a tab stop that benefits from the ring; Tab still reaches everything after it.
