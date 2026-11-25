@@ -49,8 +49,10 @@ struct HermesMobileApp: App {
                     ThemeRuntime.restoreFromDefaults()
                     TypeScale.restoreScale()
                     // Attached before `start()` so the first turn is already watched, and it sweeps any
-                    // activity orphaned by a previous launch that died mid-turn.
-                    liveActivity.attach(to: app.model)
+                    // activity orphaned by a previous launch that died mid-turn. The faces come from
+                    // this environment, which publishes them, and the closure reads the live map: an
+                    // avatar saved between two turns is the face the next card wears.
+                    liveActivity.attach(to: app.model) { id in app.botAvatars[id] }
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()

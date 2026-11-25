@@ -93,6 +93,7 @@ struct HermeyTurnLiveActivity: Widget {
         ActivityConfiguration(for: HermeyTurnAttributes.self) { context in
             HermeyTurnLockScreen(state: context.state,
                                  botName: context.attributes.botName,
+                                 face: context.attributes.face,
                                  isStale: context.isStale)
                 // Glass, not a slab: the Lock Screen's own material stays, and a barely-there white
                 // lift keeps it from reading as solid black over a dark wallpaper. It is a tint,
@@ -101,9 +102,14 @@ struct HermeyTurnLiveActivity: Widget {
                 .activitySystemActionForegroundColor(HermeyTurnAccent.amber)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Leading: the app's mark, so the island says *Hermey* before it says anything else.
+                // Leading: the bot's own face, so the island says *which* bot before it says
+                // anything else — and wears that bot's state while it does. A bot with no drawn
+                // avatar falls back to the app's mark inside `HermeyTurnAvatar`.
                 DynamicIslandExpandedRegion(.leading) {
-                    HermeyTurnMark(phase: context.state.phase)
+                    HermeyTurnAvatar(state: context.state,
+                                     face: context.attributes.face,
+                                     isStale: context.isStale,
+                                     size: 28)
                         .padding(.leading, HermeyTurnGlass.islandInset)
                 }
                 // Centre: which bot has the message, the status word, and what it is doing — the
@@ -172,6 +178,11 @@ private enum HermeyTurnNames {
 /// The app's mark for a turn: an "in progress" bubble while the bot works, a question bubble when
 /// it is blocked on the owner, a tick when it is finished.
 ///
+/// It is the mark the card falls back to: a bot with a drawn avatar wears its own face instead (see
+/// `HermeyTurnAvatar`), and a bot without one keeps exactly the card it always had. The compact pill
+/// and `minimal` still draw it whatever the bot has, because a face below `OpenBotAvatarView`'s own
+/// animation floor is mud and its width would widen the pill.
+///
 /// All three symbol names have shipped since iOS 13/15, so none can resolve to the blank box a
 /// missing SF Symbol draws. `questionmark.bubble` is the distinguishable one: it has to be obvious
 /// at a glance, in the compact pill's leading slot and in `minimal`, that the turn is not moving
@@ -195,6 +206,33 @@ private struct HermeyTurnMark: View {
         case .working: return "ellipsis.bubble"
         case .needsYou: return "questionmark.bubble"
         case .done: return "checkmark.circle"
+        }
+    }
+}
+
+/// Where the card draws the bot: its own face when it has one, the phase's mark when it does not.
+///
+/// This is the one branch that decides between the drawn avatar and the glyph, so the Lock Screen
+/// card and the expanded island cannot disagree about it — and a bot that never chose an avatar
+/// keeps exactly the card it had, down to the symbol's size (0.65 of the slot is the 22 pt the card
+/// has always drawn its mark at, so the row's height is the face's, not the glyph's).
+///
+/// The face itself is `HermeyTurnFace`, which draws with the app's renderer and the app's motion;
+/// this view only asks the store to resolve one, and the store answers nil for "no face to draw".
+private struct HermeyTurnAvatar: View {
+    let state: HermeyTurnAttributes.ContentState
+    let face: HermeyTurnAttributes.Face?
+    let isStale: Bool
+    var size: CGFloat = 34
+
+    var body: some View {
+        if let prepared = HermeyTurnFaceStore.prepare(face) {
+            HermeyTurnFace(face: prepared,
+                           state: OpenBotAvatarState(turn: state),
+                           size: size,
+                           isStale: isStale)
+        } else {
+            HermeyTurnMark(phase: state.phase, size: size * 0.65)
         }
     }
 }
@@ -462,11 +500,12 @@ private struct HermeyTurnSnippet: View {
 private struct HermeyTurnLockScreen: View {
     let state: HermeyTurnAttributes.ContentState
     let botName: String
+    let face: HermeyTurnAttributes.Face?
     let isStale: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            HermeyTurnMark(phase: state.phase, size: 22)
+            HermeyTurnAvatar(state: state, face: face, isStale: isStale)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     // Text-only modifiers first, then the View ones: `tracking`/`kerning` exist on

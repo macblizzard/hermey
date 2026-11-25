@@ -462,7 +462,9 @@ class TheLockScreenCardHasOneLeftEdge(unittest.TestCase):
         self.assertIn("HStack(alignment: .center, spacing: 10)", card)
         self.assertIn(".fixedSize(horizontal: false, vertical: true)", card)
         self.assertIn("Spacer(minLength: 8)", card)
-        self.assertLess(card.index("HermeyTurnMark(phase: state.phase, size: 22)"),
+        # The left edge is the bot's face now (its own mark when it has no drawn avatar), and the
+        # timer is still the last thing on the row.
+        self.assertLess(card.index("HermeyTurnAvatar(state: state, face: face, isStale: isStale)"),
                         card.index("HermeyTurnElapsedLabel(state: state, tone: .card)"))
 
     def test_every_phase_and_the_stale_card_are_aligned_the_same_way(self) -> None:

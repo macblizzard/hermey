@@ -4,6 +4,19 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **The bot's own face on the Live Activity — and it moves.** The Lock Screen card and the island's
+  expanded leading slot now draw the *same* avatar as the chat header: the same renderer, the same
+  eight-state motion, so a thinking bot leans and looks up on the Lock Screen instead of showing a
+  generic speech bubble, a blocked one stares back, and one on the computer leans aside with its eyes
+  on the screen. The drawing is compiled into the extension from `HermeyUI`'s own `OpenBotAvatar`
+  sources — one implementation, two processes, the arrangement `BotStateWord` already had — and it is
+  resolved from the definition the activity carries, through `BotAvatarLibrary` and the same document
+  initialiser the host's answer goes through, so there is no bitmap and nothing is decoded per frame.
+  The pose is `OpenBotAvatarState`'s, driven by `TimelineView(.animation)` at the app's own 10 Hz;
+  an Always-On Lock Screen or a stale card holds the stance rather than asking for frames the system
+  will not composite. A bot with no drawn avatar keeps exactly the card it had — the phase's symbol,
+  at the size it always was. The compact pill and `minimal` keep that symbol too: a face below the
+  avatar's 24 pt floor is mud, and its width would widen the island.
 - **Copy a portion of the log, or leave the whole thing on the host.** View log's Copy is now a menu of
   four — **Copy last 100 lines**, **Copy last 500 lines**, **Copy shown**, **Copy all** — each labelled
   with the size of the list it would take ("Copy last 100 lines (of 812)"), and all four narrowed by
