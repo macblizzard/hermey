@@ -228,7 +228,7 @@ class TheComposerNamesTheModelAndItsContext(unittest.TestCase):
         self.assertIn("if let sessionRow {", composer)
         band = between(composer, "private var sessionPillBand", "private var trimmed")
         self.assertIn(".equatable()", band)
-        self.assertIn("showsAttach ? 8 + controlSide + 8 : 10", band,
+        self.assertIn(".padding(.leading, 8)", band,
                       "the row must start where the typed text starts")
         for name, source in (("the Mac's composer bar", self.MAC),
                              ("the phone's conversation", self.PHONE)):

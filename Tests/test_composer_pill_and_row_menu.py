@@ -214,7 +214,7 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         self.assertIn(".frame(height: controlSide)", band)
         # Its own row, aligned with the text rather than the card's edge — not an overlay.
         self.assertIn(".frame(maxWidth: .infinity, alignment: .leading)", band)
-        self.assertIn("showsAttach ? 8 + controlSide + 8 : 10", band,
+        self.assertIn(".padding(.leading, 8)", band,
                       "the row must start where the typed text starts, including its inset")
         self.assertNotIn("overlay", band)
         self.assertNotIn("ComposerModelPill", band,

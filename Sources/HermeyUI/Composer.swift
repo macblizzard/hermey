@@ -198,12 +198,13 @@ public struct Composer: View {
             sessionRow
                 .equatable()
                 .frame(height: controlSide)
-                // Flush with the text, not the card: the row's own 8 pt inset, the paperclip, and
-                // its gap — the same sum the hint below uses, so both start where the message does.
-                .padding(.leading, showsAttach ? 8 + controlSide + 8 : 10)
-                // The same 8 pt the field row carries, so the count's right edge lands under the
-                // send button's instead of running out to the card's edge.
-                .padding(.trailing, 8)
+                // Flush with the card's own inset, under the paperclip rather than under the text:
+                // the row's 8 pt. Aligning it to the typed text instead left it looking indented
+                // ("why is it stuck there") — the pill is a row of the card, not of the field.
+                .padding(.leading, 8)
+                // Inside the card, clear of its rounded edge: the field row's own 8 pt plus a little,
+                // so the count never crowds the corner or reads as sitting outside the composer.
+                .padding(.trailing, 10)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
