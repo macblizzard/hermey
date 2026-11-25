@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.670",
-          "buildVersion": "670",
-          "date": "2026-11-25T21:22:47Z",
-          "localizedDescription": "Scrolling a long chat no longer freezes the app: rows are spliced instead of regrouped, and one giant log message now renders as a 24-line preview with Show full message. View Log can copy the last 100 or 500 lines (respecting your filter), and Send log to host writes it to /var/log/hermey and shows you the path. Needs hermeyd 0.8.6.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.670/Hermey-0.1.670-b670.ipa",
-          "size": 5755395,
+          "version": "0.1.671",
+          "buildVersion": "671",
+          "date": "2026-11-25T22:15:50Z",
+          "localizedDescription": "Long messages now collapse at 50 lines on both Mac and iPhone, including delegation rows and tool results that slipped through last time, with Show full message and the number of lines left. The conversation also stops bobbing up and down when you open or close a sidebar.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.671/Hermey-0.1.671-b671.ipa",
+          "size": 5767726,
           "minOSVersion": "17.0",
-          "sha256": "7bf753a2c3998f950223d6a084038824f5e1362bc6bff46a05b424fd1be0a669"
+          "sha256": "99be350cd729d348024e51692cd9399de63f63e2ab60d0cb23491c91cc2d6ec6"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.670 (670)",
-      "identifier": "hermes-0.1.670-670",
-      "caption": "Scrolling a long chat no longer freezes the app: rows are spliced instead of regrouped, and one giant log message now renders as a 24-line preview with Show full message. View Log can copy the last 100 or 500 lines (respecting your filter), and Send log to host writes it to /var/log/hermey and shows you the path. Needs hermeyd 0.8.6.",
-      "date": "2026-11-25T21:22:47Z",
+      "title": "Hermes 0.1.671 (671)",
+      "identifier": "hermes-0.1.671-671",
+      "caption": "Long messages now collapse at 50 lines on both Mac and iPhone, including delegation rows and tool results that slipped through last time, with Show full message and the number of lines left. The conversation also stops bobbing up and down when you open or close a sidebar.",
+      "date": "2026-11-25T22:15:50Z",
       "tintColor": "#9A9AA0"
     }
   ],
