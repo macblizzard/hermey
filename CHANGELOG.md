@@ -1722,3 +1722,18 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed (hermeyd)
 - `hermeyd` **0.8.6**: the client-log upload route, and `session.set_hidden` is allowed through the bridge so the
   2,000-message roll actually takes effect.
+
+## [0.1.671] — 2026-11-25
+
+### Fixed
+- **Long messages collapse at 50 lines**, on both Mac and iPhone, with a button that says
+  `Show full message · 32 more lines` and then `Show less`. This now covers the shapes that slipped through
+  the first version — delegation and system rows, tool results and reasoning — because those were exempt.
+  The collapsed row does no markdown work at all: no parse, no per-span styling, no measurement.
+- **The conversation no longer bobs when a sidebar opens or closes.** The transcript was re-wrapping at the
+  animated width, the composer's height re-fed the foot inset, and the viewport probe took every width change
+  for a new message and yanked the scroll — four times per slide. The column resolves its geometry once at
+  the final width, the probe follows height only, and one curve (0.18 s) owns both panes.
+
+### Changed
+- `hermeyd` **0.8.7** (version bump with the app; the host code is unchanged from 0.8.6).
