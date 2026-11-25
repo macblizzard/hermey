@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.662",
-          "buildVersion": "662",
-          "date": "2026-11-25T11:38:37Z",
-          "localizedDescription": "Waiting and blocked avatars now wear their own eyes at full size \u2014 blocked is the stillest state with an unblinking stare, waiting leans and looks aside. The sidebar's + finally shows a hover you can see, and collapsing the panel leaves its toggle on the window's floor instead of jumping to the title bar. The composer's + reaches your Photos library again from the same file panel. Fixes the file-picker Photos option you missed.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.662/Hermey-0.1.662-b662.ipa",
-          "size": 5570409,
+          "version": "0.1.663",
+          "buildVersion": "663",
+          "date": "2026-11-25T12:10:16Z",
+          "localizedDescription": "The composer's + is a two-entry menu again \u2014 Photos\u2026 and Files\u2026 \u2014 because the single panel could not reach your Photos library. The sidebar's + hover now samples the pointer from the window's own event stream, so the menu in front can no longer hide it. Also includes 0.1.662's waiting/blocked avatar sizes and the floor toggle.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.663/Hermey-0.1.663-b663.ipa",
+          "size": 5570387,
           "minOSVersion": "17.0",
-          "sha256": "20bd92abb2a068da10d9ae8fa6fd8e3fd17e129efb3d9ff8f9a6d70aad3a88b7"
+          "sha256": "4fce311c72f1fac0ed654cf86693f2787a0453c44f803789c39ea5384f716395"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.662 (662)",
-      "identifier": "hermes-0.1.662-662",
-      "caption": "Waiting and blocked avatars now wear their own eyes at full size \u2014 blocked is the stillest state with an unblinking stare, waiting leans and looks aside. The sidebar's + finally shows a hover you can see, and collapsing the panel leaves its toggle on the window's floor instead of jumping to the title bar. The composer's + reaches your Photos library again from the same file panel. Fixes the file-picker Photos option you missed.",
-      "date": "2026-11-25T11:38:37Z",
+      "title": "Hermes 0.1.663 (663)",
+      "identifier": "hermes-0.1.663-663",
+      "caption": "The composer's + is a two-entry menu again \u2014 Photos\u2026 and Files\u2026 \u2014 because the single panel could not reach your Photos library. The sidebar's + hover now samples the pointer from the window's own event stream, so the menu in front can no longer hide it. Also includes 0.1.662's waiting/blocked avatar sizes and the floor toggle.",
+      "date": "2026-11-25T12:10:16Z",
       "tintColor": "#9A9AA0"
     }
   ],
