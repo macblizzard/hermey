@@ -256,7 +256,7 @@ pub async fn act(
         payload["url"] = json!(body.get("url").and_then(|u| u.as_str()).unwrap_or(""));
     }
     if kind == "fill" {
-        payload["fields"] = body.get("fields").cloned().unwrap_or_else(|| json!([]));
+        payload["fields"] = fill_fields(&st, body.get("fields"))?;
     }
     match st.browsers.command(payload).await {
         Some(reply) => Ok(Json(reply)),
@@ -267,6 +267,64 @@ pub async fn act(
 /// `GET /v1/browser/targets` — what the app shows: is a browser available to receive a sign-in?
 pub async fn targets(State(st): State<Arc<AppState>>) -> Result<Json<Value>, Fail> {
     Ok(Json(json!({ "browsers": st.browsers.list() })))
+}
+
+/// The most fields one fill may carry: a sign-in form, not a spreadsheet.
+const MAX_FILL_FIELDS: usize = 16;
+
+/// A fill's fields, with any **named** secret resolved from the host's own store.
+///
+/// A field normally carries its value (`{"name":"password","value":"…"}`) and that path is unchanged.
+/// A field may instead carry `{"name":"password","secret":"doctolib.de/password"}`: the value is read
+/// here and put into the frame, so a caller asking for a stored credential never holds the text. The
+/// reply is the extension's — field names and booleans — so nothing comes back either way.
+fn fill_fields(st: &AppState, fields: Option<&Value>) -> Result<Value, Fail> {
+    let Some(list) = fields.and_then(Value::as_array) else {
+        return Err(bad(StatusCode::BAD_REQUEST, "fields must be a list"));
+    };
+    if list.len() > MAX_FILL_FIELDS {
+        return Err(bad(StatusCode::BAD_REQUEST, "too many fields for one fill"));
+    }
+    let mut out = Vec::with_capacity(list.len());
+    for field in list {
+        let Some(object) = field.as_object() else {
+            return Err(bad(StatusCode::BAD_REQUEST, "a field must be an object"));
+        };
+        let mut item = object.clone();
+        if let Some(name) = item.get("secret").and_then(Value::as_str).map(str::to_string) {
+            if item.contains_key("value") {
+                // Two sources for one field is a caller that cannot say which it meant; refuse rather
+                // than pick, because picking is how a stale literal wins over the vault.
+                return Err(bad(
+                    StatusCode::BAD_REQUEST,
+                    "a field carries a value or a secret name, not both",
+                ));
+            }
+            let Some(value) = crate::secrets::get(st, &name) else {
+                // The name is not a secret; saying which one is missing is the whole diagnosis.
+                return Err(bad(
+                    StatusCode::NOT_FOUND,
+                    format!("no stored secret named {name} — ask for a card that stores it"),
+                ));
+            };
+            item.remove("secret");
+            item.insert("value".to_string(), json!(value));
+        }
+        // A literal value is bounded by the same ceiling the store applies: a line, not a document.
+        let too_big = item
+            .get("value")
+            .and_then(Value::as_str)
+            .map(|v| v.len() > crate::secrets::MAX_VALUE_BYTES)
+            .unwrap_or(false);
+        if too_big {
+            return Err(bad(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!("one value is larger than {} bytes", crate::secrets::MAX_VALUE_BYTES),
+            ));
+        }
+        out.push(Value::Object(item));
+    }
+    Ok(Value::Array(out))
 }
 
 #[cfg(test)]
@@ -330,5 +388,114 @@ mod tests {
             "a silent browser waited {:?}",
             started.elapsed()
         );
+    }
+
+    // --- a fill by name: the vault resolves, the caller never holds the value --------------------
+
+    fn state(dir: &std::path::Path) -> Arc<AppState> {
+        let engine_ws = "ws://127.0.0.1:9121/api/ws".to_string();
+        let token_file = dir.join("engine.token");
+        Arc::new(AppState {
+            store: crate::store::Store::open(&dir.join("bridge.db")).expect("store"),
+            pairing: crate::pairing::Pairing::new(600.0),
+            tickets: crate::auth::Tickets::new(30.0, 300.0),
+            limiter: crate::auth::RateLimiter::new(30, 60.0),
+            salt: "salt-".repeat(8),
+            public_host: "localhost".to_string(),
+            engine_ws: engine_ws.clone(),
+            engine_token_file: token_file.clone(),
+            engine_auth: crate::engine_auth::EngineAuth::Required,
+            engine_home: dir.join("engine"),
+            home: dir.to_path_buf(),
+            attachments_dir: dir.join("attachments"),
+            local_token: Arc::new(crate::local_token::LocalToken::from_value(
+                "local-cli-token-0123456789abcdef0123456789abcdef",
+                dir.join("local.token"),
+            )),
+            local_computers: Default::default(),
+            browsers: Default::default(),
+            display: crate::display::DisplayHub::spawn(engine_ws, Some(token_file)),
+            relay_sockets: Default::default(),
+            reactions: crate::reactions::Registry::in_dir(dir),
+            audit: Arc::new(crate::audit::AuditLog::in_dir(dir)),
+        })
+    }
+
+    fn scratch(tag: &str) -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "hermeyd-browser-{tag}-{}-{nanos}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    /// The point of naming a secret in a fill: the host puts the value in the frame and the caller —
+    /// the bot's script — never holds it. The frame carries it; the reply is the extension's.
+    #[tokio::test]
+    async fn a_fill_by_name_resolves_the_value_the_caller_never_saw() {
+        let dir = scratch("by-name");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", "hunter2-not-real").expect("stored");
+
+        let fields = json!([
+            {"name": "username", "value": "mo@example.test"},
+            {"name": "password", "secret": "doctolib.de/password"},
+        ]);
+        let resolved = fill_fields(&st, Some(&fields)).expect("resolved");
+        assert_eq!(resolved[0]["value"], "mo@example.test", "a literal is passed through");
+        assert_eq!(resolved[1]["value"], "hunter2-not-real", "the store supplied the value");
+        assert!(
+            resolved[1].get("secret").is_none(),
+            "the name is consumed, not forwarded"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every refusal names the fault and the item — never a value, and never a guess.
+    #[tokio::test]
+    async fn a_fill_by_name_refuses_what_it_cannot_resolve() {
+        let dir = scratch("refusals");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", "hunter2-not-real").expect("stored");
+
+        let unknown = fill_fields(&st, Some(&json!([{"name": "password", "secret": "nope/nope"}])))
+            .expect_err("unknown name");
+        assert_eq!(unknown.0, StatusCode::NOT_FOUND);
+        assert!(
+            unknown.1 .0.to_string().contains("no stored secret named nope/nope"),
+            "the refusal names the item: {}",
+            unknown.1 .0
+        );
+
+        let both = fill_fields(
+            &st,
+            Some(&json!([{"name": "password", "secret": "doctolib.de/password", "value": "x"}])),
+        )
+        .expect_err("value and name");
+        assert_eq!(both.0, StatusCode::BAD_REQUEST);
+
+        let large = fill_fields(
+            &st,
+            Some(&json!([{"name": "password", "value": "x".repeat(crate::secrets::MAX_VALUE_BYTES + 1)}])),
+        )
+        .expect_err("too large");
+        assert_eq!(large.0, StatusCode::PAYLOAD_TOO_LARGE);
+
+        assert_eq!(
+            fill_fields(&st, Some(&json!({"not": "a list"}))).unwrap_err().0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            fill_fields(&st, Some(&json!(["a string"]))).unwrap_err().0,
+            StatusCode::BAD_REQUEST
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

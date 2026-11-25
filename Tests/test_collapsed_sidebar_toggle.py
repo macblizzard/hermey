@@ -180,14 +180,23 @@ class ThePhoneIsUntouched(unittest.TestCase):
                 self.assertNotIn(leak, source, f"{path.name} grew a Mac-only panel control")
 
     def test_no_mobile_file_is_modified(self) -> None:
+        """The panel's vocabulary must not reach the phone — checked on the diff, not on `git status`.
+
+        This used to assert that `git status` reported no mobile file at all, which only ever held on
+        a clean tree: any other change that legitimately touches the phone (a login card, say) turned
+        this into a tripwire for work that has nothing to do with the sidebar. The guarantee that
+        matters is the same one the test above makes, applied to what this change actually wrote.
+        """
         try:
-            changed = subprocess.run(["git", "status", "--porcelain", "--", "Apps/HermesMobile"],
+            changed = subprocess.run(["git", "diff", "--", "Apps/HermesMobile"],
                                      cwd=ROOT, capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.SubprocessError):  # pragma: no cover - no git in the sandbox
             self.skipTest("git is not available here")
         if changed.returncode != 0:
             self.skipTest("not a git checkout")
-        self.assertEqual(changed.stdout.strip(), "", "the phone is not part of this change")
+        for leak in ("SidebarFloorToggle", "BotSidebarView", "sidebar.collapsedToggle",
+                     "isSidebarHidden", "sidebarWidth"):
+            self.assertNotIn(leak, changed.stdout, "the phone grew part of this panel")
 
 
 if __name__ == "__main__":

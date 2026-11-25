@@ -41,6 +41,7 @@ Shown after a choice, or whenever a value must be typed.
 | fields | one or more masked inputs: `username` + `password`, or a single `one-time code` |
 | fills | what the value will be placed into: "the password field on the sign-in form" |
 | expires | 15 minutes by default (`ttl_seconds`, clamped to 30 s – 24 h) |
+| store | `true` saves the answer in the host's vault instead of filling a page — see below |
 
 Rules:
 
@@ -48,6 +49,26 @@ Rules:
   to the transcript, never logged, and never stored after the fill.
 - The app records that a login happened and when. Not what was typed.
 - One-time codes are single use and expire with the card.
+
+### `store`: a credential the bot will need again
+
+A login is typed once. An API key is not: it has to live somewhere the bot can use it tomorrow without
+the bot ever holding it. That is the same card with `store: true`.
+
+| | fill card (default) | stored card |
+| --- | --- | --- |
+| where the answer goes | the extension fills it into the page | `hermeyd`'s vault (`<state>/secrets.json`, `0600`) |
+| what `consume` returns | `{values}` — once | `{ok: true, stored: [{field, name}]}` — never a value |
+| how the bot uses it later | it does not; the card is spent | `fill` with `{"name": "password", "secret": "<name>"}` |
+| the app's button | *Fill it in* | *Save to the vault* |
+
+The name is `<site>/<field>` (`doctolib.de/password`, `api.openai.com/api-key`) or whatever the bot
+asked for with `save_as`, and it is the only thing that leaves the host. A value larger than 4 KB is
+refused with its own code. The vault is never served by a route: the only reader is a fill, whose reply
+is the extension's own field names and booleans.
+
+The owner sees the difference, because the sheet says where the value is going: *"Saved to the vault on
+this host — the bot gets its name, never the value"* rather than *"Typed straight into the page"*.
 
 ## Card 3 — confirm
 
@@ -82,7 +103,8 @@ The bot learns **yes or no**. It never sees the token behind the connection.
 - the site it is on,
 - which sign-in method the owner chose,
 - whether the fill succeeded, and the page's own response (wrong password, bad code),
-- for a confirm card, yes or no.
+- for a confirm card, yes or no,
+- for a stored card, the **name** the value was saved under — and never the value.
 
 That is the complete list. If a future feature needs more, it goes in this document first.
 
