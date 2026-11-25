@@ -91,20 +91,13 @@ struct ConversationHeader: View {
             pill(width: width)
 
             HStack(spacing: 8) {
-                // The toggle lives in the bot panel's own header now — the house arrangement. It
-                // reappears here only while the panel is hidden, because a hidden panel with its
-                // only door inside it is a panel that cannot be brought back.
-                if store.isSidebarHidden {
-                    HermeyIconButton("sidebar.leading", label: "Show the bot panel", size: .small) {
-                        store.toggleSidebar()
-                    }
-                    .help("Show the bot panel")
-                    // With the sidebar gone this button is the window's leftmost thing, on the
-                    // traffic lights' own line, and it was landing under the yellow one (reported
-                    // 2026-11-14 with a screenshot). The lights own 84 pt; this starts after them.
-                    .padding(.leading, Geometry.trafficLightClearance)
-                }
-
+                // The panel's toggle is **not** here. It used to be, only while the panel was
+                // hidden, which moved one control from the window's floor to its top-left corner
+                // the moment someone collapsed the panel (owner: "when sidebar is closed the
+                // sidebar icon moves to the top of the sidebar, instead it should be placed near
+                // the actual position when sidebar is shown"). The door is drawn on the floor
+                // now — `SidebarFloorToggle`, on the panel's own bar line — so this row only ever
+                // carries the header's own facts.
                 Spacer(minLength: 12)
 
                 // No state chips: the bot's own face says it — an exclamation that flashes for a

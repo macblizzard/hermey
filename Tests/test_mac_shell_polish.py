@@ -62,8 +62,11 @@ class TheSidebarRowIsIcons(unittest.TestCase):
     def test_the_panels_toggle_lives_in_the_panel(self) -> None:
         self.assertIn('HermeyIconButton("sidebar.left"', SIDEBAR)
         self.assertIn("store.toggleSidebar()", SIDEBAR)
-        # The chat header keeps one only while the panel is hidden, so the door is never gone.
-        self.assertIn("if store.isSidebarHidden {", HEADER)
+        # The header's copy is gone: while the panel is hidden the door is drawn on the window's
+        # floor, on the panel's own bar line (`SidebarFloorToggle`), because the header copy was
+        # the same control jumping to the top of the window when the panel collapsed.
+        self.assertNotIn("isSidebarHidden", HEADER)
+        self.assertNotIn('"sidebar.leading"', HEADER)
 
     def test_the_plus_replaces_the_three_dots(self) -> None:
         self.assertIn("private var addMenu", SIDEBAR)
