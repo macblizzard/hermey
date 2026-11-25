@@ -1537,3 +1537,19 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed (hermeyd)
 - `hermeyd` **0.8.1**: the reactions route's coverage, including two devices agreeing on one reaction and on
   its removal.
+
+## [0.1.662] — 2026-11-25
+
+### Fixed
+- **Waiting and blocked avatars wear their own eyes.** Blocked drew at 32% behind a bang mark and waiting turned
+  its eyes into a slit; every state now draws the resting silhouette with a normal face and differs only in
+  motion. Blocked is the stillest state with an unblinking stare and the deepest pulse; waiting leans and looks
+  aside.
+- **The sidebar's `＋` hover fires, and you can see it.** A borderless menu swallows SwiftUI's hover events, so
+  the state never flipped; it now comes from an AppKit tracking area behind the button, and the fill, glyph and
+  hairline all move.
+- **Collapsing the panel no longer sends its toggle to the title bar.** It floats on the window's floor at the
+  exact height of the panel's own bar, so the glyph does not move when the panel slides away.
+- **The composer's `+` reaches your Photos library again.** The single file panel was the right idea, but with
+  the panel taking any file the Photos source disappears from it — the panel now carries its own `Photos…`
+  button and hands over to the system photo picker.
