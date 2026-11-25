@@ -1579,3 +1579,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The Mac's message menu icons are visible.** They were there in 0.1.664, tinted into the dark menu: a
   template image is re-tinted by whatever draws it, and inside a menu that tint followed an appearance the app
   was not showing. The glyph is now coloured for the menu's own appearance and the menu draws in the app's.
+
+## [0.1.666] — 2026-11-25
+
+### Changed
+- **Secure entries keep the secret.** The credential card existed and worked, but it handed the value to the bot,
+  which is no use for an API key and the wrong place for a password. A card can now say *store*: the value goes
+  to a vault on the host, and the bot gets back a name it can use later (and fill into a page by name) — never
+  the value itself.
+- **Every field but a username is masked.** Masking used to key off the literal field name "password", so an
+  API key was drawn in clear text.
+- **The card says where it goes**, instead of promising a page it did not have.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.2**: the vault, the masked fields, the store path, and the name-resolved fill.
