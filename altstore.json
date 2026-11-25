@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.658",
-          "buildVersion": "658",
-          "date": "2026-11-25T04:15:09Z",
-          "localizedDescription": "### Changed\n- **The model and the token count now share a row, one at each end.** The count used to sit inside the model\n  pill, so on a narrow phone the model name was squeezed to fit it. The pill holds the model and its chevron on\n  the left, the context count sits on the right with its own width, and neither can shrink the other.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.658/Hermey-0.1.658-b658.ipa",
-          "size": 5592729,
+          "version": "0.1.659",
+          "buildVersion": "659",
+          "date": "2026-11-25T05:20:55Z",
+          "localizedDescription": "### Fixed\n- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count\n  keeps a clear margin inside the rounded corner instead of running to the card's edge.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.659/Hermey-0.1.659-b659.ipa",
+          "size": 5593670,
           "minOSVersion": "17.0",
-          "sha256": "81f9ac226935c5f0ebc999e1ee83e583f4fcb260f54647aac78e97510a92493d"
+          "sha256": "d307836915bb7e6cdd28d4f0158cc3c963cc2a742dab242b2c7b93426b22e7d6"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.658 (658)",
-      "identifier": "hermes-0.1.658-658",
-      "caption": "### Changed\n- **The model and the token count now share a row, one at each end.** The count used to sit inside the model\n  pill, so on a narrow phone the model name was squeezed to fit it. The pill holds the model and its chevron on\n  the left, the context count sits on the right with its own width, and neither can shrink the other.",
-      "date": "2026-11-25T04:15:09Z",
+      "title": "Hermes 0.1.659 (659)",
+      "identifier": "hermes-0.1.659-659",
+      "caption": "### Fixed\n- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count\n  keeps a clear margin inside the rounded corner instead of running to the card's edge.",
+      "date": "2026-11-25T05:20:55Z",
       "tintColor": "#9A9AA0"
     }
   ],
