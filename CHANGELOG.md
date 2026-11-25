@@ -1564,3 +1564,11 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The sidebar's `＋` hover, again.** The tracking area was still at the mercy of the menu's own cell deciding
   what the view in front hears; the pointer is now sampled from the window's event stream, so nothing in front
   can hide it.
+
+## [0.1.664] — 2026-11-25
+
+### Fixed
+- **The Mac's message menu shows its icons.** Every row carried a glyph already — the iPhone drew them — but
+  SwiftUI's macOS menu builds its items from a button's title and dropped the image, so only `Share` (a system
+  link) was marked. The menu is a real `NSMenu` now, with each item's image set from its row's own symbol, popped
+  on right-click and reachable from the keyboard with the `⋯` on the action line.
