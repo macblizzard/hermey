@@ -1441,3 +1441,10 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The token count shows on the phone too.** A narrow pill used to drop the whole count and keep only the model
   name, so the number lived on the Mac and not on the iPhone. The count now holds its room and the model name
   truncates instead.
+
+## [0.1.658] — 2026-11-24
+
+### Changed
+- **The model and the token count now share a row, one at each end.** The count used to sit inside the model
+  pill, so on a narrow phone the model name was squeezed to fit it. The pill holds the model and its chevron on
+  the left, the context count sits on the right with its own width, and neither can shrink the other.
