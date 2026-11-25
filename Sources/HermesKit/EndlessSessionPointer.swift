@@ -750,10 +750,18 @@ enum Failure: Error, Equatable, LocalizedError {
     /// dropped rather than guessed at: drawing a blank badge is worse than drawing none.
     public func reactions(bot: String, session sessionID: SessionID) async throws -> [String: Reaction] {
         let path = "v1/reactions?bot=\(Self.queryValue(bot))&session=\(Self.queryValue(sessionID))"
-        let data = try await bridgeGET(path, timeout: 20)
+        let data: Data
+        do {
+            data = try await bridgeGET(path, timeout: 20)
+        } catch Failure.rejected(let status, let detail) {
+            // The one shape the caller can act on: the host answered and refused, which is not the
+            // same as a host that never answered. `AppModel` keeps the badge in the second case and
+            // puts it back in this one.
+            throw ReactionSyncError.refused(status: status, detail: detail)
+        }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rows = object["reactions"] as? [String: Any] else {
-            throw Failure.rejected(status: 502, detail: "the host sent no reactions")
+            throw ReactionSyncError.refused(status: 502, detail: "the host sent no reactions")
         }
         var out: [String: Reaction] = [:]
         for (message, value) in rows {
@@ -773,13 +781,17 @@ enum Failure: Error, Equatable, LocalizedError {
         guard ReactionKey.isValidMessage(message) else {
             throw ReactionSyncError.refused(status: 422, detail: "message must start with row: or live:")
         }
-        _ = try await bridgePUT("v1/reactions",
-                                body: ["bot": bot,
-                                       "session": sessionID,
-                                       "message": message,
-                                       "emoji": emoji ?? "",
-                                       "by": by],
-                                timeout: 20)
+        do {
+            _ = try await bridgePUT("v1/reactions",
+                                    body: ["bot": bot,
+                                           "session": sessionID,
+                                           "message": message,
+                                           "emoji": emoji ?? "",
+                                           "by": by],
+                                    timeout: 20)
+        } catch Failure.rejected(let status, let detail) {
+            throw ReactionSyncError.refused(status: status, detail: detail)
+        }
     }
 
     /// A query value that cannot reshape the request: everything outside the unreserved set is

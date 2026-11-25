@@ -76,43 +76,26 @@ struct MobileTranscriptRow: View {
     @State private var opensAbove = false
     private static let speaker = AVSpeechSynthesizer()
 
-    /// This message's identity for a reaction, from the one rule both apps share (`ReactionKey`).
-    /// `nil` when no conversation is open: there is nothing to key a reaction by.
-    private var reactionKey: ReactionKey? {
-        guard let session = app.model.selectedSessionID else { return nil }
-        // `app.model.hostName` rather than `app.hostLabel`: the key has to be the one `AppModel`
-        // built its map with, byte for byte, or the lookup misses. (They are the same string — both
-        // come from the pairing — but the model owns the rule, so it is the one asked.)
-        //
-        // A live message may have no durable history row yet; `ReactionKey.message` allows a
-        // temporary reaction too, and it persists across reloads once the host gives the row an id.
-        return ReactionKey(host: app.model.hostName,
-                           bot: app.model.selectedBotID ?? "",
-                           session: session,
-                           message: ReactionKey.message(rowID: entry.rowID, entryID: entry.id))
-    }
-
-    /// The emoji this message wears, from the conversation's shared state — the host's copy when
-    /// paired, so a reaction set on the Mac is already here.
-    private var currentReaction: String? {
-        guard let key = reactionKey else { return nil }
-        return app.model.reaction(for: key)
-    }
-
-    /// One emoji per message: tapping the one already there removes it.
-    private func setReaction(_ emoji: String) {
-        guard let key = reactionKey else { return }
-        let next: String? = currentReaction == emoji ? nil : emoji
-        Task { await app.model.setReaction(next, for: key) }
-    }
+    /// The emoji this message wears, and the way to change it.
+    ///
+    /// Both come from the screen: a value, and a closure that reports the glyph that was tapped. A
+    /// row inside a lazy stack is rebuilt from its inputs, so a row that reached into a model it
+    /// does not observe never repainted when the other device reacted — its badge arrived only on
+    /// the next scroll or relaunch, which read as "reactions do not sync". The key itself is the
+    /// model's business (`reaction(forRowID:entryID:)`), so this shell never spells one and the two
+    /// apps cannot disagree about which message a reaction belongs to.
+    var reaction: String? = nil
+    var onReact: (String) -> Void = { _ in }
+    /// Whether a conversation is open: with none there is nothing to key a reaction by.
+    var canReact: Bool = false
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
             rowContent
                 .onAppear(perform: wireAttachmentOpener)
-            if let emoji = currentReaction {
-                Button(emoji) { setReaction(emoji) }
-                    .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
+            if let emoji = reaction {
+                Button(emoji) { onReact(emoji) }
+                    .accessibilityLabel("Remove your \(ReactionEmoji.name(emoji)) reaction")
                     .hermeyFocusQuiet()
             }
         }
@@ -328,9 +311,9 @@ struct MobileTranscriptRow: View {
     /// every verb is one 32 pt row.
     private var actionCard: some View {
         VStack(spacing: 0) {
-            if reactionKey != nil {
-                QuickReactionRow(selected: currentReaction) { emoji in
-                    setReaction(emoji)
+            if canReact {
+                QuickReactionRow(selected: reaction) { emoji in
+                    onReact(emoji)
                     Haptics.selection()
                     showingActions = false
                 }

@@ -215,6 +215,27 @@ public struct ReactionLocalStore {
         } else {
             values.removeValue(forKey: storageKey)
         }
+        write(values)
+    }
+
+    /// Make one conversation's local entries exactly the host's answer.
+    ///
+    /// The document is the device's *copy* of the host's truth, not a second store: an entry the
+    /// host no longer has — a reaction cleared on the other device — must not survive here, or a
+    /// launch with no wire would draw a badge neither device agrees with. Only the named
+    /// conversation is touched, because its keys carry it as a length-prefixed prefix.
+    public func replaceConversation(_ prefix: String, with values: [String: String]) {
+        var all = all()
+        for storageKey in Array(all.keys) where storageKey.hasPrefix(prefix) {
+            all.removeValue(forKey: storageKey)
+        }
+        for (storageKey, emoji) in values where !emoji.isEmpty {
+            all[storageKey] = emoji
+        }
+        write(all)
+    }
+
+    private func write(_ values: [String: String]) {
         guard let data = try? JSONEncoder().encode(values),
               let text = String(data: data, encoding: .utf8) else { return }
         defaults.set(text, forKey: key)

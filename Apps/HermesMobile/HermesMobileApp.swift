@@ -114,6 +114,11 @@ struct RootView: View {
                 if phase == .active { Task { await app.updates.check() } }
                 guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
                 MobileReplyNotifier.shared.refreshAuthorization()
+                // A reaction made on the Mac while this phone was asleep has no live frame to
+                // receive: the socket may even have stayed up, so no `ready` arrives either. One
+                // read on every return to the front is what makes the open conversation agree with
+                // the host again.
+                app.model.refreshReactions()
                 Task {
                     if app.model.connection.isLive { await app.loadBotFaces() }
                     else { await app.reconnect() }

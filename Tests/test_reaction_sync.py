@@ -47,6 +47,8 @@ MODEL = (APPKIT / "AppModel.swift").read_text()
 MAC_ROW = (MAC / "Conversation" / "TranscriptRowView.swift").read_text()
 MAC_SCROLL = (MAC / "Conversation" / "TranscriptScroll.swift").read_text()
 PHONE_ROW = (PHONE / "Views" / "MobileTranscript.swift").read_text()
+PHONE_SCREEN = (PHONE / "Views" / "ConversationScreen.swift").read_text()
+PHONE_APP = (PHONE / "HermesMobileApp.swift").read_text()
 
 ROOT_TEST_FILE = ROOT / "Tests" / "HermesKitTests" / "ReactionKeyTests.swift"
 
@@ -114,6 +116,7 @@ class TheTestsThemselvesTests(unittest.TestCase):
         "the_store_is_capped_and_evicts_the_oldest",
         "the_broadcast_frame_is_the_engine_event_envelope",
         "a_put_reaches_every_live_socket",
+        "two_devices_agree_on_one_reaction_and_on_its_removal",
     )
 
     def test_every_reaction_case_is_still_there(self) -> None:
@@ -224,12 +227,17 @@ class KeyRuleTests(unittest.TestCase):
         self.assertIn("public static func isValidMessage(", KEY)
 
     def test_neither_app_builds_the_composite_itself(self) -> None:
-        # The regression this file exists for: two copies of one key rule, each drifting.
+        # The regression this file exists for: two copies of one key rule, each drifting — and, after
+        # that, one shell assembling the composite while the other asked the model. Neither row
+        # builds a key now: both hand the model the message half and nothing else.
         for source, name in ((MAC_ROW, "mac row"), (PHONE_ROW, "phone row")):
             self.assertNotIn("utf8.count", source, name)
-            self.assertIn("ReactionKey.message(rowID: entry.rowID", source, name)
-            self.assertIn("ReactionKey(host:", source, name)
+            self.assertNotIn("ReactionKey(host:", source, name)
             self.assertNotIn("row:\\($0)", source, name)
+        # The Mac's row computes the *message half* from the shared rule and nothing more.
+        self.assertIn("ReactionKey.message(rowID: entry.rowID, entryID: entry.id)", MAC_ROW)
+        # The phone's row does not even do that: it is handed the emoji and reports the tap.
+        self.assertNotIn("ReactionKey(", PHONE_ROW)
 
     def test_the_host_keys_the_message_and_scopes_it_by_bot_and_session(self) -> None:
         # The wire key is the message half: the host scopes by bot and session in the query, which
@@ -291,38 +299,191 @@ class OfflineFallbackTests(unittest.TestCase):
         self.assertNotIn("Add Local Reaction", MAC_ROW)
 
     def test_the_row_reads_the_models_map(self) -> None:
-        self.assertIn("var reaction: (ReactionKey) -> String?", MAC_ROW)
-        self.assertIn("var onReact: (ReactionKey, String?) -> Void", MAC_ROW)
-        self.assertIn("reaction: { model.reaction(for: $0) }", MAC_SCROLL)
-        self.assertIn("Task { await model.setReaction(emoji, for: key) }", MAC_SCROLL)
-        self.assertIn("app.model.reaction(for: key)", PHONE_ROW)
-        self.assertIn("await app.model.setReaction(next, for: key)", PHONE_ROW)
+        # Both rows are told the emoji and report the tap; the model owns the key. The Mac's closures
+        # take the message half, the phone's a plain value and a glyph.
+        self.assertIn("var reaction: (String) -> String? = { _ in nil }", MAC_ROW)
+        self.assertIn("var onReact: (String, String?) -> Void = { _, _ in }", MAC_ROW)
+        self.assertIn("reaction: { model.reaction(forMessage: $0) }", MAC_SCROLL)
+        self.assertIn("Task { await model.setReaction(emoji, forMessage: message) }", MAC_SCROLL)
+        self.assertIn("var reaction: String? = nil", PHONE_ROW)
+        self.assertIn("reaction: model.reaction(forRowID: entry.rowID,", PHONE_SCREEN)
+        self.assertIn("await model.react(emoji, rowID: entry.rowID,", PHONE_SCREEN)
 
-    def test_a_paired_write_is_optimistic_and_reverted_on_failure(self) -> None:
+    def test_the_model_is_the_one_place_a_key_is_built_for_a_row(self) -> None:
+        self.assertIn("public func reaction(forMessage message: String) -> String?", MODEL)
+        self.assertIn("public func setReaction(_ emoji: String?, forMessage message: String) async", MODEL)
+        self.assertIn("public func reaction(forRowID rowID: Int64?, entryID: String) -> String?", MODEL)
+        self.assertIn("public func react(_ emoji: String, rowID: Int64?, entryID: String) async", MODEL)
+        self.assertIn("private func conversationReactionKey(_ message: String) -> ReactionKey?", MODEL)
+        self.assertIn("ReactionKey(host: hostName, bot: bot, session: session, message: message)",
+                      MODEL)
+
+    def test_a_paired_write_is_optimistic_and_reverted_when_the_host_refuses(self) -> None:
         body = MODEL[MODEL.index("public func setReaction("):]
-        body = body[:body.index("private func refreshReactions")]
+        body = body[:body.index("public func refreshReactions")]
         # Painted first…
         self.assertIn("let previous = reactions[key.storageKey]", body)
         self.assertIn("apply(emoji, to: key.storageKey)", body)
         self.assertIn("try await client.setReaction(", body)
-        # …and put back when the host refuses, so a badge is never a local-only lie.
+        # …and put back when the host actually refuses, so a badge is never a local-only lie.
+        self.assertIn("catch ReactionSyncError.refused(let status, let detail)", body)
         self.assertIn("apply(previous, to: key.storageKey)", body)
         self.assertIn("could not save the reaction", body)
+        # A host that never answered is not a refusal: the tap is kept on this device and the
+        # conversation is un-marked so the next open hands it over, rather than blinking away.
+        self.assertIn("reactionLocal.set(emoji, for: key.storageKey)", body)
+        self.assertIn("reactionsImported.remove(conversationID(bot: key.bot, session: key.session))",
+                      body)
+        self.assertIn("saved on this device; it will sync when the host is reached", body)
 
     def test_the_host_is_the_truth_when_paired(self) -> None:
         self.assertIn("let rows = try await client.reactions(bot: bot, session: session)", MODEL)
-        # One import of what the device kept, then never again: a re-send would resurrect a
-        # reaction the other device has since cleared.
-        self.assertIn("private func importLocalReactions(bot: String, session: SessionID, epoch: Int)",
-                      MODEL)
-        self.assertIn("guard !reactionsImported.contains(conversation)", MODEL)
+        # One hand-over of what the device kept, then never again: a re-send would resurrect a
+        # reaction the other device has since cleared. Only keys the host answered nothing for are
+        # pushed — a key the host already has is the host's answer.
+        self.assertIn("private func importLocalReactions(bot: String, session: SessionID,", MODEL)
+        self.assertIn("known: Set<String>, epoch: Int) async -> [String: String]", MODEL)
+        self.assertIn("guard !reactionsImported.contains(conversation) else { return [:] }", MODEL)
+        self.assertIn("!known.contains(key.message)", MODEL)
         self.assertIn("reactionsImported.insert(conversation)", MODEL)
+
+    def test_the_open_conversation_is_read_from_the_host_the_moment_it_opens(self) -> None:
+        # The read used to hang off `select()` and the socket's `ready` alone, and neither app's
+        # endless open goes through `select()` — so opening a bot never asked the host, which is
+        # exactly the "it did not sync" report.
+        opened = MODEL[MODEL.index("private func adoptStoredConversation("):]
+        opened = opened[:opened.index("private func forgetStoredConversation(")]
+        self.assertIn("refreshReactions()", opened)
+        moved = MODEL[MODEL.index("private func paintAdoptedConversation("):]
+        moved = moved[:moved.index("private func followMovedConversation(")]
+        self.assertIn("refreshReactions()", moved)
+        self.assertIn("public func refreshReactions()", MODEL)
+        # And the phone asks again whenever it comes back to the front: a socket that stayed up
+        # sends no `ready`, so nothing else would ask.
+        self.assertIn("app.model.refreshReactions()", PHONE_APP)
+
+    def test_the_local_document_is_a_copy_of_the_hosts_answer(self) -> None:
+        # Paired, the device's document follows the host: written on every accepted change and
+        # replaced by every read, so an offline launch draws the same badges and a reaction cleared
+        # on the other device cannot come back from this device's cache.
+        self.assertIn("reactionLocal.set(emoji, for: key.storageKey)\n        } catch ReactionSyncError.refused",
+                      MODEL)
+        self.assertIn("reactionLocal.replaceConversation(", MODEL)
+        self.assertIn("ReactionKey.conversationPrefix(host: hostName, bot: bot, session: session)",
+                      MODEL)
+        store = (KIT / "Reactions.swift").read_text()
+        self.assertIn("public func replaceConversation(_ prefix: String, with values: [String: String])",
+                      store)
 
     def test_switching_bot_drops_the_previous_badge(self) -> None:
         reset = MODEL[MODEL.index("private func resetForBotSwitch"):]
         reset = reset[:reset.index("\n    }")]
         self.assertIn("reactions = [:]", reset,
                       "a dictionary is emptied with [:]; [] is an array and would not compile")
+
+
+class LivePathTests(unittest.TestCase):
+    """The last mile — the parts the host cannot do for the apps.
+
+    The store, the route and the broadcast were already pinned above, and none of them was broken:
+    a reaction was written, read back and pushed to both sockets. What was missing was on the device
+    side, so these guards point at the three hops between a frame and a badge — a tap that reaches
+    the host, a frame that is applied to the conversation on screen, and a row that repaints when
+    the map it draws from changes.
+    """
+
+    def branch(self, opener: str, closer: str) -> str:
+        start = MODEL.index(opener)
+        return MODEL[start:MODEL.index(closer, start)]
+
+    @property
+    def reaction_branch(self) -> str:
+        return self.branch("case .reactionUpdated(", "case .error(let session")
+
+    def test_a_tap_writes_the_host_and_not_only_the_device(self) -> None:
+        body = self.branch("public func setReaction(", "public func refreshReactions")
+        # The host first: a write that only touched the device is the original bug.
+        self.assertIn("try await client.setReaction(bot: key.bot, session: key.session,", body)
+        after_write = body[body.index("try await client.setReaction("):]
+        self.assertIn("reactionLocal.set(emoji, for: key.storageKey)", after_write[:400],
+                      "the device's copy follows the host's write, never replaces it")
+        # And no transcript row writes a reaction itself.
+        for source, name in ((MAC_ROW, "mac row"), (PHONE_ROW, "phone row")):
+            self.assertNotIn("@AppStorage(\"", source, name)
+
+    def test_a_frame_from_the_other_device_is_applied_to_the_open_conversation(self) -> None:
+        branch = self.reaction_branch
+        self.assertIn("guard bot.isEmpty || bot == selectedBotID,", branch)
+        # The session is resolved through the alias table, exactly as a host error is: the two apps
+        # are attached at different moments, so one conversation arrives under two runtime ids.
+        self.assertIn("let named = Self.resolveSession(session, aliases: sessionAliases)", branch)
+        self.assertIn("guard named == filed || named == selectedSessionID else { return }", branch)
+        # And the badge goes in under the durable id the rows look up.
+        self.assertIn("let key = ReactionKey(host: hostName, bot: botID, session: filed, "
+                      "message: message)", branch)
+        self.assertIn("apply(emoji, to: key.storageKey)", branch)
+        # Both apps apply it: the branch is `AppModel`'s, and both shells are built on it.
+        self.assertIn("AppModel(", (MAC / "Workspace" / "WorkspaceStore.swift").read_text())
+        self.assertIn("AppModel(", (PHONE / "App" / "AppEnvironment.swift").read_text())
+
+    def test_a_removal_arrives_as_nil_and_clears_the_same_key(self) -> None:
+        # The decoder keeps "cleared" apart from "not about me": a null is a removal, and the branch
+        # has no second path that could forget to remove.
+        self.assertIn('let emoji = payload["emoji"]?.stringValue', DECODER)
+        self.assertIn('"emoji": emoji', REACTIONS)
+        branch = self.reaction_branch
+        self.assertIn("apply(emoji, to: key.storageKey)", branch)
+        apply_body = MODEL[MODEL.index("private func apply(_ emoji: String?"):]
+        apply_body = apply_body[:apply_body.index("\n    }")]
+        self.assertIn("reactions.removeValue(forKey: storageKey)", apply_body)
+
+    def test_only_the_shared_rule_spells_a_message_key(self) -> None:
+        # `row:<id>` / `live:<id>` are one rule, in `Reactions.swift`. A second spelling anywhere in
+        # either app is how one row was keyed two ways — the reaction was stored under a name the
+        # other device never looked up.
+        offenders = []
+        for folder in ("Sources", "Apps"):
+            for path in (ROOT / folder).rglob("*.swift"):
+                if path.name == "Reactions.swift":
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if '"row:\\(' in text or '"live:\\(' in text:
+                    offenders.append(str(path.relative_to(ROOT)))
+        self.assertEqual(offenders, [], "the message halves live in ReactionKey.message only")
+
+    def test_a_reaction_is_filed_under_the_durable_session_id(self) -> None:
+        # The runtime id is minted per attach, so the Mac and the phone hold different ones for one
+        # conversation. A reaction filed under it is invisible to the other device's read — the (d)
+        # half of "it did not sync". Every reaction key is built from `reactionSession`.
+        self.assertIn("private var durableIDs: [SessionID: SessionID] = [:]", MODEL)
+        self.assertIn("durableIDs[session] = resumed.storedSessionID ?? session", MODEL)
+        self.assertIn("guard let bot = selectedBotID, let session = reactionSession else { return nil }",
+                      MODEL)
+        self.assertIn("guard let session = selectedSessionID else { return nil }\n        return durableIDs[session] ?? session",
+                      MODEL)
+        # The read and the frame's guard both use it, so they cannot disagree with the rows.
+        self.assertIn("guard let bot = selectedBotID, let session = reactionSession else {", MODEL)
+        self.assertIn("guard epoch == botEpoch, reactionSession == session, selectedBotID == bot",
+                      MODEL)
+
+    def test_the_row_a_badge_lands_on_is_the_row_that_repaints(self) -> None:
+        # A row that reads the map through a model it does not observe never repaints: the phone's
+        # badge used to appear only on the next scroll or launch. The phone's row is handed a value
+        # (`reaction:`) by the screen that does observe the model, and reports the tap back.
+        self.assertIn("var reaction: String? = nil", PHONE_ROW)
+        self.assertNotIn("app.model.reaction(for:", PHONE_ROW)
+        self.assertIn("reaction: model.reaction(forRowID: entry.rowID,", PHONE_SCREEN)
+        self.assertIn("onReact: { emoji in", PHONE_SCREEN)
+        # The Mac's row is built by a pane that observes the model, with a closure that re-reads it.
+        self.assertIn("reaction: { model.reaction(forMessage: $0) }", MAC_SCROLL)
+
+    def test_the_phone_also_asks_again_when_it_comes_back_to_the_front(self) -> None:
+        # A socket that stayed up sends no `ready`, so the live frame is the only other trigger —
+        # and a phone that was asleep has nothing to replay. One read on every foreground is the
+        # fallback the requirement names.
+        self.assertIn("app.model.refreshReactions()", PHONE_APP)
+        foreground = PHONE_APP[PHONE_APP.index("if phase == .active { Task { await app.updates.check() } }"):]
+        self.assertIn("app.model.refreshReactions()", foreground[:2000])
 
 
 class ContractAgreementTests(unittest.TestCase):

@@ -71,8 +71,12 @@ class TheEventCarriesItsSession(unittest.TestCase):
 class TheModelScopesItToTheOpenConversation(unittest.TestCase):
 
     def test_the_session_is_resolved_through_the_runtime_aliases(self) -> None:
-        # A frame may name the runtime id the host minted; the pane knows the stored one.
-        self.assertIn("let named = sessionAliases[session] ?? session", BRANCH)
+        # A frame may name the runtime id the host minted; the pane knows the stored one. One
+        # resolver serves every branch that names a session (the error, and a reaction).
+        self.assertIn("let named = Self.resolveSession(session, aliases: sessionAliases)", BRANCH)
+        model = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
+        self.assertIn("private static func resolveSession(_ session: SessionID,", model)
+        self.assertIn("aliases[session] ?? session", model)
 
     def test_an_error_for_another_session_is_logged_and_never_shown(self) -> None:
         self.assertIn("guard !named.isEmpty, named == selectedSessionID else {", BRANCH)
