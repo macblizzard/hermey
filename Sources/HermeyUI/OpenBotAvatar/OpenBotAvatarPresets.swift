@@ -104,11 +104,23 @@ public enum OpenBotAvatarPresets {
 
     /// Every preset, in the order the editor shows them: the six that shipped first, then the six
     /// that followed, so a person who has used the tab keeps their bearings.
+    ///
+    /// These are the definitions **as the app draws them**: each authored path above goes through
+    /// `OpenBotAvatarSoften.softened`, which cuts every corner sharper than 20° with a circular
+    /// fillet whose radius is 5% of the shape's longer side. The authored text stays in this file
+    /// unchanged, so a shape is still reproducible and still the same shape — the box has rounded
+    /// corners, the star has rounded points, the mushroom has a rounded lip, and the two presets
+    /// that are already all curve (the blob, the egg) come back byte for byte. Softening happens
+    /// here, once, at the preset table: a definition a person pasted or edited is their own geometry
+    /// and is never run through it.
     public static let all: [BotAvatarDefinition] = [blob, box, mug, sprout, cat, egg,
                                                     bottle, star, droplet, hourglass, book, mushroom]
+        .map(OpenBotAvatarSoften.softened)
 
     /// The presets, checked. Throws with every reason if one has been edited into something the
-    /// contract refuses — which is a programming error, not a user's.
+    /// contract refuses — which is a programming error, not a user's. The table this checks is the
+    /// one `all` holds, i.e. **after** the corners are softened, because that is the path the app
+    /// draws and the path the editor would store.
     public static func validated() throws -> [BotAvatarDefinition] {
         try all.map { try $0.validated() }
     }
