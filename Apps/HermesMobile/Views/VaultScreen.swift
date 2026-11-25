@@ -11,7 +11,9 @@ import SwiftUI
 /// deletes a name rather than reading one.
 ///
 /// Adding goes through `MobileCredentialCardSheet` — the credential card's own sheet — so the one masked
-/// field the owner types into is the one that already existed on this phone.
+/// field the owner types into is the one that already existed on this phone. Editing is `VaultEditSheet`,
+/// the same sheet the Mac shows: rename plus an optional replacement value, with the value field starting
+/// empty because this phone has never held the value and the host will not send it.
 struct VaultScreen: View {
     @ObservedObject var model: AppModel
 
@@ -20,6 +22,7 @@ struct VaultScreen: View {
     @State private var items: [VaultItem]?
     @State private var failure: String?
     @State private var pendingDelete: VaultItem?
+    @State private var pendingEdit: VaultItem?
     @State private var actionError: String?
     @State private var showAdd = false
 
@@ -76,7 +79,7 @@ struct VaultScreen: View {
                     }
                 } footer: {
                     Text("Secrets your bots use, kept on this host. A value is written once and never "
-                         + "shown again — not here, not in a chat.")
+                         + "shown again — it can be replaced, never read.")
                         .font(TypeScale.font(TypeScale.label))
                 }
             }
@@ -113,6 +116,12 @@ struct VaultScreen: View {
             VaultAddSheet(model: model) { await load() }
                 .hermesSheetChrome()
         }
+        // Rename and replace, for the row this came from. The phone keeps no draft of it either: the
+        // sheet is handed the row the host last sent and asks the host again when it is done.
+        .sheet(item: $pendingEdit) { item in
+            VaultEditSheet(item: item, model: model) { await load() }
+                .hermesSheetChrome()
+        }
         .confirmationDialog("Delete this secret?",
                             isPresented: Binding(get: { pendingDelete != nil },
                                                  set: { if !$0 { pendingDelete = nil } }),
@@ -131,7 +140,7 @@ struct VaultScreen: View {
     }
 
     /// One saved secret: its name, where it is for, when it was added. No value, and nothing that would
-    /// offer to show one.
+    /// offer to show one. The long press offers the two verbs the host has: edit it, or forget it.
     private func row(_ item: VaultItem) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(item.name)
@@ -144,6 +153,9 @@ struct VaultScreen: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .contextMenu {
+            Button { pendingEdit = item } label: {
+                Label("Edit", systemImage: "pencil")
+            }
             Button(role: .destructive) { pendingDelete = item } label: {
                 Label("Delete", systemImage: "trash")
             }

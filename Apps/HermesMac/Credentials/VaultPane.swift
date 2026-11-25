@@ -5,14 +5,19 @@ import SwiftUI
 
 /// Settings → Vault: the secrets the host holds, by name.
 ///
-/// What this pane is *for*: the owner asked to see what is in the host's vault, add one, and remove one,
-/// without any way to read a value back out of it. So the pane lists names and labels only. `VaultItem`
-/// (Sources/HermesKit/VaultItems.swift) has no field for a value, there is no reveal control here or
-/// anywhere else, and nothing on this screen copies a secret to the pasteboard.
+/// What this pane is *for*: the owner asked to see what is in the host's vault, add one, edit one and
+/// remove one, without any way to read a value back out of it. So the pane lists names and labels only.
+/// `VaultItem` (Sources/HermesKit/VaultItems.swift) has no field for a value, there is no reveal control
+/// here or anywhere else, and nothing on this screen copies a secret to the pasteboard.
 ///
 /// Adding is not a form of its own: "Add a secret" asks the host for a `store`-mode credential card and
 /// then presents `CredentialCardSheet` — the same sheet a bot's card opens — so the one masked field the
 /// owner types into is the one that already existed. That keeps a single path into the vault.
+///
+/// Editing is `VaultEditSheet`, and it is the *other* kind of sheet on purpose: a rename plus an optional
+/// replacement value, for an item that already exists. A card cannot do that job — it asks for a value
+/// from nothing and has no "keep what is there" — so the sheet for it starts with an empty field, says so,
+/// and sends the old name in the path so the host can move the item rather than create a second one.
 struct VaultSettingsTab: View {
     @ObservedObject var store: WorkspaceStore
 
@@ -21,6 +26,7 @@ struct VaultSettingsTab: View {
     @State private var items: [VaultItem]?
     @State private var failure: String?
     @State private var pendingDelete: VaultItem?
+    @State private var pendingEdit: VaultItem?
     @State private var actionError: String?
     @State private var showAdd = false
 
@@ -34,7 +40,7 @@ struct VaultSettingsTab: View {
                 Text("Vault")
             } footer: {
                 Text("Secrets your bots use, kept on this host. A value is written once and never shown "
-                     + "again — not here, not in a chat. A bot can ask to use one by name.")
+                     + "again — it can be replaced, never read. A bot can ask to use one by name.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
             }
@@ -62,6 +68,12 @@ struct VaultSettingsTab: View {
         .task { await load() }
         .sheet(isPresented: $showAdd) {
             VaultAddSheet(model: model) { await load() }
+                .hermesSheetChrome()
+        }
+        // Editing is presented from the row it belongs to, so the pane never holds a draft: the sheet
+        // gets the item as the host last described it and asks the host again when it is done.
+        .sheet(item: $pendingEdit) { item in
+            VaultEditSheet(item: item, model: model) { await load() }
                 .hermesSheetChrome()
         }
         .confirmationDialog("Delete this secret?",
@@ -117,8 +129,8 @@ struct VaultSettingsTab: View {
         }
     }
 
-    /// One saved secret. Name, where it is for, when it was added — and a delete. There is no reveal
-    /// control and no value on this line, by design.
+    /// One saved secret. Name, where it is for, when it was added — and two things it can be done to:
+    /// edit it, or delete it. There is no reveal control and no value on this line, by design.
     private func row(_ item: VaultItem) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
@@ -131,6 +143,17 @@ struct VaultSettingsTab: View {
                     .foregroundStyle(Tokens.textMuted)
             }
             Spacer(minLength: 8)
+            // A pencil, because an edit here is a rename and a replacement — never a look at what is
+            // stored, which this screen has no shape to show.
+            Button {
+                pendingEdit = item
+            } label: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(Tokens.textMuted)
+            }
+            .buttonStyle(.borderless)
+            .help("Edit \(item.name)")
+            .hermeyFocusQuiet()
             Button {
                 pendingDelete = item
             } label: {

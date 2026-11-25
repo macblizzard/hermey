@@ -196,6 +196,12 @@ public protocol BotSessionPointerStore: Sendable {
     func vaultItems() async throws -> [VaultItem]
     /// `DELETE /v1/vault/{name}`
     func deleteVaultItem(name: String) async throws
+    /// `PATCH /v1/vault/{name}` — rename an item and/or replace its value, in one request.
+    ///
+    /// `rename` is the name it should have afterwards; `value` is the replacement, or `nil` to keep the
+    /// one the host holds. The reply says which half happened and never anything that was typed, which
+    /// is why this returns nothing: there is no value to return and no need to invent a shape for one.
+    func editVaultItem(name: String, rename: String, value: String?) async throws
     /// `POST /v1/credentials/cards` — make a card; a Vault pane makes a `store` one.
     func createCredentialCard(site: String, fields: [String], store: Bool,
                               saveAs: String?, note: String?) async throws -> CredentialCard
@@ -342,6 +348,9 @@ public extension BotSessionPointerStore {
 
     func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
     func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    func editVaultItem(name: String, rename: String, value: String?) async throws {
+        throw BotAdminUnavailable()
+    }
     func createCredentialCard(site: String, fields: [String], store: Bool,
                               saveAs: String?, note: String?) async throws -> CredentialCard {
         throw BotAdminUnavailable()
@@ -1002,6 +1011,20 @@ enum Failure: Error, Equatable, LocalizedError {
     public func deleteVaultItem(name: String) async throws {
         let item = try Self.pathComponent(name)
         _ = try await bridgeDELETE("v1/vault/\(item)", timeout: 20)
+    }
+
+    /// `PATCH /v1/vault/{name}` — the item's new name, and a replacement value when there is one.
+    ///
+    /// One request for both halves, because the host writes them in one transaction: a rename cannot
+    /// land without the value it came with. An absent `value` is not sent at all rather than sent empty,
+    /// so "leave it as it is" is expressible on the wire and distinguishable from a client bug.
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        let item = try Self.pathComponent(name)
+        var body: [String: Any] = ["rename": rename]
+        if let value, !value.isEmpty {
+            body["value"] = value
+        }
+        _ = try await bridgePATCH("v1/vault/\(item)", body: body, timeout: 20)
     }
 
     /// `POST /v1/credentials/cards`. Only the words a card needs are sent; the value is answered later,

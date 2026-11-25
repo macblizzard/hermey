@@ -1,7 +1,12 @@
-//! The vault's read and delete face: what the owner's Vault pane lists, and nothing more.
+//! The vault's face to the owner: what the Vault pane lists, and the two things it can do to an item.
 //!
 //! ```text
 //! GET    /v1/vault            -> 200 {"items": [{name, kind, addedAt, site?, note?}]}
+//! PATCH  /v1/vault/{*name}    -> 200 {"name": "<name after>", "renamed": bool, "replaced": bool}
+//!                            -> 404 {"detail": "no secret by that name"}
+//!                            -> 409 {"detail": "another secret already has that name"} | store failure
+//!                            -> 422 {"detail": "a secret name is letters, digits, …"} | nothing to change
+//!                            -> 413 {"detail": "that value is larger than 4096 bytes"}
 //! DELETE /v1/vault/{*name}    -> 200 {"deleted": "<name>"}
 //!                            -> 404 {"detail": "no secret by that name"}
 //!                            -> 422 {"detail": "a secret name is letters, digits, …"}
@@ -9,15 +14,18 @@
 //! ```
 //!
 //! **A value has nowhere to travel.** The store itself is `secrets.rs`: a name→value map, `0600`, with
-//! no route that reads it. This module serves the *names* only, and it never calls `secrets::get` — the
-//! two routes here cannot see a value, so they cannot return, format or log one. `VaultItem` below has
-//! no field for a value, which is the cheapest proof of that: the type a response is built from could
-//! not carry one even if a later edit wanted it to.
+//! no route that reads it. This module serves the *names* only, and it never calls `secrets::get` — none
+//! of the routes here can see a value, so none can return, format or log one. `VaultItem` below has no
+//! field for a value, which is the cheapest proof of that: the type a response is built from could not
+//! carry one even if a later edit wanted it to.
 //!
-//! **Adding has one door.** Nothing here writes a value. An item appears when the owner answers a
-//! credential card made with `store: true` (`credentials.rs`), which is the same path a bot's
-//! request takes; a Vault pane's "add" is that card, seen from the other side. A second write route
-//! would be a second way into the store, and the point of the vault is that there is exactly one.
+//! **A value goes in two ways, and both are the store's own write.** A new item appears when the owner
+//! answers a credential card made with `store: true` (`credentials.rs`) — the same path a bot's request
+//! takes, and the only way an item is *created*. An item that already exists can have its value
+//! *replaced* by `PATCH /v1/vault/{name}`, which hands the text straight to `secrets::edit` and gets
+//! nothing back but the name it now has. Neither route accepts a name it would not store, and neither
+//! answers with anything that was typed: an edit is write-only in the literal sense, because there is no
+//! shape in this module a value could be read out of.
 //!
 //! **Metadata is an index, not a second store.** `secrets.json` stays what it was — names and values —
 //! because changing its shape would mean migrating every secret the owner has saved. The labels a row
@@ -32,7 +40,7 @@ use crate::routes::{require_device, AppState};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
@@ -124,6 +132,25 @@ fn forget(st: &AppState, name: &str) {
     }
 }
 
+/// Carry a renamed item's labels over to its new name, so the row keeps saying where it is for.
+///
+/// The **secret** is one write (`secrets::edit`); this is the decoration that follows it, in the host's
+/// own document store. Moving the record rather than copying it matters both ways: the new name keeps
+/// its site and its added date, and the old name does not leave labels behind for whatever secret is
+/// saved under it next. A record that cannot be moved leaves the item listed and dated by the store —
+/// the same degraded row an entry from before this index existed gets — so a lost label is never a lost
+/// secret.
+fn move_labels(st: &AppState, from: &str, to: &str) {
+    if from == to {
+        return;
+    }
+    let mut items = load_index(st);
+    if let Some(record) = items.remove(from) {
+        items.insert(to.to_string(), record);
+        save_index(st, items);
+    }
+}
+
 /// `GET /v1/vault` — the names the owner has saved, newest first.
 pub async fn list(
     State(st): State<Arc<AppState>>,
@@ -187,6 +214,94 @@ pub async fn delete_item(
             Ok(Json(json!({ "deleted": name })))
         }
         Ok(false) => Err(bad(StatusCode::NOT_FOUND, "no secret by that name")),
+        Err(why) => Err(bad(StatusCode::CONFLICT, why)),
+    }
+}
+
+/// What an edit carries: the name to move to, and — only when the owner typed one — a new value.
+///
+/// Both are optional, and absent means "leave it alone". This type is the request's shape, never a
+/// response's: nothing in this file serialises it, and `value` has no counterpart on `VaultItem`, so a
+/// value that arrives here has exactly one way back out — into the store.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditRequest {
+    /// The item's new name. Absent, or the name it already has, is a rename that renames nothing.
+    #[serde(default)]
+    rename: Option<String>,
+    /// The replacement value. Absent, empty, or `null` keeps the stored one — a sheet that leaves the
+    /// field blank is asking to change the name only, which is why blank is not a refusal here.
+    #[serde(default)]
+    value: Option<String>,
+}
+
+/// `PATCH /v1/vault/{name}` — rename an item and, when a value is given, replace it. Write-only.
+///
+/// One request carries both halves and one `secrets::edit` writes both, so a rename cannot land without
+/// the value it came with, or the other way round. The answer says which half happened — the name it now
+/// has, and two booleans — and never anything that was typed: the value is handed to the store and the
+/// handler that received it returns before it could be formatted anywhere.
+///
+/// Codes, and why each one exists: the name in the path or the rename target is not a name the store
+/// would hold (422 — checked *before* any lookup, so a path can never be read as one), nothing changed
+/// (422 — a silent success would tell the pane an edit happened), no secret under the old name (404),
+/// another secret already holds the new name (409 — refusing is what stops one item from swallowing
+/// another), a value over the limit (413), the store itself unreadable (409).
+pub async fn edit_item(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Json(body): Json<EditRequest>,
+) -> Result<Json<Value>, Fail> {
+    require_device(&st, &headers)?;
+    if !crate::secrets::valid_name(&name) {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, name_rule()));
+    }
+    // A rename to the name it already has is the same item; treated as no rename at all, so the store
+    // is not asked to move a key onto itself.
+    let rename_to = match body.rename.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+        None => name.clone(),
+        Some(next) if !crate::secrets::valid_name(next) => {
+            return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, name_rule()))
+        }
+        Some(next) => next.to_string(),
+    };
+    // A blank value is "keep the current one", not "store nothing": the sheet starts empty on purpose,
+    // and it is the only reading under which a rename-only edit is expressible.
+    let value = body.value.filter(|v| !v.is_empty());
+    if let Some(text) = value.as_deref() {
+        if text.len() > crate::secrets::MAX_VALUE_BYTES {
+            return Err(bad(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!("that value is larger than {} bytes", crate::secrets::MAX_VALUE_BYTES),
+            ));
+        }
+    }
+    if rename_to == name && value.is_none() {
+        return Err(bad(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "nothing to change: that is already the name, and no value was given",
+        ));
+    }
+
+    // The value goes to the store and comes back as an outcome. There is no branch below in which the
+    // text is a local variable this function could print, and the reply is built from the *names*.
+    match crate::secrets::edit(&st, &name, &rename_to, value.as_deref()) {
+        Ok(crate::secrets::EditOutcome::Changed) => {
+            move_labels(&st, &name, &rename_to);
+            Ok(Json(json!({
+                "name": rename_to,
+                "renamed": rename_to != name,
+                "replaced": value.is_some(),
+            })))
+        }
+        Ok(crate::secrets::EditOutcome::Missing) => {
+            Err(bad(StatusCode::NOT_FOUND, "no secret by that name"))
+        }
+        Ok(crate::secrets::EditOutcome::Taken) => Err(bad(
+            StatusCode::CONFLICT,
+            "another secret already has that name",
+        )),
         Err(why) => Err(bad(StatusCode::CONFLICT, why)),
     }
 }
@@ -462,6 +577,312 @@ mod tests {
             .await
             .expect("DELETE");
         assert_eq!(again.status(), reqwest::StatusCode::NOT_FOUND);
+
+        server.abort();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- editing: a rename and a replacement, write-only ------------------------------------------
+
+    /// The edit's whole job: one request renames the item **and** replaces its value, and the answer
+    /// names the item where it now is without carrying a byte of what was typed.
+    #[tokio::test]
+    async fn an_edit_renames_and_replaces_the_value_in_one_write() {
+        let dir = scratch("edit");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", SECRET).expect("stored");
+        note_stored(&st, "doctolib.de/password", "login", "doctolib.de", "The booking site");
+
+        let answer = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("doctolib.de/password".to_string()),
+            Json(EditRequest {
+                rename: Some("doctolib.de/login".to_string()),
+                value: Some("a-brand-new-value".to_string()),
+            }),
+        )
+        .await
+        .expect("edited")
+        .0;
+
+        assert_eq!(answer["name"], "doctolib.de/login");
+        assert_eq!(answer["renamed"], true);
+        assert_eq!(answer["replaced"], true);
+        // The promise, asserted on the bytes that go back: neither the old value nor the new one.
+        let text = answer.to_string();
+        assert!(!text.contains(SECRET), "the answer carried the old value: {text}");
+        assert!(!text.contains("a-brand-new-value"), "the answer carried the new value: {text}");
+        // …and the reply has no key a value could hide in.
+        let keys: Vec<&String> = answer.as_object().expect("object").keys().collect();
+        for key in keys {
+            assert!(["name", "renamed", "replaced"].contains(&key.as_str()), "unexpected key {key:?}");
+        }
+
+        // Moved, not copied: one item, under the new name, holding the new value.
+        assert!(!crate::secrets::has(&st, "doctolib.de/password"));
+        assert_eq!(
+            crate::secrets::get(&st, "doctolib.de/login").as_deref(),
+            Some("a-brand-new-value")
+        );
+        // …and the labels went with it, so the row still says where it is for.
+        let listed = items(&st).await;
+        assert_eq!(listed["items"].as_array().map(Vec::len), Some(1), "{listed}");
+        assert_eq!(listed["items"][0]["name"], "doctolib.de/login");
+        assert_eq!(listed["items"][0]["site"], "doctolib.de");
+        assert_eq!(listed["items"][0]["note"], "The booking site");
+        assert!(
+            load_index(&st).get("doctolib.de/password").is_none(),
+            "the old name kept labels a later secret would inherit"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A rename with no value keeps the stored one — including the blank string the sheet sends when the
+    /// field was left alone, which is why blank is "keep" here and a refusal on a create.
+    #[tokio::test]
+    async fn an_edit_with_no_value_keeps_the_stored_one() {
+        let dir = scratch("edit-keep");
+        let st = state(&dir);
+        crate::secrets::put(&st, "api.openai.com/api-key", SECRET).expect("stored");
+
+        let renamed = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("api.openai.com/api-key".to_string()),
+            Json(EditRequest { rename: Some("openai.main".to_string()), value: None }),
+        )
+        .await
+        .expect("renamed")
+        .0;
+        assert_eq!(renamed["name"], "openai.main");
+        assert_eq!(renamed["renamed"], true);
+        assert_eq!(renamed["replaced"], false);
+        assert_eq!(crate::secrets::get(&st, "openai.main").as_deref(), Some(SECRET));
+
+        // A blank value is the same request: the sheet starts empty, so an empty string must not be
+        // read as "store nothing" (which the store would refuse) nor as "wipe it".
+        let again = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("openai.main".to_string()),
+            Json(EditRequest { rename: Some("openai.primary".to_string()), value: Some(String::new()) }),
+        )
+        .await
+        .expect("renamed again")
+        .0;
+        assert_eq!(again["replaced"], false);
+        assert_eq!(crate::secrets::get(&st, "openai.primary").as_deref(), Some(SECRET));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every refusal, and the store untouched after each one: a taken name, a name that could be a
+    /// path, a name nobody saved, and a request that asks for no change at all.
+    #[tokio::test]
+    async fn an_edit_refuses_a_taken_name_a_bad_name_a_missing_item_and_an_empty_change() {
+        let dir = scratch("edit-refuse");
+        let st = state(&dir);
+        crate::secrets::put(&st, "api.openai.com/api-key", SECRET).expect("stored");
+        crate::secrets::put(&st, "doctolib.de/password", "hunter2-another").expect("stored");
+
+        // Renaming onto a name another secret holds is a 409 — and it must not be a 200 that swallowed
+        // one item, so both values are still exactly what they were.
+        let taken = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("api.openai.com/api-key".to_string()),
+            Json(EditRequest {
+                rename: Some("doctolib.de/password".to_string()),
+                value: Some("would-have-replaced".to_string()),
+            }),
+        )
+        .await
+        .expect_err("a taken name");
+        assert_eq!(taken.0, StatusCode::CONFLICT);
+        assert_eq!(crate::secrets::get(&st, "api.openai.com/api-key").as_deref(), Some(SECRET));
+        assert_eq!(
+            crate::secrets::get(&st, "doctolib.de/password").as_deref(),
+            Some("hunter2-another")
+        );
+
+        // A name the store would never hold, on either side of the move, is refused before a lookup.
+        for (from, to) in [
+            ("/etc/passwd", None),
+            ("../x", None),
+            ("api.openai.com/api-key", Some("/etc/shadow")),
+            ("api.openai.com/api-key", Some("a//b")),
+        ] {
+            let refused = edit_item(
+                State(Arc::clone(&st)),
+                auth(),
+                Path(from.to_string()),
+                Json(EditRequest {
+                    rename: to.map(str::to_string),
+                    value: Some("some-value".to_string()),
+                }),
+            )
+            .await
+            .expect_err(from);
+            assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY, "{from:?} -> {to:?}");
+        }
+
+        // A secret nobody saved: 404, not a create under the new name.
+        let missing = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("no.such/name".to_string()),
+            Json(EditRequest { rename: None, value: Some("some-value".to_string()) }),
+        )
+        .await
+        .expect_err("missing");
+        assert_eq!(missing.0, StatusCode::NOT_FOUND);
+        assert!(!crate::secrets::has(&st, "no.such/name"), "a 404 created something");
+
+        // Same name, no value: nothing to do is a refusal, not a quiet success.
+        let nothing = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("api.openai.com/api-key".to_string()),
+            Json(EditRequest { rename: Some("api.openai.com/api-key".to_string()), value: None }),
+        )
+        .await
+        .expect_err("nothing to change");
+        assert_eq!(nothing.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+        // Every refusal left both items exactly where they were.
+        assert_eq!(
+            items(&st).await["items"].as_array().map(Vec::len),
+            Some(2),
+            "a refused edit changed the list"
+        );
+        assert_eq!(crate::secrets::get(&st, "api.openai.com/api-key").as_deref(), Some(SECRET));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The write is one write: when it cannot land, neither half of the edit survives.
+    ///
+    /// `save` publishes by renaming a temp file over the store. Occupying that temp path with a
+    /// directory makes the write fail even for root, and the assertion is that the item is still there
+    /// under its **old** name with its **old** value — a rename that went through without its value, or
+    /// the reverse, is exactly what one `save` rules out.
+    #[tokio::test]
+    async fn a_failed_write_leaves_the_whole_item_where_it_was() {
+        let dir = scratch("edit-atomic");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", SECRET).expect("stored");
+        let blocker = dir.join(format!(".secrets.{}.tmp", std::process::id()));
+        std::fs::create_dir_all(&blocker).expect("blocker");
+
+        let refused = edit_item(
+            State(Arc::clone(&st)),
+            auth(),
+            Path("doctolib.de/password".to_string()),
+            Json(EditRequest {
+                rename: Some("doctolib.de/login".to_string()),
+                value: Some("a-brand-new-value".to_string()),
+            }),
+        )
+        .await
+        .expect_err("the store could not be written");
+        assert_eq!(refused.0, StatusCode::CONFLICT);
+        // The refusal quotes neither value.
+        let text = refused.1 .0.to_string();
+        assert!(!text.contains(SECRET), "{text}");
+        assert!(!text.contains("a-brand-new-value"), "{text}");
+
+        assert!(crate::secrets::has(&st, "doctolib.de/password"), "the rename survived a failed write");
+        assert!(!crate::secrets::has(&st, "doctolib.de/login"), "half an edit landed");
+        assert_eq!(
+            crate::secrets::get(&st, "doctolib.de/password").as_deref(),
+            Some(SECRET),
+            "the value must be the old one, not a half-written new one"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The edit is the owner's: no device token, no rename — and nothing written.
+    #[tokio::test]
+    async fn an_edit_needs_the_device_token_and_writes_nothing_without_one() {
+        let dir = scratch("edit-auth");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", SECRET).expect("stored");
+
+        let refused = edit_item(
+            State(Arc::clone(&st)),
+            HeaderMap::new(),
+            Path("doctolib.de/password".to_string()),
+            Json(EditRequest {
+                rename: Some("doctolib.de/login".to_string()),
+                value: Some("a-brand-new-value".to_string()),
+            }),
+        )
+        .await
+        .expect_err("no token");
+        assert_eq!(refused.0, StatusCode::UNAUTHORIZED);
+        assert!(crate::secrets::has(&st, "doctolib.de/password"));
+        assert!(!crate::secrets::has(&st, "doctolib.de/login"));
+        assert_eq!(crate::secrets::get(&st, "doctolib.de/password").as_deref(), Some(SECRET));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The wire: a PATCH on the wildcard path with a `/` in the name, the body it carries, and the
+    /// answer — which has the new name in it and no value anywhere.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_edit_wire_answers_with_a_name_and_never_a_value() {
+        let dir = scratch("edit-wire");
+        let st = state(&dir);
+        crate::secrets::put(&st, "doctolib.de/password", SECRET).expect("stored");
+        note_stored(&st, "doctolib.de/password", "login", "doctolib.de", "The booking site");
+
+        let app = axum::Router::new()
+            .route("/v1/vault", axum::routing::get(list))
+            .route(
+                "/v1/vault/{*name}",
+                axum::routing::delete(delete_item).patch(edit_item),
+            )
+            .with_state(Arc::clone(&st));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::new();
+        let bearer = format!("Bearer {LOCAL}");
+
+        let edited = client
+            .patch(format!("http://{addr}/v1/vault/doctolib.de%2Fpassword"))
+            .header("Authorization", &bearer)
+            .json(&json!({ "rename": "doctolib.de/login", "value": "a-brand-new-value" }))
+            .send()
+            .await
+            .expect("PATCH");
+        assert_eq!(edited.status(), reqwest::StatusCode::OK, "a PATCH on the wildcard must route");
+        let body = edited.text().await.expect("body");
+        assert!(body.contains("doctolib.de/login"), "the answer names the item: {body}");
+        assert!(!body.contains(SECRET), "the wire carried a value: {body}");
+        assert!(!body.contains("a-brand-new-value"), "the wire carried the new value: {body}");
+        assert_eq!(crate::secrets::get(&st, "doctolib.de/login").as_deref(), Some("a-brand-new-value"));
+
+        // The list still shows one item, under the new name, and still with no value in it.
+        let listed = client
+            .get(format!("http://{addr}/v1/vault"))
+            .header("Authorization", &bearer)
+            .send()
+            .await
+            .expect("GET")
+            .text()
+            .await
+            .expect("body");
+        assert!(!listed.contains("a-brand-new-value"), "{listed}");
+        assert!(listed.contains("doctolib.de/login"), "{listed}");
+
+        // The old name is gone: an edit moves the item rather than copying it.
+        let gone = client
+            .patch(format!("http://{addr}/v1/vault/doctolib.de%2Fpassword"))
+            .header("Authorization", &bearer)
+            .json(&json!({ "value": "another" }))
+            .send()
+            .await
+            .expect("PATCH");
+        assert_eq!(gone.status(), reqwest::StatusCode::NOT_FOUND);
 
         server.abort();
         let _ = std::fs::remove_dir_all(&dir);
