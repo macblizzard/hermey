@@ -38,6 +38,20 @@ All notable changes to Hermey are recorded here. The format follows
   the rakazo notice is untouched.
 
 ### Changed
+- **Fifty lines, then a button — on every kind of message.** The scroll freeze the 0.1.670 clamp was
+  for came back with the same two screenshots: a bot's reply whose every identifier is inline code,
+  and the `[ASYNC DELEGATION BATCH COMPLETE — deleg_…]` system row. Neither was a 20,000-character
+  log, so neither tripped the old rule — and the rows that did get clamped were only the plain-prose
+  ones, because anything carrying a `::` marker was exempt. Now every body a row draws goes through
+  one decision and one view (`TranscriptClamp.plan`, `ClampedBody` in `HermeyUI`, shared by the phone
+  and the Mac): past **50 lines**, **4,000 characters** or **40 inline-code spans**, a message shows
+  its first fifty lines as plain text with **Show full message · 312 more lines** beneath it, which
+  becomes **Show less** when opened. The collapsed row parses no markdown, styles no span and
+  measures no table — the markdown a reply always had is built only when you ask for it, off the main
+  actor, and the opened row stays open while you scroll. System, reasoning, tool-run and delegation
+  rows and their cards clamp too; the only exemptions are the four small structured cards (approval,
+  draft-email, infographic, secure-entry), enumerated in one place with the reason each is there. No
+  message is truncated: the full text is kept, selectable, and what Copy copies.
 - **A long chat opens, and a slow open says so.** cody's Bot Chat holds 6,778 messages (~4.5 MB of
   text) and took long enough to open that the phone's `session.resume` timer fired at 120 s and the
   pane stayed empty. Measured on the host: reading the rows is 0.03 s; the engine's *display
