@@ -92,6 +92,23 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **Opening a bot from the phone's list is instant, and tapping it again does nothing.** The 15–20 s
+  "stuck, then it loads" was four things at once. A tap started a `Task` per press and every one of
+  them pushed another conversation screen, so a tap storm during the push animation stacked a screen
+  per tap and each screen ran its own capture/reset/resume against the one shared transcript — two
+  of those interleave at every `await` and each reset makes the other's resume answer be dropped,
+  which is the screen that never leaves "Opening…". The resume itself is answered on a 120 s client
+  timer and queued on the host behind the launch sweep, which walks the whole roster one
+  `session.resume` at a time, so the wait had neither an end nor anything to press. And on the main
+  actor, painting a transcript joined the sent-attachment vault (a JSON read plus the bytes of every
+  picture the chat ever sent) while every user row re-read the bytes of every picture it referenced
+  *in its body* — a disk read per body pass, 25 a second while a turn streams. Now: one open at a
+  time (`beginOpen` answers "no" to a second tap on the same row and cancels the open in flight for a
+  different one), one screen per open, the cached conversation painted synchronously on the tap
+  before any `await` and before the push, the vault join and its picture bytes memoised and run off
+  the main actor, the row's reference join resolved once per row outside its body, the host given
+  `openDeadline` (12 s) before the pane says so beside a **Retry** with the cached rows still behind
+  it, and the launch sweep standing down the moment a person opens a chat.
 - **The View menu no longer offers tabs.** "Show Tab Bar" and "Show All Tabs" were AppKit's automatic
   window-tabbing items: Hermey has one window per scene and never a tab, so both sat above the
   Bigger/Smaller/Default Text Size entries as items that could not do anything. `NSWindow

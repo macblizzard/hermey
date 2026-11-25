@@ -269,6 +269,11 @@ struct ConversationScreen: View {
         }
         .onDisappear {
             model.setVisibleBot(nil)
+            // The open is this screen's business: leaving it cancels the host call and clears the
+            // gate, so the next open (of this bot or another) starts clean. `endOpen` only acts when
+            // this screen's bot is the one opening, so a screen that is disappearing *because* the
+            // next one was pushed cannot cancel the next one.
+            model.endOpen(bot.id)
             Task { await model.reportPresence(bot: nil) }
         }
         .task(id: bot.id) {
@@ -1047,7 +1052,12 @@ struct ConversationScreen: View {
 
     private var composerArea: some View {
         VStack(spacing: 0) {
-            if let error = model.lastSendError {
+            // The open did not finish inside its deadline, or the host refused it. This is *the*
+            // difference between "stuck for 20 seconds" and "this screen is waiting, and here is
+            // the tap that asks again" — the cached rows are still behind it.
+            if let failure = model.openFailure, failure.botID == bot.id {
+                openFailureBar(failure)
+            } else if let error = model.lastSendError {
                 sendErrorBar(error)
             }
 
@@ -1250,6 +1260,35 @@ struct ConversationScreen: View {
         .background(Tokens.dangerSoft)
     }
 
+    /// The open ran out of time, or the host refused it — said in words, with the one tap that asks again.
+    ///
+    /// A screen that is waiting says so; a screen that gave up has to offer the way back. Without
+    /// this the only cure was to leave the chat and come in again (the reported "I have to force
+    /// close the app and open it again").
+    private func openFailureBar(_ failure: AppModel.OpenFailure) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: failure.timedOut ? "clock.arrow.circlepath" : "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(Tokens.danger)
+
+            Text(failure.message)
+                .font(TypeScale.font(TypeScale.sm))
+                .foregroundStyle(Tokens.textSecondary)
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            TextButton("Retry", tone: Tokens.accentText) {
+                Task { await retryOpen() }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tokens.dangerSoft)
+        .accessibilityIdentifier("openFailureBar")
+    }
+
     // MARK: Endless session
 
     /// One thread per bot: resume the stored session, or let the model create and store a
@@ -1257,18 +1296,22 @@ struct ConversationScreen: View {
     /// and the model does the attaching (bot switch, resume, transcript) in one place, so
     /// there is no second resume here.
     private func openConversation() async {
-        // Do NOT paint the cache here. `endlessSession` captures the bot being left, switches, and
-        // restores the target's snapshot — all synchronously, before its first await — and a restore
-        // done *before* the switch makes that capture store the incoming bot's rows under the outgoing
-        // bot's cache. That is how opening another bot and coming back showed the other bot's chat
-        // (reported 2026-11-17). `isBlank` is already computed from the transcript, so a warm restore
-        // means no spinner without any help here.
+        // Do NOT paint the cache here. The paint belongs to `beginOpen`, which runs *synchronously*
+        // on the tap — capture the bot being left, clear, select, restore — so the first frame of
+        // this screen is already the right transcript, and a restore done here would either be a
+        // frame late or (done before the switch) file the incoming bot's rows under the outgoing
+        // bot's cache, which is how opening another bot and coming back showed the other bot's chat
+        // (reported 2026-11-17).
+        //
+        // `openNow` is also the one-open gate: a second tap on the same row has already been
+        // answered "no" by `beginOpen`, a tap on another row has cancelled this open, and the host
+        // gets `openDeadline` seconds before the pane offers a Retry instead of a frozen screen.
         isOpening = true
 
         // [B2 navigation] This screen *is* the navigation: the row that pushed it selected this bot,
         // and `.task(id: bot.id)` opens the conversation the person just asked for. `select: true` is
         // correct here and nowhere else in this file.
-        if let sid = await model.endlessSession(for: bot.id, select: true) {
+        if let sid = await model.openNow(bot.id) {
             sessionID = sid
         } else {
             sessionID = nil
@@ -1276,6 +1319,18 @@ struct ConversationScreen: View {
 
         // Requests that were already open when this session was resumed belong in the
         // transcript, not in a sheet the user never asked for; only *arrivals* pop one.
+        lastSeenRequestCount = model.pendingRequests.count
+        hasLoaded = true
+        isOpening = false
+        openScrollSignal += 1
+    }
+
+    /// Ask the host again after the open's deadline or a refusal. The cached rows never left.
+    private func retryOpen() async {
+        isOpening = true
+        if let sid = await model.retryOpen(bot.id) {
+            sessionID = sid
+        }
         lastSeenRequestCount = model.pendingRequests.count
         hasLoaded = true
         isOpening = false

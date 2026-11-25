@@ -192,14 +192,29 @@ struct BotsTab: View {
         guard url.scheme == "hermey", url.host == "bot" else { return }
         let id = url.lastPathComponent
         guard !id.isEmpty, let bot = model.bots.first(where: { $0.id == id }) else { return }
+        // A banner is a tap on that bot's row: the same one-open gate and the same cached paint.
+        _ = model.beginOpen(bot.id)
         path = NavigationPath()
+        path.append(bot)
+    }
+
+    /// One screen per open.
+    ///
+    /// `beginOpen` has already accepted this tap, so this is the navigation half of it and nothing
+    /// else. A tap storm during the push animation used to append the bot again for every tap: the
+    /// stack grew a screen per tap, each one ran its own `openConversation`, and the app had to be
+    /// force-quit. Now the bot that is already on top is never pushed a second time, and a
+    /// *different* bot replaces the screen instead of stacking on it — so nothing can be pushed
+    /// twice and going back is always one screen.
+    private func openOnTheStack(_ bot: Bot) {
+        if path.count > 0 { path.removeLast() }
         path.append(bot)
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             BotListScreen(model: model,
-                          onGraphite: { path.append($0) },
+                          onGraphite: { openOnTheStack($0) },
                           onOpenRoom: { path.append($0) })
                 .navigationDestination(for: Bot.self) { bot in
                     ConversationScreen(model: model, bot: bot)

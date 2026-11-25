@@ -30,6 +30,9 @@ struct MobileTranscriptRow: View {
     @State private var showingSelection = false
     /// Pictures fetched back from the host, by attachment name.
     @State private var fetchedImages: [String: Data] = [:]
+    /// The host's `@image:` / `@file:` references joined to bytes this device holds, resolved once
+    /// per row off the main actor (see `resolveReferencedAttachments`).
+    @State private var resolvedAttachments: [SentAttachment] = []
     /// The pictures the viewer is showing, if any.
     @State private var viewingImage: ViewedGallery?
     /// This row's markdown, parsed once per text rather than once per body pass.
@@ -125,6 +128,9 @@ struct MobileTranscriptRow: View {
             }
         )
         .onPreferenceChange(RowFrameKey.self) { rowFrame = $0 }
+        // Once per row, off the main actor: the reference join is a disk read, and a body pass
+        // must never be one. `id: entry.id` keeps it to the message this row actually draws.
+        .task(id: entry.id) { await resolveReferencedAttachments() }
         .popover(isPresented: $showingActions,
                  attachmentAnchor: .point(anchorPoint),
                  arrowEdge: opensAbove ? .bottom : .top) {
@@ -440,8 +446,26 @@ struct MobileTranscriptRow: View {
     }
 
     /// Everything the bubble should draw for this message.
+    ///
+    /// A row with no attachments of its own falls back to the host's `@image:` / `@file:`
+    /// references, which are resolved **once, off the main actor**, into `resolvedAttachments`.
+    /// This used to be computed inline: every body pass of every user row read each referenced
+    /// picture's bytes off the disk on the main thread, and a row is rebuilt on every body pass —
+    /// including the 25 a second a streaming turn causes (reported 2026-11-25: opening a bot froze
+    /// for 15–20 s and a second tap crashed the app).
     private var bubbleAttachments: [SentAttachment] {
-        entry.attachments.isEmpty ? entry.referenceAttachments : entry.attachments
+        entry.attachments.isEmpty ? resolvedAttachments : entry.attachments
+    }
+
+    /// The reference join, done once per row.
+    private func resolveReferencedAttachments() async {
+        guard entry.attachments.isEmpty, entry.role == .user else { return }
+        let entry = self.entry
+        let resolved = await Task.detached(priority: .userInitiated) {
+            entry.referenceAttachments
+        }.value
+        guard !resolved.isEmpty else { return }
+        resolvedAttachments = resolved
     }
 
     /// Thumbnails arrive with the message, in the order they were attached.
