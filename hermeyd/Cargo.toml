@@ -1,6 +1,6 @@
 [package]
 name = "hermeyd"
-version = "0.8.4"
+version = "0.8.6"
 edition = "2021"
 description = "Hermey host service: pairing, devices, 30s tickets, WS relay front door"
 license = "MIT"

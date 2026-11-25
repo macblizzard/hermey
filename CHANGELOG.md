@@ -1689,3 +1689,22 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed (hermeyd)
 - `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache
   with its cursor, and serves the vault's name-only list.
+
+## [0.1.670] — 2026-11-25
+
+### Fixed
+- **Scrolling a long chat no longer freezes the app.** Grouping and the visible rows were rebuilt from the whole
+  transcript on every page that landed (4.5 M rows walked in ten seconds of scrolling); they are spliced now, so a
+  page costs its own 400 rows. Tool payloads are parsed once, not twice per frame.
+- **One huge log message no longer hangs a row.** Anything over 4,000 characters or 60 lines renders as a 24-line
+  preview with "Show full message", which parses on demand instead of drawing hundreds of markdown blocks.
+
+### Added
+- **View Log copies a portion**: last 100 / last 500 / shown / all, each respecting the active filter, with the
+  pool size in the label.
+- **Send log to host**: one tap writes the same bytes to /var/log/hermey/ on the host (0640, never overwritten,
+  2 MiB cap) and shows you the path — so a report comes with a pointer instead of a paste.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.6**: the client-log upload route, and `session.set_hidden` is allowed through the bridge so the
+  2,000-message roll actually takes effect.

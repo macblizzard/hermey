@@ -136,6 +136,9 @@ pub const CLIENT_METHODS: &[&str] = &[
     "session.events.since",
     "session.events.stats",
     "session.title",
+    // The chat ceiling archives the old conversation by hiding it: without this the roll is refused
+    // (the engine has supported the method all along) and a long chat never rolls.
+    "session.set_hidden",
     "session.close",
     "session.archive",
     "session.delete",
