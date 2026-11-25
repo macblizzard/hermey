@@ -33,7 +33,9 @@ struct BotSettingsDoor: View {
             loadMemory: { try await model.memory(for: bot.id) },
             deleteBot: { try await model.deleteBot(bot.id) },
             avatar: app.botAvatars[bot.id],
-            saveAvatar: { document in try await app.saveBotAvatar(botID: bot.id, document: document) })
+            saveAvatar: { selection in
+                try await app.saveBotAvatar(botID: bot.id, selection: selection)
+            })
         .sheet(item: $soulBot) { bot in
             SoulEditorSheet(
                 botName: bot.displayName,

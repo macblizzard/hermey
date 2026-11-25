@@ -35,10 +35,15 @@ struct ConversationPane: View {
 
     /// The bot's swatch. A window with three bots never leaves you guessing whose conversation you
     /// are typing into: your own bubbles are drawn in the colour of the bot they go to.
+    ///
+    /// That colour is `BotAvatarTint.resolve`'s answer and nothing else — the drawn avatar's stored
+    /// colour when the bot has one, its shape face otherwise. The expression used to be written out
+    /// here (and again on the phone), which is why a bot whose avatar was green still bubbled blue.
     private var botTint: Color {
         guard let id = model.selectedBotID else { return Tokens.control }
-        return (store.botFaces[id]?.identity(for: id).color
-            ?? BotAvatarIdentity.resolve(identity: id).color).color
+        return BotAvatarTint.resolve(botID: id,
+                                     face: store.botFaces[id],
+                                     document: store.botAvatars[id]).color
     }
 
     var body: some View {

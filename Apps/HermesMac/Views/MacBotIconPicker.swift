@@ -116,9 +116,14 @@ struct MacBotIconService {
         return documents
     }
 
-    /// Save or clear one bot's avatar. Only `definition` and `color` are sent: the chosen face is
-    /// the picker's, and a save here must not disturb it.
-    func saveAvatar(botID: String, document: BotAvatarDocument?) async throws {
+    /// Save or clear one bot's face, in one request.
+    ///
+    /// Both halves travel together because they are alternatives: a classic face (`avatar`) and a
+    /// drawn avatar (`definition` + `color` + `material`). Writing one without clearing the other
+    /// leaves a bot whose definition outranks the face it just chose — it would look like the picker
+    /// did nothing — or whose old face reappears the moment the definition is reset. `face` and
+    /// `document` are both sent every time, a null clearing that half.
+    func saveAvatar(botID: String, document: BotAvatarDocument?, face: BotFaceChoice?) async throws {
         let url = try address.apiOrigin().appendingPathComponent("v1/bot-icons")
             .appendingPathComponent(BotIconPath.component(for: botID))
         let definition: Any
@@ -132,7 +137,8 @@ struct MacBotIconService {
         // material when the definition is null, so a reset leaves nothing behind.
         let body: [String: Any] = ["definition": definition,
                                    "color": document?.color ?? NSNull(),
-                                   "material": document?.material.rawValue ?? NSNull()]
+                                   "material": document?.material.rawValue ?? NSNull(),
+                                   "avatar": face?.raw ?? NSNull()]
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
         _ = try await request(url: url, method: "PUT", body: data)
     }

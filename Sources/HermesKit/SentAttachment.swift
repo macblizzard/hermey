@@ -89,6 +89,30 @@ public enum SentAttachmentVault {
 
     // MARK: Reading
 
+    /// The vault's parsed records, and the bytes of the pictures they name, kept per session.
+    ///
+    /// Both are disk reads, and both used to happen on the main actor every time a transcript was
+    /// painted, adopted or warmed — once per row that carries a picture. A conversation that has
+    /// sent pictures therefore paid for every one of them again on every open, inside a body pass.
+    /// Three rules keep this honest: it is keyed by session, it is dropped when that session's vault
+    /// is written, and it is bounded (a few dozen records and images, then it starts again).
+    private static let cacheLock = NSLock()
+    private static var recordCache: [String: [Record]] = [:]
+    private static var imageCache: [String: Data] = [:]
+    private static let cacheLimit = 24
+
+    /// `decorate`, off the caller's actor.
+    ///
+    /// The join itself is small but it is file I/O, and every caller of it is a `@MainActor` model
+    /// that is about to publish a transcript the user is waiting to see. Keeping it off the main
+    /// actor is what stops an open from being a disk read in front of a screen.
+    public static func decorated(_ entries: [TranscriptEntry],
+                                sessionID: String) async -> [TranscriptEntry] {
+        await Task.detached(priority: .userInitiated) {
+            decorate(entries, sessionID: sessionID)
+        }.value
+    }
+
     /// Attaches the stored pictures to the user rows they belong to, oldest record to oldest row.
     public static func decorate(_ entries: [TranscriptEntry], sessionID: String) -> [TranscriptEntry] {
         let records = read(sessionID: sessionID)
@@ -123,11 +147,32 @@ public enum SentAttachmentVault {
         return record.items.map { item in
             var data: Data?
             if let file = item.file, let directory {
-                data = try? Data(contentsOf: directory.appendingPathComponent(file))
+                data = cachedBytes(named: file, in: directory)
             }
             return SentAttachment(id: item.id, name: item.name, isImage: item.isImage,
                                   imageData: data, size: item.size)
         }
+    }
+
+    /// The bytes of one vaulted picture, read once per launch rather than once per row.
+    ///
+    /// A row that carries three photographs asked the disk for three files every time the row was
+    /// built, and a row is built again on every body pass — including the ones during a stream.
+    private static func cachedBytes(named file: String, in directory: URL) -> Data? {
+        cacheLock.lock()
+        if let hit = imageCache[file] {
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
+        guard let data = try? Data(contentsOf: directory.appendingPathComponent(file)) else {
+            return nil
+        }
+        cacheLock.lock()
+        if imageCache.count >= cacheLimit { imageCache.removeAll(keepingCapacity: true) }
+        imageCache[file] = data
+        cacheLock.unlock()
+        return data
     }
 
     // MARK: Plumbing
@@ -150,16 +195,30 @@ public enum SentAttachmentVault {
     }
 
     private static func read(sessionID: String) -> [Record] {
+        cacheLock.lock()
+        if let hit = recordCache[sessionID] {
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
         guard let url = url(sessionID: sessionID),
               let data = try? Data(contentsOf: url),
               let records = try? JSONDecoder().decode([Record].self, from: data)
         else { return [] }
+        cacheLock.lock()
+        if recordCache.count >= cacheLimit { recordCache.removeAll(keepingCapacity: true) }
+        recordCache[sessionID] = records
+        cacheLock.unlock()
         return records
     }
 
     private static func write(_ records: [Record], sessionID: String) {
         guard let url = url(sessionID: sessionID), let data = try? JSONEncoder().encode(records) else { return }
         try? data.write(to: url, options: .atomic)
+        // The file just changed under the cache: a later `decorate` must read this, not yesterday's.
+        cacheLock.lock()
+        recordCache[sessionID] = records
+        cacheLock.unlock()
     }
 }
 

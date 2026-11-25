@@ -84,6 +84,22 @@ struct BotListScreen: View {
         lastOpenedBotsJSON = json
     }
 
+    /// One tap, one open.
+    ///
+    /// `beginOpen` is the gate and it is deliberately first: it paints the cached conversation
+    /// synchronously (before the push, so the first frame of the next screen is already the right
+    /// transcript), and it answers `false` for a bot that is already opening — which makes a second
+    /// tap on the same row *nothing at all*, rather than a second `Task`, a second push and a second
+    /// resume racing the first. A tap on a different row cancels the open in flight.
+    ///
+    /// The push itself stays with the tab that owns the navigation stack: `onGraphite` is called
+    /// once per accepted tap, and the tab keeps one screen for one open.
+    private func openBot(_ bot: Bot) {
+        guard model.beginOpen(bot.id) else { return }
+        recordOpened(bot)
+        onGraphite(bot)
+    }
+
     private var hiddenBots: [Bot] {
         model.bots.filter { model.isHidden(botID: $0.id) }
     }
@@ -287,8 +303,7 @@ struct BotListScreen: View {
                                  showWaiting = false
                                  model.markBotRead(botID)
                                  if let bot = model.bots.first(where: { $0.id == botID }) {
-                                     recordOpened(bot)
-                                     onGraphite(bot)
+                                     openBot(bot)
                                  }
                              },
                              onUpdateHost: {
@@ -367,10 +382,11 @@ struct BotListScreen: View {
     private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
 
     private func row(for bot: Bot) -> some View {
-        Button {
+        // The row that is opening says so: the tap registered, and pressing it again is nothing.
+        let opening = model.openingBotID == bot.id
+        return Button {
             Haptics.selection()
-            recordOpened(bot)
-            onGraphite(bot)
+            openBot(bot)
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
                 // A bot always has a face: the one stored for it, otherwise the body and colour its
@@ -431,7 +447,7 @@ struct BotListScreen: View {
 
                     }
 
-                    Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
+                    Text(opening ? "Opening…" : (model.botPreviews[bot.id] ?? subtitle(for: bot)))
                         .font(TypeScale.font(metrics.previewSize,
                                              weight: model.hasUnread(bot.id) ? .medium : .regular))
                         .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
@@ -450,6 +466,7 @@ struct BotListScreen: View {
             .padding(.vertical, metrics.rowPadding)
             .frame(minHeight: metrics.rowHeight)
             .contentShape(Rectangle())
+            .opacity(opening ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .contextMenu {

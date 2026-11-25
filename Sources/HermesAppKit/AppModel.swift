@@ -381,6 +381,42 @@ public final class AppModel: ObservableObject {
     /// the pane say what is actually happening, and it is false the moment anything is on screen.
     @Published public private(set) var isOpeningConversation = false
 
+    // MARK: One open at a time
+
+    /// The bot whose open is in flight, or `nil`.
+    ///
+    /// A row tap starts an open; the row reads this to show that its tap landed, and a second tap on
+    /// the *same* row while this is set is nothing at all. That is the whole answer to "if I keep
+    /// tapping it crashes": a tap storm used to start one `Task` per tap, each of them pushing its
+    /// own screen and each of them capturing/resetting/resuming the one shared transcript.
+    @Published public private(set) var openingBotID: String?
+
+    /// Why the last open did not finish, for the conversation to say out loud beside a Retry.
+    ///
+    /// The host answers `session.resume` on a 120-second timer, and a resume that queues behind a
+    /// launch sweep (or an agent build) can be silent for longer than anyone will wait without
+    /// pressing something. A deadline and this value are how that wait stops being a frozen pane.
+    public struct OpenFailure: Equatable {
+        public var botID: String
+        public var message: String
+        public var timedOut: Bool
+    }
+    @Published public private(set) var openFailure: OpenFailure?
+
+    /// The open in flight, so a newer open can cancel it and a disappearing screen can too.
+    private var openTask: Task<SessionID?, Never>?
+    /// Which open the state above belongs to. A late answer from a superseded open must not clear
+    /// the newer one's state.
+    private var openGeneration = 0
+    /// Bumped by every user open, so the launch sweep can tell that somebody is waiting.
+    private var userOpenGeneration = 0
+    /// How long the host gets before the pane offers a Retry.
+    ///
+    /// Short on purpose: the cached rows are already on screen, so a wait longer than this is
+    /// indistinguishable from a broken screen. Nothing is abandoned — the call is left running and
+    /// a late answer still fills the chat — but the screen stops looking frozen and says so.
+    public static let openDeadline: TimeInterval = 12
+
     /// What a bot's conversation looked like the last time it was on screen.
     ///
     /// Switching bots has to clear everything the previous bot left behind (its transcript under
@@ -1296,6 +1332,119 @@ public final class AppModel: ObservableObject {
         return String(line.prefix(120))
     }
 
+    /// Begin **one** open of a bot: the synchronous half, before any screen is pushed.
+    ///
+    /// Everything here runs before the first `await`, which is the point: the cached snapshot is on
+    /// screen before the navigation animation starts, so a conversation this device already holds
+    /// never shows an empty pane. The order is the one `endlessSession` documents and must keep —
+    /// capture the bot being left, clear, select, restore — and it is done here rather than in the
+    /// pushed screen so the first frame the user sees is already the right transcript.
+    ///
+    /// Returns `false` when this bot is already opening. A second tap on the same row is then
+    /// *nothing*: no second `Task`, no second push, no second resume. A tap on a different bot
+    /// cancels the open in flight and starts this one instead.
+    @discardableResult
+    public func beginOpen(_ botID: String) -> Bool {
+        guard openingBotID != botID else { return false }
+        openTask?.cancel()
+        openTask = nil
+        openGeneration &+= 1
+        // The user is waiting: the launch sweep stands down (see `prefetchConversations`).
+        userOpenGeneration &+= 1
+        openingBotID = botID
+        openFailure = nil
+        if botID != selectedBotID {
+            captureConversation(for: selectedBotID)
+            resetForBotSwitch()
+            // [B2 navigation] only a tap reaches this: `beginOpen` is the row (or the banner it
+            // stands in for), and nothing background calls it.
+            selectedBotID = botID
+            activeRoom = nil
+        }
+        // Synchronous, and ahead of every host call: this is the paint that makes an open instant.
+        // A pane that already holds *this* bot's rows is left alone — it may be a conversation the
+        // person picked in All Sessions (`openSession`), and restoring the bot's snapshot over it
+        // would replace what they just chose.
+        let alreadyHolding = transcriptOwner == botID && !transcript.isEmpty
+        let restored = alreadyHolding || restoreConversation(for: botID)
+        isOpeningConversation = !restored
+        return true
+    }
+
+    /// Finish the open `beginOpen` started, on a deadline, with a failure the screen can offer a Retry for.
+    ///
+    /// The host call was never a blocking wait — `session.resume` is an `await` — but it was an
+    /// unbounded one: the client's own timer is 120 s, and a resume queued behind the launch sweep
+    /// on the host is indistinguishable from a frozen app. The deadline puts a sentence and a Retry
+    /// over the cached rows after `openDeadline`; the call itself keeps running, so a resume that
+    /// answers late still fills the chat and takes the sentence away.
+    @discardableResult
+    public func openNow(_ botID: String) async -> SessionID? {
+        // A conversation can be on screen without a row tap: a banner, a deep link, a restore. The
+        // gate is the same one the row uses, so those paths paint the cache and coalesce too.
+        if openingBotID != botID {
+            guard beginOpen(botID) else { return nil }
+        } else if let inFlight = openTask {
+            // Already running: a second caller (a `.task` that fired again, a banner and a tap
+            // landing together) waits for *that* open rather than starting a competing one.
+            return await inFlight.value
+        }
+        let generation = openGeneration
+        // [B2 navigation] `select: true` is correct here and only here: `openNow` is what a tap
+        // (or the banner that stands in for one) resolves to.
+        let work = Task { @MainActor in await self.endlessSession(for: botID, select: true) }
+        openTask = work
+        // The pane stops waiting at the deadline; the host call is left running, because it is the
+        // only thing that can answer and a resume that lands late still fills the chat. What the
+        // deadline buys is the sentence and the Retry over the cached rows — a screen that is
+        // waiting, instead of one that looks broken.
+        let watchdog = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.openDeadline))
+            guard !Task.isCancelled, generation == self.openGeneration else { return }
+            self.openFailure = OpenFailure(botID: botID,
+                                           message: "the host has not answered in "
+                                                    + "\(Int(Self.openDeadline))s",
+                                           timedOut: true)
+        }
+        let opened = await work.value
+        watchdog.cancel()
+        // A newer open owns the state now: its own `openNow` will clear what it set.
+        guard generation == openGeneration else { return opened }
+        openTask = nil
+        isOpeningConversation = false
+        openingBotID = nil
+        if let opened {
+            // It answered after all, possibly after the deadline: take the sentence away.
+            openFailure = nil
+        } else if !work.isCancelled {
+            // Not a cancellation: the host answered, and refused. The reason is already in
+            // `lastSendError` (see `reportOpenFailure`).
+            openFailure = OpenFailure(botID: botID,
+                                      message: lastSendError ?? "the conversation could not be opened",
+                                      timedOut: false)
+        }
+        return opened
+    }
+
+    /// Leave an open. Called when the conversation's screen goes away, and only for its own bot: a
+    /// screen that is disappearing *because* the next one was pushed must not cancel the next one.
+    public func endOpen(_ botID: String) {
+        guard openingBotID == botID else { return }
+        openTask?.cancel()
+        openTask = nil
+        openGeneration &+= 1
+        openingBotID = nil
+        isOpeningConversation = false
+    }
+
+    /// Ask the host again for the conversation on screen, after the deadline or a refusal.
+    public func retryOpen(_ botID: String) async -> SessionID? {
+        openFailure = nil
+        openingBotID = nil
+        _ = beginOpen(botID)
+        return await openNow(botID)
+    }
+
     /// Switch bots.
     ///
     /// Everything on screen belongs to the bot it came from — the transcript, the pending
@@ -1304,6 +1453,9 @@ public final class AppModel: ObservableObject {
     /// bot's conversation under the new bot's name.
     public func selectBot(_ id: String?) async {
         let resolved = id ?? Self.defaultBot(in: bots, hostName: hostName)?.id
+        // A second entry for the bot whose open is already in flight is the tap storm, not a second
+        // switch: it would capture the half-restored pane and resume the same conversation again.
+        if let resolved, resolved == openingBotID { return }
         guard resolved != selectedBotID else {
             await loadSessions()
             return
@@ -1359,8 +1511,15 @@ public final class AppModel: ObservableObject {
         // `connection.isLive` is the pairing answer that matters here: an unpaired model has no
         // transport, and the socket is the thing this sweep reads through.
         guard connection.isLive, bots.count > 1, !isPrefetching else { return }
+        // A sweep is a convenience; an open is what the person asked for. Never start one behind an
+        // open, and never begin one at all while the screen is not idle.
+        guard openingBotID == nil else { return }
         isPrefetching = true
         defer { isPrefetching = false }
+        // Which user open this sweep is walking under. A tap bumps it, and the walk stops: the host
+        // answers one `session.resume` at a time, so every bot left in this loop is a bot the
+        // person opening a chat would be queued behind.
+        let sweepUnder = userOpenGeneration
 
         // The host's own view of what it is holding, taken before the sweep: a runtime id here is a
         // pane somebody has attached, and the sweep must never close it. Unknown (a client with no
@@ -1375,6 +1534,10 @@ public final class AppModel: ObservableObject {
         var stranded: [String] = []
         for bot in bots.prefix(Self.conversationCacheLimit) {
             guard connection.isLive else { break }
+            // Somebody is opening a chat right now: the walk ends here rather than making their
+            // resume queue behind the rest of the roster. The one warm already in flight finishes
+            // (0.03–0.7 s measured) and nothing more is started.
+            if openingBotID != nil || sweepUnder != userOpenGeneration { break }
             // The conversation on screen has its own lifecycle; the sweep must not touch it.
             if bot.id == selectedBotID { continue }
             // Already warm and recent: another read buys nothing.
@@ -1401,7 +1564,7 @@ public final class AppModel: ObservableObject {
                     // warm minted — the only id `session.close` below will accept.
                     let resumed = try await client.warmResume(stored, profile: bot.id)
                     let seconds = Date().timeIntervalSince(started)
-                    warmedThisBot = warmConversation(bot.id, session: stored, resumed: resumed)
+                    warmedThisBot = await warmConversation(bot.id, session: stored, resumed: resumed)
                     if warmedThisBot { resumeSeconds.append(seconds) }
                     // Released before the next bot: one at a time is the whole point. A session that
                     // was already live answers with *its* runtime id and is not ours to close, and a
@@ -1411,6 +1574,10 @@ public final class AppModel: ObservableObject {
                         catch { stranded.append("\(bot.id): \(error.localizedDescription)") }
                     }
                     break
+                } catch is CancellationError {
+                    // Superseded: a person opened a chat, or the app went away. Not a failure, and
+                    // not something to report — the summary would be about a walk nobody finished.
+                    return
                 } catch {
                     lastError = error
                     guard attempt == 0, Self.isStaleSessionError(error) else { break }
@@ -1513,12 +1680,16 @@ public final class AppModel: ObservableObject {
     /// with nothing in it yet.
     @discardableResult
     private func warmConversation(_ botID: String, session: SessionID,
-                                  resumed: SessionResume) -> Bool {
+                                  resumed: SessionResume) async -> Bool {
         let entries = resumed.entries
         guard !entries.isEmpty else { return false }
+        // The vault join (one small JSON read, plus the bytes of the pictures this chat sent) is
+        // disk work: it is done off the main actor, because this sweep runs behind a screen the
+        // person is already using, and a roster-wide pass used to hold the main thread for it.
+        let decorated = await SentAttachmentVault.decorated(entries, sessionID: session)
         conversationCache[botID] = ConversationSnapshot(
             sessionID: session,
-            entries: SentAttachmentVault.decorate(entries, sessionID: session),
+            entries: decorated,
             // No cursor, and deliberately: paging is answered from the bridge's copy of *this*
             // connection's resume, and this one is closed before the next bot. "Load earlier"
             // therefore waits for the real resume on open — which a paged snapshot always gets,
@@ -2020,8 +2191,13 @@ public final class AppModel: ObservableObject {
         // After the reads, not before them: the point of the check is what moved while they ran.
         let owner = botID ?? selectedBotID
         if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
+        // The vault join reads one small file and the bytes of the pictures this chat sent, so it
+        // runs off the main actor; the owner is checked again afterwards because a bot switch during
+        // that read is exactly what the check exists to catch.
+        let decorated = await SentAttachmentVault.decorated(cached.messages, sessionID: id)
+        if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
         selectedSessionID = id
-        transcript = SentAttachmentVault.decorate(cached.messages, sessionID: id)
+        transcript = decorated
         if let index { transcript = index.attachMissing(to: transcript) }
         transcriptOwner = owner
         earlierCursor = cached.cursor

@@ -4,6 +4,29 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **The Avatar tab offers the Classic faces again, beside your own.** A new **Classic** row — the
+  eight bodies and palette colours this app already ships, as eight whole faces rather than a body
+  picker and a colour picker that could disagree — sits under the custom presets, scrolls if the
+  sheet is narrow, and says which of the two families the bot is on now. The two are alternatives in
+  storage, not a pair: saving a Classic face clears the bot's drawn avatar (`definition`, `color`,
+  `material`), and saving a preset or a Random pick clears the Classic face — one request either
+  way, so a bot cannot wear a drawing that outranks the face you just chose. Reset clears both and
+  leaves the face the bot's id derives. Nothing new is drawn: the faces are the existing tables, and
+  the rakazo notice is untouched.
+
+### Changed
+- **A bot's message is drawn in that bot's colour, not the app's.** One resolver
+  (`BotAvatarTint.resolve`) now answers "what colour is this bot" — its drawn avatar's stored colour
+  when it has one, its shape or photo face otherwise, the id's own otherwise — and every surface
+  that shows a bot's identity asks it, so a green avatar no longer keeps the blue bubble its old
+  shape face picked. Your own bubble is unchanged (the same 0.16 wash and 0.45 border, in the bot's
+  colour, as before); a bot's *own* bubble — in a room, and a bot-to-bot message on both apps — is
+  filled with its colour deepened on Midnight and paled on Parchment, edged in the colour itself,
+  and written in the ink that measures best against that fill rather than in an assumed white. A
+  bot whose avatar is nearly white on Parchment is the one face whose bubble is carried by its
+  border alone.
+
+### Added
 - **A bot's face can be made of glass.** A new `material` on the avatar document (`solid` | `glass`,
   absent meaning solid) picks between the 0.1.648 flat body and the reference's lit one: a three-stop
   ramp, one specular streak, a Fresnel rim and a contact shadow, with the eight states as an accent
@@ -92,6 +115,23 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **Opening a bot from the phone's list is instant, and tapping it again does nothing.** The 15–20 s
+  "stuck, then it loads" was four things at once. A tap started a `Task` per press and every one of
+  them pushed another conversation screen, so a tap storm during the push animation stacked a screen
+  per tap and each screen ran its own capture/reset/resume against the one shared transcript — two
+  of those interleave at every `await` and each reset makes the other's resume answer be dropped,
+  which is the screen that never leaves "Opening…". The resume itself is answered on a 120 s client
+  timer and queued on the host behind the launch sweep, which walks the whole roster one
+  `session.resume` at a time, so the wait had neither an end nor anything to press. And on the main
+  actor, painting a transcript joined the sent-attachment vault (a JSON read plus the bytes of every
+  picture the chat ever sent) while every user row re-read the bytes of every picture it referenced
+  *in its body* — a disk read per body pass, 25 a second while a turn streams. Now: one open at a
+  time (`beginOpen` answers "no" to a second tap on the same row and cancels the open in flight for a
+  different one), one screen per open, the cached conversation painted synchronously on the tap
+  before any `await` and before the push, the vault join and its picture bytes memoised and run off
+  the main actor, the row's reference join resolved once per row outside its body, the host given
+  `openDeadline` (12 s) before the pane says so beside a **Retry** with the cached rows still behind
+  it, and the launch sweep standing down the moment a person opens a chat.
 - **The View menu no longer offers tabs.** "Show Tab Bar" and "Show All Tabs" were AppKit's automatic
   window-tabbing items: Hermey has one window per scene and never a tab, so both sat above the
   Bigger/Smaller/Default Text Size entries as items that could not do anything. `NSWindow
@@ -1454,3 +1494,24 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count
   keeps a clear margin inside the rounded corner instead of running to the card's edge.
+
+## [0.1.660] — 2026-11-25
+
+### Added
+- **The bubble takes the bot's colour.** A bot's own messages are tinted with that bot's avatar colour — so a
+  green bot is green in the list, in the header and in its bubbles — with the ink measured against the fill for
+  contrast. Your own bubbles are unchanged.
+- **The classic faces are back as a choice.** The Avatar tab has a CLASSIC row of the eight original faces and
+  colours: pick one and the bot wears exactly the face it had before drawable avatars, or customise one instead.
+  The two never mix.
+
+### Changed
+- **Softer default shapes.** The twelve starting silhouettes are filleted — corners rounded by 5% of the shape's
+  size — so they read softly at 26 pt instead of knife-edged. A definition you paste yourself is left exactly as
+  you wrote it.
+
+### Fixed
+- **Opening a bot on the iPhone is instant.** The attachment vault was read from disk inside the open (and again
+  inside every transcript row's body), and the resume call queued behind the launch sweep — that was the 15–20
+  second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored
+  instead of pushing a second screen and crashing.

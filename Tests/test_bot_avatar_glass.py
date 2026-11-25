@@ -273,8 +273,12 @@ class TheSizeThresholds(unittest.TestCase):
         self.assertIn("The pet (96 pt) and the editor's preview (200–320 pt) are well above it",
                       prose(paint))
         editor = read(EDITOR)
-        preview = editor.split("size: 200")[0].split("OpenBotAvatarView(")[-1]
+        # Retargeted when the Classic row arrived: the editor now holds two 200 pt previews (the
+        # drawn one and a classic face), so the block is found by its own call rather than by the
+        # first `size: 200` in the file.
+        preview = editor.split("OpenBotAvatarView(definition: draft,")[1].split("size: 200")[0]
         self.assertIn("material: material", preview)
+        self.assertIn("size: 200", editor)
         self.assertGreaterEqual(200, 48, "the preview must be above the full-stack threshold")
         self.assertGreaterEqual(200, 64, "and above the catchlight's")
 
@@ -674,7 +678,9 @@ class TheEditorOffersEveryRow(unittest.TestCase):
 
     def test_saving_stores_the_material(self):
         editor = read(EDITOR)
-        self.assertIn("material: material", editor.split("try await save(BotAvatarDocument(")[1])
+        # Retargeted when the Classic row arrived: the document travels inside a `BotAvatarSelection`
+        # now (one family saved, the other cleared), and the material still goes with it.
+        self.assertIn("material: material", editor.split("BotAvatarSelection.custom(BotAvatarDocument(")[1])
         self.assertIn("stored.material != material", editor, "a material change must enable Save")
 
     def test_the_preview_is_big_enough_to_show_the_streak(self):

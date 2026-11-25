@@ -118,8 +118,8 @@ struct BotIconService {
         return documents
     }
 
-    /// Save or clear one bot's avatar, sending only the avatar's two fields.
-    func saveAvatar(botID: String, document: BotAvatarDocument?) async throws {
+    /// Save or clear one bot's face, sending both halves in one request.
+    func saveAvatar(botID: String, document: BotAvatarDocument?, face: BotFaceChoice?) async throws {
         let url = baseURL.appendingPathComponent("v1/bot-icons").appendingPathComponent(try BotIconPath.component(for: botID))
         let definition: Any
         if let document,
@@ -129,10 +129,13 @@ struct BotIconService {
             definition = NSNull()
         }
         // `material` travels with the definition and is cleared with it: the host drops the
-        // material when the definition is null, so a reset leaves nothing behind.
+        // material when the definition is null, so a reset leaves nothing behind. `avatar` is the
+        // other family: sent every time, a null clearing it, because a bot that kept both would
+        // wear its definition and never the face just chosen.
         let body: [String: Any] = ["definition": definition,
                                    "color": document?.color ?? NSNull(),
-                                   "material": document?.material.rawValue ?? NSNull()]
+                                   "material": document?.material.rawValue ?? NSNull(),
+                                   "avatar": face?.raw ?? NSNull()]
         let data = try JSONSerialization.data(withJSONObject: body, options: [])
         _ = try await request(url, method: "PUT", body: data)
     }
