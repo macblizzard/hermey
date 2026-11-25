@@ -1515,3 +1515,25 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   inside every transcript row's body), and the resume call queued behind the launch sweep — that was the 15–20
   second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored
   instead of pushing a second screen and crashing.
+
+## [0.1.661] — 2026-11-25
+
+### Fixed
+- **Reactions travel between devices.** A thumbs-up on the Mac now shows on the iPhone (and back) without
+  reopening anything: the app was only re-reading reactions from one code path its normal open never took, and
+  it filed them under an id the other device could not ask for. Both fixed, with a live push and a refetch on
+  open as the fallback.
+- **Thinking avatars are the same size as every other state**, with normal eyes — they used to shrink to 42%
+  and lose their face to a three-dot mark.
+
+### Changed
+- **The token count is always there.** Each bot remembers the last number the host reported, so the composer
+  shows it the moment a conversation opens instead of only after a turn. A brand-new bot still shows the model
+  alone.
+- **The sidebar's `＋` has a hover state and takes every click** — a full-width title-bar drag area was
+  swallowing the press.
+- **The desktop composer's `+` opens one file panel** for any photo or file instead of a two-item menu.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.1**: the reactions route's coverage, including two devices agreeing on one reaction and on
+  its removal.
