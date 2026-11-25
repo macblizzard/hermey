@@ -1748,3 +1748,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed
 - `hermeyd` **0.8.7** (version bump with the app; the host code is unchanged from 0.8.6).
+
+## [0.1.672] — 2026-11-26
+
+### Added
+- **Edit a vault item**: rename it and replace its value from the vault pane on Mac and iPhone. The value
+  field starts empty and says "leave blank to keep the current value"; the host never sends a stored secret
+  back, and a failed write leaves the item exactly as it was.
+- `hermeyd` **0.8.8**: `PATCH /v1/vault/{name}`, write-only, one atomic store write.
+
+### Changed
+- **The bot list row has no ⋯ any more.** Hover, selection and keyboard focus all showed it over the same
+  menu the row's right-click already opens, so it is gone; the hover fill and hairline stay.
+- **The group-chat composer stopped explaining itself**: no "⏎ send · ⇧⏎ newline" line, placeholder is
+  just "Message the group". Direct messages are unchanged.
