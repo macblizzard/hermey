@@ -1,18 +1,28 @@
-"""The bot list's ＋ brightens under the pointer and takes every press, first time.
+"""The bot list's ＋ lights up under the pointer, every time, and takes every press.
 
-Reported 2026-11-25: "the + button on desktop doesnt have a mouseover effect, and sometimes click
-doesnt take". Two separate faults in one control, and the SwiftUI sources are read as text here
-because neither is something a Linux test can call:
+Reported 2026-11-25, twice. The first report — "the + button on desktop doesnt have a mouseover
+effect, and sometimes click doesnt take" — was answered with two changes:
 
-* the ＋ was the one control in the row built by hand, and it was the one control with **no hover
-  treatment at all** — the bell beside it gets `hoverFill` from `HermeyIconButton`;
-* the title-bar band behind the row was a single full-width `TitlebarDragArea()`, and that view is
-  an AppKit `NSView` whose `mouseDown` takes the press and runs the window's drag loop. A band
-  drawn *under* a control is a band that can eat that control's click — the ＋ opened on some
-  presses and not others, whichever of the two won the hit test at that pixel.
+* the ＋ was the one control in the row built by hand, and the one with **no hover treatment at
+  all**, while the bell beside it gets `hoverFill` from `HermeyIconButton`;
+* the title-bar band behind the row was a single full-width `TitlebarDragArea()`, an AppKit `NSView`
+  whose `mouseDown` takes the press and runs the window's drag loop. A band drawn *under* a control
+  is a band that can eat that control's click.
 
-The band is still a title bar (the owner asked for that: "I cant double click anywhere on the
-sidebar top"); it now stops where the verbs begin.
+The click fix held. The hover did not: "the hover on sidebar + doesnt seem to have fixed" arrived
+after 0.1.661 shipped. Two faults, and both are asserted here as absent:
+
+* **the event never arrived.** It was wired `.onHoverCompat {...}` on the `Menu` itself, which is
+  `onHover` on macOS. A `Menu` with `.borderlessButton` is an `NSPopUpButton`, and a pop-up button's
+  cell runs its own highlight; the crossings SwiftUI translates on the host around that cell were
+  not being delivered to the modified view. Hover is an `NSTrackingArea` **we** install now, in an
+  `NSView` of our own (`HoverReporter`), which no cell can decline to forward;
+* **the change was too small to see.** `control` → `controlHover` on Midnight is `#232323` →
+  `#2B2B2B`: a 3% step next to a bell that hovers `clear` → `controlHover`. The glyph and the
+  hairline move too now.
+
+The SwiftUI sources are read as text here because none of this is something a Linux test can call:
+there is no Swift toolchain in this checkout, and what a tracking area does is AppKit's.
 """
 
 from __future__ import annotations
@@ -27,6 +37,7 @@ IOS = (ROOT / "Apps" / "HermesMobile" / "Views" / "BotListScreen.swift").read_te
 CONTROLS = (ROOT / "Sources" / "HermeyUI" / "Controls.swift").read_text(encoding="utf-8")
 COMPONENTS = (ROOT / "Sources" / "HermeyUI" / "Components.swift").read_text(encoding="utf-8")
 DRAG = (ROOT / "Apps" / "HermesMac" / "Support" / "TitlebarDragArea.swift").read_text(encoding="utf-8")
+REPORTER = (ROOT / "Apps" / "HermesMac" / "Support" / "HoverReporter.swift").read_text(encoding="utf-8")
 
 # The band's height, written the same way the row's is: the traffic-light strip, a 30 pt icon row,
 # and `barInset` above and below it.
@@ -41,33 +52,121 @@ def block(source: str, opening: str, closing: str) -> str:
     return tail.split(closing, 1)[0]
 
 
-class ThePlusWearsTheChromesOwnHover(unittest.TestCase):
-    """Pointing at it brightens it by the same step as the bell beside it."""
+class TheHoverComesFromAppKitNotFromTheMenu(unittest.TestCase):
+    """A borderless `Menu` is a control whose cell can swallow SwiftUI's hover. Ours cannot."""
 
     def setUp(self) -> None:
-        self.header = block(MAC, "private var header: some View {", "    /// Everything waiting")
+        self.plus = block(MAC, "private var addMenu: some View {", "    /// The top of the list's dissolve")
+
+    def test_the_plus_no_longer_asks_swiftui_for_hover(self) -> None:
+        # The exact wiring that shipped in 0.1.661 and did not light the button. `onHoverCompat` is
+        # `onHover` on macOS, and a pop-up button's own cell is what the pointer lands in.
+        self.assertNotIn(".onHoverCompat", self.plus,
+                         "the ＋ went back to SwiftUI's onHover: that is the wiring that did nothing")
+
+    def test_the_plus_is_watched_by_our_own_reporter(self) -> None:
+        self.assertIn(".background(HoverReporter { isAddMenuHovered = $0 })", self.plus)
+        # A background, not an overlay: the reporter must sit behind the control so the control
+        # keeps the press in front of it.
+        self.assertNotIn(".overlay(HoverReporter", self.plus)
+
+    def test_the_reporter_installs_a_tracking_area_of_its_own(self) -> None:
+        self.assertIn("struct HoverReporter: NSViewRepresentable", REPORTER)
+        self.assertIn("NSTrackingArea(", REPORTER)
+        self.assertIn("addTrackingArea(area)", REPORTER)
+        # Removed before it is re-installed: tracking areas do not replace each other, and two of
+        # them on one view is two `exit`s for every leave.
+        self.assertIn("removeTrackingArea(", REPORTER)
+        # The three options that make it a hover and not a promise: both directions, only while
+        # the window is key, and a rect AppKit keeps current through every resize.
+        for option in (".mouseEnteredAndExited", ".activeInKeyWindow", ".inVisibleRect"):
+            self.assertIn(option, REPORTER, f"the tracking area is missing {option}")
+
+    def test_a_crossing_is_not_the_only_way_to_learn_the_truth(self) -> None:
+        # A tracking area fires on a *crossing*. Rebuilt under a resting pointer (the sidebar
+        # redraws on every bot state change) there is none, so the pointer is read directly.
+        self.assertIn("mouseLocationOutsideOfEventStream", REPORTER)
+        install = block(REPORTER, "override func updateTrackingAreas() {", "override func mouseEntered")
+        self.assertIn("schedulePointerSync()", install,
+                      "the area is installed without reading where the pointer already is")
+
+    def test_the_reporter_is_never_a_click_target(self) -> None:
+        # The measured keep-out above the row exists because an AppKit view under a control eats
+        # its press. This one sits under a control by design, so it must refuse every hit.
+        self.assertRegex(REPORTER, r"override func hitTest\(_ point: NSPoint\) -> NSView\? \{ nil \}")
+
+
+class TheHoverIsVisibleAtAGlance(unittest.TestCase):
+    """Fill, glyph and hairline all step, so a glance catches it on a dark chrome."""
+
+    def setUp(self) -> None:
+        self.plus = block(MAC, "private var addMenu: some View {", "    /// The top of the list's dissolve")
+        self.label = block(self.plus, "} label: {", ".menuStyle(.borderlessButton)")
+
+    def test_the_fill_steps(self) -> None:
+        self.assertIn(".fill(isAddMenuHovered ? Tokens.controlHover : Tokens.control)", self.label)
+        self.assertNotIn(".fill(Tokens.surface)", self.label,
+                         "the ＋ went back to a flat fill: it has no hover state then")
+
+    def test_the_glyph_steps_from_a_dimmed_rest_to_full_ink(self) -> None:
+        # A fill step alone is what was reported as no hover. The glyph was `textPrimary` at rest
+        # and stayed there, so the brightest thing in the button never moved.
+        self.assertIn(".foregroundStyle(isAddMenuHovered ? Tokens.textPrimary : Tokens.textSecondary)",
+                      self.label)
+        self.assertNotIn(".foregroundStyle(Tokens.textPrimary)\n", self.label,
+                         "the glyph is full ink at rest again: only the fill can change")
+
+    def test_the_hairline_steps(self) -> None:
+        self.assertIn(".strokeBorder(isAddMenuHovered ? Tokens.borderStrong : Tokens.border, lineWidth: 1)",
+                      self.label)
+
+    def test_all_three_move_together(self) -> None:
+        # One state, three channels: a channel left on a plain token is a channel that stays put.
+        self.assertEqual(self.label.count("isAddMenuHovered ?"), 3,
+                         "the hover must change exactly the fill, the glyph and the border")
+
+
+class TheHoverIsWiredBothWays(unittest.TestCase):
+    """Enter and exit both reach SwiftUI, so a fast pass cannot leave it bright."""
+
+    def setUp(self) -> None:
+        self.plus = block(MAC, "private var addMenu: some View {", "    /// The top of the list's dissolve")
+
+    def test_enter_reports_true_and_exit_reports_false(self) -> None:
+        entered = block(REPORTER, "override func mouseEntered(with event: NSEvent) {", "}")
+        exited = block(REPORTER, "override func mouseExited(with event: NSEvent) {", "}")
+        self.assertIn("report(true)", entered)
+        self.assertIn("report(false)", exited)
+
+    def test_the_reporter_calls_back_in_both_directions(self) -> None:
+        # One closure, one bool, passed straight through — never an `if inside { ... }` that drops
+        # the way back out.
+        report = block(REPORTER, "private func report(_ inside: Bool) {", "private func removeWindowObservers")
+        self.assertIn("onChange?(inside)", report)
+        self.assertNotIn("if inside", report)
+
+    def test_the_swiftui_side_assigns_straight_through(self) -> None:
+        self.assertIn("isAddMenuHovered = $0", self.plus)
+        self.assertNotIn("if $0", self.plus)
+
+    def test_a_window_that_stops_being_key_clears_it(self) -> None:
+        # `.activeInKeyWindow` stops tracking when the window is not key and sends no `exit`.
+        self.assertIn("NSWindow.didResignKeyNotification", REPORTER)
+        self.assertIn("NSWindow.didBecomeKeyNotification", REPORTER)
+
+
+class ThePlusAndTheBellAreTheSameFamily(unittest.TestCase):
+    """The neighbouring reference, and the one case the reporter cannot see: the menu it opens."""
+
+    def setUp(self) -> None:
         self.plus = block(MAC, "private var addMenu: some View {", "    /// The top of the list's dissolve")
         self.bell = block(MAC, "private var notificationsButton: some View {", "    // MARK: Floor")
 
-    def test_the_fill_is_the_control_pair_every_other_control_uses(self) -> None:
-        # `control` at rest, `controlHover` under the pointer — the exact pair `hoverFill` applies,
-        # so the two verbs brighten by the same amount rather than by a hand-picked shade.
-        self.assertIn(".fill(isAddMenuHovered ? Tokens.controlHover : Tokens.control)", self.plus)
-        self.assertNotIn(".fill(Tokens.surface)", self.plus,
-                         "the ＋ went back to a flat fill: it has no hover state then")
-
-    def test_the_bell_brightens_the_same_way(self) -> None:
-        # The reference the ＋ has to match: the shared glyph button's hover fill, on the same token.
+    def test_the_bell_brightens_its_fill(self) -> None:
         self.assertIn('HermeyIconButton("bell"', self.bell)
         self.assertIn(".hoverFill(rest: .clear, hover: Tokens.controlHover", CONTROLS)
         self.assertIn(".onHoverCompat { hovering = $0 }", COMPONENTS,
                       "hover is one implementation (`HoverFill`), not a second copy per control")
-
-    def test_a_fast_pointer_leaving_puts_it_back(self) -> None:
-        # Assigned straight through: `if hovering { isHovering = true }` would stay bright forever
-        # after the first pass, which a fast exit makes invisible until it is not.
-        self.assertIn(".onHoverCompat { isAddMenuHovered = $0 }", self.plus)
-        self.assertNotIn("if $0", self.plus)
 
     def test_an_open_menu_neither_holds_it_bright_nor_leaves_it_dim(self) -> None:
         # A menu runs its own event loop in its own window, so the `false` that would put the fill
@@ -175,24 +274,25 @@ class EveryControlInTheRowHovers(unittest.TestCase):
     def test_both_verbs_have_a_hover(self) -> None:
         for name, source in (("notificationsButton", self.bell), ("addMenu", self.plus)):
             with self.subTest(control=name):
-                # Either the shared glyph button (which carries `hoverFill` itself) or an explicit
-                # `onHoverCompat`. Nothing in this row is allowed to have neither.
-                self.assertTrue("HermeyIconButton(" in source or ".onHoverCompat" in source,
+                # Either the shared glyph button (which carries `hoverFill` itself) or the
+                # tracking-area reporter. Nothing in this row is allowed to have neither.
+                self.assertTrue("HermeyIconButton(" in source or "HoverReporter" in source,
                                 f"{name} has no hover treatment")
 
     def test_the_hover_is_on_the_control_and_covers_the_click_box(self) -> None:
         # On the menu rather than inside its label, so the brightened box and the clickable box are
-        # the same 30 pt square.
+        # the same 30 pt square — and behind it, so the press still lands on the menu.
         label_end = self.plus.index(".menuStyle(.borderlessButton)")
-        self.assertNotIn(".onHoverCompat", self.plus[:label_end])
-        self.assertIn(".onHoverCompat", self.plus[label_end:])
+        self.assertNotIn("HoverReporter", self.plus[:label_end])
+        self.assertIn(".background(HoverReporter", self.plus[label_end:])
 
 
 class ThePhoneIsUntouched(unittest.TestCase):
     """The Mac panel's own view; nothing here is shared with the phone's list."""
 
     def test_the_phone_has_none_of_this(self) -> None:
-        for identifier in ("isAddMenuHovered", "VerbsWidthKey", "didBeginTrackingNotification"):
+        for identifier in ("isAddMenuHovered", "VerbsWidthKey", "didBeginTrackingNotification",
+                           "HoverReporter", "NSTrackingArea"):
             self.assertNotIn(identifier, IOS, f"{identifier} leaked into the phone's list")
 
     def test_the_phones_plus_keeps_its_toolbar_behaviour(self) -> None:

@@ -63,7 +63,8 @@ struct BotSidebarView: View {
     @State private var searchTask: Task<Void, Never>?
 
     /// The ＋'s hover. Its own state rather than `hoverFill` because the fill also has to go back
-    /// to rest when a menu opens over it, which only this view can see.
+    /// to rest when a menu opens over it, which only this view can see. Written by AppKit pointer
+    /// tracking (`HoverReporter`), not by `onHover` — see `addMenu`.
     @State private var isAddMenuHovered = false
     /// How wide the row's two verbs are, measured by the header. The title-bar band behind the row
     /// is laid out to stop at this width — see `header` and `VerbsWidthKey`.
@@ -525,10 +526,11 @@ struct BotSidebarView: View {
     /// The plus, in the filled square Midnight gives it: the one button in the row that is a verb
     /// rather than a view control. The verbs are ours — add, group chat, manage, hidden, read.
     ///
-    /// Hand-built rather than a `HermeyIconButton`, because the square is the owner's — but it wears
-    /// the same hover every other control in the app does: `control` at rest, `controlHover` under
-    /// the pointer. That is the pair `hoverFill` puts on the bell beside it, so the two verbs
-    /// brighten by the same amount and at the same moment.
+    /// Hand-built rather than a `HermeyIconButton`, because the square is the owner's — but it
+    /// hovers harder than the bell beside it, on purpose. On a dark chrome `control` → `controlHover`
+    /// is a 3% step: correct as "the control pair", invisible as feedback. So the square brightens
+    /// its fill, its glyph (a dimmed rest → full ink) and its hairline together, which is what a
+    /// glance catches. See the label's own comment for why that still reads as hover, not selected.
     private var addMenu: some View {
         Menu {
             Button { store.isAddBotPresented = true } label: { Label("Add bot…", systemImage: "plus.circle") }
@@ -556,7 +558,14 @@ struct BotSidebarView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: BarIconScale.of(11), weight: .semibold))
-                .foregroundStyle(Tokens.textPrimary)
+                // Three steps at once, because on a dark chrome a fill step alone is not a hover:
+                // the glyph goes from a slightly dimmed rest to full ink, the square from
+                // `control` to `controlHover`, and the hairline from `border` to `borderStrong`.
+                // It still reads as *hover* and not as *selected*: selected and pressed states in
+                // this app wear `controlActive` (a fill mixed toward the text) or the accent, and
+                // this stays on the neutral ramp. A selected square is also still like that when
+                // the pointer has gone; this one drops all three the moment it leaves.
+                .foregroundStyle(isAddMenuHovered ? Tokens.textPrimary : Tokens.textSecondary)
                 .frame(width: BarIconScale.of(24), height: BarIconScale.of(24))
                 .background(
                     RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
@@ -564,7 +573,7 @@ struct BotSidebarView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: BarIconScale.of(7), style: .continuous)
-                        .strokeBorder(Tokens.border, lineWidth: 1)
+                        .strokeBorder(isAddMenuHovered ? Tokens.borderStrong : Tokens.border, lineWidth: 1)
                 )
                 // A rectangle over a square: the glyph's whole box is the target, corners
                 // included. A circular shape on a 30 pt square leaves its four corners dead, and
@@ -578,10 +587,14 @@ struct BotSidebarView: View {
         // own strokes. Declared here as well as on the label so the control's box is stated rather
         // than inferred from an AppKit cell's idea of where its glyph is.
         .contentShape(Rectangle())
-        // The hover goes on the control, not inside the menu's label, so it covers the box the
-        // click covers. Assigned straight through rather than only on `true`: a hover that never
-        // hears `false` stays bright, and a pointer leaving fast is when that goes unnoticed.
-        .onHoverCompat { isAddMenuHovered = $0 }
+        // The hover is **AppKit's own pointer tracking**, not SwiftUI's. `onHoverCompat` on this
+        // `Menu` was the first attempt and did not light it (reported 2026-11-25, after 0.1.661):
+        // a borderless menu is an `NSPopUpButton`, its cell runs its own highlight, and the
+        // crossings SwiftUI would have translated on the host around that cell never arrived.
+        // `HoverReporter` installs the `NSTrackingArea` itself — as a background sized to this
+        // control's box, and refusing every click — and reports both directions, `true` on enter
+        // and `false` on exit, so a pointer leaving fast cannot leave it bright.
+        .background(HoverReporter { isAddMenuHovered = $0 })
         // A menu opens in its own window with its own event loop, and the pointer leaves this
         // button the moment it does: the `false` that would put the fill back can be suspended
         // while that window is up, which would leave the ＋ stuck bright behind its own menu.
