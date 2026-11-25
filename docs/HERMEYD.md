@@ -180,6 +180,65 @@ An unpaired app has no host, so it keeps writing its own `@AppStorage` document
 (`mac.messageReactions.v1` / `mobile.messageReactions.v1`) — the behaviour it had before — and hands
 those entries to the host once, the first time it opens that conversation paired.
 
+## Editing and deleting a message — `POST /v1/messages/delete` (shipped in 0.8.8)
+
+The engine has no message-level edit or delete, and both apps paint the same rows
+(`SELECT … FROM messages WHERE session_id=? AND (active=1 OR compacted=1)`). So the host owns the two
+verbs. Both are **soft retires**: the transcript stops painting the row on every device, and the
+bytes stay in the file.
+
+```text
+POST /v1/messages/delete    (bearer)
+  {"bot":"cody","session":"20261123_101500_ab12cd","message_ids":[41,42]}
+  -> 200 {"bot":"cody","session":"…","retired":2,"display_count":104}
+
+POST /v1/messages/truncate  (bearer)
+  {"bot":"cody","session":"20261123_101500_ab12cd","from_message_id":41}
+  -> 200 {"bot":"cody","session":"…","retired":6,"display_count":99}
+
+  409 {"error":"turn_running",       "detail": "That conversation is still answering (working) — …"}
+  503 {"error":"engine_unavailable", "detail": "The engine did not answer, so this host cannot …"}
+  502 {"error":"engine_refused",     "detail": "The engine would not close that conversation …"}
+  404 {"error":"no_such_message",    "detail": "No message with that id is in that conversation."}
+  422 {"detail": …}                                   bad bot / session / body / ids
+```
+
+`truncate` is what "edit and resend" is built on: it retires the message the owner wants to rewrite
+*and everything painted after it*, so the re-asked turn has one ask and one answer. `delete` retires
+exactly the ids named. Every refusal says **"Nothing was changed"** in words, because the apps show
+the sentence verbatim.
+
+**The three steps, in this order.**
+
+1. **Ask the engine whether a turn is running.** `session.active_list` is the engine's own live
+   registry — the only place that knows, because a live session keeps its own in-memory copy of the
+   history. A row whose `session_key` is this conversation and whose `status` is not `idle`
+   (`working`, `waiting`, `starting`) is answered **409**. The same row names the **runtime** id, and
+   that is what `session.close` takes: the stored id and the runtime id look alike and are not
+   interchangeable.
+2. **Close it**, so the engine drops its copy before a single row moves. The app then re-resumes,
+   which rebuilds the transcript from the database — that is what makes both devices converge.
+3. **Retire the rows in one transaction**: `UPDATE messages SET active = 0, compacted = 0`. Not a new
+   convention — it is exactly what the engine's own rewind and undo write, and the database's
+   `messages_display_visibility_update` trigger keeps `display_order` coherent while it happens.
+   There is no `DELETE` from `messages` anywhere in the route: a mis-tap costs a repaint, not a
+   conversation.
+
+`display_count` is `COUNT(*)` over the conversation's display set after the retire, which is the same
+number a resume reports as `history.total`.
+
+**Which rows.** The retire is scoped to the conversation's own session and its compression chain
+(`sessions.parent_session_id`, each hop ended `compression`) — never a `/branch` copy, which is a
+different conversation. `truncate` compares `COALESCE(display_order, id)`, the expression the
+transcript orders by, so "and everything after it" means what the reader sees. Nothing takes a path:
+`message_ids` is a bounded list of positive integers, `from_message_id` is one, and the only string is
+the bot's name, which is a key.
+
+**In the apps.** The message menu gains **Edit and resend** (the owner's own messages, any turn) and
+**Delete** (any message), both behind one confirmation that states the true count — computed from the
+transcript and drawn as "…and the 12 messages after it will be retired…". Both verbs are withheld
+while a turn is answering, and a message still streaming has no menu at all.
+
 ## Self-update — `GET/POST /v1/update` (shipped in 0.4.0)
 
 One press updates the host service, and a host that will not start puts itself back. Nothing else

@@ -2820,12 +2820,181 @@ public final class AppModel: ObservableObject {
                        + "(\(transcript.count) rows)", level: .info, category: "session")
     }
 
+    // MARK: - Editing and deleting a message
+
+    /// The destructive verb the owner just chose, waiting for a confirmation.
+    ///
+    /// Nothing has been sent at this point — this is only the sentence ("this message and the 12
+    /// after it will be retired"), and the shells draw it as an alert with a destructive button.
+    /// `PendingMessageAction` owns the wording so the Mac and the phone cannot say different things.
+    @Published public var pendingMessageAction: PendingMessageAction?
+
+    /// The message an edit is rewriting, and the conversation it belongs to.
+    ///
+    /// Held until the edited text is sent: `send()` retires that message and everything after it
+    /// **first**, so the turn the model is fed has one ask and one answer rather than the old answer
+    /// still sitting above a new question. The session travels with the row id because a bot switch
+    /// between choosing the verb and pressing send must not truncate the wrong conversation.
+    public struct PendingEdit: Equatable, Sendable {
+        public let rowID: Int64
+        public let session: SessionID
+    }
+    @Published public private(set) var pendingEdit: PendingEdit?
+
+    /// The conversation as both devices know it: the durable (stored) id. A retire addresses rows by
+    /// that id — the runtime id a resume mints is a key no row in `state.db` carries.
+    public var durableSessionID: SessionID? { reactionSession }
+
+    /// "Edit and resend" on one of the owner's own messages.
+    ///
+    /// Offered on any of the owner's messages, not only the last turn's: truncating from an older
+    /// ask is exactly as meaningful ("ask that again, differently"), and the confirmation names how
+    /// many later messages go with it, so the cost is stated rather than hidden by a restriction.
+    public func requestEditAndResend(_ entry: TranscriptEntry) {
+        guard client.bridgeAvailable, let rowID = entry.rowID, !isStreaming,
+              durableSessionID != nil else { return }
+        pendingMessageAction = PendingMessageAction(kind: .editAndResend,
+                                                    rowID: rowID,
+                                                    text: entry.displayText,
+                                                    trailing: trailingMessages(after: entry))
+    }
+
+    /// Delete on any message. Withheld while a turn is answering: the host refuses it too (409), but
+    /// a verb that can only fail is not a verb worth showing.
+    public func requestDelete(_ entry: TranscriptEntry) {
+        guard client.bridgeAvailable, let rowID = entry.rowID, !isStreaming else { return }
+        pendingMessageAction = PendingMessageAction(kind: .delete,
+                                                    rowID: rowID,
+                                                    text: entry.displayText,
+                                                    trailing: 0)
+    }
+
+    public func cancelMessageAction() { pendingMessageAction = nil }
+
+    /// Drop an edit that has not been sent — "never mind". The composer keeps what is in it; only the
+    /// link to the old message goes, so the next send is an ordinary message.
+    public func cancelEdit() {
+        pendingEdit = nil
+    }
+
+    /// The confirmation's count: how many messages are painted *after* this one in the transcript on
+    /// screen. Counted here, from the transcript, because the confirmation must say the true number
+    /// before anything reaches the host.
+    public func trailingMessages(after entry: TranscriptEntry) -> Int {
+        guard let index = transcript.firstIndex(where: { $0.id == entry.id }) else { return 0 }
+        return max(0, transcript.count - index - 1)
+    }
+
+    /// Run the confirmed verb. Both paths are one host call, and both end with a re-resume.
+    public func confirmMessageAction() async {
+        guard let action = pendingMessageAction else { return }
+        pendingMessageAction = nil
+        switch action.kind {
+        case .editAndResend:
+            // Nothing is destroyed yet: the composer opens with the old words and the retire happens
+            // when the owner sends (`send()`), so a change of mind costs nothing.
+            replyTarget = nil
+            draft = action.text
+            if let session = durableSessionID {
+                pendingEdit = PendingEdit(rowID: action.rowID, session: session)
+            }
+        case .delete:
+            await deleteMessage(rowID: action.rowID)
+        }
+    }
+
+    /// Retire one message on the host, then rebuild the conversation from its rows.
+    public func deleteMessage(rowID: Int64) async {
+        guard let bot = selectedBotID, let session = durableSessionID else { return }
+        do {
+            let result = try await client.deleteMessages(bot: bot, session: session,
+                                                         messageIDs: [rowID])
+            ClientLog.note("retired message \(rowID) in \(session): \(result.retired) row(s), "
+                           + "\(result.displayCount) left", level: .info, category: "session")
+            lastSendError = nil
+            await reloadAfterRetire()
+        } catch {
+            // The host's own sentence: "still answering — wait for the turn to finish", or "no such
+            // message". Nothing changed, so the transcript stays exactly as it is.
+            lastSendError = Self.retireReason(error)
+        }
+    }
+
+    /// Re-resume the open conversation after a retire.
+    ///
+    /// This is not decoration: the route **closed** the engine's live copy before it moved the rows,
+    /// so the socket's session no longer exists and a resume is what rebuilds the transcript from the
+    /// database (and what the next prompt is submitted into). The retired rows do not come back
+    /// because they are no longer in the display set — which is also why the other device converges:
+    /// it resumes the same rows.
+    @discardableResult
+    public func reloadAfterRetire() async -> Bool {
+        guard let sid = selectedSessionID else { return false }
+        // A moved conversation was adopted under its runtime id; the durable one is what a resume of
+        // "this chat" means. Normally they are the same and this is a no-op.
+        let durable = durableIDs[sid] ?? sid
+        if durable != sid {
+            await select(durable)
+            return true
+        }
+        return await refreshTranscript(sid)
+    }
+
+    /// A refusal said in a sentence a person can act on. The host already writes one; a dropped
+    /// socket does not, and "The operation couldn't be completed" is not a sentence about a message.
+    private static func retireReason(_ error: Error) -> String {
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain || ns.domain == NSPOSIXErrorDomain {
+            return "the host could not be reached, so nothing was changed"
+        }
+        return error.localizedDescription
+    }
+
     public func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // An attachment on its own is a complete message: a PDF with no comment is a normal thing
         // to send, and refusing it here made "attach a file, tap send" look like a dead button.
         guard let sid = selectedSessionID, !sending,
               !text.isEmpty || !pendingAttachments.isEmpty else { return }
+        // An edit in progress retires the old message — and everything painted after it — **before**
+        // this turn is sent, so the model is fed one ask and one answer. It runs before the draft is
+        // cleared and before `sending` is set: a refusal here leaves the words exactly where they are
+        // ("If truncation fails, the text stays in the composer and nothing is lost"), and the owner
+        // can send again or give up without retyping anything.
+        if let edit = pendingEdit, edit.session == sid {
+            do {
+                _ = try await client.truncateMessages(bot: selectedBotID ?? "",
+                                                      session: edit.session,
+                                                      fromMessageID: edit.rowID)
+                pendingEdit = nil
+                // The route closed the engine's live copy, so a resume is what puts this conversation
+                // back on the socket with the retired rows gone — and what the prompt below needs in
+                // order to have a session to be submitted into.
+                await reloadAfterRetire()
+            } catch {
+                // The link to the old message survives a refusal the owner can wait out (a busy turn,
+                // an unreachable host): pressing Send again then retries the *same* operation. A
+                // message the host no longer has is the one case where it cannot — the edit applies
+                // to nothing, so the text becomes an ordinary message instead of a promise to
+                // truncate a row that is gone.
+                if let refusal = error as? MessageRetireError,
+                   case .refused(let status, _) = refusal, status == 404 {
+                    pendingEdit = nil
+                }
+                draft = text
+                lastSendError = Self.retireReason(error)
+                ClientLog.note("truncate before resend failed: \(Self.retireReason(error)); "
+                               + "the text stays in the composer",
+                               level: .error, category: "send")
+                return
+            }
+        } else {
+            // An edit chosen in another conversation is not this conversation's to truncate.
+            pendingEdit = nil
+        }
         let attachedNames = pendingAttachments.map(\.name)
         // The bubble draws what was sent: the host's transcript carries no attachment metadata, so
         // this list is the only thing that can put a picture in the chat.

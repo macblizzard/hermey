@@ -241,6 +241,20 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func setReaction(bot: String, session: SessionID, message: String,
                      emoji: String?, by: String) async throws
 
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The engine has no message-level delete, so the host owns it: it refuses while a turn is
+    /// running (409), closes the engine's live copy, and then writes `active=0, compacted=0` in one
+    /// transaction. Nothing is removed from the database, and the reply carries the conversation's
+    /// new display count so the app can re-resume and show the same conversation on both devices.
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it, which is
+    /// what an edit-and-resend needs before it sends the new text.
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult
+
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
@@ -525,6 +539,21 @@ extension GatewayClientProtocol {
 
     /// A client with no registry of runtime sessions has nothing to release.
     public func closeSession(_ id: SessionID) async throws {}
+
+    /// A client with no bridge — the unpaired one, a fixture, a preview — cannot retire a message,
+    /// and both menus withhold the verbs when `bridgeAvailable` is false. Reaching here is a caller
+    /// that asked anyway, so it is told plainly instead of drawing a conversation that never moved.
+    public func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, messageIDs)
+        throw MessageRetireError.noBridge
+    }
+
+    public func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, fromMessageID)
+        throw MessageRetireError.noBridge
+    }
 
     /// A client with no reconnect ladder — the unpaired one, a fixture, a preview — has nothing to
     /// bring forward: there is no scheduled attempt to end. Declared as a default so every stub

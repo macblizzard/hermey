@@ -168,6 +168,24 @@ struct ConversationPane: View {
             // The chip is a host fact: re-ask when the wire comes back.
             Task { await store.refreshHermeyModelLabel() }
         }
+        // The one confirmation for both destructive message verbs. `PendingMessageAction` carries the
+        // sentence ("this message and the 12 after it will be retired"), so nothing is retired by a
+        // single tap and the Mac says exactly what the phone says.
+        .alert(model.pendingMessageAction?.title ?? "",
+               isPresented: Binding(get: { model.pendingMessageAction != nil },
+                                    set: { presented in
+                                        if !presented { model.cancelMessageAction() }
+                                    }),
+               presenting: model.pendingMessageAction) { action in
+            Button(action.confirmTitle, role: action.kind == .delete ? .destructive : nil) {
+                Task { await model.confirmMessageAction() }
+            }
+            .hermeyFocusQuiet()
+            Button("Cancel", role: .cancel) { model.cancelMessageAction() }
+            .hermeyFocusQuiet()
+        } message: { action in
+            Text(action.message)
+        }
     }
 
     private var bannerKind: ConnectionBanner.Kind? {

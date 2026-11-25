@@ -42,6 +42,7 @@ mod display;
 mod display_container;
 mod engine_auth;
 mod engine_client;
+mod messages;
 mod model_settings;
 mod pairing;
 mod parity_gaps;
@@ -545,6 +546,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(reactions::get_reactions).put(reactions::put_reaction),
         )
         .route("/v1/search", get(search::search))
+        // The two message verbs, agreed by every device: retire some messages, or retire one and
+        // everything painted after it (what "edit and resend" needs). Both close the engine's live
+        // copy first and then write `active=0, compacted=0` — a soft retire, never a row gone. See
+        // messages.rs.
+        .route("/v1/messages/delete", post(messages::post_delete))
+        .route("/v1/messages/truncate", post(messages::post_truncate))
         // The service's own next version: a report anyone paired can read, and a press that only
         // the owner's devices can make. See update.rs for the checksum and the rollback.
         .route(
