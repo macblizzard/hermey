@@ -1110,7 +1110,7 @@ struct ConversationScreen: View {
                      // The same pill the desktop draws, for this bot: tapping it opens the sheet
                      // the drawer's Model row opens (`BotModelSheet`), which writes through
                      // `configureModel` and refreshes `modelLabel` for the open bot.
-                     sessionPill: ComposerModelPill(provider: model.modelProvider,
+                     sessionRow: ComposerSessionRow(provider: model.modelProvider,
                                                     model: model.modelLabel,
                                                     used: model.contextUsed,
                                                     limit: model.contextMax,
