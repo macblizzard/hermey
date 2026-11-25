@@ -162,6 +162,11 @@ class OneConversationIsOneRender(unittest.TestCase):
         self.assertIn("try await flight.value", once)
         self.assertIn("resumeFlights[key] = flight", once)
         self.assertIn("defer { resumeFlights[key] = nil }", once)
+        # A shared call outlives its callers, so each one re-checks cancellation before it is
+        # allowed to adopt anything: an `attach` for a conversation the user left is the
+        # "one bot's window shows another bot's messages" bug.
+        self.assertEqual(once.count("if Task.isCancelled { throw CancellationError() }"), 2,
+                         "both the joining and the leading caller stop when their open is gone")
         self.assertIn("try await resumeOnce(id, profile: profile ?? boundProfile)", ACTOR,
                       "the open's resume goes through the shared call")
         warm = member(ACTOR, "    public func warmResume(_ id: SessionID, profile: String)")

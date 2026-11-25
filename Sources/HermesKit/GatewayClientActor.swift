@@ -368,7 +368,12 @@ public actor GatewayClient: GatewayClientProtocol {
         let flight = Task { try await performResume(id, profile: profile) }
         resumeFlights[key] = flight
         defer { resumeFlights[key] = nil }
-        return try await flight.value
+        let resumed = try await flight.value
+        // The shared call outlives any one caller, so the leaving pane is checked here rather than
+        // trusting cancellation to have reached the host: an `attach` for a conversation the user
+        // left would adopt a runtime id the open chat does not own.
+        if Task.isCancelled { throw CancellationError() }
+        return resumed
     }
 
     public func warmResume(_ id: SessionID, profile: String) async throws -> SessionResume {
