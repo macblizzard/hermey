@@ -41,6 +41,15 @@ struct MobileTranscriptRow: View {
     /// parsing every visible row's markdown on each of those was the single most expensive thing the
     /// phone did while reading a conversation (the jitter reported 2026-11-14).
     @State private var markdownCache = RowMarkdownCache()
+    /// Whether this long message has been opened out, remembered by message id.
+    ///
+    /// A row inside a lazy stack is torn down when it leaves the viewport, so an ordinary `@State`
+    /// would forget the expansion the moment the reader scrolled past. `nil` means "not decided in
+    /// this instance yet", and the store answers — keyed by the message's own id for the same reason
+    /// the `ForEach` is.
+    @State private var showsFullContent: Bool?
+    /// The blocks of a long message, parsed off the main actor when the reader opens it.
+    @State private var fullBlocks: [Block]?
     /// What the card markers in this row resolved to, keyed by card id.
     ///
     /// The shared `CardLoader` is the fetch-once cache; this is the copy the row repaints from,
@@ -183,6 +192,106 @@ struct MobileTranscriptRow: View {
         case .system:
             systemNote
         }
+    }
+
+    /// The preview for a message long enough to be clamped, and `nil` for every other message.
+    ///
+    /// `nil` on the common path after one bounded scan — `TranscriptClamp.isLong` stops at 4,000
+    /// characters — so ordinary drawing is untouched. A reply carrying a `::` marker (an A2UI
+    /// surface, a board, a card) is never clamped: those are the parts of a message that are not
+    /// prose, and their own views already decide what to fetch and how much to draw.
+    private var clampedPreview: (text: String, hiddenLines: Int)? {
+        if entry.role == .assistant, entry.text.contains("::") { return nil }
+        return TranscriptClamp.preview(clampSource)
+    }
+
+    /// The text the clamp reads: a user row is drawn from `displayText` (the @image:/@file:
+    /// references resolved away), so the preview must be that same text.
+    private var clampSource: String {
+        entry.role == .user ? entry.displayText : entry.text
+    }
+
+    /// Whether the reader has opened this long row out — in this row instance, or earlier, by id.
+    private var longRowIsOpen: Bool {
+        showsFullContent ?? ExpandedLongRows.shared.contains(entry.id)
+    }
+
+    /// A long message, clamped — the body only, because the bubble and the long press belong to
+    /// the door that draws it (`bubbleText`, or the reply's prose).
+    ///
+    /// Three states, and the main actor never parses in any of them:
+    ///
+    /// * collapsed — **plain text**, no markdown, no table measurement, no `fixedSize` over the
+    ///   whole body, no card/surface scan. A 20,000-character log costs what a two-line message
+    ///   costs, which is the point: this is the row that froze the phone when it scrolled past.
+    /// * opening — the same preview, so the row does not change height under the finger that tapped
+    ///   it while the blocks are parsed off the main actor.
+    /// * open — the markdown the message always had, from those blocks.
+    ///
+    /// The preview is selectable, and the message's actions still copy the stored text: this is a
+    /// drawing clamp, never a truncation.
+    @ViewBuilder
+    private func clampedBody(_ preview: (text: String, hiddenLines: Int)) -> some View {
+        VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 8) {
+            if longRowIsOpen, entry.role == .user {
+                // The owner's own words were never markdown: opened out, they are one plain,
+                // selectable text — no parse, no blocks, nothing to measure but lines.
+                Text(clampSource)
+                    .font(TypeScale.font(TypeScale.chatBody))
+                    .foregroundStyle(Tokens.textPrimary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if longRowIsOpen, let blocks = fullBlocks {
+                MobileMarkdownText(blocks: blocks, rawText: clampSource)
+            } else {
+                Text(preview.text)
+                    .font(TypeScale.font(TypeScale.chatBody))
+                    .foregroundStyle(Tokens.textPrimary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if longRowIsOpen {
+                    Text("Opening…")
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.textMuted)
+                } else {
+                    Button {
+                        openLongRow()
+                    } label: {
+                        Label(TranscriptClamp.showFullTitle(hiddenLines: preview.hiddenLines),
+                              systemImage: "arrow.down.right.and.arrow.up.left")
+                            .font(TypeScale.font(TypeScale.sm, weight: .semibold))
+                            .foregroundStyle(Tokens.accentText)
+                    }
+                    .buttonStyle(.plain)
+                    .hermeyFocusQuiet()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: entry.role == .user ? .trailing : .leading)
+        // A remembered row is parsed when it is drawn again, so scrolling back to a message the
+        // reader opened does not silently collapse it.
+        .task(id: entry.id) { await parseIfOpen() }
+    }
+
+    /// Open one long row: parse once, off the main actor, then draw.
+    ///
+    /// `IncrementalMarkdown.parse` is pure and `Block` is `Sendable`, so the parse does not need the
+    /// main actor. The row is remembered by message id, and nothing else in the transcript is
+    /// touched — every other row's markdown is keyed by its own text.
+    private func openLongRow() {
+        showsFullContent = true
+        ExpandedLongRows.shared.insert(entry.id)
+        Task { await parseIfOpen() }
+    }
+
+    private func parseIfOpen() async {
+        // Only a bot's reply is markdown; the owner's words are plain text whatever their length.
+        guard entry.role == .assistant, longRowIsOpen, fullBlocks == nil else { return }
+        let text = clampSource
+        let blocks = await Task.detached(priority: .userInitiated) {
+            IncrementalMarkdown.parse(text)
+        }.value
+        fullBlocks = blocks
     }
 
     /// `Message from <face> Cody` above the words — the recipient's side of a bot-to-bot exchange.
@@ -597,9 +706,18 @@ struct MobileTranscriptRow: View {
 
     private var bubbleText: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            MobileSelectableText(attributed: MobileProse.plain(entry.displayText,
-                                                               color: Tokens.textPrimary,
-                                                               size: TypeScale.chatBody))
+            Group {
+                if let preview = clampedPreview {
+                    // A pasted log the owner sent. Same bubble, same door, 24 plain lines: the
+                    // `MobileSelectableText` below would build an attributed string and a text view
+                    // over the whole message, which is the row that froze the scroll.
+                    clampedBody(preview)
+                } else {
+                    MobileSelectableText(attributed: MobileProse.plain(entry.displayText,
+                                                                       color: Tokens.textPrimary,
+                                                                       size: TypeScale.chatBody))
+                }
+            }
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
@@ -697,11 +815,21 @@ struct MobileTranscriptRow: View {
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(files.prose)), rawText: files.prose)
-                    .accessibilityLabel(files.prose)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
+                Group {
+                    if let preview = clampedPreview {
+                        // A log the bot printed, or a wall of tool output it pasted. Collapsed it is
+                        // 24 plain lines — no markdown parse, no table measurement, no `fixedSize`
+                        // over the whole message — and "Show full message" opens it.
+                        clampedBody(preview)
+                    } else {
+                        MobileMarkdownText(blocks: markdownCache.parse(markdownCache.sanitized(files.prose)),
+                                           rawText: files.prose)
+                            .accessibilityLabel(files.prose)
+                    }
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .onLongPressGesture(minimumDuration: 0.35) { raiseActions() }
             }
 
             replyFileRows(files.links)
@@ -842,10 +970,13 @@ struct MobileToolRow: View {
     @State private var expanded = false
 
     /// The text behind the disclosure: a stored JSON result unwrapped to the words inside it.
-    private var payload: ToolPayload.Info? { ToolPayload.info(raw: output) }
+    ///
+    /// Remembered, not re-read: this is the body's most expensive call and the body runs on every
+    /// publish. Scrolling past a long log used to re-parse that whole result several times a frame.
+    private var payload: ToolPayload.Info? { ToolPayload.remembered(output) }
 
     /// A command that exited non-zero is not a success, whatever the row's role says.
-    private var failed: Bool { !isRunning && ToolPayload.failed(raw: output) }
+    private var failed: Bool { !isRunning && ToolPayload.rememberedFailure(output) }
 
     /// Never an empty box: the disclosure only exists when there is something behind it.
     private var shownOutput: String? {

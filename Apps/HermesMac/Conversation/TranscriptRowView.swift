@@ -752,7 +752,7 @@ struct TranscriptRowView: View {
                  summary: ToolPayload.headline(raw: entry.tool?.args)
                     ?? ToolPayload.headline(raw: toolProjection.summary)
                     ?? toolProjection.summary,
-                 status: ToolCard.status(ok: !ToolPayload.failed(raw: toolProjection.output)),
+                 status: ToolCard.status(ok: !ToolPayload.rememberedFailure(toolProjection.output)),
                  output: toolProjection.output,
                  startsExpanded: false)
     }

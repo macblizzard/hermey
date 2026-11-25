@@ -170,11 +170,104 @@ public enum ToolPayload {
         return nil
     }
 
+    // MARK: Remembered reads
+
+    /// `info(raw:)` for a payload that has already been read once.
+    ///
+    /// A tool card's body is evaluated on every publish — every 40 ms while a turn streams, and
+    /// every frame of a scroll — and `info(raw:)` is a `JSONSerialization` pass over the whole
+    /// result. On a conversation full of long logs that is the expensive thing a row does, and it
+    /// used to redo it to draw a tick. The result is a pure function of the text, so it is
+    /// remembered per distinct text, bounded, and evicted when the cap is reached.
+    public static func remembered(_ raw: String?) -> Info? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let hit = PayloadMemo.shared.info(for: raw) { return hit }
+        let parsed = info(raw: raw)
+        PayloadMemo.shared.store(info: parsed, for: raw)
+        return parsed
+    }
+
+    /// `failed(raw:)` for a payload that has already been read once.
+    public static func rememberedFailure(_ raw: String?) -> Bool {
+        guard let raw, !raw.isEmpty else { return false }
+        if let hit = PayloadMemo.shared.failure(for: raw) { return hit }
+        let isFailed = failed(raw: raw)
+        PayloadMemo.shared.store(failure: isFailed, for: raw)
+        return isFailed
+    }
+
     // MARK: Plumbing
 
     private static func jsonObject(_ text: String) -> [String: Any]? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+}
+
+/// The remembered payload reads behind `ToolPayload.remembered`.
+///
+/// Bounded twice: by entry count and by total characters, because the entries are whole tool results
+/// and a session can hold hundreds of them. A payload larger than `maxPayloadCharacters` is read
+/// once and not kept — the transcript already holds it, and hoarding a second copy of a megabyte of
+/// log to save one parse is not a trade worth making.
+private final class PayloadMemo {
+    static let shared = PayloadMemo()
+
+    private struct Entry {
+        var info: ToolPayload.Info? = nil
+        var failed: Bool? = nil
+        var infoRead = false
+    }
+
+    private let lock = NSLock()
+    private var entries: [String: Entry] = [:]
+    private var order: [String] = []
+    private var characters = 0
+
+    private let limit = 96
+    private let maxCharacters = 512 * 1024
+    private let maxPayloadCharacters = 256 * 1024
+
+    /// The remembered `info` for this text, or `nil` when it has not been read. The double optional
+    /// distinguishes "not remembered" from "remembered as unreadable".
+    func info(for raw: String) -> ToolPayload.Info?? {
+        lock.lock(); defer { lock.unlock() }
+        guard let entry = entries[raw], entry.infoRead else { return nil }
+        return .some(entry.info)
+    }
+
+    func failure(for raw: String) -> Bool? {
+        lock.lock(); defer { lock.unlock() }
+        return entries[raw]?.failed
+    }
+
+    func store(info: ToolPayload.Info?, for raw: String) {
+        mutate(raw) { $0.info = info; $0.infoRead = true }
+    }
+
+    func store(failure: Bool, for raw: String) {
+        mutate(raw) { $0.failed = failure }
+    }
+
+    private func mutate(_ raw: String, _ change: (inout Entry) -> Void) {
+        lock.lock(); defer { lock.unlock() }
+        if var entry = entries[raw] {
+            change(&entry)
+            entries[raw] = entry
+            return
+        }
+        guard raw.count <= maxPayloadCharacters else { return }
+        var entry = Entry()
+        change(&entry)
+        entries[raw] = entry
+        order.append(raw)
+        characters += raw.count
+        while order.count > limit || characters > maxCharacters {
+            guard !order.isEmpty else { break }
+            let old = order.removeFirst()
+            entries.removeValue(forKey: old)
+            characters -= old.count
+        }
     }
 }

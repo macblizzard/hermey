@@ -859,8 +859,15 @@ struct ConversationScreen: View {
 
             // Consecutive tool calls fold into one line, the same way they do on the Mac: a turn
             // that makes thirty calls should not fill the screen with thirty cards.
-            ForEach(rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
-                                  running: runningToolIDs)) { row in
+            //
+            // `appending:` rather than `visibleTranscript + liveToolEntries`: that `+` built a
+            // fresh six-thousand-element array on every body pass, and the cache already knows what
+            // changed. `id: \.id` states the identity the reader's position depends on — the
+            // message's own id, never its index — so a page landing above the reader cannot
+            // re-key a row and throw away its parsed markdown.
+            ForEach(rowCache.rows(model.visibleTranscript,
+                                  appending: model.visibleLiveToolEntries,
+                                  running: runningToolIDs), id: \.id) { row in
                 switch row {
                 case .entry(let entry):
                     MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id,

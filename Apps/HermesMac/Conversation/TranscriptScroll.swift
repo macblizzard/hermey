@@ -277,7 +277,8 @@ struct TranscriptScroll: View {
     /// search jumps to the row that exists on screen rather than to an id that only exists inside a
     /// folded run.
     private var groupedRows: [TranscriptRow] {
-        rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+        rowCache.rows(model.visibleTranscript,
+                      appending: model.visibleLiveToolEntries,
                       running: Set(model.visibleLiveToolEntries.map(\.id)))
     }
 
@@ -326,7 +327,7 @@ struct TranscriptScroll: View {
             // Consecutive tool calls fold into one line: a turn that makes thirty calls should not
             // push its answer off the screen. The run's cards are one click away, each still its own
             // card with its own disclosure.
-            ForEach(groupedRows) { row in
+            ForEach(groupedRows, id: \.id) { row in
                 switch row {
                 case .entry(let entry):
                     TranscriptRowView(entry: entry,

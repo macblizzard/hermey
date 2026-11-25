@@ -212,14 +212,14 @@ public struct ToolCard: View {
         }
         // A stored JSON result becomes the text inside it; a call whose arguments were all there
         // was becomes the command; anything else is shown as it arrived.
-        if let body = ToolPayload.info(raw: output)?.body, !body.isEmpty { return body }
+        if let body = ToolPayload.remembered(output)?.body, !body.isEmpty { return body }
         return Self.readableCall(name: name, raw: output)
     }
 
     /// Footer facts: whatever the caller measured, plus what the payload itself admits to (an exit
     /// status, a line count) — a card that showed neither said nothing about a command that failed.
-    private var resolvedExitCode: Int? { exitCode ?? ToolPayload.info(raw: output)?.exitCode }
-    private var resolvedStdoutLines: Int? { stdoutLines ?? ToolPayload.info(raw: output)?.lineCount }
+    private var resolvedExitCode: Int? { exitCode ?? ToolPayload.remembered(output)?.exitCode }
+    private var resolvedStdoutLines: Int? { stdoutLines ?? ToolPayload.remembered(output)?.lineCount }
 
     private var hasFooter: Bool {
         resolvedExitCode != nil || resolvedStdoutLines != nil || (workingDirectory?.isEmpty == false)

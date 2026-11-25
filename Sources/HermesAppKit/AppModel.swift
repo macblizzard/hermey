@@ -112,7 +112,7 @@ public final class AppModel: ObservableObject {
     /// the row.
     @Published public private(set) var draftSessionIDs: Set<SessionID> = []
     @Published public private(set) var transcript: [TranscriptEntry] = [] {
-        didSet { visibleTranscriptCache = nil }
+        didSet { transcriptDidChange(from: oldValue) }
     }
     /// Where "load earlier" continues from, and how many rows the whole conversation holds.
     ///
@@ -325,20 +325,49 @@ public final class AppModel: ObservableObject {
     /// still short enough that nobody stares at a spinner for an afternoon.
     public static let compactionPatience: TimeInterval = 300
 
+    /// Cached rows for `visibleTranscript`, maintained instead of rebuilt.
+    ///
+    /// The transcript is read on every body pass — the list, the search field, the context gauge —
+    /// and re-filtering it each time showed up as avoidable work on long conversations. A page
+    /// landing invalidates it, and the invalidation used to cost three whole-array filters over the
+    /// 6,400 rows already on screen; the cache now splices the page on (see
+    /// `TranscriptVisibilityCache`). The flags are part of its key, so a switch that hides tool
+    /// calls does not keep serving the old rows.
+    private var visibleTranscriptCache = TranscriptVisibilityCache()
+
+    /// The ids in `transcript`, maintained on every change.
+    ///
+    /// `loadEarlierHistory` de-duplicates a page against what is already drawn, and it used to
+    /// build `Set(transcript.map(\.id))` for every page — 6,400 string hashes on the main actor for
+    /// each 400-row page that landed. The set is now a row of bookkeeping in `transcriptDidChange`.
+    private var transcriptIDs: Set<String> = []
+
+    /// What the last change to `transcript` was. Read by the views' caches so they can skip a walk
+    /// of the whole conversation; see `TranscriptSplices`.
+    public private(set) var transcriptSplice: TranscriptSplice = .replaced
+
+    /// Keeps the derived state in step with `transcript` in one place, so no call site has to
+    /// remember which caches exist.
+    private func transcriptDidChange(from old: [TranscriptEntry]) {
+        let splice = TranscriptSplices.detect(previous: old, entries: transcript)
+        transcriptSplice = splice
+        switch splice {
+        case .appended(let count):
+            for entry in transcript.suffix(count) { transcriptIDs.insert(entry.id) }
+        case .prepended(let count):
+            for entry in transcript.prefix(count) { transcriptIDs.insert(entry.id) }
+        case .unchanged:
+            break
+        case .replaced:
+            transcriptIDs = Set(transcript.map(\.id))
+        }
+    }
+
     /// Bumped every time a reconnect re-reads the open transcript in place.
     ///
     /// The rows are *replaced*, not cleared and refilled, so the scroll view keeps its offset — which
     /// is why a foreground left the reader somewhere in the middle of a chat instead of at its end.
     /// The shell watches this and lands at the newest message, the same rule as opening the thread.
-    /// Cached rows for `visibleTranscript`, invalidated whenever `transcript` changes.
-    ///
-    /// The transcript is read on every body pass — the list, the search field, the context gauge —
-    /// and re-filtering it each time showed up as avoidable work on long conversations. The cache is
-    /// keyed by the two visibility flags as well, so a switch that hides tool calls does not keep
-    /// serving the old rows.
-    private var visibleTranscriptCache: (showToolCalls: Bool, showReasoning: Bool,
-                                         rows: [TranscriptEntry])?
-
     @Published public private(set) var transcriptReloads = 0
 
     /// The last transcript this process saw for each session, painted the instant a chat is opened.
@@ -6403,6 +6432,11 @@ public final class AppModel: ObservableObject {
                   (self.earlierCursor ?? 0) > 0,
                   self.transcript.count < Self.autoBackfillRows {
                 let before = self.transcript.count
+                // Yield before the page: the fill runs behind a screen somebody is reading, and a
+                // page's arrival re-draws the rows that are already on screen. Starting the next
+                // page in the same main-actor turn as the last one's arrival is how one 1,200-row
+                // fill used to become a single unbounded slice.
+                await Task.yield()
                 await self.loadEarlierHistory(limit: Self.backfillPage, silent: true)
                 // Nothing arrived: a manual tap is in flight, or the host has nothing older. Either
                 // way this loop must not spin.
@@ -6443,8 +6477,10 @@ public final class AppModel: ObservableObject {
                 let page = try await client.historyPage(sid, profile: selectedBotID,
                                                         cursor: cursor, limit: limit)
                 guard selectedSessionID == sid else { return }
-                let known = Set(transcript.map(\.id))
-                let fresh = page.entries.filter { !known.contains($0.id) }
+                // De-duplicated against the ids the model already holds, which `transcriptDidChange`
+                // maintains: `Set(transcript.map(\.id))` here was 6,400 string hashes on the main
+                // actor for every page that landed.
+                let fresh = page.entries.filter { !transcriptIDs.contains($0.id) }
                 ClientLog.note("earlier page: asked at \(cursor), got \(page.entries.count) rows, "
                                + "\(fresh.count) new, cursor now \(page.cursor.map(String.init) ?? "nil")",
                                level: .info, category: "paging")
@@ -6487,17 +6523,15 @@ public final class AppModel: ObservableObject {
 
     /// The rows the transcript draws. Every other reader (counts, search over history, the last
     /// reply) keeps `transcript`: hiding a card is a display choice, not a loss of history.
+    ///
+    /// The cache splices a page onto what it already filtered instead of walking the conversation
+    /// again — a page landing above the reader is the one moment this list changes while the main
+    /// actor is busy drawing, and a 6,400-row walk there is 6,400 rows the reader never asked to
+    /// see re-filtered.
     public var visibleTranscript: [TranscriptEntry] {
-        if let cached = visibleTranscriptCache,
-           cached.showToolCalls == showToolCalls,
-           cached.showReasoning == showReasoning {
-            return cached.rows
-        }
-        let rows = TranscriptVisibility.rows(transcript,
-                                              showToolCalls: showToolCalls,
-                                              showReasoning: showReasoning)
-        visibleTranscriptCache = (showToolCalls, showReasoning, rows)
-        return rows
+        visibleTranscriptCache.rows(transcript,
+                                    showToolCalls: showToolCalls,
+                                    showReasoning: showReasoning)
     }
 
     /// The running turn's cards, or nothing when the user turned tool calls off.

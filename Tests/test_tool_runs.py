@@ -42,7 +42,11 @@ class WordingTests(unittest.TestCase):
         self.assertIn('" · \\(failures) failed"', GROUP_VIEW)
 
     def test_failures_are_read_from_the_result_not_the_arguments(self) -> None:
-        self.assertIn("ToolPayload.failed(raw: $0.tool?.content)", GROUP_VIEW)
+        # Updated 2026-11-25 (scroll freeze): the read is the same one, remembered. The header this
+        # runs from is evaluated on every body pass, so `failed(raw:)` over a run of thirty long
+        # outputs was thirty `JSONSerialization` passes per frame on the main actor. It still reads
+        # `tool?.content` — the *result*, never the arguments — through the memo.
+        self.assertIn("ToolPayload.rememberedFailure(raw: $0.tool?.content)", GROUP_VIEW)
 
 
 class AppTests(unittest.TestCase):
