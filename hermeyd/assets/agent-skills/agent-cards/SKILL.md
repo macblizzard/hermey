@@ -296,6 +296,17 @@ Put this on its own line in your reply (nothing else on that line):
   mechanism: a turn that writes `cards/<id>.json` and then says "it's on the card above", "the card is up" or
   links the file name shows the owner **nothing**, and he answers "where's the card". Every card turn carries
   the tag, on its own line, in the same reply as the sentence you write about it.
+- **Write the file first, read it back, and only then post the tag — in that order, same turn.** The mirror
+  image of the rule above: a tag whose file does not exist draws **"Card not available"**, so the owner gets a
+  broken card where a question should be. Never post a tag from memory, ahead of the write, or because you
+  announced the card in prose and meant to write it next. After writing, prove it parses before you send the
+  reply (`python3 -c 'import json;json.load(open("cards/<id>.json"))'`).
+- **Two places the host looks for that file, so write to both when they differ.** The host resolves
+  `cards/<id>.json` against the conversation's working directory when that path is absolute, and against
+  `profiles/<bot>/cards/` when it is not. A terminal or cron turn whose cwd is somewhere like `/root` while
+  the native app reads the bot's profile directory is how a perfectly valid card file ends up invisible: write
+  the same bytes to `cards/<id>.json` **and** `~/.hermes/profiles/<bot>/cards/<id>.json`. The tag's `file`
+  attribute stays relative either way.
 - Keep the line out of code blocks and backticks, or it is shown as text.
 - One line per card. Text before and after it in the same reply is shown around the card.
 
