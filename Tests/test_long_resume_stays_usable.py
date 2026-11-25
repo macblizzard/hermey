@@ -115,7 +115,7 @@ class TheResumeIsWindowed(unittest.TestCase):
         # Paging back is answered from the relay's own copy of the reply, so the rows the page
         # dropped must be remembered — a window that forgets is data loss with a smaller frame.
         body = RELAY.split("Ok((paged, rows)) =>", 1)[1].split("return fan_resume_reply", 1)[0]
-        self.assertIn("lock(&state.cache).remember(key.clone(), rows.clone())", body,
+        self.assertIn("lock(&state.cache).remember_window(key.clone(), windowed_from_rows(rows.clone()))", body,
                       "every row is remembered under the resume's own key")
         self.assertIn("HistoryKey::new(fresh, &key.profile), rows", body,
                       "and under the runtime id the app pages with")
