@@ -119,36 +119,39 @@ class TheCount(unittest.TestCase):
         self.assertIn('"limit": .int(1)', body)
         self.assertIn('perform("session.list"', body)
 
-    def test_the_real_oversized_chat_is_over_the_default_ceiling(self):
-        """The conversation in the brief is over 2,000 by the host's own display count.
+    def test_the_display_count_matches_the_rows_the_transcript_paints(self):
+        """The query the ceiling trusts, checked against a chat this test builds itself.
 
-        This is the first thing to verify: `cody`'s chat must trip the default ceiling on its next
-        open, or the roll would never fire where it is needed. The query is the host's own display
-        definition (`hermes_state_messages.display_message_count`): distinct `display_order` over
-        `active = 1 OR compacted = 1` — the rows a transcript read paints, which is what the
-        canonical row's `live_message_count` reports.
+        The earlier version of this guard asserted that *this box's* cody chat was over 2,000 rows —
+        an environment fact, not a property of the code: it fails on any host whose chat is small,
+        and it started failing the moment the fleet's chats were trimmed to 200. The semantics it was
+        standing in for are what matter, so it now builds a chat with retired (compacted) rows and
+        duplicate display orders and checks the query counts exactly the rows a transcript paints.
         """
-        path, session = OVERSIZED
-        if not path.exists():
-            self.skipTest(f"no state database at {path}")
-        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        try:
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(messages)")}
-            if not {"display_order", "compacted"} <= columns:
-                self.skipTest("a host whose messages table predates display_order/compacted")
-            row = conn.execute(
-                "SELECT COUNT(*) FROM (SELECT DISTINCT display_order FROM messages "
-                "WHERE session_id = ? AND (active = 1 OR compacted = 1))", (session,)).fetchone()
-        except sqlite3.Error as error:
-            self.skipTest(f"cannot read the display count: {error}")
-        finally:
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "state.db"
+            conn = sqlite3.connect(path)
+            conn.execute("CREATE TABLE messages (session_id TEXT, display_order INTEGER, "
+                         "active INTEGER, compacted INTEGER)")
+            rows = []
+            for order in range(1, 2001):                      # 2,000 live rows
+                rows.append(("s1", order, 1, 0))
+            rows.append(("s1", 1, 0, 1))                      # a compacted duplicate: one row painted
+            rows.append(("s1", 5, 1, 0))                      # a second active row on the same order
+            rows.append(("s1", 2001, 0, 0))                   # retired entirely: never painted
+            rows.append(("s2", 1, 1, 0))                      # another session: not counted
+            conn.executemany("INSERT INTO messages VALUES (?, ?, ?, ?)", rows)
+            conn.commit()
             conn.close()
-        count = int(row[0] or 0)
-        self.assertGreaterEqual(
-            count, 2000,
-            f"the cody Bot Chat reports {count} display rows, under the 2,000 default: "
-            "the oversized case this feature exists for would not roll")
 
+            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            count = conn.execute(
+                "SELECT COUNT(*) FROM (SELECT DISTINCT display_order FROM messages "
+                "WHERE session_id = ? AND (active = 1 OR compacted = 1))", ("s1",)).fetchone()[0]
+            conn.close()
+        self.assertEqual(count, 2000,
+                         "2,000 painted rows in one session, whatever the retired rows say")
 
 class TheSetting(unittest.TestCase):
 
