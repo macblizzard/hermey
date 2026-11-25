@@ -1603,3 +1603,11 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed (hermeyd)
 - `hermeyd` **0.8.3**: the infographic schema and its named rejections.
+
+## [0.1.668] — 2026-11-25
+
+### Added
+- **Infographic cards, for real this time.** 0.1.667 announced them and did not contain them: the branch was
+  merged before its work was committed. This build carries the kind, the host validation and the shared layout.
+  A short query comes back as a card with one real picture and a caption, three to eight facts, the number that
+  matters highlighted (a price, with seller and availability), one link and a source.
