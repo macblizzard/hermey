@@ -26,7 +26,7 @@ public enum ToolRunSummary {
     /// pass — and a run of thirty commands with long outputs meant thirty `JSONSerialization` passes
     /// per frame, on the main actor, to draw one line of text.
     public static func failures(in run: ToolRun) -> Int {
-        run.entries.filter { ToolPayload.rememberedFailure(raw: $0.tool?.content) }.count
+        run.entries.filter { ToolPayload.rememberedFailure($0.tool?.content) }.count
     }
 }
 
