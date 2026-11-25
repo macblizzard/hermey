@@ -59,6 +59,51 @@ conversation straight back; the tombstone is retired as soon as a replacement is
 create that finds the tombstoned row holding the name retires it and mints (bounded once, so two
 devices resetting at each other cannot ping-pong).
 
+### 2.1 The ceiling: rolling over at N messages
+
+One endless conversation has no natural bound, and a resume carries the transcript. `cody`'s reached
+**6,806 messages / 4.5 MB**, longer than the client's 120 s resume deadline, so it stopped opening at
+all. Compaction is not the answer: it shrinks what the model *reads*, not what the transcript holds.
+
+So at a ceiling the conversation is **rolled over**, and nothing is deleted:
+
+- **The setting.** Settings → *Chat* → **"Start a new chat after"** — 1,000 / 2,000 / 5,000 /
+  **Never**, default **2,000** (`BotChatArchive.defaultLimit`, the only 2,000 written down). Stored
+  per app in `UserDefaults` (`hermey.botChatCeiling`), not on the host: it is a preference about this
+  app's behaviour. `AppModel.botChatCeiling` is read at the moment of each open, so a change applies
+  on the next open with no restart. **Never** turns the roll off; the windowed resume is then the
+  only protection.
+- **The count** is the host's own: `session.list {title: "Bot Chat"}` → `live_message_count`, the
+  display count (distinct `display_order`, the rows a transcript read paints). Not the denormalised
+  `message_count` — that reported **675** for the same 6,806-message conversation, because compaction
+  retires rows from the column while they stay in the transcript. Not the client's array either: a
+  windowed resume holds a page.
+- **When.** On the next open of a bot whose Bot Chat is at or past the ceiling, and after a turn
+  settles if it crossed the line mid-conversation. Never while a turn is in flight (`sending`, a
+  stream on that bot, an open approval, or a busy face from the tracker — which is the only one that
+  sees a cron or another device's turn), and never twice for the same conversation (the list below is
+  the record).
+- **How**, in this order (`AppModel.rollBotChat`): `session.archive` the old row, then
+  `session.set_hidden` (the host frees the unique title `Bot Chat` only for an archived **and
+  hidden** conflict — `hermes_state_titles._resolve_title_conflict`), then `session.create` with
+  `title: "Bot Chat"` and a per-roll idempotency key (`bot-chat:<profile>:<archived id>`, so the
+  gateway's 300 s dedupe cannot hand back the row just archived). Then one read confirms the archived
+  chat is no longer the bot's chat. Only then is the old id recorded in **Previous conversations**,
+  the local key written and the bridge pointer published. A failure anywhere before that confirmation
+  un-archives the old row and leaves the bot exactly where it was; the archive is journalled first
+  (`hermes.rollJournal.<bot>`), so a crash between the host's commit and the list write is finished
+  by the next open instead of stranding an archived conversation.
+- **Where the identity lands.** The successor is a canonical `Bot Chat`, so tapping the bot opens it,
+  as do Desktop, the TUI, cron delivery and `message_agent`. The host writes a new session's row only
+  on its first turn, so between the create and that turn `profiles.list` answers no canonical chat and
+  the app's own key plus the bridge pointer carry the id (`CanonicalBotChat.plan` adopts it). The
+  archived chat is listed nowhere else: `session.list` hides an archived row, which is why the list
+  is the app's document.
+- **Previous conversations** (the bot's own menu on both apps) lists archived chats newest first,
+  each with the host's count and last-message date. Opening one resumes the real transcript; a message
+  sent there is appended to *that* conversation and does not make it the bot's chat again — the row
+  says so.
+
 ## 3. Compaction
 
 **The host owns it.** Hermes compacts at the *start* of a turn when the context crosses

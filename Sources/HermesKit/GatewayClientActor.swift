@@ -435,6 +435,45 @@ public actor GatewayClient: GatewayClientProtocol {
         _ = try await perform("session.archive", params: .object(params), timeout: timeouts.call)
     }
 
+    /// The same route with `archived: false` — the roll's undo.
+    ///
+    /// The host reads this as a flag (`methods_session.py`: `archived = is_truthy_value(params.get(
+    /// "archived", True))`), so clearing it puts the row back in every list it came from without
+    /// touching a message.
+    public func unarchiveSession(_ session: SessionID, profile: String?) async throws {
+        var params: [String: JSONValue] = ["session_id": .string(session),
+                                           "archived": .bool(false)]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.archive", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// `session.set_hidden` — the other half of what frees the canonical title.
+    ///
+    /// `hidden` is a required field on the host (`"hidden required"` otherwise), and passing the
+    /// stored id is enough: the host resolves a live record first and the profile's database second.
+    public func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws {
+        var params: [String: JSONValue] = ["session_id": .string(session),
+                                           "hidden": .bool(hidden)]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.set_hidden", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// The canonical row and the host's own count for it: `session.list {title: "Bot Chat"}`.
+    ///
+    /// An exact-title lookup, which the host answers window-free — one row plus one display-count
+    /// query — and which hides an archived row, so `nil` after a roll means "there is no Bot Chat
+    /// to measure" rather than "0 messages". `perform`, not `performRead`: a memoised count would
+    /// keep serving the pre-roll number to the very open that rolled it.
+    public func botChatRow(profile: String) async throws -> BotChatRow? {
+        var params: [String: JSONValue] = [
+            "title": .string(CanonicalBotChat.title),
+            "limit": .int(1),
+        ]
+        if !profile.isEmpty { params["profile"] = .string(profile) }
+        let result = try await perform("session.list", params: .object(params), timeout: timeouts.sessionList)
+        return GatewayPayloadDecoder.botChatRow(result)
+    }
+
     /// The tail every create shares: learn both ids, bind the profile, and answer with the **stored**
     /// one.
     ///

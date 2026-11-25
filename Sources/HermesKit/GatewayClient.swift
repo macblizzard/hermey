@@ -94,6 +94,19 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// `CanonicalBotChat`.
     func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState
 
+    /// This bot's canonical row plus **the host's own message count** for it.
+    ///
+    /// The count is the reason this exists. `session.list`'s bulk rows carry `message_count`, the
+    /// denormalised column, which counts only the rows still *active* — `cody`'s 6,806-message chat
+    /// reports **675** there, because compaction retires the rest. The host's display count
+    /// (`live_message_count`, grouped exactly the way a transcript read groups its rows) reported
+    /// **6,136** for the same conversation. A ceiling read off the wrong one never fires: the chat
+    /// grows past 6,000 while the app believes it is under 700.
+    ///
+    /// One row, one count query — asked once per open (see `AppModel.rollBotChatIfNeeded`), never
+    /// per turn. `nil` means the host has no canonical row (or could not be asked): nothing to roll.
+    func botChatRow(profile: String) async throws -> BotChatRow?
+
     /// Name an existing session `Bot Chat` — the adoption step for a bot whose conversation started
     /// life as a Hermey-only session. Throws when another row already holds the title
     /// (`CanonicalBotChat.isTitleConflict`), which the caller resolves by switching to that row.
@@ -110,6 +123,22 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Archive a session. Used to *retire* a Bot Chat, matching Desktop: the archived row keeps its
     /// history, its name is freed for a successor, and the next open mints a fresh canonical chat.
     func archiveSession(_ session: SessionID, profile: String?) async throws
+
+    /// Put an archived session back. The roll's undo, and nothing else's.
+    ///
+    /// A roll archives the chat and then mints its successor; if the mint is refused (a host that
+    /// will not free the name, a dead socket in between), the bot must be left on the conversation
+    /// it had rather than on one this device quietly retired. Defaulted to a refusal so a client
+    /// without the route reports the half-done state instead of pretending it undid it.
+    func unarchiveSession(_ session: SessionID, profile: String?) async throws
+
+    /// `session.set_hidden` — hide a row that a list would otherwise show.
+    ///
+    /// The roll's one other prerequisite: the host hands the unique title `Bot Chat` to a successor
+    /// only when the row holding it is **archived and hidden** (`_resolve_title_conflict`). A
+    /// canonical chat is born hidden, so this is normally a no-op; an *adopted* chat can be
+    /// visible, and without this the successor would be refused the name and end up auto-titled.
+    func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry]
 
     /// The same read, scoped to the bot that owns the conversation.
@@ -848,6 +877,25 @@ public extension GatewayClientProtocol {
                                         message: "session.archive is not supported by this client"))
     }
 
+    func unarchiveSession(_ session: SessionID, profile: String?) async throws {
+        _ = (session, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.archive is not supported by this client"))
+    }
+
+    func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws {
+        _ = (hidden, session, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.set_hidden is not supported by this client"))
+    }
+
+    /// A client that cannot read a canonical row cannot check a ceiling. `nil` means "do not roll":
+    /// the conversation keeps working exactly as it did before this feature existed.
+    func botChatRow(profile: String) async throws -> BotChatRow? {
+        _ = profile
+        return nil
+    }
+
     /// No canonical create: the plain one is the honest degradation.
     func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID {
         try await createSession(model: nil, provider: nil, profile: profile,
@@ -900,6 +948,21 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
             if !line.isEmpty { return String(line.prefix(60)) }
         }
         return "Untitled session"
+    }
+}
+
+/// One canonical row, as the host answers it, with the count the ceiling reads.
+///
+/// `count` is `live_message_count` when the host sends one — the display count, grouped the way a
+/// transcript read groups its rows — and `message_count` only from a host too old to send it. See
+/// `GatewayClientProtocol.botChatRow(profile:)` for why the two are not interchangeable.
+public struct BotChatRow: Hashable, Sendable {
+    public let id: SessionID
+    public let count: Int
+
+    public init(id: SessionID, count: Int) {
+        self.id = id
+        self.count = count
     }
 }
 

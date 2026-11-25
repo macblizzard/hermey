@@ -504,13 +504,34 @@ struct SettingsScreen: View {
             }
             .tint(Tokens.success)
             .hermeyFocusQuiet()
+
+            // "Start a new chat after": the ceiling a bot's one conversation is rolled at. A menu
+            // picker inside the row, the shape iOS uses for a short list of choices — and the
+            // sentence under it says **moves**, because nothing is deleted.
+            Picker(selection: Binding(get: { model.botChatCeiling },
+                                      set: { model.botChatCeiling = $0 })) {
+                ForEach(BotChatCeiling.choices, id: \.self) { choice in
+                    Text(BotChatCeiling.label(choice)).tag(choice)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start a new chat after")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Text(BotChatCeiling.explanation)
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textGroupedSecondary)
+                }
+            }
+            .accessibilityIdentifier("chatCeilingPicker")
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Chat")
         } footer: {
             // Compaction is the host's job, at its own `compression.threshold` — it compacts at the
             // start of a turn when the context crosses it. An app-side threshold was a second
             // opinion nobody asked for, and it could compact a thread the host was about to.
-            Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is.")
+            Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is. Never leaves the conversation whole; it only pages faster.")
                 .font(TypeScale.font(TypeScale.label))
         }
     }

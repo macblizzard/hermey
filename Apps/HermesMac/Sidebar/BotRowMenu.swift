@@ -44,11 +44,15 @@ struct BotMenu {
     let isHidden: Bool
     let categories: [BotCategory]
     let currentCategoryID: String?
+    /// The conversations a roll moved aside, newest first (`AppModel.previousConversations`).
+    let previous: [BotChatArchive.Previous]
 
     let openSettings: () -> Void
     let togglePin: () -> Void
     let toggleHidden: () -> Void
     let showSessions: () -> Void
+    /// Open one archived conversation — read and scroll, and a message sent there continues it.
+    let openPrevious: (BotChatArchive.Previous) -> Void
     /// `nil` puts the bot back in Uncategorized.
     let assignCategory: (String?) -> Void
     let newCategory: () -> Void
@@ -93,6 +97,13 @@ struct BotRowMenu: View {
             }
             .hermeyFocusQuiet()
 
+            Menu {
+                previousItems
+            } label: {
+                Label("Previous conversations", systemImage: "archivebox")
+            }
+            .hermeyFocusQuiet()
+
             Divider()
 
             Button(role: .destructive) { menu.toggleHidden() } label: {
@@ -134,6 +145,34 @@ struct BotRowMenu: View {
         }
         .disabled(menu.currentCategoryID == nil)
         .hermeyFocusQuiet()
+    }
+
+    /// The conversations the ceiling rolled out of the way, newest first, each with the host's own
+    /// count and its last-message date.
+    ///
+    /// A submenu rather than a sheet: there is no cap on how many archived chats exist, and a menu
+    /// lists forty of them as readily as two. The last line is the honest half — a message sent in
+    /// the transcript that opens is appended to *that* conversation, which no longer opens when the
+    /// bot's row is tapped.
+    @ViewBuilder
+    private var previousItems: some View {
+        if menu.previous.isEmpty {
+            Text("None yet")
+        }
+
+        ForEach(menu.previous) { row in
+            Button {
+                menu.openPrevious(row)
+            } label: {
+                Label(BotChatArchive.rowLabel(row), systemImage: "text.bubble")
+            }
+            .hermeyFocusQuiet()
+        }
+
+        if !menu.previous.isEmpty {
+            Divider()
+            Text("Sending in one continues that old chat")
+        }
     }
 }
 
