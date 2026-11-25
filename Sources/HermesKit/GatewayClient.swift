@@ -304,6 +304,21 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func credentialCards() async throws -> [CredentialCard]
     func answerCredentialCard(id: String, values: [String: String]) async throws
     func cancelCredentialCard(id: String) async throws
+
+    /// `GET /v1/vault` — the names the host's vault holds, with a label and a date each, and no value.
+    /// `VaultItem` has no field a value could travel in, so "the list is only names" is a property of
+    /// the type rather than of the decoder.
+    func vaultItems() async throws -> [VaultItem]
+    /// `DELETE /v1/vault/{name}` — the name may hold one `/` (`doctolib.de/password`), which the client
+    /// percent-encodes so the host's wildcard route reads it back as one name.
+    func deleteVaultItem(name: String) async throws
+    /// `POST /v1/credentials/cards` — ask the host for a card the owner answers.
+    ///
+    /// The Vault pane is the only caller and it asks for `store: true`: the value the owner types goes
+    /// into the existing masked sheet and straight to the vault, which is why the pane needs no form of
+    /// its own and there is still exactly one way a secret can enter the host.
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard
     func integrations() async throws -> IntegrationsState
     func connectIntegration(slug: String, alias: String?) async throws -> String
     func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField]
@@ -539,6 +554,14 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func cancelCredentialCard(id: String) async throws {
+        throw BotAdminUnavailable()
+    }
+    /// No bridge, no vault. Failing loudly is the point: an empty list here would read as "you have
+    /// saved no secrets", which is the one thing this pane must never say by accident.
+    public func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
+    public func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
         throw BotAdminUnavailable()
     }
     public func integrations() async throws -> IntegrationsState {

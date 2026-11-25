@@ -108,6 +108,33 @@ The bot learns **yes or no**. It never sees the token behind the connection.
 
 That is the complete list. If a future feature needs more, it goes in this document first.
 
+## The vault, and the pane that shows it
+
+A card made with `store: true` writes its answer into the host's vault — `<state>/secrets.json`,
+`0600`, a name→value map, atomic write, never served in full by any route. The owner can now see what is
+in it from **Settings → Vault** on both the Mac and the phone, and that screen has exactly two verbs:
+
+```
+GET    /v1/vault           → {"items": [{name, kind, addedAt, site?, note?}]}
+DELETE /v1/vault/{*name}   → {"deleted": "<name>"} | 404 | 422 | 409
+```
+
+- **A value has nowhere to travel.** The item type the host serialises (`VaultItem` in
+  `hermeyd/src/vault.rs`) has no member a value could occupy, and the module never calls
+  `secrets::get`. The app's copy (`VaultItem` in `Sources/HermesKit/VaultItems.swift`) has no such field
+  either, so there is no reveal control to build and nothing for one to reveal.
+- **Adding has one door.** The pane does not post a value: "Add a secret" asks the host for a
+  `store`-mode card (`POST /v1/credentials/cards` with `save_as: <the name>`) and presents the *same*
+  masked sheet a bot's card opens. The value goes into that `SecureField`, to the host, and nowhere else.
+- **Deleting is the store's own removal.** `secrets::remove` rewrites the map without the name, so the
+  value stops existing; the route answers 404 for a name the vault does not have rather than pretending.
+- **Labels live beside the store, not in it.** `site`, `note`, `kind` and `addedAt` are kept in the host's
+  document store under `vault:index`, keyed by name, written when a stored card is answered. That keeps
+  `secrets.json` one format with no migration; an entry with no record (saved before this pane existed) is
+  still listed and dated by the file.
+- **A broken host is not an empty vault.** An unreachable host, a refused request and an unreadable store
+  each produce an error sentence and no list; only a real answer renders the empty state.
+
 ## Fill targets
 
 | where the bot works | how the fill lands |

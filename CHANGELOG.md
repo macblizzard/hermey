@@ -4,6 +4,14 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **Your host has a vault, and Settings now shows it.** A new **Vault** tab on the Mac and a **Vault**
+  row under **Settings → Secrets** on the phone list the secrets the host holds — by name, with where
+  each is for and when it was added — and let you add one or delete one. The pane never shows a value:
+  the row type on the wire (`GET /v1/vault`) has no field to carry one, and there is no reveal control
+  to press. **Add a secret** asks the host for the same `store`-mode card a bot's request makes and
+  opens the *same* masked sheet, so a value still enters the host exactly one way; **Delete** removes
+  the name from the vault (ask first, and a refusal is shown rather than swallowed). A host that cannot
+  be reached says so instead of drawing an empty vault, and an empty vault says what the vault is for.
 - **The Avatar tab offers the Classic faces again, beside your own.** A new **Classic** row — the
   eight bodies and palette colours this app already ships, as eight whole faces rather than a body
   picker and a colour picker that could disagree — sits under the custom presets, scrolls if the

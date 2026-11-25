@@ -58,6 +58,7 @@ mod skills;
 mod skills_dialect;
 mod store;
 mod update;
+mod vault;
 mod voice;
 mod workspace;
 
@@ -571,6 +572,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/credentials/cards/{card_id}/answer", post(credentials::answer_card))
         .route("/v1/credentials/cards/{card_id}/cancel", post(credentials::cancel_card))
         .route("/v1/credentials/cards/{card_id}/consume", post(credentials::consume_card))
+        // The vault's read and delete face: names and labels, never a value. A value enters only
+        // through the credential card above, so there is one door into the store and these two are
+        // the ones that can see what is in it. The name may hold one `/`, hence the wildcard.
+        .route("/v1/vault", get(vault::list))
+        .route("/v1/vault/{*name}", axum::routing::delete(vault::delete_item))
         .route("/v1/voice/transcribe", post(voice::transcribe))
         .route("/v1/voice/synthesize", post(voice::synthesize))
         .route(

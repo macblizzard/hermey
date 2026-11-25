@@ -46,6 +46,13 @@ final class MobileCredentialCenter: ObservableObject {
         try? await model.cancelCredentialCard(id: card.id)
         self.card = nil
     }
+
+    /// Adopt a card this phone asked for — the Vault screen's "add a secret". Same reason as the Mac's:
+    /// one masked sheet, not two.
+    func adopt(_ card: CredentialCard) async {
+        self.card = card
+        failure = nil
+    }
 }
 
 /// One card, in whichever shape it asked for.

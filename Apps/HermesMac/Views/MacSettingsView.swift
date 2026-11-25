@@ -41,6 +41,12 @@ struct MacSettingsView: View {
             IntegrationsTab(store: store)
                 .tabItem { Label("Integrations", systemImage: "link.badge.plus") }
 
+            // The host's vault, by name — what the bots may use and the owner may remove. Next to
+            // Integrations because both are the owner's own credentials; separate because this one
+            // lists secrets that are never shown, only named.
+            VaultSettingsTab(store: store)
+                .tabItem { Label("Vault", systemImage: "lock.shield") }
+
             // The Mac as a local computer. Same pattern as the other native clients: a toggle in
             // settings, no inbound port and no SSH.
             LocalComputerSettingsView(store: store)
@@ -68,8 +74,9 @@ struct MacSettingsView: View {
             AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Nine tabs now (Chat, Bots, Approvals, Computer, Connection, Appearance, Notifications,
-        // Caching, About): the bar pushes the last tab behind a chevron when the window is too narrow.
+        // Ten tabs now (Chat, Bots, Approvals, Integrations, Vault, Computer, Connection, Appearance,
+        // Notifications, Caching, About): the bar pushes the last tab behind a chevron when the window
+        // is too narrow.
         .frame(width: 820, height: 500)
         .background(Tokens.canvas)
         // Settings is a separate window, so it carries its own direction: the window title, the tab

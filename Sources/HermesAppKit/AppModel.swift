@@ -4282,6 +4282,31 @@ public final class AppModel: ObservableObject {
         try await client.cancelCredentialCard(id: id)
     }
 
+    /// The host's vault by name (`GET /v1/vault`) — never by value, because `VaultItem` carries none.
+    ///
+    /// Reached from the Mac's and the phone's Vault panes, which show what this returns and nothing
+    /// else. A failure is thrown rather than turned into `[]`: the panes must be able to tell an empty
+    /// vault from a host they could not reach.
+    public func vaultItems() async throws -> [VaultItem] {
+        try await client.vaultItems()
+    }
+
+    /// Forget one saved secret (`DELETE /v1/vault/{name}`). The host answers 404 for a name it does not
+    /// have, and the pane surfaces that instead of removing the row as if it had worked.
+    public func deleteVaultItem(name: String) async throws {
+        try await client.deleteVaultItem(name: name)
+    }
+
+    /// Ask the host for a `store` card so the owner can type one value into the sheet that already
+    /// exists. The value never passes through this call — only the name and the labels do.
+    public func createVaultEntryCard(name: String, site: String?, note: String?) async throws -> CredentialCard {
+        try await client.createCredentialCard(site: site ?? "this host",
+                                              fields: ["secret"],
+                                              store: true,
+                                              saveAs: name,
+                                              note: note)
+    }
+
     /// One native agent card (`GET /v1/cards/{id}?session=…&message=…`) — the document a `::card{…}`
     /// line in a reply names.
     ///

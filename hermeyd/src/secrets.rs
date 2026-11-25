@@ -173,6 +173,50 @@ pub fn has(st: &AppState, name: &str) -> bool {
     get(st, name).is_some()
 }
 
+/// Every name in the store, sorted — the only shape of this store a route may serve.
+///
+/// Names are not secrets: a name is what a bot is allowed to know (it is how a fill is asked for), and
+/// it is the whole of what the owner's Vault pane lists. Returning names rather than the map is
+/// deliberate: there is no value in the return type, so no caller can print one.
+pub fn names(st: &AppState) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = load(st)?.into_iter().map(|(name, _)| name).collect();
+    out.sort();
+    Ok(out)
+}
+
+/// Forget one name. `Ok(true)` removed it, `Ok(false)` means it was never there, and a name the store
+/// would not hold is an error — the same three answers the route has to tell apart.
+///
+/// The value is dropped with the name: the store is rewritten whole from the map minus this key, so
+/// the bytes that held it are replaced rather than shadowed.
+pub fn remove(st: &AppState, name: &str) -> Result<bool, String> {
+    if !valid_name(name) {
+        return Err(format!(
+            "a secret name is letters, digits, '.', '_', '-' and one '/', up to {MAX_NAME_BYTES} characters"
+        ));
+    }
+    let mut map = load(st)?;
+    if map.remove(name).is_none() {
+        return Ok(false);
+    }
+    save(st, &map)?;
+    Ok(true)
+}
+
+/// When the store as a whole was last written, as Unix seconds.
+///
+/// Entries carry no date of their own (the file is a name→value map and stays one), so an entry that
+/// predates the vault's index — or was written by a path that kept no index — is dated by the file it
+/// lives in. That is an approximation and the pane shows it as a date, not a claim about one write.
+pub fn modified_at(st: &AppState) -> Option<f64> {
+    let meta = std::fs::metadata(path(st)).ok()?;
+    let modified = meta.modified().ok()?;
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs_f64())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

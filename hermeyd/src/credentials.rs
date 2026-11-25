@@ -378,6 +378,8 @@ pub async fn answer_card(
         // Straight into the host's vault, and only the name is kept on the card. A `put` that fails
         // names the reason and the item, never the value, so this error can travel back to the app.
         let site = card.get("site").and_then(|s| s.as_str()).unwrap_or("").to_string();
+        let kind = card.get("kind").and_then(|k| k.as_str()).unwrap_or("login").to_string();
+        let note = card.get("note").and_then(|n| n.as_str()).unwrap_or("").to_string();
         let save_as = card.get("save_as").and_then(|s| s.as_str()).map(str::to_string);
         let mut stored = Vec::new();
         for (field, value) in values.iter() {
@@ -387,6 +389,10 @@ pub async fn answer_card(
             let text = value.as_str().unwrap_or_default();
             crate::secrets::put(&st, &name, text)
                 .map_err(|why| bad(StatusCode::UNPROCESSABLE_ENTITY, why))?;
+            // The row the owner's Vault pane draws: where it is for, what asked for it, and when —
+            // the card's own scalars, never the answer. Written after the value lands, so an index
+            // record without a secret cannot appear.
+            crate::vault::note_stored(&st, &name, &kind, &site, &note);
             stored.push(json!({ "field": field, "name": name }));
         }
         card["stored"] = json!(stored);
@@ -745,6 +751,21 @@ mod tests {
         // It is in the store, under the name the site and field mint.
         let stored = crate::secrets::get(&st, "api.openai.com/api-key");
         assert_eq!(stored.as_deref(), Some(SECRET), "the value reached the vault");
+
+        // And the owner's Vault pane can see it as a row: the name, where it is for, and what asked
+        // for it — with the value nowhere in what the pane is served.
+        let vault = crate::vault::list(State(Arc::clone(&st)), auth())
+            .await
+            .expect("vault list")
+            .0;
+        assert_eq!(vault["items"][0]["name"], "api.openai.com/api-key");
+        assert_eq!(vault["items"][0]["site"], "api.openai.com");
+        assert_eq!(vault["items"][0]["note"], "Reading the model list");
+        assert_eq!(vault["items"][0]["kind"], "secret");
+        assert!(
+            !vault.to_string().contains(SECRET),
+            "the vault list carried the value: {vault}"
+        );
 
         // In none of the places a caller can read.
         let seen = get_card(State(Arc::clone(&st)), auth(), Path(id.clone()))

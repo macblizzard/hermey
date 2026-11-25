@@ -192,6 +192,14 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/credentials/cards/{id}/cancel`
     func cancelCredentialCard(id: String) async throws
 
+    /// `GET /v1/vault` — the stashed secrets by name (never by value).
+    func vaultItems() async throws -> [VaultItem]
+    /// `DELETE /v1/vault/{name}`
+    func deleteVaultItem(name: String) async throws
+    /// `POST /v1/credentials/cards` — make a card; a Vault pane makes a `store` one.
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard
+
     /// `GET /v1/integrations` — connectable services and whether this host can connect them at all.
     func integrations() async throws -> IntegrationsState
     /// `POST /v1/integrations/{slug}/connect` — the hosted sign-in URL to open.
@@ -329,6 +337,13 @@ public extension BotSessionPointerStore {
     }
 
     func cancelCredentialCard(id: String) async throws {
+        throw BotAdminUnavailable()
+    }
+
+    func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
+    func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard {
         throw BotAdminUnavailable()
     }
 
@@ -974,6 +989,35 @@ enum Failure: Error, Equatable, LocalizedError {
     public func cancelCredentialCard(id: String) async throws {
         let card = try Self.pathComponent(id)
         _ = try await bridgePOST("v1/credentials/cards/\(card)/cancel", body: [:], timeout: 20)
+    }
+
+    /// `GET /v1/vault` — names, labels, dates; nothing that was typed. A body that is not a vault
+    /// listing throws rather than reading as an empty vault.
+    public func vaultItems() async throws -> [VaultItem] {
+        try VaultItem.list(from: try await bridgeGET("v1/vault", timeout: 20))
+    }
+
+    /// `DELETE /v1/vault/{name}`. The name may hold one `/`, which `pathComponent` percent-encodes;
+    /// a name the host does not have comes back as a rejection, not a quiet success.
+    public func deleteVaultItem(name: String) async throws {
+        let item = try Self.pathComponent(name)
+        _ = try await bridgeDELETE("v1/vault/\(item)", timeout: 20)
+    }
+
+    /// `POST /v1/credentials/cards`. Only the words a card needs are sent; the value is answered later,
+    /// by the owner, into the card this returns.
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
+        var body: [String: Any] = [
+            "kind": "secret",
+            "site": site,
+            "fields": fields,
+            "store": store,
+        ]
+        if let saveAs, !saveAs.isEmpty { body["save_as"] = saveAs }
+        if let note, !note.isEmpty { body["note"] = note }
+        let data = try await bridgePOST("v1/credentials/cards", body: body, timeout: 20)
+        return try JSONDecoder().decode(CredentialCard.self, from: data)
     }
 
     /// `GET /v1/integrations`. The key that makes these work never travels — only the state does.

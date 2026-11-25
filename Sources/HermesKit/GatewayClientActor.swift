@@ -704,6 +704,24 @@ public actor GatewayClient: GatewayClientProtocol {
         try await sessionPointer.cancelCredentialCard(id: id)
     }
 
+    public func vaultItems() async throws -> [VaultItem] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.vaultItems()
+    }
+
+    public func deleteVaultItem(name: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.deleteVaultItem(name: name)
+    }
+
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.createCredentialCard(site: site, fields: fields,
+                                                             store: store, saveAs: saveAs,
+                                                             note: note)
+    }
+
     public func integrations() async throws -> IntegrationsState {
         guard let sessionPointer else { throw BotAdminUnavailable() }
         return try await sessionPointer.integrations()

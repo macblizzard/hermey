@@ -61,6 +61,25 @@ struct SettingsScreen: View {
         }
     }
 
+    /// The host's vault: one row, one tap, the same as Integrations above — the pane itself is
+    /// `VaultScreen`, which lists names and never a value (asked for 2026-11-25).
+    private var vaultSection: some View {
+        Section {
+            NavigationLink {
+                VaultScreen(model: model)
+            } label: {
+                Label("Vault", systemImage: "lock.shield")
+            }
+            .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
+        } header: {
+            sectionHeader("Secrets")
+        } footer: {
+            Text("What the host holds for your bots, by name. Values are written once and never shown again.")
+                .font(TypeScale.font(TypeScale.label))
+        }
+    }
+
     /// Appearance: the same catalogue and the same swatches the Mac's Settings draws.
     private var appearanceSection: some View {
         Section("Appearance") {
@@ -206,6 +225,7 @@ struct SettingsScreen: View {
             connectionSection
             approvalsSection
             accountsSection
+            vaultSection
             appearanceSection
             storageSection
             rosterSection

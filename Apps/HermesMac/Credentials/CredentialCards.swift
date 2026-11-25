@@ -51,6 +51,16 @@ final class CredentialCardCenter: ObservableObject {
         }
     }
 
+    /// Adopt a card this side asked for — the Vault pane's "add a secret".
+    ///
+    /// The pane creates a `store` card on the host and hands it to this same sheet, which is what keeps
+    /// one masked form in the app. An async hop rather than a settable property so a caller outside the
+    /// main actor can still use it.
+    func adopt(_ card: CredentialCard) async {
+        self.card = card
+        failure = nil
+    }
+
     func cancel(model: AppModel) async {
         guard let card else { return }
         try? await model.cancelCredentialCard(id: card.id)
