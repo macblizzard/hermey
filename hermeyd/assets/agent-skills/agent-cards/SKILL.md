@@ -2,7 +2,7 @@
 name: agent-cards
 description: Cards for questions, approvals, tasks (Hermey + Desktop).
 managed_by: hermey-bridge
-version: 1.0.0
+version: 1.1.0
 author: Hermes Bot Kit
 license: MIT
 platforms: [linux, macos, windows]
@@ -15,17 +15,61 @@ metadata:
 
 # Agent Cards
 
-In a Hermes **Desktop** chat you can show a card instead of describing things in prose: a question with
-buttons, an approval to confirm before you act, or a task whose progress updates in place. Cards are
-drawn by Hermes Desktop with the Grokbot Override plugin. Slack, Telegram, the CLI and other channels
-do not draw them: there, write plain text.
+In a card-capable chat you show a card instead of describing things in prose: a question with buttons,
+an approval to confirm before you act, or a task whose progress updates in place. Hermes Desktop draws
+them, and so do the native Hermey apps (macOS/iOS); Slack, Telegram, the CLI, the TUI and the rest do
+not — there you write plain text.
+
+## Cards first — the standing rule
+
+**The owner's rule, in his words:** *"all bots always use cards wherever possible, any multiple choice
+question it asks me should use a card. any sensitive entries it needs from me like an api or something
+should come to me as a secure entry card."* It holds on every turn, for every bot. You never wait to be
+asked for a card, and you never ask whether he wants one.
+
+- **R1 — A multiple-choice question is a card, never prose.** Two or more options never go in a
+  sentence, a bullet list **or a numbered list**. It is one `approval` card whose buttons *are* the
+  options: two or three of them, the recommended one first with `"style": "primary"`. The exact JSON is
+  §1 of this file — nowhere else describes it.
+- **R2 — An approval is a card, never a printed question.** Send, post, publish, delete, pay, book,
+  restart, recreate — anything outward or irreversible — is an `approval` card (§2) and then a wait. A
+  sentence ending in "shall I?", "want me to?" or "confirm?" is the failure this rule exists to stop.
+- **R3 — Plain text only where nothing can draw.** Messaging adapters, the CLI/TUI, `api_server`, cron
+  and subagent runs have no renderer: there, ask in one plain line. The table below is how you tell
+  which chat you are in — read it instead of guessing.
+- **R4 — Secrets never come through chat (SECURE-ENTRY).** An API key, token, password, PIN, card
+  number or any login is asked for with the credential card, never in a message, and a secret pasted
+  into chat is refused and never repeated or echoed. See §"Secure entries".
+
+## Which chat am I in? (can a card draw here?)
+
+Your system prompt carries a `Platform:` line. It names the surface you are answering on, and it decides
+this:
+
+| `Platform:` line | Cards draw? | What you do |
+|---|---|---|
+| `desktop` (Hermes Desktop) | yes — `::card` draws, and `clarify` draws | card |
+| a bot-chat surface (`bot_chat`, `bot_room` — the native Hermey apps, bot-to-bot rooms) | `::card` draws; **`clarify` draws nothing** | `::card` only |
+| `tui`, `cli` | no | plain text |
+| a messaging adapter — `telegram`, `discord`, `slack`, `whatsapp`, `signal`, `matrix`, `email`, `sms`, `api_server`, `webhook`, `qqbot`, `feishu`, … | no | plain text |
+| `cron` | no, and nobody is present to answer | do not ask; decide and report |
+| `subagent` | no | plain text; the decision belongs in your report to the parent |
+| a name you do not recognise | assume `::card`-only | post the `::card` line anyway — a host without the route shows the prose around it — and never leave a question resting only on a tap |
+
+Two failure modes this prevents: posting a `::card` into Telegram (the owner sees `::card{…}` as literal
+text), and calling `clarify` in a native app (nothing draws, the turn dies waiting). When he says the card
+is not there, stop posting cards in that thread and ask the same question in one plain line — §"Other
+channels" below.
 
 ## When to show a card
 
-1. A choice or a yes/no confirmation: ask with the built-in `clarify` tool (it shows a question card).
-2. Before anything outward or irreversible (sending, posting, paying, booking, deleting): an approval card, then wait.
+1. Any choice or yes/no confirmation: an `approval` card whose buttons are the options (R1). `clarify` is
+   an additional shortcut on Hermes Desktop only — never the only route.
+2. Before anything outward or irreversible (sending, posting, paying, booking, deleting, restarting): an
+   approval card, then wait (R2).
 3. A job that takes more than about a minute: one task card, kept up to date.
-4. Everything else: plain text. Cards only in the Hermes Desktop chat.
+4. A credential, key, token or login: the credential card (§"Secure entries", R4).
+5. Everything else: plain text.
 
 ## 1. A question with options is always a card
 
@@ -69,8 +113,9 @@ Rules that keep this usable:
 - **Never ask in prose as well.** One card, one question, then stop and wait.
 - Somebody who wants to answer in their own words simply types a message; do not add an "Other" button.
 
-Use `clarify` only where cards cannot reach — Hermes Desktop, CLI, or a chat transport with no card
-renderer (Telegram, Slack).
+Use `clarify` only in Hermes Desktop, where it is the shortest route to the same question. In the CLI or a
+chat transport with no renderer (Telegram, Slack) ask in one plain line — a `::card` line there is literal
+text, not a question.
 
 ## 1b. Question cards on Desktop: the `clarify` tool
 
@@ -163,6 +208,10 @@ Put this on its own line in your reply (nothing else on that line):
 - `file` is required and must be relative to your working directory: never an absolute path, a `~`
   path, a URL or a path with `..`.
 - `id` and `kind` should match the file; `kind` is also the label shown if the file cannot be read.
+- **Writing the file is not showing the card.** The `::card{…}` line in your reply is the only delivery
+  mechanism: a turn that writes `cards/<id>.json` and then says "it's on the card above", "the card is up" or
+  links the file name shows the owner **nothing**, and he answers "where's the card". Every card turn carries
+  the tag, on its own line, in the same reply as the sentence you write about it.
 - Keep the line out of code blocks and backticks, or it is shown as text.
 - One line per card. Text before and after it in the same reply is shown around the card.
 
@@ -183,11 +232,50 @@ a self-contained page: inline `<style>` and `<script>`, images as `data:` URLs. 
 user has just clicked into the frame. Otherwise the user sees the exact text under the frame with
 **Send** and **Dismiss**, and nothing is sent until they click Send.
 
+## Secure entries — never ask for a secret in chat (`SECURE-ENTRY`)
+
+**Requirement, named `SECURE-ENTRY`.** Any value that is a credential — an API key, access token,
+password, PIN, one-time code, card number, or the details of a login — is asked for with a card the app
+fills in, never with a chat message and never with `clarify`. The owner types it into the card; the value
+is never echoed into the transcript, never quoted from a tool result, never written to a file, a memory or
+a summary. It is handed over once, used, and dropped.
+
+Two states — know which one you are in:
+
+- **Shipped today: the credential card.** hermeyd serves `/v1/credentials/cards` and the bot drives it
+  through `hermey_signin.py`, whose exact commands, kinds (`secret`, `choice`, `confirm`) and flags live in
+  the **`signin` skill**. That skill — not this one — carries the exact call; load it before asking for
+  anything sensitive and never hand-build the request. For a bare secret it is
+  `hermey_signin.py ask --site <name> --kind secret --fields "api key" --note "<why>"`.
+- **Named, not yet a `card.v1` kind: `secure-entry`.** The intended addition to `card.v1` is a
+  `secure-entry` card (masked fields, one submit, the value handed over once). Until the apps and hermeyd
+  ship it the kind is **unknown to the renderer**: do not write `"kind": "secure-entry"` into a card file,
+  because a build that cannot read it shows "Card not available" and the owner is left without a question.
+  When it lands, its JSON is documented in this section *and* in `signin`, updated together — no third
+  file describes the schema, so the rule and the contract cannot drift.
+
+Either way the rule is the same: **a secret is never asked for in prose.** "Paste your API key here" is
+the one instruction you never give, on any surface — including Telegram and the CLI where no card can
+draw. There, say where the key belongs (the secrets store, a `chmod 600` file, an env var), have the owner
+put it there himself, and read it from the file rather than the chat. On a host with no Hermey app the
+vault is the route (`web-login-1password-otp`, `browser_vault`), and still never chat. A secret that
+arrives in chat anyway is not used as proof of anything: say it is exposed, tell him to rotate it, and do
+not repeat it back.
+
 ## Email
 
 When you have the `email_draft_create` tool, every email goes through it (it draws its own draft card with
 Send and Discard): never write a `draft-email` card file for an email then. Without that tool, use a
 `draft-email` card and the approval flow below.
+
+**Without that tool, do not hand-write the JSON each time.** The `mail-draft-card` skill wraps this exact
+contract in two commands — `scripts/draft.py` writes `/root/cards/<id>.json` and prints the `::card{…}` line,
+`scripts/send.py <id>` sends the approved card through the owner's own transport and marks it `done`. It
+exists so a "draft me a mail" request costs no turn spent re-deriving the schema or re-choosing a sender on
+approval; load it before writing a mail card by hand.
+
+A `draft-email` card carries `cc` as well as `to`, and the Cc row is drawn — fill it whenever the owner names
+a second address, and check the sent copy actually shows it before reporting.
 
 ## Approval flow
 
@@ -246,5 +334,18 @@ Getting the permalink:
 
 ## Other channels
 
-On Slack, Telegram, the CLI or any channel that is not the Desktop chat, never write a `::card` line:
-ask your question, or describe the approval or the task, in plain text.
+On Slack, Telegram, the CLI, the TUI or any channel that is not card-capable — read the `Platform:` line
+against §"Which chat am I in?" — never write a `::card` line: ask your question, or describe the approval
+or the task, in plain text. A `::card` marker there is not a card, it is a line of punctuation he has to
+read.
+
+**Except when the owner asks for a card on purpose** — "send me a sample draft email card" to test the
+renderer. Then write the file and post the `::card` line anyway, say in one sentence where it will draw
+(the native app if this surface does not), and do not paste the JSON as a fallback. Keep the card's own
+contract intact so the click path is what is being tested: a `draft-email` card with `Send`/`Discard`, an
+approval card with two actions, `resolved: null` until you have acted.
+
+**A clicked button arrives as an ordinary message, with the `send` string first.** The owner may append
+his own instructions after it (`SEND c-test-mail …` followed by the real recipients). Match on the leading
+word and the card id, take the rest of the message as new instruction, do the action, then rewrite the
+file with `resolved` and `status.state` `done` and report the outcome in a short line.

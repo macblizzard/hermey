@@ -113,3 +113,66 @@ class TheyAreSeparateCapabilities(unittest.TestCase):
         text = (BUNDLE / "bot-desktop" / "SKILL.md").read_text(encoding="utf-8").lower()
         for term in ("macbook", "local_computer", "xcode", "hermey app"):
             self.assertNotIn(term, text, f"the desktop skill is not the Mac skill: {term}")
+
+
+SHARED = pathlib.Path("/root/.hermes/shared/skills")
+
+
+class TheCardsPolicyIsOneText(unittest.TestCase):
+    """Owner, 2026-11-25: "all bots always use cards wherever possible… make sure that our hermeyd
+    installation should cover all of these by default."
+
+    The policy is written once, in the fleet's shared skills, and mirrored into the bundle so a fresh
+    host has it with nobody copying files. Two copies that can differ are two policies: this pins the
+    mirror, and `scripts/check-skill-mirror.sh` is the same check for a host without pytest.
+
+    Skipped on CI, where `/root/.hermes/shared/skills` does not exist — the bundle is still pinned to
+    carry the rule by name, below.
+    """
+
+    CARD_RULE = "## Cards first — the standing rule"
+
+    @unittest.skipUnless((SHARED / "agent-cards" / "SKILL.md").is_file(), "no shared skills library here")
+    def test_the_bundle_is_the_shared_copy(self) -> None:
+        canon = (SHARED / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        bundle = (BUNDLE / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertEqual(
+            canon, bundle,
+            "agent-cards drifted from /root/.hermes/shared/skills — edit the canon and run "
+            "scripts/check-skill-mirror.sh --fix, never the bundle alone",
+        )
+
+    def test_the_rule_survives_a_build_without_the_fleet(self) -> None:
+        text = (BUNDLE / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn(self.CARD_RULE, text)
+        for name in ("R1 — A multiple-choice question is a card", "R2 — An approval is a card",
+                     "R3 — Plain text only where nothing can draw", "R4 — Secrets never come through chat"):
+            self.assertIn(name, text, f"the cards-first rule lost {name}")
+
+    def test_it_names_the_secure_entry_requirement(self) -> None:
+        text = (BUNDLE / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("SECURE-ENTRY", text)
+        # The exact call lives in `signin`; this file must point there or the rule and the schema drift.
+        self.assertIn("`signin` skill", text)
+
+    def test_it_never_promises_a_kind_the_renderer_cannot_read(self) -> None:
+        """A `secure-entry` kind written into a card file today draws "Card not available"."""
+        text = (BUNDLE / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn('"kind": "secure-entry"', text)  # named, in the do-not-write warning
+        self.assertNotIn('"kind": "secure-entry",\n  "title"', text)  # never as an example to copy
+
+    def test_it_says_how_a_bot_knows_where_it_is(self) -> None:
+        text = (BUNDLE / "agent-cards" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("## Which chat am I in?", text)
+        self.assertIn("`Platform:`", text)
+        for surface in ("telegram", "slack", "tui", "cron", "subagent", "bot_chat"):
+            self.assertIn(surface, text, f"the surface table does not name {surface}")
+
+    def test_the_fleet_prompt_carries_it_too(self) -> None:
+        """The SOUL base block is the other half: a skill is only read on demand."""
+        fleet = pathlib.Path("/root/jobs/hermey/deploy/soul/fleet-base.md")
+        if not fleet.is_file():
+            self.skipTest("no fleet-base.md beside this checkout")
+        text = fleet.read_text(encoding="utf-8")
+        self.assertIn("**Cards first — every bot, every turn.**", text)
+        self.assertIn("agent-cards", text)

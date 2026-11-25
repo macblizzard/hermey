@@ -6,6 +6,11 @@ managed_by: hermey-bridge
 
 # Signing the owner in
 
+This skill **is** the shipped implementation of the fleet's `SECURE-ENTRY` requirement (defined in the
+`agent-cards` skill, §"Secure entries"): a credential is asked for with a card the app fills in, never in
+chat. The commands and flags below are the one copy of that contract — the rule points here, so change
+the two together and nowhere else.
+
 When a site asks for a login and you cannot proceed without one, do **not** ask the owner to type a
 password into the chat. Ask for a card instead. The owner answers it in the Hermey app, the browser on
 this desktop gets filled in, and you are told one thing: whether it worked.

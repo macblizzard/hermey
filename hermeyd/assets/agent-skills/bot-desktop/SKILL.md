@@ -26,6 +26,51 @@ idle is waste. What matters is that you bring it back rather than reporting a de
 Run `start` before opening anything on the bot screen. If a browser later fails with "Missing X server",
 that is this: call `start` and retry. Never `stop` it yourself — the watchdog handles idleness.
 
+## A site blocked you: switch to this browser, do not ask
+
+**Switching to the bot browser is not a question for the owner.** When a plain fetch comes back blocked —
+`403`, a Cloudflare/DataDome "enable JS" interstitial, a JS-only shell with an empty body, a login wall, or a
+bare `HTTP 403 from origin` out of `web_extract` — go up this ladder yourself, in one turn, and say what you
+did afterwards. Asking "want me to try the browser?" costs the owner a reply and costs you a round trip; doing
+it costs six seconds. The owner's standing instruction is to *not* be asked.
+
+| rung | what | how |
+| --- | --- | --- |
+| 1 | plain fetch | `web_extract`, `curl`, a text endpoint (`llms.txt`, `.md`) |
+| 2 | bot desktop browser | the one command under *The switch* — reads the display from the file |
+| 3 | a login is needed | the **credential card** (the secure login / Sign-in card: `hermey_signin.py`, the `signin` skill): it types the credential into the page, never into chat and never a pasted password |
+| 4 | still blocked (IP-level) | stop, and report exactly what was blocked and what the page said — with the screenshot. Do not loop, do not ask permission to keep trying |
+
+Rung 2 is the answer for anti-bot protection **on this host**: a windowed Chromium on the bot desktop runs the
+challenge JS, keeps a real cookie jar, and is the same browser a human would see. It is not a headless retry.
+
+### The switch
+
+```bash
+BD="${HERMES_HOME:-$HOME/.hermes}/bot-desktop"
+[ -d "$BD" ] || BD=$(dirname "$(readlink -f "$HOME"/.hermes/profiles/*/bot-desktop 2>/dev/null | head -1)")
+@@BIN@@/hermey_browser.py open "<url>"    # starts the desktop if asleep; idempotent
+@@BIN@@/hermey_desktop.py status          # running on :<display>, browsers connected: N
+```
+
+`open` is the whole switch: it wakes the desktop, launches the browser on **the display in `bot-desktop/display`**,
+navigates, and returns only once the sign-in extension has connected. Running it twice is fine — the second call
+attaches to the browser already up and returns at once. A killed earlier run leaves `start.lock`, `lease.lock` and
+`lease.json` behind; those are `flock()` lock *files* (an owner dying releases the lock, the file staying is
+normal) and `start` reclaims a display whose X lock names a dead pid, so retry rather than diagnosing.
+
+Read the page with `probe`, then get the text with a screenshot or CDP — `probe` gives you
+`title`/`url`/fields, and the DOM text is where the content is:
+
+```bash
+curl -s -X POST @@BROWSER@@/v1/browser/act -H 'content-type: application/json' -d '{"type":"probe"}'
+DISPLAY=":$(cat "$BD/display")" import -window root /tmp/bot-page.png   # the artefact proving what you saw
+```
+
+**Never a hard-coded display number, and never `:10`.** `:10` is the owner's own session on this host: a window
+launched there opens, exits 0, and is never seen by anyone — the task is silently lost. The number comes from
+`bot-desktop/display` (or `bot-desktop/env`) every time, on every host.
+
 ## Where it is
 
 The Hermes install creates a `bot-desktop` directory, and every profile has a symlink to it. Three
