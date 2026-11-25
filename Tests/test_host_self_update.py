@@ -353,7 +353,7 @@ class TheNamesAgreeAcrossTheTwoLanguages(unittest.TestCase):
             self.assertIn(check, body)
 
     def test_the_version_was_bumped_and_the_docs_say_so(self) -> None:
-        self.assertIn('version = "0.8.1"', CARGO)
+        self.assertIn('version = "0.8.2"', CARGO)
         self.assertIn("## Self-update — `GET/POST /v1/update`", DOCS)
         for phrase in ("checksum", "rolled-back", "pending", "healthy",
                        "HERMEYD_SELF_UPDATE", "SHA256SUMS"):

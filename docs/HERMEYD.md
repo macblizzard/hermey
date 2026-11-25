@@ -633,7 +633,7 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | `GET /v1/search?q=&limit=&offset=` | per-bot newest matches (cap 20/bot) read from read-only `state.db`, assembled and paged newest-first; `<2` chars answers empty because the app searches per keystroke; snippets are char-boundary safe |
 | `GET /v1/bot-transfers?between=a,b&limit=` | JSONL hand-offs between two bots, either direction, oldest-first. Written by `POST /v1/bots/{profile}/message` — a bot speaking into another bot's chat — in the retired bridge's line format; `session_id` is `null` when the message reached no session |
 | `GET /v1/backup`, `POST /v1/backup/restore` | the bridge's document shape (kind/version/bots with soul, memory, notes, routines). Restore is additive and idempotent: identical content is not a write, memory only fills when empty, nothing is deleted, `routines_added` drives `restart_required` |
-| `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded |
+| `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded. `store: true` saves the answer in `<state>/secrets.json` (`0600`) instead and `consume` answers with `{stored:[{field,name}], ok}` — no value — so a login and an API key are one mechanism with two destinations |
 
 ## Fast pet asks — `POST /v1/bots/{profile}/ask` (shipped in 0.5.0)
 

@@ -82,7 +82,7 @@ class RetriesOnce(unittest.TestCase):
     def test_a_fill_that_matched_nothing_is_tried_again_on_the_same_page(self):
         fills = []
 
-        def fake_fill(channel, values, wanted):
+        def fake_fill(channel, values, wanted, handles=None):
             fills.append(list(wanted))
             return {"ok": len(fills) > 1}
 
@@ -95,7 +95,7 @@ class RetriesOnce(unittest.TestCase):
     def test_it_does_not_fill_again_once_the_page_has_navigated(self):
         fills = []
 
-        def fake_fill(channel, values, wanted):
+        def fake_fill(channel, values, wanted, handles=None):
             fills.append(1)
             return {"ok": False}
 

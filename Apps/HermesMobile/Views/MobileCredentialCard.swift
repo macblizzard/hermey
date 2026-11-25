@@ -63,7 +63,7 @@ struct MobileCredentialCardSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.shield")
                         .foregroundStyle(Tokens.accent)
-                    Text("Sign in to \(card.site)")
+                    Text(card.store ? "Save a credential for \(card.site)" : "Sign in to \(card.site)")
                         .font(.headline)
                 }
 
@@ -133,7 +133,9 @@ struct MobileCredentialCardSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(card.fields, id: \.self) { field in
                 Group {
-                    if field == "password" {
+                    // The host names the masked fields: a card asking for an "api key" is as private
+                    // as one asking for a password, and this view does not need to know either word.
+                    if card.isMasked(field) {
                         SecureField(field.capitalized, text: binding(field))
                     } else {
                         TextField(field.capitalized, text: binding(field))
@@ -143,14 +145,14 @@ struct MobileCredentialCardSheet: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             }
-            Button(sending ? "Sending…" : "Fill it in") {
+            Button(sending ? "Sending…" : card.submit) {
                 let payload = values
                 send(payload)
             }
             .buttonStyle(.borderedProminent)
             .disabled(sending || values.values.allSatisfy(\.isEmpty))
             .hermeyFocusQuiet()
-            Text("Goes straight into the page — the bot never sees it.")
+            Text(card.destinationNote)
                 .font(.caption)
                 .foregroundStyle(Tokens.textMuted)
         }

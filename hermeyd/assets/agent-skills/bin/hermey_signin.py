@@ -5,10 +5,16 @@
     hermey_signin.py ask --site doctolib.de --kind secret --fields username password
     hermey_signin.py ask --site doctolib.de --kind secret --fields "one-time code"
     hermey_signin.py ask --site doctolib.de --kind confirm --options "Google — mo@example.com"
+    hermey_signin.py ask --site api.openai.com --fields "api key" --store --save-as openai.main
+    hermey_signin.py ask --site doctolib.de --fields password --use doctolib.de/password
 
 `ask` blocks until the owner answers (or the card expires), wakes the browser, fills the answer into the
 page and prints one line: `filled`, or `not filled — <which failure>`. That line is all a bot ever learns:
 no verb here prints a value, and nothing logs one.
+
+`--store` is the other destination: the answer is saved in the host's vault and **nothing is filled**, so
+the line is `stored <field> as <name>`. That name is what a later `--use` fills with, without the value
+ever passing through this process.
 """
 
 from __future__ import annotations
@@ -103,16 +109,28 @@ def _call(bridge: str, method: str, path: str, body: dict | None = None,
 
 
 def ask(bridge: str, channel: str, kind: str, site: str, fields: list[str], options: list[str],
-        note: str) -> int:
+        note: str, store: bool = False, save_as: str | None = None) -> int:
+    body = {"kind": kind, "site": site, "fields": fields, "options": options, "note": note}
+    if store:
+        body["store"] = True
+        if save_as:
+            body["save_as"] = save_as
     try:
-        created = _call(bridge, "POST", "/v1/credentials/cards",
-                        {"kind": kind, "site": site, "fields": fields,
-                         "options": options, "note": note})
+        created = _call(bridge, "POST", "/v1/credentials/cards", body)
     except urllib.error.HTTPError as exc:
         print(f"could not ask: HTTP {exc.code}", file=sys.stderr)
         return 2
     card_id = created["id"]
     expires = float(created.get("expires_at") or (time.time() + 120))
+    if store and not created.get("store"):
+        # An older host ignores the flag it does not know: the card would be filled into a page and its
+        # answer printed as a fill, which is not what was asked for. Say it is the host, not the owner.
+        print("not stored — this host has no vault yet (update hermeyd); nothing was asked of the owner")
+        try:
+            _call(bridge, "POST", f"/v1/credentials/cards/{card_id}/cancel", {})
+        except urllib.error.HTTPError:
+            pass
+        return 0
     print(f"asked the owner for {site} ({kind}); waiting…", file=sys.stderr)
 
     while time.time() < expires:
@@ -135,6 +153,14 @@ def ask(bridge: str, channel: str, kind: str, site: str, fields: list[str], opti
             except urllib.error.HTTPError as exc:
                 print(f"not filled — HTTP {exc.code}")
                 return 0
+            # A stored answer never comes back as a value: the host wrote it into its vault when the
+            # owner submitted, and the name is the whole acknowledgement. Print the name — it is the
+            # handle this bot keeps, and it is not a secret.
+            stored = outcome.get("stored") or []
+            if stored:
+                print("stored " + ", ".join(f"{row.get('field')} as {row.get('name')}"
+                                            for row in stored))
+                return 0
             # `consume` hands the answer over exactly once and keeps nothing; the fill is ours to do.
             # The old code read an `ok` this route never returns, so every answered card ended in
             # "not filled" — that, not a stale page, is why the value never appeared.
@@ -142,6 +168,21 @@ def ask(bridge: str, channel: str, kind: str, site: str, fields: list[str], opti
             print(_deliver(channel, values, fields or list(values), site))
             return 0
     print("not filled — the owner did not answer in time")
+    return 0
+
+
+def use_stored(channel: str, site: str, fields: list[str], name: str) -> int:
+    """Fill a form from a credential the vault already holds — no card, and no value here.
+
+    The value never enters this process: the fill frame names the item and `hermeyd` puts the text in.
+    One stored item is one value, so it fills exactly one field.
+    """
+    wanted = fields or ["password"]
+    if len(wanted) != 1:
+        print(f"not filled — one stored item fills one field, and {len(wanted)} were named: "
+              f"{', '.join(wanted)}; ask for a card instead")
+        return 0
+    print(_deliver(channel, {}, wanted, site, handles={wanted[0]: name}))
     return 0
 
 
@@ -480,8 +521,18 @@ def _field_matches(page: dict, name: str) -> bool:
     return bool(page.get("fields"))
 
 
-def _fill(bridge: str, values: dict, wanted: list[str]) -> dict | None:
-    fields = [{"name": name, "value": values[name]} for name in wanted if values.get(name)]
+def _fill(bridge: str, values: dict, wanted: list[str],
+          handles: dict | None = None) -> dict | None:
+    """One fill. A field carries its value, or the *name* of a stored one the host resolves itself."""
+    fields = []
+    for name in wanted:
+        handle = (handles or {}).get(name)
+        if handle:
+            # No `value` key: the host reads the vault and puts the text in the frame, so it never
+            # passes through this process or into the bot's own context.
+            fields.append({"name": name, "secret": handle})
+        elif values.get(name):
+            fields.append({"name": name, "value": values[name]})
     return _act(bridge, {"type": "fill", "fields": fields}, wait=False)
 
 
@@ -587,12 +638,17 @@ def _cdp_fill(site: str, values: dict, wanted: list[str]) -> str | None:
     return "filled (the DevTools port; no extension was connected)"
 
 
-def _deliver(channel: str, values: dict, wanted: list[str], site: str = "") -> str:
+def _deliver(channel: str, values: dict, wanted: list[str], site: str = "",
+             handles: dict | None = None) -> str:
     """Wake the browser, fill the answer, and say which of the three things went wrong if it did not.
 
     `filled` means the value reached the page and, where the page can be asked, it still holds it.
+    `handles` names stored items instead of values: those are filled by the host, so there is nothing
+    for the DevTools fallback to type and it is skipped rather than half-working.
     """
-    wanted = [name for name in (wanted or list(values)) if values.get(name)]
+    handles = handles or {}
+    wanted = [name for name in (wanted or list(values))
+              if values.get(name) or handles.get(name)]
     if not wanted:
         return "not filled — the answer came back empty; nothing was filled"
     started = time.time()
@@ -602,6 +658,9 @@ def _deliver(channel: str, values: dict, wanted: list[str], site: str = "") -> s
         if _await_browser(channel):
             break
     else:
+        if handles:
+            return ("not filled — a stored credential is filled through the sign-in extension, and "
+                    f"none connected: waited {time.time() - started:.0f}s; nothing was filled")
         # No extension took it. A browser the dock started exposes its DevTools port, and the fill
         # still goes from here into the page — never back through the bot.
         return _cdp_fill(site, values, wanted) or _no_browser(channel, time.time() - started)
@@ -621,7 +680,7 @@ def _deliver(channel: str, values: dict, wanted: list[str], site: str = "") -> s
     here = page.get("url") or ""
     reply = None
     for attempt in (1, 2):
-        reply = _fill(channel, values, wanted)
+        reply = _fill(channel, values, wanted, handles)
         if (reply or {}).get("ok"):
             break
         if attempt == 2:
@@ -857,6 +916,13 @@ def main() -> int:
     parser.add_argument("--url", default="", help="login: open this page first")
     parser.add_argument("--otp", default=None,
                         help="login: the one-time code, when the bot already fetched it (e.g. from Gmail)")
+    parser.add_argument("--store", action="store_true",
+                        help="ask for a value and save it in the host's vault instead of filling a page")
+    parser.add_argument("--save-as", default=None,
+                        help="store: the vault item's name (defaults to <site>/<field>)")
+    parser.add_argument("--use", default=None,
+                        help="fill a form from a stored item, e.g. doctolib.de/password — no card, "
+                             "and the value never passes through this process")
     parser.add_argument("--bridge", default=None,
                         help="main API base URL; only needed to reach a host other than this one")
     parser.add_argument("--browser", default=None,
@@ -865,7 +931,10 @@ def main() -> int:
     bridge, browser = endpoints(args.bridge, args.browser)
     if args.verb == "login":
         return cmd_login(bridge, browser, args.url, args.site, args.fields, args.otp, args.note)
-    return ask(bridge, browser, args.kind, args.site, args.fields, args.options, args.note)
+    if args.use:
+        return use_stored(browser, args.site, args.fields, args.use)
+    return ask(bridge, browser, args.kind, args.site, args.fields, args.options, args.note,
+               store=args.store, save_as=args.save_as)
 
 
 if __name__ == "__main__":

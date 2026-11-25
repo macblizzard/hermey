@@ -93,6 +93,7 @@ pub const EVENTS: &[&str] = &[
     "local_computer.skill",
     "credentials.requested",
     "credentials.answered",
+    "credentials.stored",
     "credentials.consumed",
     "credentials.cancelled",
     "browser.connected",

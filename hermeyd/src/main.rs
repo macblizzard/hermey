@@ -26,6 +26,7 @@ mod cards;
 mod backup;
 mod cli;
 mod credentials;
+mod secrets;
 mod search;
 mod transfers;
 mod gateway_guard;
