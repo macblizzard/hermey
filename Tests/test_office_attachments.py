@@ -1,7 +1,8 @@
 """Office files in the apps: attach them, draw them as rows, open them.
 
 The host is the other half: it sniffs the upload, extracts the text, and serves the bytes. These
-checks pin what the *apps* owe — that both pickers offer PDF/Word/Excel, that a file that is not a
+checks pin what the *apps* owe — that the Mac's one panel takes every file (PDF/Word/Excel among
+them) and the phone's picker still names the three, that a file that is not a
 picture is a row (type symbol, name, size, a press) rather than a generic blob, that a bot-made
 workspace link in a reply body becomes that same row, that the bytes come back over the device
 bearer, and that the Mac opens them with Quick Look. A source scan cannot run Quick Look; it can
@@ -22,7 +23,7 @@ STORE = (KIT / "AttachmentImageStore.swift").read_text(encoding="utf-8")
 SENT = (KIT / "SentAttachment.swift").read_text(encoding="utf-8")
 ATTACH_RPC = (KIT / "GatewayClientActor.swift").read_text(encoding="utf-8")
 
-MAC_MENU = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacAttachmentMenu.swift").read_text(encoding="utf-8")
+MAC_PICKER = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerPicker.swift").read_text(encoding="utf-8")
 MAC_ROW = (ROOT / "Apps" / "HermesMac" / "Conversation" / "TranscriptRowView.swift").read_text(encoding="utf-8")
 MAC_QUICKLOOK = ROOT / "Apps" / "HermesMac" / "Conversation" / "MacAttachmentQuickLook.swift"
 MAC_STORE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift").read_text(encoding="utf-8")
@@ -52,11 +53,11 @@ class TheOfficeTypesAreKnown(unittest.TestCase):
 
 
 class BothPickersOfferThem(unittest.TestCase):
-    def test_the_mac_files_panel_takes_pdf_word_excel_and_images(self) -> None:
-        self.assertIn("AttachmentKind.officeExtensions", MAC_MENU)
-        self.assertIn("var types: [UTType] = [.pdf, .image]", MAC_MENU)
-        self.assertIn("UTType(filenameExtension: ext)", MAC_MENU)
-        self.assertIn("pick(contentTypes: Self.fileTypes", MAC_MENU)
+    def test_the_mac_panel_takes_everything_the_host_can_read(self) -> None:
+        # One panel, every file: the office formats and every picture live inside `.item` rather
+        # than being named one by one, so nothing the Finder shows is unpickable.
+        self.assertIn("panel.allowedContentTypes = [.item]", MAC_PICKER)
+        self.assertNotIn("allowedContentTypes = Self.", MAC_PICKER)
 
     def test_the_phone_file_picker_takes_the_same_three(self) -> None:
         self.assertIn("AttachmentKind.officeExtensions", PICKER)
@@ -190,7 +191,7 @@ class NothingWasRegressed(unittest.TestCase):
     def test_nothing_writes_a_selected_file_into_the_repository(self) -> None:
         # The only write paths added are the cache and the existing ones; a security-scoped file is
         # read, never copied into the source tree.
-        for source in (MAC_MENU, PICKER, MAC_QUICKLOOK.read_text(encoding="utf-8")):
+        for source in (MAC_PICKER, PICKER, MAC_QUICKLOOK.read_text(encoding="utf-8")):
             self.assertNotRegex(source, re.compile(r"write\(to:.*ROOT|/Users/.*/Projects"))
 
 
