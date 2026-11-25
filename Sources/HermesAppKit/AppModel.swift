@@ -89,7 +89,21 @@ public final class AppModel: ObservableObject {
     /// The second half of "the app is usable": a roster of names with no session list behind it is
     /// the bot list as it looks while it is still assembling, which is what the launch screen covers.
     @Published public private(set) var sessionsAnswered = false
-    @Published public var selectedSessionID: SessionID?
+    @Published public var selectedSessionID: SessionID? {
+        didSet {
+            // The count describes exactly one conversation. A different id means a different chat —
+            // a new one, a re-minted one, a pick in All Sessions — and the number on screen was
+            // measured on the previous one, so it goes rather than describing the wrong chat.
+            // `nil` is not evidence of a change (a switch clears the id before the new bot's own is
+            // restored), so only a concrete, different id drops anything.
+            guard let shown = contextUsageSession,
+                  let now = selectedSessionID, now != shown else { return }
+            contextUsed = nil
+            contextMax = nil
+            contextUsageSession = nil
+            forgetContextUsage(for: selectedBotID, keeping: now)
+        }
+    }
     /// Sessions this app created that the host has not persisted yet (see `newSession`).
     ///
     /// `session.create` deliberately writes no row until the first prompt, so a draft cannot be
@@ -235,8 +249,34 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var modelProvider: String?
 
     /// Tokens the context held after the last completed turn, and the window it is filling.
+    ///
+    /// The only place the host reports this is `message.complete`'s `usage` — no call the app makes
+    /// when it *opens* a bot carries it (`session.resume` decodes rows, an inflight turn, requests,
+    /// a cursor and a total; `session.list` rows carry a title, a preview and a message count). So a
+    /// fresh launch used to show the model with no count until a turn finished, which is the
+    /// complaint this pair answers: the last number the host gave is kept per bot on disk and put
+    /// back the instant the bot opens (see `restoreContextUsage`), never computed from anything.
     @Published public private(set) var contextUsed: Int?
     @Published public private(set) var contextMax: Int?
+
+    /// The last `usage` the host reported for a bot, with the conversation it described.
+    ///
+    /// The session id travels with the numbers on purpose: a count restored for a conversation the
+    /// bot no longer owns would describe a different chat, so a restored value is only shown while
+    /// the session on screen is still the one it was measured on (`contextUsageSession`), and the
+    /// record is dropped the moment a different conversation is selected.
+    private struct ContextUsageRecord: Codable, Equatable {
+        var session: SessionID
+        var used: Int
+        /// 0 when the host sent no `context_max` — the row then reads `394k Tokens` rather than
+        /// claiming a limit it was never given.
+        var max: Int
+    }
+
+    /// Per bot, so a number can never appear under another bot's name.
+    private var contextUsageRecords: [String: ContextUsageRecord] = [:]
+    /// The conversation the pair on screen describes. Nil when nothing is being claimed.
+    private var contextUsageSession: SessionID?
 
     /// A compaction is running on the host. It is a real model turn, so the UI shows a quiet note
     /// rather than a spinner — and nothing may start a second one while it runs.
@@ -641,6 +681,9 @@ public final class AppModel: ObservableObject {
         // The groups are the host's, but the last document read is cached per host: a launch with
         // no wire still draws the list the owner is used to instead of one Uncategorized bucket.
         loadCachedBotCategories()
+        // The last context this host reported per bot, so the composer can show it on the first
+        // frame of a launch instead of only after a turn.
+        loadContextUsage()
     }
 
     // MARK: Cache controls
@@ -1820,6 +1863,11 @@ public final class AppModel: ObservableObject {
     /// already holds is the difference between a warm launch and one that looks cold.
     @discardableResult
     public func restoreConversation(for botID: String) -> Bool {
+        // The count first, and synchronously: it is the half of the row that a fresh launch used to
+        // lose. `restoreContextUsage` paints from the last number this device heard for the bot —
+        // keyed to the session it was measured on — or draws nothing at all when it never had one.
+        // When a snapshot is here too, its own numbers (captured with its session) outrank the disk.
+        restoreContextUsage(for: botID, session: conversationCache[botID]?.sessionID)
         guard let snapshot = conversationCache[botID] else {
             ClientLog.note("no cached conversation for \(botID): the pane has to wait for a resume",
                            level: .info, category: "cache")
@@ -1833,8 +1881,11 @@ public final class AppModel: ObservableObject {
         earlierCursor = snapshot.earlierCursor
         historyTotal = snapshot.historyTotal
         pendingRequests = snapshot.openRequests
-        contextUsed = snapshot.contextUsed
-        contextMax = snapshot.contextMax
+        if let used = snapshot.contextUsed {
+            contextUsed = used
+            contextMax = snapshot.contextMax
+            contextUsageSession = snapshot.sessionID
+        }
         return true
     }
 
@@ -1856,8 +1907,9 @@ public final class AppModel: ObservableObject {
         isStreaming = false
         runningSessions = []
         pendingRequests = []
-        contextUsed = nil
-        contextMax = nil
+        // Including the claim: the pair on screen was measured on the bot being left, and the next
+        // bot's own record (if it has one) is restored a line later by `restoreConversation`.
+        clearContextUsage()
         compactionNotice = nil
         sending = false
         lastSendError = nil
@@ -2229,6 +2281,11 @@ public final class AppModel: ObservableObject {
     }
 
     public func select(_ id: SessionID) async {
+        // A pick is a visit, not a change of ownership: the number on screen belongs to the
+        // conversation being left, so the claim is dropped *before* the id moves. Dropping it here
+        // (rather than letting the observer see S1 → S2) is what keeps the bot's own record alive
+        // for the conversation this pick will return to.
+        clearContextUsage()
         selectedSessionID = id
         noteSessionOwner(id)
         // Reactions belong to the conversation, not to the pane: read them for the one being
@@ -2253,8 +2310,11 @@ public final class AppModel: ObservableObject {
         reasoningText = ""
         liveTools = []
         isStreaming = false
-        contextUsed = nil
-        contextMax = nil
+        // The count belongs to the conversation being opened: drop whatever the previous one left,
+        // then put back the number this device last heard for *this* session, if it has one. A
+        // session nobody reported usage for draws nothing, exactly as before.
+        clearContextUsage()
+        restoreContextUsage(for: selectedBotID, session: id)
         pendingRequests = []
         // A draft has no row on the host yet: resuming it answers 4007 "session not found", which
         // used to be painted as an unreachable host. Its pane is empty by definition, so adopt it
@@ -3134,6 +3194,11 @@ public final class AppModel: ObservableObject {
             throw CancellationError()
         }
         selectedSessionID = stored
+        // The host has just named the conversation this bot owns, which is the one fact an open can
+        // offer about a stored number: if the record was measured on *this* session it is put back
+        // (a cold launch's number, or one a pick in All Sessions pushed off screen); if it was not,
+        // nothing is drawn. Nothing on the wire reports usage here — see `restoreContextUsage`.
+        restoreContextUsage(for: botID, session: stored)
         adoptResume(resumed.entries, cursor: resumed.earlierCursor,
                     total: resumed.historyTotal, sessionID: stored, botID: botID)
         pendingRequests = resumed.openRequests
@@ -3421,8 +3486,10 @@ public final class AppModel: ObservableObject {
         reasoningText = ""
         liveTools = []
         isStreaming = false
-        contextUsed = nil
-        contextMax = nil
+        // The conversation this number was measured on is being forgotten, so the stored copy goes
+        // with it: a reset chat must not reopen showing the size of the one that was deleted.
+        clearContextUsage()
+        forgetContextUsage(for: botID)
         compactionNotice = nil
         runningSessions.remove(stored)
     }
@@ -3569,9 +3636,11 @@ public final class AppModel: ObservableObject {
             }
             // Refresh first, then report: the notice is set last so nothing inside the refresh can
             // overwrite it, and the context gauge is cleared because it showed the *pre*-compaction
-            // size. The next turn's `usage` is the first honest number after a compaction.
+            // size — including the stored copy, so a relaunch cannot resurrect it. The next turn's
+            // `usage` is the first honest number after a compaction.
             await refreshTranscript(sid)
-            contextUsed = nil
+            clearContextUsage()
+            forgetContextUsage(for: selectedBotID)
             compactionNotice = "conversation compacted"
             finishCompaction()
         } catch {
@@ -3654,6 +3723,100 @@ public final class AppModel: ObservableObject {
             compactionNotice = "compacting did not report back — open the chat again to see where it stands"
             finishCompaction()
         }
+    }
+
+    // MARK: Context usage that survives a launch
+
+    /// Where a bot's last reported `usage` is kept: `UserDefaults`, per host, beside the other
+    /// per-bot facts this app already stores there (`botActivity`, the unread stamps, the endless
+    /// session id). Synchronous on purpose — the open path reads it before its first `await`, which
+    /// an actor (the disk cache) cannot answer.
+    private var contextUsageKey: String { "hermes.contextUsage.\(hostName)" }
+
+    private func loadContextUsage() {
+        guard let data = Self.defaults.data(forKey: contextUsageKey),
+              let decoded = try? JSONDecoder().decode([String: ContextUsageRecord].self, from: data)
+        else { return }
+        contextUsageRecords = decoded
+    }
+
+    private func saveContextUsage() {
+        guard let data = try? JSONEncoder().encode(contextUsageRecords) else { return }
+        Self.defaults.set(data, forKey: contextUsageKey)
+    }
+
+    /// Put the last number this device heard for `botID` back on screen.
+    ///
+    /// Called from `restoreConversation` (which both open paths run synchronously, before their
+    /// first host call), from `select` and from `adoptStoredConversation`, so the row reads
+    /// `394k/1M Tokens` on a cold launch instead of waiting for a turn. A bot that has never
+    /// reported usage has no record and nothing is drawn — the model alone, exactly as before.
+    /// `session` is the conversation the pane is about, when it is known: a record measured on a
+    /// different one is not painted. Nothing here computes a number; there is nothing to compute it
+    /// from, and the row would rather draw nothing than a guess.
+    @discardableResult
+    private func restoreContextUsage(for botID: String?, session: SessionID?) -> Bool {
+        guard let botID, let record = contextUsageRecords[botID] else { return false }
+        // The conversation the pane is about, when it is known: the snapshot's own id as it is about
+        // to be painted, else whatever the pane already holds. A record measured elsewhere is not
+        // painted over the wrong chat — and it is not deleted here either: it belongs to the bot's
+        // own conversation, and a glance at another session of the same bot must not destroy it.
+        // The delete happens where a change is *learned* (`selectedSessionID`'s observer).
+        if let known = session ?? selectedSessionID, known != record.session {
+            ClientLog.note("kept \(record.used) tokens of context for \(botID) in the store: "
+                           + "they were measured on \(record.session), \(known) is on screen",
+                           level: .info, category: "usage")
+            return false
+        }
+        contextUsed = record.used
+        contextMax = record.max > 0 ? record.max : nil
+        // Claimed by the session it was measured on: if the host resolves a different conversation
+        // for this bot, the `selectedSessionID` observer drops it before it can describe that chat.
+        contextUsageSession = record.session
+        ClientLog.note("restored \(record.used) tokens of context for \(botID) (session \(record.session))",
+                       level: .info, category: "usage")
+        return true
+    }
+
+    /// Record a `usage` the host just reported, under the bot that was on screen.
+    ///
+    /// This is the only writer: the numbers come from the host's `message.complete` and from
+    /// nothing else — never from a transcript's length, which measures how much was said rather
+    /// than how much of the window it filled.
+    private func claimContextUsage(used: Int, max: Int, session: SessionID, botID: String?) {
+        contextUsed = used
+        // A host that omits `context_max` must not turn the gauge into "100%".
+        if max > 0 { contextMax = max }
+        contextUsageSession = session
+        guard let botID else { return }
+        // What the row says now, so the restored row cannot disagree with the live one.
+        contextUsageRecords[botID] = ContextUsageRecord(session: session,
+                                                        used: used,
+                                                        max: contextMax ?? 0)
+        saveContextUsage()
+    }
+
+    /// Clear the pair on screen without touching what is stored for another conversation.
+    private func clearContextUsage() {
+        contextUsed = nil
+        contextMax = nil
+        contextUsageSession = nil
+    }
+
+    /// Drop a stored number that no longer describes the conversation now on screen.
+    private func forgetContextUsage(for botID: String?, keeping session: SessionID) {
+        guard let botID, let record = contextUsageRecords[botID], record.session != session else { return }
+        contextUsageRecords.removeValue(forKey: botID)
+        saveContextUsage()
+        ClientLog.note("dropped the stored context usage for \(botID): it was measured on "
+                       + "\(record.session), and \(session) is on screen", level: .info, category: "usage")
+    }
+
+    /// Forget a bot's number outright — the conversation it described is gone (a reset), or a
+    /// compaction rewrote it so the size it measured is no longer the size of this chat.
+    private func forgetContextUsage(for botID: String?) {
+        guard let botID, contextUsageRecords.removeValue(forKey: botID) != nil else { return }
+        saveContextUsage()
     }
 
     private static func endlessKey(_ botID: String) -> String {
@@ -5258,9 +5421,9 @@ public final class AppModel: ObservableObject {
             if let bot = selectedBotID { recordActivity(for: bot) }
         case .contextUsage(let session, let used, let max, _):
             guard session == selectedSessionID else { return }
-            contextUsed = used
-            // A host that omits `context_max` must not turn the gauge into "100%".
-            if max > 0 { contextMax = max }
+            // The pair, the claim and the stored copy move together: the number the user reads,
+            // the conversation it was measured on, and what the next launch restores.
+            claimContextUsage(used: used, max: max, session: session, botID: selectedBotID)
         case .toolStart(let session, let name, let callID, let input):
             guard session == selectedSessionID else { return }
             beginLiveTurn()
