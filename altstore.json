@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.665",
-          "buildVersion": "665",
-          "date": "2026-11-25T13:05:58Z",
-          "localizedDescription": "The Mac message menu's icons are visible now. They were present in 0.1.664 but tinted into the dark menu \u2014 a template image gets re-tinted by whatever draws it. The glyphs are coloured for the menu's own appearance, and the menu now draws in the app's appearance, so the icons stay legible.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.665/Hermey-0.1.665-b665.ipa",
-          "size": 5571257,
+          "version": "0.1.666",
+          "buildVersion": "666",
+          "date": "2026-11-25T14:52:01Z",
+          "localizedDescription": "Secure entries now keep the secret: a bot can raise a credential card that says store, you type into masked fields, and the value goes to a vault on the host. The bot gets back a name it can reuse and fill into a page by name \u2014 never the value. Every field except a username is masked, so an API key is no longer drawn in clear text. Needs hermeyd 0.8.2.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.666/Hermey-0.1.666-b666.ipa",
+          "size": 5570705,
           "minOSVersion": "17.0",
-          "sha256": "ddec3a39fc50c5a92f367f170fed2cac1bf85cdefccb384668dd156bc162c660"
+          "sha256": "f2199431215c51062345f4b624af96409fdc985e977668249a619f0b3548c07b"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.665 (665)",
-      "identifier": "hermes-0.1.665-665",
-      "caption": "The Mac message menu's icons are visible now. They were present in 0.1.664 but tinted into the dark menu \u2014 a template image gets re-tinted by whatever draws it. The glyphs are coloured for the menu's own appearance, and the menu now draws in the app's appearance, so the icons stay legible.",
-      "date": "2026-11-25T13:05:58Z",
+      "title": "Hermes 0.1.666 (666)",
+      "identifier": "hermes-0.1.666-666",
+      "caption": "Secure entries now keep the secret: a bot can raise a credential card that says store, you type into masked fields, and the value goes to a vault on the host. The bot gets back a name it can reuse and fill into a page by name \u2014 never the value. Every field except a username is masked, so an API key is no longer drawn in clear text. Needs hermeyd 0.8.2.",
+      "date": "2026-11-25T14:52:01Z",
       "tintColor": "#9A9AA0"
     }
   ],
