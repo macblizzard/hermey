@@ -110,7 +110,7 @@ public struct BotAvatarBubble: Hashable {
     public let inkHex: String
 
     public init(tintHex: String, lightPage: Bool) {
-        let tint = BotAvatarTint(tintHex).hex
+        let tint = BotAvatarTint(hex: tintHex).hex
         let fillMix = lightPage ? BotAvatarBubble.lightFillMix : BotAvatarBubble.darkFillMix
         let borderMix = lightPage ? BotAvatarBubble.lightBorderMix : BotAvatarBubble.darkBorderMix
         self.tintHex = tint
