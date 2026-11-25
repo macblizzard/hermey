@@ -59,6 +59,10 @@ struct HoverReporter: NSViewRepresentable {
         /// What was last reported, so a repeated `enter` at the same pixel is not a state write.
         private var reported: Bool?
         private var windowTokens: [NSObjectProtocol] = []
+        /// The belt to the tracking area's braces. A borderless menu's cell eats the crossings
+        /// SwiftUI would have forwarded, so a local move monitor samples the pointer directly —
+        /// one rect test per move, and it cannot be starved by the control in front.
+        private var moveMonitor: Any?
 
         init(onChange: @escaping (Bool) -> Void) {
             self.onChange = onChange
@@ -106,6 +110,7 @@ struct HoverReporter: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             removeWindowObservers()
+            stopMoveMonitor()
             guard let window else {
                 // Out of the hierarchy. The callback is not run: it would write view state during
                 // the update that is dismantling this view. Forgetting what was reported is
@@ -127,6 +132,28 @@ struct HoverReporter: NSViewRepresentable {
                 },
             ]
             syncToPointer()
+            startMoveMonitor()
+        }
+
+        /// Samples the pointer on every move the app receives, whatever control it is over.
+        ///
+        /// This is the difference between "the event never arrives at this view" and "the event
+        /// arrives at the view in front of it": a local monitor sees the *window's* stream, so the
+        /// menu cell that owns the pointer cannot starve it. Cheap by construction — one rect test
+        /// and a dedupe against the last report.
+        private func startMoveMonitor() {
+            guard moveMonitor == nil else { return }
+            moveMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.mouseMoved, .leftMouseDown, .leftMouseDragged, .scrollWheel]
+            ) { [weak self] event in
+                self?.syncToPointer()
+                return event
+            }
+        }
+
+        private func stopMoveMonitor() {
+            if let moveMonitor { NSEvent.removeMonitor(moveMonitor) }
+            moveMonitor = nil
         }
 
         /// Reports what the pointer is doing right now. Used where no crossing can be expected.
@@ -157,6 +184,7 @@ struct HoverReporter: NSViewRepresentable {
         }
 
         deinit {
+            if let moveMonitor { NSEvent.removeMonitor(moveMonitor) }
             // `removeObserver` is not main-actor bound and the token is what leaks otherwise.
             let center = NotificationCenter.default
             for token in windowTokens { center.removeObserver(token) }

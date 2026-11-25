@@ -2,24 +2,20 @@ import AppKit
 import HermesAppKit
 import HermesKit
 import HermeyUI
-import PhotosUI
 import SwiftUI
 
 /// The composer, wired to the model's single draft.
 ///
 /// `Composer` (design system) owns the field and the send/interrupt swap; this bar owns the
-/// things the shell adds: the failed-send strip, the pending attachments, the picker the plus
-/// opens (a file panel whose own accessory reaches Photos), the ⌘↩/⌘. bindings the menu exposes,
-/// and the per-session draft the store restores.
+/// things the shell adds: the failed-send strip, the pending attachments, the paperclip's compact
+/// menu, the ⌘↩/⌘. bindings the menu exposes, and the per-session draft the store restores.
 struct MacComposerBar: View {
     @ObservedObject var model: AppModel
     @ObservedObject var store: WorkspaceStore
 
-    /// The photo picker, presented after the panel's Photos button ended the panel itself.
-    @State private var showingPhotos = false
-    /// What the system picker returned. Cleared as soon as it is read, so the same picture can be
-    /// picked twice.
-    @State private var photoPicks: [PhotosPickerItem] = []
+    /// The paperclip opens a popover with two items, never a page: the phone's action menu, at
+    /// desktop density.
+    @State private var showsAttachmentMenu = false
     @State private var showingCommandHelp = false
 
     /// One capture per composer: the transcript lands in the draft that was on screen when the
@@ -173,10 +169,7 @@ struct MacComposerBar: View {
                                                     isEnabled: model.selectedBot != nil,
                                                     onOpen: openModelPicker),
                      onSend: { store.send() },
-                     // One click, one panel. The panel's own accessory button is the only thing
-                     // that ends it early, and it ends it into the photo picker — never into a
-                     // second menu.
-                     onAttach: { startAttach() },
+                     onAttach: { showsAttachmentMenu = true },
                      onMic: { toggleVoice() },
                      onInterrupt: interrupt,
                      // A pasted screenshot or a file dropped on the field is an attachment, exactly
@@ -188,10 +181,12 @@ struct MacComposerBar: View {
                                                         isImage: item.isImage)
                          }
                      },
-                     // No attachment menu any more: the clip opens the file panel itself
-                     // (`MacComposerPicker`), so there is nothing to present here.
-                     attachPopoverPresented: nil,
-                     attachPopoverContent: nil,
+                     // Anchored on the paperclip, not on the card: the menu used to drop from
+                     // the middle of the composer, under the field, nowhere near the clip.
+                     attachPopoverPresented: $showsAttachmentMenu,
+                     attachPopoverContent: AnyView(
+                        MacAttachmentMenu(model: model, isPresented: $showsAttachmentMenu)
+                     ),
                      onCommand: runCommand)
                 // The card is its content: one row of text and controls, the hint under it. A
                 // fixed resting height used to hand the slack to the field, which left the
@@ -213,66 +208,12 @@ struct MacComposerBar: View {
         // drops the capture instead of typing into somebody else's message.
         .onChange(of: model.selectedSessionID) { _, _ in voice.cancel() }
         .onDisappear { voice.cancel() }
-        // The panel's Photos button lands here: the system photo picker, over this window, only
-        // after the panel has closed itself. Eight is the composer's own ceiling, so the picker
-        // cannot queue more than the model will accept.
-        .photosPicker(isPresented: $showingPhotos,
-                      selection: $photoPicks,
-                      maxSelectionCount: AppModel.maxPendingAttachments,
-                      matching: .images,
-                      // `.current` keeps the original bytes, the same choice the phone's
-                      // PHPicker makes: the HEIC transcode belongs in one place, and that place
-                      // is `addPendingAttachment`.
-                      preferredItemEncoding: .current)
-        .onChange(of: photoPicks) { _, picked in
-            guard !picked.isEmpty else { return }
-            photoPicks = []
-            Task { await attachLibraryPhotos(picked) }
-        }
         .sheet(isPresented: $showingCommandHelp) {
             HermesCommandsHelpSheet { command in
                 runCommand(command)
             }
             .hermesSheetChrome()
         }
-    }
-
-    // MARK: Attachments
-
-    /// The plus: one panel, any file, with Photos one visible button inside it.
-    ///
-    /// `.photos` is the only outcome that changes what is on screen — the panel closed itself and
-    /// the system photo picker opens in its place, over the composer's own window.
-    @MainActor
-    private func startAttach() {
-        if MacComposerPicker.chooseAttachments(for: model) == .photos {
-            showingPhotos = true
-        }
-    }
-
-    /// The library's half of the same door: bytes from the photo picker, named from their own
-    /// format, validated by `MacAttachmentFile` and staged by `MacComposerPicker.stage` — the
-    /// exact pair a file off disk goes through, so a read failure, an empty picture or an
-    /// over-budget one is reported in the same words.
-    @MainActor
-    private func attachLibraryPhotos(_ items: [PhotosPickerItem]) async {
-        var files: [MacAttachmentFile] = []
-        var firstFailure: Error?
-        for (index, item) in items.enumerated() {
-            do {
-                // The picker's file representation is deleted when its own callback returns, so
-                // the bytes are copied out here rather than a URL being kept.
-                guard let data = try await item.loadTransferable(type: Data.self) else {
-                    throw MacAttachmentFile.Failure.empty
-                }
-                files.append(try MacAttachmentFile(name: MacAttachmentFile.photoName(data, index: index),
-                                                   data: data,
-                                                   isImage: true))
-            } catch {
-                if firstFailure == nil { firstFailure = error }
-            }
-        }
-        MacComposerPicker.stage(files, in: model, failure: firstFailure)
     }
 
     // MARK: Voice

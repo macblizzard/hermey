@@ -100,7 +100,6 @@ targets:
         # The composer's Photos button opens the system photo picker. The picker runs out of
         # process and reads nothing itself, but the string is the key macOS looks up before it
         # hands a library item over, and its absence is a termination rather than a prompt.
-        NSPhotoLibraryUsageDescription: "Choose a photo from your library to attach to a message."
         # A banner arrives from the relay app (Bark), which can only open a URL. `hermey://bot/<id>`
         # is how tapping it lands on the bot that spoke instead of on the list.
         CFBundleURLTypes:
@@ -191,7 +190,6 @@ targets:
         # Required the moment the QR scanner asks for the camera: iOS terminates the app
         # on first capture input without this string, so pairing would look like a crash.
         NSCameraUsageDescription: "Scan the pairing code shown by your Hermes host to connect this device, and take photos to attach to a message."
-        NSPhotoLibraryUsageDescription: "Choose a photo to attach to a message."
         NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
         # A banner arrives from the relay app (Bark), which can only open a URL. `hermey://bot/<id>`
         # is how tapping it lands on the bot that spoke instead of on the list.

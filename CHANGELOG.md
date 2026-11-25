@@ -1553,3 +1553,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The composer's `+` reaches your Photos library again.** The single file panel was the right idea, but with
   the panel taking any file the Photos source disappears from it — the panel now carries its own `Photos…`
   button and hands over to the system photo picker.
+
+## [0.1.663] — 2026-11-25
+
+### Changed
+- **The composer's `+` is a two-entry menu again: Photos… and Files…** The single panel could not reach the
+  Photos library, and that is where the pictures are.
+
+### Fixed
+- **The sidebar's `＋` hover, again.** The tracking area was still at the mercy of the menu's own cell deciding
+  what the view in front hears; the pointer is now sampled from the window's event stream, so nothing in front
+  can hide it.

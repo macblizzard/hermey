@@ -305,3 +305,53 @@ class ThePhoneIsUntouched(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TheHoverCannotBeStarved(unittest.TestCase):
+    """The menu cell in front must not be able to hide the pointer from us.
+
+    The first fix used a tracking area on our own NSView, which still depends on crossings
+    AppKit chooses to send *to that view*. A borderless NSPopUpButton reports no mouseover
+    after it shipped, so the sample now comes from the window's own event stream as well —
+    the belt to the area's braces. Both must exist: the area keeps it cheap, the monitor
+    makes it true.
+    """
+
+    def reporter(self):
+        return REPORTER
+
+    def test_the_pointer_is_sampled_from_the_windows_own_stream(self):
+        src = self.reporter()
+        self.assertIn("addLocalMonitorForEvents", src,
+                      "the hover fell back to tracking areas alone: a menu cell can starve those")
+        self.assertIn(".mouseMoved", src, "the monitor does not watch pointer moves")
+        self.assertIn("mouseLocationOutsideOfEventStream", src,
+                      "the monitor does not read the pointer's real position")
+
+    def test_the_monitor_is_removed_with_the_view(self):
+        src = self.reporter()
+        self.assertIn("removeMonitor", src, "a local monitor outlives the view that installed it")
+        self.assertGreaterEqual(src.count("removeMonitor"), 2,
+                                "the monitor is only released on one path")
+
+    def test_the_sample_is_deduped(self):
+        src = self.reporter()
+        self.assertIn("guard reported != inside", src,
+                      "every pointer move would write state, and the sidebar repaints constantly")
+
+
+class TheComposerStillOffersBothDoors(unittest.TestCase):
+    """Mohammad asked for the two-entry attach menu back after the single panel shipped.
+
+    One panel could not reach the Photos library, and the library is where his pictures are.
+    """
+
+    def test_the_menu_has_a_photos_entry_and_a_files_entry(self):
+        menu = (ROOT / "Apps" / "HermesMac" / "Conversation" / "MacAttachmentMenu.swift")
+        self.assertTrue(menu.exists(), "the two-entry attach menu is gone again")
+        src = menu.read_text(encoding="utf-8")
+        self.assertIn("Photos", src)
+        self.assertIn("Files", src)
+
+    def test_the_single_panel_is_gone(self):
+        picker = ROOT / "Apps" / "HermesMac" / "Conversation" / "MacComposerPicker.swift"
+        self.assertFalse(picker.exists(), "the single-panel picker is back; the menu is what he asked for")
