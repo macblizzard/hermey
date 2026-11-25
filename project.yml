@@ -241,6 +241,9 @@ targets:
       # stack), and a second copy of the eight strings is exactly how the pill came to say "Finished"
       # while the list said "Done". One file, both processes.
       - path: Sources/HermesKit/BotStateWord.swift
+      # The eight activity words the renderer poses — one file of plain enums in HermesKit, the same
+      # one-implementation argument as the state vocabulary above: the face cannot be posed without it.
+      - path: Sources/HermesKit/BotAvatarActivity.swift
       # The bot's *drawing*, compiled into the extension as well as into `HermeyUI` — the same
       # argument as `BotStateWord.swift` one line up, for the same reason. The card now draws the
       # bot's own face, and a second renderer inside the extension is exactly how the eyes on the
