@@ -21,8 +21,8 @@ import SwiftUI
 /// **Motion.** Sampled at 10 Hz — the same cadence the pets animate at — through a `Canvas`, from a
 /// pose that is a pure function of time. Under Reduce Motion, below `animatingFrom`, in a background
 /// window, or when `animates` is false, it holds the rest pose and costs nothing. The drawing itself
-/// never allocates geometry: the body's cross-sections and the marks are built once per definition
-/// and cached (`OpenBotAvatarModel`), and a frame only transforms them.
+/// never allocates geometry: the body's cross-sections and the ribbon hoop are built once per
+/// definition and cached (`OpenBotAvatarModel`), and a frame only transforms them.
 ///
 /// That is the face's *breathing*. Where the app shows a bot beside its name, `BotAvatarView` also
 /// performs the shared face's motion over it (the hop, the flip, the darts) and hands the eye pose
