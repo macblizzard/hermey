@@ -19,7 +19,7 @@ STORE = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift").rea
 
 class OneMotionLanguage(unittest.TestCase):
     def testEveryDoorUsesTheSharedDurations(self) -> None:
-        for name in ("panel", "sidebar", "sheet"):
+        for name in ("sidebar", "sheet"):
             with self.subTest(name=name):
                 self.assertIn(f"static var {name}: Animation", MOTION)
         self.assertIn("reduceMotion", MOTION)
@@ -30,7 +30,13 @@ class OneMotionLanguage(unittest.TestCase):
         # removed on the same frame as the click, which is what janked.
         self.assertIn("withAnimation(WorkspaceMotion.sidebar)", STORE)
         self.assertIn("func toggleSidebar()", STORE)
-        self.assertIn(".animation(WorkspaceMotion.sidebar, value: store.isSidebarHidden)", ROOT_VIEW)
+        # ...and the door is the **only** owner. A `.animation(_:value:)` for the same flag up the tree
+        # was a second transaction for one state change, which is what doubled the shell's layout work
+        # on every frame the pane moved (2026-11-25). Read on code, not comments: the tree explains the
+        # owner it dropped.
+        code = "\n".join(line for line in ROOT_VIEW.splitlines()
+                         if not line.strip().startswith("//"))
+        self.assertNotIn(".animation(WorkspaceMotion.sidebar", code)
 
     def testTheSidebarHasATransition(self) -> None:
         self.assertIn(".transition(.move(edge: .leading).combined(with: .opacity))", ROOT_VIEW)
@@ -40,7 +46,12 @@ class OneMotionLanguage(unittest.TestCase):
         self.assertIn(".animation(WorkspaceMotion.sheet, value: store.isPalettePresented)", ROOT_VIEW)
 
     def testTheBotPanelUsesTheSameMotionAsTheRest(self) -> None:
-        self.assertIn("withAnimation(WorkspaceMotion.panel)", STORE)
+        # Both edges of the same window, one motion — and one name for it. There used to be a second
+        # pane animation here ("panel", 160 ms) beside the sidebar's 180 ms; a pane may not carry its
+        # own timing, or the two edges drift back apart.
+        self.assertIn("withAnimation(WorkspaceMotion.sidebar)", STORE)
+        self.assertNotIn("WorkspaceMotion.panel", STORE)
+        self.assertNotIn("static var panel", MOTION)
         self.assertNotIn("withAnimation(.easeOut(duration: 0.16))", STORE)
 
     def testTheAnimationsStayCheap(self) -> None:

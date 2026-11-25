@@ -727,8 +727,12 @@ final class WorkspaceStore: ObservableObject {
     /// Show or hide the bot panel, and remember the choice.
     func toggleSidebar() {
         // The view's `.transition` only runs when the state changes inside an animation. Every door
-        // here — the pill, ⌘E and the View menu — goes through this one method, so none of them can
-        // snap the panel out of existence while another animates it.
+        // here — the floor toggle, ⌘S and the View menu — goes through this one method, so none of them
+        // can snap the panel out of existence while another animates it.
+        //
+        // **This is the only animation owner for the pane.** A `.animation(_:value:)` for the same flag
+        // further up the tree was a second owner racing this one: two transactions for one state change
+        // is how the conversation ended up re-laying itself out twice per frame while the pane moved.
         withAnimation(WorkspaceMotion.sidebar) {
             isSidebarHidden.toggle()
         }
@@ -1188,7 +1192,10 @@ final class WorkspaceStore: ObservableObject {
         }
         // The panel is what ⌘E and the pill mean: when the computer has borrowed the slot, the
         // toggle takes it back rather than writing state nobody can see.
-        withAnimation(WorkspaceMotion.panel) {
+        //
+        // `WorkspaceMotion.sidebar`, not a panel-only timing: this pane is the other half of the
+        // same move. One edge opens while the other closes at the same speed and on the same curve.
+        withAnimation(WorkspaceMotion.sidebar) {
             isComputerFullScreen = false
             isComputerPanelPresented = false
             isBotPanelPresented = true
@@ -1201,18 +1208,32 @@ final class WorkspaceStore: ObservableObject {
     func dismissBotPanelFromOutsideClick() {
         guard isBotPanelPresented else { return }
         botPanelDismissedAt = Date()
-        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.sidebar) { isBotPanelPresented = false }
     }
 
     /// Closed from a control that belongs to the panel — Escape, the ✕, the reset flow. No stamp:
     /// nothing here competes with the pill's own toggle.
     func closeBotPanel() {
-        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.sidebar) { isBotPanelPresented = false }
     }
 
     func toggleComputerPanel() {
-        isComputerPanelPresented.toggle()
-        if !isComputerPanelPresented { isComputerFullScreen = false }
+        // The computer borrows the panel's slot, so it is the same pane on the same edge: it moves on
+        // the same motion. It had none, which is why opening it was the one door that snapped.
+        withAnimation(WorkspaceMotion.sidebar) {
+            isComputerPanelPresented.toggle()
+            if !isComputerPanelPresented { isComputerFullScreen = false }
+        }
+    }
+
+    /// The pane's own ✕, and Escape. One door for both, so closing the computer is the same move
+    /// whether it came from a click or a key — and it is animated, which the two raw assignments this
+    /// replaces were not.
+    func closeComputerPanel() {
+        withAnimation(WorkspaceMotion.sidebar) {
+            isComputerPanelPresented = false
+            isComputerFullScreen = false
+        }
     }
 
     /// What Escape closes, biggest thing first.
@@ -1228,8 +1249,8 @@ final class WorkspaceStore: ObservableObject {
     func closeTopmostOnEscape() -> Bool {
         if isPalettePresented { closePalette() }
         else if isComputerFullScreen { isComputerFullScreen = false }
-        else if isComputerPanelPresented { isComputerPanelPresented = false }
-        else if isBotPanelPresented { isBotPanelPresented = false }
+        else if isComputerPanelPresented { closeComputerPanel() }
+        else if isBotPanelPresented { closeBotPanel() }
         else if !isSidebarHidden { toggleSidebar() }
         else { return false }
         return true
