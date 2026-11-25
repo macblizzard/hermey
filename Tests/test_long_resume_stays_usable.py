@@ -117,7 +117,7 @@ class TheResumeIsWindowed(unittest.TestCase):
         body = RELAY.split("Ok((paged, rows)) =>", 1)[1].split("return fan_resume_reply", 1)[0]
         self.assertIn("lock(&state.cache).remember_window(key.clone(), windowed_from_rows(rows.clone()))", body,
                       "every row is remembered under the resume's own key")
-        self.assertIn("HistoryKey::new(fresh, &key.profile), rows", body,
+        self.assertIn("HistoryKey::new(fresh, &key.profile), windowed_from_rows(rows)", body,
                       "and under the runtime id the app pages with")
 
 
