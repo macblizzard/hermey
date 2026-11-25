@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.663",
-          "buildVersion": "663",
-          "date": "2026-11-25T12:10:16Z",
-          "localizedDescription": "The composer's + is a two-entry menu again \u2014 Photos\u2026 and Files\u2026 \u2014 because the single panel could not reach your Photos library. The sidebar's + hover now samples the pointer from the window's own event stream, so the menu in front can no longer hide it. Also includes 0.1.662's waiting/blocked avatar sizes and the floor toggle.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.663/Hermey-0.1.663-b663.ipa",
-          "size": 5570387,
+          "version": "0.1.664",
+          "buildVersion": "664",
+          "date": "2026-11-25T12:56:18Z",
+          "localizedDescription": "The Mac's message right-click menu now shows an icon on every row \u2014 it was a SwiftUI menu, which builds its items from a title and dropped the Label images, so only Share was marked. It is a real NSMenu now, and there is a new ... button on the action line so the same menu is reachable from the keyboard.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.664/Hermey-0.1.664-b664.ipa",
+          "size": 5571263,
           "minOSVersion": "17.0",
-          "sha256": "4fce311c72f1fac0ed654cf86693f2787a0453c44f803789c39ea5384f716395"
+          "sha256": "7cd352b56c36e82c8b2e1b54b7b867131c82fb6fbc58592b15c2d2add8405a4c"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.663 (663)",
-      "identifier": "hermes-0.1.663-663",
-      "caption": "The composer's + is a two-entry menu again \u2014 Photos\u2026 and Files\u2026 \u2014 because the single panel could not reach your Photos library. The sidebar's + hover now samples the pointer from the window's own event stream, so the menu in front can no longer hide it. Also includes 0.1.662's waiting/blocked avatar sizes and the floor toggle.",
-      "date": "2026-11-25T12:10:16Z",
+      "title": "Hermes 0.1.664 (664)",
+      "identifier": "hermes-0.1.664-664",
+      "caption": "The Mac's message right-click menu now shows an icon on every row \u2014 it was a SwiftUI menu, which builds its items from a title and dropped the Label images, so only Share was marked. It is a real NSMenu now, and there is a new ... button on the action line so the same menu is reachable from the keyboard.",
+      "date": "2026-11-25T12:56:18Z",
       "tintColor": "#9A9AA0"
     }
   ],
