@@ -2413,6 +2413,24 @@ mod tests {
     }
 
     #[test]
+    fn the_conversation_is_free_again_once_it_is_answered() {
+        // Nothing may stay parked: a conversation whose answer landed must open on a real
+        // request next time, or the second visit would be answered by nothing at all.
+        let state = ConnectionState::new();
+        let frame = |id: i64| json!({"jsonrpc": "2.0", "id": id, "method": "session.resume",
+                                     "params": {"session_id": "s1", "profile": "bot"}});
+        assert!(matches!(process_client_frame(&state, &encode(&frame(1))),
+                          ClientAction::Forward(_)));
+        assert!(matches!(process_client_frame(&state, &encode(&frame(2))), ClientAction::Drop));
+        let reply = json!({"jsonrpc": "2.0", "id": 1,
+                           "result": {"session_id": "runtime-1", "messages": transcript(3)}});
+        assert!(inspect_engine_text(&state, &encode(&reply)).is_some());
+        assert!(matches!(process_client_frame(&state, &encode(&frame(3))),
+                          ClientAction::Forward(_)),
+                "the next open is a real request again");
+    }
+
+    #[test]
     fn a_repeat_for_another_conversation_is_still_a_real_request() {
         let state = ConnectionState::new();
         let a = json!({"jsonrpc": "2.0", "id": 1, "method": "session.resume",
