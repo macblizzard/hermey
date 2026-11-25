@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.672",
-          "buildVersion": "672",
-          "date": "2026-11-25T22:52:56Z",
-          "localizedDescription": "Quick batch: edit a vault item (rename it, replace its value, leave blank to keep), no more ellipsis on the bot list row, and the group-chat composer stops showing the send/newline hints.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.672/Hermey-0.1.672-b672.ipa",
-          "size": 5780878,
+          "version": "0.1.673",
+          "buildVersion": "673",
+          "date": "2026-11-25T23:33:06Z",
+          "localizedDescription": "Edit and resend, and delete, on any message (right-click on the Mac, long-press on the phone) \u2014 with one confirmation that says how many messages are involved, retired not destroyed. The bot's own face now animates on the Live Activity. Needs hermeyd 0.8.9.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.673/Hermey-0.1.673-b673.ipa",
+          "size": 5985348,
           "minOSVersion": "17.0",
-          "sha256": "daecc6a0ec4053de0fb0edc6ab6256e90ccd0ba43cf16e207a2c3757319621b9"
+          "sha256": "11ba026b86314e47ebf4dbc8d7ce6c71700c16eee991b2350c542b5d587032fd"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.672 (672)",
-      "identifier": "hermes-0.1.672-672",
-      "caption": "Quick batch: edit a vault item (rename it, replace its value, leave blank to keep), no more ellipsis on the bot list row, and the group-chat composer stops showing the send/newline hints.",
-      "date": "2026-11-25T22:52:56Z",
+      "title": "Hermes 0.1.673 (673)",
+      "identifier": "hermes-0.1.673-673",
+      "caption": "Edit and resend, and delete, on any message (right-click on the Mac, long-press on the phone) \u2014 with one confirmation that says how many messages are involved, retired not destroyed. The bot's own face now animates on the Live Activity. Needs hermeyd 0.8.9.",
+      "date": "2026-11-25T23:33:06Z",
       "tintColor": "#9A9AA0"
     }
   ],
