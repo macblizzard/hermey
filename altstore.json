@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.661",
-          "buildVersion": "661",
-          "date": "2026-11-25T10:57:24Z",
-          "localizedDescription": "Reactions now travel between the Mac and the iPhone \u2014 tap on one and it appears on the other, live, and removing it clears both. The token count stays on screen from the moment a conversation opens. Thinking avatars are back to normal size with their own eyes. The sidebar's + has a hover state and takes every click, and the desktop composer's + opens one file panel for any photo or file. hermeyd 0.8.1.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.661/Hermey-0.1.661-b661.ipa",
-          "size": 5570790,
+          "version": "0.1.662",
+          "buildVersion": "662",
+          "date": "2026-11-25T11:38:37Z",
+          "localizedDescription": "Waiting and blocked avatars now wear their own eyes at full size \u2014 blocked is the stillest state with an unblinking stare, waiting leans and looks aside. The sidebar's + finally shows a hover you can see, and collapsing the panel leaves its toggle on the window's floor instead of jumping to the title bar. The composer's + reaches your Photos library again from the same file panel. Fixes the file-picker Photos option you missed.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.662/Hermey-0.1.662-b662.ipa",
+          "size": 5570409,
           "minOSVersion": "17.0",
-          "sha256": "a2cf31f395af474e9718f49060b77e13560d2eb97b781ec61943acb1b5c0f7ff"
+          "sha256": "20bd92abb2a068da10d9ae8fa6fd8e3fd17e129efb3d9ff8f9a6d70aad3a88b7"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.661 (661)",
-      "identifier": "hermes-0.1.661-661",
-      "caption": "Reactions now travel between the Mac and the iPhone \u2014 tap on one and it appears on the other, live, and removing it clears both. The token count stays on screen from the moment a conversation opens. Thinking avatars are back to normal size with their own eyes. The sidebar's + has a hover state and takes every click, and the desktop composer's + opens one file panel for any photo or file. hermeyd 0.8.1.",
-      "date": "2026-11-25T10:57:24Z",
+      "title": "Hermes 0.1.662 (662)",
+      "identifier": "hermes-0.1.662-662",
+      "caption": "Waiting and blocked avatars now wear their own eyes at full size \u2014 blocked is the stillest state with an unblinking stare, waiting leans and looks aside. The sidebar's + finally shows a hover you can see, and collapsing the panel leaves its toggle on the window's floor instead of jumping to the title bar. The composer's + reaches your Photos library again from the same file panel. Fixes the file-picker Photos option you missed.",
+      "date": "2026-11-25T11:38:37Z",
       "tintColor": "#9A9AA0"
     }
   ],
