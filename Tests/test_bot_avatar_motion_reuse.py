@@ -201,7 +201,7 @@ class TheEyesAreHandedOverNotSecondClocked(unittest.TestCase):
                       "the override is applied even when the face is holding still")
 
     def test_the_rest_pose_channels_of_the_drawn_face_are_untouched(self) -> None:
-        for channel in ("pose.slit = 1", "pose.mark = .dots", "pose.mark = .bang", "pose.arch = 1"):
+        for channel in ("pose.slit = 1", "pose.mark = .bang", "pose.arch = 1", "pose.tilt = 0.32"):
             self.assertIn(channel, self.state, f"the eye override work dropped {channel!r}")
 
 

@@ -16,7 +16,7 @@ differing. Every claim about an existing route or file is checkable against the 
 | What it looks like | **Only the icon.** No frame, no border, no title bar, no panel, no coloured background — a fully transparent window whose content is the bot's picture (`/v1/bot-icons/{bot}`) at ~96 pt. The desktop, the wallpaper and whatever is behind it stay visible around the icon. |
 | Idle behaviour | Small random movements — a bob, a tilt, a hop, a brief wander of a few points — at random intervals (8–30 s). No pathfinding, no walking across the screen unless asked for later. |
 | Click | Opens a balloon above the pet with a text field. Type a question, press Return. |
-| While it works | The balloon switches to a thinking state (three dots / a pulse) until the answer arrives. |
+| While it works | The balloon switches to a thinking state (a lift pulse, and the face looking up and away) until the answer arrives. |
 | The answer | Replaces the thinking state in the same balloon, scrollable if long, with a Copy button. Escape or a click elsewhere dismisses it. |
 | Dragging | Click and drag moves the pet anywhere; the position is remembered per bot and per display. |
 | Right-click | A menu with **Close pet** (the only item in v1). Closing switches the bot's pet setting off, so the settings toggle is the way back. |

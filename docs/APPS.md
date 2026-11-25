@@ -181,9 +181,11 @@ something else — and the old three words (Working, Needs you, Finished) are go
   run the host reported failed.
 - **Done** is a finished turn, held for a few seconds before the face falls back to **Idle**. A
   background run is **Idle** on purpose — helper work should not look like a conversation.
-- **A marked state has one pair of eyes, not two.** **Thinking** gives the body over to three dots and
-  **Blocked** to an exclamation mark; the mark is the face in those states, so no eyes are drawn beside
-  it.
+- **Only a blocked bot wears a mark, and it is the whole face.** **Blocked** gives the body over to
+  an exclamation mark and draws no eyes beside it — a mark *and* a pair of eyes reads as extra eyes.
+  **Thinking** has no mark: it is the same body and the same pair of eyes as **Idle**, leaning and
+  looking up and away while it works something out, so a thinking bot is never a smaller or a
+  faceless one.
 
 ## The bot list's row menu
 

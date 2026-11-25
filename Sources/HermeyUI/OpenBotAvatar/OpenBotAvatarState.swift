@@ -6,12 +6,13 @@ import Foundation
 /// order, so a surface never translates between two vocabularies. The renderer does not own the
 /// vocabulary (`BotAvatarActivity` in `HermesKit` does); it accepts one of these and draws it.
 ///
-/// The states are upstream's, and so is what each one does to the body: `thinking` and `blocked`
-/// give the body up to a mark (three dots, an exclamation) — body *and face*, so a marked state has
-/// no eyes, which the renderer enforces in one place — `working` sweeps a band of ribbons round
-/// it, `done` turns once, `waiting` flattens the eyes to slits, and `reading`/`computer` lean the
-/// face — over and above a calm breathing pose. Nothing here allocates or reads a clock: a pose is a
-/// pure function of (state, mood, time, seed), so a frame can be reproduced and tested.
+/// The states are upstream's, and so is what each one does to the body: `blocked` gives the body up
+/// to a mark (an exclamation) — body *and face*, so a marked state has no eyes, which the renderer
+/// enforces in one place — `working` sweeps a band of ribbons round it, `done` turns once, `waiting`
+/// flattens the eyes to slits, `reading`/`computer` lean the face, and `thinking` leans and looks up
+/// and away over the ordinary body and the ordinary pair of eyes — over and above a calm breathing
+/// pose. Nothing here allocates or reads a clock: a pose is a pure function of (state, mood, time,
+/// seed), so a frame can be reproduced and tested.
 public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
     case idle
     case thinking
@@ -82,11 +83,14 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.gazeY = wander.1
 
         case .thinking:
-            // Looks up and away while the body gives way to three dots. The mark is the face here:
-            // `bodyScale` shrinks the body and the renderer draws no eyes beside a mark, so a
-            // thinking bot shows one pair of "eyes" — the dots. The eye channels above are still
-            // the state's own (they are what the shared motion's override replaces) but a marked
-            // frame does not draw them.
+            // Looks up and away while it works something out — over a body that is exactly the body
+            // every other state wears. This state used to shrink to 42 % of its size and hand its
+            // face to three dots, which in a row of full-size bots read as a different, smaller,
+            // eyeless creature; both were the mark's doing, so the mark went. Thinking is still
+            // thinking without it: a constant lean, a look up and to the side, a slower blink than
+            // idle's and a 5.2 s pulse in the lift. Nothing here touches the eyes' shape, size or
+            // place — `pose.squint`, `slit` and `arch` are how a state reshapes an eye, and this
+            // one sets none of them, so its eyes are idle's eyes looking elsewhere.
             rest(1)
             pose.yaw += 0.12 + 0.03 * wave(7.3)
             pose.pitch += 0.08
@@ -94,11 +98,7 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             pose.lift = reducedMotion ? 0 : -0.5 * (1 - cos(2 * .pi * t / 5.2))
             pose.gazeX = 0.55
             pose.gazeY = -0.8
-            pose.squint = 0.25
             pose.tilt = 0.32
-            pose.bodyScale = 0.42
-            pose.mark = .dots
-            pose.markScale = 1
             pose.blink = reducedMotion ? 0 : Self.blink(seed: seed, time: t * 0.7)
 
         case .reading:
@@ -258,10 +258,10 @@ public enum BotAvatarMood: String, CaseIterable, Hashable, Sendable {
     case happy
 }
 
-/// The mark a giving-way body leaves behind.
+/// The mark a giving-way body leaves behind. `blocked` is the only state that has one: a mark is
+/// drawn *instead of* the face (the renderer's one gate), so a state that wants to show its eyes —
+/// `thinking` does — cannot wear one.
 public enum OpenBotAvatarMark: Hashable, Sendable {
-    /// Thinking: three dots.
-    case dots
     /// Blocked: an exclamation mark.
     case bang
 }
@@ -297,7 +297,9 @@ public struct OpenBotAvatarPose: Hashable, Sendable {
     public var ribbons: Double = 0
     /// How far the turn has carried them, radians.
     public var sweep: Double = 0
-    /// How much of its size the body keeps while it gives way to a mark.
+    /// How much of its size the body keeps while it gives way to a mark. 1 — the resting scale — in
+    /// every state but `blocked`: a state may not shrink the silhouette it shares with the others,
+    /// which is what made a thinking bot a small one in a row of full-size ones.
     public var bodyScale: Double = 1
     public var mark: OpenBotAvatarMark?
     public var markScale: Double = 1

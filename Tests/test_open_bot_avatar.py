@@ -390,7 +390,7 @@ class TheStatesEachDrawThemselves(unittest.TestCase):
         source = read(STATE)
         pose = source[source.index("public func pose("):source.index("// MARK: - Clocks")]
         for label, marker in [
-            ("thinking", "pose.mark = .dots"),
+            ("thinking", "pose.gazeY = -0.8"),
             ("blocked", "pose.mark = .bang"),
             ("waiting", "pose.slit = 1"),
             ("working", "pose.sweep = 2 * .pi * turn"),
@@ -403,7 +403,6 @@ class TheStatesEachDrawThemselves(unittest.TestCase):
 
     def test_the_renderer_has_a_path_for_each_mark(self) -> None:
         source = read(RENDERER)
-        self.assertIn("case .dots:", source)
         self.assertIn("case .bang:", source)
         self.assertIn("pose.arch >= 0.5", source)
         self.assertIn("pose.slit >= 0.5", source)
@@ -434,14 +433,15 @@ class OnePairOfEyesInEveryState(unittest.TestCase):
         self.assertIn("drawEyes(", gate, "the eyes must be inside the one gate")
         self.assertIn("let givesWay = pose.mark != nil", draw)
 
-    def test_the_marked_states_are_thinking_and_blocked_only(self) -> None:
+    def test_the_only_marked_state_is_blocked(self) -> None:
         pose = self.pose()
-        self.assertEqual(pose.count("pose.mark = "), 2,
+        self.assertEqual(pose.count("pose.mark = "), 1,
                          "a state that gives its body up sets its mark here, and only it")
         thinking = pose.split("case .thinking:")[1].split("case .reading:")[0]
         blocked = pose.split("case .blocked:")[1].split("case .done:")[0]
-        self.assertIn("pose.mark = .dots", thinking)
-        self.assertIn("pose.bodyScale = 0.42", thinking)
+        # Thinking gave its body and its face up to three dots once; it draws a face now.
+        self.assertNotIn("pose.mark", thinking, "thinking must not hand its face to a mark again")
+        self.assertNotIn("pose.bodyScale", thinking, "thinking must not shrink again")
         self.assertIn("pose.mark = .bang", blocked)
         self.assertIn("pose.bodyScale = 0.32", blocked)
 
@@ -496,6 +496,118 @@ class OnePairOfEyesInEveryState(unittest.TestCase):
         # so the override is never the thing that decides whether eyes exist.
         thinking = pose.split("case .thinking:")[1].split("case .reading:")[0]
         self.assertIn("pose.blink", thinking)
+
+
+class AThinkingBotIsIdleSizedAndWearsIdlesEyes(unittest.TestCase):
+    """The report: thinking drew at 42 % and had no eyes, so in a row of bots one was small and
+    faceless. Thinking is now idle's body and idle's eyes, distinguished by what it does with them.
+    """
+
+    def code(self, text: str) -> str:
+        """The source with its comments stripped: a guard must read the code, not the prose."""
+        return "\n".join(line.split("//")[0] for line in text.splitlines())
+
+    def pose(self) -> str:
+        source = read(STATE)
+        return source[source.index("public func pose("):source.index("// MARK: - Clocks")]
+
+    def branch(self, label: str) -> str:
+        return self.code(self.pose().split(f"case .{label}:")[1].split("case .")[0])
+
+    def renderer_draw(self) -> str:
+        return read(RENDERER).split("public static func draw(")[1].split("// MARK: - View maths")[0]
+
+    def eyes(self) -> str:
+        return read(RENDERER).split("static func drawEyes(")[1].split("// MARK: - Ribbons")[0]
+
+    def test_thinking_is_drawn_at_the_resting_scale(self) -> None:
+        thinking = self.branch("thinking")
+        # 0.42 was the shrink; a state may no longer resize the silhouette it shares with the rest.
+        self.assertNotIn("pose.bodyScale", thinking, "thinking is drawn smaller than idle again")
+        self.assertIn("public var bodyScale: Double = 1", read(STATE),
+                      "the resting scale is the default, so a pose that never names it is idle's")
+        self.assertEqual(self.pose().count("pose.bodyScale = "), 1,
+                         "only a body that gives way to a mark may shrink")
+        self.assertIn("pose.bodyScale = 0.32", self.branch("blocked"))
+        # No squash or stretch either: the pulse it keeps is a lift, which moves the body without
+        # resizing it, and both states breathe on the same resting envelope.
+        for channel in ("pose.sx =", "pose.sy ="):
+            self.assertNotIn(channel, thinking, f"thinking squashes its body ({channel})")
+        self.assertIn("rest(1)", thinking)
+        self.assertIn("rest(1)", self.branch("idle"))
+
+    def test_thinking_draws_eyes_instead_of_suppressing_them(self) -> None:
+        thinking = self.branch("thinking")
+        self.assertNotIn("pose.mark", thinking, "thinking hands its face to a mark again")
+        # The one gate that can suppress a face keys off the mark alone, so a state with no mark
+        # cannot reach it; and nothing in the renderer branches on a state name.
+        draw = self.renderer_draw()
+        self.assertIn("let givesWay = pose.mark != nil", draw)
+        self.assertEqual(read(RENDERER).count("pose.mark != nil"), 1,
+                         "the mark/eyes gate has been copied; it must live in one place")
+        renderer = read(RENDERER)
+        self.assertNotIn("case .thinking", renderer, "the renderer must not special-case a state")
+        self.assertEqual(draw.count("drawEyes("), 1,
+                         "the eyes are drawn once per frame, whichever state asked")
+
+    def test_thinking_wears_idles_eyes_exactly(self) -> None:
+        thinking = self.branch("thinking")
+        # `squint`, `slit` and `arch` are the only channels that reshape an eye; a state that sets
+        # none of them draws exactly the pair idle draws — same pill, same size, same place.
+        for channel in ("pose.squint", "pose.slit", "pose.arch"):
+            self.assertNotIn(channel, thinking, f"thinking reshapes its eyes ({channel})")
+        eyes = self.eyes()
+        self.assertIn("let eyes = model.definition.eyes", eyes)
+        self.assertIn("let centers = OpenBotAvatarGeometry.eyeCenters(eyes)", eyes)
+        # It still looks: a gaze and a slower blink move the same eyes rather than replacing them.
+        self.assertIn("pose.gazeX = 0.55", thinking)
+        self.assertIn("pose.gazeY = -0.8", thinking)
+        self.assertIn("Self.blink(seed: seed, time: t * 0.7)", thinking)
+        self.assertIn("pose.roll = -5", thinking)
+
+    def test_no_mark_can_be_drawn_over_a_face_that_has_eyes(self) -> None:
+        pose = self.pose()
+        self.assertEqual(re.findall(r"pose\.mark = \.(\w+)", pose), ["bang"],
+                         "only blocked wears a mark, and its body gives way to it")
+        # The two are complementary: eyes are drawn only for a body with no mark, and a mark is
+        # drawn after them, outside that gate — so nothing can sit over a face that has eyes.
+        draw = self.renderer_draw()
+        gate = draw.split("if !givesWay {")[1].split("}\n        }")[0]
+        self.assertNotIn("drawMark(", gate)
+        self.assertGreater(draw.index("if let mark = pose.mark {"), draw.index("if !givesWay {"))
+        # The mark that sat over thinking's eyes is gone, path and all.
+        self.assertNotIn("dots", self.code(read(RENDERER)),
+                         "the mark that hid thinking's eyes is still drawn")
+
+    def test_a_blink_from_the_shared_motion_reaches_thinking(self) -> None:
+        pose = self.pose()
+        override = pose.split("if let eyeOverride {")[1]
+        self.assertIn("pose.blink = eyeOverride.blink", override)
+        self.assertIn("pose.squint = eyeOverride.squint", override)
+        # Applied after the state's branch, and no branch returns early, so thinking obeys it.
+        self.assertGreater(pose.index("if let eyeOverride {"), pose.index("switch self {"))
+        self.assertEqual(self.code(pose).count("return"), 1,
+                         "a state that returns early would skip the override")
+
+    def test_every_other_state_is_drawn_exactly_as_it_was(self) -> None:
+        # Pinned: the resting pace each state breathes on, and every squash or shrink it adds.
+        for label, pace in [("idle", "rest(1)"), ("reading", "rest(1.1)"), ("working", "rest(1.3)"),
+                            ("computer", "rest(1.2)"), ("waiting", "rest(0.9)"),
+                            ("done", "rest(1.25)")]:
+            self.assertIn(pace, self.branch(label), f"{label} changed its resting pose")
+        working = self.branch("working")
+        self.assertIn("pose.sy = 0.99 - 0.008 * beat", working)
+        self.assertIn("pose.sx = 1.005 + 0.005 * beat", working)
+        blocked = self.branch("blocked")
+        self.assertIn("pose.sy = 1.02", blocked)
+        self.assertIn("pose.sx = 0.99", blocked)
+        self.assertIn("pose.bodyScale = 0.32", blocked)
+        self.assertIn("pose.markScale = 1 + 0.04 * wave(2.4)", blocked)
+        # And none of them may join thinking in shrinking: the default is the resting scale.
+        for label in STATES:
+            if label == "blocked":
+                continue
+            self.assertNotIn("pose.bodyScale", self.branch(label), label)
 
 
 class TheVolumeIsInferredAndProjected(unittest.TestCase):

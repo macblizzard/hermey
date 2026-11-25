@@ -14,18 +14,20 @@ import AppKit
 /// projected through the view rotation: that is what gives the silhouette depth without a 3-D model.
 /// The eyes are painted on the tangent plane under their own position, so they turn and tip with the
 /// face instead of floating above it. Around and in front of that sit the state's marks — a band of
-/// ribbons for `working` and `done`, three dots for `thinking`, an exclamation for `blocked`.
+/// ribbons for `working` and `done`, an exclamation for `blocked`.
 ///
 /// ## One pair of eyes, in every state
 ///
-/// A mark is a *face*, not an ornament over one: upstream's `thinking` and `blocked` give the body
-/// up to their mark, so the body shrinks (`pose.bodyScale`) and the mark is what the bot shows. A
-/// frame that drew the mark *and* the body's eyes showed three dots or an exclamation beside a
-/// pair of eyes — which reads as extra eyes — so the two are weighed against each other in exactly
-/// one place, `givesWay` below, and a marked state is a faceless one. Everything else a state may
-/// add is on the eyes' own plane and cannot double them: `slit` and `arch` replace the eye's shape
-/// (one capsule or arc per eye, never both), the catchlight is drawn inside the eye it belongs to,
-/// and the ribbons are drawn behind the body and never near the face.
+/// A mark is a *face*, not an ornament over one: upstream's `blocked` gives the body up to its
+/// mark, so the body shrinks (`pose.bodyScale`) and the mark is what the bot shows. A frame that
+/// drew the mark *and* the body's eyes showed an exclamation beside a pair of eyes — which reads as
+/// extra eyes — so the two are weighed against each other in exactly one place, `givesWay` below, and
+/// a marked state is a faceless one. Only `blocked` marks itself; `thinking` used to (three dots, at
+/// 42 % of the body) and no longer does, because a state that must hide its eyes to say something
+/// says it worse than its own motion does. Everything else a state may add is on the eyes' own plane
+/// and cannot double them: `slit` and `arch` replace the eye's shape (one capsule or arc per eye,
+/// never both), the catchlight is drawn inside the eye it belongs to, and the ribbons are drawn
+/// behind the body and never near the face.
 ///
 /// ## Materials
 ///
@@ -344,8 +346,6 @@ public enum OpenBotAvatarRenderer {
             .concatenating(CGAffineTransform(translationX: CGFloat(pivot.x), y: CGFloat(pivot.y - 4)))
             .concatenating(viewport)
         switch mark {
-        case .dots:
-            layer.fill(model.dots, with: .color(ink))
         case .bang:
             layer.fill(model.bang, with: .color(ink))
         }
@@ -366,10 +366,9 @@ public final class OpenBotAvatarModel {
     /// silhouette, flat, so glass and solid wear the same shape.
     public let silhouette: Path
 
-    /// Unit shapes, drawn through a transform: a ribbon hoop, the three dots, the exclamation mark.
-    /// Held here so no frame builds a path for them.
+    /// Unit shapes, drawn through a transform: a ribbon hoop and the exclamation mark. Held here so
+    /// no frame builds a path for them.
     let ribbonArc: Path
-    let dots: Path
     let bang: Path
 
     private static let lock = NSLock()
@@ -385,12 +384,6 @@ public final class OpenBotAvatarModel {
         var arc = Path()
         arc.addArc(center: .zero, radius: 1, startAngle: .degrees(-52), endAngle: .degrees(52), clockwise: false)
         ribbonArc = arc
-        var dotsPath = Path()
-        for (index, x) in [-7.0, 0, 7].enumerated() {
-            let lift = index == 1 ? -1.6 : 0
-            dotsPath.addEllipse(in: CGRect(x: x - 2.1, y: lift - 2.1, width: 4.2, height: 4.2))
-        }
-        dots = dotsPath
         var bangPath = Path()
         bangPath.addRoundedRect(in: CGRect(x: -1.9, y: -14, width: 3.8, height: 13), cornerSize: CGSize(width: 1.9, height: 1.9))
         bangPath.addEllipse(in: CGRect(x: -2.2, y: 1.4, width: 4.4, height: 4.4))
