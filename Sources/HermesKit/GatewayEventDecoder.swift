@@ -478,6 +478,22 @@ enum GatewayPayloadDecoder {
         }
     }
 
+    /// The canonical row out of `session.list {title: "Bot Chat"}` — and the count the ceiling reads.
+    ///
+    /// `live_message_count` first: it is the host's display count, the same grouping a transcript
+    /// read paints, so it cannot lag the rows an open would show. `message_count` is the fallback
+    /// for a host that predates the field, and it is knowingly smaller (compaction retires rows from
+    /// that column while they stay in the transcript), so a roll on this host can come late — never
+    /// early, which is the only direction that loses nothing.
+    static func botChatRow(_ result: JSONValue?) -> BotChatRow? {
+        guard let row = result?["sessions"]?.arrayValue?.first?.objectValue,
+              let id = row["id"]?.stringValue, !id.isEmpty else { return nil }
+        let live = row["live_message_count"]?.intValue.map(Int.init)
+        let stored = row["message_count"]?.intValue.map(Int.init)
+        guard let count = live ?? stored else { return nil }
+        return BotChatRow(id: id, count: count)
+    }
+
     /// One older page: rows, the offset its first row sits at, and the conversation's row count.
     static func historyPage(_ result: JSONValue?) throws -> HistoryPage {
         guard let result, let messages = result["messages"]?.arrayValue else {

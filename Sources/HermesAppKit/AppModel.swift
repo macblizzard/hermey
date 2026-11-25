@@ -376,12 +376,46 @@ public final class AppModel: ObservableObject {
     @Published public var showToolCalls: Bool {
         didSet { Self.defaults.set(showToolCalls, forKey: Keys.showToolCalls) }
     }
+
+    /// **Settings → "Start a new chat after"**: the ceiling a bot's one conversation is rolled at.
+    ///
+    /// Stored as the raw choice (`0` = Never, see ``BotChatCeiling``) so the settings row can show
+    /// exactly what the owner picked. Written straight through on change — the roll reads this
+    /// property at the moment of the open, so a new value takes effect on the next open with no
+    /// restart, and no other state has to be told about it.
+    @Published public var botChatCeiling: Int {
+        didSet {
+            let settled = BotChatCeiling.sanitised(botChatCeiling)
+            Self.defaults.set(settled, forKey: Keys.botChatCeiling)
+            if settled != botChatCeiling {
+                // Refused rather than written: a value the row cannot show is one the owner cannot
+                // undo, so the picker snaps back to a real choice.
+                botChatCeiling = settled
+            }
+        }
+    }
+
+    /// The ceiling the roll actually applies, `nil` when the owner chose Never.
+    var botChatLimit: Int? { BotChatCeiling.limit(from: botChatCeiling) }
     enum Keys {
         static let showReasoning = "hermes.showReasoning"
         static let reasoningExpanded = "hermey.showReasoningExpanded"
         static let showToolCalls = "hermes.showToolOutput"
         /// One stored session id per bot — the endless-chat contract (`docs/ENDLESS-CHAT.md` §2).
         static let endlessSessionPrefix = "hermes.endlessSession."
+        /// The archived Bot Chats rolled out of the way, one JSON document per bot, newest first.
+        ///
+        /// Per bot and per device: the host's own `session.list` hides an archived row, so this
+        /// document is the only index of the conversations a roll moved aside. It is written by the
+        /// roll and never by anything else, and it has no delete.
+        static let previousChatsPrefix = "hermes.previousChats."
+        /// "Start a new chat after" — the owner's ceiling, per app (see `BotChatCeiling`).
+        ///
+        /// A `UserDefaults` value rather than a host one on purpose: it is a preference about how
+        /// *this* app behaves, and the phone is allowed a smaller chat than the Mac.
+        static let botChatCeiling = BotChatCeiling.key
+        /// A roll this device has begun but not finished recording, per bot (see `beginRollJournal`).
+        static let rollJournalPrefix = "hermes.rollJournal."
         /// The id this device reset, until something newer is published. The bridge's PUT has no
         /// "clear" (`bot_sessions.py`: a null is a 422, "never a delete"), so without this a reset
         /// device would adopt the very conversation it just forgot on its next open.
@@ -697,6 +731,10 @@ public final class AppModel: ObservableObject {
         showReasoning = defaults.object(forKey: Keys.showReasoning) as? Bool ?? true
         reasoningExpandedByDefault = defaults.object(forKey: Keys.reasoningExpanded) as? Bool ?? false
         showToolCalls = defaults.object(forKey: Keys.showToolCalls) as? Bool ?? true
+        // "Start a new chat after". Read as the raw choice and sanitised: an unset key means the
+        // shipped default (2,000), and a value no picker can show falls back to it rather than
+        // silently disabling the roll.
+        botChatCeiling = BotChatCeiling.sanitised(defaults.object(forKey: Keys.botChatCeiling) as? Int)
         // Read here, not on connect: Settings can be opened before a host answers, and a toggle
         // that shows "on" until the socket comes up would be a lie about a stored choice.
         loadNotificationSettings()
@@ -3066,6 +3104,28 @@ public final class AppModel: ObservableObject {
             let known = sessionAliases[announced] ?? announced
             return known == cachedSession || sessionBots[known] == botID
         }
+        // **The ceiling, before anything is opened.** A Bot Chat at or past the owner's "Start a new
+        // chat after" setting is rolled here, so this open lands on the fresh conversation instead
+        // of spending its whole deadline on the 4.5 MB one (`cody`: 6,806 messages, 120 s timeout,
+        // no open at all).
+        //
+        // It sits above the cached-pane shortcut on purpose: a snapshot of a 6,000-row chat paints
+        // instantly, and trusting that paint would postpone the roll for as long as the owner keeps
+        // coming back. `max(historyTotal, transcript.count)` is what this device already knows about
+        // the conversation — 0 on a cold open, where the host must be asked; the restored total
+        // otherwise — and it is only used to decide whether asking the host is worth a round trip.
+        // The decision itself is always the host's count, inside `rollBotChatIfNeeded`.
+        //
+        // A pick from All Sessions outranks it: the owner asked for a specific conversation, and a
+        // roll changes which chat the *bot* owns.
+        let knownSize = max(historyTotal, transcript.count)
+        if pinnedSessionPicks[botID] == nil, let ceiling = botChatLimit,
+           knownSize == 0 || knownSize >= ceiling,
+           let rolled = await rollBotChatIfNeeded(for: botID) {
+            ClientLog.note("opened \(botID) on the fresh Bot Chat \(rolled) the ceiling minted",
+                           level: .info, category: "session")
+            return rolled
+        }
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
            Date().timeIntervalSince(stamp) < conversationCacheFreshness,
@@ -3591,6 +3651,342 @@ public final class AppModel: ObservableObject {
             Self.defaults.set(fresh, forKey: Self.endlessKey(bot))
         }
         await loadBotPreviews(force: true)
+    }
+
+    // MARK: The ceiling on one Bot Chat
+
+    /// The conversations a roll moved aside for this bot, newest first.
+    ///
+    /// Read straight from this device's document (`hermes.previousChats.<bot>`): the host's
+    /// `session.list` **hides** an archived row, so there is no listing to read them from, and the
+    /// document is written by the roll alone. Synchronous on purpose — a menu draws it, and the bot
+    /// panel must not wait a round trip to say what came before this chat.
+    public func previousConversations(for botID: String) -> [BotChatArchive.Previous] {
+        BotChatArchive.decode(Self.defaults.data(forKey: Self.previousKey(botID)))
+    }
+
+    private static func previousKey(_ botID: String) -> String {
+        Keys.previousChatsPrefix + botID
+    }
+
+    /// Add one rolled conversation to the bot's document. Append-and-sort, never a rewrite of the
+    /// ones already there: the list has no ceiling and no delete.
+    private func recordPrevious(_ row: BotChatArchive.Previous, for botID: String) {
+        let rows = BotChatArchive.upserting(row, into: previousConversations(for: botID))
+        Self.defaults.set(BotChatArchive.encode(rows), forKey: Self.previousKey(botID))
+    }
+
+    // MARK: The roll's journal
+
+    /// The roll's two-phase commit, on this device.
+    ///
+    /// The host's commit is its own (`createCanonicalSession` moves the name atomically), but this
+    /// device's half — "the old id is now in Previous conversations" — is a second write, and a
+    /// crash between the two would leave the owner with a 6,806-message chat that is archived (so
+    /// no listing shows it) and unlisted here. The journal is written **before** the archive and
+    /// cleared only once the entry is stored, so an open after such a crash finishes the
+    /// bookkeeping instead of losing the conversation.
+    private static func journalKey(_ botID: String) -> String {
+        Keys.rollJournalPrefix + botID
+    }
+
+    private func beginRollJournal(_ row: BotChatArchive.Previous, for botID: String) {
+        Self.defaults.set(BotChatArchive.encode([row]), forKey: Self.journalKey(botID))
+    }
+
+    private func clearRollJournal(for botID: String) {
+        Self.defaults.removeObject(forKey: Self.journalKey(botID))
+    }
+
+    /// Finish a roll this device committed to but never recorded.
+    ///
+    /// Only ever acts on the host's own answer: with a canonical row in hand, a journaled id that is
+    /// **not** that row means the roll went through and the entry was never stored. An equal id
+    /// means nothing moved (the create was refused, or the roll never started), and a host that
+    /// could not be asked does not get to settle anything.
+    private func settleRollJournal(for botID: String, canonical: SessionID) {
+        guard let pending = BotChatArchive.decode(Self.defaults.data(forKey: Self.journalKey(botID))).first
+        else { return }
+        guard pending.id != canonical else {
+            clearRollJournal(for: botID)
+            return
+        }
+        recordPrevious(pending, for: botID)
+        clearRollJournal(for: botID)
+        ClientLog.note("recorded \(pending.id) in \(botID)'s Previous conversations: a roll was "
+                       + "interrupted after the host had already moved the name",
+                       level: .warning, category: "session")
+    }
+
+    /// Open an archived conversation by hand.
+    ///
+    /// Deliberately **not** `endlessSession`: this is a visit, not a change of ownership. The bot's
+    /// Bot Chat stays the chat that opens when its row is tapped, which is the whole point of the
+    /// roll; this only resumes the old id so its transcript can be read, and — stated plainly —
+    /// **a message sent here goes into this old conversation**, because the host appends to
+    /// whatever session the composer is pointed at. The row's own label says so rather than
+    /// pretending the pane is read-only.
+    ///
+    /// - Parameter pinsForThisVisit: the phone navigates to a conversation *screen*, which resolves
+    ///   the bot again on appear (`openNow` → `endlessSession`) and would replace this id with the
+    ///   live Bot Chat. Recording the id as this bot's pick survives exactly that open — the pick
+    ///   is consumed by it — so the *next* tap on the bot lands on the live chat again. The Mac
+    ///   opens in place and passes `false`, so no pick is left behind at all.
+    public func openPreviousConversation(_ row: BotChatArchive.Previous, for botID: String,
+                                        pinsForThisVisit: Bool = true) async {
+        if pinsForThisVisit {
+            await openSession(row.id, for: botID)
+        } else {
+            if botID != selectedBotID {
+                captureConversation(for: selectedBotID)
+                resetForBotSwitch()
+                // [B2 navigation] the owner picked this bot's old conversation from its menu: the
+                // bot moves because the transcript he asked for belongs to it.
+                selectedBotID = botID
+                await loadModelLabel()
+            }
+            if selectedSessionID != row.id { await select(row.id) }
+        }
+        // The host's own total for the archived conversation, if the resume answered: the row's
+        // number follows the transcript rather than the day it was archived. Its id and its place
+        // in the list do not move.
+        if selectedSessionID == row.id, historyTotal > 0, historyTotal != row.count {
+            let rows = BotChatArchive.refreshing(previousConversations(for: botID), id: row.id,
+                                                 count: historyTotal, lastActive: nil)
+            Self.defaults.set(BotChatArchive.encode(rows), forKey: Self.previousKey(botID))
+        }
+    }
+
+    /// The number the roll decides on: the host's own count for this bot's Bot Chat.
+    ///
+    /// `live_message_count` — the host's display count, the same row grouping a transcript read
+    /// paints — so it cannot lag the rows an open would show, and it is not this app's own array
+    /// (which is a *page* now that resumes are windowed). See
+    /// `GatewayClientProtocol.botChatRow(profile:)` for the measured difference between it and the
+    /// denormalised `message_count` (6,136 vs 675 on `cody`'s chat).
+    ///
+    /// Deliberately one call: the exact-title read is one row, and it is asked once per open — never
+    /// per turn, and never while the owner is typing.
+    func hostBotChatRow(for botID: String) async -> BotChatRow? {
+        do {
+            return try await client.botChatRow(profile: botID)
+        } catch {
+            ClientLog.note("could not measure \(botID)'s Bot Chat: \(error.localizedDescription); "
+                           + "leaving the conversation as it is",
+                           level: .info, category: "session")
+            return nil
+        }
+    }
+
+    /// Whether a turn is writing into `botID`'s conversation right now.
+    ///
+    /// Three facts, because any one of them alone misses a case: this device's own stream
+    /// (`isStreaming` for the bot on screen), a send still in flight (`sending`), an approval the
+    /// host is holding open (`pendingRequests`), and the tracker's face — which is the only one that
+    /// sees a turn started by cron, by the other device or by another bot.
+    func turnInFlight(for botID: String) -> Bool {
+        if sending { return true }
+        if isStreaming, selectedBotID == botID { return true }
+        if !pendingRequests.isEmpty, selectedBotID == botID { return true }
+        return BotChatArchive.turnIsInFlight(activity(forBot: botID))
+    }
+
+    /// Roll this bot's Bot Chat over if it is at the ceiling **and** nothing is in flight.
+    ///
+    /// Returns the id of the fresh conversation when a roll completed — the caller opens it instead
+    /// of the archived one — and `nil` in every other case, including every failure. A `nil` here is
+    /// the promise that nothing moved: the bot stays on the conversation it had.
+    ///
+    /// The order is the crash-safety argument, and it is not the obvious one:
+    ///
+    /// 1. **Archive the old row.** It cannot be avoided: the host keeps the title `Bot Chat` unique
+    ///    (`hermes_state_titles._resolve_title_conflict`) and frees it only for a conflict that is
+    ///    *archived and hidden* — which the canonical chat is. Until this lands, the successor
+    ///    cannot take the name. Reversible (`unarchiveSession`), and archived means the row stops
+    ///    resolving as the bot's chat at once, so no tap can land on it in between.
+    /// 2. **Mint the successor with the canonical name — the commit point.** The host stores a new
+    ///    session as a *draft*: `title` and `hidden` wait in the record and no row is written until
+    ///    the first prompt (`_ensure_session_db_row`). So this call does not rename anything yet,
+    ///    but it is the moment the outcome stops being reversible in this device's favour: its
+    ///    returned id is what every pointer below adopts, and on that first prompt the host hands
+    ///    the name to it and clears the archived row's title in the same write. A different
+    ///    idempotency key than the ordinary create is required — the gateway's 300 s dedupe would
+    ///    otherwise hand back the live session that was just archived.
+    /// 3. **Confirm the old chat is no longer the bot's chat.** One read. `nil` is the expected
+    ///    answer (no canonical row exists while the successor is a draft); the archived id is the
+    ///    one answer that means the archive did not take, and then the roll is undone.
+    /// 4. **Only now** is the old id recorded in Previous conversations, the local key rewritten and
+    ///    the bridge's own pointer published. Between steps 2 and 4 the app's own key carries the
+    ///    bot's identity — `canonicalChatIdentity` answers nothing, and `CanonicalBotChat.plan`
+    ///    adopts this id — which is why a crash here is repaired by the journal rather than left to
+    ///    chance.
+    @discardableResult
+    func rollBotChatIfNeeded(for botID: String) async -> SessionID? {
+        guard connection.isLive else { return nil }
+        // A roll this device began and a crash interrupted is finished first — even if the owner
+        // has since chosen Never, because the entry is what keeps the archived chat reachable.
+        let hasJournal = Self.defaults.data(forKey: Self.journalKey(botID)) != nil
+        guard botChatLimit != nil || hasJournal else { return nil }
+        guard let row = await hostBotChatRow(for: botID) else { return nil }
+        // The host has answered with the chat that IS the bot's now, so a journaled id that is not
+        // it belongs in Previous conversations. Done before the ceiling is read, so the list is
+        // right on the open that follows the crash.
+        settleRollJournal(for: botID, canonical: row.id)
+        guard let limit = botChatLimit else { return nil }
+        let alreadyArchived = previousConversations(for: botID).contains { $0.id == row.id }
+        let inFlight = turnInFlight(for: botID)
+        guard BotChatArchive.shouldRoll(count: row.count, limit: limit, inFlight: inFlight,
+                                        currentID: row.id, alreadyArchived: alreadyArchived) else {
+            if inFlight, row.count >= limit {
+                ClientLog.note("\(botID)'s Bot Chat is at \(row.count) messages, over the \(limit) "
+                               + "ceiling, but a turn is in flight: the roll waits",
+                               level: .info, category: "session")
+            }
+            return nil
+        }
+        return await rollBotChat(row, count: row.count, botID: botID)
+    }
+
+    /// The roll itself, once ``rollBotChatIfNeeded(for:)`` has decided it may happen.
+    private func rollBotChat(_ row: BotChatRow, count: Int, botID: String) async -> SessionID? {
+        let archived = row.id
+        // 0. The journal, before anything moves: if this process dies between the host's commit
+        //    and the list write below, the next open finishes the job (see `settleRollJournal`).
+        let stamp = botPreviewTimes[botID] ?? transcript.last?.at ?? Date()
+        beginRollJournal(BotChatArchive.Previous(id: archived, count: count,
+                                                 lastActive: stamp, archivedAt: Date()),
+                         for: botID)
+        // 1. The old row leaves the identity behind. Failing here changes nothing at all.
+        do {
+            try await client.archiveSession(archived, profile: botID)
+        } catch {
+            clearRollJournal(for: botID)
+            ClientLog.note("could not archive \(botID)'s Bot Chat (\(archived), \(count) messages); "
+                           + "the conversation is unchanged: \(error.localizedDescription)",
+                           level: .error, category: "session")
+            Self.noteSessionSync("could not archive “\(botID)”'s Bot Chat: \(error.localizedDescription)")
+            return nil
+        }
+        // 1b. And it must be *hidden* too, or the host will not let the successor take the name:
+        // `_resolve_title_conflict` frees a conflicting title only for an archived **and hidden**
+        // canonical row. A Bot Chat is born hidden, so this is a no-op in the ordinary case; a chat
+        // this app *adopted* from a pre-canonical session can be visible, and then this is what
+        // makes the transfer possible. Best effort — a host without the route is answered by the
+        // confirmation below.
+        do {
+            try await client.setSessionHidden(true, session: archived, profile: botID)
+        } catch {
+            ClientLog.note("could not hide \(archived) for \(botID) "
+                           + "(\(error.localizedDescription)); the successor may have to adopt the "
+                           + "name on its first turn",
+                           level: .warning, category: "session")
+        }
+        // 2. The successor, with the canonical name — the commit point.
+        let created: SessionID
+        do {
+            created = try await client.createCanonicalSession(
+                profile: botID,
+                idempotencyKey: "bot-chat:\(botID):\(archived)")
+        } catch {
+            ClientLog.note("the successor Bot Chat for \(botID) was refused "
+                           + "(\(error.localizedDescription)); putting \(archived) back",
+                           level: .error, category: "session")
+            // The undo is what decides whether the journal survives: if the row could not be put
+            // back, it is archived and nameless, and the next open must list it rather than let it
+            // disappear behind an id nothing shows.
+            if await unarchive(archived, botID: botID) { clearRollJournal(for: botID) }
+            return nil
+        }
+        // 3. The host's own answer, not this device's hope: the archived chat must no longer be
+        //    this bot's chat. `nil` is the expected answer — the host writes no row for a fresh
+        //    session until its first prompt, so between the archive and that prompt the bot has no
+        //    canonical row at all. A *different* id is also fine (the host materialised the
+        //    successor). The one answer that means the roll did not take is the archived id.
+        let confirmed = await hostBotChatRow(for: botID)
+        if confirmed?.id == archived {
+            ClientLog.note("the roll for \(botID) did not take: the host still calls \(archived) "
+                           + "its Bot Chat after archiving it; undoing it",
+                           level: .error, category: "session")
+            Self.noteSessionSync("the host did not accept the roll for “\(botID)”; "
+                                 + "the old conversation is unchanged")
+            if await unarchive(archived, botID: botID) { clearRollJournal(for: botID) }
+            return nil
+        }
+        // 4. The archive is a fact from here on, so the list records it before anything else.
+        recordPrevious(BotChatArchive.Previous(id: archived, count: count,
+                                               lastActive: stamp, archivedAt: Date()),
+                       for: botID)
+        clearRollJournal(for: botID)
+        // The archived chat's rows must not repaint under the fresh conversation: the snapshot is
+        // keyed by bot, and it still holds the 6,000-row transcript.
+        conversationCache.removeValue(forKey: botID)
+        conversationCacheOrder.removeAll { $0 == botID }
+        conversationCacheHostStamp.removeValue(forKey: botID)
+        conversationCacheReadFromHost.removeValue(forKey: botID)
+        forgetContextUsage(for: botID)
+        // A third Bot Chat appeared while this was in flight (another device rolled, or a manual
+        // mint). The archived conversation is listed either way; what must not happen is this
+        // device pointing the bot at a chat the host does not call its own.
+        if let confirmed, confirmed.id != created {
+            canonicalChatIDCache.removeValue(forKey: botID)
+            canonicalChatIDStamp.removeValue(forKey: botID)
+            ClientLog.note("the roll for \(botID) left \(archived) archived, but the host's Bot Chat "
+                           + "is now \(confirmed.id), not \(created); leaving it alone",
+                           level: .warning, category: "session")
+            return nil
+        }
+        canonicalChatIDCache[botID] = created
+        canonicalChatIDStamp[botID] = Date()
+        ClientLog.note("rolled \(botID)'s Bot Chat at \(count) messages: \(archived) moved to "
+                       + "Previous conversations, \(created) is the bot's chat now",
+                       level: .info, category: "session")
+        // The pane moves to the fresh conversation, and the two pointers this device owns are
+        // written with it: the local key and the bridge's row (`hermeyd` delivers bot-to-bot
+        // messages to `bot_sessions.stored_session_id`, so a stale row there would keep aiming
+        // them at the archived conversation). `adoptCreated` does all three — store the key, mark
+        // the draft, select it, publish — exactly as a brand-new Bot Chat is opened. Until the
+        // host writes the successor's row (its first prompt), that key *is* the bot's identity:
+        // `canonicalChatIdentity` answers nothing, and `CanonicalBotChat.plan` adopts this id.
+        return await adoptCreated(created, botID: botID)
+    }
+
+    /// Put an archived row back, best effort. The roll's undo, and the reason a half-finished roll
+    /// leaves the owner where he was.
+    ///
+    /// - Returns: whether the row is live again. The journal is cleared only on `true`: a row that
+    ///   could not be put back is archived and nameless, and the next open must list it rather than
+    ///   leave it unreachable.
+    @discardableResult
+    private func unarchive(_ stored: SessionID, botID: String) async -> Bool {
+        do {
+            try await client.unarchiveSession(stored, profile: botID)
+            ClientLog.note("un-archived \(stored) for \(botID): the roll was undone",
+                           level: .info, category: "session")
+            return true
+        } catch {
+            ClientLog.note("could not un-archive \(stored) for \(botID): \(error.localizedDescription)",
+                           level: .error, category: "session")
+            return false
+        }
+    }
+
+    /// The bot's Bot Chat was rolled by a turn that just settled.
+    ///
+    /// Runs off the turn's own completion, never inside it: the rows this turn wrote are already in
+    /// the transcript (and on the host), and nothing is streaming. Gated on the local evidence
+    /// first — `max(historyTotal, transcript.count)` is a **lower bound** on the conversation's size
+    /// (a windowed resume holds only a page, so the host's total is the honest figure), and it is
+    /// used for nothing but deciding whether asking the host is worth a round trip. The decision
+    /// itself is always the host's number, in ``rollBotChatIfNeeded(for:)``.
+    func rollBotChatAfterTurn(for botID: String) async {
+        guard let limit = botChatLimit else { return }
+        guard botID == selectedBotID else { return }
+        let evidence = max(historyTotal, transcript.count)
+        guard evidence >= limit else { return }
+        if await rollBotChatIfNeeded(for: botID) != nil {
+            // The next open must not re-read the ceiling from a cache of the archived chat.
+            await loadBotPreviews(force: true)
+        }
     }
 
     /// What the bridge says this bot's conversation is, normalised for `EndlessSessionPolicy`.
@@ -5587,6 +5983,13 @@ public final class AppModel: ObservableObject {
             // after *every* reply just to reorder one row; the host's own timestamps arrive on the
             // next list appearance or foreground, which is when the other device's turns matter.
             if let bot = selectedBotID { recordActivity(for: bot) }
+            // The ceiling, once the turn has settled. Deferred into its own task so the reply on
+            // screen is finished with before anything moves: a roll here archives this very
+            // conversation and puts the fresh one on screen, and doing that inside the completion
+            // would tear down the state the lines above are still writing.
+            if let bot = selectedBotID {
+                Task { @MainActor [weak self] in await self?.rollBotChatAfterTurn(for: bot) }
+            }
         case .contextUsage(let session, let used, let max, _):
             guard session == selectedSessionID else { return }
             // The pair, the claim and the stored copy move together: the number the user reads,

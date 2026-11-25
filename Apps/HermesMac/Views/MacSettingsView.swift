@@ -145,6 +145,29 @@ private struct ChatSettingsTab: View {
                     .foregroundStyle(Tokens.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            // The ceiling on one Bot Chat. Its own section because it is the one chat preference
+            // that is about the conversation's *size* rather than what a row draws, and because the
+            // sentence underneath is the whole reassurance: nothing is deleted.
+            Section {
+                Picker("Start a new chat after", selection: ceilingBinding) {
+                    ForEach(BotChatCeiling.choices, id: \.self) { choice in
+                        Text(BotChatCeiling.label(choice)).tag(choice)
+                    }
+                }
+                .hermeyFocusQuiet()
+                Text(BotChatCeiling.explanation)
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Long conversations")
+            } footer: {
+                Text("Takes effect the next time you open a bot. Never turns the roll off; the conversation then only gets faster paging, not smaller.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -164,6 +187,14 @@ private struct ChatSettingsTab: View {
     private var toolCallsBinding: Binding<Bool> {
         Binding(get: { store.model.showToolCalls },
                 set: { store.model.showToolCalls = $0 })
+    }
+
+    /// The ceiling, read and written straight through the model: the key is the app's own
+    /// `UserDefaults` document, and the roll reads the property, so a change applies on the next
+    /// open without a restart.
+    private var ceilingBinding: Binding<Int> {
+        Binding(get: { store.model.botChatCeiling },
+                set: { store.model.botChatCeiling = $0 })
     }
 
 }

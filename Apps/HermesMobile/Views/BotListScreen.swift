@@ -504,6 +504,14 @@ struct BotListScreen: View {
             } label: {
                 Label("All sessions…", systemImage: "clock.arrow.circlepath")
             }
+            // The conversations the ceiling rolled out of the way, newest first, each with the
+            // host's own count and its last-message date. Long-press is where the phone keeps the
+            // per-bot verbs (All sessions is here too), and the same list the Mac's menu draws.
+            Menu {
+                previousItems(for: bot)
+            } label: {
+                Label("Previous conversations", systemImage: "archivebox")
+            }
             Button {
                 model.togglePin(botID: bot.id)
             } label: {
@@ -562,6 +570,43 @@ struct BotListScreen: View {
         if model.isPinned(botID: bot.id) { parts.append("pinned") }
         if bot.id == lastOpenedID { parts.append("last opened") }
         return parts.joined(separator: ", ")
+    }
+
+    /// The archived conversations for one bot, newest first — the rows of the
+    /// **Previous conversations** submenu.
+    ///
+    /// Each row carries the host's own count and its last-message date, so the list says how big
+    /// the chat the ceiling moved aside was. The closing line is the honest one: what opens is the
+    /// real archived transcript, and a message sent there continues *that* conversation — it does
+    /// not become the bot's chat again.
+    @ViewBuilder
+    private func previousItems(for bot: Bot) -> some View {
+        let rows = model.previousConversations(for: bot.id)
+        if rows.isEmpty {
+            Text("None yet")
+        }
+        ForEach(rows) { row in
+            Button {
+                Haptics.selection()
+                openPrevious(row, for: bot)
+            } label: {
+                Label(BotChatArchive.rowLabel(row), systemImage: "text.bubble")
+            }
+            .hermeyFocusQuiet()
+        }
+        if !rows.isEmpty {
+            Divider()
+            Text("Sending in one continues that old chat")
+        }
+    }
+
+    /// Open an archived conversation. The bot's own chat is untouched: the next tap on its row
+    /// resolves the live Bot Chat again, because the roll moved the name to the fresh one.
+    private func openPrevious(_ row: BotChatArchive.Previous, for bot: Bot) {
+        Task { @MainActor in
+            await model.openPreviousConversation(row, for: bot.id)
+            openBot(bot)
+        }
     }
 
     // MARK: Empty states

@@ -994,14 +994,28 @@ private struct HoverRow<Content: View>: View {
                 isHidden: model.isHidden(botID: bot.id),
                 categories: model.botCategories,
                 currentCategoryID: model.categoryID(for: bot.id),
+                previous: model.previousConversations(for: bot.id),
                 openSettings: { store.openSettings(for: bot) },
                 togglePin: { model.togglePin(botID: bot.id) },
                 toggleHidden: { model.toggleHidden(botID: bot.id) },
                 showSessions: { showSessions(for: bot) },
+                openPrevious: { row in openPrevious(row, for: bot) },
                 assignCategory: { categoryID in assign(category: categoryID, to: bot) },
                 newCategory: { sheet = .newCategory(bot) },
                 renameCategory: { category in sheet = .renameCategory(category) },
                 deleteCategory: { category in pendingCategoryDelete = category })
+    }
+
+    /// Open an archived conversation from the bot's menu.
+    ///
+    /// The bot is moved to first — a menu on a row that is not the selected bot still means *that*
+    /// bot's history — and the archived id is then resumed through the ordinary `select`, so the
+    /// transcript is the host's real one and paging works. Ownership does not move: the next tap on
+    /// the bot's row resolves the live Bot Chat again, because a roll re-pointed the name.
+    private func openPrevious(_ row: BotChatArchive.Previous, for bot: Bot) {
+        Task { @MainActor in
+            await model.openPreviousConversation(row, for: bot.id, pinsForThisVisit: false)
+        }
     }
 
     // MARK: Category writes
