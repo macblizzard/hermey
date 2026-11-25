@@ -245,7 +245,7 @@ struct SettingsScreen: View {
         .task { await model.loadCacheState() }
         .task { await loadApprovals() }
         .sheet(isPresented: $showLog) {
-            ClientLogView(title: "Log", header: logHeader)
+            ClientLogView(title: "Log", header: logHeader, uploader: model.clientLogUploader)
             .hermesSheetChrome()
         }
         .mobileConnectionBanner(connection: app.visibleConnection,

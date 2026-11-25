@@ -50,7 +50,9 @@ class ThePaletteCarriesTheSettings(unittest.TestCase):
         self.assertIn("func openLogs() { isLogsPresented = true }", STORE)
         # It rides the window's one `.sheet(item:)` route, with the header Settings → About uses.
         self.assertIn("case logs", ROOT_VIEW)
-        self.assertIn("ClientLogView(title: \"Log\", header: logHeader)", ROOT_VIEW)
+        # The sheet is handed the host uploader as well as the header: the log's second way out.
+        self.assertIn("ClientLogView(title: \"Log\", header: logHeader,", ROOT_VIEW)
+        self.assertIn("uploader: store.model.clientLogUploader)", ROOT_VIEW)
         self.assertIn("if store.isLogsPresented { return .logs }", ROOT_VIEW)
         self.assertIn("store.isLogsPresented = false", ROOT_VIEW)
 

@@ -128,7 +128,8 @@ struct AboutSettingsTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.canvas)
         .sheet(isPresented: $showLog) {
-            ClientLogView(title: "Log", header: logHeader)
+            ClientLogView(title: "Log", header: logHeader,
+                          uploader: store.model.clientLogUploader)
             .hermesSheetChrome()
         }
     }

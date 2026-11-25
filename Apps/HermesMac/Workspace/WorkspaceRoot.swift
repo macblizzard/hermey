@@ -215,7 +215,8 @@ struct WorkspaceRoot: View {
             case .logs:
                 // The same view Settings → About embeds, presented as the window's modal so Escape and
                 // the backdrop close it like every other route here.
-                ClientLogView(title: "Log", header: logHeader)
+                ClientLogView(title: "Log", header: logHeader,
+                              uploader: store.model.clientLogUploader)
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,

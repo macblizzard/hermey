@@ -636,6 +636,38 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded. `store: true` saves the answer in `<state>/secrets.json` (`0600`) instead and `consume` answers with `{stored:[{field,name}], ok}` — no value — so a login and an API key are one mechanism with two destinations |
 | `GET /v1/vault`, `DELETE /v1/vault/{*name}` | the vault's read and delete face, for the owner's Vault pane on both apps: `{items:[{name,kind,addedAt,site?,note?}]}` and no value field anywhere — the item type has none and `vault.rs` never calls `secrets::get`. Delete answers 404 for a name the store does not have, 422 for a name it would never hold, 409 for an unreadable store. Adding is still the `store` card above, so there is one door into the store. Labels (`site`/`note`/`kind`/`addedAt`) sit in the document store under `vault:index`, so `secrets.json` keeps its one format |
 
+## A device's log, saved on this host — `POST /v1/client-logs`
+
+```text
+POST /v1/client-logs                                             (bearer)
+  {device, appVersion, appBuild, osVersion, scope, level?, category?, search?, capturedAt, text}
+  -> 201 {path, bytes, device}
+  -> 401 missing/expired/already-used token      (require_device)
+  -> 409 a log from this device for this minute is already on disk; nothing was truncated
+  -> 413 the text is over 2 MiB
+/var/log/hermey/client-<device>-<YYYYMMDDTHHMMZ>.log            0640 root:root
+```
+
+Settings → View log's **Send log to host** is the only caller. It is a plain bearer POST — not the
+WS relay — so a conversation streaming a large transcript cannot stand in front of it, and the
+upload cannot hold a relay slot while a chat is open. `text` is byte-for-byte what the sheet's Copy
+action writes (`ClientLog.text(of:header:)`); the envelope adds only the device name, app version and
+build, OS, the capture time, and which filters were on, and the host writes those as a `#` block above
+the log so a file found in `/var/log/hermey` explains itself.
+
+Three properties worth keeping:
+
+1. **Never overwritten.** The file is opened with `create_new`, so a second upload inside the same
+   minute answers 409 and the first file is untouched — a log someone is reading must not change under
+   them. The filename's stamp is UTC to the minute; the device name is slugged to `[a-z0-9-]` first, so
+   a device called `../../etc/passwd` becomes `etc-passwd`.
+2. **2 MiB on both ends.** The app refuses a larger log before sending it; the handler refuses one
+   with its own sentence (`MAX_LOG_BYTES`). The framework body limit (`MAX_BODY_BYTES`, 8 MiB) sits
+   above both, so the 413 a client reads is that sentence rather than an empty rejection.
+3. **No new content.** The route has no field for a value and does not import `secrets`, `credentials`
+   or `vault`: the log has never carried a card or a secret, and this is not the way one gets in.
+   `HERMEYD_LOG_DIR` moves the directory for a scratch host or a non-standard install.
+
 ## Fast pet asks — `POST /v1/bots/{profile}/ask` (shipped in 0.5.0)
 
 The desktop pet's balloon asks a bot a question and waits for the answer. Until 0.5.0 that question

@@ -24,6 +24,7 @@ mod browser;
 mod bridge_routes;
 mod cards;
 mod backup;
+mod client_logs;
 mod cli;
 mod credentials;
 mod secrets;
@@ -577,6 +578,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // the ones that can see what is in it. The name may hold one `/`, hence the wildcard.
         .route("/v1/vault", get(vault::list))
         .route("/v1/vault/{*name}", axum::routing::delete(vault::delete_item))
+        // A device's own log, saved as a file on this host so it can be read here instead of pasted
+        // into a chat. A plain bearer POST, unlike the socket it came from: see client_logs.rs. The
+        // framework ceiling sits above the handler's own 2 MiB so a 413 carries its sentence.
+        .route(
+            "/v1/client-logs",
+            post(client_logs::post_log)
+                .layer(axum::extract::DefaultBodyLimit::max(client_logs::MAX_BODY_BYTES)),
+        )
         .route("/v1/voice/transcribe", post(voice::transcribe))
         .route("/v1/voice/synthesize", post(voice::synthesize))
         .route(

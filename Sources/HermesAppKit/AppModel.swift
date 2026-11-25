@@ -830,6 +830,11 @@ public final class AppModel: ObservableObject {
     /// the same reason `hostUpdateClient` is: the model owns no pairing and mints nothing.
     public var attachmentClient: AttachmentFileClient?
 
+    /// Where Settings → View log's "Send log to host" posts. Injected by each app for the same
+    /// reason `hostUpdateClient` is, and deliberately *not* routed over the relay socket: a busy
+    /// conversation must not be able to delay a log upload, and an upload must not take a slot.
+    public var clientLogUploader: ClientLogUploadClient?
+
     /// A local file a viewer can open, for a file the chat names.
     ///
     /// An upload never changes, so its cached bytes answer immediately — the copy was written when
