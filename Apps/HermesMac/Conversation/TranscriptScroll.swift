@@ -338,6 +338,9 @@ struct TranscriptScroll: View {
                                       faces: faces,
                                       onSelectText: { selectionText = $0 },
                                       onReply: { model.reply(to: $0) },
+                                      onEditAndResend: { model.requestEditAndResend($0) },
+                                      onDelete: { model.requestDelete($0) },
+                                      turnRunning: model.isStreaming,
                                       onOpenPair: { peer in pairPeer = peer },
                                       fetchCard: { id, session, message in
                                           try await model.fetchCard(id: id, session: session, message: message)
@@ -361,6 +364,9 @@ struct TranscriptScroll: View {
                                           faces: faces,
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) },
+                                          onEditAndResend: { model.requestEditAndResend($0) },
+                                          onDelete: { model.requestDelete($0) },
+                                          turnRunning: model.isStreaming,
                                           onOpenPair: { peer in pairPeer = peer },
                                           fetchCard: { id, session, message in
                                               try await model.fetchCard(id: id, session: session, message: message)

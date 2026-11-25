@@ -91,6 +91,24 @@ public extension MessageMenuItem {
         .action("Copy code block", symbol: "chevron.left.forwardslash.chevron.right",
                 perform: perform)
     }
+
+    /// Rewrite one of the owner's own messages: the text goes back into the composer, and sending it
+    /// retires that message and everything painted after it (see `AppModel.confirmMessageAction`).
+    ///
+    /// `square.and.pencil` because it is the app's own "edit" glyph, and the title spells the second
+    /// half — *and resend* — because this is not an in-place edit: the turn is asked again.
+    static func editAndResend(_ perform: @escaping () -> Void) -> MessageMenuItem {
+        .action("Edit and resend", symbol: "square.and.pencil", perform: perform)
+    }
+
+    /// Retire one message from the conversation, on every device.
+    ///
+    /// Destructive, so the row is only ever built behind a confirmation (the model raises one and
+    /// nothing reaches the host until it is confirmed) and never on a message that is still being
+    /// written. `trash` is what both platforms use for "remove this".
+    static func deleteMessage(_ perform: @escaping () -> Void) -> MessageMenuItem {
+        .action("Delete", symbol: "trash", perform: perform)
+    }
 }
 
 /// One row of a message's context menu, with the glyph that belongs to it.

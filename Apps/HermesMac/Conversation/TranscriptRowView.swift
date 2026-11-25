@@ -30,6 +30,18 @@ struct TranscriptRowView: View {
     /// Replying needs the model (it holds the reply target), and a row is torn down as it scrolls,
     /// so the transcript owns that decision and the row only asks.
     var onReply: ((TranscriptEntry) -> Void)? = nil
+    /// "Edit and resend" and "Delete", both run by the model — it holds the confirmation, the host
+    /// call and the re-resume, and a row inside a `LazyVStack` is torn down as it scrolls, so it
+    /// cannot own any of that. Same reason `onReply` is a closure.
+    var onEditAndResend: ((TranscriptEntry) -> Void)? = nil
+    var onDelete: ((TranscriptEntry) -> Void)? = nil
+    /// Whether a turn is answering in this conversation.
+    ///
+    /// Both destructive verbs are withheld while one is. A message that is still being written is not
+    /// a message to retire, and the host would refuse it anyway (409) — but a verb that can only fail
+    /// is not worth showing. It is also why Delete can never appear on the streaming bubble: that
+    /// bubble is not a row at all, so it has no menu to carry it.
+    var turnRunning: Bool = false
     /// The attribution line on a bot-to-bot message asks the transcript to open the pair's exchange
     /// (the sheet lives there: a row is torn down as it scrolls and a sheet it owns goes with it).
     var onOpenPair: ((String) -> Void)? = nil
@@ -158,6 +170,17 @@ struct TranscriptRowView: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(entry.text, forType: .string)
         })
+        // The owner's own words can be rewritten; a message another bot sent arrives as a user row
+        // but is not this owner's to rewrite, so it is excluded by the same label test that draws it
+        // with the sender's face. `turnRunning` withholds both while a turn is answering, and a row
+        // with no durable id (a message still on its way) has nothing for the host to address.
+        let ownerTyped = entry.role == .user && BotMessageLabel.parse(entry.text) == nil
+        if ownerTyped, !turnRunning, entry.rowID != nil, let onEditAndResend {
+            rows.append(.editAndResend { onEditAndResend(entry) })
+        }
+        if !turnRunning, entry.rowID != nil, let onDelete {
+            rows.append(.deleteMessage { onDelete(entry) })
+        }
         return rows
     }
 

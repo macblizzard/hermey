@@ -234,6 +234,22 @@ public protocol BotSessionPointerStore: Sendable {
     func setReaction(bot: String, session: SessionID, message: String,
                      emoji: String?, by: String) async throws
 
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The host refuses a turn that is running (409), closes the engine's live copy first, and then
+    /// writes `active=0, compacted=0` — a soft retire, never a row gone. The reply carries the
+    /// conversation's new display count. Requirements, not extension-only functions, so a call
+    /// through `any BotSessionPointerStore` reaches the real implementation (see the note on `rooms`).
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it.
+    ///
+    /// What "edit and resend" is built on: the old ask and its answer go, then the owner's new text
+    /// is sent as an ordinary turn against the same conversation.
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult
+
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
 
@@ -396,6 +412,20 @@ public extension BotSessionPointerStore {
                      emoji: String?, by: String) async throws {
         _ = (bot, session, message, emoji, by)
         throw ReactionSyncError.noBridge
+    }
+
+    /// A store that predates the message routes cannot retire anything. The menus never offer the
+    /// verbs without a bridge, so this is the answer to a caller that asked anyway.
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, messageIDs)
+        throw MessageRetireError.noBridge
+    }
+
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, fromMessageID)
+        throw MessageRetireError.noBridge
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
@@ -807,6 +837,46 @@ enum Failure: Error, Equatable, LocalizedError {
         } catch Failure.rejected(let status, let detail) {
             throw ReactionSyncError.refused(status: status, detail: detail)
         }
+    }
+
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The ids are the transcript's own row ids (`TranscriptEntry.rowID`), and they are the only
+    /// thing that travels: the route never accepts a path. A refusal keeps the host's own sentence,
+    /// because `409 turn_running` and `404 no_such_message` ask the owner for different things.
+    public func deleteMessages(bot: String, session sessionID: SessionID,
+                               messageIDs: [Int64]) async throws -> MessageRetireResult {
+        guard !messageIDs.isEmpty else {
+            throw MessageRetireError.refused(status: 422, detail: "no message ids")
+        }
+        return try await retire("v1/messages/delete",
+                                body: ["bot": bot, "session": sessionID, "message_ids": messageIDs])
+    }
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it.
+    public func truncateMessages(bot: String, session sessionID: SessionID,
+                                 fromMessageID: Int64) async throws -> MessageRetireResult {
+        guard fromMessageID > 0 else {
+            throw MessageRetireError.refused(status: 422, detail: "from_message_id must be positive")
+        }
+        return try await retire("v1/messages/truncate",
+                                body: ["bot": bot, "session": sessionID,
+                                       "from_message_id": fromMessageID])
+    }
+
+    /// Both message verbs: one POST, one decoded answer. The timeout is the resume's, because the
+    /// route may have to close a live session first and that waits for the engine.
+    private func retire(_ path: String, body: [String: Any]) async throws -> MessageRetireResult {
+        let data: Data
+        do {
+            data = try await bridgePOST(path, body: body, timeout: 30)
+        } catch Failure.rejected(let status, let detail) {
+            throw MessageRetireError.refused(status: status, detail: detail)
+        }
+        guard let result = MessageRetireResult.decode(data) else {
+            throw MessageRetireError.unreadable
+        }
+        return result
     }
 
     /// A query value that cannot reshape the request: everything outside the unreserved set is

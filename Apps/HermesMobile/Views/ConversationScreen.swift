@@ -431,6 +431,24 @@ struct ConversationScreen: View {
         } message: {
             Text(notice ?? "")
         }
+        // The one confirmation for both destructive message verbs. The sentence comes from
+        // `PendingMessageAction`, so the phone says exactly what the Mac says, and nothing is
+        // retired by a single tap.
+        .alert(model.pendingMessageAction?.title ?? "",
+               isPresented: Binding(get: { model.pendingMessageAction != nil },
+                                    set: { presented in
+                                        if !presented { model.cancelMessageAction() }
+                                    }),
+               presenting: model.pendingMessageAction) { action in
+            Button(action.confirmTitle, role: action.kind == .delete ? .destructive : nil) {
+                Task { await model.confirmMessageAction() }
+            }
+            .hermeyFocusQuiet()
+            Button("Cancel", role: .cancel) { model.cancelMessageAction() }
+            .hermeyFocusQuiet()
+        } message: { action in
+            Text(action.message)
+        }
     }
 
     // MARK: Header
@@ -877,7 +895,10 @@ struct ConversationScreen: View {
                                             Task { await model.react(emoji, rowID: entry.rowID,
                                                                      entryID: entry.id) }
                                         },
-                                        canReact: model.selectedSessionID != nil)
+                                        canReact: model.selectedSessionID != nil,
+                                        onEditAndResend: { model.requestEditAndResend($0) },
+                                        onDelete: { model.requestDelete($0) },
+                                        turnRunning: model.isStreaming)
                         .overlay {
                             if selectedSearchID == entry.id {
                                 RoundedRectangle(cornerRadius: 8)
@@ -896,7 +917,10 @@ struct ConversationScreen: View {
                                                 Task { await model.react(emoji, rowID: entry.rowID,
                                                                          entryID: entry.id) }
                                             },
-                                            canReact: model.selectedSessionID != nil)
+                                            canReact: model.selectedSessionID != nil,
+                                            onEditAndResend: { model.requestEditAndResend($0) },
+                                            onDelete: { model.requestDelete($0) },
+                                            turnRunning: model.isStreaming)
                     }
                     .id(run.id)
                 }

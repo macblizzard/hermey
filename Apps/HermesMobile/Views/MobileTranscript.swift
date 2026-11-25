@@ -94,6 +94,18 @@ struct MobileTranscriptRow: View {
     var onReact: (String) -> Void = { _ in }
     /// Whether a conversation is open: with none there is nothing to key a reaction by.
     var canReact: Bool = false
+    /// "Edit and resend" and "Delete", run by the model — it holds the confirmation, the host call
+    /// and the re-resume. A row inside a lazy stack is torn down as it scrolls, so it owns none of
+    /// that (the same reason `onReact` is a closure).
+    ///
+    /// Declared last, after `canReact`, so the memberwise initialiser's argument order is the order
+    /// the transcript passes them in.
+    var onEditAndResend: ((TranscriptEntry) -> Void)? = nil
+    var onDelete: ((TranscriptEntry) -> Void)? = nil
+    /// Whether a turn is answering in this conversation. Both destructive verbs are withheld while it
+    /// is — a message still being written is not a message to retire, and the host refuses it anyway.
+    /// The streaming bubble is not a row at all, so it can carry no menu either way.
+    var turnRunning: Bool = false
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
@@ -294,6 +306,22 @@ struct MobileTranscriptRow: View {
                 Haptics.success()
             }
         }
+
+        // Delete on any message, and the owner's own words can be rewritten. `turnRunning` withholds
+        // both while a turn is answering, and a row with no durable id has nothing to address.
+        let ownerTyped = entry.role == .user && BotMessageLabel.parse(entry.text) == nil
+        if ownerTyped, !turnRunning, entry.rowID != nil, let onEditAndResend {
+            MessageMenuRow(.editAndResend {
+                showingActions = false
+                onEditAndResend(entry)
+            })
+        }
+        if !turnRunning, entry.rowID != nil, let onDelete {
+            MessageMenuRow(.deleteMessage {
+                showingActions = false
+                onDelete(entry)
+            })
+        }
     }
 
     // MARK: Action card
@@ -379,6 +407,22 @@ struct MobileTranscriptRow: View {
                     UIPasteboard.general.string = code
                     Haptics.success()
                     showingActions = false
+                }
+            }
+            // The owner's own words go back into the composer; Delete takes any message. Both are
+            // withheld while a turn is answering, and both raise a confirmation before anything
+            // reaches the host (`AppModel.requestEditAndResend` / `.requestDelete`).
+            if entry.role == .user, BotMessageLabel.parse(entry.text) == nil,
+               !turnRunning, entry.rowID != nil, let onEditAndResend {
+                actionRow("Edit and resend", systemImage: "square.and.pencil") {
+                    showingActions = false
+                    onEditAndResend(entry)
+                }
+            }
+            if !turnRunning, entry.rowID != nil, let onDelete {
+                actionRow("Delete", systemImage: "trash") {
+                    showingActions = false
+                    onDelete(entry)
                 }
             }
 

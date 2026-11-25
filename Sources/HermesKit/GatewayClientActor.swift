@@ -617,6 +617,23 @@ public actor GatewayClient: GatewayClientProtocol {
                                              emoji: emoji, by: by)
     }
 
+    /// `POST /v1/messages/delete` — the host retires the rows on every device, and the caller
+    /// re-resumes. No bridge means no route, which is `noBridge` and not an invented success.
+    public func deleteMessages(bot: String, session: SessionID,
+                               messageIDs: [Int64]) async throws -> MessageRetireResult {
+        guard let sessionPointer else { throw MessageRetireError.noBridge }
+        return try await sessionPointer.deleteMessages(bot: bot, session: session,
+                                                       messageIDs: messageIDs)
+    }
+
+    /// `POST /v1/messages/truncate` — the other half of edit-and-resend.
+    public func truncateMessages(bot: String, session: SessionID,
+                                 fromMessageID: Int64) async throws -> MessageRetireResult {
+        guard let sessionPointer else { throw MessageRetireError.noBridge }
+        return try await sessionPointer.truncateMessages(bot: bot, session: session,
+                                                         fromMessageID: fromMessageID)
+    }
+
     // MARK: Shared conversation pointer
 
     /// The bridge's answer, not the gateway's: the pointer is HTTP on the bridge surface, so it
