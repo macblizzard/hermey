@@ -1,4 +1,10 @@
 import Foundation
+// Conditional: `frameInterval(for:)` names `BotAvatarActivity`, which is HermesKit's in the app and a
+// source file compiled into the Live Activity extension. The import must not be unconditional there —
+// an extension cannot link the networking stack — and the type must resolve either way.
+#if canImport(HermesKit)
+import HermesKit
+#endif
 
 /// How far a body is moved, turned, stretched and lit at one instant.
 ///
