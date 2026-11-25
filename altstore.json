@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.671",
-          "buildVersion": "671",
-          "date": "2026-11-25T22:15:50Z",
-          "localizedDescription": "Long messages now collapse at 50 lines on both Mac and iPhone, including delegation rows and tool results that slipped through last time, with Show full message and the number of lines left. The conversation also stops bobbing up and down when you open or close a sidebar.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.671/Hermey-0.1.671-b671.ipa",
-          "size": 5767726,
+          "version": "0.1.672",
+          "buildVersion": "672",
+          "date": "2026-11-25T22:52:56Z",
+          "localizedDescription": "Quick batch: edit a vault item (rename it, replace its value, leave blank to keep), no more ellipsis on the bot list row, and the group-chat composer stops showing the send/newline hints.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.672/Hermey-0.1.672-b672.ipa",
+          "size": 5780878,
           "minOSVersion": "17.0",
-          "sha256": "99be350cd729d348024e51692cd9399de63f63e2ab60d0cb23491c91cc2d6ec6"
+          "sha256": "daecc6a0ec4053de0fb0edc6ab6256e90ccd0ba43cf16e207a2c3757319621b9"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.671 (671)",
-      "identifier": "hermes-0.1.671-671",
-      "caption": "Long messages now collapse at 50 lines on both Mac and iPhone, including delegation rows and tool results that slipped through last time, with Show full message and the number of lines left. The conversation also stops bobbing up and down when you open or close a sidebar.",
-      "date": "2026-11-25T22:15:50Z",
+      "title": "Hermes 0.1.672 (672)",
+      "identifier": "hermes-0.1.672-672",
+      "caption": "Quick batch: edit a vault item (rename it, replace its value, leave blank to keep), no more ellipsis on the bot list row, and the group-chat composer stops showing the send/newline hints.",
+      "date": "2026-11-25T22:52:56Z",
       "tintColor": "#9A9AA0"
     }
   ],
