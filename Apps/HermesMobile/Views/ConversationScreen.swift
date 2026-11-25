@@ -55,11 +55,14 @@ struct ConversationScreen: View {
 
     /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
     /// place that says which bot you are talking to does not need a label.
+    ///
+    /// One rule, `BotAvatarTint.resolve` — the drawn avatar's stored colour when the bot has one, its
+    /// shape face otherwise. Written out here before, which is why a bot with a drawn green avatar
+    /// kept the blue bubble its old shape face had picked.
     private var botTint: Color {
-        // The stored face's colour when the user chose one, otherwise the colour this bot's id
-        // derives — the same rule the avatar draws, from the same resolver.
-        (app.botFaces[bot.id]?.identity(for: bot.id).color
-            ?? BotAvatarIdentity.resolve(identity: bot.id).color).color
+        BotAvatarTint.resolve(botID: bot.id,
+                              face: app.botFaces[bot.id],
+                              document: app.botAvatars[bot.id]).color
     }
 
     /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).

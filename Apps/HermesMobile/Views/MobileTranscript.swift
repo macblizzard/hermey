@@ -203,8 +203,16 @@ struct MobileTranscriptRow: View {
     }
 
     /// `Message from <face> Cody` above the words — the recipient's side of a bot-to-bot exchange.
+    ///
+    /// The bubble is the **sender's** colour, from `BotAvatarTint`: the same answer its face beside
+    /// the name and its list row take, so a bot cannot be green in one place and blue here.
     @ViewBuilder
     private func botMessageRow(_ label: BotMessageLabel) -> some View {
+        let sender = label.senderProfile
+        let tint = BotAvatarTint.resolve(botID: sender ?? botID,
+                                         face: sender.flatMap { app.botFaces[$0] },
+                                         document: sender.flatMap { app.botAvatars[$0] })
+        let bubble = tint.bubble(lightPage: Tokens.isLightPage)
         VStack(alignment: .leading, spacing: 4) {
             // The attribution is the door to the exchange itself: tapping it opens the record of
             // what these two bots said to each other (asked for 2026-11-15).
@@ -237,12 +245,14 @@ struct MobileTranscriptRow: View {
             // owner — lists, bold, code fences — and the recipient's side used to show the source
             // (`**bold**`, `- item`) instead of the rendering. Reported 2026-11-16.
             MobileMarkdownText(blocks: IncrementalMarkdown.parse(markdownCache.sanitized(label.body)), rawText: label.body)
-                .foregroundStyle(Tokens.textPrimary)
+                .foregroundStyle(bubble.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                    .fill(Tokens.surface))
+                    .fill(bubble.fill))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .strokeBorder(bubble.border, lineWidth: 1))
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -528,19 +528,23 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
-    /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
-    /// answers a 400 with its reason, which surfaces here as a thrown message.
+    /// Save one bot's face — one family, with the other cleared, in a single request.
+    ///
+    /// The host validates the definition and answers a 400 with its reason, which surfaces here as a
+    /// thrown message. A classic face is one string the host stores as it stands.
     ///
     /// The banner cache is invalidated and redrawn here, not left for the next launch: a bot that
     /// just changed its face must not wear the previous one in the very next notification, and a bot
-    /// whose definition was cleared must go back to its shape on the same terms.
-    func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
+    /// whose face was cleared must go back to its shape on the same terms.
+    func saveBotAvatar(botID: String, selection: BotAvatarSelection?) async throws {
         guard let address = pairing, !address.isTicketOnly else {
             throw MacBotIconService.Failure.devicePairingRequired
         }
         iconGeneration += 1
         let generation = iconGeneration
-        try await MacBotIconService(address: address).saveAvatar(botID: botID, document: document)
+        try await MacBotIconService(address: address).saveAvatar(botID: botID,
+                                                                 document: selection?.document,
+                                                                 face: selection?.face)
         guard generation == iconGeneration, pairing == address else { return }
         // Drop the previous face outright — file and rendered bytes — before anything can read it.
         // The reload below refreshes the cache, so the new face is drawn once, here, and never

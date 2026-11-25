@@ -20,6 +20,10 @@ struct TranscriptRowView: View {
     /// The selected bot's colour, for the user's own bubble. Passed in rather than looked up: a row
     /// inside a lazy stack must not reach for a store, and the pane already has the face.
     var userBubbleTint: Color = Tokens.control
+    /// The host's stored faces, by bot id. A bot-to-bot message is drawn in its *sender's* colour,
+    /// and this map plus the environment's avatars is what knows it; passed in for the same reason
+    /// `userBubbleTint` is.
+    var faces: [String: BotFaceChoice] = [:]
     /// "Select Text" is presented by `TranscriptScroll`: a row inside a `LazyVStack` is torn down
     /// when it scrolls out, and a sheet it owns goes with it. The row asks; the transcript shows.
     var onSelectText: (String) -> Void = { _ in }
@@ -67,6 +71,9 @@ struct TranscriptRowView: View {
     /// One file fetch per row: a PDF is downloaded once even with two rows naming it, and the
     /// "not there yet" state survives a re-render.
     @StateObject private var attachments = AttachmentOpenCoordinator()
+    /// What the host stores for each bot's face, injected once at the app's root. Read here only for
+    /// a bot-to-bot message's sender, whose bubble is drawn in that bot's colour.
+    @Environment(\.botAvatars) private var avatarLibrary
 
     /// The pictures a message carried, ready for `ImageViewer`, and where the viewer opens.
     struct ViewedGallery: Identifiable {
@@ -155,8 +162,17 @@ struct TranscriptRowView: View {
 
     /// `Message from <face> Cody` over the words. Left-aligned on purpose: it is not the owner's
     /// message, and the right edge is what says "you wrote this" everywhere else in the app.
+    ///
+    /// The bubble is the **sender's** colour: a bot's own message is drawn in the colour that bot's
+    /// face is drawn in, from `BotAvatarTint` — the same answer the avatar beside it and the list row
+    /// behind it take, so a green bot cannot speak in a blue bubble here.
     @ViewBuilder
     private func botMessageRow(_ label: BotMessageLabel) -> some View {
+        let sender = label.senderProfile
+        let tint = BotAvatarTint.resolve(botID: sender ?? bot,
+                                         face: sender.flatMap { faces[$0] },
+                                         document: sender.flatMap { avatarLibrary[$0] })
+        let bubble = tint.bubble(lightPage: Tokens.isLightPage)
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 if let profile = label.senderProfile { onOpenPair?(profile) }
@@ -168,6 +184,7 @@ struct TranscriptRowView: View {
                         // idle 30 Hz timeline ran per bot-message row (Tinker's measurement,
                         // 2026-11-16: ~19 pp of a core from face animation alone).
                         BotAvatarView(identity: profile,
+                                      color: faces[profile]?.raw,
                                       size: Geometry.rosterAvatarCompact,
                                       animates: false)
                     }
@@ -186,11 +203,13 @@ struct TranscriptRowView: View {
             // The same rendering an assistant reply gets: a bot's message to another bot is prose
             // written in the same editor, so its lists, bold and code blocks belong as markup.
             MarkdownTextView(text: label.body, metrics: .macOSScaled)
-                .foregroundStyle(Tokens.textPrimary)
+                .foregroundStyle(bubble.ink)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                    .fill(Tokens.surface))
+                    .fill(bubble.fill))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .strokeBorder(bubble.border, lineWidth: 1))
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

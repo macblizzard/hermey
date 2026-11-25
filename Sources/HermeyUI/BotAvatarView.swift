@@ -119,6 +119,13 @@ public struct BotAvatarView: View {
     /// The definition's colour: `#RRGGBB`, or nil for the house colour. Only read beside an explicit
     /// `definition:` — a stored definition brings its own stored colour with it.
     public var avatarColor: String?
+    /// Draw the shape-and-palette face even when the environment holds a drawn avatar for this id.
+    ///
+    /// One caller: the Avatar tab's Classic row, which is offering the family the bot is *not* on.
+    /// Its swatches must show what a classic face looks like, and this bot's stored definition would
+    /// otherwise win the resolution and draw the avatar the person is choosing to leave. It is a
+    /// comparison, not a second face system — every other surface still takes the stored avatar.
+    public var ignoresStoredAvatar: Bool
 
     @Environment(\.botAvatars) private var avatarLibrary
 
@@ -145,7 +152,8 @@ public struct BotAvatarView: View {
                 label: String? = nil,
                 pageBackground: Color? = nil,
                 definition: BotAvatarDefinition? = nil,
-                avatarColor: String? = nil) {
+                avatarColor: String? = nil,
+                ignoresStoredAvatar: Bool = false) {
         self.identity = identity
         self.color = color
         self.activity = activity
@@ -158,6 +166,7 @@ public struct BotAvatarView: View {
         self.pageBackground = pageBackground
         self.definition = definition
         self.avatarColor = avatarColor
+        self.ignoresStoredAvatar = ignoresStoredAvatar
     }
 
     /// The fixed inks for the two bodies that are too pale or too dark for a cut-out. The reference
@@ -288,6 +297,9 @@ public struct BotAvatarView: View {
         if let definition {
             return BotAvatarDocument(definition: definition, color: avatarColor)
         }
+        // The editor's Classic row is the one caller that asks for the *other* family; everywhere
+        // else `false` and the stored avatar wins, as it must.
+        if ignoresStoredAvatar { return nil }
         return avatarLibrary[identity]
     }
 

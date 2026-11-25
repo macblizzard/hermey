@@ -74,8 +74,10 @@ class TheBotKnowsItself(unittest.TestCase):
         # one; the list still has to reach that door rather than build its own sheet.
         door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
         self.assertIn("loadMemory: { try await model.memory(for: bot.id) }", door)
-        self.assertIn("saveAvatar: { document in try await app.saveBotAvatar(botID: bot.id, document: document) }",
-                      door)
+        # Retargeted when the Classic row arrived: the door hands the store a `BotAvatarSelection`
+        # (one family of face, the other cleared) rather than a bare document.
+        self.assertIn("saveAvatar: { selection in", door)
+        self.assertIn("try await app.saveBotAvatar(botID: bot.id, selection: selection)", door)
         self.assertIn("BotSettingsDoor(bot: bot, model: model)", listing)
 
 

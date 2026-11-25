@@ -295,6 +295,10 @@ public struct RoomChatView: View {
     private let refreshSignal: Int
 
     @Environment(\.dismiss) private var dismiss
+    /// What the host stores for each bot's face, injected once at each app's root. A room needs it
+    /// for the same reason a list row does: the speaker's colour is its avatar's, not only the one
+    /// `icons` remembers.
+    @Environment(\.botAvatars) private var avatarLibrary
     @State private var messages: [RoomMessage] = []
     @State private var draft = ""
     @State private var latestSeq = 0
@@ -719,17 +723,24 @@ public struct RoomChatView: View {
                         .foregroundStyle(Tokens.textMuted)
                 }
                 // A bot's answer is prose, and prose in this app is markdown at the chat's own
-                // metrics — that is what makes a reply in a conversation readable. A room shows the
-                // same renderer at full width instead of a `Text` of raw `**bold**` and pipe tables
-                // inside a bubble, which is what made these messages look cramped and unreadable.
+                // metrics — that is what makes a reply in a conversation readable. Both paths are
+                // drawn inside the *speaker's* bubble now: in a room several bots speak into one
+                // stream, so the bubble is the identity mark, and it is the one place a bot's own
+                // message can be painted in its own colour. Your own bubble is untouched.
                 Group {
                     if mine {
-                        messageBubble(message.text, mine: true)
+                        messageBubble(message.text)
                     } else if let markdown {
-                        markdown(message.text)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        botBubble(markdown(message.text), tint: botBubbleTint(for: message.speaker))
                     } else {
-                        messageBubble(message.text, mine: false)
+                        botBubble(
+                            Text(message.text)
+                                .font(TypeScale.font(TypeScale.chatBody))
+                                .lineSpacing(TypeScale.chatLineSpacing)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true),
+                            tint: botBubbleTint(for: message.speaker)
+                        )
                     }
                 }
                 // Long press a line: the two verbs a bot's message offers, so a room's transcript is
@@ -795,12 +806,14 @@ public struct RoomChatView: View {
         }
     }
 
-    /// Your own words: the accent bubble a conversation puts around what you sent. A bot's answer
-    /// only lands here when the caller supplied no markdown renderer.
-    private func messageBubble(_ text: String, mine: Bool) -> some View {
+    /// Your own words: the accent bubble a conversation puts around what you sent.
+    ///
+    /// Unchanged on purpose. This is the one bubble whose colour is the *app's*, not a bot's, and the
+    /// brief was explicit that it keeps today's look while the bot's own messages take its colour.
+    private func messageBubble(_ text: String) -> some View {
         Text(text)
             .font(TypeScale.font(TypeScale.chatBody))
-            .foregroundStyle(mine ? Tokens.accentText : Tokens.textPrimary)
+            .foregroundStyle(Tokens.accentText)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .lineSpacing(TypeScale.chatLineSpacing)
@@ -808,13 +821,43 @@ public struct RoomChatView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
-                    .fill(mine ? Tokens.accentSoft : Tokens.surface)
+                    .fill(Tokens.accentSoft)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
-                    .strokeBorder(mine ? Tokens.borderStrong : Tokens.border, lineWidth: 1)
+                    .strokeBorder(Tokens.borderStrong, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
+    }
+
+    /// The colour a bot's own message in this room is drawn in — the same answer the speaker's face,
+    /// the roster chip and its bubble all take, because it comes from the one resolver.
+    private func botBubbleTint(for speaker: String) -> BotAvatarBubble {
+        BotAvatarTint.resolve(botID: speaker,
+                              face: icons[speaker],
+                              avatars: avatarLibrary).bubble(lightPage: Tokens.isLightPage)
+    }
+
+    /// A bot's words, in that bot's colour: fill, border and ink all from `BotAvatarBubble`, whose
+    /// ink is measured against its own fill rather than assumed. The content is the caller's (the
+    /// room's markdown renderer, or the plain `Text` fallback) and the chrome is this one place.
+    private func botBubble<Content: View>(_ content: Content, tint: BotAvatarBubble) -> some View {
+        content
+            .foregroundStyle(tint.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
+                    .fill(tint.fill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous)
+                    .strokeBorder(tint.border, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: Tokens.radiusGrouped, style: .continuous))
+            // The frame last, so the bubble hugs what the bot said and the *row* takes the width —
+            // the mirror of your own bubble, which hugs its words on the right.
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Message actions

@@ -13,6 +13,12 @@ import SwiftUI
 /// colour, not geometry.
 public enum Tokens {
 
+    /// Whether the active page is a light one (Parchment), for the rules that have to know which
+    /// way is *away from the page* rather than which token to use: a bot's bubble fill is the one
+    /// case today — it is deepened on a dark page and paled on a light one, and both the fill and
+    /// the ink derived from it depend on that answer. A `Color` cannot be asked; the palette can.
+    public static var isLightPage: Bool { ThemeRuntime.active.isLight }
+
     // MARK: Surfaces
     public static var canvas: Color { ThemeRuntime.active.canvas }
     public static var frame: Color { ThemeRuntime.active.frame }

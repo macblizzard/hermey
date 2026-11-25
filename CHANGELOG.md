@@ -4,6 +4,29 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **The Avatar tab offers the Classic faces again, beside your own.** A new **Classic** row — the
+  eight bodies and palette colours this app already ships, as eight whole faces rather than a body
+  picker and a colour picker that could disagree — sits under the custom presets, scrolls if the
+  sheet is narrow, and says which of the two families the bot is on now. The two are alternatives in
+  storage, not a pair: saving a Classic face clears the bot's drawn avatar (`definition`, `color`,
+  `material`), and saving a preset or a Random pick clears the Classic face — one request either
+  way, so a bot cannot wear a drawing that outranks the face you just chose. Reset clears both and
+  leaves the face the bot's id derives. Nothing new is drawn: the faces are the existing tables, and
+  the rakazo notice is untouched.
+
+### Changed
+- **A bot's message is drawn in that bot's colour, not the app's.** One resolver
+  (`BotAvatarTint.resolve`) now answers "what colour is this bot" — its drawn avatar's stored colour
+  when it has one, its shape or photo face otherwise, the id's own otherwise — and every surface
+  that shows a bot's identity asks it, so a green avatar no longer keeps the blue bubble its old
+  shape face picked. Your own bubble is unchanged (the same 0.16 wash and 0.45 border, in the bot's
+  colour, as before); a bot's *own* bubble — in a room, and a bot-to-bot message on both apps — is
+  filled with its colour deepened on Midnight and paled on Parchment, edged in the colour itself,
+  and written in the ink that measures best against that fill rather than in an assumed white. A
+  bot whose avatar is nearly white on Parchment is the one face whose bubble is carried by its
+  border alone.
+
+### Added
 - **A bot's face can be made of glass.** A new `material` on the avatar document (`solid` | `glass`,
   absent meaning solid) picks between the 0.1.648 flat body and the reference's lit one: a three-stop
   ramp, one specular streak, a Fresnel rim and a contact shadow, with the eight states as an accent

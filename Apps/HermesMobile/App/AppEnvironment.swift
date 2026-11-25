@@ -277,14 +277,14 @@ final class AppEnvironment: ObservableObject {
         if let error = botFacesError { throw NSError(domain: "BotIcons", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saved, but could not refresh icons: \(error)"]) }
     }
 
-    /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
-    /// answers a 400 with its reason, which this throws to the editor.
+    /// Save one bot's face — one family, with the other cleared, in a single request. The host
+    /// validates the definition and answers a 400 with its reason, which this throws to the editor.
     ///
     /// The banner cache follows immediately — invalidated and redrawn — so the first notification
     /// after a save shows the new face, and the one after a clear goes back to the bot's shape.
-    func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
+    func saveBotAvatar(botID: String, selection: BotAvatarSelection?) async throws {
         let (host, service) = try iconService()
-        try await service.saveAvatar(botID: botID, document: document)
+        try await service.saveAvatar(botID: botID, document: selection?.document, face: selection?.face)
         guard store.host == host, !isDisconnectedByUser else { throw BridgeError.noHost }
         // Drop the previous face outright — file and rendered bytes — before anything can read it.
         // The reload below refreshes the cache, so the new face is drawn once, here, and never
