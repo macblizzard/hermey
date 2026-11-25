@@ -149,7 +149,7 @@ public struct LongMessageBody<Expanded: View>: View {
 /// So the collapsed row costs what `LongMessageBody` costs, which is one `Text`; and the shell's
 /// renderer is only ever built for a body that is short, or for one the reader opened.
 public struct ClampedBody<Whole: View, Expanded: View>: View {
-    private let body: TranscriptClamp.Body
+    private let source: TranscriptClamp.Body
     private let messageID: String
     private let alignment: HorizontalAlignment
     private let font: Font
@@ -172,7 +172,7 @@ public struct ClampedBody<Whole: View, Expanded: View>: View {
                 onCollapse: @escaping () -> Void = {},
                 whole: @escaping () -> Whole,
                 expanded: @escaping () -> Expanded) {
-        self.body = body
+        self.source = body
         self.messageID = messageID
         self.alignment = alignment
         self.font = font
@@ -186,7 +186,7 @@ public struct ClampedBody<Whole: View, Expanded: View>: View {
     }
 
     public var body: some View {
-        switch TranscriptClamp.plan(body) {
+        switch TranscriptClamp.plan(source) {
         case .whole:
             whole()
         case .preview(let preview):
