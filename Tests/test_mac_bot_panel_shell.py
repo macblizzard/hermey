@@ -78,7 +78,8 @@ class TheNameIsTheControl(unittest.TestCase):
         self.assertIn("store.toggleBotPanel()", HEADER)
         self.assertNotIn("BotMenuRouter.shared.toggle", APP)
         self.assertNotIn("BotMenuRouter.shared.toggle", BOT_LIST)
-        # The row's menu is a native `Menu` again: the popover it replaced went with the key.
+        # The row's menu is its own `contextMenu` (right-click, long press on the phone); the
+        # per-row overflow popover the key once opened went with the key.
         self.assertNotIn("BotOverflowPanel", BOT_LIST)
         self.assertNotIn("BotOverflowPanel", ROW_MENU)
         self.assertNotIn(".popover(", BOT_LIST)

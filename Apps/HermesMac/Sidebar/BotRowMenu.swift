@@ -34,9 +34,10 @@ final class BotMenuRouter: ObservableObject {
 
 /// Everything a bot's row menu can do, in one value.
 ///
-/// One description, two containers: the row's `contextMenu` (right-click) and the `Menu` behind its
-/// ⋯ open the same entries, so the two doors cannot drift apart and every verb lands on the same
-/// store or model call whichever was used.
+/// One description, one container: the row's `contextMenu` — right-click on the Mac, long press on
+/// the phone — opens these entries, and every verb lands on the same store or model call. (The
+/// row's ⋯ was removed at the owner's request on 2026-11-25; this menu is the row's only door, so
+/// there is no second copy left to drift.)
 struct BotMenu {
     let bot: Bot
     let face: BotFaceChoice?
@@ -60,11 +61,10 @@ struct BotMenu {
     let deleteCategory: (BotCategory) -> Void
 }
 
-// MARK: - The native menu (right-click, and the row's ⋯)
+// MARK: - The native menu (the row's context menu)
 
-/// The row's menu. `Group` is what makes one description work in two containers — the row's
-/// `contextMenu` and the `Menu` behind its ⋯ — both native menus, so both flatten the group into
-/// items and the entries cannot drift apart.
+/// The row's menu. `Group` keeps it one description whatever container draws it — the row's
+/// `contextMenu` today, a native menu on both platforms, so the entries cannot drift apart.
 struct BotRowMenu: View {
     let menu: BotMenu
 

@@ -18,6 +18,7 @@ TRANSCRIPT = (MAC / "Conversation" / "TranscriptScroll.swift").read_text(encodin
 SIDEBAR = (MAC / "Sidebar" / "BotSidebarView.swift").read_text(encoding="utf-8")
 COMPOSER_BAR = (MAC / "Conversation" / "MacComposerBar.swift").read_text(encoding="utf-8")
 COMPOSER = (ROOT / "Sources" / "HermeyUI" / "Composer.swift").read_text(encoding="utf-8")
+ROOMS = (ROOT / "Sources" / "HermeyUI" / "GroupChatViews.swift").read_text(encoding="utf-8")
 
 
 class ThePillFloats(unittest.TestCase):
@@ -132,6 +133,52 @@ class TheComposerIsQuiet(unittest.TestCase):
         self.assertNotIn('"paperclip"', COMPOSER)
 
     def test_no_hint_line_by_default(self) -> None:
+        self.assertIn("public static let defaultHint: String? = nil", COMPOSER)
+
+
+class TheGroupComposerIsQuietToo(unittest.TestCase):
+    """A room's composer carries no instructions — and the direct-message one is untouched.
+
+    The room passed `⏎ send · ⇧⏎ newline · @ to pick a bot` under the field on the Mac, and its
+    placeholder said "@ a bot to pick who answers". Both were removed on 2026-11-25 ("remove hints
+    like send, new line, etc. from group chat compose box"). The DM composer keeps what it had:
+    `Composer.defaultHint` is still nil and the Mac's bar still passes only its voice state, so the
+    two are pinned apart here rather than one assertion covering both by accident.
+    """
+
+    def composer_body(self) -> str:
+        """The room's builder, from its `Composer(` call — comments above it excluded."""
+        return ROOMS.split("private var composer: some View {", 1)[1].split(
+            "/// The files waiting to go", 1)[0]
+
+    def group_call(self) -> str:
+        return self.composer_body().split("Composer(text: $draft,", 1)[1].split("onAttach:", 1)[0]
+
+    def test_the_room_builds_no_hint_string(self) -> None:
+        # No hint line, and none of the keyboard glyphs that carried one, anywhere in the room view.
+        for gone in ("⏎", "⇧", "composerHint"):
+            self.assertNotIn(gone, ROOMS, f"the group room still carries {gone!r}")
+        # The call passes the name of the room and nothing else: no `hint:` argument at all, so the
+        # composer's own default (nil) applies.
+        self.assertNotIn("hint:", self.group_call())
+
+    def test_the_placeholder_does_not_teach(self) -> None:
+        call = self.group_call()
+        self.assertIn('placeholder: "Message the group"', call)
+        placeholder = call.split("isSending:", 1)[0]
+        for instruction in ("@ a bot", "pick who answers", "send", "new line", "newline"):
+            self.assertNotIn(instruction, placeholder,
+                             f"the group placeholder still explains {instruction!r}")
+
+    def test_the_direct_message_composer_keeps_what_it_had(self) -> None:
+        # An empty bot composer names the bot it writes to — no instructions, as before.
+        self.assertIn('placeholder: "Message \\(composerTitle)"', COMPOSER_BAR)
+        # Its hint is state only: recording, permission, transcribing — never a keyboard reference.
+        hint = COMPOSER_BAR.split("private var hint: String?", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("voice.isRecording", hint)
+        self.assertIn("return nil", hint)
+        self.assertNotIn("newline", hint)
+        # And the shared default stays nil, so a caller that passes nothing gets no line.
         self.assertIn("public static let defaultHint: String? = nil", COMPOSER)
 
 

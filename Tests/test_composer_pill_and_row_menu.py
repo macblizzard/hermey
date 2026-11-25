@@ -1,9 +1,10 @@
 """Two more reports from Mohammad, 2026-11-24, and the rule each one is held to.
 
-* **The row's ⋯.** It sat on every bot row all the time. It now exists only on the row a person is
-  using — hovered, keyboard-focused, selected or highlighted — and it is an overlay, so revealing it
-  moves nothing: no reserved gutter, and a long name simply truncates underneath it. The row's own
-  button, its context menu and its hit target are untouched.
+* **The row's ⋯ — gone (2026-11-25).** It was added as a hover-only overlay, then reported again:
+  the owner wants no ⋯ on a hovered or selected bot row. The glyph and the focus state that kept it
+  visible are removed from the row; the hover fill, the row's height, its button and its
+  `contextMenu` are exactly what they were, and the context menu is now the row's only menu. (The
+  session-row, lock-screen and avatar guards below are unchanged.)
 * **The composer's session row.** The session line that floated above the capsule is now *inside*
   the composer, as one row under the field with two halves: a dark rounded pill holding only the
   model (tinted round glyph, the name in semibold, a chevron, all one button that opens the existing
@@ -320,8 +321,16 @@ class TheComposerCarriesItsModelInTheRow(unittest.TestCase):
         self.assertIn("await loadModelLabel()", app_model)
 
 
-class TheRowOverflowBelongsToTheRowYouAreUsing(unittest.TestCase):
-    """Mac: hover, focus, selection or highlight. Phone: unchanged — there is no hover to hide behind."""
+class TheBotRowHasNoOverflowButton(unittest.TestCase):
+    """Mac: no ⋯ on a hovered or selected row. The context menu is the row's menu.
+
+    The glyph was a second door onto the same `BotRowMenu` the row's `contextMenu` draws, revealed
+    on hover, selection, keyboard focus or the search highlight. The owner asked for it to go
+    (2026-11-25) without losing the menu, so both halves are pinned here: no glyph button is built
+    anywhere in the row view, and the hover state, the context menu, the row's height and its
+    keyboard stop are unchanged. The phone never had the glyph — long press and the two swipe
+    actions are its doors — and that stays asserted too.
+    """
 
     MAC_SOURCE = read(SIDEBAR)
     PHONE_SOURCE = read(PHONE_LIST)
@@ -329,64 +338,55 @@ class TheRowOverflowBelongsToTheRowYouAreUsing(unittest.TestCase):
     def mac_row(self) -> str:
         return between(self.MAC_SOURCE,
                        "private func row(for bot: Bot, isHovered: Bool = false,",
-                       "/// The row's ⋯:")
-
-    def overflow_button(self) -> str:
-        return between(self.MAC_SOURCE,
-                       "private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {",
                        "/// A hidden bot is not gone")
 
-    def test_it_is_conditional_on_being_used_not_always_visible(self) -> None:
+    def test_no_glyph_button_is_built_in_the_row(self) -> None:
         row = self.mac_row()
-        condition = between(row, "let showsOverflow =", "return Button {")
-        for reason in ("isHovered", "isSelected", "isKeyboardSelected", "focusedRow == bot.id"):
-            self.assertIn(reason, condition, "the ⋯ must appear for this reason too")
-        # And the button itself is told that condition — never `true`, never the hover flag alone.
-        self.assertIn("overflowButton(for: bot, isVisible: showsOverflow)", row)
-        self.assertNotIn("isVisible: true", self.MAC_SOURCE)
-        button = self.overflow_button()
-        self.assertIn(".opacity(isVisible ? 1 : 0)", button)
-        self.assertIn(".allowsHitTesting(isVisible)", button)
+        # The button, its visibility flag and the focus state that kept it on screen are all gone —
+        # not merely hidden, because a control that is only `opacity(0)` still takes its corner and
+        # still sits in the tab order.
+        self.assertNotIn("overflowButton", self.MAC_SOURCE)
+        self.assertNotIn('Image(systemName: "ellipsis")', self.MAC_SOURCE)
+        self.assertNotIn("showsOverflow", self.MAC_SOURCE)
+        self.assertNotIn("focusedOverflow", self.MAC_SOURCE)
+        # No menu is built on the row at all: the only one is its `contextMenu` (which is what the
+        # one `Menu {` in this text is — `contextMenu {`).
+        self.assertEqual(row.count("Menu {"), 1, "only the context menu may open a menu on the row")
+        self.assertIn(".contextMenu {", row)
 
-    def test_the_keyboard_reaches_it_without_a_pointer(self) -> None:
-        self.assertIn("@FocusState private var focusedRow: String?", self.MAC_SOURCE)
-        self.assertIn("@FocusState private var focusedOverflow: String?", self.MAC_SOURCE)
-        self.assertIn(".focused($focusedRow, equals: bot.id)", self.mac_row())
-        # Tabbing into the ⋯ must not hide it: focus *inside* the menu keeps the row's button visible.
-        self.assertIn("focusedOverflow == bot.id", self.mac_row())
-        self.assertIn(".focused($focusedOverflow, equals: bot.id)", self.overflow_button())
-        # Still in the accessibility tree at rest: `opacity`/`allowsHitTesting` are the pointer's
-        # business, and VoiceOver keeps its own door to the menu.
-        self.assertIn('.accessibilityLabel("Bot menu")', self.overflow_button())
-
-    def test_it_reserves_no_gutter_and_the_title_truncates_under_it(self) -> None:
+    def test_the_row_still_carries_its_context_menu(self) -> None:
         row = self.mac_row()
-        # An overlay on the row's trailing edge: layout is computed as if the ⋯ were absent.
-        self.assertIn(".overlay(alignment: .trailing) {", row)
-        overlay = between(row, ".overlay(alignment: .trailing) {", ".contextMenu {")
-        self.assertIn("overflowButton(for: bot, isVisible: showsOverflow)", overlay)
-        # The name's own slot is unchanged: one line, tail truncation, no trailing reservation for
-        # the button in the title's HStack.
-        self.assertIn(".truncationMode(.tail)", row)
-        title_row = between(row, "HStack(spacing: 6) {", "// A flat search list has no headings")
-        self.assertIn("Text(bot.displayName)", title_row)
-        self.assertNotIn("overflowButton", title_row)
-        self.assertNotIn(".padding(.trailing", title_row)
+        self.assertIn(".contextMenu {\n            BotRowMenu(menu: rowMenu(for: bot))", row)
+        # One description of the verbs, handed the same value it always was — right-click reaches
+        # every entry the ⋯ used to list, because both were always this builder.
+        self.assertIn("private func rowMenu(for bot: Bot) -> BotMenu {", self.MAC_SOURCE)
+        menu = read(MAC / "Sidebar" / "BotRowMenu.swift")
+        for verb in ("Bot Settings", "Pin to top", "All sessions…", "Previous conversations",
+                     "Hide bot", "New category…"):
+            self.assertIn(verb, menu, "the context menu lost an entry the ⋯ used to offer")
 
-    def test_the_row_still_works_as_a_row(self) -> None:
+    def test_the_hover_state_itself_is_kept(self) -> None:
         row = self.mac_row()
-        # One hit target: the whole row is still a `Button` with a plain style and a shape, and the
-        # ⋯ is a sibling overlay (a control inside a button's label never receives the click).
+        # The fill is what says a row is live; only the ⋯ goes.
+        self.assertIn("isHovered || holdsKeyboardFocus ? Tokens.controlHover", row)
+        self.assertIn("(isHovered || holdsKeyboardFocus) && !isSelected ? 1 : 0", row)
+        self.assertIn("wakesOnHover: isHovered", row)
+        # Keyboard focus still lights the row — there is no system focus ring on it.
+        self.assertIn("let holdsKeyboardFocus = focusedRow == bot.id", row)
+        self.assertIn(".focused($focusedRow, equals: bot.id)", row)
+
+    def test_the_row_keeps_its_shape_and_its_button(self) -> None:
+        row = self.mac_row()
         self.assertIn("return Button {", row)
         self.assertIn(".buttonStyle(.plain)", row)
         self.assertIn(".contentShape(Rectangle())", row)
-        # The right-click menu is still the row's, with the same entries the ⋯ lists.
-        self.assertIn(".contextMenu {\n            BotRowMenu(menu: rowMenu(for: bot))", row)
-
-    def test_the_beacon_yields_its_corner_while_the_button_is_there(self) -> None:
-        row = self.mac_row()
-        beacon = between(row, "UnreadBeacon(diameter: 7)", "}\n            }")
-        self.assertIn(".opacity(showsOverflow ? 0 : 1)", beacon)
+        # The height is the metrics' — the ⋯ never reserved a gutter, and nothing replaced it.
+        self.assertIn(".frame(height: metrics.rowHeight)", row)
+        self.assertIn(".padding(.horizontal, metrics.rowPadding)", row)
+        self.assertIn(".padding(.vertical, metrics.rowPadding)", row)
+        # And the unread dot has its trailing corner back to itself.
+        self.assertIn("if model.hasUnread(bot.id) {\n                    UnreadBeacon(diameter: 7)\n                }",
+                      row)
 
     def test_the_phone_keeps_what_it_has(self) -> None:
         # No hover on a phone, and no ⋯ on its rows either: the long-press menu and the two swipe
@@ -501,7 +501,7 @@ class AHoveredRowWakesItsFace(unittest.TestCase):
     def row(self) -> str:
         return between(self.SIDEBAR,
                        "private func row(for bot: Bot, isHovered: Bool = false,",
-                       "/// The row's ⋯:")
+                       "/// A hidden bot is not gone")
 
     def test_the_row_hands_its_hover_to_the_avatar(self) -> None:
         row = self.row()

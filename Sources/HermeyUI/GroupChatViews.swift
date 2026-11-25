@@ -306,13 +306,6 @@ public struct RoomChatView: View {
     @State private var sending = false
     @State private var failure: String?
     @State private var mentionQuery: String?
-    /// The Mac explains the keyboard; the phone has no hint line, and a line of "⏎ send" over a
-    /// touch keyboard is noise.
-    #if os(macOS)
-    private let composerHint: String? = "⏎ send · ⇧⏎ newline · @ to pick a bot"
-    #else
-    private let composerHint: String? = nil
-    #endif
 
     @State private var findOpen = false
     /// Files picked but not yet sent: the same bargain a bot's composer makes.
@@ -960,7 +953,10 @@ public struct RoomChatView: View {
     /// Typing `@` offers the room's bots, because a mention is the thing that decides who answers.
     ///
     /// The field itself is the design system's `Composer` — the same control a bot's chat uses — so
-    /// the two conversations in this app feel like one app: same card, same hint line, same ⏎.
+    /// the two conversations in this app feel like one app: same card, same Return. There is no hint
+    /// line and nothing in the placeholder that teaches: a room used to carry a keyboard reference —
+    /// send, shift-return for a new line, @ to pick a bot — under the field, removed at the owner's
+    /// request (2026-11-25) as a line a person reads once and pays for forever.
     private var composer: some View {
         VStack(spacing: 0) {
             if !pendingFiles.isEmpty { pendingBar }
@@ -988,11 +984,10 @@ public struct RoomChatView: View {
                 .padding(.bottom, 4)
             }
             Composer(text: $draft,
-                     placeholder: "Message the group — @ a bot to pick who answers",
+                     placeholder: "Message the group",
                      isSending: sending,
                      hasAttachments: !pendingFiles.isEmpty,
                      showsMic: false,
-                     hint: composerHint,
                      onSend: { Task { await post() } },
                      onAttach: {
                          #if os(iOS)

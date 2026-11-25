@@ -323,8 +323,9 @@ class KeyboardStopsKeepTheirOwnAffordance(unittest.TestCase):
 
     def test_the_bot_row_draws_its_own_focus(self) -> None:
         # The ring is replaced by the row's existing "live" state: the hover fill and its hairline,
-        # on the focus the row already tracks.
-        self.assertIn("let holdsKeyboardFocus = focusedRow == bot.id || focusedOverflow == bot.id", self.rows)
+        # on the focus the row already tracks. The ⋯ it used to reveal is gone (2026-11-25), so the
+        # row's own focus is the only focus state left on it.
+        self.assertIn("let holdsKeyboardFocus = focusedRow == bot.id", self.rows)
         self.assertIn("isHovered || holdsKeyboardFocus ? Tokens.controlHover", self.rows)
         self.assertIn("(isHovered || holdsKeyboardFocus) && !isSelected ? 1 : 0", self.rows)
         # And not the accent: a focused row is not a selected one.
