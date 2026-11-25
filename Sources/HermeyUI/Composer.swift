@@ -201,6 +201,9 @@ public struct Composer: View {
                 // Flush with the text, not the card: the row's own 8 pt inset, the paperclip, and
                 // its gap — the same sum the hint below uses, so both start where the message does.
                 .padding(.leading, showsAttach ? 8 + controlSide + 8 : 10)
+                // The same 8 pt the field row carries, so the count's right edge lands under the
+                // send button's instead of running out to the card's edge.
+                .padding(.trailing, 8)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
