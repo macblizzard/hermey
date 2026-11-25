@@ -1448,3 +1448,9 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The model and the token count now share a row, one at each end.** The count used to sit inside the model
   pill, so on a narrow phone the model name was squeezed to fit it. The pill holds the model and its chevron on
   the left, the context count sits on the right with its own width, and neither can shrink the other.
+
+## [0.1.659] — 2026-11-24
+
+### Fixed
+- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count
+  keeps a clear margin inside the rounded corner instead of running to the card's edge.
