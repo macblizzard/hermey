@@ -1721,6 +1721,10 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
             history::PAGE_BYTES,
         ) {
             if let Some(key) = lock(&state.resumes).take(&paged.id) {
+                // Whoever joined this request while the engine was rendering it is answered from
+                // the SAME reply — in the fast path as well as the slow one. Without this a parked
+                // duplicate is left waiting for an answer that already arrived.
+                let waiters = lock(&state.parked).answer(&paged.id);
                 let alias = note_resume_alias_id(state, paged.session_id.as_deref(), &key);
                 // The transcript is shared, so the runtime-id alias costs a refcount, not a copy.
                 lock(&state.cache).remember_window(key.clone(), paged.transcript.clone());
@@ -1731,7 +1735,13 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
                     lock(&state.cache)
                         .remember_window(HistoryKey::new(fresh, &key.profile), paged.transcript);
                 }
-                return Some(paged.frame);
+                if waiters.is_empty() {
+                    return Some(paged.frame);
+                }
+                // The page is small (one window), so parsing it to rewrite the ids costs nothing
+                // compared with the frame that arrived.
+                let value: Value = serde_json::from_str(&paged.frame).ok()?;
+                return fan_resume_reply(&value, &waiters);
             }
         }
     }

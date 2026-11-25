@@ -41,11 +41,13 @@ public actor HermesCacheStore {
     /// long conversation still needs a ceiling of its own — otherwise the cache is bounded by the
     /// longest thread the user ever opened.
     ///
-    /// 2,000 rather than 500: a bot chat of 6,778 rows was cut to its newest 500, so opening it on a
-    /// phone showed a page and a half and the rest cost a round trip per 150 rows. Two thousand
-    /// rows is a few megabytes of JSON at worst and covers what a person scrolls through; the chat
-    /// limit above still bounds the whole cache.
-    public static let maxMessagesPerChat = 2000
+    /// 2,500 rather than 500: a bot chat of 6,778 rows was cut to its newest 500, so opening it on a
+    /// phone showed a page and a half and the rest cost a round trip per page. A few thousand rows
+    /// is a few megabytes of JSON at worst and covers what a person scrolls through; the chat limit
+    /// above still bounds the whole cache. Deliberately not the same number as the chat ceiling
+    /// (`BotChatArchive.defaultLimit`): one is how much this device keeps, the other is when the
+    /// bot starts a new conversation, and they must be free to differ.
+    public static let maxMessagesPerChat = 2500
 
     public nonisolated let host: String
     /// The host's own directory. Public for diagnostics and for tests that assert what landed on disk.

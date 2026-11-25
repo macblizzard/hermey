@@ -89,10 +89,16 @@ class TheResumeIsWindowed(unittest.TestCase):
     def test_a_resume_reply_is_paged_with_the_page_constant(self) -> None:
         # Every place the relay pages a reply — the tracked resume and the restart replay — must
         # cut to the page constant; one forgotten call site is a whole transcript on the wire.
-        calls = RELAY.count("history::page_resume_response(")
-        self.assertGreaterEqual(calls, 2)
+        # Two shapes page a reply now: the text-first path (`page_resume_text`, which never
+        # materialises the transcript) and the parsed fallback (`page_resume_response`). Both are
+        # held to the same constants; a third caller would have to be added here deliberately.
+        text_calls = RELAY.count("history::page_resume_text(")
+        parsed_calls = RELAY.count("history::page_resume_response(")
+        calls = text_calls + parsed_calls
+        self.assertEqual(text_calls, 1, "one text-first call site")
+        self.assertGreaterEqual(parsed_calls, 2, "the parsed fallback still pages too")
         self.assertEqual(RELAY.count("history::PAGE_MESSAGES"), calls,
-                         "each page_resume_response call is cut to PAGE_MESSAGES")
+                         "every call that can page is cut to PAGE_MESSAGES")
         self.assertGreaterEqual(RELAY.count("history::PAGE_BYTES"), calls,
                                 "and to the byte budget as well")
 

@@ -1651,3 +1651,26 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   merged before its work was committed. This build carries the kind, the host validation and the shared layout.
   A short query comes back as a card with one real picture and a caption, three to eight facts, the number that
   matters highlighted (a price, with seller and availability), one link and a source.
+
+## [0.1.669] — 2026-11-25
+
+### Fixed
+- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it — 7.5 MiB in one
+  frame, ~10 s — while retries stacked more renders on top, which is how an open became a 120-second wait. The
+  host now pages the reply from its text before parsing it (434 ms → 92 ms on a 3.4 MB resume), answers duplicate
+  resumes from one render, and the phone paints its own disk copy before any round trip.
+- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight
+  instead of waiting its turn.
+- **The pane says what it is doing** when the host is slow: "sending this chat's history — 14s · every message is
+  kept", with a Retry bar, instead of a silent spinner.
+
+### Added
+- **Start a new chat after** — Settings → Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the
+  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with
+  every message kept and its count and date shown.
+- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked
+  sheet, delete with a confirmation.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache
+  with its cursor, and serves the vault's name-only list.
