@@ -709,7 +709,7 @@ impl WindowedTranscript {
         Self::new(rows, total, bytes)
     }
 
-    fn new(rows: Vec<Box<str>>, total: usize, bytes: usize) -> Self {
+    pub fn new(rows: Vec<Box<str>>, total: usize, bytes: usize) -> Self {
         Self {
             rows: Arc::new(rows),
             total,

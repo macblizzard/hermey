@@ -121,7 +121,7 @@ public enum VaultFailure {
         if error is BotAdminUnavailable {
             return "This host's bridge does not serve the vault yet. Update hermeyd on the host."
         }
-        if let failure = error as? Failure {
+        if let failure = error as? BridgeBotSessionPointer.Failure {
             switch failure {
             case .rejected(let status, let detail):
                 let why = detail.map { ": \($0)" } ?? "."

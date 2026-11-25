@@ -1477,7 +1477,7 @@ fn process_engine_frame(state: &ConnectionState, text: &str) -> EngineAction {
                                 history::PAGE_MESSAGES,
                                 history::PAGE_BYTES,
                             ) {
-                                lock(&state.cache).remember(target.key(), rows);
+                                lock(&state.cache).remember_window(target.key(), windowed_from_rows(rows));
                                 return EngineAction {
                                     to_client: fan_resume_reply(&paged, &waiting),
                                     to_engine: None,
@@ -1701,6 +1701,26 @@ fn inspect_client_text(state: &ConnectionState, text: &str) -> Option<String> {
     serde_json::to_string(&answer).ok()
 }
 
+/// Build the cache's transcript from rows the slow path already parsed.
+///
+/// The fast path never parses rows at all (`page_resume_text` hands the windowed type the very
+/// bytes that arrived); this is the fallback's door, used when the reply could not be paged from
+/// text. The rows are re-serialised because the cache stores them as received — and this path is
+/// rare by construction (an error, an empty transcript, or a frame that is not a resume).
+fn windowed_from_rows(rows: Vec<Value>) -> history::WindowedTranscript {
+    let total = rows.len();
+    let mut bytes = 0usize;
+    let texts: Vec<Box<str>> = rows
+        .into_iter()
+        .map(|row| {
+            let text = serde_json::to_string(&row).unwrap_or_else(|_| "null".to_string());
+            bytes += text.len() + 1;
+            text.into_boxed_str()
+        })
+        .collect();
+    history::WindowedTranscript::new(texts, total, bytes)
+}
+
 /// Engine → client. Returns the rewritten frame, or `None` to forward the original bytes untouched.
 fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
     let oversized = text.len() > history::MAX_RELAY_BYTES;
@@ -1771,9 +1791,10 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
             ) {
                 Ok((paged, rows)) => {
                     let alias = note_resume_alias(state, &paged, &key);
-                    lock(&state.cache).remember(key.clone(), rows.clone());
+                    lock(&state.cache).remember_window(key.clone(), windowed_from_rows(rows.clone()));
                     if let Some(fresh) = &alias {
-                        lock(&state.cache).remember(HistoryKey::new(fresh, &key.profile), rows);
+                        lock(&state.cache)
+                            .remember_window(HistoryKey::new(fresh, &key.profile), windowed_from_rows(rows));
                     }
                     return fan_resume_reply(&paged, &waiters);
                 }
