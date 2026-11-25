@@ -57,6 +57,10 @@ pub const ERROR_HISTORY_UNAVAILABLE: i64 = -32001;
 /// forgotten. A resume's reply only needs tracking until it arrives; this only bounds a client that
 /// asks forever without reading.
 pub const MAX_TRACKED_RESUMES: usize = 64;
+/// How many duplicate resumes one conversation may park behind its first request. Eight is more
+/// retries than the app's open path can produce (a deadline tap, a reconnect and a banner share
+/// one open), and the ninth is forwarded rather than dropped.
+pub const MAX_PARKED_RESUMES: usize = 8;
 
 struct CountingWriter(usize);
 
@@ -284,6 +288,92 @@ impl ResumeRequests {
     pub fn clear(&mut self) {
         self.order.clear();
         self.keys.clear();
+    }
+}
+
+/// The resumes the relay has taken responsibility for, so N retries cost one engine request.
+///
+/// The engine renders the WHOLE transcript for every `session.resume` (measured on the owner's
+/// 6.8k-message chat: 6.2 s each, 7.5 MiB on the wire, and the projection holds the interpreter
+/// for all of it). The app retries an open that has not answered — `openNow`'s deadline, a Retry
+/// tap, a banner, a reconnect — and every retry used to start another full render, strictly
+/// serialised: three sent together answered at 6.2 s, 12.6 s and 18.5 s. That convoy is what
+/// turned a 10 s open into a 120 s timeout.
+///
+/// So a resume for a conversation this connection is *already* asking about is not forwarded: its
+/// id waits here, and [`ParkedResumes::answer`] hands it to the leader's reply, which the engine
+/// side of the splice re-emits once per waiter (NDJSON, so one write carries several frames).
+/// [`ParkedResumes::pending_for`] covers the other end: an engine restart replays the resume under
+/// its own id, and that reply answers whoever was waiting instead of leaving the app to time out.
+#[derive(Debug, Default)]
+pub struct ParkedResumes {
+    /// `(session_id, profile)` → the app id whose engine request is in flight.
+    lead: HashMap<HistoryKey, RpcId>,
+    /// App ids waiting on a lead's answer, in arrival order.
+    waiters: HashMap<RpcId, Vec<RpcId>>,
+    /// Ceiling on parked waiters per conversation. Past it a duplicate is forwarded — the old
+    /// behaviour, slow but never unanswered.
+    max_waiters: usize,
+}
+
+impl ParkedResumes {
+    pub fn new(max_waiters: usize) -> Self {
+        Self {
+            max_waiters: max_waiters.max(1),
+            ..Self::default()
+        }
+    }
+
+    /// Whether anything is parked. Used by the relay's own tests and by `clear`.
+    pub fn is_empty(&self) -> bool {
+        self.lead.is_empty()
+    }
+
+    /// Decide what to do with a client `session.resume` for `key` with id `id`.
+    ///
+    /// `true` when the frame must be *dropped*: it is parked behind a leader already in flight and
+    /// the leader's reply answers it. `false` when it must be forwarded — either it is the first
+    /// request for this conversation, or the wait list is full and a slow answer beats none.
+    pub fn park(&mut self, key: &HistoryKey, id: &Value) -> bool {
+        let Some(id) = RpcId::parse(id) else {
+            return false;
+        };
+        if let Some(leader) = self.lead.get(key) {
+            let waiting = self.waiters.entry(leader.clone()).or_default();
+            if waiting.len() >= self.max_waiters || waiting.contains(&id) || id == *leader {
+                return false;
+            }
+            waiting.push(id);
+            return true;
+        }
+        self.lead.insert(key.clone(), id);
+        false
+    }
+
+    /// Forget the leader `id` and return the app ids waiting on its answer.
+    pub fn answer(&mut self, id: &Value) -> Vec<RpcId> {
+        let Some(id) = RpcId::parse(id) else {
+            return Vec::new();
+        };
+        self.lead.retain(|_, leader| *leader != id);
+        self.waiters.remove(&id).unwrap_or_default()
+    }
+
+    /// Every app id waiting on `key`'s resume — the leader first, then the retries that joined it —
+    /// forgetting the conversation. Used when the engine's own replay answers this resume.
+    pub fn pending_for(&mut self, key: &HistoryKey) -> Vec<RpcId> {
+        let Some(leader) = self.lead.remove(key) else {
+            return Vec::new();
+        };
+        let mut all = vec![leader.clone()];
+        all.extend(self.waiters.remove(&leader).unwrap_or_default());
+        all
+    }
+
+    /// Forget everything (the socket is gone; its ids went with it).
+    pub fn clear(&mut self) {
+        self.lead.clear();
+        self.waiters.clear();
     }
 }
 
@@ -1204,5 +1294,63 @@ mod tests {
             trim_oversize(frame, MAX_RELAY_BYTES).is_none(),
             "there is no string field to cut, so the frame is forwarded untouched"
         );
+    }
+
+    // ── duplicate resumes ────────────────────────────────────────────────────────────────────
+    //
+    // The engine builds the whole transcript per resume (6.2 s / 7.5 MiB measured on a
+    // 6,778-row chat), so N retries must not become N renders. These four cases are the contract
+    // the relay relies on: one leader, bounded waiters, and every id answered.
+
+    fn parked() -> ParkedResumes {
+        ParkedResumes::new(MAX_PARKED_RESUMES)
+    }
+
+    #[test]
+    fn a_first_resume_leads_and_a_repeat_waits() {
+        let mut parked = parked();
+        let key = HistoryKey::new("local-9b01", "cody");
+        assert!(!parked.park(&key, &json!(1)), "the first ask reaches the engine");
+        assert!(parked.park(&key, &json!(2)), "the second is answered from the first");
+        assert!(parked.park(&key, &json!(3)));
+        assert_eq!(parked.answer(&json!(1)), vec![RpcId::Int(2), RpcId::Int(3)]);
+        // The conversation is free again: the next open is a real request.
+        assert!(parked.is_empty());
+        assert!(!parked.park(&key, &json!(4)));
+    }
+
+    #[test]
+    fn another_conversation_is_never_parked_behind_this_one() {
+        let mut parked = parked();
+        assert!(!parked.park(&HistoryKey::new("a", "cody"), &json!(1)));
+        assert!(!parked.park(&HistoryKey::new("b", "cody"), &json!(2)));
+        assert_eq!(parked.answer(&json!(1)), Vec::<RpcId>::new());
+        assert_eq!(parked.answer(&json!(2)), Vec::<RpcId>::new());
+    }
+
+    #[test]
+    fn the_wait_list_is_bounded_and_the_overflow_is_forwarded() {
+        let mut parked = ParkedResumes::new(2);
+        let key = HistoryKey::new("local-9b01", "cody");
+        assert!(!parked.park(&key, &json!(1)));
+        assert!(parked.park(&key, &json!(2)));
+        assert!(parked.park(&key, &json!(3)));
+        assert!(
+            !parked.park(&key, &json!(4)),
+            "past the cap a duplicate costs a render, which still beats an unanswered id"
+        );
+        assert_eq!(parked.answer(&json!(1)), vec![RpcId::Int(2), RpcId::Int(3)]);
+    }
+
+    #[test]
+    fn an_engine_restart_answers_the_leader_and_its_waiters() {
+        let mut parked = parked();
+        let key = HistoryKey::new("local-9b01", "cody");
+        assert!(!parked.park(&key, &json!(1)));
+        assert!(parked.park(&key, &json!(2)));
+        let mut waiting = parked.pending_for(&key);
+        assert_eq!(waiting.remove(0), RpcId::Int(1), "the leader is answered first");
+        assert_eq!(waiting, vec![RpcId::Int(2)]);
+        assert!(parked.pending_for(&key).is_empty(), "answered once, not twice");
     }
 }

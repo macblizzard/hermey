@@ -1025,15 +1025,38 @@ struct ConversationScreen: View {
             && model.reasoningText.isEmpty
     }
 
+    /// What the pane says while a conversation is being resumed.
+    ///
+    /// A spinner alone is a frozen screen with an animation on it. The host assembles the whole
+    /// transcript for a resume (measured 6.2 s and 7.5 MiB for a 6,778-row chat on an idle host,
+    /// and its own retries used to queue behind each other), so the wait is counted out loud and
+    /// named for what it is: the history arriving, not the app hanging. After `openDeadline` the
+    /// Retry sits above it and the count keeps going under it — the resume is still running.
     private var openingState: some View {
-        HStack(spacing: 10) {
-            SpinningRing(color: Tokens.textMuted, size: 12, lineWidth: 1.5)
-            Text("Opening \(title)…")
-                .font(TypeScale.font(TypeScale.lg))
-                .foregroundStyle(Tokens.textMuted)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let waited = model.openStartedAt.map { max(0, context.date.timeIntervalSince($0)) } ?? 0
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    SpinningRing(color: Tokens.textMuted, size: 12, lineWidth: 1.5)
+                    Text("Opening \(title)…")
+                        .font(TypeScale.font(TypeScale.lg))
+                        .foregroundStyle(Tokens.textMuted)
+                }
+                if waited >= AppModel.slowOpenNotice {
+                    Text("the host is sending this chat's history — \(Int(waited))s")
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.textSecondary)
+                    Text("every message is kept; a long chat just takes the host longer to assemble")
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+            .padding(.horizontal, 24)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .accessibilityIdentifier("openingState")
     }
 
     /// Live tool calls for the turn in flight.

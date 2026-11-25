@@ -469,6 +469,16 @@ public final class AppModel: ObservableObject {
     /// a late answer still fills the chat — but the screen stops looking frozen and says so.
     public static let openDeadline: TimeInterval = 12
 
+    /// When the open on screen began, so the pane can say how long it has been waiting.
+    ///
+    /// A resume of a long conversation is a real wait — the host builds the whole transcript
+    /// (measured 6.2 s and 7.5 MiB for 6,778 rows) and its own retries used to queue behind each
+    /// other. A spinner with no number is indistinguishable from a frozen app, so the pane counts.
+    @Published public private(set) var openStartedAt: Date?
+
+    /// How long a wait is "normal" before the pane explains itself in words as well as a spinner.
+    public static let slowOpenNotice: TimeInterval = 4
+
     /// What a bot's conversation looked like the last time it was on screen.
     ///
     /// Switching bots has to clear everything the previous bot left behind (its transcript under
@@ -1445,6 +1455,7 @@ public final class AppModel: ObservableObject {
             return await inFlight.value
         }
         let generation = openGeneration
+        openStartedAt = Date()
         // [B2 navigation] `select: true` is correct here and only here: `openNow` is what a tap
         // (or the banner that stands in for one) resolves to.
         let work = Task { @MainActor in await self.endlessSession(for: botID, select: true) }
@@ -1468,6 +1479,7 @@ public final class AppModel: ObservableObject {
         openTask = nil
         isOpeningConversation = false
         openingBotID = nil
+        openStartedAt = nil
         if let opened {
             // It answered after all, possibly after the deadline: take the sentence away.
             openFailure = nil
@@ -1490,6 +1502,7 @@ public final class AppModel: ObservableObject {
         openGeneration &+= 1
         openingBotID = nil
         isOpeningConversation = false
+        openStartedAt = nil
     }
 
     /// Ask the host again for the conversation on screen, after the deadline or a refusal.

@@ -600,6 +600,9 @@ struct ConnectionState {
     audit: Option<Arc<AuditLog>>,
     cache: Mutex<HistoryCache>,
     resumes: Mutex<ResumeRequests>,
+    /// Resumes this connection answered (or is answering) as one engine request. A retry joins the
+    /// answer instead of starting a second full transcript render on the host.
+    parked: Mutex<history::ParkedResumes>,
     /// Client request ids awaiting an engine reply (`proxy.py::_pending`).
     pending: Mutex<HashSet<RpcId>>,
     /// Client-visible id → the engine's original id, for server requests (`_server_requests`).
@@ -651,6 +654,7 @@ impl ConnectionState {
             audit,
             cache: Mutex::new(HistoryCache::new(history::CACHE_BYTES)),
             resumes: Mutex::new(ResumeRequests::new(history::MAX_TRACKED_RESUMES)),
+            parked: Mutex::new(history::ParkedResumes::new(history::MAX_PARKED_RESUMES)),
             pending: Mutex::new(HashSet::new()),
             server_requests: Mutex::new(HashMap::new()),
             aliases: Mutex::new(HashMap::new()),
@@ -1201,6 +1205,11 @@ fn client_request(
         original.to_string()
     };
 
+    if method == "session.resume" && park_duplicate_resume(state, &frame) {
+        // A second ask for a conversation already being rendered: its own id is answered from that
+        // one reply (see `fan_resume_reply`), so it must not reach the engine a second time.
+        return ClientAction::Drop;
+    }
     if method == "session.history" || method == "session.resume" {
         if let Some(answer) = inspect_client_text(state, &wire) {
             if let Ok(value) = serde_json::from_str(&answer) {
@@ -1457,6 +1466,28 @@ fn process_engine_frame(state: &ConnectionState, text: &str) -> EngineAction {
                         );
                     } else if let Some(target) = state.last_resume() {
                         adopt_restarted_session(state, &frame, &target.key());
+                        // The app's own resume id died with the old socket. Whoever was waiting on
+                        // this conversation — the open itself, plus any retry that joined it — is
+                        // answered from the replay's reply, so a restart costs a render and not a
+                        // two-minute silence the user cannot see the end of.
+                        let waiting = lock(&state.parked).pending_for(&target.key());
+                        if !waiting.is_empty() {
+                            if let Ok((paged, rows)) = history::page_resume_response(
+                                frame.clone(),
+                                history::PAGE_MESSAGES,
+                                history::PAGE_BYTES,
+                            ) {
+                                lock(&state.cache).remember(target.key(), rows);
+                                return EngineAction {
+                                    to_client: fan_resume_reply(&paged, &waiting),
+                                    to_engine: None,
+                                    // The engine's replay frame is still swallowed: the app sees
+                                    // its own resume answered, under its own id.
+                                    swallow: true,
+                                    send_caps: false,
+                                };
+                            }
+                        }
                     }
                     return EngineAction {
                         swallow: true,
@@ -1584,6 +1615,39 @@ fn is_autoresume_id(id: &RpcId) -> bool {
 // Transcript paging (unchanged behaviour, plus alias bookkeeping)
 // ---------------------------------------------------------------------------------------------
 
+/// Park a repeat `session.resume` for a conversation this connection is already asking about.
+///
+/// The engine builds the whole transcript per resume (measured: 6.2 s / 7.5 MiB for 6,778 rows),
+/// and the app's open path can ask several times while it waits (a deadline tap, a reconnect, a
+/// banner). Forwarding each one queued them: three concurrent asks answered at 6.2 s, 12.6 s and
+/// 18.5 s, which is how a slow open became a 120 s timeout. One request, one render, one answer
+/// fanned out to every id — and nothing is dropped that could not be answered.
+fn park_duplicate_resume(state: &ConnectionState, frame: &Value) -> bool {
+    let key = HistoryKey::from_params(frame.get("params"));
+    if key.session_id.is_empty() {
+        // Not addressable (a notification, or a create): nothing to coalesce.
+        return false;
+    }
+    let Some(id) = frame.get("id") else {
+        return false;
+    };
+    if !lock(&state.parked).park(&key, id) {
+        return false;
+    }
+    state.note(
+        "resume_coalesced",
+        Event {
+            method: Some("session.resume"),
+            profile: (!key.profile.is_empty()).then_some(key.profile.as_str()),
+            outcome: Some("coalesced"),
+            direction: Some("client_to_gateway"),
+            ..Event::default()
+        },
+    );
+    eprintln!("relay: a repeat session.resume joined the one already in flight");
+    true
+}
+
 /// Client → engine for the two paging methods. Returns the frame to send back to the client
 /// instead of forwarding it, or `None` when the frame belongs to the engine. Every `None` path is
 /// a byte-for-byte forward.
@@ -1648,10 +1712,17 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
 
     // A JSON-RPC response: `id`, no `method`. Its id decides whether it is the resume we paged for.
     if awaiting_response(&frame) {
-        if let Some(key) = frame
-            .get("id")
+        let reply_id = frame.get("id").cloned();
+        if let Some(key) = reply_id
+            .as_ref()
             .and_then(|id| lock(&state.resumes).take(id))
         {
+            // Whoever joined this request while the engine was rendering it is answered from the
+            // SAME reply (see `park_duplicate_resume`): one render, every id.
+            let waiters = reply_id
+                .as_ref()
+                .map(|id| lock(&state.parked).answer(id))
+                .unwrap_or_default();
             match history::page_resume_response(
                 frame,
                 history::PAGE_MESSAGES,
@@ -1667,11 +1738,15 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
                         lock(&state.cache)
                             .remember(HistoryKey::new(fresh, &key.profile), rows);
                     }
-                    return serde_json::to_string(&paged).ok();
+                    return fan_resume_reply(&paged, &waiters);
                 }
-                // Not a pageable reply (an error, or a shape we do not recognise): fall through.
+                // Not a pageable reply (an error, or a shape we do not recognise): the engine's
+                // own answer goes to the app, and the same answer goes to every id that waited.
                 Err(original) => {
                     note_resume_alias(state, &original, &key);
+                    if !waiters.is_empty() {
+                        return fan_resume_reply(&original, &waiters);
+                    }
                     frame = original;
                 }
             }
@@ -1699,6 +1774,35 @@ fn inspect_engine_text(state: &ConnectionState, text: &str) -> Option<String> {
         },
     );
     serde_json::to_string(&trimmed).ok()
+}
+
+/// Serialise a resume reply for the app, once per id that asked for it.
+///
+/// A duplicate resume is answered from the leader's reply with its own id, so the client sees a
+/// normal answer for the call it made. Several frames ride one NDJSON write (the native clients
+/// split on `0x0A`), which is why this returns one string.
+fn fan_resume_reply(reply: &Value, waiters: &[RpcId]) -> Option<String> {
+    let leader = serde_json::to_string(reply).ok()?;
+    if waiters.is_empty() {
+        return Some(leader);
+    }
+    let mut lines = String::with_capacity(leader.len());
+    lines.push_str(&leader);
+    for waiter in waiters {
+        let mut copy = reply.clone();
+        if let Some(object) = copy.as_object_mut() {
+            object.insert("id".to_string(), rpc_id_value(waiter));
+        }
+        if let Ok(line) = serde_json::to_string(&copy) {
+            lines.push('\n');
+            lines.push_str(&line);
+        }
+    }
+    eprintln!(
+        "relay: answered {} parked resume(s) from one engine reply",
+        waiters.len()
+    );
+    Some(lines)
 }
 
 /// Record the runtime id a tracked resume attached (`proxy.py:964-985`), so every later frame can
@@ -2264,6 +2368,60 @@ mod tests {
         (0..count)
             .map(|i| json!({"id": format!("m{i:03}"), "role": "user", "content": "x".repeat(200)}))
             .collect()
+    }
+
+    // -- one render, every id ---------------------------------------------------------------
+    //
+    // The engine builds the whole transcript per resume (measured 6.2 s / 7.5 MiB on a 6.8k-row
+    // chat) and answers concurrent ones strictly in turn (6.2 s, 12.6 s, 18.5 s). The app retries
+    // an open it is waiting on, so the relay answers every repeat from the first reply.
+
+    #[test]
+    fn a_repeat_resume_is_answered_from_the_one_render() {
+        let state = ConnectionState::new();
+        let first = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "session.resume",
+            "params": {"session_id": "s1", "profile": "bot"},
+        });
+        let repeat = json!({
+            "jsonrpc": "2.0", "id": 2, "method": "session.resume",
+            "params": {"session_id": "s1", "profile": "bot"},
+        });
+        assert!(matches!(process_client_frame(&state, &encode(&first)),
+                          ClientAction::Forward(_)), "the first ask reaches the engine");
+        assert!(matches!(process_client_frame(&state, &encode(&repeat)),
+                          ClientAction::Drop),
+                "the second must not cost a second render");
+
+        let rows = transcript(400);
+        let reply = json!({"jsonrpc": "2.0", "id": 1, "result": {
+            "session_id": "runtime-1", "messages": rows,
+        }});
+        let answer = inspect_engine_text(&state, &encode(&reply)).expect("rewritten");
+        let lines: Vec<Value> = answer
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("each line is a frame"))
+            .collect();
+        assert_eq!(lines.len(), 2, "both ids are answered in one write");
+        assert_eq!(lines[0]["id"], json!(1));
+        assert_eq!(lines[1]["id"], json!(2), "the retry sees its own id");
+        for line in &lines {
+            assert_eq!(line["result"]["messages"].as_array().unwrap().len(), 200,
+                       "and the same newest page, not 6,000 rows");
+            assert_eq!(line["result"]["history"]["total"], json!(400));
+        }
+    }
+
+    #[test]
+    fn a_repeat_for_another_conversation_is_still_a_real_request() {
+        let state = ConnectionState::new();
+        let a = json!({"jsonrpc": "2.0", "id": 1, "method": "session.resume",
+                       "params": {"session_id": "s1", "profile": "bot"}});
+        let b = json!({"jsonrpc": "2.0", "id": 2, "method": "session.resume",
+                       "params": {"session_id": "s2", "profile": "bot"}});
+        assert!(matches!(process_client_frame(&state, &encode(&a)), ClientAction::Forward(_)));
+        assert!(matches!(process_client_frame(&state, &encode(&b)), ClientAction::Forward(_)),
+                "another bot's chat must open on its own request");
     }
 
     // -- paging (pre-existing behaviour, kept honest by these same tests) ----------------------
