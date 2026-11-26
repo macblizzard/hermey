@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.674",
-          "buildVersion": "674",
-          "date": "2026-11-26T07:35:27Z",
-          "localizedDescription": "Hotfix: Edit and resend, and Delete, actually run now. The confirmation appeared and then nothing happened, because dismissing the alert cleared the pending action before the button ran.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.674/Hermey-0.1.674-b674.ipa",
-          "size": 5986979,
+          "version": "0.1.675",
+          "buildVersion": "675",
+          "date": "2026-11-26T08:06:37Z",
+          "localizedDescription": "Avatar renderer follows open-bot-avatar 0.5: custom states, marks as values, the nine-ribbon cage for done, and eyes that morph instead of swapping.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.675/Hermey-0.1.675-b675.ipa",
+          "size": 5986976,
           "minOSVersion": "17.0",
-          "sha256": "b7f60896e4eb3f20b29075baf8fae87be66df7eae832ef09847b8bce19f6483d"
+          "sha256": "4869ad4254e1b02adaf148511566e6dbdd193cb76be2129444848fb7f154321d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.674 (674)",
-      "identifier": "hermes-0.1.674-674",
-      "caption": "Hotfix: Edit and resend, and Delete, actually run now. The confirmation appeared and then nothing happened, because dismissing the alert cleared the pending action before the button ran.",
-      "date": "2026-11-26T07:35:27Z",
+      "title": "Hermes 0.1.675 (675)",
+      "identifier": "hermes-0.1.675-675",
+      "caption": "Avatar renderer follows open-bot-avatar 0.5: custom states, marks as values, the nine-ribbon cage for done, and eyes that morph instead of swapping.",
+      "date": "2026-11-26T08:06:37Z",
       "tintColor": "#9A9AA0"
     }
   ],
