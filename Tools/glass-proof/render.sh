@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 
 AVATAR="Sources/HermeyUI/OpenBotAvatar"
 SOURCES=(
+  Sources/HermesKit/BotAvatarActivity.swift
   Sources/HermeyUI/BotAvatarIdentity.swift
   "$AVATAR/BotAvatarDefinition.swift"
   "$AVATAR/OpenBotAvatarGeometry.swift"
