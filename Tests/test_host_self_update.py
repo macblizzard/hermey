@@ -371,3 +371,31 @@ class TheNamesAgreeAcrossTheTwoLanguages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheReleaseTagsHermeyd(unittest.TestCase):
+    """A hermeyd bump with no matching release makes the app's update check say "could not check".
+
+    The host answers the About row from the repository's releases, so the tag has to exist for
+    every version we ship. The release script is the one place every release goes through, so the
+    tag is made there rather than remembered by hand.
+    """
+
+    PATH = pathlib.Path(__file__).resolve().parents[1] / "Tools" / "release" / "publish_altstore.py"
+
+    def test_the_publish_script_tags_the_hermeyd_version(self) -> None:
+        source = self.PATH.read_text()
+        self.assertIn("def ensure_hermeyd_tag(", source)
+        self.assertIn("ensure_hermeyd_tag(args.repo)", source)
+
+    def test_the_tag_comes_from_the_manifest_not_a_literal(self) -> None:
+        source = self.PATH.read_text()
+        body = source.split("def ensure_hermeyd_tag(", 1)[1]
+        self.assertIn('"hermeyd" / "Cargo.toml"', body)
+        self.assertIn('tag = f"hermeyd-v{found.group(1)}"', body)
+        self.assertNotRegex(body, r'hermeyd-v\d+\.\d+\.\d+')
+
+    def test_it_is_idempotent_and_cannot_fail_a_shipped_release(self) -> None:
+        body = self.PATH.read_text().split("def ensure_hermeyd_tag(", 1)[1]
+        self.assertIn('"ls-remote"', body)          # already published: a no-op
+        self.assertNotIn("raise SystemExit", body)   # a push failure is reported, not fatal

@@ -488,7 +488,47 @@ def main() -> int:
 
     print(f"\n  source   https://github.com/{args.repo}/releases/latest/download/altstore.json")
     print(f"  ipa      {download}  ({len(data)} bytes)")
+    ensure_hermeyd_tag(args.repo)
     return 0
+
+
+def ensure_hermeyd_tag(repo: str) -> str | None:
+    """Make sure a `hermeyd-v<version>` release exists for the version in the tree.
+
+    The app's About row asks the host for its update state, and hermeyd answers from the
+    repository's releases: a bump to `hermeyd/Cargo.toml` with no matching tag means the feed
+    has no hermeyd release at all, which the app can only report as "could not check". Tagging
+    here, at the one place every release goes through, is what stops that from being forgotten.
+    Idempotent: an existing tag (or no hermeyd version to read) is a no-op, and a push failure is
+    reported without failing the release that has already shipped.
+    """
+    manifest = Path(__file__).resolve().parent.parent.parent / "hermeyd" / "Cargo.toml"
+    try:
+        text = manifest.read_text()
+    except OSError as error:
+        print(f"  hermeyd   tag skipped: {error}")
+        return None
+    found = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    if not found:
+        print("  hermeyd   tag skipped: no version in hermeyd/Cargo.toml")
+        return None
+    tag = f"hermeyd-v{found.group(1)}"
+    try:
+        existing = subprocess.run(["git", "ls-remote", "--tags", "origin", tag],
+                                  capture_output=True, text=True)
+        if existing.returncode == 0 and existing.stdout.strip():
+            print(f"  hermeyd   {tag} already published")
+            return tag
+    except OSError:
+        pass
+    for cmd in (["git", "tag", "-f", tag],
+                ["git", "push", "-q", "-f", "origin", tag]):
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"  hermeyd   could not publish {tag}: {result.stderr.strip()}")
+            return None
+    print(f"  hermeyd   {tag} pushed (its release workflow builds the binaries)")
+    return tag
 
 
 if __name__ == "__main__":
