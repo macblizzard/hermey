@@ -4,6 +4,20 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **Rebindable keyboard shortcuts, in Settings → Shortcuts.** Every key the Mac app answers to is now
+  one row in one registry — its id, what it does, which menu it lives in, and the combination it holds —
+  and the menu bar, the ⌘K palette's hints and the new **Shortcuts** tab all read that table instead of
+  spelling combinations of their own. Each row has a recorder (press the field, then the combination;
+  Escape cancels, ⌫ clears it), a per-row `↺` and one **Restore Defaults**; bindings are stored per app
+  in `UserDefaults` (`hermey.shortcuts`, overrides only, unknown ids ignored) so a build that adds an
+  action needs no migration. Two actions cannot share a combination — the row that tries names the one
+  that already has it and nothing is written — and macOS's own ⌘Q, ⌘W and ⌘, are refused outright. A
+  rebind applies immediately: SwiftUI's `.keyboardShortcut` cannot be rebound at runtime, so an AppKit
+  pass writes `NSMenuItem.keyEquivalent`/`keyEquivalentModifierMask` for the real items on every change
+  and again on activation. Three verbs are new to the keyboard and were only ever buttons or hints
+  before: **Copy / Edit / Delete Last Message** (⇧⌘C, ⌥⌘E, ⌘⌫), **Next / Previous Bot** (⌥⌘↓, ⌥⌘↑), and
+  **Refresh Conversation** (⌘R), which the palette had advertised for months with nothing bound to it.
+  The pane is Mac-only: the phone has no hardware keyboard to bind, so it has no such screen.
 - **Edit a saved secret, and never see it.** Every row in **Settings → Vault** — the Mac's tab and the
   phone's screen — now has **Edit**: rename the item, replace its value, or both, in one save. The value
   field starts empty and says *"Leave blank to keep the current value"*, because there is nothing to
