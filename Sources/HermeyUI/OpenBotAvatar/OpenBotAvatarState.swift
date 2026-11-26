@@ -295,12 +295,12 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
     /// How far an idle body is carried off its standing height, in the pose's own units — the
     /// hundredth of the avatar's side that `lift`, `sx` and `sy` are measured in.
     ///
-    /// Two units is 2 % of the side: the middle of the 1.5–2.5 % a hover wants, and the largest
-    /// movement in the pose that is not one of the eight states' own signals. It has to read at
-    /// every size a bot is drawn at, and it does, because it is the *side* it is a fraction of: ±2 %
-    /// is ±0.48 pt on a 24 pt row avatar, ±0.96 pt at 48 pt, ±4 pt at 200 pt. At 24 pt that is a
-    /// half-point drift over two seconds — far below what anyone would call movement at a glance and
-    /// well above the slow-motion threshold, so a list of them breathes without twitching.
+    /// Two units is 2 % of the side, the middle of the 1.5–2.5 % a hover wants: more than twice the
+    /// breath it rides on (that reaches 0.9) and less than the 2.2 swell of a celebration, the one
+    /// movement in the set that is meant to be an event. It is a fraction of the *side* and not a
+    /// number of points, so it reads at every size a bot moves at: ±2 % is ±0.48 pt on a 24 pt row
+    /// avatar, ±0.96 pt at 48 pt, ±4 pt at 200 pt. At 24 pt that is a half-point drift over two
+    /// seconds — visible as motion in a list, and nothing like a twitch.
     ///
     /// It cannot take the body out of its frame: the validator keeps every definition's body inside
     /// 6…94 of the 0…100 box (`BODY_MIN`/`BODY_MAX`), which is three times this amplitude of margin
@@ -319,9 +319,10 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
     ///
     /// Three things make this read as floating rather than pulsing, and all three are deliberate:
     /// the body's *size* is untouched (`sx` and `sy` are left exactly as the breath set them, so
-    /// nothing grows or shrinks and the channel a breath lives in stays the breath's), the motion is
-    /// symmetric about the standing height rather than a one-way lift or a hop, and it is eased at
-    /// both ends, so the body hangs at the top and at the bottom instead of changing direction.
+    /// nothing grows or shrinks and the channel a breath lives in stays the breath's); the motion is
+    /// symmetric about the height the bot stands at rather than a one-way lift or a hop, so the body
+    /// is carried and set back down; and it is one sine, so its speed falls to nothing at the top and
+    /// at the bottom and the body hangs there — where a bob turns a corner.
     ///
     /// `noise(seed, 3001)` is the per-avatar offset: a uniform turn of the cycle from the same seed
     /// hash every other clock here is phased from, so a row of idle bots drifts out of step instead
