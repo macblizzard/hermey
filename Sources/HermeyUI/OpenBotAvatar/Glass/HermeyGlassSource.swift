@@ -354,6 +354,19 @@ enum HermeyGlassSource {
             return smoothstep(edge - w, edge + w, x);
         }
 
+        /// The share of this pixel a band covers: width `halfWidth` either side of `centre`, box-
+        /// filtered over one pixel (`foot`, in points).
+        ///
+        /// A line narrower than a pixel has no business being drawn as a bright pixel or not drawn at
+        /// all — those are the two answers a point sample can give, and together they are the dotted,
+        /// stair-stepped rim. Filtering the band's own width over the pixel's width is the coverage it
+        /// would get from four samples, for the cost of two adds and a divide: at 200 pt a 0.5-pt line
+        /// fades to a dimmer set of pixels, and at 24 pt — where the whole rim is two pixels wide — the
+        /// line still arrives at its true brightness instead of snapping on and off along the contour.
+        static inline float bandCoverage(float x, float centre, float halfWidth, float foot) {
+            return clamp((halfWidth + 0.5 * foot - abs(x - centre)) / max(foot, 1e-3), 0.0, 1.0);
+        }
+
         static inline float3 sampleGlassPlate(float2 uv, float2 foot, float3 jewelTint, float detail) {
             if (kPlatePattern > 0) {
                 // Proof only. Cells are ~0.45 of a half-extent, so they are legible at 200 pt and coarse
@@ -843,7 +856,7 @@ enum HermeyGlassSource {
             // is a sub-pixel line so the contour itself stays crisp when the body is 24 pt, and the
             // band behind it is the key reflected in the bevel: together they are the polished edge.
             float rimBand = 1.0 - smoothstep(0.0, rimWidth, inset);
-            float rimCore = 1.0 - smoothstep(0.0, max(0.65, rimWidth * 0.30), inset);
+            float rimCore = bandCoverage(inset, 0.0, max(0.30, rimWidth * 0.13), foot);
             float2 rimDir = normalize(float2(-0.55, -0.80));
             float rimFacing = 0.62 + 0.38 * clamp(dot(normalize(nS.xy + float2(1e-5f)), rimDir) * 0.5 + 0.5,
                                                   0.0, 1.0);
@@ -853,7 +866,7 @@ enum HermeyGlassSource {
             // brightness is a stroked outline however thin it is.
             accum += rimLight * (rimBand * (0.55 + pose.z * tone.z)) * rimFacing * (0.25 + 0.75 * F1);
             accum += mix(rimLight, float3(1.0), 0.30)
-                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.50 * (0.35 + 0.65 * rimFacing));
+                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.55 * (0.35 + 0.65 * rimFacing));
 
             // The second line: where the light stops leaving the glass. `criticalInset` is the point of
             // the bevel whose normal is at the critical angle — solved from `rxy`/`rz`, so it sits one
@@ -862,8 +875,8 @@ enum HermeyGlassSource {
             // a TIR'd ray comes back off the wall carrying the studio behind the body, which is the
             // darkest thing in the room.
             float darkInset = criticalInset(rxy, rz);
-            float darkWidth = max(0.55, rimWidth * 0.26);
-            float darkLine = exp(-pow((inset - darkInset) / darkWidth, 2.0));
+            float darkWidth = max(0.45, rimWidth * 0.20);
+            float darkLine = bandCoverage(inset, darkInset, darkWidth, foot);
             darkLine *= smoothstep(0.30, 0.75, bodySide(inset, rxy));
             accum = mix(accum, accum * 0.30 + keyColour * 0.05,
                         clamp(darkLine, 0.0, 1.0) * 0.78 * detail);
