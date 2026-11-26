@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.677",
-          "buildVersion": "677",
-          "date": "2026-11-26T14:08:36Z",
-          "localizedDescription": "The pet's callout is now a small chat (tap to open and type, 20 messages, then New), and the avatar's glass is raymarched as a solid body: 12 interior slices, a real bevel, refraction and a caustic.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.677/Hermey-0.1.677-b677.ipa",
-          "size": 6142701,
+          "version": "0.1.679",
+          "buildVersion": "679",
+          "date": "2026-11-26T14:47:03Z",
+          "localizedDescription": "Memory you can edit: a Memory pane in every bot's settings, with the character budget and an atomic save. Fixes the launch crash (a non-finite Float trapped the glass mask).",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.679/Hermey-0.1.679-b679.ipa",
+          "size": 6184015,
           "minOSVersion": "17.0",
-          "sha256": "fa49eab3bf8ff089913527e025e591eaf7500302fbf9e578e30f6237374940e2"
+          "sha256": "7737dde0b8f3611c4d25e65537974f43e52bee5ce07120e49de28d56eb4ee7cf"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.677 (677)",
-      "identifier": "hermes-0.1.677-677",
-      "caption": "The pet's callout is now a small chat (tap to open and type, 20 messages, then New), and the avatar's glass is raymarched as a solid body: 12 interior slices, a real bevel, refraction and a caustic.",
-      "date": "2026-11-26T14:08:36Z",
+      "title": "Hermes 0.1.679 (679)",
+      "identifier": "hermes-0.1.679-679",
+      "caption": "Memory you can edit: a Memory pane in every bot's settings, with the character budget and an atomic save. Fixes the launch crash (a non-finite Float trapped the glass mask).",
+      "date": "2026-11-26T14:47:03Z",
       "tintColor": "#9A9AA0"
     }
   ],
