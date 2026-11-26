@@ -195,11 +195,21 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
         #endif
+        #if canImport(UIKit)
+        // `UIView.layer` is a non-optional `CALayer`, so optional chaining here is a compile error —
+        // the two platforms need the flag written differently, which is the whole reason for the split.
+        view.layer.isOpaque = false
+        if let metalLayer = view.layer as? CAMetalLayer {
+            metalLayer.isOpaque = false
+            metalLayer.backgroundColor = nil
+        }
+        #else
         view.layer?.isOpaque = false
         if let metalLayer = view.layer as? CAMetalLayer {
             metalLayer.isOpaque = false
             metalLayer.backgroundColor = nil
         }
+        #endif
     }
 
     /// The next frame's numbers and silhouette, from the surface the view decided on.
