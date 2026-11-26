@@ -287,7 +287,74 @@ def inner_studio(position, direction, jewel, is_tir, bottom_rel, detail):
     return tuple(c + mix(jewel[i], 1.0, 0.52) * total * boost for i, c in enumerate(col))
 
 
-def glass_plate(uv, jewel, detail):
+# ---------------------------------------------------------------- the volume
+
+# The shader's own constants, restated. Every one is pinned against the MSL by
+# `Tests/test_avatar_glass_shader.py`, so this mirror cannot drift from it silently.
+IOR = 1.50
+F0 = 0.04
+INTERIOR_STEPS = 12
+CROWN = 0.055
+PLATE_STANDOFF = 2.4
+PLATE_GAIN = 1.35
+INTERIOR_GAIN = 1.35
+ABSORPTION_OPACITY = 0.45
+PLATE_FOLD = 1.55
+
+
+def sin_critical() -> float:
+    """`sinCritical()` — the cosine of the critical angle, from `IOR` and nothing else."""
+    return math.sqrt(1.0 - 1.0 / (IOR * IOR))
+
+
+def body_side(s: float, rxy: float) -> float:
+    """`bodySide` — how much of the bevel is left at `s` points inside the outline."""
+    return max(0.0, min(1.0, (rxy - s) / max(rxy, 0.001)))
+
+
+def body_height(s: float, rxy: float, rz: float, flat_z: float) -> float:
+    """`bodyHeight` — renderer.ts:256-261, upstream's inflate solid solved for the front surface's z."""
+    side = body_side(s, rxy)
+    capped = min(s, rxy * 1.08)
+    return flat_z + CROWN * capped + rz * math.sqrt(max(0.0, 1.0 - side * side))
+
+
+def body_rise(s: float, rxy: float, rz: float) -> float:
+    """`bodyRise` — d(height)/d(inset)."""
+    if s >= rxy * 1.08:
+        return 0.0
+    side = body_side(s, rxy)
+    bevel = max(math.sqrt(max(0.0, 1.0 - side * side)), 1e-3)
+    return CROWN + rz * (side / bevel) / max(rxy, 0.001)
+
+
+def body_exit(s: float, reach: float, rxy: float, rz: float, flat_z: float) -> float:
+    """`bodyExit` — the inset the ray reaches on the back surface, in three refinements."""
+    entry = body_height(s, rxy, rz, flat_z)
+    exit_inset, walk = s, 2.0 * entry
+    for _ in range(3):
+        exit_inset = max(s, min(s + rxy, s + reach * walk))
+        walk = entry + body_height(exit_inset, rxy, rz, flat_z)
+    return exit_inset
+
+
+def fold_into_plate(v, limit: float = PLATE_FOLD):
+    """`foldIntoPlate` — the landing point, compressed smoothly so it never reaches the plate's edge."""
+    r = math.hypot(v[0], v[1])
+    if r < 1e-4:
+        return v
+    scale = limit * math.tanh(r / limit) / r
+    return (v[0] * scale, v[1] * scale)
+
+
+def footed_step(edge: float, feather: float, x: float, foot: float = 0.0) -> float:
+    """`footedStep`. The mirror has no pixel footprint — it shades one point — so `foot` is 0 here."""
+    w = max(feather, foot * 0.80)
+    return smoothstep(edge - w, edge + w, x)
+
+
+def glass_plate(uv, jewel, detail, foot=(0.0, 0.0)):
+    """`sampleGlassPlate`: upstream's cyclorama, key and pool, plus the studio's set of edges."""
     top = max(0.0, min(1.0, 0.5 - 0.5 * uv[1])) ** 0.85
     col = [mix(0.120, 0.700, top), mix(0.126, 0.740, top), mix(0.140, 0.840, top)]
     col = [c * mix(1.0, jewel[i], 0.45) for i, c in enumerate(col)]
@@ -295,19 +362,61 @@ def glass_plate(uv, jewel, detail):
     key = math.exp(-(kx * kx + ky * ky) * 1.35) * 13.0 * 0.055
     col = [c + key for c in col]
     if detail > 0.5:
-        strip = math.exp(-((uv[0] - 0.86) / 0.26) ** 2) * smoothstep_r(0.80, -0.95, uv[1])
-        col = [c + (0.90, 0.96, 1.00)[i] * (strip * 1.60) for i, c in enumerate(col)]
-    cx, cy = uv[0] / 0.90, (uv[1] - 0.94) / 0.34
+        window = (footed_step(-0.36, 0.012, uv[0], foot[0])
+                  * footed_step(0.52, 0.012, -uv[0], foot[0])
+                  * footed_step(-1.35, 0.012, uv[1], foot[1])
+                  * footed_step(0.02, 0.012, -uv[1], foot[1]))
+        col = [c * mix(1.0, 0.40, 1.0 - window) for c in col]
+        col = [c + (0.92, 0.96, 1.00)[i] * (window * mix(0.55, 1.55, top)) for i, c in enumerate(col)]
+        tube_w = max(0.030, foot[0] * 1.20)
+        tube = (math.exp(-((uv[0] - 0.70) / tube_w) ** 2)
+                * footed_step(0.34, 0.02, -uv[1], foot[1]) * footed_step(-0.95, 0.02, uv[1], foot[1]))
+        col = [c + (0.95, 0.98, 1.00)[i] * (tube * 1.90) for i, c in enumerate(col)]
+        tube2 = (math.exp(-((uv[0] + 0.22) / max(0.024, foot[0] * 1.10)) ** 2)
+                 * footed_step(0.30, 0.02, uv[1], foot[1]))
+        col = [c + (0.90, 0.94, 1.00)[i] * (tube2 * 1.20) for i, c in enumerate(col)]
+        shelf = footed_step(0.60, 0.010, uv[1], foot[1])
+        col = [c + (0.72, 0.78, 0.90)[i] * (shelf * 0.34) for i, c in enumerate(col)]
+        strip = (math.exp(-((uv[0] - 0.98) / max(0.18, foot[0] * 2.0)) ** 2)
+                 * smoothstep_r(0.80, -0.95, uv[1]))
+        col = [c + (0.90, 0.96, 1.00)[i] * (strip * 1.10) for i, c in enumerate(col)]
+    cx, cy = uv[0] / 0.90, (uv[1] - 1.35) / 0.40
     r2 = cx * cx + cy * cy
-    pool = (1.05 * math.exp(-r2 * 0.85) + 0.48 * math.exp(-r2 * 2.4)) * 3.00
+    pool = (1.05 * math.exp(-r2 * 0.85) + 0.48 * math.exp(-r2 * 2.4)) * 1.20
     return tuple(c + jewel[i] * pool for i, c in enumerate(col))
+
+
+# ---------------------------------------------------------------- the fragment
+
+
+def refract(i, n, eta):
+    """MSL's `refract`: `n` against `i`; None where the angle is past the critical one."""
+    cos_i = dot3(n, i)
+    k = 1.0 - eta * eta * (1.0 - cos_i * cos_i)
+    if k < 0:
+        return None
+    return tuple(eta * i[j] - (eta * cos_i + math.sqrt(k)) * n[j] for j in range(3))
+
+
+def reflect_dir(i, n):
+    d = dot3(n, i)
+    return tuple(i[j] - 2.0 * d * n[j] for j in range(3))
+
+
+def to_screen(n, yaw: float, pitch: float):
+    """`toScreen` — the renderer's yaw-then-pitch, model space to the screen's (y down)."""
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    return (cy * n[0] + sy * n[2],
+            sy * sp * n[0] + cp * n[1] - cy * sp * n[2],
+            -sy * cp * n[0] + sp * n[1] + cy * cp * n[2])
 
 
 def shade(surface_numbers, point):
     """One pixel of `hermeyGlassBody`, with the mask's distance field computed here."""
     half_w, half_h = surface_numbers["half"]
     centre = surface_numbers["centre"]
-    rxy, rz = surface_numbers["rxy"], surface_numbers["rz"]
+    rxy = surface_numbers["rxy"]
     half_depth = surface_numbers["halfDepth"]
     detail = surface_numbers["detail"]
     side = surface_numbers["size"]
@@ -317,6 +426,7 @@ def shade(surface_numbers, point):
     coverage = 1.0 if signed >= 0 else 0.0
     inset = max(signed, 0.0)
     outside = max(-signed, 0.0)
+    outward = (-inland[0], -inland[1])
 
     # `pow(tint, 2.2)` — sRGB in, linear optics, gamma out.
     tint = tuple(c ** 2.2 for c in TINT)
@@ -327,89 +437,128 @@ def shade(surface_numbers, point):
     trans = tuple(mix(0.97, jewel[i], min(1.0, saturation * 0.88)) for i in range(3))
     sigma = tuple(-math.log(max(c, 0.12)) * 0.62 + 0.08 for c in trans)
 
-    # The normal, from the field's gradient and the height profile's own slope.
-    dh = 0.0
-    if inset < rxy and rz > 0.0:
-        k = 1.0 - inset / rxy
-        dh = rz * k / (rxy * math.sqrt(max(1e-3, 1.0 - k * k)))
-    normal = normalise((dh * inland[0], dh * inland[1], 1.0))
-    cos_yaw, sin_yaw = math.cos(REST_YAW), math.sin(REST_YAW)
-    cos_pitch, sin_pitch = math.cos(REST_PITCH), math.sin(REST_PITCH)
-    nx, ny, nz = normal
-    screen = (cos_yaw * nx + sin_yaw * nz,
-              sin_yaw * sin_pitch * nx + cos_pitch * ny - cos_yaw * sin_pitch * nz,
-              -sin_yaw * cos_pitch * nx + sin_pitch * ny + cos_yaw * cos_pitch * nz)
-    cos1 = max(0.0, min(1.0, screen[2]))
-    f1 = 0.04 + (1 - 0.04) * (max(0.0, min(1.0, 1 - cos1)) ** 5)
+    half_extent = (max(half_w, 0.5), max(half_h, 0.5))
+    span = max(half_extent)
+    p = (point[0] - centre[0], point[1] - centre[1])
 
-    height = half_depth if (rxy <= 0.0 or inset >= rxy) else \
-        half_depth - rz + math.sqrt(max(0.0, 1.0 - (1.0 - max(0.0, inset) / rxy) ** 2)) * rz
+    # The body as a solid, from the part's own numbers: renderer.ts:186-190.
+    rz = min(max(surface_numbers["rz"], 0.0), max(half_depth, 0.001))
+    flat_z = max(0.0, half_depth - rz)
+
+    height = body_height(inset, rxy, rz, flat_z)
+    rise = body_rise(inset, rxy, rz)
     thick = max(0.0, min(1.0, height / max(half_depth, 0.001)))
+
+    normal = normalise((-rise * inland[0], -rise * inland[1], 1.0))
+    screen = to_screen(normal, REST_YAW, REST_PITCH)
+    cos1 = max(0.0, min(1.0, screen[2]))
+    f1 = F0 + (1 - F0) * (max(0.0, min(1.0, 1 - cos1)) ** 5)
 
     rd = (0.0, 0.0, -1.0)
     n1 = normalise((screen[0], screen[1], max(screen[2], 0.02)))
-    reflected = (rd[0] - 2 * dot3(rd, n1) * n1[0],
-                 rd[1] - 2 * dot3(rd, n1) * n1[1],
-                 rd[2] - 2 * dot3(rd, n1) * n1[2])
-    accum = [c * f1 for c in outer_studio(reflected, jewel, detail)]
+    refl = reflect_dir(rd, n1)
+    accum = [c * f1 for c in outer_studio(refl, jewel, detail)]
 
-    # The hood: the key's own reflection, in the body's plane.
-    hood_p = ((point[0] - centre[0]) / max(half_w, 0.5) + 0.36,
-              (point[1] - centre[1]) / max(half_h, 0.5) + 0.50)
-    ct, st = math.cos(-0.42), math.sin(-0.42)
-    hood = ((ct * hood_p[0] - st * hood_p[1]) / 0.46, (st * hood_p[0] + ct * hood_p[1]) / 0.105)
-    hood_distance = math.hypot(max(abs(hood[0]) - 1.0, 0.0), max(abs(hood[1]) - 1.0, 0.0))
-    hood_value = 1.0 - smoothstep(-0.04, 0.12, hood_distance)
-    accum = [c + hood_value * 1.9 * (0.45 + 0.55 * (1.0 - thick)) for c in accum]
+    # The key's own reflection, in the bent normal: it sweeps the shoulder rather than sitting on it.
+    shoulder = softbox(refl, (-0.52, -0.68, 0.52), (0.34, 0.24), 0.13, -0.35)
+    accum = [c + shoulder * 1.45 * (0.60 + 0.40 * (1.0 - thick)) for c in accum]
 
     weight = 1.0 - f1
     unit = max(side, side) / 100.0
     half_depth_u = half_depth / max(unit, 0.0001)
 
-    # Refraction: Snell, then the body's own optical distance.
-    cos_i = dot3(rd, n1)
-    k = 1.0 - (1.0 / 1.50) ** 2 * (1.0 - cos_i * cos_i)
-    if k < 0:
-        refracted = reflected
-        tir = True
-        optical = 0.42
+    into = refract(rd, n1, 1.0 / IOR) or reflect_dir(rd, n1)
+    into = normalise(into)
+    reach = max(0.0, min(6.0, (into[0] * inland[0] + into[1] * inland[1]) / max(-into[2], 0.06)))
+    exit_inset = body_exit(inset, reach, rxy, rz, flat_z)
+    exit_height = body_height(exit_inset, rxy, rz, flat_z)
+    path_length = (height + exit_height) / max(0.30, -into[2])
+
+    exit_rise = body_rise(exit_inset, rxy, rz)
+    n2m = normalise((-exit_rise * inland[0], -exit_rise * inland[1], -1.0))
+    n2 = to_screen(n2m, REST_YAW, REST_PITCH)
+    n2_neg = (-n2[0], -n2[1], -n2[2])
+
+    leaving = refract(into, n2_neg, IOR)
+    rear_margin = sin_critical() - dot3(into, n2)
+    rear_tir = leaving is None
+    if rear_tir:
+        leaving = normalise(reflect_dir(into, n2_neg))
+        exit_weight, refl_weight = 0.0, weight
     else:
-        refracted = (1.0 / 1.50) * rd[0] - ((1.0 / 1.50) * cos_i + math.sqrt(k)) * n1[0], \
-                    (1.0 / 1.50) * rd[1] - ((1.0 / 1.50) * cos_i + math.sqrt(k)) * n1[1], \
-                    (1.0 / 1.50) * rd[2] - ((1.0 / 1.50) * cos_i + math.sqrt(k)) * n1[2]
-        tir = False
-        total_path_u = (2.0 * half_depth_u) / max(0.30, cos1)
-        ref_scale = max(half_depth_u * 2.2, 14.0)
-        optical = total_path_u / (ref_scale + total_path_u * 0.30)
-        norm = math.sqrt(dot3(refracted, refracted)) or 1.0
-        refracted = tuple(c / norm for c in refracted)
-    exit_dir = reflected if tir else (refracted[0], refracted[1], -abs(refracted[2]))
+        leaving = normalise(leaving)
+        cos_trans = max(0.0, min(1.0, dot3(leaving, n2)))
+        f2 = F0 + (1 - F0) * ((1 - cos_trans) ** 5)
+        exit_weight = weight * (1.0 - f2)
+        refl_weight = weight * f2
 
-    travel = (max(-8.0, min(8.0, refracted[0] * (2.0 * half_depth * 1.6 / max(0.35, cos1)))),
-              max(-8.0, min(8.0, refracted[1] * (2.0 * half_depth * 1.6 / max(0.35, cos1)))))
-    uv = ((point[0] - centre[0]) / max(half_w, 0.5) * mix(0.94, 0.76, thick) + travel[0] / max(half_w, 0.5),
-          (point[1] - centre[1]) / max(half_h, 0.5) * mix(0.94, 0.76, thick) + travel[1] / max(half_h, 0.5))
-    plate = glass_plate(uv, jewel, detail)
+    exit_point = (p[0] + into[0] * path_length, p[1] + into[1] * path_length, -exit_height)
+    plate_z = -half_depth * (1.0 + PLATE_STANDOFF)
+    travel_z = (plate_z - exit_point[2]) / min(leaving[2], -0.22)
+    land = (exit_point[0] + leaving[0] * travel_z, exit_point[1] + leaving[1] * travel_z)
+    uv = fold_into_plate((land[0] / half_extent[0], land[1] / half_extent[1]))
+    surface_col = glass_plate(uv, jewel, detail)
 
-    beer = tuple(math.exp(-sigma[i] * (optical * (0.30 + 0.60 * thick))) for i in range(3))
-    through = [plate[i] * beer[i] * mix(1.15, 0.78, thick) for i in range(3)]
-    internal = inner_studio(((point[0] - centre[0]) / max(unit, 0.0001),
-                             (point[1] - centre[1]) / max(unit, 0.0001), 0.0),
-                            exit_dir, jewel, 1.0 if tir else 0.0,
-                            max(half_h, 0.5) / max(unit, 0.0001), detail)
-    through = [through[i] + internal[i] * (0.24 + 0.36 * thick) for i in range(3)]
-    accum = [accum[i] + through[i] * weight for i in range(3)]
+    path_u = path_length / max(unit, 0.0001)
+    ref_scale = max(half_depth_u * 2.2, 14.0)
+    optical = path_u / (ref_scale + path_u * 0.30)
+    beer = tuple(math.exp(-sigma[i] * optical) for i in range(3))
+    lum_through = sum(beer[i] * (0.2126, 0.7152, 0.0722)[i] for i in range(3))
+    refl_env = inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
+                            normalise(reflect_dir(into, n2_neg)), jewel, 1.0,
+                            half_extent[1] / max(unit, 0.0001), detail)
 
-    rim_width = max(1.0, 0.035 * max(side, side))
+    gather = [0.0, 0.0, 0.0]
+    step = path_length / INTERIOR_STEPS
+    eye_rel = half_extent[1] / max(unit, 0.0001)
+    for i in range(INTERIOR_STEPS):
+        walked = (i + 0.5) * step
+        pos = ((p[0] + into[0] * walked) / max(unit, 0.0001),
+               (height - walked) / max(unit, 0.0001),
+               0.0)
+        slice_col = inner_studio(pos, into, jewel, 1.0 if rear_tir else 0.0, eye_rel, detail)
+        for j in range(3):
+            gather[j] += slice_col[j] * math.exp(-sigma[j] * (optical * (walked / max(path_length, 0.001))))
+    gather = [g / INTERIOR_STEPS for g in gather]
+    through = [(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i] for i in range(3)]
+
+    graze_k = 1.5 * rxy / max(rz, 0.001)
+    rim_width = max(1.0, rxy * (1.0 - graze_k / math.sqrt(1.0 + graze_k * graze_k)))
+
+    # The far face: the same field, read one depth vector away. `theta` is the depth axis in the
+    # screen's own space, exactly as the shader derives it from the pose.
+    depth_axis = to_screen((0.0, 0.0, -1.0), REST_YAW, REST_PITCH)
+    back_shift = (depth_axis[0] * 2.0 * half_depth, depth_axis[1] * 2.0 * half_depth)
+    back_point = (point[0] - back_shift[0], point[1] - back_shift[1])
+    back_signed, _ = distance_to_outline(back_point, surface_numbers["outline"])
+    back_inset = max(back_signed, 0.0)
+    back_outside = max(-back_signed, 0.0)
+    back_edge = (1.0 - smoothstep(0.0, rim_width * 1.35, back_inset)) * smoothstep(0.15, 0.85, coverage)
+    back_wall = smoothstep(0.0, rim_width * 2.2, back_outside)
+    through = [through[i] + mix(jewel[i], 1.0, 0.45) * (back_edge * 0.55 * detail) for i in range(3)]
+    through = [through[i] * mix(1.0, 0.46, back_wall * 0.75 * detail) for i in range(3)]
+
+    probe = inset + max(0.75, rxy * 0.10)
+    bend = abs(body_rise(probe, rxy, rz) - rise) / max(probe - inset, 0.001)
+    focus = max(0.0, min(3.0, path_length * bend * 0.10)) ** 2
+    key_colour = tuple(mix(jewel[i], (1.0, 0.96, 0.90)[i], 0.62) for i in range(3))
+    through = [through[i] + (gather[i] * 0.55 + key_colour[i] * 0.45) * (focus * 0.55 * detail)
+               for i in range(3)]
+
+    accum = [accum[i] + through[i] * exit_weight for i in range(3)]
+    accum = [accum[i] + refl_env[i] * beer[i] * 1.22 * refl_weight for i in range(3)]
+    tir_energy = refl_weight * 0.65
+    direct_trans = exit_weight * smoothstep(0.10, -0.70, leaving[2])
+
     rim_band = 1.0 - smoothstep(0.0, rim_width, inset)
     rim_dir = normalise((-0.55, -0.80, 0.0))
     facing = 0.62 + 0.38 * max(0.0, min(1.0, (screen[0] * rim_dir[0] + screen[1] * rim_dir[1]) * 0.5 + 0.5))
     rim_light = tuple(mix(jewel[i], (0.95, 1.0, 1.0)[i], 0.55) for i in range(3))
     accum = [c + rim_light[i] * (rim_band * (0.55 + surface_numbers["rim"] * rim_gain)) * facing
-             for i, c in enumerate(accum)]
+             * (0.25 + 0.75 * f1) for i, c in enumerate(accum)]
 
-    inner_line = 1.0 - smoothstep(rim_width * 0.25, rim_width * 0.90, abs(inset - rim_width * 1.70))
-    accum = [c + mix(jewel[i], 1.0, 0.70) * (inner_line * 0.95) for i, c in enumerate(accum)]
+    rear_line = (1.0 - smoothstep(0.0, 0.18, abs(rear_margin))) * detail
+    accum = [mix(c, c * 0.34 + key_colour[i] * 0.06, rear_line * 0.72) for i, c in enumerate(accum)]
 
     accum = [c * exposure for c in accum]
     peak = max(accum)
@@ -422,22 +571,24 @@ def shade(surface_numbers, point):
     lum = max(accum)
     edge_transparency = mix(0.36, 0.68, (max(0.0, min(1.0, 1 - cos1))) ** 1.55)
     alpha = max(0.34, min(0.97, edge_transparency * 1.15
+                           - 0.06 * max(0.0, min(1.0, direct_trans))
                            - 0.08 * weight
-                           + 0.34 * smoothstep(0.30, 0.95, lum)
+                           + 0.30 * smoothstep(0.30, 0.95, lum)
+                           + 0.16 * max(0.0, min(1.0, tir_energy))
+                           + ABSORPTION_OPACITY * (1.0 - lum_through)
                            + 0.30 * rim_band))
     alpha *= coverage
 
     colour = tuple(max(0.0, min(1.0, c)) ** (1 / 2.2) for c in accum)
 
-    # The contact shadow and the caustic, over the page.
-    shadow_p = math.hypot((point[0] - centre[0]) / max(half_w * 0.86, 0.5),
-                          (point[1] - centre[1] - half_h * 0.96) / max(half_h * 0.16, 0.8))
-    shadow = max((1.0 - smoothstep(0.15, 1.0, shadow_p)) * 0.55,
-                 (1.0 - smoothstep(0.0, max(1.5, 0.055 * max(side, side)), outside)) * (1.0 if outside > 0 else 0.0) * 0.30)
-    caustic_p = math.hypot((point[0] - centre[0]) / max(half_w * 0.46, 0.5),
-                           (point[1] - centre[1] - half_h * 1.03) / max(1.0, half_h * 0.055))
-    caustic = (1.0 - smoothstep(0.10, 1.0, caustic_p)) * 0.75
-    caustic_light = tuple(mix(jewel[i], (1.0, 0.92, 0.80)[i], 0.55) for i in range(3))
+    # The contact shadow and the pool, both read off the field's outside distance.
+    soft = max(1.0, 0.05 * max(side, side))
+    shadow = math.exp(-outside / (soft * 0.40)) * smoothstep(0.0, 0.4, outside) * 0.62
+    band = math.exp(-(((outside - soft * 0.22) / (soft * 0.42)) ** 2))
+    bottom = max(0.0, min(1.0, 0.45 + 0.75 * outward[1]))
+    caustic = band * bottom * smoothstep(0.0, 0.4, outside) * 0.62
+    caustic_light = tuple(mix(jewel[i], (1.0, 0.94, 0.84)[i], 0.66) * (0.55 + 0.45 * (1.0 - thick))
+                          for i in range(3))
 
     premultiplied = tuple(colour[i] * alpha + caustic_light[i] * (caustic * (1.0 - alpha)) for i in range(3))
     out_alpha = max(alpha + shadow * (1.0 - alpha), caustic * (1.0 - alpha))
@@ -448,7 +599,7 @@ def shade(surface_numbers, point):
     return {
         "inset": inset, "alpha": alpha, "colour": colour, "over": over_page,
         "overSurface": over_surface, "lum": max(over_page), "thick": thick, "f1": f1,
-        "optical": optical,
+        "optical": optical, "path": path_length, "rearTIR": rear_tir, "beer": beer,
     }
 
 

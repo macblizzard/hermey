@@ -21,11 +21,23 @@ distance field). It renders the `cat` preset offscreen at **24, 48 and 200 pt** 
 | --- | --- |
 | `cat-<state>-<side>pt-canvas.png` | composited over the dark theme canvas `#0A0A0A` — what a person sees |
 | `cat-<state>-<side>pt-surface.png` | the same pixels over the raised surface `#232323` — the translucency proof |
+| `cat-<state>-<side>pt-pattern.png` | the **refraction proof**: the same pass over a checkerboard |
 | `cat-<state>-<side>pt-zoom.png` | nearest-neighbour ×N of the 24 and 48 pt cases |
 
 It also prints, per case, `cover` (pixels the body covers), `mean` and `max` alpha inside the
 silhouette. Two composites are the point: a translucent body changes with what is behind it, an
 opaque one does not.
+
+`-pattern.png` is the one that shows *refraction*. The shader cannot sample what is behind the view,
+so a composite of a pattern would only prove translucency; instead the tool recompiles the same MSL
+string with `kPlatePattern` set to 1, which swaps the studio for a coarse checkerboard **inside the
+plate** — i.e. at the far end of the traced ray. Straight cells mean the ray went through flat glass,
+compressed cells mean a lens, and cells that fold back on themselves mean the ray turned over at the
+wall. Everything else (absorption, the rim, the two edges) is unchanged, so the picture is this pass
+with one constant different.
+
+Every case is rendered `--supersample 2` (the default) and box-filtered down, so the silhouette, the
+plate's edges and the two rim lines are antialiased in the picture.
 
 ## `numbers.py` — the arithmetic (needs nothing)
 

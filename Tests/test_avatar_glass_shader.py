@@ -385,9 +385,10 @@ class NoPerFrameAllocation(unittest.TestCase):
                       read(LAYER))
 
     def test_the_texture_covers_what_the_shader_may_sample(self):
-        # The refraction reads 8 points out and the mask is the whole view, so a sample at the
-        # body's edge is still on a pixel — the job `maxSampleOffset` did for `.layerEffect`.
-        self.assertIn("float2(-8.0), float2(8.0)", msl_code())
+        # The traced ray lands up to two body-widths out, and `foldIntoPlate` keeps that inside ±1.55
+        # of the plate, so no sample leaves the texture; the back face is read one depth vector away,
+        # which the mask's own overdraw covers.
+        self.assertIn("foldIntoPlate(land / halfExtent, 1.55)", msl_code())
         layer = read(LAYER)
         self.assertIn("makeMask(path: path, points: surface.size, pixels: pixels", layer)
         self.assertIn("scaleBy(x: CGFloat(width) / points.width, y: -CGFloat(height) / points.height",
@@ -531,24 +532,34 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
     def test_the_backdrop_is_a_studio_not_the_body(self):
         source = msl_code()
         self.assertIn("static inline float3 sampleGlassPlate(", source)
-        self.assertIn("float3 plate = sampleGlassPlate(plateUV, jewelTint, detail);", source)
+        self.assertIn("float3 plate = sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);", source)
         # The plate is lit neutral and carries the body's hue at 45 %, not in full.
         self.assertIn("col *= mix(float3(1.0), jewelTint, 0.45);", source)
-        self.assertIn("float3 through = plate * beer * mix(1.15, 0.78, thick);", source)
+        self.assertIn("float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;", source)
+        # The geometry is renderer.ts's inflate solid, not a quarter circle of our own.
+        self.assertIn("return flatZ + kCrown * capped + rz * sqrt(max(0.0, 1.0 - side * side));", source)
+        self.assertIn("float flatZ = max(0.0, halfDepth - rz);", source)
+        self.assertIn("#define kCrown 0.055", source)
+        # The proof's own studio is a switch in this same string, so the pictures show this transform.
+        self.assertIn("#define kPlatePattern 0", source)
         # The key's own reflection on the face, and the rear surface seen through the front.
-        self.assertIn("float hood = 1.0 - smoothstep(-0.04, 0.12", source)
-        self.assertIn("abs(inset - rimWidth * 1.70)", source)
+        self.assertIn("float shoulder = softbox(reflDirS, float3(-0.52, -0.68, 0.52)", source)
+        self.assertIn("float rearMargin = sinCritical() - dot(into, n2S);", source)
         # The tint is decoded to linear light before the optics, and gamma-encoded exactly once after.
         self.assertIn("float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));", source)
         self.assertEqual(source.count("1.0 / 2.2"), 1)
         # A solid piece of glass: thickness, a lit rim, a key on the face, and something under it.
         self.assertIn("float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);", source)
+        # The geometry is renderer.ts's inflate solid, not a quarter circle of our own.
+        self.assertIn("return flatZ + kCrown * capped + rz * sqrt(max(0.0, 1.0 - side * side));", source)
+        self.assertIn("float flatZ = max(0.0, halfDepth - rz);", source)
+        self.assertIn("#define kCrown 0.055", source)
         self.assertIn("float rimFacing = 0.62", source)
-        self.assertIn("float caustic = (1.0 - smoothstep(0.10, 1.0, length(causticP))) * 0.75;", source)
-        self.assertIn("float shadowAlpha = max(shadowShape * 0.55, contact * 0.30);", source)
+        self.assertIn("float caustic = poolBand * bottom * bottom * smoothstep(0.0, 0.4, outside) * 0.95;", source)
+        self.assertIn("float shadowAlpha = exp(-outside / (soft * 0.40))", source)
         # The studio it stands in is the plate's, in the body's own hue, not a flat tint.
-        self.assertIn("sampleGlassPlate(plateUV, jewelTint, detail)", source)
-        self.assertIn("travel = clamp(travel, float2(-8.0), float2(8.0));", source)
+        self.assertIn("sampleGlassPlate(plateUV, plateFoot, jewelTint, detail)", source)
+        self.assertIn("float2 plateFoot = fwidth(plateUV) + 1e-5;", source)
 
     def test_the_layer_is_transparent_end_to_end(self):
         layer = read(LAYER)
@@ -608,24 +619,32 @@ class TheProofToolIsOptIn(unittest.TestCase):
         # drift from the shader — every literal it relies on is pinned here.
         mirror = read(self.PROOF / "numbers.py")
         source = msl()
-        for literal in ("mix(1.15, 0.78, thick)",
-                        "math.exp(-sigma[i] * (optical * (0.30 + 0.60 * thick)))",
+        for literal in ("(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i]",
+                        "path_u / (ref_scale + path_u * 0.30)",
                         "0.62 + 0.38 *",
-                        "1.0 - smoothstep(rim_width * 0.25, rim_width * 0.90",
+                        "sin_critical() - dot3(into, n2)",
                         "edge_transparency * 1.15",
                         "mix(0.120, 0.700, top)",
                         "mix(1.0, jewel[i], 0.45)",
-                        "max(0.34, min(0.97,"):
+                        "max(0.34, min(0.97,",
+                        "return flat_z + CROWN * capped + rz * math.sqrt(",
+                        "(0.25 + 0.75 * f1)"):
             self.assertIn(literal, mirror, literal)
-        for literal in ("mix(1.15, 0.78, thick)",
-                        "opticalDist * (0.30 + 0.60 * thick)",
+        for literal in ("float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;",
+                        "float optical = pathU / (refScale + pathU * 0.30);",
                         "0.62 + 0.38 * clamp(",
-                        "abs(inset - rimWidth * 1.70)",
+                        "float rearMargin = sinCritical() - dot(into, n2S);",
                         "edgeTransparency * 1.15",
                         "float3(0.120, 0.126, 0.140), float3(0.700, 0.740, 0.840)",
                         "mix(float3(1.0), jewelTint, 0.45)",
-                        "0.34, 0.97"):
+                        "0.34, 0.97",
+                        "return flatZ + kCrown * capped + rz * sqrt(",
+                        "(0.25 + 0.75 * F1)"):
             self.assertIn(literal, source, literal)
+        # The geometry's two constants are one number on both sides, and the mirror reads them.
+        self.assertIn("#define kInteriorSteps 12u", source)
+        self.assertIn("INTERIOR_STEPS = 12", mirror)
+        self.assertIn("CROWN = 0.055", mirror)
 
     def test_it_runs_from_a_shell_script_on_the_mac(self):
         script = read(self.PROOF / "render.sh")
