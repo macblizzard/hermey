@@ -364,8 +364,11 @@ class BlockedIsCalm(unittest.TestCase):
         paint = read(PAINT)
         blocked = case_block(paint.split("var glassPulse: GlassPulse {")[1], "blocked")
         self.assertIn("desaturate: 0.15", blocked)
-        self.assertIn("let base = spec.desaturatesWhenBlocked && light.desaturate > 0",
-                      paint)
+        # One rule, in `bodyColor`, read by every glass surface — the six painted layers, the flat
+        # fill the shader is handed, and the shader's own tint.
+        self.assertIn("let base = bodyColor(spec, light: light, tint: tint)", paint)
+        self.assertIn("let raw = MaterialColor(tint)", paint)
+        self.assertIn("spec.desaturatesWhenBlocked && light.desaturate > 0", paint)
         self.assertIn("raw.desaturated(by: light.desaturate)", paint)
 
     def test_desaturation_is_around_luminance_not_a_new_colour(self):

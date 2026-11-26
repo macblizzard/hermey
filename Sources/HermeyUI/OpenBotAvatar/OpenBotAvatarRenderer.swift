@@ -54,6 +54,24 @@ public enum OpenBotAvatarRenderer {
     /// The default eye ink.
     public static let defaultInk = Color(red: 0.082, green: 0.082, blue: 0.082)
 
+    /// Which of the three things one frame draws, for a surface that has to composite them apart.
+    ///
+    /// A `Canvas` is one pass, and `.all` is that pass. The glass shader needs the body on its own —
+    /// a `.layerEffect` covers everything in the layer it is applied to, and the shader must not touch
+    /// an eye or a ribbon — so the view draws the body's `Canvas` between the ribbons' and the
+    /// eyes'. Three passes, in the renderer's own paint order, so a shader surface composes exactly
+    /// the frame the one-pass drawing would.
+    public enum Pass: Hashable, Sendable {
+        case all
+        case behind
+        case body
+        case over
+
+        var drawsBehind: Bool { self == .all || self == .behind }
+        var drawsBody: Bool { self == .all || self == .body }
+        var drawsOver: Bool { self == .all || self == .over }
+    }
+
     /// Paint one frame.
     ///
     /// `material` and `backdrop` are the face's material and where it is drawn. The material is
@@ -66,6 +84,13 @@ public enum OpenBotAvatarRenderer {
     /// hold at rest). The pose has already dropped the ribbons and the celebration's turn by then;
     /// this is the one part the pose cannot express. `time` is the animation clock the marks are laid
     /// out on — the same clock the pose was computed from, so a mark and its body agree.
+    ///
+    /// `pass` splits one frame into the pieces a shader surface has to composite separately: the
+    /// ribbons that pass behind the body, the body, and everything drawn over it (the eyes, the front
+    /// of the ribbons, the marks). `.all` is one pass, which is what every surface but the glass
+    /// shader draws. `route` is the caller's answer from `BotAvatarGlassRoute.decide` — this function
+    /// does not choose, it follows: `.metal` draws the body as the flat silhouette the fragment pass
+    /// replaces, `.canvas` paints the material's six layers.
     public static func draw(_ model: OpenBotAvatarModel,
                             pose: OpenBotAvatarPose,
                             material: BotAvatarMaterial = .solid,
@@ -75,7 +100,9 @@ public enum OpenBotAvatarRenderer {
                             color: Color,
                             ink: Color,
                             still: Bool = false,
-                            time: Double = 0) {
+                            time: Double = 0,
+                            pass: Pass = .all,
+                            route: BotAvatarGlassRoute = .canvas) {
         let volume = model.volume
         let side = min(size.width, size.height)
         guard side > 0 else { return }
@@ -103,7 +130,10 @@ public enum OpenBotAvatarRenderer {
         let rim = OpenBotAvatarRibbons.follow(pose.cage >= 0.5 ? model.ribbonRims.cage
                                                                : model.ribbonRims.work,
                                               lift: pose.lift, sx: pose.sx, sy: pose.sy, box: volume.box)
-        let ribbons = pose.ribbons > 0.01
+        // Only the passes that draw a ribbon build one: a body-only pass (the glass shader's) must not
+        // pay for the hoops it will never see.
+        let showsRibbons = pass.drawsBehind || pass.drawsOver
+        let ribbons = showsRibbons && pose.ribbons > 0.01
             ? OpenBotAvatarRibbons.pieces(box: volume.box, presence: pose.ribbons, seed: seed,
                                           sweep: pose.sweep, cage: pose.cage, rim: rim)
             : []
@@ -113,43 +143,57 @@ public enum OpenBotAvatarRenderer {
         // among the ribbons are upstream's; only their distance from the body gives way, and only on
         // a body wide enough to need it.
         let fit = ribbonFit(rim)
-        draw(ribbons: ribbons.filter { !$0.front }, into: &context, viewport: viewport, color: color,
-             fit: fit, about: rim)
-
-        switch spec.fill {
-        case .flat:
-            // The 0.1.648 body: the inferred volume's cross-sections, back to front, each filled
-            // flat. Nothing below this line changed when materials arrived.
-            var shapes: [BotAvatarMaterialRender.Shape] = []
-            if bodyScale > 0.001 {
-                for slice in drawnSlices(volume: volume, basis: basis) {
-                    let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
-                    shapes.append(.slice(path: slice.path,
-                                         transform: shrink.concatenating(plane)
-                                             .concatenating(root)
-                                             .concatenating(viewport),
-                                         evenOdd: slice.evenOdd))
-                }
-            }
-            var bodyContext = context
-            BotAvatarMaterialRender.render(shapes, spec: spec, plan: plan, light: pose.light,
-                                           backdrop: backdrop, tint: color, side: side,
-                                           box: CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
-                                                       width: side, height: side),
-                                           into: &bodyContext)
-        case .ramp:
-            // One silhouette, painted from the material's spec. The front plane (z = 0) is the
-            // outline the slice stack draws its core from, so the shape is the same one Solid
-            // shows; the layers over it are what make it glass.
-            let face = planeTransform(basis: basis, z: 0, pivot: pivot)
-                .concatenating(root)
-                .concatenating(viewport)
-            let box = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
-                             width: side, height: side)
-            BotAvatarMaterialRender.render([.silhouette(bodyScale > 0.001 ? model.silhouette.applying(face) : Path())],
-                                           spec: spec, plan: plan, light: pose.light, backdrop: backdrop,
-                                           tint: color, side: side, box: box, into: &context)
+        if pass.drawsBehind {
+            draw(ribbons: ribbons.filter { !$0.front }, into: &context, viewport: viewport,
+                 color: color, fit: fit, about: rim)
         }
+
+        if pass.drawsBody, route == .metal {
+            // The glass shader's base: the silhouette filled flat, in the same tint every layer of the
+            // painted material starts from. Nothing of the material is painted here — the fragment
+            // pass replaces every pixel inside this fill — which is why this is not a call through
+            // `BotAvatarMaterialRender.render`: there is no layer to paint, only a shape to cover.
+            let face = bodyTransform(model, pose: pose, size: size)
+            var layer = context
+            layer.fill(model.silhouette.applying(face),
+                       with: .color(OpenBotAvatarMaterialPaint.bodyColor(spec, light: pose.light,
+                                                                        tint: color).color))
+        } else if pass.drawsBody {
+            switch spec.fill {
+            case .flat:
+                // The 0.1.648 body: the inferred volume's cross-sections, back to front, each filled
+                // flat. Nothing below this line changed when materials arrived.
+                var shapes: [BotAvatarMaterialRender.Shape] = []
+                if bodyScale > 0.001 {
+                    for slice in drawnSlices(volume: volume, basis: basis) {
+                        let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
+                        shapes.append(.slice(path: slice.path,
+                                             transform: shrink.concatenating(plane)
+                                                 .concatenating(root)
+                                                 .concatenating(viewport),
+                                             evenOdd: slice.evenOdd))
+                    }
+                }
+                var bodyContext = context
+                BotAvatarMaterialRender.render(shapes, spec: spec, plan: plan, light: pose.light,
+                                               backdrop: backdrop, tint: color, side: side,
+                                               box: CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
+                                                           width: side, height: side),
+                                               into: &bodyContext)
+            case .ramp:
+                // One silhouette, painted from the material's spec. The front plane (z = 0) is the
+                // outline the slice stack draws its core from, so the shape is the same one Solid
+                // shows; the layers over it are what make it glass.
+                let face = bodyTransform(model, pose: pose, size: size)
+                let box = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
+                                 width: side, height: side)
+                BotAvatarMaterialRender.render([.silhouette(bodyScale > 0.001 ? model.silhouette.applying(face) : Path())],
+                                               spec: spec, plan: plan, light: pose.light, backdrop: backdrop,
+                                               tint: color, side: side, box: box, into: &context)
+            }
+        }
+
+        guard pass.drawsOver else { return }
         // The eyes ride the surface, so they are drawn over the body: one pair, once per frame, for
         // every state — there is no gate here that a state could reach to take its face away.
         if bodyScale > 0.001 {
@@ -187,6 +231,26 @@ public enum OpenBotAvatarRenderer {
             cosYaw = cos(yaw); sinYaw = sin(yaw)
             cosPitch = cos(pitch); sinPitch = sin(pitch)
         }
+    }
+
+    /// The whole transform the body's front plane is drawn with: the plane at z = 0, the body's own
+    /// motion, and the viewport.
+    ///
+    /// One place, three readers — the painted ramp's silhouette, the glass shader's coverage fill, and
+    /// the numbers that fill describes itself with (`BotAvatarGlassSurface.make`) — so the surface the
+    /// shader lights is the surface the `Canvas` filled, whichever way the pose has turned it.
+    static func bodyTransform(_ model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
+                              size: CGSize) -> CGAffineTransform {
+        let side = min(size.width, size.height)
+        let unit = side / 100
+        let viewport = CGAffineTransform(translationX: (size.width - side) / 2,
+                                         y: (size.height - side) / 2)
+            .scaledBy(x: unit, y: unit)
+        let basis = ViewBasis(yaw: pose.yaw, pitch: pose.pitch)
+        let base = CGPoint(x: model.volume.box.center.x, y: model.volume.box.maxY)
+        return planeTransform(basis: basis, z: 0, pivot: model.volume.pivot)
+            .concatenating(rootTransform(pose: pose, base: base))
+            .concatenating(viewport)
     }
 
     /// Orthographic projection of the plane at depth `z`, pivoting on `pivot` at z = 0 — the same
@@ -479,12 +543,27 @@ public final class OpenBotAvatarModel {
     private static var cache: [String: OpenBotAvatarModel] = [:]
     private static let cacheLimit = 64
 
+    /// The body's own inflation numbers, for the glass shader: the deepest part's inset radius and
+    /// rise, and its half depth, in the definition's units.
+    ///
+    /// Built once with the volume — the parts never change after that — so a frame reads three
+    /// doubles instead of walking the parts, and nothing is allocated to ask. The shader scales them
+    /// by the frame's own points-per-unit (`BotAvatarGlassSurface.make`).
+    let glassProfile: (rxy: Double, rz: Double, halfDepth: Double)
+
     private init(definition: BotAvatarDefinition, volume: OpenBotAvatarVolume) {
         self.definition = definition
         self.volume = volume
         var silhouette = Path()
         for part in volume.parts { silhouette.addPath(part.core.path) }
         self.silhouette = silhouette
+        var rxy = 0.0, rz = 0.0, halfDepth = 0.0
+        for part in volume.parts {
+            rxy = Swift.max(rxy, part.rxy)
+            rz = Swift.max(rz, part.rz)
+            halfDepth = Swift.max(halfDepth, part.depth / 2)
+        }
+        self.glassProfile = (rxy, rz, halfDepth)
     }
 
     /// The model for a definition, or nil when the contract refuses it (a caller that already

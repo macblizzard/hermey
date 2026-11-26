@@ -478,7 +478,8 @@ class ReducedMotionStillCalmsTheNewPieces(unittest.TestCase):
         # a presence of 0.01 (effects.ts:241).
         self.assertIn("pose.ribbons = reducedMotion ? 0 : min(1", branch("working"))
         self.assertIn("if k <= 0.01 { return [] }", read(RIBBONS))
-        self.assertIn("let ribbons = pose.ribbons > 0.01", read(RENDERER))
+        # The presence gate is the pose's; it is applied inside the passes that draw a ribbon.
+        self.assertIn("let ribbons = showsRibbons && pose.ribbons > 0.01", read(RENDERER))
 
     def test_done_does_not_turn(self) -> None:
         done = branch("done")
