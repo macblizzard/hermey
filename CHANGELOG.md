@@ -1862,3 +1862,11 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   host answered 404 and the app swallowed it silently — which is why the row sat on a stale 0.8.9 until a hermeyd
   restart forced a reconnect. The press now asks correctly, logs one line, reports a failure on the row, and the
   version shown is always the host's own `current`. A published release the host has not offered reads as news.
+
+## [0.1.682] — 2026-11-26
+
+### Added
+- **The bot list breathes now.** Idle faces in the sidebar float too, driven by one shared 3 Hz clock: 1.6 pt of
+  drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not
+  key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that
+  scrolls away settles to rest.
