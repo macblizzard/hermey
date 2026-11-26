@@ -23,8 +23,8 @@ SOURCES=(
   Sources/HermeyUI/BotAvatarIdentity.swift
   "$AVATAR/BotAvatarDefinition.swift"
   Sources/HermeyUI/BotAvatarGeometry.swift
-  Sources/HermeyUI/BotAvatarMaterial.swift
-  Sources/HermeyUI/BotAvatarMaterialPaint.swift
+  "$AVATAR/BotAvatarMaterial.swift"
+  "$AVATAR/BotAvatarMaterialPaint.swift"
   "$AVATAR/OpenBotAvatarEyes.swift"
   "$AVATAR/OpenBotAvatarEyeOverride.swift"
   "$AVATAR/OpenBotAvatarMarks.swift"
