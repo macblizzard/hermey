@@ -216,8 +216,15 @@ enum HermeyGlassSource {
         /// trip, and how hot the crease is where two bevels meet. Both are gains on light the terms above
         /// already measured — never a colour invented here.
         #define kBounceGain 1.05
-        #define kJoinGain 0.90
-        #define kJoinFresnel 1.60
+        #define kJoinGain 0.85
+        /// The caustic's local thickness: how far into the body the probe is stepped (a fraction of the
+        /// inset radius, so it is the same part of the form at every size), how much closer and narrower
+        /// the landing is where the wall is thin, and how much hotter the tighter focus is.
+        #define kThinProbe 0.55
+        #define kThinLanding 0.35
+        #define kThinWidth 0.55
+        #define kThinBright 1.45
+
         /// The junction's stencil, in pixels: four taps this far out give the field's own second
         /// difference, which is the crease. One point, so the ridge is the junction's own and dies
         /// within two points of it — a stencil twice this wide gives a ridge that survives ten points
@@ -922,10 +929,13 @@ enum HermeyGlassSource {
                              + float(bodyLayer.sample(bodySampler, (pos.xy + float2(0.0, joinTexel.y)) / pixels).g)
                              + float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, joinTexel.y)) / pixels).g);
             float joinRidge = max(0.0, (float(silhouette.g) - joinAround * 0.25) * maxInset);
-            float joinLine = smoothstep(0.06, 0.30, joinRidge);
+            float joinLine = smoothstep(0.12, 0.40, joinRidge);
             joinLine *= (1.0 - smoothstep(0.10, 0.45, inset / max(halfDepth, 0.001)))
                       * smoothstep(0.20, 0.80, coverage) * detail;
-            accum += mix(jewelTint, float3(1.0), 0.62) * (joinLine * (kJoinGain + kJoinFresnel * F1));
+            // The line's brightness is a *weighted* Fresnel, not a rising one: it is a grazing
+            // reflection along the seam, so where the seam does not face the light the line must thin
+            // out rather than never appear at all.
+            accum += mix(jewelTint, float3(1.0), 0.62) * (joinLine * kJoinGain * (0.40 + 0.60 * F1));
 
             float darkInset = criticalInset(rxy, rz);
             float darkWidth = max(0.50, rimWidth * 0.24);
@@ -988,8 +998,22 @@ enum HermeyGlassSource {
             // distance — focused by the thickness, not blurred out of the middle. Its inner edge is
             // the fold, where the mapping from the wall to the page turns over; its outer edge is a
             // short falloff, because the focus has a width.
-            float landing = causticLanding(rxy, rz, flatZ);
-            float arcWidth = max(0.60, landing * 0.055);
+            //
+            // The landing distance is a property of the *wall*, and the walls are not all one thickness:
+            // a thin fin focuses its light almost at its own edge and throws it a short way, a deep belly
+            // throws it further. So it is not one number for the whole body. The mask can be asked
+            // directly — step a probe into the body from this contour and read the *outside* distance
+            // there: it is zero inside the body and only becomes positive once the step has crossed the
+            // far wall, which happens exactly where the part is thinner than the probe. That is the ear,
+            // and only the ear.
+            float probeDistance = max(0.75, kThinProbe * rxy);
+            float2 inwardN = -normalize(float2(dfdx(outside), dfdy(outside)) + float2(1e-6f));
+            half4 probeField = bodyLayer.sample(bodySampler,
+                (pos.xy + inwardN * (probeDistance / max(foot, 1e-3))) / pixels);
+            float probeOutside = max(0.0, float(probeField.b) * maxInset);
+            float localThin = clamp(probeOutside / probeDistance, 0.0, 1.0);
+            float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);
+            float arcWidth = max(0.60, landing * 0.055) * mix(1.0, kThinWidth, localThin);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
             // Which way this part of the contour faces, from the field itself: the gradient of
             // `outside` is the outward normal of the silhouette, so its downward component is how much
@@ -1012,7 +1036,10 @@ enum HermeyGlassSource {
             // the body, at the wall's own path — no separate colour for the light on the page.
             float wallPath = 2.0 * bodyHeight(criticalInset(rxy, rz), rxy, rz, flatZ);
             float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
-            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 1.55;
+            // A tighter focus carries the same light in less room, so the thin parts of the wall throw a
+            // hotter line than the belly does.
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 1.55
+                                * mix(1.0, kThinBright, localThin);
             float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95;
             // The light that crossed the thin wall and did not converge: a warm falloff from the
             // footprint out to the arc. It is what binds the two together — without it the page under

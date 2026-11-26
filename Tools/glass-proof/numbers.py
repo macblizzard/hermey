@@ -301,8 +301,11 @@ INTERIOR_GAIN = 1.35
 ABSORPTION_OPACITY = 0.45
 PLATE_FOLD = 1.55
 BOUNCE_GAIN = 1.05
-JOIN_GAIN = 0.90
-JOIN_FRESNEL = 1.60
+THIN_PROBE = 0.55
+THIN_LANDING = 0.35
+THIN_WIDTH = 0.55
+THIN_BRIGHT = 1.45
+JOIN_GAIN = 0.85
 JOIN_STENCIL = 1.0
 
 
@@ -628,10 +631,10 @@ def shade(surface_numbers, point):
     # 6b — where two walls meet: the field's ridge at a two-point stencil, gated to the wall, lit.
     join = join_ridge(point, surface_numbers["outline"], JOIN_STENCIL)
     join_ridge_value = max(0.0, join)
-    join_line = smoothstep(0.06, 0.30, join_ridge_value)
+    join_line = smoothstep(0.12, 0.40, join_ridge_value)
     join_line *= (1.0 - smoothstep(0.10, 0.45, inset / max(half_depth, 0.001))) \
         * smoothstep(0.20, 0.80, coverage) * detail
-    accum = [accum[i] + mix(jewel[i], 1.0, 0.62) * (join_line * (JOIN_GAIN + JOIN_FRESNEL * f1))
+    accum = [accum[i] + mix(jewel[i], 1.0, 0.62) * (join_line * JOIN_GAIN * (0.40 + 0.60 * f1))
              for i in range(3)]
 
     dark_inset = critical_inset(rxy, rz)
@@ -663,8 +666,16 @@ def shade(surface_numbers, point):
     colour = tuple(max(0.0, min(1.0, c)) ** (1 / 2.2) for c in accum)
 
     # The page: the wall's light at its solved landing, and the two darks that frame it.
-    landing = caustic_landing(rxy, rz, flat_z)
-    arc_width = max(0.60, landing * 0.055)
+    # The landing distance is a property of the wall, and the walls are not all one thickness: the mask
+    # is probed a fraction of `rxy` into the body from this contour, and the *outside* distance there is
+    # positive only where the probe has crossed the far wall — the thin parts, i.e. the ears.
+    probe_distance = max(0.75, THIN_PROBE * rxy)
+    probe_point = (point[0] - outward[0] * probe_distance, point[1] - outward[1] * probe_distance)
+    probe_signed, _ = distance_to_outline(probe_point, surface_numbers["outline"])
+    probe_outside = max(0.0, -probe_signed)
+    local_thin = max(0.0, min(1.0, probe_outside / probe_distance))
+    landing = caustic_landing(rxy, rz, flat_z) * mix(1.0, THIN_LANDING, local_thin)
+    arc_width = max(0.60, landing * 0.055) * mix(1.0, THIN_WIDTH, local_thin)
     arc = math.exp(-(((outside - landing) / arc_width) ** 2))
     # The contour's own outward normal, from the field. The mirror has no screen derivatives, so it
     # takes the nearest outline point's own normal — the same quantity.
@@ -675,7 +686,8 @@ def shade(surface_numbers, point):
     arc *= smoothstep(landing - arc_width * 2.4, landing - arc_width * 0.60, outside)
     wall_path = 2.0 * body_height(critical_inset(rxy, rz), rxy, rz, flat_z)
     wall_beer = tuple(math.exp(-sigma[i] * optical_thickness(wall_path, half_depth)) for i in range(3))
-    caustic_light = tuple(mix(jewel[i], (1.0, 0.96, 0.90)[i], 0.68) * wall_beer[i] * 1.55 for i in range(3))
+    caustic_light = tuple(mix(jewel[i], (1.0, 0.96, 0.90)[i], 0.68) * wall_beer[i] * 1.55
+                          * mix(1.0, THIN_BRIGHT, local_thin) for i in range(3))
     caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95
     near_pool = math.exp(-outside / max(1.1, landing * 0.60)) * below \
         * smoothstep(1.1, 3.2, outside) * 0.34
@@ -703,6 +715,7 @@ def shade(surface_numbers, point):
         "lumThrough": lum_through,
         "caustic": caustic, "landing": landing,
         "bounce": max(bounce), "joinLine": join_line, "joinRidge": join_ridge_value,
+        "localThin": local_thin,
     }
 
 
