@@ -222,7 +222,7 @@ enum HermeyGlassSource {
         /// the landing is where the wall is thin, and how much hotter the tighter focus is.
         #define kThinProbe 0.55
         #define kThinLanding 0.35
-        #define kThinWidth 0.55
+        #define kThickWidth 2.20
         #define kThinBright 1.45
 
         /// The junction's stencil, in pixels: four taps this far out give the field's own second
@@ -1013,7 +1013,7 @@ enum HermeyGlassSource {
             float probeOutside = max(0.0, float(probeField.b) * maxInset);
             float localThin = clamp(probeOutside / probeDistance, 0.0, 1.0);
             float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);
-            float arcWidth = max(0.60, landing * 0.055) * mix(1.0, kThinWidth, localThin);
+            float arcWidth = max(0.60, landing * 0.055) * mix(kThickWidth, 1.0, localThin);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
             // Which way this part of the contour faces, from the field itself: the gradient of
             // `outside` is the outward normal of the silhouette, so its downward component is how much

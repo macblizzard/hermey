@@ -303,7 +303,7 @@ PLATE_FOLD = 1.55
 BOUNCE_GAIN = 1.05
 THIN_PROBE = 0.55
 THIN_LANDING = 0.35
-THIN_WIDTH = 0.55
+THICK_WIDTH = 2.20
 THIN_BRIGHT = 1.45
 JOIN_GAIN = 0.85
 JOIN_STENCIL = 1.0
@@ -675,7 +675,7 @@ def shade(surface_numbers, point):
     probe_outside = max(0.0, -probe_signed)
     local_thin = max(0.0, min(1.0, probe_outside / probe_distance))
     landing = caustic_landing(rxy, rz, flat_z) * mix(1.0, THIN_LANDING, local_thin)
-    arc_width = max(0.60, landing * 0.055) * mix(1.0, THIN_WIDTH, local_thin)
+    arc_width = max(0.60, landing * 0.055) * mix(THICK_WIDTH, 1.0, local_thin)
     arc = math.exp(-(((outside - landing) / arc_width) ** 2))
     # The contour's own outward normal, from the field. The mirror has no screen derivatives, so it
     # takes the nearest outline point's own normal — the same quantity.

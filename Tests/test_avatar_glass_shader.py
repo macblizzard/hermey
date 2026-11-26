@@ -701,7 +701,7 @@ class TheLightIsReadFromTheFields(unittest.TestCase):
         # Closer, narrower and hotter where the wall is thin, so the arc is not one width.
         self.assertIn("float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);",
                       source)
-        self.assertIn("float arcWidth = max(0.60, landing * 0.055) * mix(1.0, kThinWidth, localThin);",
+        self.assertIn("float arcWidth = max(0.60, landing * 0.055) * mix(kThickWidth, 1.0, localThin);",
                       source)
         self.assertIn("* mix(1.0, kThinBright, localThin)", source)
         mirror = read(self.PROOF / "numbers.py")
