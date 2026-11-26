@@ -1798,3 +1798,15 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed
 - `hermeyd` **0.8.10** (version bump with the app; no host change).
+
+## [0.1.675] — 2026-11-26
+
+### Added
+- **The avatar renderer now follows open-bot-avatar 0.5**: marks are values a pose carries, a state can be a
+  definition of your own (an id and a pose function, eased in and out like a built-in), `done` celebrates inside
+  a nine-ribbon cage on three hoops, and the eyes morph between shapes instead of swapping inside a blink.
+  Every count, angle and easing is upstream's, quoted in the source.
+- The eight states you already had are untouched by this: no mark replaces a face, and no state shrinks the body.
+
+### Changed
+- `hermeyd` **0.8.11** (version bump with the app; no host change).
