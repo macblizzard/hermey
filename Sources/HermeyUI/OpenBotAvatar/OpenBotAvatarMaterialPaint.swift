@@ -234,6 +234,75 @@ enum OpenBotAvatarMaterialPaint {
     }
 }
 
+// MARK: - The one entry point a material has
+
+/// What a material paints, and the only function that paints it.
+///
+/// Upstream's 0.5.0 collapsed a material's `paintMark` into its `render`, so a material is one
+/// function that draws the body *and every part of a mark*: that is what makes a mark a mark of the
+/// material rather than a second painter laid over it (`dom/materials/material.ts`). Ours has the same
+/// single entry, `render(_:…)`, and it is handed the body's cross-sections, the body's silhouette and
+/// a mark's parts as the same kind of value — a shape with a colour note and a transform — so there is
+/// no path by which a mark could be drawn by something that is not the material.
+///
+/// Glass draws a mark in glass: each part goes through `OpenBotAvatarMaterialPaint.paint` exactly as
+/// the body does — the same ramp, the same rim, the same contact band — so a glass bot's dots look
+/// like pieces of the glass bot. Solid fills a part flat in the body's own tint, the way it fills its
+/// slices. Upstream renders each part once into a sprite because its glass material is a WebGL pass
+/// over a distance field; a `GraphicsContext` fill is cheap enough that we paint per frame, and a part
+/// keeps its `shape` name so a retained renderer could still cache it.
+///
+/// The painter calls this once for the body and once for the marks (which paint last, over the face),
+/// as upstream's `paintCanvas` asks its material per shape in paint order.
+enum BotAvatarMaterialRender {
+
+    /// One thing to paint. A cross-section and a silhouette are the body; a mark part is a mark.
+    enum Shape {
+        /// One of the flat material's cross-sections, in its own plane.
+        case slice(path: Path, transform: CGAffineTransform, evenOdd: Bool)
+        /// The one outline a ramp material fills.
+        case silhouette(Path)
+        /// One part of a mark: its outline in its own units, where it goes, and whether it is a ball
+        /// or a capsule (which a material draws from a ready ball).
+        case mark(path: Path, transform: CGAffineTransform, round: Bool)
+    }
+
+    static func render(_ shapes: [Shape],
+                       spec: BotAvatarMaterialSpec,
+                       plan: MaterialPlan,
+                       light: OpenBotAvatarLight,
+                       backdrop: OpenBotAvatarBackdrop,
+                       tint: Color,
+                       side: CGFloat,
+                       box: CGRect,
+                       into context: inout GraphicsContext) {
+        for shape in shapes {
+            switch shape {
+            case .slice(let path, let transform, let evenOdd):
+                // The 0.1.648 drawing: each cross-section filled flat, in its own plane.
+                var layer = context
+                layer.transform = transform
+                layer.fill(path, with: .color(tint),
+                           style: FillStyle(eoFill: evenOdd, antialiased: true))
+            case .silhouette(let path):
+                guard !path.isEmpty else { break }
+                OpenBotAvatarMaterialPaint.paint(spec, light: light, backdrop: backdrop, silhouette: path,
+                                                 tint: tint, side: side, box: box, plan: plan, into: &context)
+            case .mark(let path, let transform, _):
+                let outline = path.applying(transform)
+                guard !outline.isEmpty else { break }
+                switch spec.fill {
+                case .flat: context.fill(outline, with: .color(tint))
+                case .ramp:
+                    OpenBotAvatarMaterialPaint.paint(spec, light: light, backdrop: backdrop,
+                                                     silhouette: outline, tint: tint, side: side,
+                                                     box: box, plan: plan, into: &context)
+                }
+            }
+        }
+    }
+}
+
 // MARK: - The plan: what this size draws
 
 /// What a material draws at one size. A decision made from the side and the backdrop, never from a

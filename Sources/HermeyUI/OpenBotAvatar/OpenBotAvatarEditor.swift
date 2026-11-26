@@ -201,7 +201,7 @@ public struct OpenBotAvatarEditor: View {
             OpenBotAvatarView(definition: draft,
                               color: colorHex,
                               material: material,
-                              state: state,
+                              state: OpenBotAvatarStateChoice(state),
                               size: 200,
                               label: "\(botName)'s avatar")
         }

@@ -203,7 +203,7 @@ class TheEyesAreHandedOverNotSecondClocked(unittest.TestCase):
     def test_the_rest_pose_channels_of_the_drawn_face_are_untouched(self) -> None:
         # The eye override supersedes blink, gaze and squint; the channels it does not own are still
         # set where they were — the mood's arc, the face's lean, and the ribbons a turn sweeps.
-        for channel in ("pose.arch = 1", "pose.tilt = 0.32", "pose.ribbons = min(1"):
+        for channel in ("pose.arch = 1", "pose.tilt = 0.32", "pose.ribbons = max(0, min(1, min(since / 0.1,"):
             self.assertIn(channel, self.state, f"the eye override work dropped {channel!r}")
 
 
