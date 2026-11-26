@@ -950,7 +950,7 @@ enum HermeyGlassSource {
             // of the wall stands over the page. It is smooth along the contour and costs two
             // derivatives — no extra sample, and no hand-placed ellipse. The wall's light goes down, so
             // the arc dies around the bottom corners instead of ringing the body.
-            float2 outwardN = normalize(float2(dFdx(outside), dFdy(outside)) + float2(1e-6f));
+            float2 outwardN = normalize(float2(dfdx(outside), dfdy(outside)) + float2(1e-6f));
             float under = clamp(outwardN.y, 0.0, 1.0);
             float facing = under * under;
             // A coarse gate on the same thing, so a horizontal stretch of contour below the ears (where
