@@ -99,6 +99,28 @@ public struct BotAvatarView: View {
     ///
     /// The phone has no pointer, so only the Mac passes `true`.
     public var wakesOnHover: Bool
+    /// An instant on the *bot list's* clock, or nil to hold still.
+    ///
+    /// The list owns one clock for all of its rows (`BotListClock`, three frames a second) and hands
+    /// each row that is actually on screen the current instant. An idle face draws the reference's
+    /// idle float at that instant instead of sitting as a picture — the same float a hovered row
+    /// settles into (`BotAvatarWake.frame(at:since:)` with no greeting), because a list row is being
+    /// looked at, not working. Only the *beat* is slower: the float's cycle is 1.8 s, so three
+    /// samples a second still describe it, and twenty faces at a busy face's cadence would be heat.
+    ///
+    /// It is a pose term and nothing else: the frame moves the artwork inside the row's fixed box
+    /// (`.offset`, `.scaleEffect`), so no row re-lays out and no hit area changes. Nil — the default,
+    /// and every other surface — leaves this face exactly as it was.
+    ///
+    /// Three things can refuse it, and the row's own value says the fourth: the face is not idle (a
+    /// busy face has its own motion on its own beat and the wake rule already lifts it); Reduce
+    /// Motion, the app's own switch, or a background scene (refused here as well as by the clock, so
+    /// no caller can animate a face the person asked to keep still); or `nil`, which is how an
+    /// off-screen row — or a list that is not the focused window — says "hold still". The size floor
+    /// is deliberately not applied: this is a two-percent float at the row's 38 pt — under a third of
+    /// a point per step — not a performance, and the
+    /// floor exists to stop a small face *twitching*, not drifting.
+    public var idleDriftAt: Double?
     /// The size at which this face starts moving. Defaults to the house floor; a surface where the
     /// face *is* the status (the working row) passes `0` so even a 16 pt icon moves.
     public var animatingFrom: Double
@@ -148,6 +170,7 @@ public struct BotAvatarView: View {
                 reduceMotion: Bool = false,
                 animates: Bool = true,
                 wakesOnHover: Bool = false,
+                idleDriftAt: Double? = nil,
                 animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize,
                 label: String? = nil,
                 pageBackground: Color? = nil,
@@ -161,6 +184,7 @@ public struct BotAvatarView: View {
         self.reduceMotion = reduceMotion
         self.animates = animates
         self.wakesOnHover = wakesOnHover
+        self.idleDriftAt = idleDriftAt
         self.animatingFrom = animatingFrom
         self.label = label
         self.pageBackground = pageBackground
@@ -205,6 +229,23 @@ public struct BotAvatarView: View {
                              isActiveScene: scenePhase == .active)
     }
 
+    /// The instant on the list's clock this face may float at, or nil to hold still.
+    ///
+    /// The row hands over an instant only while it is on screen and the list has a clock running, so
+    /// nil is the ordinary resting answer. What is checked *here*, rather than trusted to the caller,
+    /// is the part a person can ask for and the caller might forget: an idle face only, never a busy
+    /// one; and never under Reduce Motion, with the app's motion switch off, or in a background
+    /// scene. Those are the same three refusals `BotAvatarMotion.allows` makes for the acting, which
+    /// is why a list that loses focus does not need to hand every row a new value to stop moving —
+    /// though it does, because the clock stops publishing as well.
+    private var driftInstant: Double? {
+        guard let idleDriftAt, activity == .idle else { return nil }
+        guard !(reduceMotion || systemReduceMotion), appAllowsMotion, scenePhase == .active else {
+            return nil
+        }
+        return idleDriftAt
+    }
+
     /// The generated avatar, performing the motions the shape face already has.
     ///
     /// The drawn avatar has life of its own inside (`OpenBotAvatarState.pose` breathes it and sways
@@ -223,7 +264,10 @@ public struct BotAvatarView: View {
     /// Under Reduce Motion, with `animates` false, in a background window, below `animatingFrom`, or
     /// in a state that rests, `moves` is false: the frame is `.rest`, the override is nil (the drawn
     /// avatar keeps its own idle blinking and its own breath as it does today) and the timeline is
-    /// paused.
+    /// paused. The one exception is `idleDriftAt`: an idle row on the list's slow clock draws the
+    /// settled float — body *and* eyes — with the drawn avatar still inside it at rest, because the
+    /// float is one pose term on the outside and a second breath on the inside would be a second
+    /// clock.
     private func drawnBody(_ face: BotAvatarDocument) -> some View {
         // The identity both faces are seeded from, so a bot's hop and its drawn breath share a
         // phase rather than drifting apart.
@@ -262,7 +306,8 @@ public struct BotAvatarView: View {
                               reduceMotion: reduceMotion,
                               animatingFrom: awake ? 0 : animatingFrom,
                               label: label,
-                              eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
+                              eyeOverride: (moves || awake || driftInstant != nil)
+                                  ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil)
                 .scaleEffect(x: frame.body.scaleX, y: frame.body.scaleY)
                 .rotationEffect(.degrees(frame.body.rotate))
                 .offset(x: frame.body.translateX * size, y: frame.body.translateY * size)
@@ -271,8 +316,14 @@ public struct BotAvatarView: View {
     }
 
     /// The one place a frame is chosen for either face: woken (the pointer is on the row), acting
-    /// (the state and its performance), or at rest. A result builder cannot hold an `if` that
-    /// assigns, which is why this is a function and not a statement list.
+    /// (the state and its performance), drifting (the list's slow clock, on an idle row), or at
+    /// rest. A result builder cannot hold an `if` that assigns, which is why this is a function and
+    /// not a statement list.
+    ///
+    /// The drift asks `BotAvatarWake` for the frame a *settled* greeting draws — the reference's own
+    /// idle float and idle glance, sampled at the instant the list's clock published. That is the
+    /// point of reusing it rather than authoring a third motion: a row that has been hovered and a
+    /// row that has not draw the same float, at two beats.
     private func motionFrame(at time: Double,
                              traits: BotAvatarMotionTraits,
                              moves: Bool,
@@ -281,6 +332,9 @@ public struct BotAvatarView: View {
         if moves {
             return BotAvatarMotion.performedFrame(activity: activity, traits: traits, at: time,
                                                    side: Double(size))
+        }
+        if let drift = driftInstant {
+            return BotAvatarWake.frame(at: drift, since: nil, traits: traits)
         }
         return .rest
     }
