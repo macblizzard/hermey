@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.673",
-          "buildVersion": "673",
-          "date": "2026-11-25T23:33:06Z",
-          "localizedDescription": "Edit and resend, and delete, on any message (right-click on the Mac, long-press on the phone) \u2014 with one confirmation that says how many messages are involved, retired not destroyed. The bot's own face now animates on the Live Activity. Needs hermeyd 0.8.9.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.673/Hermey-0.1.673-b673.ipa",
-          "size": 5985348,
+          "version": "0.1.674",
+          "buildVersion": "674",
+          "date": "2026-11-26T07:35:27Z",
+          "localizedDescription": "Hotfix: Edit and resend, and Delete, actually run now. The confirmation appeared and then nothing happened, because dismissing the alert cleared the pending action before the button ran.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.674/Hermey-0.1.674-b674.ipa",
+          "size": 5986979,
           "minOSVersion": "17.0",
-          "sha256": "11ba026b86314e47ebf4dbc8d7ce6c71700c16eee991b2350c542b5d587032fd"
+          "sha256": "b7f60896e4eb3f20b29075baf8fae87be66df7eae832ef09847b8bce19f6483d"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.673 (673)",
-      "identifier": "hermes-0.1.673-673",
-      "caption": "Edit and resend, and delete, on any message (right-click on the Mac, long-press on the phone) \u2014 with one confirmation that says how many messages are involved, retired not destroyed. The bot's own face now animates on the Live Activity. Needs hermeyd 0.8.9.",
-      "date": "2026-11-25T23:33:06Z",
+      "title": "Hermes 0.1.674 (674)",
+      "identifier": "hermes-0.1.674-674",
+      "caption": "Hotfix: Edit and resend, and Delete, actually run now. The confirmation appeared and then nothing happened, because dismissing the alert cleared the pending action before the button ran.",
+      "date": "2026-11-26T07:35:27Z",
       "tintColor": "#9A9AA0"
     }
   ],
