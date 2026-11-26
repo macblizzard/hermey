@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.681",
-          "buildVersion": "681",
-          "date": "2026-11-26T16:11:18Z",
-          "localizedDescription": "Idle avatars float gently now (per-bot phase, off under Reduce Motion), and Settings > About's Check now actually reaches the host and shows its real version.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.681/Hermey-0.1.681-b681.ipa",
-          "size": 6187345,
+          "version": "0.1.682",
+          "buildVersion": "682",
+          "date": "2026-11-26T17:21:11Z",
+          "localizedDescription": "### Added\n- **The bot list breathes now.** Idle faces in the sidebar float too, driven by one shared 3 Hz clock: 1.6 pt of\n  drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not\n  key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that\n  scrolls away settles to rest.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.682/Hermey-0.1.682-b682.ipa",
+          "size": 6277217,
           "minOSVersion": "17.0",
-          "sha256": "1d25d7d5abf856c27e3c6094ce7c8169a8eb8b89b5c55e3b0ad20027b4bfe502"
+          "sha256": "a03048af5095d76fbdd0e18f924a8dd0cc750028c26a58be6df2ddf365ba86af"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.681 (681)",
-      "identifier": "hermes-0.1.681-681",
-      "caption": "Idle avatars float gently now (per-bot phase, off under Reduce Motion), and Settings > About's Check now actually reaches the host and shows its real version.",
-      "date": "2026-11-26T16:11:18Z",
+      "title": "Hermes 0.1.682 (682)",
+      "identifier": "hermes-0.1.682-682",
+      "caption": "### Added\n- **The bot list breathes now.** Idle faces in the sidebar float too, driven by one shared 3 Hz clock: 1.6 pt of\n  drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not\n  key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that\n  scrolls away settles to rest.",
+      "date": "2026-11-26T17:21:11Z",
       "tintColor": "#9A9AA0"
     }
   ],
