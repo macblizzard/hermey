@@ -77,7 +77,15 @@ let surfaceBackground = (r: 0x23, g: 0x23, b: 0x23)
 // so the number is quoted against a round value). These are the backdrops the translucency and the
 // brightness are measured on.
 let paneBackground = (r: 0x1E, g: 0x1E, b: 0x1E)
+// The control: one step up from the pane. A body that only reads on #1E1E1E has been tuned to one
+// number; this is the same judgement a shade lighter, and it is where a pure transmission would still
+// be within 5 % of the page and still be invisible.
+let controlBackground = (r: 0x2B, g: 0x2B, b: 0x2B)
 let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)
+// The busy page: a screenshot-shaped backdrop of rows, captions, icons and separators, generated here
+// because the proof has no app to screenshot. A face that reads against a flat pane and vanishes
+// against a page with content on it has not been fixed.
+let busyHeader = (r: 0x26, g: 0x26, b: 0x26)
 
 // MARK: - The app's own pieces
 
@@ -261,17 +269,24 @@ func contrastRatio(_ a: Double, _ b: Double) -> Double {
     (max(a, b) + 0.05) / (min(a, b) + 0.05)
 }
 
-/// The mean luminance of a square of `rgba`, as an sRGB value 0…1.
-func meanLuminance(_ rgba: [UInt8], width: Int, height: Int, centre: (Int, Int), side: Int) -> Double {
-    var sum = 0.0, count = 0
+/// The mean *colour* of a square of `rgba`, as an sRGB triple 0…1.
+///
+/// The mean has to be taken per channel and then turned into a luminance: averaging the three channels
+/// first and treating the result as a grey reads a saturated body as a much darker one than it is, which
+/// is how a `#BD471C` body could be reported at 1.8:1 against near-black ink when the pair is really 3.9:1.
+func meanColor(_ rgba: [UInt8], width: Int, height: Int, centre: (Int, Int), side: Int) -> (Double, Double, Double) {
+    var red = 0.0, green = 0.0, blue = 0.0
+    var count = 0
     for y in max(0, centre.1 - side / 2)..<min(height, centre.1 + side / 2) {
         for x in max(0, centre.0 - side / 2)..<min(width, centre.0 + side / 2) {
             let i = (y * width + x) * 4
-            sum += 0.2126 * Double(rgba[i]) + 0.7152 * Double(rgba[i + 1]) + 0.0722 * Double(rgba[i + 2])
+            red += Double(rgba[i]); green += Double(rgba[i + 1]); blue += Double(rgba[i + 2])
             count += 1
         }
     }
-    return count > 0 ? sum / Double(count) / 255.0 : 0
+    guard count > 0 else { return (0, 0, 0) }
+    let n = Double(count) * 255.0
+    return (red / n, green / n, blue / n)
 }
 
 func composite(_ frame: Rendered, over background: (r: Int, g: Int, b: Int)) -> [UInt8] {
@@ -285,6 +300,61 @@ func composite(_ frame: Rendered, over background: (r: Int, g: Int, b: Int)) -> 
         out[i] = blend(out[i], br)
         out[i + 1] = blend(out[i + 1], bg)
         out[i + 2] = blend(out[i + 2], bb)
+        out[i + 3] = 255
+    }
+    return out
+}
+
+/// A page with content on it, at the body's own pixel size.
+///
+/// The app's list is rows: a header, a separator, twelve captions and two icon columns on a `#1E1E1E`
+/// pane. The centre cell is left empty because that is where the body is composited — everything the
+/// face has to hold its own against is *around* it, which is the case the owner's screenshot is.
+func busyPage(width: Int, height: Int) -> [UInt8] {
+    var out = [UInt8](repeating: 0, count: width * height * 4)
+    func fill(_ x0: Int, _ y0: Int, _ x1: Int, _ y1: Int, _ colour: (r: Int, g: Int, b: Int)) {
+        for y in max(0, y0)..<min(height, y1) {
+            for x in max(0, x0)..<min(width, x1) {
+                let i = (y * width + x) * 4
+                out[i] = UInt8(colour.r); out[i + 1] = UInt8(colour.g); out[i + 2] = UInt8(colour.b)
+                out[i + 3] = 255
+            }
+        }
+    }
+    fill(0, 0, width, height, (0x1E, 0x1E, 0x1E))
+    // A header band, and the hairline under it.
+    fill(0, 0, width, height / 8, busyHeader)
+    fill(Int(Double(width) * 0.06), Int(Double(height) * 0.045),
+         Int(Double(width) * 0.44), Int(Double(height) * 0.045) + max(2, height / 60), (0x8A, 0x8A, 0x8A))
+    fill(0, height / 8, width, height / 8 + 1, (0x2C, 0x2C, 0x2C))
+    // Three columns of rows; the centre cell stays empty for the body.
+    let cellW = width / 3, cellH = height / 4
+    for column in 0..<3 {
+        for row in 0..<3 {
+            let x0 = column * cellW, y0 = height / 8 + row * cellH
+            if column == 1 && row == 1 { continue }
+            // An icon block, and two caption bars beside it.
+            fill(x0 + cellW / 8, y0 + cellH / 4, x0 + cellW / 8 + cellW / 8, y0 + cellH / 4 + cellW / 8,
+                 (0x4A, 0x4A, 0x4A))
+            fill(x0 + cellW / 3, y0 + cellH / 3, x0 + cellW - cellW / 10,
+                 y0 + cellH / 3 + max(2, height / 90), (0x7A, 0x7A, 0x7A))
+            fill(x0 + cellW / 3, y0 + cellH / 3 + cellH / 5, x0 + cellW - cellW / 4,
+                 y0 + cellH / 3 + cellH / 5 + max(1, height / 120), (0x50, 0x50, 0x50))
+            fill(x0, y0 + cellH - 1, x0 + cellW, y0 + cellH, (0x30, 0x30, 0x30))
+        }
+    }
+    return out
+}
+
+/// The same premultiplied-over-body composite, over a page that is an image rather than one colour.
+func composite(_ frame: Rendered, over page: [UInt8]) -> [UInt8] {
+    var out = frame.rgba
+    for i in stride(from: 0, to: out.count, by: 4) {
+        let a = Double(out[i + 3]) / 255
+        for channel in 0..<3 {
+            let back = Double(page[i + channel])
+            out[i + channel] = UInt8(max(0, min(255, (Double(out[i + channel]) + back * (1 - a)).rounded())))
+        }
         out[i + 3] = 255
     }
     return out
@@ -337,6 +407,15 @@ for side in sides {
         }
         let stem = "cat-\(name)-\(Int(side))pt"
 
+        // The points every claim below is measured at. A patch a twenty-fourth of the body wide: wide
+        // enough to average the dither, narrow enough that it cannot reach the dark features either side
+        // of the centre — a twelfth reads the eyes and the junction line into the "centre" and reports a
+        // body darker than it is. The ink is opaque `.082` in every channel.
+        let centre = (frame.width / 2, frame.height / 2)
+        let ring = (frame.width / 2 + frame.width * 26 / 100, frame.height / 2)
+        let patch = max(6, frame.width / 24)
+        let ink = relativeLuminance((0.082, 0.082, 0.082))
+
         writePNG(composite(frame, over: canvasBackground), width: frame.width, height: frame.height,
                  to: outDirectory.appendingPathComponent("\(stem)-canvas.png"))
         writePNG(composite(frame, over: surfaceBackground), width: frame.width, height: frame.height,
@@ -349,13 +428,28 @@ for side in sides {
                      to: outDirectory.appendingPathComponent("\(stem)-zoom.png"))
         }
 
-        // The two surfaces the body is actually drawn on. `-pane` is the dark theme's raised surface;
-        // `-lit` is the light theme's, drawn with the light scheme's own page.
+        // The four surfaces the body is judged on, and the reason there are four. `-pane` is the dark
+        // theme's raised surface — the bot list the owner photographed, where 0.1.685's transmission left
+        // black shapes. `-ctrl` is the same judgement a shade up (#2B2B2B), so a fix tuned to one number
+        // cannot pass. `-lit` is the light theme's surface, drawn with the light scheme's own page: the
+        // brighter, transmitting body the owner liked, unchanged. `-busy` is a page with rows and captions
+        // on it, because a face that reads on a flat pane and disappears among text has not been fixed.
         writePNG(composite(frame, over: paneBackground), width: frame.width, height: frame.height,
                  to: outDirectory.appendingPathComponent("\(stem)-pane.png"))
+        writePNG(composite(frame, over: controlBackground), width: frame.width, height: frame.height,
+                 to: outDirectory.appendingPathComponent("\(stem)-ctrl.png"))
+        let busy = busyPage(width: frame.width, height: frame.height)
+        writePNG(composite(frame, over: busy), width: frame.width, height: frame.height,
+                 to: outDirectory.appendingPathComponent("\(stem)-busy.png"))
         if let lit = render(side: side, state: state, pipeline: pipeline, dark: false) {
-            writePNG(composite(lit, over: litBackground), width: lit.width, height: lit.height,
+            let overLit = composite(lit, over: litBackground)
+            writePNG(overLit, width: lit.width, height: lit.height,
                      to: outDirectory.appendingPathComponent("\(stem)-lit.png"))
+            let atCentre = relativeLuminance(meanColor(overLit, width: lit.width, height: lit.height,
+                                                        centre: centre, side: patch))
+            let pageLum = relativeLuminance((0xF2 / 255.0, 0xF2 / 255.0, 0xF2 / 255.0))
+            print(String(format: "  lit centre %.3f (%+.0f%% of page)  eyes %.2f:1",
+                         atCentre, (atCentre / max(pageLum, 1e-4) - 1) * 100, contrastRatio(atCentre, ink)))
         }
 
         // The refraction proof: the same body over a studio that has edges in it.
@@ -382,28 +476,30 @@ for side in sides {
                      padded, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
                      lastMaskMilliseconds))
 
-        // The brightness and the transmission, as numbers: the body's centre and its mid-ring over the
-        // two pages it is drawn on, and the eyes against both. The ink is opaque (`.082` in every
-        // channel), so what is checked is that the *body* has not climbed toward it — a body brighter
-        // than the ink is a washed-out face.
-        let centre = (frame.width / 2, frame.height / 2)
-        let ring = (frame.width / 2 + frame.width * 26 / 100, frame.height / 2)
-        // A patch a twenty-fourth of the body wide: wide enough to average the dither, narrow enough
-        // that it cannot reach the dark features either side of the centre. A twelfth reads the eyes
-        // and the junction line into the "centre" and reports a body darker than it is.
-        let patch = max(6, frame.width / 24)
-        let ink = relativeLuminance((0.082, 0.082, 0.082))
+        // The brightness and the transmission, as numbers: the body's centre and its mid-ring over
+        // every page it is drawn on, and the eyes against all of them. The ink is opaque (`.082` in every
+        // channel, relative luminance 0.0075), so the two claims are that the body is *clearly* above a
+        // dark page — it carries its own colour instead of a black shape — and that the pair clears 3:1.
+        //
+        // Measured on the composited *colour* per channel and then turned into a relative luminance, not
+        // on a grey of the same luma: a saturated body averaged across channels reads a whole contrast
+        // step darker than it is, which is how a 3.9:1 face was once reported at 1.8:1.
         var line = ""
-        for (label, backdrop) in [("pane", paneBackground), ("lit", litBackground)] {
-            let over = composite(frame, over: backdrop)
-            let atCentre = meanLuminance(over, width: frame.width, height: frame.height,
-                                         centre: centre, side: patch)
-            let atRing = meanLuminance(over, width: frame.width, height: frame.height,
-                                       centre: ring, side: patch)
-            let page = Double(backdrop.r) / 255          // the flat page's own sRGB luminance
+        for (label, over, pageLum) in [
+            ("pane", composite(frame, over: paneBackground),
+             relativeLuminance((0x1E / 255.0, 0x1E / 255.0, 0x1E / 255.0))),
+            ("ctrl", composite(frame, over: controlBackground),
+             relativeLuminance((0x2B / 255.0, 0x2B / 255.0, 0x2B / 255.0))),
+            ("busy", composite(frame, over: busy),
+             relativeLuminance((0x1E / 255.0, 0x1E / 255.0, 0x1E / 255.0))),
+        ] {
+            let atCentre = relativeLuminance(meanColor(over, width: frame.width, height: frame.height,
+                                                        centre: centre, side: patch))
+            let atRing = relativeLuminance(meanColor(over, width: frame.width, height: frame.height,
+                                                     centre: ring, side: patch))
             line += String(format: "  %@ centre %.3f (%+.0f%% of page)  ring %.3f  eyes %.2f:1",
-                           label, atCentre, (atCentre / max(page, 1e-4) - 1) * 100, atRing,
-                           contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink))
+                           label, atCentre, (atCentre / max(pageLum, 1e-4) - 1) * 100, atRing,
+                           contrastRatio(atCentre, ink))
         }
         print(line)
     }

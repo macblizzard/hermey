@@ -538,7 +538,7 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         # The plate is the studio's room where the surface cannot name its page, and the page itself
         # where it can: a body that transmits a bright cyclorama is a body with nothing behind it.
         self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
-                      "pageLight, pageKnown);", source)
+                      "carried, pageKnown);", source)
         self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
         self.assertIn("float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);", source)
         # The plate is lit neutral and carries the body's hue at 45 %, not in full.
@@ -768,10 +768,14 @@ class TheBodyTransmitsThePage(unittest.TestCase):
         # The plate, the interior's slices and the wall's reflection all take the same mix, so the body's
         # light has one source and `pageKnown == 0` reproduces the pre-change body exactly.
         self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
-                      "pageLight, pageKnown);", source)
+                      "carried, pageKnown);", source)
         self.assertIn("float3 slice = mix(sampleInternalStudio(posS, into, jewelTint, rearTIR ? 1.0 : 0.0,",
                       source)
-        self.assertIn("pageLight, pageKnown);", source)
+        self.assertIn("carried, pageKnown);", source)
+        # `carried` is the page plus the material's own light, and it is what every one of those mixes
+        # takes — the plate, the interior's slices, the wall's reflection, the bounce and the focus.
+        self.assertIn("float3 carried = pageLight + ownLight * kSelfLightRoom;", source)
+        self.assertEqual(source.count("carried, pageKnown);"), 4)
         # The pair of gains is chosen by whether there is a page: 1.35 of a bright cyclorama over a page
         # that is 0.01 up is the density the critique named.
         self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
@@ -790,8 +794,9 @@ class TheBodyTransmitsThePage(unittest.TestCase):
         self.assertIn("accum *= sheen;", source)
         self.assertIn("#define kPageSheenGain 2.0", source)
         self.assertIn("#define kPageSheenFloor 0.03", source)
-        # And the internal focus concentrates the page rather than painting a white studio spot on it.
-        self.assertIn("float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, pageLight * 1.20, "
+        # And the internal focus concentrates what the body carries rather than painting a white studio
+        # spot on it.
+        self.assertIn("float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, carried * 1.20, "
                       "pageKnown);", source)
 
     def test_the_absorption_is_a_tint_and_still_a_function_of_the_path(self):
@@ -813,18 +818,180 @@ class TheBodyTransmitsThePage(unittest.TestCase):
                         "PAGE_SHEEN_GAIN = 2.0", "PAGE_SHEEN_FLOOR = 0.03",
                         "ABSORB_GAIN = 0.40", "ABSORB_FLOOR = 0.045"):
             self.assertIn(literal, mirror, literal)
-        # It measures the claim, not just the picture: the two pages, and the eyes against the body.
+        # It measures the claim, not just the picture: the three flat pages, the body's hue and
+        # chroma on each, and the eyes against the body — in the contrast ratio the ink is built for.
         self.assertIn("def page_report(side):", mirror)
         self.assertIn("INK = 0.082", mirror)
-        self.assertIn("eyes {ratio:.2f}:1", mirror)
+        self.assertIn("def relative(rgb):", mirror)
+        self.assertIn("def hue_chroma(rgb):", mirror)
+        self.assertIn("eyes ", mirror)
+        self.assertIn("'PASS' if ratio >= 3.0 else 'FAIL'", mirror)
 
-    def test_the_proof_renders_the_two_surfaces_it_is_judged_on(self):
+    def test_the_proof_renders_the_surfaces_it_is_judged_on(self):
         main = read(ROOT / "Tools" / "glass-proof" / "main.swift")
         self.assertIn("let paneBackground = (r: 0x1E, g: 0x1E, b: 0x1E)", main)
+        self.assertIn("let controlBackground = (r: 0x2B, g: 0x2B, b: 0x2B)", main)
         self.assertIn("let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)", main)
         self.assertIn('-pane.png', main)
+        self.assertIn('-ctrl.png', main)
         self.assertIn('-lit.png', main)
-        self.assertIn("contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink)", main)
+        self.assertIn('-busy.png', main)
+        self.assertIn("func busyPage(width: Int, height: Int) -> [UInt8]", main)
+        # Measured on the composited colour, not on a grey of the same luma: a saturated body read that
+        # way is a whole contrast step darker than the pixels are.
+        self.assertIn("contrastRatio(atCentre, ink)", main)
+        self.assertIn("relativeLuminance(meanColor(over, width: frame.width, height: frame.height,",
+                      main)
+        self.assertNotIn("relativeLuminance((atCentre, atCentre, atCentre))", main)
+
+
+class TheBodyCarriesItsOwnColour(unittest.TestCase):
+    """On a dark pane the face is a piece of coloured glass, not a black shape.
+
+    0.1.685 made the body transmit the page it is drawn on, which is right over a page and wrong over a
+    black one: transmission *multiplies* the backdrop, so over the app's own pane (`#1E1E1E`, linear
+    0.0125) every bot was its hue multiplied by nothing. Measured then on the mirror: the body's centre
+    0.129 against the pane's 0.118 — a difference nobody can see — and the eyes 1.13:1 against the pane,
+    i.e. gone. The owner's words were "its all black now".
+
+    The fix is the half of a material's colour that was missing: the body also *adds* its own chroma, and
+    the amount is a function of the backdrop's own luminance. On a light page the term is exactly zero and
+    0.1.685 is untouched; on a dark page the body lands in a luminance band chosen from the eye ink rather
+    than by eye, so near-black features read at 3.9:1 and the hue is still the bot's own.
+
+    The four claims below are the ones a photograph of the app is judged on: the colour is the material's
+    and not only the page's, the mix moves with the backdrop, the eyes clear 3:1 on both named surfaces,
+    and the four proofs are rendered. The numbers come from `Tools/glass-proof/numbers.py`, the mirror of
+    the fragment that the suite already pins constant by constant.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "glass_numbers", ROOT / "Tools" / "glass-proof" / "numbers.py")
+        cls.numbers = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.numbers)
+        mirror = cls.numbers
+        cls.surface = mirror.surface(24.0)
+        cls.centre = mirror.deepest_point(cls.surface)
+        cls.measured = {
+            "pane": cls.composited((0x23 / 255,) * 3, 0x1E),
+            "ctrl": cls.composited((0x23 / 255,) * 3, 0x2B),
+            "lit": cls.composited((0xF0 / 255, 0xEE / 255, 0xE6 / 255), 0xF2),
+        }
+
+    @classmethod
+    def composited(cls, page_rgb, backdrop):
+        """The body's centre as a person sees it: the fragment's colour, premultiplied over the page.
+
+        Per channel and then turned into a relative luminance — a saturated body averaged across its
+        channels and treated as a grey reads a whole contrast step darker than the pixels are.
+        """
+        mirror = cls.numbers
+        pixel = mirror.shade(cls.surface, cls.centre, page_rgb=page_rgb)
+        return {
+            "rgb": tuple(pixel["colour"][i] * pixel["alpha"] + backdrop / 255 * (1 - pixel["alpha"])
+                         for i in range(3)),
+            "alpha": pixel["alpha"],
+            "shadow": mirror.shade(cls.surface, cls.centre),
+        }
+
+    def test_the_chroma_is_the_material_s_own_and_not_only_the_page_s(self):
+        source = msl_code()
+        # The emission: the same `jewelTint` the rim and the caustic are lit with, divided by its own
+        # luminance so the level is a brightness and the bot's hue decides only the colour.
+        self.assertIn("float3 hueUnit = jewelTint / max(dot(jewelTint, float3(0.2126, 0.7152, 0.0722)), "
+                      "0.02);", source)
+        self.assertIn("float3 ownLight = hueUnit * (kSelfLightLevel * pageDark);", source)
+        self.assertIn("#define kSelfLightLevel 0.40", source)
+        # It is added to the page, not mixed into it: a mix with a dark page degenerates to the page,
+        # which is exactly the fault ("the mix degenerates to pure transmission") this guard exists for.
+        self.assertIn("float3 carried = pageLight + ownLight * kSelfLightRoom;", source)
+        self.assertNotIn("carried = mix(pageLight", source)
+        # One source: every term that used to take the page takes what the body carries.
+        self.assertEqual(source.count("carried, pageKnown);"), 4)
+        self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
+                      "carried, pageKnown);", source)
+        # The share emitted where it is seen is added *after* the path's absorption — an emitted photon
+        # does not cross the body, and a thick belly that filters its own colour down to the red end is
+        # the same black face again. So the emission must come after the `* beer` line, not inside it.
+        beer_at = source.index("float3 through = (plate * plateGain + gather * interiorGain) * beer;")
+        emit_at = source.index("through += ownLight * ((1.0 - kSelfLightRoom) * (0.35 + 0.65 * thick));")
+        self.assertLess(beer_at, emit_at)
+        self.assertIn("#define kSelfLightRoom 0.35", source)
+
+    def test_the_mix_is_a_function_of_the_backdrop_s_luminance(self):
+        source = msl_code()
+        self.assertIn("float pageDark = pageKnown * (1.0 - smoothstep(kPageSelfDark, kPageSelfLit, "
+                      "pageLum));", source)
+        self.assertIn("#define kPageSelfDark 0.05", source)
+        self.assertIn("#define kPageSelfLit 0.55", source)
+        # …and the ramp really is a ramp over the three surfaces the proof judges, not a switch that
+        # would need retuning the first time the theme moves. In linear light: the pane and the control
+        # are dark, the light page is not, and a mid grey is between them.
+        def ramp(linear_luminance):
+            return 1.0 - self.numbers.smoothstep(0.05, 0.55, linear_luminance)
+        self.assertAlmostEqual(ramp(self.numbers.wcag(0x1E / 255)), 1.0, places=3)
+        self.assertAlmostEqual(ramp(self.numbers.wcag(0x2B / 255)), 1.0, places=3)
+        self.assertEqual(ramp(self.numbers.wcag(0xF2 / 255)), 0.0)
+        self.assertTrue(0.05 < ramp(self.numbers.wcag(0x80 / 255)) < 0.95)
+
+    def test_the_body_clears_the_ink_band_on_the_dark_pane(self):
+        """Solved, not tuned by eye: the ink is fixed, so the body's luminance is the free variable."""
+        mirror = self.numbers
+        ink = mirror.relative((mirror.INK,) * 3)
+        # 3:1 against the ink is the floor the band has to sit above.
+        floor = 3.0 * (ink + 0.05) - 0.05
+        centre = self.measured["pane"]
+        body = mirror.relative(centre["rgb"])
+        page = mirror.relative((0x1E / 255,) * 3)
+        self.assertGreater(body, floor, f"the body must clear {floor:.3f} of relative luminance")
+        # …and clearly above the pane, which is the thing "all black" meant.
+        self.assertGreater(body, page * 6)
+        # The bot's own hue is still identifiable at 38 pt: chroma, and the hue angle the tint's own.
+        hue, chroma = mirror.hue_chroma(centre["rgb"])
+        tint_hue, _ = mirror.hue_chroma(mirror.TINT)
+        self.assertGreater(chroma, 0.35, f"chroma {chroma:.2f} is a grey body")
+        self.assertLess(abs(hue - tint_hue), 30)
+        # A body that carries its own light is denser than a film of it: the middle is not a wash.
+        self.assertGreaterEqual(min(centre["alpha"], self.measured["ctrl"]["alpha"]), 0.6)
+
+    def test_the_eyes_clear_three_to_one_on_both_named_surfaces(self):
+        mirror = self.numbers
+        ink = mirror.relative((mirror.INK,) * 3)
+
+        def eyes(key):
+            body = mirror.relative(self.measured[key]["rgb"])
+            return (max(body, ink) + 0.05) / (min(body, ink) + 0.05)
+
+        self.assertGreaterEqual(eyes("pane"), 3.0, "the face is unreadable on the pane again")
+        self.assertGreaterEqual(eyes("ctrl"), 3.0, "the face is unreadable a shade up from the pane")
+        self.assertGreaterEqual(eyes("lit"), 3.0, "the light page lost the eyes to the fix")
+        # The page the owner liked is untouched: the light body keeps 0.1.685's brightness and its
+        # transmission. Measured on this same mirror at 24 pt before the change: 0.569 of relative
+        # luminance and alpha 0.596 — the emission is gated on the backdrop, so the light page gets
+        # exactly zero of it.
+        self.assertAlmostEqual(mirror.relative(self.measured["lit"]["rgb"]), 0.569, delta=0.02)
+        self.assertGreater(self.measured["lit"]["alpha"], 0.55)
+        # …and the desktop pet, which cannot name a page, is bit-for-bit what it was: no page, no
+        # emission, the studio plate alone.
+        self.assertEqual(self.measured["pane"]["shadow"]["colour"],
+                         self.measured["lit"]["shadow"]["colour"])
+
+    def test_the_proof_renders_the_four_surfaces(self):
+        main = read(ROOT / "Tools" / "glass-proof" / "main.swift")
+        for literal in ("-pane.png", "-ctrl.png", "-lit.png", "-busy.png"):
+            self.assertIn(literal, main, literal)
+        self.assertIn("let controlBackground = (r: 0x2B, g: 0x2B, b: 0x2B)", main)
+        self.assertIn("func busyPage(width: Int, height: Int) -> [UInt8]", main)
+        # The mirror carries the same constants, and reports the band rather than an adjective.
+        mirror = read(ROOT / "Tools" / "glass-proof" / "numbers.py")
+        for literal in ("SELF_LIGHT_LUM = 0.40", "SELF_LIGHT_ROOM = 0.35", "SELF_LIGHT_DENSITY = 0.78",
+                        "SELF_LIGHT_DIM = 0.050", "SELF_LIGHT_LIT = 0.550"):
+            self.assertIn(literal, mirror, literal)
+        self.assertIn("#define kSelfLightDensity 0.78", msl_code())
 
 
 class TheThreeTargetsAreSteps(unittest.TestCase):

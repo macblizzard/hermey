@@ -4,6 +4,16 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Fixed
+- **Bot faces are coloured glass on a dark page again, not black shapes.** 0.1.685 made the body
+  transmit the surface it is drawn on — brighter and truer over a light page, and black over the bot
+  list, because transmission *multiplies* its backdrop: on the app's own pane (`#1E1E1E`) every bot was
+  its hue multiplied by nothing, and the eyes fell to 1.1:1 against the pane, so the faces read as
+  outlines and nothing else. The body now also *adds* its own colour, at a level that is a function of
+  the page's own luminance: nothing on a light page (0.1.685's transmission is untouched, and measured
+  identical), the material's full `jewel` hue on a dark one. Measured on the shipped amber body: the
+  centre sits at 0.173 relative luminance against the pane's 0.013 (hue 16°, chroma 0.67) and the eyes
+  read 3.9:1, up from 1.1:1; on the light page 0.594 and 11.2:1, unchanged. The desktop pet, which
+  cannot name a page, is bit-for-bit what it was.
 - **The settings header now wears the face you are choosing — and shows it at all.** The bot's avatar
   beside its name in the Mac bot-settings sheet and on the iPhone settings screen was resolving the
   *stored* face only, so with the Avatar tab open you picked Hourglass, the 200 pt preview became an

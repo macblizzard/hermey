@@ -230,6 +230,42 @@ enum HermeyGlassSource {
         #define kPageSheenGain 2.0
         #define kPageSheenFloor 0.03
 
+        /// The material's own light: what the tint holds where the page carries nothing.
+        ///
+        /// Transmission *multiplies* the backdrop, and that is the half of the term that was wrong. Over
+        /// the app's own pane — `#1E1E1E`, linear 0.0125 — a body whose only light is the page is a body
+        /// drawn in near-black whatever its hue: tint times nothing is black, the outline survives and the
+        /// face does not. That is exactly what the owner saw on 0.1.685 ("its all black now").
+        ///
+        /// So the body also *adds* its own chroma, and the amount is a function of the backdrop's own
+        /// luminance: `kPageSelfDark`…`kPageSelfLit` in linear light, one below the dark theme's raised
+        /// surface and one above a paper page, so the term is the whole of the body's light on a pane and
+        /// exactly zero on a light page (where 0.1.685's transmission, which the owner liked, is kept
+        /// untouched).
+        ///
+        /// `kSelfLightLevel` is stated as a *luminance*, not a gain on the brightest channel: the emission
+        /// is `jewelTint` divided by its own luminance, so a blue bot and an amber one land in the same
+        /// brightness band and only their hue differs. That band is chosen from the ink, not by eye: the
+        /// eyes are opaque `.082` (relative luminance 0.0075), so a body behind them needs 0.122 of
+        /// relative luminance before the pair reads 3:1 — and this level puts the body's centre at 0.173
+        /// behind the pane, i.e. 3.9:1, with the light page's 11.2:1 unchanged above it.
+        #define kSelfLightLevel 0.40
+        #define kPageSelfDark 0.05
+        #define kPageSelfLit 0.55
+
+        /// How the material's own light is spent. The share in `kSelfLightRoom` is the room it stands in
+        /// — it feeds the plate, the interior's slices, the wall's reflection, the bounce and the focus,
+        /// so the body's light still has one source and its thickness still filters it. The rest is
+        /// emitted where it is seen and is added *after* the path's absorption, because an emitted photon
+        /// does not cross the body: without that split a thick belly filters its own colour down to the
+        /// red end and the face goes dark again at every hue but orange.
+        #define kSelfLightRoom 0.35
+
+        /// And how dense that makes it: a body that carries its own light hides more of the page than a
+        /// tint does. A floor, not an addition — the alpha's own 0.97 cap still holds, and the body still
+        /// shows a fifth of what is behind it, so the glass has not become a block.
+        #define kSelfLightDensity 0.78
+
         /// How hard the body absorbs, per unit of optical path: `absorbSigma = -log(trans) * kAbsorbGain
         /// + kAbsorbFloor`, upstream's form at a lower gain.
         ///
@@ -847,16 +883,28 @@ enum HermeyGlassSource {
             // studio plate below is the whole of the body's light, exactly as it was before this term.
             float pageKnown = uniforms.page.w;
             float3 pageLight = pow(max(uniforms.page.rgb, float3(0.0)), float3(2.2)) * pageKnown;
-            // What the body carries, and where it comes from. With a page the light *is* the page; without
-            // one — the pet — the studio is all of it, exactly as before.
+            float pageLum = dot(pageLight, float3(0.2126, 0.7152, 0.0722));
+            // The material's own light, and how much of it this page needs. Transmission multiplies the
+            // backdrop, so over a near-black pane it multiplies nothing and the body goes black with its
+            // hue intact in the maths and absent from the screen; where the page is too dark to carry a
+            // hue, the body carries its own. `hueUnit` is the same `jewelTint` the rim, the joint line and
+            // the caustic are lit with, divided by its own luminance, so `kSelfLightLevel` is a *brightness*
+            // and the bot's hue decides only the colour.
+            float pageDark = pageKnown * (1.0 - smoothstep(kPageSelfDark, kPageSelfLit, pageLum));
+            float3 hueUnit = jewelTint / max(dot(jewelTint, float3(0.2126, 0.7152, 0.0722)), 0.02);
+            float3 ownLight = hueUnit * (kSelfLightLevel * pageDark);
+            // What the body carries, and where it comes from. With a page the light *is* the page plus the
+            // material's own; without one — the pet — the studio is all of it, exactly as before.
+            float3 carried = pageLight + ownLight * kSelfLightRoom;
             float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);
             float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);
             // The plate: the studio's room where the page is unknown, the page itself where it is known —
             // the same mix the interior and the wall's reflection take, so the body's light has one source.
-            float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), pageLight, pageKnown);
+            float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), carried, pageKnown);
             // And the room in front of the body, as bright as the room behind it: see `kPageSheenGain`.
-            // `accum` so far is the front face's reflection and its key, and nothing else.
-            float pageLum = dot(pageLight, float3(0.2126, 0.7152, 0.0722));
+            // `accum` so far is the front face's reflection and its key, and nothing else. The sheen follows
+            // the *page*, not the material's own light: the emission is inside the glass, so it must not
+            // become a highlight on its front face.
             float sheen = mix(1.0, clamp(pageLum * kPageSheenGain, kPageSheenFloor, 1.0), pageKnown);
             accum *= sheen;
 
@@ -878,7 +926,7 @@ enum HermeyGlassSource {
             float3 reflEnv = mix(sampleInternalStudio(exitPoint / max(u, 0.0001),
                                                       normalize(reflect(into, -n2S)),
                                                       jewelTint, 1.0, halfExtent.y / max(u, 0.0001), detail),
-                                 pageLight, pageKnown);
+                                 carried, pageKnown);
 
             // 4 — the interior, integrated. shaders.ts:346/371 read the internal studio once, at the exit;
             // a body with depth is not one point, so `kInteriorSteps` fixed slices are walked from the front
@@ -896,7 +944,7 @@ enum HermeyGlassSource {
                 // absorption stands between the slice and the viewer — or the studio, as it always was.
                 float3 slice = mix(sampleInternalStudio(posS, into, jewelTint, rearTIR ? 1.0 : 0.0,
                                                         eyeRel, detail),
-                                   pageLight, pageKnown);
+                                   carried, pageKnown);
                 gather += slice * exp(-absorbSigma * (optical * (walked / max(pathLength, 0.001))));
             }
             gather /= float(kInteriorSteps);
@@ -904,6 +952,12 @@ enum HermeyGlassSource {
             // the light the interior gathered along the path. Transmitted first, then absorbed — so the
             // hue is the absorption's and the *level* is the page's.
             float3 through = (plate * plateGain + gather * interiorGain) * beer;
+            // The shares of the material's own light that are emitted where they are seen rather than
+            // carried through the body: added after `beer`, because an emitted photon does not cross the
+            // path it lights. `thick` shapes it, so the deep middle of the body is where the light piles
+            // up and the thin fins stay glass — the same depth cue the transmitted term has, from the
+            // other side.
+            through += ownLight * ((1.0 - kSelfLightRoom) * (0.35 + 0.65 * thick));
 
             // 4b — the bounce. Light that crossed the front face does not only pass through: what
             // strikes the far wall comes back out of the front again, and that returning light is the
@@ -919,7 +973,7 @@ enum HermeyGlassSource {
             // a belly full of amber swallows its own bounce — the weighting is `beer * beer`, unchanged.
             float3 wallLight = mix(sampleInternalStudio(exitPoint / max(u, 0.0001), -n2S, jewelTint,
                                                         rearTIR ? 1.0 : 0.0, eyeRel, detail),
-                                   pageLight, pageKnown);
+                                   carried, pageKnown);
             float3 bounce = wallLight * (wallFacing * wallFacing) * (beer * beer)
                           * (1.0 - F1) * kBounceGain * detail;
             through += bounce;
@@ -965,7 +1019,7 @@ enum HermeyGlassSource {
             // The focus concentrates *the light the body is passing*: with a page that is the page,
             // piled up — a fifth brighter than the patch it came from, not a bright studio spot painted
             // over the app.
-            float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, pageLight * 1.20, pageKnown);
+            float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, carried * 1.20, pageKnown);
             through += focusLight * (focus * 0.55 * detail);
 
             // Two interfaces, two Fresnel losses, and the TIR'd share going back into the glass at 0.65 of
@@ -1065,6 +1119,10 @@ enum HermeyGlassSource {
                                 + kAbsorptionOpacity * (1.0 - lumThrough)
                                 + 0.30 * rimBand,
                                 0.34, 0.97);
+            // A body that carries its own light is denser than a tint is: on a dark page the middle keeps
+            // its colour instead of being a film of it over the pane. A floor, so the 0.97 cap above still
+            // holds and the body still shows a quarter of what it stands on — glass, not a block.
+            alpha = mix(alpha, max(alpha, kSelfLightDensity), pageDark);
 
             // 8 — the page, from the same field. Two things happen where glass meets paper: a short
             // contact shadow under the body, and the caustic — the light that crossed the bottom wall
