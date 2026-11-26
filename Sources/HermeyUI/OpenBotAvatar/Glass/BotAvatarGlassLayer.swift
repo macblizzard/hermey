@@ -153,13 +153,27 @@ final class BotAvatarGlassMTKView: MTKView {
 
 /// Draws one glass body: the body's silhouette mask as a texture, and the runtime shader over it.
 ///
-/// One drawer per view. The mask is rebuilt only when the drawn pixels change size; a frame that
-/// moves the pose re-uploads six `float4`s and nothing else.
+/// One drawer per view. The mask is rebuilt when the *body* changes or when the drawn pixels change
+/// size; a frame that moves the pose re-uploads six `float4`s and nothing else.
 final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
 
     private var surface: BotAvatarGlassSurface?
     private var path: Path?
     private var texture: MTLTexture?
+
+    /// The body this drawer is drawing now, and the one its texture was built from.
+    ///
+    /// The mask is the silhouette itself — the shape the shader masks its pixels with — so a texture
+    /// built for one body is not a drawing of any other, whatever else has changed. It used to be
+    /// rebuilt only when the drawable's pixel size changed, which meant the first silhouette a view
+    /// was handed stayed on screen for the life of that view: picking Book and then Mug in the
+    /// avatar editor moved the caption, the eyes and the colour and left the body as the stored cat.
+    /// `maskKey` is `OpenBotAvatarModel.bodyKey` — the body path — and it is the *only* one of the
+    /// four things a drawing is made of that can change the shape, which is why colour, material,
+    /// size and state are deliberately not in it: a state chip must not rebuild the mask.
+    private var maskKey: String?
+    /// The key the texture in hand was built from; nil while there is no texture.
+    private var maskKeyDrawn: String?
 
     /// The view the drawer paints into: transparent, paused, and redrawn only when SwiftUI hands it
     /// a new frame. No display link of its own — the avatar's own 10 Hz timeline is the clock.
@@ -213,15 +227,22 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     }
 
     /// The next frame's numbers and silhouette, from the surface the view decided on.
-    func update(_ view: MTKView?, surface: BotAvatarGlassSurface, path: Path) {
+    ///
+    /// `maskKey` is the *body* — `OpenBotAvatarModel.bodyKey`, the definition's own outline — and the
+    /// drawer keeps it beside the silhouette it is handed, because the pose in `path` moves every
+    /// frame while the shape does not: the mask must be rebuilt for a new body and must not be
+    /// rebuilt for a breath.
+    func update(_ view: MTKView?, surface: BotAvatarGlassSurface, path: Path, maskKey: String) {
         guard let view, HermeyGlassEngine.shared.isReady else { return }
         self.surface = surface
         self.path = path
+        self.maskKey = maskKey
         requestGlassFrame(view)
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         texture = nil
+        maskKeyDrawn = nil
         // A view that was re-hosted can come back with its own idea of whether it is opaque.
         Self.transparent(view)
         requestGlassFrame(view)
@@ -238,11 +259,17 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
               let drawable = view.currentDrawable,
               let descriptor = view.currentRenderPassDescriptor else { return }
 
-        // One mask per pixel size: the body's silhouette, drawn the way the Canvas draws it (same
-        // path, same transform), at the drawable's own resolution.
+        // One mask per body and pixel size: the body's silhouette, drawn the way the Canvas draws it
+        // (same path, same transform), at the drawable's own resolution. The body is part of the
+        // key, not just the size — a texture is a picture of one silhouette and cannot be reused by
+        // another, which is what made every preset draw the first body that reached this view.
         let pixels = view.drawableSize
-        if texture == nil || texture?.width != Int(pixels.width) || texture?.height != Int(pixels.height) {
+        if texture == nil
+            || maskKeyDrawn != maskKey
+            || texture?.width != Int(pixels.width)
+            || texture?.height != Int(pixels.height) {
             texture = Self.makeMask(path: path, points: surface.size, pixels: pixels, device: device)
+            maskKeyDrawn = texture == nil ? nil : maskKey
         }
         guard let texture else { return }
 
@@ -554,6 +581,8 @@ private func requestGlassFrame(_ view: MTKView) {
 struct BotAvatarGlassCanvas {
     var surface: BotAvatarGlassSurface
     var path: Path
+    /// The body the mask is a drawing of (`OpenBotAvatarModel.bodyKey`).
+    var maskKey: String
 }
 
 #if canImport(UIKit)
@@ -565,7 +594,7 @@ extension BotAvatarGlassCanvas: UIViewRepresentable {
     }
 
     func updateUIView(_ view: MTKView, context: Context) {
-        context.coordinator.update(view, surface: surface, path: path)
+        context.coordinator.update(view, surface: surface, path: path, maskKey: maskKey)
     }
 }
 #else
@@ -577,7 +606,7 @@ extension BotAvatarGlassCanvas: NSViewRepresentable {
     }
 
     func updateNSView(_ view: MTKView, context: Context) {
-        context.coordinator.update(view, surface: surface, path: path)
+        context.coordinator.update(view, surface: surface, path: path, maskKey: maskKey)
     }
 }
 #endif

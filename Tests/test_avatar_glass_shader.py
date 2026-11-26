@@ -292,10 +292,12 @@ class TheShaderIsCompiledNotBuilt(unittest.TestCase):
         for token in ("makeLibrary", "makeRenderPipelineState", "makeFunction", "makeSamplerState",
                       "makeCommandQueue"):
             self.assertNotIn(token, draw, token)
-        # What a frame does do: one texture when the pixels change, and six `float4`s.
+        # What a frame does do: one texture when the body or the pixels change, and six `float4`s.
         self.assertIn("setFragmentBytes(&uniforms", draw)
         self.assertIn("MemoryLayout<BotAvatarGlassUniforms>.stride", draw)
-        self.assertIn("if texture == nil || texture?.width != Int(pixels.width)", draw)
+        self.assertIn("if texture == nil", draw)
+        self.assertIn("|| maskKeyDrawn != maskKey", draw)
+        self.assertIn("|| texture?.width != Int(pixels.width)", draw)
 
     def test_the_library_is_lazy_and_held(self):
         layer = read(LAYER)
@@ -456,11 +458,13 @@ class TheEightStatesAreUntouched(unittest.TestCase):
 
     def test_the_body_is_filled_at_its_own_scale(self):
         # The silhouette is the body's own, through the frame's one transform — no `shrink`, and no
-        # `bodyScale` anywhere near the pass that draws it.
+        # `bodyScale` anywhere near the pass that draws it. The body travels with the path as the
+        # mask's key, because the texture the drawer keeps is a picture of that one silhouette.
         view = code(read(VIEW))
         metal_route = view.split("case .metal:")[1]
-        self.assertIn("BotAvatarGlassView(surface: glass, path: model.silhouette.applying(face))",
-                      metal_route)
+        self.assertIn("BotAvatarGlassView(surface: glass,", metal_route)
+        self.assertIn("path: model.silhouette.applying(face),", metal_route)
+        self.assertIn("maskKey: model.bodyKey)", metal_route)
         self.assertNotIn("bodyScale", metal_route)
         self.assertNotIn("shrink", metal_route)
         # …and the texture is filled from that path, in the body's own tint.
@@ -648,14 +652,15 @@ class TheFieldIsAnalytic(unittest.TestCase):
 
     def test_the_geometry_of_the_mask_is_unchanged(self):
         layer = code(read(LAYER))
-        # Still an RGBA16F texture, still packed by hand, still one per pixel size — and still no
-        # `Float16`, whose conversions the x86_64 slice of the universal build cannot always use.
+        # Still an RGBA16F texture, still packed by hand, still one per body and pixel size — and still
+        # no `Float16`, whose conversions the x86_64 slice of the universal build cannot always use.
         self.assertIn("pixelFormat: .rgba16Float", layer)
         self.assertIn("packed[i * 4] = Self.halfBits(1)", layer)
         self.assertIn("packed[i * 4 + 3] = Self.halfBits(Float(coverage[i]) / 255)", layer)
         self.assertIn("private static func halfBits(_ value: Float) -> UInt16", layer)
         self.assertNotIn("Float16(", layer)
-        self.assertIn("if texture == nil || texture?.width != Int(pixels.width)", layer)
+        self.assertIn("|| maskKeyDrawn != maskKey", layer)
+        self.assertIn("|| texture?.width != Int(pixels.width)", layer)
 
 
 class TheLightIsReadFromTheFields(unittest.TestCase):
