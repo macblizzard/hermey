@@ -381,7 +381,7 @@ class TheReleaseTagsHermeyd(unittest.TestCase):
     tag is made there rather than remembered by hand.
     """
 
-    PATH = pathlib.Path(__file__).resolve().parents[1] / "Tools" / "release" / "publish_altstore.py"
+    PATH = Path(__file__).resolve().parents[1] / "Tools" / "release" / "publish_altstore.py"
 
     def test_the_publish_script_tags_the_hermeyd_version(self) -> None:
         source = self.PATH.read_text()
