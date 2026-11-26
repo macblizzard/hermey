@@ -1971,3 +1971,13 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Fixed
 - **A preset changes the shape, not just the caption.** The editor's preview and the header now draw the draft's
   own body, and the drawing cache is keyed by that body, so choosing Mug actually gives you a mug.
+
+## [0.1.688] — 2026-11-27
+
+### Fixed
+- **The halo's fade no longer bands.** The glow was added after the shader's dither, so it stepped into the 8-bit
+  target; it now goes through the same half-bit dither and the far field varies by a single level.
+
+### Changed
+- **Hermeyd 0.8.22**, and every release now publishes a matching `hermeyd-v<version>` tag, so the host's update
+  check can never again report "could not check" because the feed had no hermeyd release to compare against.
