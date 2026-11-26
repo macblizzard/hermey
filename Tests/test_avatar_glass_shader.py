@@ -499,7 +499,12 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertNotIn("pass: .all", metal)
         self.assertEqual(metal.count("pass: .behind"), 1)
         self.assertEqual(metal.count("pass: .over"), 1)
-        self.assertIn("assert(!OpenBotAvatarRenderer.Pass.behind.drawsBody", metal)
+        # The invariant is stated as a value, not an `assert`: a Void expression inside a
+        # `ViewBuilder` is a compile error, which broke the release build of the whole app.
+        self.assertIn("!OpenBotAvatarRenderer.Pass.behind.drawsBody", metal)
+        self.assertIn("!OpenBotAvatarRenderer.Pass.over.drawsBody", metal)
+        self.assertNotIn("assert(!OpenBotAvatarRenderer.Pass.behind.drawsBody", metal,
+                         "an assert in the view builder cannot compile")
         # …and the renderer's own gate is the one that does it.
         renderer = code(read(RENDERER))
         self.assertIn("if pass.drawsBody {", renderer)
