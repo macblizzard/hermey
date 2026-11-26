@@ -912,13 +912,13 @@ enum HermeyGlassSource {
             // `landing` is solved from `bodyRise`/`bodyHeight` at the critical inset — so the patch is
             // the shape of the body, not a disc around it.
             float landing = causticLanding(rxy, rz, flatZ);
-            float reach = max(0.6, landing);
-            float spread = clamp(outside / reach, 0.0, 1.0);
+            float litReach = max(0.6, landing);
+            float spread = clamp(outside / litReach, 0.0, 1.0);
             float density = mix(1.0, 0.30, spread * spread);
             // The last ray: every bevel inset below the critical one is trapped, so the mapping from the
-            // bevel to the page ends at `reach`, and the light jumps to nothing there. That boundary is
+            // bevel to the page ends at `litReach`, and the light jumps to nothing there. That boundary is
             // the bright curve a caustic is read by — sharp on the outside, with the pile-up behind it.
-            float lastRay = exp(-pow((outside - reach) / max(0.45, reach * 0.055), 2.0));
+            float lastRay = exp(-pow((outside - litReach) / max(0.45, litReach * 0.055), 2.0));
             // Only beneath. The wall's light goes down, so the patch fades as the contour turns up the
             // sides. Read off the pixel's own height against the body's box, which is stable along the
             // whole bottom; a normal taken from the field's quantised outside channel was not.
@@ -937,8 +937,8 @@ enum HermeyGlassSource {
             // last ray nothing arrives, so the body's shadow starts where its light ends — a short band
             // at the boundary, not a blur under the whole body.
             float contact = exp(-outside / max(0.8, foot * 2.0)) * smoothstep(0.0, 0.22, outside) * 0.55;
-            float cast = smoothstep(reach * 0.97, reach * 1.10, outside)
-                       * exp(-max(outside - reach, 0.0) / max(1.1, reach * 0.18)) * below * 0.50;
+            float cast = smoothstep(litReach * 0.97, litReach * 1.10, outside)
+                       * exp(-max(outside - litReach, 0.0) / max(1.1, litReach * 0.18)) * below * 0.50;
 
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
