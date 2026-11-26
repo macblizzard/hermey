@@ -267,12 +267,17 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         commandBuffer.commit()
     }
 
-    /// The body's silhouette into an RGBA texture whose first row is the top of the view — the
-    /// orientation `[[position]]` uses — **and** the distance field of that outline.
+    /// The body's silhouette into a floating-point texture whose first row is the top of the view —
+    /// the orientation `[[position]]` uses — **and** the distance field of that outline.
     ///
-    /// Filling it in the body's tint was the first design's one mistake with consequences: the
-    /// refraction sample read that tint back, so "what is behind the glass" was the glass, and an
-    /// opaque blob is what that composites to. Nothing here is the body's colour any more.
+    /// Why half precision and not RGBA8: the field is the argument of the thickness profile, its
+    /// gradient is the surface normal, and the rim's width is read off that normal. An 8-bit channel
+    /// normalised to half the short side quantises the inset to 0.4 pt at 200 pt — coarser than the
+    /// pixels the shader is drawing — so the normal stepped, the rim staircase'd along a diagonal,
+    /// and every gradient in the body banded at a width the eye reads as dither. A half float
+    /// resolves the same field to 0.02 pt at 200 pt, which is below one pixel at every size this
+    /// material is drawn at. It costs twice the texture's memory and nothing per frame: the mask is
+    /// rebuilt only when the drawable's pixel size changes.
     ///
     /// * `a` — the drawn silhouette, antialiased (what limits the shaded region);
     /// * `g` — how far inside the outline the pixel is, in points, normalised to half the view's
@@ -327,32 +332,31 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         // back from `size`, so no seventh uniform is needed.
         let scale = Float(pixels.width / points.width)
         let span = Float(0.5 * min(points.width, points.height))
-        func unit(_ pixels: Float) -> UInt8 {
+        func unit(_ pixels: Float) -> Float {
             // A zero-sized or not-yet-laid-out surface divides by zero and the distance field turns
-            // into NaN/inf — and `Int(_:)` on a non-finite Float is a **trap**, which crashed the
-            // whole app on the main thread inside `MTKView.draw`. Clamp, never trap: a body with no
-            // extent simply has no mask.
+            // into NaN/inf, and a non-finite value in the texture is a normal that is not a direction.
             guard scale.isFinite, scale > 0, span.isFinite, span > 0 else { return 0 }
-            let scaled = (pixels / scale / span * 255).rounded()
+            let scaled = pixels / scale / span
             guard scaled.isFinite else { return 0 }
-            return UInt8(clamping: Int(max(0, min(scaled, 255))))
+            return max(0, min(scaled, 1))
         }
 
-        var packed = [UInt8](repeating: 0, count: width * height * 4)
+        var packed = [UInt16](repeating: 0, count: width * height * 4)
+        let white = Float16(1).bitPattern
         for i in 0..<(width * height) {
-            packed[i * 4] = 255
-            packed[i * 4 + 1] = unit(inset[i])
-            packed[i * 4 + 2] = unit(outside[i])
-            packed[i * 4 + 3] = coverage[i]
+            packed[i * 4] = white
+            packed[i * 4 + 1] = Float16(unit(inset[i])).bitPattern
+            packed[i * 4 + 2] = Float16(unit(outside[i])).bitPattern
+            packed[i * 4 + 3] = Float16(Float(coverage[i]) / 255).bitPattern
         }
 
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float,
                                                                   width: width, height: height,
                                                                   mipmapped: false)
         descriptor.usage = .shaderRead
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
-                        withBytes: packed, bytesPerRow: width * 4)
+                        withBytes: packed, bytesPerRow: width * 8)
         return texture
     }
 

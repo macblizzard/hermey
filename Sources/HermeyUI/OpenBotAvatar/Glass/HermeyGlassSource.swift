@@ -102,13 +102,31 @@ enum HermeyGlassSource {
         //    fixed samples are walked from the entry to the exit, and the light each one gathers is
         //    weighted by how much of it survives the path back out. That is what puts light *behind* the
         //    front surface instead of on it.
-        //  * **The caustic is geometric.** The internal focus is the back surface's own curvature
-        //    concentrating the studio — the second difference of the profile, times the path length —
-        //    not a painted ring at a chosen radius.
-        //  * **The two-line edge is the TIR boundary.** A thick glass edge reads as two lines: the outer
-        //    grazing Fresnel, and a darker line one rim in where the light stops leaving the glass. The
-        //    second one is computed — `sinCritical() - dot(into, n2S)` — so it lands wherever the geometry
-        //    puts it, and moves as the body turns.
+        //  * **Absorption is a function of the path length.** shaders.ts:335/340-342 compresses the
+        //    marched path into an optical thickness with `refScale = max(halfDepth*2.2, 14)`, because
+        //    its march accumulates a far longer path than the glass it crosses. Applied to a geometric
+        //    path it saturates: a 5-pt ear and a 55-pt belly landed 15 % apart, which is the "uniform
+        //    resin" the pictures showed. Here the optical thickness is the path itself over the body's
+        //    own depth, and the path is shortened where the body is thin (`inset / halfDepth`), so an
+        //    ear — a fin, not a slab — absorbs a fraction of what the belly does at 200 pt and at 24.
+        //  * **The caustic is the wall's own light, and its landing is solved.** The arc on the page is
+        //    an offset curve of the silhouette at `causticLanding`: the height of the wall at the
+        //    critical-angle inset, times `tan((IOR-1)·atan(rise))` — a thin prism's deflection, from
+        //    Snell's small-angle form — so thin glass throws its light close and thick glass throws it
+        //    further. It is not a radial blur around the body, and its distance is not chosen: it is the
+        //    same thickness profile the body is drawn from, evaluated at the same critical line.
+        //  * **The two-line edge is the critical-angle boundary.** A thick glass edge reads as two
+        //    lines: the outer grazing Fresnel, and a darker line one rim in where light stops leaving
+        //    the glass. The second is `criticalInset` — the inset where the bevel's own slope reaches
+        //    `tan(asin(1/IOR))`, solved from `rxy`/`rz` — so it lands wherever the geometry puts it,
+        //    one rim inside the bright one, and moves as the body turns. It used to be a threshold on a
+        //    dot product, which is why the pair merged on some parts of the contour and vanished on
+        //    others.
+        //  * **The edge is coverage, and it is decided once.** `edgeCoverage` reconciles the drawn
+        //    outline's own antialiasing with the distance field's sub-pixel place on the contour, using
+        //    one pixel in points (`foot`). The rim, the far face and the caustic's arc are all shaped
+        //    from that same coordinate, so a line narrower than a pixel fades instead of snapping to
+        //    the sample grid — which is what a staircase on a diagonal edge actually is.
         //  * **The reflection bends with the surface.** The previous pass drew a fixed rotated rectangle
         //    in the body's plane, which is a painted streak. This reflects a real softbox in
         //    `reflect(rdS, n1S)`; because that normal turns across the shoulder, the highlight wraps with
@@ -216,6 +234,20 @@ enum HermeyGlassSource {
         /// here rather than being copied with its arguments swapped in the wrong direction.
         static inline float smoothstepR(float edge0, float edge1, float x) {
             return 1.0 - smoothstep(edge1, edge0, x);
+        }
+
+        /// How much of this pixel the body covers — the app's edge antialiasing, decided once.
+        ///
+        /// The mask's alpha is the drawn outline's own coverage, which Core Graphics antialiased at
+        /// the drawable's resolution. The distance field is a second, independent estimate from either
+        /// side of that outline: `inset` and `outside` are in points, so `(inset - outside) / foot` is
+        /// the pixel's place on a one-pixel ramp across the contour (`foot` is one pixel in points).
+        /// Averaging the two is not double coverage — on the contour both say one half — it is a
+        /// coverage that stays smooth when a line narrower than a pixel lands between two samples,
+        /// which is exactly where a bright rim used to snap to the pixel grid and staircase.
+        static inline float edgeCoverage(float inset, float outside, float foot, float maskAlpha) {
+            float ramp = clamp(0.5 + (inset - outside) / max(foot, 0.001), 0.0, 1.0);
+            return clamp(0.5 * clamp(maskAlpha, 0.0, 1.0) + 0.5 * ramp, 0.0, 1.0);
         }
 
         /// shaders.ts:137-139 — Schlick's approximation, exactly as upstream writes it.
@@ -441,6 +473,61 @@ enum HermeyGlassSource {
             return kCrown + rz * (side / bevel) / max(rxy, 0.001);
         }
 
+        /// The slope whose normal is exactly the critical angle: `tan(asin(1/IOR))`.
+        ///
+        /// Not a tuning number — it is `1/sqrt(IOR²-1)`, the same limit `sinCritical()` is, written as
+        /// a slope because the profile gives steepness directly. Where the bevel reaches it, light
+        /// stops leaving the glass; that is the dark line a thick edge wears one rim inside its bright
+        /// one, and it is why the pair is a boundary rather than a stroke.
+        static inline float criticalSlope() {
+            float s = sinCritical();
+            return s / sqrt(max(1.0 - s * s, 0.02));
+        }
+
+        /// The inset at which the bevel's slope equals `criticalSlope()`, solved from the profile.
+        ///
+        /// `bodyRise` is `crown + rz*(side/bevel)/rxy`; setting it to `k` gives `side = k/sqrt(1+k²)`
+        /// and so `s = rxy*(1 - side)`. It moves with `rxy` and `rz`, so on a shallow bevel the line
+        /// sits deeper in than on a steep one — a boundary the geometry puts there, not a radius.
+        static inline float criticalInset(float rxy, float rz) {
+            float k = max((criticalSlope() - kCrown) * rxy / max(rz, 0.001), 0.0);
+            return rxy * (1.0 - k / sqrt(1.0 + k * k));
+        }
+
+        /// The optical path a ray of `pathLength` travels through a body whose half depth is
+        /// `halfDepth`, in body half-depths.
+        ///
+        /// shaders.ts:335,340-342 compresses the path (`totalPath / (refScale + totalPath*0.30)`,
+        /// `refScale = max(halfDepth*2.2, 14)`) because its SDF march accumulates a much longer path
+        /// than the glass it crosses. Here the path is already geometric, and compressing it is what
+        /// made a 5-pt ear and a 55-pt belly land within 15 % of each other — the interior read as one
+        /// wash. Linear in the path, normalised by the body's own depth, has no floor to saturate
+        /// against, so the same gradient survives at 24 pt.
+        static inline float opticalThickness(float pathLength, float halfDepth) {
+            return pathLength / max(halfDepth * 1.75, 0.001);
+        }
+
+        /// Beer-Lambert along that path, with upstream's `absorbSigma` (shaders.ts:421-422).
+        static inline float3 absorptionAlong(float optical, float3 absorbSigma) {
+            return exp(-absorbSigma * optical);
+        }
+
+        /// Where the light that crossed the bottom wall lands on the page, in points from the
+        /// silhouette — derived, not chosen.
+        ///
+        /// The wall at the critical line is a prism of height `2·h` whose face is tilted by
+        /// `atan(rise)`; a thin prism deflects a ray by `(IOR - 1)` times that angle (the small-angle
+        /// form of Snell, exact enough below the critical angle), and a ray displaced by the height it
+        /// crossed lands `2·h·tan(deflection)` away. So the caustic's distance from the body is the
+        /// thickness profile at the critical inset times the glass's own bending: thin glass throws
+        /// its light close, a thick wall throws it further, and the curve follows the silhouette
+        /// because it is the silhouette's offset at that distance.
+        static inline float causticLanding(float rxy, float rz, float flatZ) {
+            float at = criticalInset(rxy, rz);
+            float deflection = atan(max(bodyRise(at, rxy, rz), 0.0)) * (kIOR - 1.0);
+            return 2.0 * bodyHeight(at, rxy, rz, flatZ) * tan(clamp(deflection, 0.0, 1.35));
+        }
+
         /// The inset at which a ray that entered at `s` meets the back surface.
         ///
         /// `reach` is how fast the ray moves further inside per point of depth it travels. Three
@@ -523,10 +610,17 @@ enum HermeyGlassSource {
             // come out white; the painted body cannot leak in here, which the old flat-fill texture
             // could not promise.
             half4 silhouette = bodyLayer.sample(bodySampler, pos.xy / pixels);
-            float coverage = float(silhouette.a);
             float maxInset = 0.5 * min(size.x, size.y);
             float inset = float(silhouette.g) * maxInset;
             float outside = float(silhouette.b) * maxInset;
+            // One pixel, in the points the profile is written in. Every line this pass draws — the
+            // rim, the far face, the caustic's arc — is wider than this at 200 pt and can be one
+            // pixel at 24, so this is the width below which they must be antialiased rather than
+            // clipped to the sample grid.
+            float foot = size.x / max(pixels.x, 1.0);
+            // The silhouette's coverage: the drawn edge's own antialiasing, reconciled with the
+            // distance field's sub-pixel place on the contour. This is the edge, decided once.
+            float coverage = edgeCoverage(inset, outside, foot, float(silhouette.a));
 
             // The direction the surface falls away in, from the same field: the gradient of a distance
             // field is a unit vector pointing inland, which is exactly what the dome's normal needs.
@@ -537,14 +631,6 @@ enum HermeyGlassSource {
                                  - float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, texel.y)) / pixels).g));
             gradSd = normalize(gradSd + float2(1e-6f));
 
-            // And the same for the *outside* field, which is the only one that has a gradient where the
-            // contact shadow and the pool live. `b` grows away from the body, so its gradient points out.
-            float2 gradOut = float2(float(bodyLayer.sample(bodySampler, (pos.xy + float2(texel.x, 0.0)) / pixels).b)
-                                  - float(bodyLayer.sample(bodySampler, (pos.xy - float2(texel.x, 0.0)) / pixels).b),
-                                    float(bodyLayer.sample(bodySampler, (pos.xy + float2(0.0, texel.y)) / pixels).b)
-                                  - float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, texel.y)) / pixels).b));
-            gradOut = normalize(gradOut + float2(1e-6f));
-
             // The tint arrives as the sRGB value the `Canvas` would have filled; the optics below are
             // linear light, as upstream's are. Decoded once here, encoded once at the end.
             float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));
@@ -553,7 +639,6 @@ enum HermeyGlassSource {
             float2 centre = profile.zw;
             float2 p = position - centre;
             float halfDepth = max(shape.w, 0.0);
-            float span = max(halfExtent.x, halfExtent.y);
 
             // The body as a solid, from the part's own numbers — renderer.ts:186-190: `half` its depth,
             // `rxy`/`rz` the ellipse its edge is rounded with, and `flatZ` the wall that ellipse leaves at
@@ -618,7 +703,6 @@ enum HermeyGlassSource {
             // Upstream's own unit: the body spans 100 of them, so every optical constant above is used at
             // the scale it was tuned at however many points this surface is drawn in.
             float u = max(size.x, size.y) / 100.0;
-            float halfDepthU = halfDepth / max(u, 0.0001);
 
             // 2 — refraction at the front surface (shaders.ts:289). `into` is the ray *inside* the glass.
             float3 into = refract(rdS, n1S, 1.0 / kIOR);
@@ -641,10 +725,6 @@ enum HermeyGlassSource {
             float3 n2S = toScreen(n2M, cosYaw, sinYaw, cosPitch, sinPitch);
 
             float3 leaving = refract(into, -n2S, kIOR);
-            // The total-internal-reflection limit, in cosine: light stops leaving the glass when the angle
-            // at the back wall passes `asin(1/IOR)`. `rearMargin` is how far past it this ray is, and it is
-            // the line the eye reads as the rear edge — computed, so it moves with the body.
-            float rearMargin = sinCritical() - dot(into, n2S);
             bool rearTIR = length(leaving) < 0.001;
             float cosTrans = 0.0;
             float F2 = 0.0;
@@ -675,16 +755,17 @@ enum HermeyGlassSource {
             float2 plateFoot = fwidth(plateUV) + 1e-5;
             float3 plate = sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);
 
-            // shaders.ts:335, 340-342 — the ray's true path, through upstream's compression. The
-            // compression is loosened here: upstream's `halfDepth*2.2` (31.9 units on this body) maps a
-            // 29-unit path and a 15-unit one into 0.72 and 0.53, which is a 1.35× difference — far too
-            // little to see, and the reason the interior read as one uniform wash. At `0.9` they land at
-            // 1.34 and 0.85, so the belly is visibly deeper in colour than an ear tip while still
-            // graded, and the body never goes to mud.
-            float pathU = pathLength / max(u, 0.0001);
-            float refScale = max(halfDepthU * 0.90, 8.0);
-            float optical = pathU / (refScale + pathU * 0.30);
-            float3 beer = exp(-absorbSigma * optical);
+            // shaders.ts:335, 340-342 — the ray's path, through the thickness the glass actually
+            // presents. The absorbed length is the ray's own, shortened where the body is thin:
+            // `inset / halfDepth` is how much body lies between this point and the nearest wall, so
+            // an ear — a fin, not a slab — and the wall itself cross a fraction of what the belly
+            // does. That is the whole of the difference between a solid piece of glass and a tinted
+            // dome, and it is why the gradient stays readable where the body narrows instead of only
+            // where it is deepest.
+            float localBody = smoothstep(0.03, 0.85, inset / max(halfDepth, 0.001));
+            float absorbingPath = pathLength * (0.30 + 0.70 * localBody);
+            float optical = opticalThickness(absorbingPath, halfDepth);
+            float3 beer = absorptionAlong(optical, absorbSigma);
             float lumThrough = dot(beer, float3(0.2126, 0.7152, 0.0722));
             float3 reflEnv = sampleInternalStudio(exitPoint / max(u, 0.0001), normalize(reflect(into, -n2S)),
                                                   jewelTint, 1.0, halfExtent.y / max(u, 0.0001), detail);
@@ -754,10 +835,15 @@ enum HermeyGlassSource {
             float tirEnergy = reflWeight * 0.65;                              // shaders.ts:358, 373
             float directTrans = exitWeight * smoothstep(0.10, -0.70, leaving.z);  // shaders.ts:372
 
-            // 7 — the rim. It is the Fresnel term at the edge of a real 3-D solid, at the width the
-            // shoulder gives it. It carries the state's rim opacity (the eight states' light table) and
-            // leans toward the key's side, so the edge catches light instead of glowing evenly.
+            // 7 — the rim: two lines, both solved from the profile, and both antialiased by the same
+            // coverage the silhouette uses.
+            //
+            // The bright one is the grazing Fresnel edge, at the width the shoulder gives it
+            // (`rimWidth`, the inset where the bevel is still more than 35° from the viewer). Its core
+            // is a sub-pixel line so the contour itself stays crisp when the body is 24 pt, and the
+            // band behind it is the key reflected in the bevel: together they are the polished edge.
             float rimBand = 1.0 - smoothstep(0.0, rimWidth, inset);
+            float rimCore = 1.0 - smoothstep(0.0, max(0.65, rimWidth * 0.30), inset);
             float2 rimDir = normalize(float2(-0.55, -0.80));
             float rimFacing = 0.62 + 0.38 * clamp(dot(normalize(nS.xy + float2(1e-5f)), rimDir) * 0.5 + 0.5,
                                                   0.0, 1.0);
@@ -766,13 +852,21 @@ enum HermeyGlassSource {
             // paint, so it brightens with `F1` and fades to a quarter on the face. A band of constant
             // brightness is a stroked outline however thin it is.
             accum += rimLight * (rimBand * (0.55 + pose.z * tone.z)) * rimFacing * (0.25 + 0.75 * F1);
+            accum += mix(rimLight, float3(1.0), 0.30)
+                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.62 * (0.35 + 0.65 * rimFacing));
 
-            // The second line: where the light stops leaving the glass. A darker line one rim inside the
-            // bright one is what makes a glass edge read as *thick* — the eye reads the pair as a wall with
-            // a face behind it. Dark because a TIR'd ray comes back off the wall carrying the studio behind
-            // the body, which is the darkest thing in the room.
-            float rearLine = (1.0 - smoothstep(0.0, 0.18, abs(rearMargin))) * detail;
-            accum = mix(accum, accum * 0.34 + keyColour * 0.06, rearLine * 0.72);
+            // The second line: where the light stops leaving the glass. `criticalInset` is the point of
+            // the bevel whose normal is at the critical angle — solved from `rxy`/`rz`, so it sits one
+            // rim inside the bright one on every pose and every size instead of wherever a dot-product
+            // threshold happened to land, which is why the two lines were sometimes one. Dark, because
+            // a TIR'd ray comes back off the wall carrying the studio behind the body, which is the
+            // darkest thing in the room.
+            float darkInset = criticalInset(rxy, rz);
+            float darkWidth = max(0.55, rimWidth * 0.26);
+            float darkLine = exp(-pow((inset - darkInset) / darkWidth, 2.0));
+            darkLine *= smoothstep(0.30, 0.75, bodySide(inset, rxy));
+            accum = mix(accum, accum * 0.30 + keyColour * 0.05,
+                        clamp(darkLine, 0.0, 1.0) * 0.78 * detail);
 
             // A light page's hairline, outside the rim, so the silhouette holds on paper: the same job the
             // Canvas path's `outerHairline` does, done at the outermost point of the falloff.
@@ -810,25 +904,37 @@ enum HermeyGlassSource {
                                 + 0.30 * rimBand,
                                 0.34, 0.97);
 
-            // 8 — the page, from the same field. The shadow is short and soft because it is the glass's own
-            // contact: `outside` is the distance from the silhouette, so this follows the outline exactly
-            // rather than an ellipse fitted to the box. The pool is the light the *thin* rim lets past,
-            // thrown just beyond the footprint and away from the key — the two things a thick piece of glass
-            // does to the surface it stands on.
-            float soft = max(1.0, 0.05 * max(size.x, size.y));
-            float shadowAlpha = exp(-outside / (soft * 0.40)) * smoothstep(0.0, 0.4, outside) * 0.62;
-            float2 outward = gradOut;
-            float2 poolAt = p + outward * (span * 0.055) + normalize(float2(0.62, 0.78)) * (span * 0.045);
-            // A caustic is a *curve*, not a glow: the light that crossed the thinnest glass — the wall —
-            // lands in a bright line just outside the footprint, with a hard inner edge where the
-            // silhouette is and a short falloff past it. `soft * 0.16` is a few points wide at 200 pt and
-            // one pixel at 24, and the squared `bottom` keeps it under the body rather than ringing it.
-            float poolBand = exp(-pow((outside - soft * 0.14) / (soft * 0.16), 2.0));
-            float bottom = clamp(0.18 + 1.05 * outward.y, 0.0, 1.0);
-            float caustic = poolBand * bottom * bottom * smoothstep(0.0, 0.4, outside) * 0.95;
-            // The pool is where the thin glass was: nearly the plate's own colour, the rim's absorption
-            // only just reaching it.
-            float3 causticLight = mix(jewelTint, float3(1.0, 0.94, 0.84), 0.66) * (0.55 + 0.45 * (1.0 - thick));
+            // 8 — the page, from the same field. Two things happen where glass meets paper: a short
+            // contact shadow under the body, and the caustic — the light that crossed the bottom wall
+            // and landed past the footprint, at the distance `causticLanding` solves for.
+            //
+            // `outside` is the distance from the drawn silhouette, so both follow the outline exactly
+            // rather than an ellipse fitted to the box. The shadow is black at its own opacity, so the
+            // page goes darker; the caustic is light, so it goes warmer. They are the same field.
+            float shadowAlpha = exp(-outside / max(0.7, foot * 1.6)) * smoothstep(0.0, 0.35, outside) * 0.62;
+            // Where the wall's light lands: an arc *parallel to the silhouette* at the solved
+            // distance — focused by the thickness, not blurred out of the middle. Its inner edge is
+            // the fold, where the mapping from the wall to the page turns over; its outer edge is a
+            // short falloff, because the focus has a width.
+            float landing = causticLanding(rxy, rz, flatZ);
+            float arcWidth = max(0.75, landing * 0.16);
+            float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
+            // Only beneath. The wall's light goes down, so the arc fades as the contour turns up the
+            // sides. Read off the pixel's own height against the body's box, which is stable along the
+            // whole bottom; a normal taken from an 8-bit distance field was not, and broke the arc up.
+            float below = smoothstep(0.30, 0.86, (position.y - centre.y) / max(halfExtent.y, 1.0));
+            // How bright: the wall's own transmission. A short path through amber is nearly white, so
+            // the arc is warm; the longer the wall, the more of it the tint eats. Same absorption as
+            // the body, at the wall's own path — no separate colour for the light on the page.
+            float wallPath = 2.0 * bodyHeight(criticalInset(rxy, rz), rxy, rz, flatZ);
+            float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.95, 0.86), 0.55) * wallBeer * 1.35;
+            float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.88;
+            // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
+            // that contrast is what makes a caustic a curve rather than a glow.
+            float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.9, 0.4))
+                                      / max(0.5, arcWidth * 0.55), 2.0));
+            foldDark *= below * smoothstep(0.0, 0.5, outside) * 0.58;
 
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
@@ -845,10 +951,15 @@ enum HermeyGlassSource {
             // pixel the body does not cover a speck of opacity.
             alpha *= coverage;
 
-            // Premultiplied over whatever is behind the view: the glass, the shadow it sits in, and the
-            // light it throws past its own edge.
-            float3 outRGB = col * alpha + causticLight * (caustic * (1.0 - alpha));
-            float outA = max(alpha + shadowAlpha * (1.0 - alpha), caustic * (1.0 - alpha));
+            // Premultiplied over whatever is behind the view, back to front: the contact shadow and the
+            // fold's dark edge lie on the page (black at an opacity, so they darken it), and the arc's
+            // light is added over them. A pixel outside the body is `1 - alpha`, so nothing painted
+            // here can reach through the glass itself.
+            float page = 1.0 - alpha;
+            float shadeA = clamp((shadowAlpha + foldDark) * page, 0.0, 1.0);
+            float arcA = clamp(caustic * page, 0.0, 1.0);
+            float3 outRGB = col * alpha + causticLight * arcA;
+            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
         }
 """
