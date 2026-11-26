@@ -117,7 +117,8 @@ public struct BotAvatarView: View {
     /// Motion, the app's own switch, or a background scene (refused here as well as by the clock, so
     /// no caller can animate a face the person asked to keep still); or `nil`, which is how an
     /// off-screen row — or a list that is not the focused window — says "hold still". The size floor
-    /// is deliberately not applied: this is a two-percent float at 17 pt, not a performance, and the
+    /// is deliberately not applied: this is a two-percent float at the row's 38 pt — under a third of
+    /// a point per step — not a performance, and the
     /// floor exists to stop a small face *twitching*, not drifting.
     public var idleDriftAt: Double?
     /// The size at which this face starts moving. Defaults to the house floor; a surface where the

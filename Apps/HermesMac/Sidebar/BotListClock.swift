@@ -12,10 +12,11 @@ import SwiftUI
 /// * **one timer for the whole list**, not one per row and never a display link — a row that
 ///   re-reads a published instant costs one body evaluation, and the list's own body (the grouping,
 ///   the filter, the `LazyVStack`) is not invalidated at all;
-/// * **three frames a second** (`cadence`). The idle float's cycle is 1.8 s — five or six samples a
-///   cycle — and the whole travel is two and a half percent of the face's side, so at row size the
-///   steps are a third of a point: that is a drift, not a twitch. A faster beat here would only buy
-///   smoother sub-point motion at twenty times the cost;
+/// * **three frames a second** (`cadence`). The idle float's cycle is 1.8 s, so three samples already
+///   describe it — five or six a cycle — and its whole travel is five of the reference's 120 units,
+///   which at the row's 38 pt is 1.6 pt spread over those steps: a third of a point each. That is a
+///   drift, not a twitch, and a faster beat would only buy smoother sub-point motion at a cost that
+///   multiplies with every row;
 /// * **only what is on screen**: a row is counted while it is materialised (`rowAppeared` /
 ///   `rowDisappeared`), which is what a `LazyVStack` gives us — a row scrolled away is not in the
 ///   hierarchy and does not count, and it draws `rest` because it is handed no instant;
@@ -165,7 +166,7 @@ final class BotListClock: ObservableObject {
         timer?.invalidate()
         timer = nil
         // Nil, not "the last instant": nil is what the rows draw `rest` from, so a list that pauses
-        // settles exactly where it started instead of freezing mid-air with a still face.
+        // settles back to the rest pose instead of freezing mid-air with a face that never lands.
         if time != nil { time = nil }
     }
 
