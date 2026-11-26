@@ -72,6 +72,12 @@ let states = option("--states", "idle,working").split(separator: ",").map(String
 // it: `Theme`'s dark token table, `canvas: 0x0A0A0A`, `surface: 0x232323`.
 let canvasBackground = (r: 0x0A, g: 0x0A, b: 0x0A)
 let surfaceBackground = (r: 0x23, g: 0x23, b: 0x23)
+// The two surfaces an avatar is actually drawn on: the dark theme's raised pane (`#1E1E1E`, the tone a
+// row and a header sit at) and the light theme's surface (`#F2F2F2`, one step off `Theme.light.surface`
+// so the number is quoted against a round value). These are the backdrops the translucency and the
+// brightness are measured on.
+let paneBackground = (r: 0x1E, g: 0x1E, b: 0x1E)
+let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)
 
 // MARK: - The app's own pieces
 
@@ -139,7 +145,8 @@ struct Rendered {
 }
 
 /// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
-func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState) -> Rendered? {
+func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState,
+            dark: Bool = true) -> Rendered? {
     let points = CGSize(width: side, height: side)
     let finalPixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
     let width = Int(finalPixels.width), height = Int(finalPixels.height)
@@ -153,7 +160,7 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     let face = OpenBotAvatarRenderer.bodyTransform(model, pose: pose, size: points)
     let surface = BotAvatarGlassSurface.make(model: model, pose: pose, size: points, face: face,
                                              color: OpenBotAvatarRenderer.defaultColor,
-                                             backdrop: .themed(dark: true), material: .glass)
+                                             backdrop: .themed(dark: dark), material: .glass)
     // How long the mask costs, per case: the analytic field is the one part of this pass that runs on
     // the CPU, and it runs once per pixel size — so its number is the price of the fix, quoted rather
     // than guessed.
@@ -239,6 +246,34 @@ func downsampled(_ rgba: [UInt8], width: Int, height: Int) -> [UInt8] {
 
 // MARK: - Writing
 
+/// WCAG relative luminance of one sRGB channel triple 0…1, and the contrast ratio between two.
+///
+/// The number a person's eye uses for "how much darker", and the one an accessibility audit quotes:
+/// `(lighter + 0.05) / (darker + 0.05)`.
+func relativeLuminance(_ rgb: (Double, Double, Double)) -> Double {
+    func linear(_ channel: Double) -> Double {
+        channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * linear(rgb.0) + 0.7152 * linear(rgb.1) + 0.0722 * linear(rgb.2)
+}
+
+func contrastRatio(_ a: Double, _ b: Double) -> Double {
+    (max(a, b) + 0.05) / (min(a, b) + 0.05)
+}
+
+/// The mean luminance of a square of `rgba`, as an sRGB value 0…1.
+func meanLuminance(_ rgba: [UInt8], width: Int, height: Int, centre: (Int, Int), side: Int) -> Double {
+    var sum = 0.0, count = 0
+    for y in max(0, centre.1 - side / 2)..<min(height, centre.1 + side / 2) {
+        for x in max(0, centre.0 - side / 2)..<min(width, centre.0 + side / 2) {
+            let i = (y * width + x) * 4
+            sum += 0.2126 * Double(rgba[i]) + 0.7152 * Double(rgba[i + 1]) + 0.0722 * Double(rgba[i + 2])
+            count += 1
+        }
+    }
+    return count > 0 ? sum / Double(count) / 255.0 : 0
+}
+
 func composite(_ frame: Rendered, over background: (r: Int, g: Int, b: Int)) -> [UInt8] {
     var out = frame.rgba
     let br = UInt8(background.r), bg = UInt8(background.g), bb = UInt8(background.b)
@@ -314,6 +349,15 @@ for side in sides {
                      to: outDirectory.appendingPathComponent("\(stem)-zoom.png"))
         }
 
+        // The two surfaces the body is actually drawn on. `-pane` is the dark theme's raised surface;
+        // `-lit` is the light theme's, drawn with the light scheme's own page.
+        writePNG(composite(frame, over: paneBackground), width: frame.width, height: frame.height,
+                 to: outDirectory.appendingPathComponent("\(stem)-pane.png"))
+        if let lit = render(side: side, state: state, pipeline: pipeline, dark: false) {
+            writePNG(composite(lit, over: litBackground), width: lit.width, height: lit.height,
+                     to: outDirectory.appendingPathComponent("\(stem)-lit.png"))
+        }
+
         // The refraction proof: the same body over a studio that has edges in it.
         if let patternPipeline,
            let patternFrame = render(side: side, state: state, pipeline: patternPipeline) {
@@ -333,10 +377,35 @@ for side in sides {
             alphaMax = max(alphaMax, Int(frame.rgba[i]))
         }
         let mean = covered > 0 ? alphaSum / Double(covered) : 0
-        let name = stem.padding(toLength: 22, withPad: " ", startingAt: 0)
+        let padded = stem.padding(toLength: 22, withPad: " ", startingAt: 0)
         print(String(format: "%@ %dx%d  cover=%d  mean=%.2f  max=%.2f  mask=%.0f ms",
-                     name, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
+                     padded, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
                      lastMaskMilliseconds))
+
+        // The brightness and the transmission, as numbers: the body's centre and its mid-ring over the
+        // two pages it is drawn on, and the eyes against both. The ink is opaque (`.082` in every
+        // channel), so what is checked is that the *body* has not climbed toward it — a body brighter
+        // than the ink is a washed-out face.
+        let centre = (frame.width / 2, frame.height / 2)
+        let ring = (frame.width / 2 + frame.width * 26 / 100, frame.height / 2)
+        // A patch a twenty-fourth of the body wide: wide enough to average the dither, narrow enough
+        // that it cannot reach the dark features either side of the centre. A twelfth reads the eyes
+        // and the junction line into the "centre" and reports a body darker than it is.
+        let patch = max(6, frame.width / 24)
+        let ink = relativeLuminance((0.082, 0.082, 0.082))
+        var line = ""
+        for (label, backdrop) in [("pane", paneBackground), ("lit", litBackground)] {
+            let over = composite(frame, over: backdrop)
+            let atCentre = meanLuminance(over, width: frame.width, height: frame.height,
+                                         centre: centre, side: patch)
+            let atRing = meanLuminance(over, width: frame.width, height: frame.height,
+                                       centre: ring, side: patch)
+            let page = Double(backdrop.r) / 255          // the flat page's own sRGB luminance
+            line += String(format: "  %@ centre %.3f (%+.0f%% of page)  ring %.3f  eyes %.2f:1",
+                           label, atCentre, (atCentre / max(page, 1e-4) - 1) * 100, atRing,
+                           contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink))
+        }
+        print(line)
     }
 }
 

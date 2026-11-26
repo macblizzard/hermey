@@ -296,11 +296,23 @@ F0 = 0.04
 INTERIOR_STEPS = 12
 CROWN = 0.055
 PLATE_STANDOFF = 2.4
+# The light the body carries: the page it stands on, the studio it is lit by, and what the interior
+# gathered. `PAGE_GAIN` is what makes the body a tint over the app's surface instead of a block.
 PLATE_GAIN = 1.35
 INTERIOR_GAIN = 1.35
-ABSORPTION_OPACITY = 0.45
+# …and where a page is known: the page *is* the room, so the gains carry one page (0.75 + 0.32 of the
+# mean path transmittance) plus the bounce rather than a bright cyclorama.
+PLATE_GAIN_PAGE = 0.82
+INTERIOR_GAIN_PAGE = 0.38
+# How much of the invented studio the front face reflects, per unit of the page's own luminance.
+PAGE_SHEEN_GAIN = 2.0
+PAGE_SHEEN_FLOOR = 0.03
+ABSORPTION_OPACITY = 0.26
+# `kAbsorbGain` / `kAbsorbFloor`: how hard the path absorbs, per unit of optical thickness.
+ABSORB_GAIN = 0.40
+ABSORB_FLOOR = 0.045
 PLATE_FOLD = 1.55
-BOUNCE_GAIN = 1.05
+BOUNCE_GAIN = 1.35
 THIN_PROBE = 0.55
 THIN_LANDING = 0.35
 THICK_WIDTH = 2.20
@@ -469,8 +481,13 @@ def to_screen(n, yaw: float, pitch: float):
             -sy * cp * n[0] + sp * n[1] + cy * cp * n[2])
 
 
-def shade(surface_numbers, point):
-    """One pixel of `hermeyGlassBody`, with the mask's distance field computed here."""
+def shade(surface_numbers, point, page_rgb=None):
+    """One pixel of `hermeyGlassBody`, with the mask's distance field computed here.
+
+    `page_rgb` is the surface behind the body — the theme's own `#232323` or `#F0EEE6`, or None where
+    the surface cannot name one (the desktop pet). It is the shader's `page` uniform, and it is what the
+    body transmits.
+    """
     half_w, half_h = surface_numbers["half"]
     centre = surface_numbers["centre"]
     rxy = surface_numbers["rxy"]
@@ -493,7 +510,7 @@ def shade(surface_numbers, point):
     pure_hue = tuple(c / max_c for c in tint) if max_c > 0.05 else (0.88, 0.94, 0.97)
     jewel = tuple(mix((0.88, 0.94, 0.97)[i], pure_hue[i], min(1.0, saturation * 1.08)) for i in range(3))
     trans = tuple(mix(0.97, jewel[i], min(1.0, saturation * 0.88)) for i in range(3))
-    sigma = tuple(-math.log(max(c, 0.12)) * 0.62 + 0.08 for c in trans)
+    sigma = tuple(-math.log(max(c, 0.12)) * ABSORB_GAIN + ABSORB_FLOOR for c in trans)
 
     half_extent = (max(half_w, 0.5), max(half_h, 0.5))
     span = max(half_extent)
@@ -553,16 +570,25 @@ def shade(surface_numbers, point):
     travel_z = (plate_z - exit_point[2]) / min(leaving[2], -0.22)
     land = (exit_point[0] + leaving[0] * travel_z, exit_point[1] + leaving[1] * travel_z)
     uv = fold_into_plate((land[0] / half_extent[0], land[1] / half_extent[1]))
-    surface_col = glass_plate(uv, jewel, detail)
+    # The page the body stands on, sRGB in and linear out, exactly as the tint is decoded. `None` is the
+    # pet: no page to name, so `w` is 0 and the studio is the whole of the body's light.
+    page_known = 0.0 if page_rgb is None else 1.0
+    page_light = tuple((0.0 if page_rgb is None else c ** 2.2) * page_known for c in (page_rgb or (0, 0, 0)))
+    # The plate: the studio's room where the page is unknown, the page itself where it is known.
+    surface_col = page_light if page_rgb is not None else glass_plate(uv, jewel, detail)
+    if page_rgb is not None:
+        sheen = max(PAGE_SHEEN_FLOOR, min(1.0, luminance(page_light) * PAGE_SHEEN_GAIN))
+        accum = [c * sheen for c in accum]
 
     local_body = smoothstep(0.03, 0.85, inset / max(half_depth, 0.001))
     absorbing_path = path_length * (0.30 + 0.70 * local_body)
     optical = optical_thickness(absorbing_path, half_depth)
     beer = tuple(math.exp(-sigma[i] * optical) for i in range(3))
     lum_through = sum(beer[i] * (0.2126, 0.7152, 0.0722)[i] for i in range(3))
-    refl_env = inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
-                            normalise(reflect_dir(into, n2_neg)), jewel, 1.0,
-                            half_extent[1] / max(unit, 0.0001), detail)
+    refl_env = [mix(inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
+                                 normalise(reflect_dir(into, n2_neg)), jewel, 1.0,
+                                 half_extent[1] / max(unit, 0.0001), detail)[i],
+                     page_light[i], page_known) for i in range(3)]
 
     gather = [0.0, 0.0, 0.0]
     step = path_length / INTERIOR_STEPS
@@ -572,20 +598,24 @@ def shade(surface_numbers, point):
         pos = ((p[0] + into[0] * walked) / max(unit, 0.0001),
                (height - walked) / max(unit, 0.0001),
                0.0)
-        slice_col = inner_studio(pos, into, jewel, 1.0 if rear_tir else 0.0, eye_rel, detail)
+        slice_col = (page_light if page_rgb is not None
+                     else inner_studio(pos, into, jewel, 1.0 if rear_tir else 0.0, eye_rel, detail))
         for j in range(3):
             gather[j] += slice_col[j] * math.exp(-sigma[j] * (optical * (walked / max(path_length, 0.001))))
     gather = [g / INTERIOR_STEPS for g in gather]
-    through = [(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i] for i in range(3)]
+    studio_gain = PLATE_GAIN if page_rgb is None else PLATE_GAIN_PAGE
+    interior_gain = INTERIOR_GAIN if page_rgb is None else INTERIOR_GAIN_PAGE
+    through = [(surface_col[i] * studio_gain + gather[i] * interior_gain) * beer[i] for i in range(3)]
 
     # 4b — the bounce: light that crossed the front face, struck the far wall and came back out. The
     # wall is lit by the same studio the gather integrates; the weight is how square it stands to the
     # incoming ray and the two-way path through the body (`beer * beer`, the thickness field's own
     # transmittance squared).
     wall_facing = max(0.0, min(1.0, dot3(into, n2)))
-    wall_light = inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
-                              (-n2[0], -n2[1], -n2[2]), jewel, 1.0 if rear_tir else 0.0,
-                              eye_rel, detail)
+    wall_light = [mix(inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
+                                   (-n2[0], -n2[1], -n2[2]), jewel, 1.0 if rear_tir else 0.0,
+                                   eye_rel, detail)[i], page_light[i],
+                      page_known) for i in range(3)]
     bounce = [wall_light[i] * (wall_facing * wall_facing) * (beer[i] * beer[i])
               * (1.0 - f1) * BOUNCE_GAIN * detail for i in range(3)]
     through = [through[i] + bounce[i] for i in range(3)]
@@ -610,8 +640,9 @@ def shade(surface_numbers, point):
     bend = abs(body_rise(probe, rxy, rz) - rise) / max(probe - inset, 0.001)
     focus = max(0.0, min(3.0, path_length * bend * 0.10)) ** 2
     key_colour = tuple(mix(jewel[i], (1.0, 0.96, 0.90)[i], 0.62) for i in range(3))
-    through = [through[i] + (gather[i] * 0.55 + key_colour[i] * 0.45) * (focus * 0.55 * detail)
-               for i in range(3)]
+    focus_light = [mix(gather[i] * 0.55 + key_colour[i] * 0.45, page_light[i] * 1.20, page_known)
+                   for i in range(3)]
+    through = [through[i] + focus_light[i] * (focus * 0.55 * detail) for i in range(3)]
 
     accum = [accum[i] + through[i] * exit_weight for i in range(3)]
     accum = [accum[i] + refl_env[i] * beer[i] * 1.22 * refl_weight for i in range(3)]
@@ -821,6 +852,64 @@ def report(side):
     print()
 
 
+def luminance(rgb):
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+
+
+#: `OpenBotAvatarRenderer.defaultInk` — the eyes' own colour, sRGB, opaque.
+INK = 0.082
+
+
+def wcag(grey):
+    return ((grey + 0.055) / 1.055) ** 2.4 if grey > 0.03928 else grey / 12.92
+
+
+def page_report(side):
+    """The body's centre and mid-ring over the two surfaces it is actually drawn on.
+
+    The page it transmits is the *theme's* surface (`#232323` dark, `#F0EEE6` light); the backdrop it is
+    composited over is one step away from that (`#1E1E1E` pane, `#F2F2F2` lit), because that is the
+    difference between the row an avatar sits in and the surface colour the theme names. Two numbers per
+    surface: how bright the centre is against the page (a tint transmits, a block does not), and the
+    eye's contrast against the body (a brighter body must not climb toward the ink).
+    """
+    numbers = surface(side)
+    outline = numbers["outline"]
+    centre = deepest_point(numbers)
+    centre_pixel = shade(numbers, centre, page_rgb=(0x23 / 255,) * 3)
+    thin = thin_point(numbers)
+    # "Mid-ring": half way from the centre to the silhouette, on the row the centre sits on.
+    target = 0.5 * centre_pixel["inset"]
+    row = [point for point, pixel in scanline(numbers, centre[1], 121)
+           if abs(pixel["inset"] - target) < 1.2]
+    mid = row[len(row) // 2] if row else centre
+
+    print(f"cat / idle / {side:.0f} pt — the body against the page it is drawn on")
+    for label, page_rgb, backdrop in (
+        ("pane #1E1E1E", (0x23 / 255,) * 3, 0x1E / 255),
+        ("ctrl #2B2B2B", (0x23 / 255,) * 3, 0x2B / 255),
+        ("lit  #F2F2F2", (0xF0 / 255, 0xEE / 255, 0xE6 / 255), 0xF2 / 255),
+    ):
+        centre_here = shade(numbers, centre, page_rgb=page_rgb)
+        mid_here = shade(numbers, mid, page_rgb=page_rgb)
+        for name, pixel in (("centre", centre_here), ("ring", mid_here)):
+            composited = tuple(pixel["colour"][i] * pixel["alpha"] + backdrop * (1 - pixel["alpha"])
+                               for i in range(3))
+            body = luminance(composited)
+            ratio = (max(wcag(body), wcag(INK)) + 0.05) / (min(wcag(body), wcag(INK)) + 0.05)
+            print(f"  {label:<14} {name:<6} body {body:.3f}  "
+                  f"({(body / max(backdrop, 1e-4) - 1) * 100:+.0f}% of the page)  "
+                  f"alpha {pixel['alpha']:.2f}  eyes {ratio:.2f}:1")
+        fallback = shade(numbers, centre)
+        composited = tuple(fallback["colour"][i] * fallback["alpha"] + backdrop * (1 - fallback["alpha"])
+                           for i in range(3))
+        print(f"  {label:<14} {'no page':<6} body {luminance(composited):.3f}  "
+              f"({(luminance(composited) / max(backdrop, 1e-4) - 1) * 100:+.0f}% of the page) — the pet")
+    print()
+
+
 if __name__ == "__main__":
     for size in (24.0, 48.0, 200.0):
         report(size)
+    for size in (24.0, 48.0, 200.0):
+        page_report(size)

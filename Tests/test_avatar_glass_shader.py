@@ -408,7 +408,7 @@ class TheTermsAreUpstreams(unittest.TestCase):
             ("float3(-0.24, -0.76, -0.60), float2(0.70, 0.095), 0.075, -0.22", "the rim softbox"),
             ("keyMain * 13.0", "the key's weight"),
             ("keyRim * 8.0", "the rim's weight"),
-            ("0.62 + float3(0.08)", "Beer-Lambert's absorption"),
+            ("* kAbsorbGain + float3(kAbsorbFloor)", "Beer-Lambert's absorption, at its own gain"),
             ("peak / (1.0 + peak * 0.48)", "the tone map"),
             ("smoothstep(2.2, 5.2, peak)", "the white roll"),
             ("mix(0.36, 0.68, pow(1.0 - cos1, 1.55))", "the edge transparency"),
@@ -535,10 +535,15 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
     def test_the_backdrop_is_a_studio_not_the_body(self):
         source = msl_code()
         self.assertIn("static inline float3 sampleGlassPlate(", source)
-        self.assertIn("float3 plate = sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);", source)
+        # The plate is the studio's room where the surface cannot name its page, and the page itself
+        # where it can: a body that transmits a bright cyclorama is a body with nothing behind it.
+        self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
+                      "pageLight, pageKnown);", source)
+        self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
+        self.assertIn("float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);", source)
         # The plate is lit neutral and carries the body's hue at 45 %, not in full.
         self.assertIn("col *= mix(float3(1.0), jewelTint, 0.45);", source)
-        self.assertIn("float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;", source)
+        self.assertIn("float3 through = (plate * plateGain + gather * interiorGain) * beer;", source)
         # The geometry is renderer.ts's inflate solid, not a quarter circle of our own.
         self.assertIn("return flatZ + kCrown * capped + rz * sqrt(max(0.0, 1.0 - side * side));", source)
         self.assertIn("float flatZ = max(0.0, halfDepth - rz);", source)
@@ -671,13 +676,13 @@ class TheLightIsReadFromTheFields(unittest.TestCase):
         self.assertIn("float wallFacing = clamp(dot(into, n2S), 0.0, 1.0);", source)
         self.assertIn("float3 bounce = wallLight * (wallFacing * wallFacing) * (beer * beer)", source)
         self.assertIn("* (1.0 - F1) * kBounceGain * detail;", source)
-        self.assertIn("#define kBounceGain 1.05", source)
+        self.assertIn("#define kBounceGain 1.35", source)
         # …and both factors it multiplies are the path's, which is the body's thickness.
         self.assertIn("float3 beer = absorptionAlong(optical, absorbSigma);", source)
         self.assertIn("float optical = opticalThickness(absorbingPath, halfDepth);", source)
         self.assertIn("through += bounce;", source)
         mirror = read(self.PROOF / "numbers.py")
-        self.assertIn("BOUNCE_GAIN = 1.05", mirror)
+        self.assertIn("BOUNCE_GAIN = 1.35", mirror)
         self.assertIn("bounce = [wall_light[i] * (wall_facing * wall_facing) * (beer[i] * beer[i])",
                       mirror)
 
@@ -725,6 +730,101 @@ class TheLightIsReadFromTheFields(unittest.TestCase):
         self.assertIn("guard material == .glass else { return .canvas }", decide_body())
         self.assertIn(f"#if !{WIDGET_CONDITION}", code(read(SOURCE)))
         self.assertNotIn("Float16(", code(read(LAYER)))
+
+
+class TheBodyTransmitsThePage(unittest.TestCase):
+    """The body is a tint over what is behind it, not a block in front of it.
+
+    The round-4 critique said it in one line — "the body is only translucent at the very outer edges;
+    the central body is incredibly dense" — and the measurement agreed: over the app's own pane the
+    body's centre sat at three times the pane's luminance. The fix has three parts, and each is a
+    quantity rather than a look:
+
+    * the surface *names* the page it is drawn over (the theme's own surface colour), so the shader has
+      something real to transmit — and says `.zero` where it cannot (the pet), which is the fallback;
+    * the absorption is cut to a tint's strength, and stays a function of the path;
+    * the invented studio is scaled by the page's own light, so a bright cyclorama cannot be the
+      brightest thing on a dark page, and a light surface still gets a lit face.
+    """
+
+    def test_the_surface_names_the_page_it_is_drawn_over(self):
+        route = code(read(ROUTE))
+        # The uniform, and the one place that fills it.
+        self.assertIn("var page: SIMD4<Float> = .zero", route)
+        self.assertIn("page: BotAvatarGlassSurface.page(for: backdrop)", route)
+        self.assertIn("static func page(for backdrop: OpenBotAvatarBackdrop) -> SIMD4<Float>", route)
+        # The theme's own tokens, not an invented colour.
+        self.assertIn("Float(0x23) / 255, Float(0x23) / 255, Float(0x23) / 255, 1", route)
+        self.assertIn("Float(0xF0) / 255, Float(0xEE) / 255, Float(0xE6) / 255, 1", route)
+        # …and the named fallback: the pet has no page, so the studio lights the body alone.
+        self.assertIn("case .pet:", route)
+        self.assertIn("return .zero", route)
+
+    def test_the_fragment_transmits_it_and_falls_back_to_the_studio(self):
+        source = msl_code()
+        self.assertIn("float pageKnown = uniforms.page.w;", source)
+        self.assertIn("float3 pageLight = pow(max(uniforms.page.rgb, float3(0.0)), float3(2.2)) * pageKnown;",
+                      source)
+        # The plate, the interior's slices and the wall's reflection all take the same mix, so the body's
+        # light has one source and `pageKnown == 0` reproduces the pre-change body exactly.
+        self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
+                      "pageLight, pageKnown);", source)
+        self.assertIn("float3 slice = mix(sampleInternalStudio(posS, into, jewelTint, rearTIR ? 1.0 : 0.0,",
+                      source)
+        self.assertIn("pageLight, pageKnown);", source)
+        # The pair of gains is chosen by whether there is a page: 1.35 of a bright cyclorama over a page
+        # that is 0.01 up is the density the critique named.
+        self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
+        self.assertIn("float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);", source)
+        self.assertIn("#define kPlateGain 1.35", source)
+        self.assertIn("#define kPlateGainPage 0.82", source)
+
+    def test_the_front_face_is_as_bright_as_the_room_behind_it(self):
+        source = msl_code()
+        # The key's reflection on the face, scaled by the page's own luminance: on the dark pane it is a
+        # hint, on a light surface the full studio. A 13.0-gain softbox over a 0.01 page is nine times
+        # the page's light, measured — that highlight, not the plate, was the solid body.
+        self.assertIn("float pageLum = dot(pageLight, float3(0.2126, 0.7152, 0.0722));", source)
+        self.assertIn("float sheen = mix(1.0, clamp(pageLum * kPageSheenGain, kPageSheenFloor, 1.0), "
+                      "pageKnown);", source)
+        self.assertIn("accum *= sheen;", source)
+        self.assertIn("#define kPageSheenGain 2.0", source)
+        self.assertIn("#define kPageSheenFloor 0.03", source)
+        # And the internal focus concentrates the page rather than painting a white studio spot on it.
+        self.assertIn("float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, pageLight * 1.20, "
+                      "pageKnown);", source)
+
+    def test_the_absorption_is_a_tint_and_still_a_function_of_the_path(self):
+        source = msl_code()
+        self.assertIn("#define kAbsorbGain 0.40", source)
+        self.assertIn("#define kAbsorbFloor 0.045", source)
+        self.assertIn("float3 absorbSigma = (-log(max(transColor, float3(0.12))) * kAbsorbGain "
+                      "+ float3(kAbsorbFloor)) * tone.w;", source)
+        self.assertIn("#define kAbsorptionOpacity 0.26", source)
+        # The reference's constant is gone: no literal can flatten the gradient again.
+        self.assertNotIn("* 0.62 + float3(0.08)", source)
+        # …and the path is still scaled and shortened where the body is thin.
+        self.assertIn("float absorbingPath = pathLength * (0.30 + 0.70 * localBody);", source)
+        self.assertIn("float3 beer = absorptionAlong(optical, absorbSigma);", source)
+
+    def test_the_mirror_follows_the_shader(self):
+        mirror = read(ROOT / "Tools" / "glass-proof" / "numbers.py")
+        for literal in ("PLATE_GAIN_PAGE = 0.82", "INTERIOR_GAIN_PAGE = 0.38",
+                        "PAGE_SHEEN_GAIN = 2.0", "PAGE_SHEEN_FLOOR = 0.03",
+                        "ABSORB_GAIN = 0.40", "ABSORB_FLOOR = 0.045"):
+            self.assertIn(literal, mirror, literal)
+        # It measures the claim, not just the picture: the two pages, and the eyes against the body.
+        self.assertIn("def page_report(side):", mirror)
+        self.assertIn("INK = 0.082", mirror)
+        self.assertIn("eyes {ratio:.2f}:1", mirror)
+
+    def test_the_proof_renders_the_two_surfaces_it_is_judged_on(self):
+        main = read(ROOT / "Tools" / "glass-proof" / "main.swift")
+        self.assertIn("let paneBackground = (r: 0x1E, g: 0x1E, b: 0x1E)", main)
+        self.assertIn("let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)", main)
+        self.assertIn('-pane.png', main)
+        self.assertIn('-lit.png', main)
+        self.assertIn("contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink)", main)
 
 
 class TheThreeTargetsAreSteps(unittest.TestCase):
@@ -812,7 +912,7 @@ class TheProofToolIsOptIn(unittest.TestCase):
         # drift from the shader — every literal it relies on is pinned here.
         mirror = read(self.PROOF / "numbers.py")
         source = msl()
-        for literal in ("(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i]",
+        for literal in ("(surface_col[i] * studio_gain + gather[i] * interior_gain) * beer[i]",
                         "optical_thickness(absorbing_path, half_depth)",
                         "0.62 + 0.38 *",
                         "ABSORPTION_OPACITY * (1.0 - lum_through)",
@@ -825,7 +925,7 @@ class TheProofToolIsOptIn(unittest.TestCase):
                         "return flat_z + CROWN * capped + rz * math.sqrt(",
                         "(0.25 + 0.75 * f1)"):
             self.assertIn(literal, mirror, literal)
-        for literal in ("float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;",
+        for literal in ("float3 through = (plate * plateGain + gather * interiorGain) * beer;",
                         "float optical = opticalThickness(absorbingPath, halfDepth);",
                         "0.62 + 0.38 * clamp(",
                         "+ kAbsorptionOpacity * (1.0 - lumThrough)",
