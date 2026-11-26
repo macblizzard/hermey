@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.682",
-          "buildVersion": "682",
-          "date": "2026-11-26T17:21:11Z",
-          "localizedDescription": "### Added\n- **The bot list breathes now.** Idle faces in the sidebar float too, driven by one shared 3 Hz clock: 1.6 pt of\n  drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not\n  key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that\n  scrolls away settles to rest.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.682/Hermey-0.1.682-b682.ipa",
-          "size": 6277217,
+          "version": "0.1.683",
+          "buildVersion": "683",
+          "date": "2026-11-26T19:48:51Z",
+          "localizedDescription": "Glass without the bands: the interior field is computed from the silhouette instead of a pixel-quantised raster, so the body is smooth at every size, with a real bounce term, a refracted wall line and a caustic that follows the thickness.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.683/Hermey-0.1.683-b683.ipa",
+          "size": 6193795,
           "minOSVersion": "17.0",
-          "sha256": "a03048af5095d76fbdd0e18f924a8dd0cc750028c26a58be6df2ddf365ba86af"
+          "sha256": "76adb4d37ff8d0bb232edb6399fb53c2646820241251c480d63421e7bae9dc78"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.682 (682)",
-      "identifier": "hermes-0.1.682-682",
-      "caption": "### Added\n- **The bot list breathes now.** Idle faces in the sidebar float too, driven by one shared 3 Hz clock: 1.6 pt of\n  drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not\n  key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that\n  scrolls away settles to rest.",
-      "date": "2026-11-26T17:21:11Z",
+      "title": "Hermes 0.1.683 (683)",
+      "identifier": "hermes-0.1.683-683",
+      "caption": "Glass without the bands: the interior field is computed from the silhouette instead of a pixel-quantised raster, so the body is smooth at every size, with a real bounce term, a refracted wall line and a caustic that follows the thickness.",
+      "date": "2026-11-26T19:48:51Z",
       "tintColor": "#9A9AA0"
     }
   ],
