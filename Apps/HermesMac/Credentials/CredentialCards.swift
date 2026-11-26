@@ -51,6 +51,16 @@ final class CredentialCardCenter: ObservableObject {
         }
     }
 
+    /// Adopt a card this side asked for — the Vault pane's "add a secret".
+    ///
+    /// The pane creates a `store` card on the host and hands it to this same sheet, which is what keeps
+    /// one masked form in the app. An async hop rather than a settable property so a caller outside the
+    /// main actor can still use it.
+    func adopt(_ card: CredentialCard) async {
+        self.card = card
+        failure = nil
+    }
+
     func cancel(model: AppModel) async {
         guard let card else { return }
         try? await model.cancelCredentialCard(id: card.id)
@@ -72,7 +82,7 @@ struct CredentialCardSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "lock.shield")
                     .foregroundStyle(Tokens.accent)
-                Text("Sign in to \(card.site)")
+                Text(card.store ? "Save a credential for \(card.site)" : "Sign in to \(card.site)")
                     .font(.headline)
                 Spacer()
             }
@@ -101,6 +111,7 @@ struct CredentialCardSheet: View {
                     Task { await center.cancel(model: model) }
                 }
                 .keyboardShortcut(.cancelAction)
+                .hermeyFocusQuiet()
             }
         }
         .padding(20)
@@ -116,6 +127,7 @@ struct CredentialCardSheet: View {
                 } label: {
                     Text(option).frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -126,7 +138,9 @@ struct CredentialCardSheet: View {
                 .font(.subheadline)
             HStack {
                 Button("Use it") { send(["choice": "yes"]) }
+                .hermeyFocusQuiet()
                 Button("Not now") { Task { await center.cancel(model: model) } }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -135,7 +149,9 @@ struct CredentialCardSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(card.fields, id: \.self) { field in
                 Group {
-                    if field == "password" {
+                    // The host names the masked fields: a card asking for an "api key" is as private
+                    // as one asking for a password, and this view does not need to know either word.
+                    if card.isMasked(field) {
                         SecureField(field.capitalized, text: binding(field))
                     } else {
                         TextField(field.capitalized, text: binding(field))
@@ -143,13 +159,14 @@ struct CredentialCardSheet: View {
                 }
                 .textFieldStyle(.roundedBorder)
             }
-            Button(sending ? "Sending…" : "Fill it in") {
+            Button(sending ? "Sending…" : card.submit) {
                 let payload = values
                 send(payload)
             }
             .keyboardShortcut(.defaultAction)
             .disabled(sending || values.values.allSatisfy(\.isEmpty))
-            Text("Goes straight into the page — the bot never sees it.")
+            .hermeyFocusQuiet()
+            Text(card.destinationNote)
                 .font(.caption)
                 .foregroundStyle(Tokens.textMuted)
         }

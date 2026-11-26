@@ -21,8 +21,12 @@ public enum ToolRunSummary {
 
     /// A call whose result reported a non-zero exit or an error. Read from the result only: the
     /// arguments of a `bash` call are not a failure just because they mention one.
+    ///
+    /// Remembered per payload: this runs from the run's header, so it is evaluated on every body
+    /// pass — and a run of thirty commands with long outputs meant thirty `JSONSerialization` passes
+    /// per frame, on the main actor, to draw one line of text.
     public static func failures(in run: ToolRun) -> Int {
-        run.entries.filter { ToolPayload.failed(raw: $0.tool?.content) }.count
+        run.entries.filter { ToolPayload.rememberedFailure($0.tool?.content) }.count
     }
 }
 
@@ -99,5 +103,6 @@ public struct ToolRunGroup<Row: View>: View {
         .accessibilityLabel(title)
         .accessibilityHint(expanded ? "Hides the calls" : "Shows the calls")
         .accessibilityAddTraits(.isButton)
+        .hermeyFocusQuiet()
     }
 }

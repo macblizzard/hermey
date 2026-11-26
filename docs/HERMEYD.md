@@ -180,6 +180,65 @@ An unpaired app has no host, so it keeps writing its own `@AppStorage` document
 (`mac.messageReactions.v1` / `mobile.messageReactions.v1`) — the behaviour it had before — and hands
 those entries to the host once, the first time it opens that conversation paired.
 
+## Editing and deleting a message — `POST /v1/messages/delete` (shipped in 0.8.8)
+
+The engine has no message-level edit or delete, and both apps paint the same rows
+(`SELECT … FROM messages WHERE session_id=? AND (active=1 OR compacted=1)`). So the host owns the two
+verbs. Both are **soft retires**: the transcript stops painting the row on every device, and the
+bytes stay in the file.
+
+```text
+POST /v1/messages/delete    (bearer)
+  {"bot":"cody","session":"20261123_101500_ab12cd","message_ids":[41,42]}
+  -> 200 {"bot":"cody","session":"…","retired":2,"display_count":104}
+
+POST /v1/messages/truncate  (bearer)
+  {"bot":"cody","session":"20261123_101500_ab12cd","from_message_id":41}
+  -> 200 {"bot":"cody","session":"…","retired":6,"display_count":99}
+
+  409 {"error":"turn_running",       "detail": "That conversation is still answering (working) — …"}
+  503 {"error":"engine_unavailable", "detail": "The engine did not answer, so this host cannot …"}
+  502 {"error":"engine_refused",     "detail": "The engine would not close that conversation …"}
+  404 {"error":"no_such_message",    "detail": "No message with that id is in that conversation."}
+  422 {"detail": …}                                   bad bot / session / body / ids
+```
+
+`truncate` is what "edit and resend" is built on: it retires the message the owner wants to rewrite
+*and everything painted after it*, so the re-asked turn has one ask and one answer. `delete` retires
+exactly the ids named. Every refusal says **"Nothing was changed"** in words, because the apps show
+the sentence verbatim.
+
+**The three steps, in this order.**
+
+1. **Ask the engine whether a turn is running.** `session.active_list` is the engine's own live
+   registry — the only place that knows, because a live session keeps its own in-memory copy of the
+   history. A row whose `session_key` is this conversation and whose `status` is not `idle`
+   (`working`, `waiting`, `starting`) is answered **409**. The same row names the **runtime** id, and
+   that is what `session.close` takes: the stored id and the runtime id look alike and are not
+   interchangeable.
+2. **Close it**, so the engine drops its copy before a single row moves. The app then re-resumes,
+   which rebuilds the transcript from the database — that is what makes both devices converge.
+3. **Retire the rows in one transaction**: `UPDATE messages SET active = 0, compacted = 0`. Not a new
+   convention — it is exactly what the engine's own rewind and undo write, and the database's
+   `messages_display_visibility_update` trigger keeps `display_order` coherent while it happens.
+   There is no `DELETE` from `messages` anywhere in the route: a mis-tap costs a repaint, not a
+   conversation.
+
+`display_count` is `COUNT(*)` over the conversation's display set after the retire, which is the same
+number a resume reports as `history.total`.
+
+**Which rows.** The retire is scoped to the conversation's own session and its compression chain
+(`sessions.parent_session_id`, each hop ended `compression`) — never a `/branch` copy, which is a
+different conversation. `truncate` compares `COALESCE(display_order, id)`, the expression the
+transcript orders by, so "and everything after it" means what the reader sees. Nothing takes a path:
+`message_ids` is a bounded list of positive integers, `from_message_id` is one, and the only string is
+the bot's name, which is a key.
+
+**In the apps.** The message menu gains **Edit and resend** (the owner's own messages, any turn) and
+**Delete** (any message), both behind one confirmation that states the true count — computed from the
+transcript and drawn as "…and the 12 messages after it will be retired…". Both verbs are withheld
+while a turn is answering, and a message still streaming has no menu at all.
+
 ## Self-update — `GET/POST /v1/update` (shipped in 0.4.0)
 
 One press updates the host service, and a host that will not start puts itself back. Nothing else
@@ -633,7 +692,40 @@ ticket per call** (a second use of the same ticket answers 401 — worth remembe
 | `GET /v1/search?q=&limit=&offset=` | per-bot newest matches (cap 20/bot) read from read-only `state.db`, assembled and paged newest-first; `<2` chars answers empty because the app searches per keystroke; snippets are char-boundary safe |
 | `GET /v1/bot-transfers?between=a,b&limit=` | JSONL hand-offs between two bots, either direction, oldest-first. Written by `POST /v1/bots/{profile}/message` — a bot speaking into another bot's chat — in the retired bridge's line format; `session_id` is `null` when the message reached no session |
 | `GET /v1/backup`, `POST /v1/backup/restore` | the bridge's document shape (kind/version/bots with soul, memory, notes, routines). Restore is additive and idempotent: identical content is not a write, memory only fills when empty, nothing is deleted, `routines_added` drives `restart_required` |
-| `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded |
+| `/v1/credentials/cards` (+ `/answer`, `/cancel`, `/consume`) | login cards: the bot asks, the owner answers. Values are never returned while pending or answered, `consume` yields them once then drops them, cards expire (default 15 min), pending count bounded. `store: true` saves the answer in `<state>/secrets.json` (`0600`) instead and `consume` answers with `{stored:[{field,name}], ok}` — no value — so a login and an API key are one mechanism with two destinations |
+| `GET /v1/vault`, `PATCH/DELETE /v1/vault/{*name}` | the vault's face to the owner, for the Vault pane on both apps: `{items:[{name,kind,addedAt,site?,note?}]}` and no value field anywhere — the item type has none and `vault.rs` never calls `secrets::get`. `PATCH` edits one item (`{"rename":…,"value":…}`, both optional; absent value keeps the stored one) and answers `{name,renamed,replaced}` — never the value, which it hands to `secrets::edit` so the rename and the replacement are one write, through the same `save` an add uses. Delete answers 404 for a name the store does not have, 422 for a name it would never hold, 409 for an unreadable store; an edit adds 409 for a name another item holds and 422 for a request that changes nothing. Creating is still the `store` card above, so a value can enter only by a card or by replacing an item that exists. Labels (`site`/`note`/`kind`/`addedAt`) sit in the document store under `vault:index`, and a rename moves the record rather than copying it, so `secrets.json` keeps its one format |
+
+## A device's log, saved on this host — `POST /v1/client-logs`
+
+```text
+POST /v1/client-logs                                             (bearer)
+  {device, appVersion, appBuild, osVersion, scope, level?, category?, search?, capturedAt, text}
+  -> 201 {path, bytes, device}
+  -> 401 missing/expired/already-used token      (require_device)
+  -> 409 a log from this device for this minute is already on disk; nothing was truncated
+  -> 413 the text is over 2 MiB
+/var/log/hermey/client-<device>-<YYYYMMDDTHHMMZ>.log            0640 root:root
+```
+
+Settings → View log's **Send log to host** is the only caller. It is a plain bearer POST — not the
+WS relay — so a conversation streaming a large transcript cannot stand in front of it, and the
+upload cannot hold a relay slot while a chat is open. `text` is byte-for-byte what the sheet's Copy
+action writes (`ClientLog.text(of:header:)`); the envelope adds only the device name, app version and
+build, OS, the capture time, and which filters were on, and the host writes those as a `#` block above
+the log so a file found in `/var/log/hermey` explains itself.
+
+Three properties worth keeping:
+
+1. **Never overwritten.** The file is opened with `create_new`, so a second upload inside the same
+   minute answers 409 and the first file is untouched — a log someone is reading must not change under
+   them. The filename's stamp is UTC to the minute; the device name is slugged to `[a-z0-9-]` first, so
+   a device called `../../etc/passwd` becomes `etc-passwd`.
+2. **2 MiB on both ends.** The app refuses a larger log before sending it; the handler refuses one
+   with its own sentence (`MAX_LOG_BYTES`). The framework body limit (`MAX_BODY_BYTES`, 8 MiB) sits
+   above both, so the 413 a client reads is that sentence rather than an empty rejection.
+3. **No new content.** The route has no field for a value and does not import `secrets`, `credentials`
+   or `vault`: the log has never carried a card or a secret, and this is not the way one gets in.
+   `HERMEYD_LOG_DIR` moves the directory for a scratch host or a non-standard install.
 
 ## Fast pet asks — `POST /v1/bots/{profile}/ask` (shipped in 0.5.0)
 

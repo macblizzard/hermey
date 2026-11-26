@@ -277,7 +277,8 @@ struct TranscriptScroll: View {
     /// search jumps to the row that exists on screen rather than to an id that only exists inside a
     /// folded run.
     private var groupedRows: [TranscriptRow] {
-        rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
+        rowCache.rows(model.visibleTranscript,
+                      appending: model.visibleLiveToolEntries,
                       running: Set(model.visibleLiveToolEntries.map(\.id)))
     }
 
@@ -326,7 +327,7 @@ struct TranscriptScroll: View {
             // Consecutive tool calls fold into one line: a turn that makes thirty calls should not
             // push its answer off the screen. The run's cards are one click away, each still its own
             // card with its own disclosure.
-            ForEach(groupedRows) { row in
+            ForEach(groupedRows, id: \.id) { row in
                 switch row {
                 case .entry(let entry):
                     TranscriptRowView(entry: entry,
@@ -334,8 +335,12 @@ struct TranscriptScroll: View {
                                       bot: model.selectedBotID ?? "",
                                       session: model.selectedSessionID,
                                       userBubbleTint: userBubbleTint,
+                                      faces: faces,
                                       onSelectText: { selectionText = $0 },
                                       onReply: { model.reply(to: $0) },
+                                      onEditAndResend: { model.requestEditAndResend($0) },
+                                      onDelete: { model.requestDelete($0) },
+                                      turnRunning: model.isStreaming,
                                       onOpenPair: { peer in pairPeer = peer },
                                       fetchCard: { id, session, message in
                                           try await model.fetchCard(id: id, session: session, message: message)
@@ -343,9 +348,9 @@ struct TranscriptScroll: View {
                                       openAttachmentFile: { [model] location in
                                           try await model.attachmentFile(for: location)
                                       },
-                                      reaction: { model.reaction(for: $0) },
-                                      onReact: { key, emoji in
-                                          Task { await model.setReaction(emoji, for: key) }
+                                      reaction: { model.reaction(forMessage: $0) },
+                                      onReact: { message, emoji in
+                                          Task { await model.setReaction(emoji, forMessage: message) }
                                       })
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
@@ -356,8 +361,12 @@ struct TranscriptScroll: View {
                                           bot: model.selectedBotID ?? "",
                                           session: model.selectedSessionID,
                                           userBubbleTint: userBubbleTint,
+                                          faces: faces,
                                           onSelectText: { selectionText = $0 },
                                           onReply: { model.reply(to: $0) },
+                                          onEditAndResend: { model.requestEditAndResend($0) },
+                                          onDelete: { model.requestDelete($0) },
+                                          turnRunning: model.isStreaming,
                                           onOpenPair: { peer in pairPeer = peer },
                                           fetchCard: { id, session, message in
                                               try await model.fetchCard(id: id, session: session, message: message)
@@ -365,9 +374,9 @@ struct TranscriptScroll: View {
                                           openAttachmentFile: { [model] location in
                                               try await model.attachmentFile(for: location)
                                           },
-                                          reaction: { model.reaction(for: $0) },
-                                          onReact: { key, emoji in
-                                              Task { await model.setReaction(emoji, for: key) }
+                                          reaction: { model.reaction(forMessage: $0) },
+                                          onReact: { message, emoji in
+                                              Task { await model.setReaction(emoji, forMessage: message) }
                                           })
                             .background(fill([entry.id], among: matched, selected: selected))
                     }
@@ -504,6 +513,7 @@ struct TranscriptScroll: View {
         .accessibilityIdentifier("conversationScrollToBottom")
         .padding(.bottom, 14)
         .transition(.opacity.combined(with: .scale(scale: 0.92)))
+        .hermeyFocusQuiet()
     }
 
     // MARK: - Search
@@ -601,6 +611,7 @@ struct TranscriptScroll: View {
         .accessibilityIdentifier("conversationSearchToggle")
         .accessibilityLabel("Search conversation")
         .help("Search conversation")
+        .hermeyFocusQuiet()
     }
 
     /// Escape, while the bar is up.
@@ -618,6 +629,7 @@ struct TranscriptScroll: View {
                 .frame(width: 0, height: 0)
                 .opacity(0)
                 .accessibilityHidden(true)
+                .hermeyFocusQuiet()
         }
     }
 
@@ -708,6 +720,7 @@ struct MacReasoningBlock: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Reasoning")
             .accessibilityHint(expanded ? "Collapse reasoning" : "Expand reasoning")
+            .hermeyFocusQuiet()
 
             if expanded {
                 Text(text)

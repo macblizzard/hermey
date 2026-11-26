@@ -20,6 +20,7 @@ struct NotificationsSettingsTab: View {
             Section {
                 Toggle("Notify me about replies", isOn: enabledBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("A banner and a Dock badge whenever a bot replies in a chat you are not reading. A chat that is on screen never notifies — its own transcript has already said it.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
@@ -47,6 +48,7 @@ struct NotificationsSettingsTab: View {
                         Toggle(bot.displayName, isOn: muteBinding(bot.id))
                             .tint(Tokens.success)
                             .disabled(!model.replyNotificationsEnabled)
+                            .hermeyFocusQuiet()
                     }
                 } header: {
                     Text("Quiet these bots")

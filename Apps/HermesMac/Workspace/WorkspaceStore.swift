@@ -489,6 +489,8 @@ final class WorkspaceStore: ObservableObject {
         botFaces = [:]
         botAvatars = [:]
         botFacesError = nil
+        // The banners' pictures belong to the host that just went away.
+        MacFaceCache.invalidateAll()
     }
 
     func loadBotFaces() async {
@@ -503,6 +505,9 @@ final class WorkspaceStore: ObservableObject {
             botFaces = icons
             botAvatars = avatars
             botFacesError = nil
+            // Every load is also what keeps the banners' pictures current: pairing, a launch or a
+            // save all pass through here, so a bot never waits for the next restart to get its face.
+            await MacFaceCache.refresh(faces: botFaces, avatars: botAvatars)
         } catch {
             guard generation == iconGeneration, pairing == address else { return }
             botFacesError = error.localizedDescription
@@ -523,17 +528,39 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
-    /// Save (or clear, with nil) one bot's generated avatar. The host validates the definition and
-    /// answers a 400 with its reason, which surfaces here as a thrown message.
-    func saveBotAvatar(botID: String, document: BotAvatarDocument?) async throws {
+    /// Save one bot's face — one family, with the other cleared, in a single request.
+    ///
+    /// The host validates the definition and answers a 400 with its reason, which surfaces here as a
+    /// thrown message. A classic face is one string the host stores as it stands.
+    ///
+    /// The banner cache is invalidated and redrawn here, not left for the next launch: a bot that
+    /// just changed its face must not wear the previous one in the very next notification, and a bot
+    /// whose face was cleared must go back to its shape on the same terms.
+    func saveBotAvatar(botID: String, selection: BotAvatarSelection?) async throws {
         guard let address = pairing, !address.isTicketOnly else {
             throw MacBotIconService.Failure.devicePairingRequired
         }
         iconGeneration += 1
         let generation = iconGeneration
-        try await MacBotIconService(address: address).saveAvatar(botID: botID, document: document)
+        try await MacBotIconService(address: address).saveAvatar(botID: botID,
+                                                                 document: selection?.document,
+                                                                 face: selection?.face)
         guard generation == iconGeneration, pairing == address else { return }
+        // Drop the previous face outright — file and rendered bytes — before anything can read it.
+        // The reload below refreshes the cache, so the new face is drawn once, here, and never
+        // inside a notification.
+        MacFaceCache.invalidate(botID: botID)
         await loadBotFaces()
+        await MacFaceCache.refresh(faces: botFaces, avatars: botAvatars)
+        // The relay's own copy follows too: a Bark banner is drawn from the host's stored PNG, so
+        // leaving it until the next launch would show the previous face to a suspended app.
+        if UserDefaults.standard.string(forKey: PushRelay.urlKey)?.isEmpty == false {
+            let faces = botFaces
+            let avatars = botAvatars
+            await model.syncPushIcons { id in
+                PushIcon.png(for: id, avatar: avatars[id], color: faces[id]?.raw)
+            }
+        }
         if let error = botFacesError {
             throw MacBotIconService.Failure.refresh(error)
         }
@@ -700,8 +727,12 @@ final class WorkspaceStore: ObservableObject {
     /// Show or hide the bot panel, and remember the choice.
     func toggleSidebar() {
         // The view's `.transition` only runs when the state changes inside an animation. Every door
-        // here — the pill, ⌘E and the View menu — goes through this one method, so none of them can
-        // snap the panel out of existence while another animates it.
+        // here — the floor toggle, ⌘S and the View menu — goes through this one method, so none of them
+        // can snap the panel out of existence while another animates it.
+        //
+        // **This is the only animation owner for the pane.** A `.animation(_:value:)` for the same flag
+        // further up the tree was a second owner racing this one: two transactions for one state change
+        // is how the conversation ended up re-laying itself out twice per frame while the pane moved.
         withAnimation(WorkspaceMotion.sidebar) {
             isSidebarHidden.toggle()
         }
@@ -1161,7 +1192,10 @@ final class WorkspaceStore: ObservableObject {
         }
         // The panel is what ⌘E and the pill mean: when the computer has borrowed the slot, the
         // toggle takes it back rather than writing state nobody can see.
-        withAnimation(WorkspaceMotion.panel) {
+        //
+        // `WorkspaceMotion.sidebar`, not a panel-only timing: this pane is the other half of the
+        // same move. One edge opens while the other closes at the same speed and on the same curve.
+        withAnimation(WorkspaceMotion.sidebar) {
             isComputerFullScreen = false
             isComputerPanelPresented = false
             isBotPanelPresented = true
@@ -1174,18 +1208,32 @@ final class WorkspaceStore: ObservableObject {
     func dismissBotPanelFromOutsideClick() {
         guard isBotPanelPresented else { return }
         botPanelDismissedAt = Date()
-        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.sidebar) { isBotPanelPresented = false }
     }
 
     /// Closed from a control that belongs to the panel — Escape, the ✕, the reset flow. No stamp:
     /// nothing here competes with the pill's own toggle.
     func closeBotPanel() {
-        withAnimation(WorkspaceMotion.panel) { isBotPanelPresented = false }
+        withAnimation(WorkspaceMotion.sidebar) { isBotPanelPresented = false }
     }
 
     func toggleComputerPanel() {
-        isComputerPanelPresented.toggle()
-        if !isComputerPanelPresented { isComputerFullScreen = false }
+        // The computer borrows the panel's slot, so it is the same pane on the same edge: it moves on
+        // the same motion. It had none, which is why opening it was the one door that snapped.
+        withAnimation(WorkspaceMotion.sidebar) {
+            isComputerPanelPresented.toggle()
+            if !isComputerPanelPresented { isComputerFullScreen = false }
+        }
+    }
+
+    /// The pane's own ✕, and Escape. One door for both, so closing the computer is the same move
+    /// whether it came from a click or a key — and it is animated, which the two raw assignments this
+    /// replaces were not.
+    func closeComputerPanel() {
+        withAnimation(WorkspaceMotion.sidebar) {
+            isComputerPanelPresented = false
+            isComputerFullScreen = false
+        }
     }
 
     /// What Escape closes, biggest thing first.
@@ -1201,8 +1249,8 @@ final class WorkspaceStore: ObservableObject {
     func closeTopmostOnEscape() -> Bool {
         if isPalettePresented { closePalette() }
         else if isComputerFullScreen { isComputerFullScreen = false }
-        else if isComputerPanelPresented { isComputerPanelPresented = false }
-        else if isBotPanelPresented { isBotPanelPresented = false }
+        else if isComputerPanelPresented { closeComputerPanel() }
+        else if isBotPanelPresented { closeBotPanel() }
         else if !isSidebarHidden { toggleSidebar() }
         else { return false }
         return true
@@ -1238,6 +1286,12 @@ final class WorkspaceStore: ObservableObject {
         // Attachment bytes — the PDF, Word file or spreadsheet a bubble names — over the same
         // one-ticket-per-request rule. Without it a file row is a name and nothing to open.
         model.attachmentClient = AttachmentFileClient(endpoint: {
+            guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
+            return (try address.apiOrigin(), try await address.mintedTicket())
+        })
+        // The log, saved on the host: the same plain bearer POST the phone uses, so a busy relay
+        // socket is not in its path.
+        model.clientLogUploader = ClientLogUploadClient(endpoint: {
             guard !address.isTicketOnly else { throw MacDeviceService.Failure.devicePairingRequired }
             return (try address.apiOrigin(), try await address.mintedTicket())
         })

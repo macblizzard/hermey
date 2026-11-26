@@ -46,6 +46,13 @@ final class MobileCredentialCenter: ObservableObject {
         try? await model.cancelCredentialCard(id: card.id)
         self.card = nil
     }
+
+    /// Adopt a card this phone asked for — the Vault screen's "add a secret". Same reason as the Mac's:
+    /// one masked sheet, not two.
+    func adopt(_ card: CredentialCard) async {
+        self.card = card
+        failure = nil
+    }
 }
 
 /// One card, in whichever shape it asked for.
@@ -63,7 +70,7 @@ struct MobileCredentialCardSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.shield")
                         .foregroundStyle(Tokens.accent)
-                    Text("Sign in to \(card.site)")
+                    Text(card.store ? "Save a credential for \(card.site)" : "Sign in to \(card.site)")
                         .font(.headline)
                 }
 
@@ -93,6 +100,7 @@ struct MobileCredentialCardSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { Task { await center.cancel(model: model) } }
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -109,6 +117,7 @@ struct MobileCredentialCardSheet: View {
                     Text(option).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.bordered)
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -119,8 +128,10 @@ struct MobileCredentialCardSheet: View {
             HStack {
                 Button("Use it") { send(["choice": "yes"]) }
                     .buttonStyle(.borderedProminent)
+                    .hermeyFocusQuiet()
                 Button("Not now") { Task { await center.cancel(model: model) } }
                     .buttonStyle(.bordered)
+                    .hermeyFocusQuiet()
             }
         }
     }
@@ -129,7 +140,9 @@ struct MobileCredentialCardSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(card.fields, id: \.self) { field in
                 Group {
-                    if field == "password" {
+                    // The host names the masked fields: a card asking for an "api key" is as private
+                    // as one asking for a password, and this view does not need to know either word.
+                    if card.isMasked(field) {
                         SecureField(field.capitalized, text: binding(field))
                     } else {
                         TextField(field.capitalized, text: binding(field))
@@ -139,13 +152,14 @@ struct MobileCredentialCardSheet: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             }
-            Button(sending ? "Sending…" : "Fill it in") {
+            Button(sending ? "Sending…" : card.submit) {
                 let payload = values
                 send(payload)
             }
             .buttonStyle(.borderedProminent)
             .disabled(sending || values.values.allSatisfy(\.isEmpty))
-            Text("Goes straight into the page — the bot never sees it.")
+            .hermeyFocusQuiet()
+            Text(card.destinationNote)
                 .font(.caption)
                 .foregroundStyle(Tokens.textMuted)
         }

@@ -20,12 +20,28 @@ struct TranscriptRowView: View {
     /// The selected bot's colour, for the user's own bubble. Passed in rather than looked up: a row
     /// inside a lazy stack must not reach for a store, and the pane already has the face.
     var userBubbleTint: Color = Tokens.control
+    /// The host's stored faces, by bot id. A bot-to-bot message is drawn in its *sender's* colour,
+    /// and this map plus the environment's avatars is what knows it; passed in for the same reason
+    /// `userBubbleTint` is.
+    var faces: [String: BotFaceChoice] = [:]
     /// "Select Text" is presented by `TranscriptScroll`: a row inside a `LazyVStack` is torn down
     /// when it scrolls out, and a sheet it owns goes with it. The row asks; the transcript shows.
     var onSelectText: (String) -> Void = { _ in }
     /// Replying needs the model (it holds the reply target), and a row is torn down as it scrolls,
     /// so the transcript owns that decision and the row only asks.
     var onReply: ((TranscriptEntry) -> Void)? = nil
+    /// "Edit and resend" and "Delete", both run by the model — it holds the confirmation, the host
+    /// call and the re-resume, and a row inside a `LazyVStack` is torn down as it scrolls, so it
+    /// cannot own any of that. Same reason `onReply` is a closure.
+    var onEditAndResend: ((TranscriptEntry) -> Void)? = nil
+    var onDelete: ((TranscriptEntry) -> Void)? = nil
+    /// Whether a turn is answering in this conversation.
+    ///
+    /// Both destructive verbs are withheld while one is. A message that is still being written is not
+    /// a message to retire, and the host would refuse it anyway (409) — but a verb that can only fail
+    /// is not worth showing. It is also why Delete can never appear on the streaming bubble: that
+    /// bubble is not a row at all, so it has no menu to carry it.
+    var turnRunning: Bool = false
     /// The attribution line on a bot-to-bot message asks the transcript to open the pair's exchange
     /// (the sheet lives there: a row is torn down as it scrolls and a sheet it owns goes with it).
     var onOpenPair: ((String) -> Void)? = nil
@@ -44,9 +60,20 @@ struct TranscriptRowView: View {
     /// The host owns reactions now (`/v1/reactions`), so this is one conversation's shared state
     /// rather than this device's private copy — which is what makes a reaction set on the phone
     /// appear here, live, over `/v1/ws`.
-    var reaction: (ReactionKey) -> String? = { _ in nil }
-    var onReact: (ReactionKey, String?) -> Void = { _, _ in }
+    ///
+    /// Both take the **message half** of the key (`row:41` / `live:r3`), not a whole
+    /// `ReactionKey`: the host, bot and session are the model's business, and one place that builds
+    /// the composite is what keeps the Mac and the phone agreeing about which message a reaction
+    /// belongs to.
+    var reaction: (String) -> String? = { _ in nil }
+    var onReact: (String, String?) -> Void = { _, _ in }
     @State private var showingReactions = false
+    /// The row's handle on the AppKit view that owns this message's menu, so the `⋯` in the action
+    /// line can raise the same `NSMenu` the right-click does — the keyboard's way into every verb,
+    /// including the ones SwiftUI's context menu never offered to a key.
+    @State private var menuAnchor = MessageMenuAnchor()
+    /// Where the keyboard is, on the one glyph that is a tab stop: the `⋯` that raises the menu.
+    @FocusState private var menuGlyphFocused: Bool
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
     @ObservedObject private var speech = SpeechReader.shared
@@ -67,6 +94,9 @@ struct TranscriptRowView: View {
     /// One file fetch per row: a PDF is downloaded once even with two rows naming it, and the
     /// "not there yet" state survives a re-render.
     @StateObject private var attachments = AttachmentOpenCoordinator()
+    /// What the host stores for each bot's face, injected once at the app's root. Read here only for
+    /// a bot-to-bot message's sender, whose bubble is drawn in that bot's colour.
+    @Environment(\.botAvatars) private var avatarLibrary
 
     /// The pictures a message carried, ready for `ImageViewer`, and where the viewer opens.
     struct ViewedGallery: Identifiable {
@@ -75,49 +105,83 @@ struct TranscriptRowView: View {
         let startIndex: Int
     }
 
-    /// This message's identity for a reaction: the one rule both apps share (`ReactionKey`), fed
-    /// from the row and the pane. `nil` for a row with no conversation to belong to.
-    private var reactionKey: ReactionKey? {
-        guard let session else { return nil }
-        return ReactionKey(host: host, bot: bot, session: session,
-                           message: ReactionKey.message(rowID: entry.rowID, entryID: entry.id))
+    /// This message's identity for a reaction: the message half of the key, from the one rule both
+    /// apps share (`ReactionKey.message`). `nil` for a row with no conversation to belong to.
+    private var reactionMessage: String? {
+        guard session != nil else { return nil }
+        return ReactionKey.message(rowID: entry.rowID, entryID: entry.id)
     }
 
     /// The emoji this message wears, from the conversation's shared state.
     private var currentReaction: String? {
-        guard let key = reactionKey else { return nil }
-        return reaction(key)
+        guard let message = reactionMessage else { return nil }
+        return reaction(message)
     }
 
     /// One emoji per message: picking the emoji already there removes it, exactly as before — only
     /// the storage changed (the host, not `@AppStorage`).
     private func toggleReaction(_ emoji: String) {
-        guard let key = reactionKey else { return }
-        onReact(key, currentReaction == emoji ? nil : emoji)
+        guard let message = reactionMessage else { return }
+        onReact(message, currentReaction == emoji ? nil : emoji)
     }
 
     var body: some View {
         VStack(alignment: entry.role == .user ? .trailing : .leading, spacing: 4) {
-            content.contextMenu { messageMenu }
+            // The menu is an `NSMenu` the row presents itself. `.contextMenu` drew every row
+            // without its glyph on the Mac (SwiftUI's menu on macOS does not carry a `Label`'s
+            // image into its items), so the rows — the same `MessageMenuItem` descriptions the
+            // phone draws — go to AppKit, where `NSMenuItem.image` is the documented glyph and
+            // nothing downstream can drop it. The overlay is not a hit target: right-click is
+            // taken from the window's event stream, so selection and the glyphs still work.
+            content
+                .overlay { MessageContextMenu(items: menuItems, anchor: menuAnchor) }
                 .onAppear(perform: wireAttachmentOpener)
             if let emoji = currentReaction {
                 Button(emoji) { toggleReaction(emoji) }
                     .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
                     .accessibilityLabel("Remove \(ReactionEmoji.name(emoji)) reaction")
+                    .hermeyFocusQuiet()
             }
         }
     }
 
-    @ViewBuilder private var messageMenu: some View {
+    /// This message's menu, as data: the same rows in the same order (five on a turn that can carry
+    /// all of them, the two every role has otherwise), described by the shared `MessageMenuItem`
+    /// constructors the phone's `MessageMenuRow` draws — so neither shell spells a verb of its own
+    /// and the two menus cannot drift apart.
+    ///
+    /// Rows that depend on this row's state keep their conditions: the speaker's row swaps title
+    /// and glyph with the turn, the reaction row exists only when the message can carry one, and
+    /// both run the same verbs they always did (the reaction row opens the popover; it does not
+    /// react).
+    private var menuItems: [MessageMenuItem] {
+        var rows: [MessageMenuItem] = []
         if entry.role == .user || entry.role == .assistant {
-            Button("Select Text") { onSelectText(entry.text) }
-            Button(isSpeaking ? "Stop Reading" : "Read Aloud") {
+            rows.append(.selectText { onSelectText(entry.text) })
+            rows.append(.readAloud(isSpeaking: isSpeaking) {
                 speech.toggle(id: entry.id, text: entry.text)
+            })
+            if reactionMessage != nil {
+                rows.append(.addReaction { showingReactions = true })
             }
-            if reactionKey != nil { Button("Add Reaction…") { showingReactions = true } }
         }
-        ShareLink(item: entry.text) { Label("Share", systemImage: "square.and.arrow.up") }
-        Button("Copy Message") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(entry.text, forType: .string) }
+        rows.append(.share(entry.text))
+        rows.append(.copyMessage {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(entry.text, forType: .string)
+        })
+        // The owner's own words can be rewritten; a message another bot sent arrives as a user row
+        // but is not this owner's to rewrite, so it is excluded by the same label test that draws it
+        // with the sender's face. `turnRunning` withholds both while a turn is answering, and a row
+        // with no durable id (a message still on its way) has nothing for the host to address.
+        let ownerTyped = entry.role == .user && BotMessageLabel.parse(entry.text) == nil
+        if ownerTyped, !turnRunning, entry.rowID != nil, let onEditAndResend {
+            rows.append(.editAndResend { onEditAndResend(entry) })
+        }
+        if !turnRunning, entry.rowID != nil, let onDelete {
+            rows.append(.deleteMessage { onDelete(entry) })
+        }
+        return rows
     }
 
     @ViewBuilder private var content: some View {
@@ -145,8 +209,17 @@ struct TranscriptRowView: View {
 
     /// `Message from <face> Cody` over the words. Left-aligned on purpose: it is not the owner's
     /// message, and the right edge is what says "you wrote this" everywhere else in the app.
+    ///
+    /// The bubble is the **sender's** colour: a bot's own message is drawn in the colour that bot's
+    /// face is drawn in, from `BotAvatarTint` — the same answer the avatar beside it and the list row
+    /// behind it take, so a green bot cannot speak in a blue bubble here.
     @ViewBuilder
     private func botMessageRow(_ label: BotMessageLabel) -> some View {
+        let sender = label.senderProfile
+        let tint = BotAvatarTint.resolve(botID: sender ?? bot,
+                                         face: sender.flatMap { faces[$0] },
+                                         document: sender.flatMap { avatarLibrary[$0] })
+        let bubble = tint.bubble(lightPage: Tokens.isLightPage)
         VStack(alignment: .leading, spacing: 4) {
             Button {
                 if let profile = label.senderProfile { onOpenPair?(profile) }
@@ -158,6 +231,7 @@ struct TranscriptRowView: View {
                         // idle 30 Hz timeline ran per bot-message row (Tinker's measurement,
                         // 2026-11-16: ~19 pp of a core from face animation alone).
                         BotAvatarView(identity: profile,
+                                      color: faces[profile]?.raw,
                                       size: Geometry.rosterAvatarCompact,
                                       animates: false)
                     }
@@ -172,14 +246,26 @@ struct TranscriptRowView: View {
             .buttonStyle(.plain)
             .disabled(label.senderProfile == nil)
             .help("Show the conversation between these two bots")
+            .hermeyFocusQuiet()
             // The same rendering an assistant reply gets: a bot's message to another bot is prose
-            // written in the same editor, so its lists, bold and code blocks belong as markup.
-            MarkdownTextView(text: label.body, metrics: .macOSScaled)
-                .foregroundStyle(Tokens.textPrimary)
+            // written in the same editor, so its lists, bold and code blocks belong as markup —
+            // and, like a reply, past fifty lines it opens behind the same button.
+            ClampedBody(TranscriptClamp.Body(text: label.body),
+                        messageID: entry.id,
+                        font: TypeScale.font(TypeScale.chatBody),
+                        expandedReady: fullBody != nil,
+                        onOpen: { openLongBody(label.body) },
+                        whole: {
+                            MarkdownTextView(text: label.body, metrics: .macOSScaled)
+                        },
+                        expanded: { expandedBody })
+                .foregroundStyle(bubble.ink)
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 .background(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
-                    .fill(Tokens.surface))
+                    .fill(bubble.fill))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .strokeBorder(bubble.border, lineWidth: 1))
                 .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -214,13 +300,30 @@ struct TranscriptRowView: View {
                 }
 
                 if !entry.displayText.isEmpty {
-                Text(entry.displayText)
-                .font(TypeScale.font(TypeScale.chatBody))
-                // The same leading the assistant's prose gets: one table for chat text.
-                .lineSpacing(TypeScale.chatLineSpacing)
-                .foregroundStyle(Tokens.textPrimary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+                // The owner's own words: plain text, and past fifty lines the same clamp a reply
+                // gets. Opening needs no parse — there is no markdown in a message you typed.
+                ClampedBody(TranscriptClamp.Body(text: entry.displayText),
+                            messageID: entry.id,
+                            alignment: .leading,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            lineSpacing: TypeScale.chatLineSpacing,
+                            whole: {
+                                Text(entry.displayText)
+                                    .font(TypeScale.font(TypeScale.chatBody))
+                                    // The same leading the assistant's prose gets: one table for chat text.
+                                    .lineSpacing(TypeScale.chatLineSpacing)
+                                    .foregroundStyle(Tokens.textPrimary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            },
+                            expanded: {
+                                Text(entry.displayText)
+                                    .font(TypeScale.font(TypeScale.chatBody))
+                                    .lineSpacing(TypeScale.chatLineSpacing)
+                                    .foregroundStyle(Tokens.textPrimary)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            })
                 .padding(.horizontal, Geometry.bubblePaddingH)
                 .padding(.vertical, Geometry.bubblePaddingV)
                 // The bot's own colour, at the opacity a bubble can carry behind body text, with
@@ -304,6 +407,7 @@ struct TranscriptRowView: View {
         .help("Open \(attachment.name)")
         .accessibilityLabel("Attached image \(attachment.name)")
         .accessibilityHint("Opens the image")
+        .hermeyFocusQuiet()
     }
 
     /// Pictures the row remembers, or the host's references looked up in the image cache.
@@ -375,6 +479,46 @@ struct TranscriptRowView: View {
 
     // MARK: Assistant
 
+    /// One long body's blocks, compiled for drawing.
+    ///
+    /// `IncrementalMarkdown.parse` and `BlockText.attributed` are both pure and `Block` and
+    /// `AttributedString` are `Sendable`, so the whole message a reader asked for is built **off**
+    /// the main actor: opening a wall of text must not be the freeze the collapse just removed. The
+    /// answer is this row's own `@State`, so no other row re-renders when it lands.
+    @State private var fullBody: [(block: Block, text: AttributedString)]?
+
+    /// Parse one opened body, once. `fullBody == nil` is the guard, so a row redrawn by the lazy
+    /// stack after a scroll does not re-parse a message whose blocks are already here.
+    private func openLongBody(_ text: String) {
+        Task { await parseLongBody(text) }
+    }
+
+    private func parseLongBody(_ text: String) async {
+        guard fullBody == nil else { return }
+        let compiled = await Task.detached(priority: .userInitiated) {
+            IncrementalMarkdown.parse(text).map { block in
+                (block: block, text: BlockText.attributed(for: block))
+            }
+        }.value
+        fullBody = compiled
+    }
+
+    /// The opened body, drawn block for block exactly as a finished reply is.
+    ///
+    /// Nothing when the parse has not landed: the shared view keeps the preview on screen until
+    /// `expandedReady` says the blocks are here, so this is never the only thing a row draws.
+    @ViewBuilder
+    private var expandedBody: some View {
+        if let fullBody {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(fullBody.enumerated()), id: \.offset) { _, pair in
+                    MacBlockView(block: pair.block, attributed: pair.text, metrics: .macOSScaled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     /// Every A2UI surface this reply carries, in order. Parsed once per body evaluation.
     private var surfacePayloads: [A2UISurfacePayload] { A2UIMarker.surfaces(in: entry.text) }
 
@@ -428,8 +572,16 @@ struct TranscriptRowView: View {
             if A2UISurfaceSettings.isEnabled, !surfacePayloads.isEmpty {
                 let prose = A2UIMarker.textWithoutMarkers(files.prose)
                 if !prose.isEmpty {
-                    MarkdownTextView(text: prose)
-                        .accessibilityLabel("Hermes said: \(prose)")
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBody != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MarkdownTextView(text: prose)
+                                        .accessibilityLabel("Hermes said: \(prose)")
+                                },
+                                expanded: { expandedBody })
                 }
                 // Every surface, not just the first: a reply that compares three cards is one
                 // reply, and dropping all but the first made the rest vanish with their markers.
@@ -447,14 +599,30 @@ struct TranscriptRowView: View {
                 // the directive itself must never be read as text.
                 let prose = GenUITag.textWithoutTags(files.prose)
                 if !prose.isEmpty {
-                    MarkdownTextView(text: prose)
-                        .accessibilityLabel("Hermes said: \(prose)")
+                    ClampedBody(TranscriptClamp.Body(text: prose),
+                                messageID: entry.id,
+                                font: TypeScale.font(TypeScale.chatBody),
+                                expandedReady: fullBody != nil,
+                                onOpen: { openLongBody(prose) },
+                                whole: {
+                                    MarkdownTextView(text: prose)
+                                        .accessibilityLabel("Hermes said: \(prose)")
+                                },
+                                expanded: { expandedBody })
                 }
                 GenUICard(blockID: boardID)
                     .padding(.vertical, 2)
             } else {
-                MarkdownTextView(text: files.prose)
-                    .accessibilityLabel("Hermes said: \(files.prose)")
+                ClampedBody(TranscriptClamp.Body(text: files.prose),
+                            messageID: entry.id,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            expandedReady: fullBody != nil,
+                            onOpen: { openLongBody(files.prose) },
+                            whole: {
+                                MarkdownTextView(text: files.prose)
+                                    .accessibilityLabel("Hermes said: \(files.prose)")
+                            },
+                            expanded: { expandedBody })
             }
 
             replyFileRows(files.links)
@@ -483,8 +651,18 @@ struct TranscriptRowView: View {
     private func cardBubble(_ scan: CardScan) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !scan.prose.isEmpty {
-                MarkdownTextView(text: scan.prose)
-                    .accessibilityLabel("Hermes said: \(scan.prose)")
+                // The prose around the cards is prose: clamped like any other body, with the card
+                // kinds travelling in so a message that is *only* a small structured card is exempt.
+                ClampedBody(TranscriptClamp.Body(text: scan.prose, cardKinds: scan.refs.map(\.kind)),
+                            messageID: entry.id,
+                            font: TypeScale.font(TypeScale.chatBody),
+                            expandedReady: fullBody != nil,
+                            onOpen: { openLongBody(scan.prose) },
+                            whole: {
+                                MarkdownTextView(text: scan.prose)
+                                    .accessibilityLabel("Hermes said: \(scan.prose)")
+                            },
+                            expanded: { expandedBody })
             }
             // The offset, not the ref: two identical markers in one reply are still two cards, and
             // `CardRef` would give them one identity.
@@ -563,7 +741,7 @@ struct TranscriptRowView: View {
         HStack(spacing: 2) {
             // Six reactions on one press. It sits first because it is the lightest verb on the row
             // and the one a person reaches for while reading.
-            if reactionKey != nil {
+            if reactionMessage != nil {
                 // The popover hangs off this button, not off the row. On the row it anchored to the
                 // message's whole width — so it opened below and to the right of the smiley, 465 pt
                 // wide, pointing its arrow at nothing in particular.
@@ -597,33 +775,57 @@ struct TranscriptRowView: View {
                     onReply(entry)
                 }
             }
+
+            // The whole menu, reachable without a mouse — and the one glyph on this line that is a
+            // keyboard stop (the others are pointer shortcuts for verbs that all sit in this menu,
+            // which is why they are not tab stops). Tab reaches it, its quiet fill says where the
+            // keyboard is, and Space or Return opens the *same* `NSMenu` the right-click raises:
+            // once open it is AppKit's menu, so arrows, Return and Escape behave as in any Mac
+            // menu — including the rows SwiftUI's context menu never offered to a key.
+            actionGlyph("menu", systemImage: "ellipsis",
+                        tint: menuGlyphFocused ? Tokens.textPrimary : Tokens.textMuted,
+                        help: "All message actions",
+                        keyboardStop: true,
+                        isHighlighted: menuGlyphFocused) {
+                menuAnchor.present()
+            }
+            .focused($menuGlyphFocused)
         }
     }
 
+    /// One glyph of the action line.
+    ///
+    /// `keyboardStop` is the decision about whether Tab reaches the control at all — the row's
+    /// verbs are pointer shortcuts and are not tab stops, but the menu glyph is, because it is the
+    /// only way to the rows without a mouse. `isHighlighted` lets a keyboard stop carry the same
+    /// quiet fill the pointer gets, since `hermeyFocusQuiet()` leaves it no ring of its own.
     private func actionGlyph(_ id: String,
                              systemImage: String,
                              tint: Color = Tokens.textMuted,
                              help: String,
+                             keyboardStop: Bool = false,
+                             isHighlighted: Bool = false,
                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(hoveredAction == id ? Tokens.textPrimary : tint)
+                .foregroundStyle(hoveredAction == id || isHighlighted ? Tokens.textPrimary : tint)
                 .frame(width: 24, height: 20)
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
-                        .fill(hoveredAction == id ? Tokens.controlHover : .clear)
+                        .fill(hoveredAction == id || isHighlighted ? Tokens.controlHover : .clear)
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(false)
+        .focusable(keyboardStop)
         .onHover { inside in
             if inside { hoveredAction = id }
             else if hoveredAction == id { hoveredAction = nil }
         }
         .help(help)
         .accessibilityLabel(help)
+        .hermeyFocusQuiet()
     }
 
     /// The message's own words, not its rendering: what the user copies is what was said.
@@ -660,6 +862,7 @@ struct TranscriptRowView: View {
         .help(isSpeaking ? "Stop reading this message" : "Read this message aloud")
         .accessibilityLabel(isSpeaking ? "Stop reading this message" : "Read this message aloud")
         .accessibilityIdentifier("message.readAloud")
+        .hermeyFocusQuiet()
     }
 
     // MARK: Tool
@@ -672,9 +875,10 @@ struct TranscriptRowView: View {
                  summary: ToolPayload.headline(raw: entry.tool?.args)
                     ?? ToolPayload.headline(raw: toolProjection.summary)
                     ?? toolProjection.summary,
-                 status: ToolCard.status(ok: !ToolPayload.failed(raw: toolProjection.output)),
+                 status: ToolCard.status(ok: !ToolPayload.rememberedFailure(toolProjection.output)),
                  output: toolProjection.output,
-                 startsExpanded: false)
+                 startsExpanded: false,
+                 messageID: entry.id)
     }
 
     /// A history tool row from the host's projection carries its own `name`, `context` and `args`
@@ -712,12 +916,29 @@ struct TranscriptRowView: View {
                 .foregroundStyle(Tokens.textDim)
                 .padding(.top, 3)
 
-            Text(entry.text)
-                .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(Tokens.textMuted)
-                .lineSpacing(3)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            // Reasoning can be as long as the answer: a body like any other, clamped past fifty
+            // lines, and plain text either way so opening it needs no parse.
+            ClampedBody(TranscriptClamp.Body(text: entry.text),
+                        messageID: entry.id,
+                        font: TypeScale.font(TypeScale.label),
+                        color: Tokens.textMuted,
+                        lineSpacing: 3,
+                        whole: {
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        },
+                        expanded: {
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textMuted)
+                                .lineSpacing(3)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        })
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("Reasoning: \(entry.text)")
@@ -725,19 +946,44 @@ struct TranscriptRowView: View {
 
     // MARK: System
 
+    /// A system line: punctuation, usually — and on 2026-11-25 a whole delegation batch report,
+    /// which is why it takes the clamp like any other body. Plain text in both states.
     private var systemRow: some View {
-        HStack(spacing: 8) {
-            Hairline(color: Tokens.borderStrong)
-                .frame(width: 18)
-            Text(entry.text)
-                .font(TypeScale.font(TypeScale.label))
-                .foregroundStyle(Tokens.textDim)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            Hairline(color: Tokens.borderStrong)
-                .frame(width: 18)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
+        ClampedBody(TranscriptClamp.Body(text: entry.text),
+                    messageID: entry.id,
+                    alignment: .center,
+                    font: TypeScale.font(TypeScale.label),
+                    color: Tokens.textDim,
+                    lineSpacing: 0,
+                    whole: {
+                        HStack(spacing: 8) {
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textDim)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    },
+                    expanded: {
+                        HStack(spacing: 8) {
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                            Text(entry.text)
+                                .font(TypeScale.font(TypeScale.label))
+                                .foregroundStyle(Tokens.textDim)
+                                .multilineTextAlignment(.center)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Hairline(color: Tokens.borderStrong)
+                                .frame(width: 18)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    })
     }
 }
 

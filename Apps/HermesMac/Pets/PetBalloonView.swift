@@ -524,6 +524,7 @@ private struct CalloutButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        .hermeyFocusQuiet()
     }
 }
 

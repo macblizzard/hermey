@@ -44,6 +44,7 @@ public struct BotMemorySheet: View {
                             .foregroundStyle(Tokens.textSecondary)
                             .multilineTextAlignment(.center)
                         Button("Try again") { Task { await reload() } }
+                        .hermeyFocusQuiet()
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,6 +59,7 @@ public struct BotMemorySheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
@@ -66,6 +68,7 @@ public struct BotMemorySheet: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh memory")
+                    .hermeyFocusQuiet()
                 }
             }
         }

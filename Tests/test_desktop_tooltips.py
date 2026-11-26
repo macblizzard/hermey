@@ -64,7 +64,7 @@ class ComposerAndScroller(unittest.TestCase):
 
 class TheEmojiPicker(unittest.TestCase):
     def test_no_focus_ring_on_the_first_emoji(self) -> None:
-        self.assertIn(".focusEffectDisabled()", ROW)
+        self.assertIn(".hermeyFocusQuiet()", ROW)
         self.assertIn(".focusable(false)", ROW)
 
     def test_each_emoji_has_a_name(self) -> None:

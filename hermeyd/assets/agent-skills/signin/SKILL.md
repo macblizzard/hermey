@@ -6,6 +6,11 @@ managed_by: hermey-bridge
 
 # Signing the owner in
 
+This skill **is** the shipped implementation of the fleet's `SECURE-ENTRY` requirement (defined in the
+`agent-cards` skill, §"Secure entries"): a credential is asked for with a card the app fills in, never in
+chat. The commands and flags below are the one copy of that contract — the rule points here, so change
+the two together and nowhere else.
+
 When a site asks for a login and you cannot proceed without one, do **not** ask the owner to type a
 password into the chat. Ask for a card instead. The owner answers it in the Hermey app, the browser on
 this desktop gets filled in, and you are told one thing: whether it worked.
@@ -40,6 +45,36 @@ Confirm a saved connection instead of typing anything:
 @@BIN@@/hermey_signin.py ask --site doctolib.de --kind confirm \
   --options "Google — mo@example.com"
 ```
+
+## A value you will need again (an API key, a token)
+
+A login is typed once and gone. A credential you will use again — an API key, a token — has to have
+somewhere to live that is not your context. Ask for it **once** with `--store`: the owner types it into
+the same card, the host writes it into its vault, and you are given the **name** to use later.
+
+```bash
+@@BIN@@/hermey_signin.py ask --site api.openai.com --fields "api key" --note "Reading the model list" \
+  --store --save-as openai.main
+```
+
+It prints `stored api key as openai.main` and fills nothing. Keep that name; never ask for the value
+again, and never print, quote or paste it — you will never have it. `--save-as` is optional: without it
+the name is `<site>/<field>` (`api.openai.com/api-key`). A name is letters, digits, `.`, `_`, `-` and one
+`/`, up to 96 characters.
+
+## Signing in again without asking
+
+Once a credential is stored, fill a form with it **by name**. No card is raised and the value never
+passes through this process or into your context:
+
+```bash
+@@BIN@@/hermey_signin.py ask --site doctolib.de --fields password --use doctolib.de/password
+```
+
+One stored item is one value, so it fills exactly one field. This path needs the sign-in extension (the
+DevTools fallback can only type a value it was handed), and it says so plainly when the extension is not
+connected. Prefer `--store` + `--use` for anything you expect to do twice; use a plain `ask` for a login
+you are doing once.
 
 ## Getting to the login page
 
@@ -89,8 +124,12 @@ Use the newest message only, and only the code from this site. Never read other 
 ```
 filled
 signed in (https://www.doctolib.de/)
+stored api key as openai.main
+not stored — this host has no vault yet (update hermeyd); nothing was asked of the owner
 not filled — no browser connected: waited 20s for the sign-in extension and http://127.0.0.1:8790 still
               lists no target (the worker is asleep and its socket is closed); nothing was filled
+not filled — a stored credential is filled through the sign-in extension, and none connected: waited 20s;
+              nothing was filled
 not filled — a browser is connected but its page has no field matching password: <url> — the probe saw
               input_:r0: [text/username]; buttons: Zurück, Weiter
 not filled — the fill was sent but the value did not land: the password field on <url> now reads empty
@@ -98,6 +137,7 @@ filled (the DevTools port; no extension was connected)
 not filled — the DevTools browser is showing <url>, not <site>: nothing was typed
 not filled — the owner did not answer in time
 not filled — no sign-in page at <url> (0 text field(s), no password field); nothing was asked of you
+not filled — one stored item fills one field, and 2 were named: username, password; ask for a card instead
 ```
 
 `filled` means the values reached the page (and, where the page can be asked, still holds them). When no
@@ -115,6 +155,9 @@ ask the owner to paste the password instead.
 ## Rules
 
 - Never ask for a password, a code or a card number in the conversation. There is no exception.
+- **Never answer "I can't, it needs a login".** A login wall is not a dead end here: raise the card and
+  wait for the owner. The same is true for an API key or a token — ask for it once with `--store`, then
+  use the name.
 - One card at a time. Do not fire two asks and hope one lands. `login` asks for 10 minutes; `ask` takes the
   service's own default (15 minutes, `ttl_seconds` 30 s – 24 h).
 - The `--site` is the origin you are actually on. It is what the owner sees, so make it the real one.

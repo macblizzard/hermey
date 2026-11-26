@@ -69,6 +69,7 @@ struct IntegrationsScreen: View {
                                     set: { if !$0 { naming = nil; namingAccount = nil } })) {
             TextField("work, personal", text: $namingText)
             Button("Cancel", role: .cancel) { naming = nil; namingAccount = nil }
+            .hermeyFocusQuiet()
             Button("Save") {
                 let wanted = namingText
                 let account = namingAccount
@@ -83,6 +84,7 @@ struct IntegrationsScreen: View {
                     }
                 }
             }
+            .hermeyFocusQuiet()
         }
         .sheet(item: $keyService) { service in
             keySheet(service)
@@ -129,12 +131,14 @@ struct IntegrationsScreen: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { closeKeySheet() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(busy == service.slug ? "Connecting…" : "Connect") {
                         Task { await submitKey(service) }
                     }
                     .disabled(busy != nil || keyFields.contains { $0.required && (keyValues[$0.name] ?? "").isEmpty })
+                    .hermeyFocusQuiet()
                 }
             }
             .task { await loadKeyFields(service) }
@@ -227,10 +231,12 @@ struct IntegrationsScreen: View {
                         .font(.caption2)
                         .buttonStyle(.borderless)
                         .disabled(busy != nil)
+                        .hermeyFocusQuiet()
                         Button("Remove", role: .destructive) { Task { await disconnect(service, account) } }
                             .font(.caption2)
                             .buttonStyle(.borderless)
                             .disabled(busy != nil)
+                            .hermeyFocusQuiet()
                     }
                 }
                 Button("Add another") {
@@ -241,6 +247,7 @@ struct IntegrationsScreen: View {
                 .font(.caption2)
                 .buttonStyle(.borderless)
                 .disabled(busy != nil || !configured || !service.available)
+                .hermeyFocusQuiet()
             }
         } else if waiting == service.slug {
             HStack(spacing: 6) {
@@ -252,12 +259,14 @@ struct IntegrationsScreen: View {
                 Button("Connect with a key") { keyService = service }
                     .font(.caption.weight(.semibold))
                     .disabled(busy != nil || !configured || !service.available)
+                    .hermeyFocusQuiet()
             } else {
                 Button("Connect") { Task { await connect(service) } }
                     .font(.caption)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.mini)
                     .disabled(busy != nil || !configured || !service.available)
+                    .hermeyFocusQuiet()
             }
         }
     }

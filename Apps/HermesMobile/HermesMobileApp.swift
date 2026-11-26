@@ -49,8 +49,10 @@ struct HermesMobileApp: App {
                     ThemeRuntime.restoreFromDefaults()
                     TypeScale.restoreScale()
                     // Attached before `start()` so the first turn is already watched, and it sweeps any
-                    // activity orphaned by a previous launch that died mid-turn.
-                    liveActivity.attach(to: app.model)
+                    // activity orphaned by a previous launch that died mid-turn. The faces come from
+                    // this environment, which publishes them, and the closure reads the live map: an
+                    // avatar saved between two turns is the face the next card wears.
+                    liveActivity.attach(to: app.model) { id in app.botAvatars[id] }
                     await app.start()
                     // After `start()`, so the badge is set from a count the host has answered.
                     app.startReplyNotifications()
@@ -114,6 +116,11 @@ struct RootView: View {
                 if phase == .active { Task { await app.updates.check() } }
                 guard phase == .active, app.isPaired, !app.isDisconnectedByUser else { return }
                 MobileReplyNotifier.shared.refreshAuthorization()
+                // A reaction made on the Mac while this phone was asleep has no live frame to
+                // receive: the socket may even have stayed up, so no `ready` arrives either. One
+                // read on every return to the front is what makes the open conversation agree with
+                // the host again.
+                app.model.refreshReactions()
                 Task {
                     if app.model.connection.isLive { await app.loadBotFaces() }
                     else { await app.reconnect() }
@@ -124,11 +131,12 @@ struct RootView: View {
             // Warm every bot's conversation behind the list, so opening one paints instead of
             // waiting. Runs on the shell's own task — after the launch gate, never during the
             // splash — and again when the socket comes back, which is the moment a cold start's
-            // empty cache is worth refilling.
-            .task { await app.model.prefetchConversations() }
+            // empty cache is worth refilling. `startPrefetch` rather than the sweep itself: the
+            // model owns the task so a tap can cancel the walk (see `beginOpen`).
+            .task { app.model.startPrefetch() }
             .onChange(of: app.model.connection.isLive) { _, live in
                 guard live else { return }
-                Task { await app.model.prefetchConversations() }
+                app.model.startPrefetch()
             }
             // Every bot's face on this phone resolves its stored avatar from here — the roster, the
             // chat header, the drawer, the settings sheet's title bar and every still row — so a bot
@@ -157,20 +165,23 @@ struct BotsTab: View {
     /// room never records and must not share a session with a conversation.
     @StateObject private var roomVoice = VoiceController()
 
-    /// Render and upload each bot's face — only when a relay is registered.
+    /// Render each bot's face for the banner cache, and upload it when a relay is registered.
     ///
     /// A method rather than a closure inside `.task`: inline, the nested `@MainActor` closure and the
     /// `??` chain together outrun the type checker ("unable to type-check in reasonable time").
+    @MainActor
     private func uploadPushFaces() async {
         let faces = app.botFaces
+        let avatars = app.botAvatars
         // The banners' own pictures first: they are wanted whether or not a relay is registered.
-        await MobileFaceCache.refresh(faces: faces)
+        // `PushIcon` renders a stored definition (the drawn avatar) ahead of the shape face.
+        await MobileFaceCache.refresh(faces: faces, avatars: avatars)
         guard let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey), !relay.isEmpty else {
             return
         }
         await model.syncPushIcons { id in
-            // The stored face when there is one; otherwise the one this bot's id draws.
-            PushIcon.png(for: id, color: faces[id]?.raw)
+            // The drawn avatar when the bot has a definition; otherwise the shape face it always had.
+            PushIcon.png(for: id, avatar: avatars[id], color: faces[id]?.raw)
         }
     }
 
@@ -189,14 +200,29 @@ struct BotsTab: View {
         guard url.scheme == "hermey", url.host == "bot" else { return }
         let id = url.lastPathComponent
         guard !id.isEmpty, let bot = model.bots.first(where: { $0.id == id }) else { return }
+        // A banner is a tap on that bot's row: the same one-open gate and the same cached paint.
+        _ = model.beginOpen(bot.id)
         path = NavigationPath()
+        path.append(bot)
+    }
+
+    /// One screen per open.
+    ///
+    /// `beginOpen` has already accepted this tap, so this is the navigation half of it and nothing
+    /// else. A tap storm during the push animation used to append the bot again for every tap: the
+    /// stack grew a screen per tap, each one ran its own `openConversation`, and the app had to be
+    /// force-quit. Now the bot that is already on top is never pushed a second time, and a
+    /// *different* bot replaces the screen instead of stacking on it — so nothing can be pushed
+    /// twice and going back is always one screen.
+    private func openOnTheStack(_ bot: Bot) {
+        if path.count > 0 { path.removeLast() }
         path.append(bot)
     }
 
     var body: some View {
         NavigationStack(path: $path) {
             BotListScreen(model: model,
-                          onGraphite: { path.append($0) },
+                          onGraphite: { openOnTheStack($0) },
                           onOpenRoom: { path.append($0) })
                 .navigationDestination(for: Bot.self) { bot in
                     ConversationScreen(model: model, bot: bot)

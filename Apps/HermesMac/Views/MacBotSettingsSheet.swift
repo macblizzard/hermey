@@ -69,6 +69,7 @@ struct MacBotSettingsSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 2)
+            .hermeyFocusQuiet()
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
@@ -127,18 +128,21 @@ struct MacBotSettingsSheet: View {
         dangerSection
     }
 
-    /// The Avatar tab: the bot's own generated face. Saving here writes the avatar document and
-    /// nothing else — no config, no soul. A bot with no definition keeps the face it has, which is
-    /// what Reset returns it to.
+    /// The Avatar tab: the bot's face, from either family.
+    ///
+    /// Saving here writes one family and clears the other — a drawn avatar, or the one string
+    /// `bots.color` holds — and nothing else: no config, no soul. A bot with neither keeps the face
+    /// its id derives, which is what Reset returns it to.
     @ViewBuilder
     private var avatarTab: some View {
         OpenBotAvatarEditor(
             botID: bot.id,
             botName: bot.displayName,
             stored: store.botAvatars[bot.id],
+            face: store.botFaces[bot.id],
             previewState: OpenBotAvatarState(activity: store.activity(for: bot.id)),
-            save: { document in
-                try await store.saveBotAvatar(botID: bot.id, document: document)
+            save: { selection in
+                try await store.saveBotAvatar(botID: bot.id, selection: selection)
             }
         )
     }
@@ -201,6 +205,7 @@ struct MacBotSettingsSheet: View {
         }
         .alert("Delete \(bot.displayName)?", isPresented: $showingDelete) {
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
             Button("Delete bot", role: .destructive) {
                 deleting = true
                 deleteError = nil
@@ -214,6 +219,7 @@ struct MacBotSettingsSheet: View {
                     deleting = false
                 }
             }
+            .hermeyFocusQuiet()
         } message: {
             Text("This cannot be undone from the app.")
         }
@@ -256,6 +262,7 @@ struct MacBotSettingsSheet: View {
                     .font(TypeScale.font(Tokens.textSM))
                     .foregroundStyle(Tokens.textPrimary)
             }
+            .hermeyFocusQuiet()
 
             HermeyButton("Bring it here", kind: .secondary, size: .small) {
                 DesktopPetController.shared.bringHere(bot)

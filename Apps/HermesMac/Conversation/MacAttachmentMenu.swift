@@ -51,6 +51,7 @@ struct MacAttachmentMenu: View {
         .focusable(false)
         .hoverFill()
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous))
+        .hermeyFocusQuiet()
     }
 
     // MARK: Picking

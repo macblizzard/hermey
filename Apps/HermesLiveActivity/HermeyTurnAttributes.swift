@@ -108,16 +108,34 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         /// read_file" without the coordinator having to compose a sentence.
         public var step: String
 
+        /// What the bot is *doing*, in the eight words every surface prints.
+        ///
+        /// `phase` is a transport fact — a turn runs, waits on him, or is over — and three values
+        /// cannot say what a face should wear: a bot reading a file, driving a computer and thinking
+        /// are all `working` here. This is the raw `BotStateWord` value (`thinking`, `reading`,
+        /// `computer`, `blocked`, …), handed over by the coordinator from
+        /// `AppModel.activity(forBot:)` — the same answer the roster badge and the pet draw — and the
+        /// card draws the bot's own avatar wearing it, so a thinking bot looks like it is thinking on
+        /// the Lock Screen instead of looking idle.
+        ///
+        /// A `String`, not an enum, for the reason every field on this type is tolerant: a card
+        /// written by a later build may carry a word this build has never heard of, and that must
+        /// draw a face (the phase's) rather than throw the card away. `state(from:phase:)` is the one
+        /// normaliser, and `BotStateWord` is the vocabulary it validates against.
+        public var botState: String
+
         public init(phase: Phase,
                     startedAt: Date,
                     finishedAt: Date? = nil,
                     replySnippet: String = "",
-                    step: String = "") {
+                    step: String = "",
+                    botState: String = "") {
             self.phase = phase
             self.startedAt = startedAt
             self.finishedAt = finishedAt
             self.replySnippet = Self.clipped(replySnippet)
             self.step = Self.stepLine(step, phase: phase)
+            self.botState = Self.state(from: botState, phase: phase)
         }
 
         /// The step, flattened to one line and capped — or the neutral word for the phase.
@@ -162,6 +180,22 @@ public struct HermeyTurnAttributes: ActivityAttributes {
             word(phase)
         }
 
+        /// The eight-word state this card should draw, from a raw value that may be absent or newer
+        /// than this build.
+        ///
+        /// One normaliser for both ends of the type: the coordinator's initialiser and the decoder of
+        /// a card written by another build. An unknown word falls back to the *phase's* state —
+        /// `working` for a running turn, `waiting` for one stopped on him, `done` for a finished one —
+        /// so the face is always one of the eight and an old card still draws something true.
+        public static func state(from raw: String?, phase: Phase) -> String {
+            if let raw, BotStateWord(rawValue: raw) != nil { return raw }
+            switch phase {
+            case .working: return BotStateWord.working.rawValue
+            case .needsYou: return BotStateWord.waiting.rawValue
+            case .done: return BotStateWord.done.rawValue
+            }
+        }
+
         /// A phase from the raw value on the wire, tolerantly.
         ///
         /// A card can outlive the build that requested it, so the decoder must never throw on this
@@ -190,7 +224,7 @@ public struct HermeyTurnAttributes: ActivityAttributes {
         // by hand it is clearer to name the keys than to lean on which half the compiler still
         // synthesises.
         private enum CodingKeys: String, CodingKey {
-            case phase, startedAt, finishedAt, replySnippet, step
+            case phase, startedAt, finishedAt, replySnippet, step, botState
         }
 
         // Decoded by hand for one reason: an activity requested by the previous build has no
@@ -210,6 +244,10 @@ public struct HermeyTurnAttributes: ActivityAttributes {
             self.replySnippet = Self.clipped(try container.decodeIfPresent(String.self, forKey: .replySnippet) ?? "")
             self.step = Self.stepLine(try container.decodeIfPresent(String.self, forKey: .step) ?? "",
                                       phase: phase)
+            // …and an old card has no `botState` either: the phase's own state is the floor, so the
+            // face is the bot's (a drawn avatar in `working`/`waiting`/`done`) rather than nothing.
+            self.botState = Self.state(from: try container.decodeIfPresent(String.self, forKey: .botState),
+                                       phase: phase)
         }
     }
 
@@ -224,8 +262,47 @@ public struct HermeyTurnAttributes: ActivityAttributes {
     /// Already a display string — the extension never resolves an id, because it has no bot list.
     public var botName: String
 
-    public init(botName: String) {
+    /// The bot's own face, carried into the extension as three primitives.
+    ///
+    /// The card draws the avatar every other surface draws — the same renderer, the same motion —
+    /// and a widget is a second process with no store, no bot list and (deliberately) no app group,
+    /// so the face has to arrive in the activity itself. Three strings rather than a
+    /// `BotAvatarDocument` on purpose: that type lives in `HermeyUI`, the extension compiles the
+    /// *drawing* in rather than linking the package, and this file is the one file both processes
+    /// compile — a shared model type here would make one of them import the other's module.
+    ///
+    /// Static, because a turn belongs to one bot from start to finish: the face cannot change
+    /// mid-turn, so it is written once at `request` and never re-sent on an update.
+    public var face: Face?
+
+    /// Optional so an activity requested by the previous build still decodes: the synthesised
+    /// decoder reads a missing optional as nil, and a bot with no drawn face keeps exactly the card
+    /// it had (the phase's symbol). See `HermeyTurnAvatar`.
+    public struct Face: Codable, Hashable, Sendable {
+        /// The definition's own JSON, exactly as the host stores it.
+        public var definition: String?
+        /// `#RRGGBB`, or nil for the house colour.
+        public var color: String?
+        /// One of `BotAvatarMaterial`'s names, or nil for `solid`.
+        public var material: String?
+
+        public init(definition: String? = nil, color: String? = nil, material: String? = nil) {
+            self.definition = definition
+            self.color = color
+            self.material = material
+        }
+
+        /// Whether there is a definition to draw at all. False for a bot that never chose an avatar,
+        /// which is the branch that draws the SF Symbol instead.
+        public var isDrawn: Bool {
+            guard let definition else { return false }
+            return !definition.isEmpty
+        }
+    }
+
+    public init(botName: String, face: Face? = nil) {
         self.botName = Self.displayName(botName)
+        self.face = face
     }
 
     /// One line, never empty. Public for the same reason `stepLine` is: the coordinator asks the

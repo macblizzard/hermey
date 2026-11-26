@@ -42,6 +42,7 @@ struct WorkspaceSheet: View {
                         Text(failure)
                     } actions: {
                         Button("Try again") { Task { await load() } }
+                        .hermeyFocusQuiet()
                     }
                 } else if (listing?.files ?? []).isEmpty {
                     ContentUnavailableView {
@@ -58,6 +59,7 @@ struct WorkspaceSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -66,6 +68,7 @@ struct WorkspaceSheet: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh workspace")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -104,6 +107,7 @@ struct WorkspaceSheet: View {
         }
         .alert("Could not share this file", isPresented: shareFailureBinding) {
             Button("OK") { shareFailure = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text(shareFailure ?? "")
         }
@@ -173,12 +177,14 @@ struct WorkspaceSheet: View {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             .tint(Tokens.accent)
+            .hermeyFocusQuiet()
         }
         .overlay(alignment: .trailing) {
             if sharing == file.id {
                 ProgressView().controlSize(.mini).padding(.trailing, 4)
             }
         }
+        .hermeyFocusQuiet()
     }
 
     private func load() async {
@@ -240,6 +246,7 @@ struct WorkspaceDocumentView: View {
                 }
                 .disabled(bytes == nil)
                 .accessibilityLabel("Share \(file.name)")
+                .hermeyFocusQuiet()
             }
         }
         .sheet(item: $shared) { item in

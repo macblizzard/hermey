@@ -35,10 +35,15 @@ struct ConversationPane: View {
 
     /// The bot's swatch. A window with three bots never leaves you guessing whose conversation you
     /// are typing into: your own bubbles are drawn in the colour of the bot they go to.
+    ///
+    /// That colour is `BotAvatarTint.resolve`'s answer and nothing else — the drawn avatar's stored
+    /// colour when the bot has one, its shape face otherwise. The expression used to be written out
+    /// here (and again on the phone), which is why a bot whose avatar was green still bubbled blue.
     private var botTint: Color {
         guard let id = model.selectedBotID else { return Tokens.control }
-        return (store.botFaces[id]?.identity(for: id).color
-            ?? BotAvatarIdentity.resolve(identity: id).color).color
+        return BotAvatarTint.resolve(botID: id,
+                                     face: store.botFaces[id],
+                                     document: store.botAvatars[id]).color
     }
 
     var body: some View {
@@ -118,6 +123,19 @@ struct ConversationPane: View {
                     }
                 )
             }
+
+            // The panel's door, while the panel is gone. On the floor, on the panel's own bar
+            // line, and drawn *over* the floor as an overlay: it adds no height, moves no
+            // transcript and shifts the composer by nothing. It used to be the chat header's
+            // leading button, which is the jump this replaces.
+            .overlay(alignment: .bottomLeading) {
+                if store.isSidebarHidden {
+                    SidebarFloorToggle { store.toggleSidebar() }
+                        // Fades with the panel's own slide rather than snapping in on its first
+                        // frame.
+                        .transition(.opacity)
+                }
+            }
         }
         .onPreferenceChange(ComposerHeightKey.self) { height in
             // A preference arrives on every layout pass; only a real change is worth a state write.
@@ -149,6 +167,24 @@ struct ConversationPane: View {
         .onChange(of: model.connection) { _ in
             // The chip is a host fact: re-ask when the wire comes back.
             Task { await store.refreshHermeyModelLabel() }
+        }
+        // The one confirmation for both destructive message verbs. `PendingMessageAction` carries the
+        // sentence ("this message and the 12 after it will be retired"), so nothing is retired by a
+        // single tap and the Mac says exactly what the phone says.
+        .alert(model.pendingMessageAction?.title ?? "",
+               isPresented: Binding(get: { model.pendingMessageAction != nil },
+                                    set: { presented in
+                                        if !presented { model.cancelMessageAction() }
+                                    }),
+               presenting: model.pendingMessageAction) { action in
+            Button(action.confirmTitle, role: action.kind == .delete ? .destructive : nil) {
+                Task { await model.confirmMessageAction(action) }
+            }
+            .hermeyFocusQuiet()
+            Button("Cancel", role: .cancel) { model.cancelMessageAction() }
+            .hermeyFocusQuiet()
+        } message: { action in
+            Text(action.message)
         }
     }
 

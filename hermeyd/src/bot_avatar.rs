@@ -470,10 +470,21 @@ pub fn is_hex_color(value: &str) -> bool {
 
 /// The material values the runtime accepts, in the contract's order.
 ///
-/// `Sources/HermeyUI/OpenBotAvatar/BotAvatarMaterial.swift` has the same two and the same refusal;
+/// `Sources/HermeyUI/OpenBotAvatar/BotAvatarMaterial.swift` has the same four and the same refusal;
 /// `Tests/test_bot_avatar_glass.py` checks that the two lists and the two sentences agree, so a
-/// material cannot be storable but undrawable, or drawable but unstorable.
-pub const MATERIALS: [&str; 2] = ["solid", "glass"];
+/// material cannot be storable but undrawable, or drawable but unstorable. Order matters: the
+/// sentence below is built from this array, so the host's 400 and the editor's message read alike.
+pub const MATERIALS: [&str; 4] = ["solid", "glass", "matte", "metal"];
+
+/// `"solid", "glass", "matte" or "metal"` — the list as it is spoken in a refusal.
+fn allowed_materials() -> String {
+    let quoted: Vec<String> = MATERIALS.iter().map(|name| format!("\"{name}\"")).collect();
+    match quoted.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {}", rest.join(", "), last),
+        Some((last, _)) => last.clone(),
+        None => String::new(),
+    }
+}
 
 /// The material a stored value names, or the contract's reason it does not.
 ///
@@ -484,9 +495,13 @@ pub fn parse_material(value: &Value) -> Result<String, String> {
     match value.as_str() {
         Some(raw) if MATERIALS.contains(&raw) => Ok(raw.to_string()),
         Some(raw) => Err(format!(
-            "material must be \"solid\" or \"glass\", not {raw:?}"
+            "material must be {}, not {raw:?}",
+            allowed_materials()
         )),
-        None => Err("material must be a string, \"solid\" or \"glass\"".to_string()),
+        None => Err(format!(
+            "material must be a string, {}",
+            allowed_materials()
+        )),
     }
 }
 
@@ -569,15 +584,38 @@ mod tests {
     }
 
     #[test]
-    fn a_material_is_solid_or_glass_and_nothing_else() {
-        assert_eq!(MATERIALS, ["solid", "glass"]);
+    fn a_material_is_one_of_the_four_and_nothing_else() {
+        assert_eq!(MATERIALS, ["solid", "glass", "matte", "metal"]);
+        for material in MATERIALS {
+            assert_eq!(
+                parse_material(&json!(material)).expect("a shipped material"),
+                material
+            );
+        }
+        // The same sentence the Swift validator throws, so an editor shows one wording. It is
+        // built from the list above, so a fifth material changes the 400 without changing this
+        // shape.
+        assert_eq!(allowed_materials(), "\"solid\", \"glass\", \"matte\" or \"metal\"");
+        let reason = parse_material(&json!("chrome")).expect_err("chrome is not a material");
+        assert_eq!(
+            reason,
+            "material must be \"solid\", \"glass\", \"matte\" or \"metal\", not \"chrome\""
+        );
+        let reason = parse_material(&json!(2)).expect_err("a number is not a material");
+        assert_eq!(
+            reason,
+            "material must be a string, \"solid\", \"glass\", \"matte\" or \"metal\""
+        );
+    }
+
+    #[test]
+    fn a_client_that_only_knows_solid_and_glass_still_works() {
+        // The two older values are still the first two rows and still mean what they meant: an old
+        // client that sends either one — or nothing at all — stores and reads back unchanged.
         assert_eq!(parse_material(&json!("solid")).expect("solid"), "solid");
         assert_eq!(parse_material(&json!("glass")).expect("glass"), "glass");
-        // The same sentence the Swift validator throws, so an editor shows one wording.
-        let reason = parse_material(&json!("matte")).expect_err("matte is not a material");
-        assert_eq!(reason, "material must be \"solid\" or \"glass\", not \"matte\"");
-        let reason = parse_material(&json!(2)).expect_err("a number is not a material");
-        assert!(reason.contains("must be a string"), "{reason}");
+        assert_eq!(parse_material(&Value::Null).expect_err("null is not a string"), 
+                   "material must be a string, \"solid\", \"glass\", \"matte\" or \"metal\"");
     }
 
     #[test]

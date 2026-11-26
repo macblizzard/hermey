@@ -22,6 +22,15 @@ public struct Composer: View {
     private let showsAttach: Bool
     private let showsMic: Bool
     private let hint: String?
+    /// The session's model, drawn as a pill in the control row — right of the paperclip, on the
+    /// same line as the send arrow.
+    ///
+    /// It is a row *sibling*, not an overlay and not a strip above the card: the field's own height
+    /// and padding are the field's, and a pill that lives beside the text cannot cover a character
+    /// of it however long the message gets. The caller supplies the values and the action, so this
+    /// view still knows nothing about pickers — and `Composer` applies `.equatable()` for both
+    /// apps, so a keystroke cannot re-lay it out.
+    private let sessionRow: ComposerSessionRow?
     private let onSend: () -> Void
     private let onAttach: (() -> Void)?
     private let onMic: (() -> Void)?
@@ -94,6 +103,7 @@ public struct Composer: View {
                 micAccessibilityLabel: String = "Record a voice message",
                 isMicEnabled: Bool = true,
                 hint: String? = Composer.defaultHint,
+                sessionRow: ComposerSessionRow? = nil,
                 onSend: @escaping () -> Void,
                 onAttach: (() -> Void)? = nil,
                 onMic: (() -> Void)? = nil,
@@ -117,6 +127,7 @@ public struct Composer: View {
         self.micAccessibilityLabel = micAccessibilityLabel
         self.isMicEnabled = isMicEnabled
         self.hint = hint
+        self.sessionRow = sessionRow
         self.onSend = onSend
         self.onAttach = onAttach
         self.onMic = onMic
@@ -174,6 +185,29 @@ public struct Composer: View {
         // claim all the vertical space the card could offer, and the card — which is an overlay with
         // no ceiling — offered the whole screen. The row's bottom alignment is what anchors them.
         view.padding(.bottom, controlInset)
+    }
+
+    /// The band for the session pill, on its own row UNDER the field.
+    ///
+    /// It used to share the Mac's control row, between the paperclip and the text, which read as part
+    /// of the field and — the report that moved it — sat on the placeholder's own line. One row for
+    /// both platforms: the pill is chrome below the text, never beside it.
+    @ViewBuilder
+    private var sessionPillBand: some View {
+        if let sessionRow {
+            sessionRow
+                .equatable()
+                .frame(height: controlSide)
+                // Flush with the card's own inset, under the paperclip rather than under the text:
+                // the row's 8 pt. Aligning it to the typed text instead left it looking indented
+                // ("why is it stuck there") — the pill is a row of the card, not of the field.
+                .padding(.leading, 8)
+                // Inside the card, clear of its rounded edge: the field row's own 8 pt plus a little,
+                // so the count never crowds the corner or reads as sitting outside the composer.
+                .padding(.trailing, 10)
+                .padding(.bottom, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     private var trimmed: String {
@@ -259,6 +293,7 @@ public struct Composer: View {
                     .allowsHitTesting(!trimmed.isEmpty)
                     .accessibilityHidden(trimmed.isEmpty)
                     .accessibilityLabel("Clear the message")
+                    .hermeyFocusQuiet()
                 }
 
                 // The microphone belongs beside the send arrow: one row of controls, and the
@@ -283,6 +318,9 @@ public struct Composer: View {
             .padding(.horizontal, 8)
             .padding(.top, 6)
             .padding(.bottom, hint == nil ? 8 : 2)
+
+            // The session's model, on its own row under the field, on both platforms.
+            sessionPillBand
 
             if let hint, !hint.isEmpty {
                 Text(hint)
@@ -446,6 +484,7 @@ public struct Composer: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .hermeyFocusQuiet()
     }
 
     /// Complete the command in the field first: a caller that owns a native panel can clear it when
@@ -613,6 +652,7 @@ public struct Composer: View {
             .buttonStyle(PressableButtonStyle())
             .disabled(isDisabled || !isMicEnabled)
             .opacity(isMicEnabled ? 1 : 0.5)
+            .hermeyFocusQuiet()
             #if os(macOS)
             .help(micAccessibilityLabel)
             #endif
@@ -635,6 +675,7 @@ public struct Composer: View {
         .buttonStyle(PressableButtonStyle())
         .disabled(!canSend)
         .accessibilityLabel(isSending ? "Send into the running turn" : "Send message")
+        .hermeyFocusQuiet()
     }
 
     private func interruptButton(_ action: @escaping () -> Void) -> some View {
@@ -651,6 +692,7 @@ public struct Composer: View {
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel("Interrupt the turn")
+        .hermeyFocusQuiet()
     }
 
     private func send() {
@@ -752,5 +794,6 @@ private struct ComposerRingButton: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel(label)
         .accessibilityIdentifier("composer.attach")
+        .hermeyFocusQuiet()
     }
 }

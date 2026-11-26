@@ -97,6 +97,7 @@ struct MacComposerBar: View {
                     .focusable(false)
                     .help("Dismiss this notice")
                     .accessibilityLabel("Dismiss")
+                    .hermeyFocusQuiet()
                 }
                 .foregroundStyle(Tokens.accentText)
                 .padding(.horizontal, 14)
@@ -128,6 +129,7 @@ struct MacComposerBar: View {
                     .focusable(false)
                     .help("Cancel this reply")
                     .accessibilityLabel("Cancel reply")
+                    .hermeyFocusQuiet()
                 }
                 .foregroundStyle(Tokens.textMuted)
                 .padding(.horizontal, 14)
@@ -155,6 +157,17 @@ struct MacComposerBar: View {
                      micAccessibilityLabel: micLabel,
                      isMicEnabled: canRecordVoice && !voice.isBusy,
                      hint: hint,
+                     // The session's own facts, inside the composer: which model answers, how full
+                     // its context is, and the door to the one picker the Mac already has. Both
+                     // values come from the host (`contextUsed` arrives with a completed turn's
+                     // usage, so until then the pill is the model alone), and the pill is
+                     // `Equatable`, so typing cannot lay it out again.
+                     sessionRow: ComposerSessionRow(provider: model.modelProvider,
+                                                    model: model.modelLabel,
+                                                    used: model.contextUsed,
+                                                    limit: model.contextMax,
+                                                    isEnabled: model.selectedBot != nil,
+                                                    onOpen: openModelPicker),
                      onSend: { store.send() },
                      onAttach: { showsAttachmentMenu = true },
                      onMic: { toggleVoice() },
@@ -226,6 +239,15 @@ struct MacComposerBar: View {
         }
     }
 
+    /// The pill's one action: the same sheet the bot panel's Model row opens, for the bot this
+    /// composer writes to. `store.openModel` is the Mac's only model door — nothing new is
+    /// presented, and the sheet writes through `configureModel`, which refreshes `modelLabel` for
+    /// the open bot, so the pill's own name changes as soon as the pick lands.
+    private func openModelPicker() {
+        guard let bot = model.selectedBot else { return }
+        store.openModel(bot)
+    }
+
     private func toggleVoice() {
         guard canRecordVoice else { return }
         if voice.isRecording {
@@ -265,6 +287,7 @@ struct MacComposerBar: View {
                         .buttonStyle(.plain)
                         .help("Remove \(attachment.name)")
                         .accessibilityLabel("Remove \(attachment.name)")
+                        .hermeyFocusQuiet()
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)

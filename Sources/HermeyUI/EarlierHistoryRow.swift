@@ -42,5 +42,6 @@ public struct EarlierHistoryRow: View {
         .accessibilityIdentifier("earlierHistory")
         .accessibilityLabel(total > 0 ? "Load earlier messages, \(total) in this conversation"
                                       : "Load earlier messages")
+        .hermeyFocusQuiet()
     }
 }

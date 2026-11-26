@@ -2,6 +2,10 @@ import Foundation
 import Combine
 import HermesKit
 import HermesAppKit
+// Only for `BotAvatarDocument`: the card draws the bot's own face, and this is where the app's model
+// of a face is flattened into the three primitives the activity carries. The extension never imports
+// this module — it compiles the drawing in instead (see `project.yml`).
+import HermeyUI
 
 #if os(iOS) && canImport(ActivityKit)
 import ActivityKit
@@ -82,12 +86,25 @@ final class LiveActivityCoordinator: ObservableObject {
     /// the step line is unchanged.
     private var lastPhase: HermeyTurnAttributes.ContentState.Phase = .working
 
+    /// The state the card's face is wearing, so a pose that changed under an unchanged step line —
+    /// `thinking` to `working` while a tool is out, where the line is still "Running read_file" — is
+    /// still an update. Without it the face kept the pose it had when the line last moved.
+    private var lastState: String = ""
+
     /// Reasons already written to the log, so a per-turn path cannot flood a 400-line ring.
     private var logged: Set<String> = []
 
     /// The card this process is driving. Kept across a finished turn on purpose: the `Done` card is
     /// still on screen and updatable, and the next turn re-points it instead of stacking a second.
     private var activity: Activity<HermeyTurnAttributes>?
+
+    /// Where a bot's stored face comes from, handed over by the shell at `attach`.
+    ///
+    /// The faces live in `AppEnvironment`, which publishes them; the coordinator is a `@StateObject`
+    /// in the shell and cannot reach it. A closure rather than the map itself, because a face saved
+    /// while a card is up must be the face the *next* card wears without this having to observe
+    /// anything — it reads the live map at request time, once per turn.
+    private var faces: (BotID) -> BotAvatarDocument? = { _ in nil }
 
     /// The sweep of anything left on screen by an earlier launch, while it is still in flight.
     private var retirement: Task<Void, Never>?
@@ -98,10 +115,14 @@ final class LiveActivityCoordinator: ObservableObject {
 
     /// Adopt a model's turn state. Idempotent for the same model, and safe to call from `.task` on
     /// the root view: attaching twice must not subscribe twice or start a second card.
-    func attach(to model: AppModel) {
+    ///
+    /// `faces` is the shell's stored avatars, asked per bot at request time — see the property. It is
+    /// required rather than defaulted so the one call site has to say where a face comes from.
+    func attach(to model: AppModel, faces: @escaping (BotID) -> BotAvatarDocument?) {
         guard self.model !== model else { return }
         detach()
         self.model = model
+        self.faces = faces
 
         // Before subscribing: a card left by a previous launch is retired here, because the
         // subscription's first value is the *current* run and would otherwise be applied on top of
@@ -170,6 +191,7 @@ final class LiveActivityCoordinator: ObservableObject {
     func detach() {
         cancellables.removeAll()
         model = nil
+        faces = { _ in nil }
         retireLeftovers()
     }
 
@@ -190,7 +212,8 @@ final class LiveActivityCoordinator: ObservableObject {
         let state = HermeyTurnAttributes.ContentState(phase: .done,
                                                       startedAt: now,
                                                       finishedAt: now,
-                                                      step: Self.doneWords)
+                                                      step: Self.doneWords,
+                                                      botState: BotAvatarActivity.done.rawValue)
         let content = ActivityContent(state: state, staleDate: nil)
         guard !leftovers.isEmpty else {
             retirement = nil
@@ -254,7 +277,8 @@ final class LiveActivityCoordinator: ObservableObject {
 
         let state = HermeyTurnAttributes.ContentState(phase: startPhase,
                                                       startedAt: now,
-                                                      step: startStep)
+                                                      step: startStep,
+                                                      botState: botStateLine())
         let content = ActivityContent(state: state,
                                       staleDate: now.addingTimeInterval(Self.staleAfter))
 
@@ -262,6 +286,7 @@ final class LiveActivityCoordinator: ObservableObject {
         replyTail = ""
         lastStep = startStep
         lastPhase = startPhase
+        lastState = state.botState
 
         if let current = activity,
            current.activityState == .active || current.activityState == .stale {
@@ -288,7 +313,7 @@ final class LiveActivityCoordinator: ObservableObject {
         }
 
         do {
-            let attributes = HermeyTurnAttributes(botName: name)
+            let attributes = HermeyTurnAttributes(botName: name, face: faceForSelectedBot())
             activity = try Activity.request(attributes: attributes, content: content, pushType: nil)
             isShowing = true
         } catch {
@@ -319,11 +344,13 @@ final class LiveActivityCoordinator: ObservableObject {
             startedAt: startedAt,
             finishedAt: Date(),
             replySnippet: replySnippet(),
-            step: Self.doneWords
+            step: Self.doneWords,
+            botState: BotAvatarActivity.done.rawValue
         )
         self.startedAt = nil
         replyTail = ""
         lastStep = ""
+        lastState = state.botState
         // `staleDate: nil` — a finished card is not going to produce anything else, so there is
         // nothing for the system to grey out.
         let content = ActivityContent(state: state, staleDate: nil)
@@ -384,6 +411,34 @@ final class LiveActivityCoordinator: ObservableObject {
         return model.hasPendingRequests ? .needsYou : .working
     }
 
+    /// The bot's state as the card's face wears it: one of the eight words, from the tracker.
+    ///
+    /// `stepLine()` already prints this vocabulary, but the *pose* needs the value itself:
+    /// `BotAvatarActivity`'s raw value is what `ContentState.botState` carries and what
+    /// `OpenBotAvatarState(turn:)` looks up in the extension, so the card's avatar leans, looks up or
+    /// stares back exactly as the app's avatar for the same bot does at the same moment.
+    ///
+    /// Empty when there is no selected bot, which `ContentState` normalises to the phase's own state
+    /// — there is no path where the face is left with nothing to wear.
+    private func botStateLine() -> String {
+        guard let model, let id = model.selectedBotID else { return "" }
+        return model.activity(forBot: id).rawValue
+    }
+
+    /// The three primitives the extension draws the bot from.
+    ///
+    /// The coordinator cannot reach `AppEnvironment`'s stored faces, so the shell hands it a lookup
+    /// (`attach(to:faces:)`) and this flattens the answer: `definitionJSON()` is exactly the text the
+    /// host stores, so the card and the app cannot disagree about a bot's body, and the colour and
+    /// material travel with it for the reason `BotAvatarDocument` keeps them together. Nil — no
+    /// stored definition, or no selected bot — is a bot that keeps the phase's symbol.
+    private func faceForSelectedBot() -> HermeyTurnAttributes.Face? {
+        guard let id = model?.selectedBotID, let document = faces(id) else { return nil }
+        return HermeyTurnAttributes.Face(definition: document.definitionJSON(),
+                                         color: document.color,
+                                         material: document.material.rawValue)
+    }
+
     /// Push the current step, if it changed.
     ///
     /// This is the path the card was missing: `begin` set the state once and nothing refreshed it,
@@ -395,14 +450,16 @@ final class LiveActivityCoordinator: ObservableObject {
         guard let activity, let startedAt else { return }
         let phase = currentPhase()
         let step = normalisedStep(for: phase)
-        guard step != lastStep || phase != lastPhase else { return }
+        let state = botStateLine()
+        guard step != lastStep || phase != lastPhase || state != lastState else { return }
         lastStep = step
         lastPhase = phase
+        lastState = state
         let now = Date()
-        let state = HermeyTurnAttributes.ContentState(phase: phase,
-                                                      startedAt: startedAt,
-                                                      step: step)
-        let content = ActivityContent(state: state,
+        let content = ActivityContent(state: HermeyTurnAttributes.ContentState(phase: phase,
+                                                                              startedAt: startedAt,
+                                                                              step: step,
+                                                                              botState: state),
                                       staleDate: now.addingTimeInterval(Self.staleAfter))
         push(content, to: activity)
     }
@@ -448,7 +505,7 @@ final class LiveActivityCoordinator: ObservableObject {
 
     init() {}
 
-    func attach(to model: AppModel) {
+    func attach(to model: AppModel, faces: @escaping (BotID) -> BotAvatarDocument? = { _ in nil }) {
         noteOnce()
     }
 

@@ -41,6 +41,12 @@ struct MacSettingsView: View {
             IntegrationsTab(store: store)
                 .tabItem { Label("Integrations", systemImage: "link.badge.plus") }
 
+            // The host's vault, by name — what the bots may use and the owner may remove. Next to
+            // Integrations because both are the owner's own credentials; separate because this one
+            // lists secrets that are never shown, only named.
+            VaultSettingsTab(store: store)
+                .tabItem { Label("Vault", systemImage: "lock.shield") }
+
             // The Mac as a local computer. Same pattern as the other native clients: a toggle in
             // settings, no inbound port and no SSH.
             LocalComputerSettingsView(store: store)
@@ -68,8 +74,9 @@ struct MacSettingsView: View {
             AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Nine tabs now (Chat, Bots, Approvals, Computer, Connection, Appearance, Notifications,
-        // Caching, About): the bar pushes the last tab behind a chevron when the window is too narrow.
+        // Ten tabs now (Chat, Bots, Approvals, Integrations, Vault, Computer, Connection, Appearance,
+        // Notifications, Caching, About): the bar pushes the last tab behind a chevron when the window
+        // is too narrow.
         .frame(width: 820, height: 500)
         .background(Tokens.canvas)
         // Settings is a separate window, so it carries its own direction: the window title, the tab
@@ -108,18 +115,21 @@ private struct ChatSettingsTab: View {
             Section {
                 Toggle("Show reasoning", isOn: reasoningBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("The model's thinking, above each answer.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
 
                 Toggle("Expand reasoning automatically", isOn: reasoningExpandedBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("Open the model's thinking on arrival instead of a click.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
 
                 Toggle("Show tool calls", isOn: toolCallsBinding)
                     .tint(Tokens.success)
+                    .hermeyFocusQuiet()
                 Text("A card for every command, with its result. Off hides them from the chat.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
@@ -131,6 +141,29 @@ private struct ChatSettingsTab: View {
                 // opinion the app is not entitled to — and it could compact a thread the host was
                 // about to.
                 Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is.")
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // The ceiling on one Bot Chat. Its own section because it is the one chat preference
+            // that is about the conversation's *size* rather than what a row draws, and because the
+            // sentence underneath is the whole reassurance: nothing is deleted.
+            Section {
+                Picker("Start a new chat after", selection: ceilingBinding) {
+                    ForEach(BotChatCeiling.choices, id: \.self) { choice in
+                        Text(BotChatCeiling.label(choice)).tag(choice)
+                    }
+                }
+                .hermeyFocusQuiet()
+                Text(BotChatCeiling.explanation)
+                    .font(TypeScale.font(TypeScale.caption))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Long conversations")
+            } footer: {
+                Text("Takes effect the next time you open a bot. Never turns the roll off; the conversation then only gets faster paging, not smaller.")
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(Tokens.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -154,6 +187,14 @@ private struct ChatSettingsTab: View {
     private var toolCallsBinding: Binding<Bool> {
         Binding(get: { store.model.showToolCalls },
                 set: { store.model.showToolCalls = $0 })
+    }
+
+    /// The ceiling, read and written straight through the model: the key is the app's own
+    /// `UserDefaults` document, and the roll reads the property, so a change applies on the next
+    /// open without a restart.
+    private var ceilingBinding: Binding<Int> {
+        Binding(get: { store.model.botChatCeiling },
+                set: { store.model.botChatCeiling = $0 })
     }
 
 }
@@ -240,9 +281,11 @@ private struct BotsSettingsTab: View {
                     get: { model.isPinned(botID: bot.id) },
                     set: { _ in model.togglePin(botID: bot.id) }))
                     .toggleStyle(.checkbox)
+                    .hermeyFocusQuiet()
             }
 
             Button("Settings…") { botForSettings = bot }
+            .hermeyFocusQuiet()
         }
         .padding(.vertical, 2)
     }
@@ -314,17 +357,22 @@ private struct ConnectionSettingsTab: View {
             Section {
                 if store.isPaired, store.model.connection.isLive {
                     Button("Disconnect") { Task { await store.disconnect() } }
+                    .hermeyFocusQuiet()
                 } else if store.isPaired {
                     Button("Connect") { Task { await store.connect() } }
                         .disabled(store.model.connection == .connecting)
+                        .hermeyFocusQuiet()
                 }
                 Button(store.isPaired ? "Pair another host…" : "Pair a host…") {
                     store.isPairSheetPresented = true
                 }
+                .hermeyFocusQuiet()
                 Button("Manage Paired Devices…", action: openDevices)
                     .disabled(!store.isPaired)
+                    .hermeyFocusQuiet()
                 if store.isPaired {
                     Button("Unpair this Mac…", role: .destructive) { confirmingUnpair = true }
+                    .hermeyFocusQuiet()
                 }
             }
 
@@ -336,7 +384,9 @@ private struct ConnectionSettingsTab: View {
                             isPresented: $confirmingUnpair,
                             titleVisibility: .visible) {
             Button("Unpair", role: .destructive) { Task { await store.unpair() } }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("The refresh token is deleted from this Mac. The device stays in the host's list until you revoke it there.")
         }

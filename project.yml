@@ -97,6 +97,9 @@ targets:
         # Pressing record captures the Mac's default input device. macOS terminates an app that
         # opens a capture input without this string, so the prompt is the whole feature.
         NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
+        # The composer's Photos button opens the system photo picker. The picker runs out of
+        # process and reads nothing itself, but the string is the key macOS looks up before it
+        # hands a library item over, and its absence is a termination rather than a prompt.
         # A banner arrives from the relay app (Bark), which can only open a URL. `hermey://bot/<id>`
         # is how tapping it lands on the bot that spoke instead of on the list.
         CFBundleURLTypes:
@@ -187,7 +190,6 @@ targets:
         # Required the moment the QR scanner asks for the camera: iOS terminates the app
         # on first capture input without this string, so pairing would look like a crash.
         NSCameraUsageDescription: "Scan the pairing code shown by your Hermes host to connect this device, and take photos to attach to a message."
-        NSPhotoLibraryUsageDescription: "Choose a photo to attach to a message."
         NSMicrophoneUsageDescription: "Record a voice message to transcribe with your Hermes host."
         # A banner arrives from the relay app (Bark), which can only open a URL. `hermey://bot/<id>`
         # is how tapping it lands on the bot that spoke instead of on the list.
@@ -239,6 +241,33 @@ targets:
       # stack), and a second copy of the eight strings is exactly how the pill came to say "Finished"
       # while the list said "Done". One file, both processes.
       - path: Sources/HermesKit/BotStateWord.swift
+      # The eight activity words the renderer poses — one file of plain enums in HermesKit, the same
+      # one-implementation argument as the state vocabulary above: the face cannot be posed without it.
+      - path: Sources/HermesKit/BotAvatarActivity.swift
+      # The bot's *drawing*, compiled into the extension as well as into `HermeyUI` — the same
+      # argument as `BotStateWord.swift` one line up, for the same reason. The card now draws the
+      # bot's own face, and a second renderer inside the extension is exactly how the eyes on the
+      # Lock Screen come to blink on a different clock from the eyes in the chat header. These are
+      # the renderer's own files, unchanged: one implementation, two processes. What is *not* here
+      # is the editor (`OpenBotAvatarEditor`), which is inert in a widget and drags the shape
+      # picker's catalogue in with it.
+      - path: Sources/HermeyUI/OpenBotAvatar
+        excludes:
+          - "OpenBotAvatarEditor.swift"
+      # What the drawing needs and the extension would otherwise link the package for: the avatar
+      # hash and colour definitions, the eight shipped bodies, the palette they are drawn from, and
+      # the library a stored face is resolved through. All Foundation-only — no networking, no
+      # `HermesKit`, no design-system tokens.
+      - path: Sources/HermeyUI/BotAvatarIdentity.swift
+      - path: Sources/HermeyUI/BotAvatarShape.swift
+      # The shape's own vocabulary: path commands and the parser that reads them, the rect and eye
+      # pose types, and the motion constants the eight states are paced by. Split across four files in
+      # HermeyUI; the extension needs all four or the renderer compiles against names it cannot see.
+      - path: Sources/HermeyUI/BotAvatarPathParser.swift
+      - path: Sources/HermeyUI/BotAvatarGeometry.swift
+      - path: Sources/HermeyUI/BotAvatarMotion.swift
+      - path: Sources/HermeyUI/BotAvatarPalette.swift
+      - path: Sources/HermeyUI/BotAvatarLibrary.swift
       # No BrandAssets: the island is black in both appearances and an asset catalog here would be a
       # second palette to keep in sync for no visible gain.
     info:

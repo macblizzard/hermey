@@ -94,6 +94,19 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// `CanonicalBotChat`.
     func canonicalBotChat(forProfile profile: String) async throws -> CanonicalBotChat.HostState
 
+    /// This bot's canonical row plus **the host's own message count** for it.
+    ///
+    /// The count is the reason this exists. `session.list`'s bulk rows carry `message_count`, the
+    /// denormalised column, which counts only the rows still *active* — `cody`'s 6,806-message chat
+    /// reports **675** there, because compaction retires the rest. The host's display count
+    /// (`live_message_count`, grouped exactly the way a transcript read groups its rows) reported
+    /// **6,136** for the same conversation. A ceiling read off the wrong one never fires: the chat
+    /// grows past 6,000 while the app believes it is under 700.
+    ///
+    /// One row, one count query — asked once per open (see `AppModel.rollBotChatIfNeeded`), never
+    /// per turn. `nil` means the host has no canonical row (or could not be asked): nothing to roll.
+    func botChatRow(profile: String) async throws -> BotChatRow?
+
     /// Name an existing session `Bot Chat` — the adoption step for a bot whose conversation started
     /// life as a Hermey-only session. Throws when another row already holds the title
     /// (`CanonicalBotChat.isTitleConflict`), which the caller resolves by switching to that row.
@@ -110,6 +123,22 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Archive a session. Used to *retire* a Bot Chat, matching Desktop: the archived row keeps its
     /// history, its name is freed for a successor, and the next open mints a fresh canonical chat.
     func archiveSession(_ session: SessionID, profile: String?) async throws
+
+    /// Put an archived session back. The roll's undo, and nothing else's.
+    ///
+    /// A roll archives the chat and then mints its successor; if the mint is refused (a host that
+    /// will not free the name, a dead socket in between), the bot must be left on the conversation
+    /// it had rather than on one this device quietly retired. Defaulted to a refusal so a client
+    /// without the route reports the half-done state instead of pretending it undid it.
+    func unarchiveSession(_ session: SessionID, profile: String?) async throws
+
+    /// `session.set_hidden` — hide a row that a list would otherwise show.
+    ///
+    /// The roll's one other prerequisite: the host hands the unique title `Bot Chat` to a successor
+    /// only when the row holding it is **archived and hidden** (`_resolve_title_conflict`). A
+    /// canonical chat is born hidden, so this is normally a no-op; an *adopted* chat can be
+    /// visible, and without this the successor would be refused the name and end up auto-titled.
+    func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws
     func history(_ id: SessionID, limit: Int) async throws -> [TranscriptEntry]
 
     /// The same read, scoped to the bot that owns the conversation.
@@ -212,6 +241,20 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func setReaction(bot: String, session: SessionID, message: String,
                      emoji: String?, by: String) async throws
 
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The engine has no message-level delete, so the host owns it: it refuses while a turn is
+    /// running (409), closes the engine's live copy, and then writes `active=0, compacted=0` in one
+    /// transaction. Nothing is removed from the database, and the reply carries the conversation's
+    /// new display count so the app can re-resume and show the same conversation on both devices.
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it, which is
+    /// what an edit-and-resend needs before it sends the new text.
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult
+
     /// Every bot's newest message, keyed by profile — read by the bridge off the host's own message
     /// table. A client with no bridge pointer answers `[:]`, which sends the caller to the
     /// gateway's coarser `session.list` preview.
@@ -304,6 +347,25 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     func credentialCards() async throws -> [CredentialCard]
     func answerCredentialCard(id: String, values: [String: String]) async throws
     func cancelCredentialCard(id: String) async throws
+
+    /// `GET /v1/vault` — the names the host's vault holds, with a label and a date each, and no value.
+    /// `VaultItem` has no field a value could travel in, so "the list is only names" is a property of
+    /// the type rather than of the decoder.
+    func vaultItems() async throws -> [VaultItem]
+    /// `DELETE /v1/vault/{name}` — the name may hold one `/` (`doctolib.de/password`), which the client
+    /// percent-encodes so the host's wildcard route reads it back as one name.
+    func deleteVaultItem(name: String) async throws
+    /// `PATCH /v1/vault/{name}` — rename an item and, when `value` is given, replace what is stored
+    /// under it. One request and one host write for both halves; nothing is returned because a value
+    /// only ever travels towards the host.
+    func editVaultItem(name: String, rename: String, value: String?) async throws
+    /// `POST /v1/credentials/cards` — ask the host for a card the owner answers.
+    ///
+    /// The Vault pane is the only caller and it asks for `store: true`: the value the owner types goes
+    /// into the existing masked sheet and straight to the vault, which is why the pane needs no form of
+    /// its own and there is still exactly one way a secret can enter the host.
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard
     func integrations() async throws -> IntegrationsState
     func connectIntegration(slug: String, alias: String?) async throws -> String
     func integrationKeyFields(slug: String) async throws -> [IntegrationKeyField]
@@ -478,6 +540,21 @@ extension GatewayClientProtocol {
     /// A client with no registry of runtime sessions has nothing to release.
     public func closeSession(_ id: SessionID) async throws {}
 
+    /// A client with no bridge — the unpaired one, a fixture, a preview — cannot retire a message,
+    /// and both menus withhold the verbs when `bridgeAvailable` is false. Reaching here is a caller
+    /// that asked anyway, so it is told plainly instead of drawing a conversation that never moved.
+    public func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, messageIDs)
+        throw MessageRetireError.noBridge
+    }
+
+    public func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, fromMessageID)
+        throw MessageRetireError.noBridge
+    }
+
     /// A client with no reconnect ladder — the unpaired one, a fixture, a preview — has nothing to
     /// bring forward: there is no scheduled attempt to end. Declared as a default so every stub
     /// conformance stays valid while the real client's own `retryNow` dispatches dynamically.
@@ -539,6 +616,17 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func cancelCredentialCard(id: String) async throws {
+        throw BotAdminUnavailable()
+    }
+    /// No bridge, no vault. Failing loudly is the point: an empty list here would read as "you have
+    /// saved no secrets", which is the one thing this pane must never say by accident.
+    public func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
+    public func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        throw BotAdminUnavailable()
+    }
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
         throw BotAdminUnavailable()
     }
     public func integrations() async throws -> IntegrationsState {
@@ -848,6 +936,25 @@ public extension GatewayClientProtocol {
                                         message: "session.archive is not supported by this client"))
     }
 
+    func unarchiveSession(_ session: SessionID, profile: String?) async throws {
+        _ = (session, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.archive is not supported by this client"))
+    }
+
+    func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws {
+        _ = (hidden, session, profile)
+        throw GatewayError.rpc(RPCError(code: -32601,
+                                        message: "session.set_hidden is not supported by this client"))
+    }
+
+    /// A client that cannot read a canonical row cannot check a ceiling. `nil` means "do not roll":
+    /// the conversation keeps working exactly as it did before this feature existed.
+    func botChatRow(profile: String) async throws -> BotChatRow? {
+        _ = profile
+        return nil
+    }
+
     /// No canonical create: the plain one is the honest degradation.
     func createCanonicalSession(profile: String, idempotencyKey: String?) async throws -> SessionID {
         try await createSession(model: nil, provider: nil, profile: profile,
@@ -900,6 +1007,21 @@ public struct SessionSummary: Identifiable, Hashable, Sendable {
             if !line.isEmpty { return String(line.prefix(60)) }
         }
         return "Untitled session"
+    }
+}
+
+/// One canonical row, as the host answers it, with the count the ceiling reads.
+///
+/// `count` is `live_message_count` when the host sends one — the display count, grouped the way a
+/// transcript read groups its rows — and `message_count` only from a host too old to send it. See
+/// `GatewayClientProtocol.botChatRow(profile:)` for why the two are not interchangeable.
+public struct BotChatRow: Hashable, Sendable {
+    public let id: SessionID
+    public let count: Int
+
+    public init(id: SessionID, count: Int) {
+        self.id = id
+        self.count = count
     }
 }
 
@@ -1044,8 +1166,12 @@ public struct TranscriptEntry: Identifiable, Hashable, Sendable {
     /// This row's stable message id, for anything the host keeps per message — a reaction, a card
     /// snapshot. A host row has one; a message still streaming has only its own id, and the two
     /// namespaces are kept apart so a live id can never collide with a durable one.
+    ///
+    /// The rule itself is ``ReactionKey/message(rowID:entryID:)``'s and nowhere else: a second
+    /// spelling here is what let a row keyed `row:41` on one device be `row:41` but `live:…` on the
+    /// other, so the badge was stored under a name nothing looked up.
     public var messageID: String {
-        rowID.map { "row:\($0)" } ?? "live:\(id)"
+        ReactionKey.message(rowID: rowID, entryID: id)
     }
 
     /// What travelled with a user message. The host returns no attachment metadata for the

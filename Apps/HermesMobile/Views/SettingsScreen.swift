@@ -57,6 +57,26 @@ struct SettingsScreen: View {
                 Label("Integrations", systemImage: "link.badge.plus")
             }
             .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
+        }
+    }
+
+    /// The host's vault: one row, one tap, the same as Integrations above — the pane itself is
+    /// `VaultScreen`, which lists names and never a value (asked for 2026-11-25).
+    private var vaultSection: some View {
+        Section {
+            NavigationLink {
+                VaultScreen(model: model)
+            } label: {
+                Label("Vault", systemImage: "lock.shield")
+            }
+            .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
+        } header: {
+            sectionHeader("Secrets")
+        } footer: {
+            Text("What the host holds for your bots, by name. Values are written once and never shown again.")
+                .font(TypeScale.font(TypeScale.label))
         }
     }
 
@@ -86,6 +106,7 @@ struct SettingsScreen: View {
                     Text("Bot list size")
                 }
                 .accessibilityIdentifier("appearanceBotListScale")
+                .hermeyFocusQuiet()
                 BotListScalePreview(scale: listScale)
             }
             .padding(.vertical, 4)
@@ -113,6 +134,7 @@ struct SettingsScreen: View {
                 }
             }
             .listRowBackground(Tokens.surface)
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Storage")
         } footer: {
@@ -137,6 +159,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(Tokens.textPrimary)
             }
             .tint(Tokens.accent)
+            .hermeyFocusQuiet()
 
             switch notifier.authorization {
             case .denied:
@@ -153,6 +176,7 @@ struct SettingsScreen: View {
                             .foregroundStyle(Tokens.accentText)
                     }
                 }
+                .hermeyFocusQuiet()
             case .notDetermined:
                 Button {
                     notifier.requestAuthorizationIfNeeded()
@@ -161,6 +185,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
             default:
                 EmptyView()
             }
@@ -181,6 +206,7 @@ struct SettingsScreen: View {
                         }
                     }
                 }
+                .hermeyFocusQuiet()
             }
         } header: {
             Text("Replies")
@@ -199,6 +225,7 @@ struct SettingsScreen: View {
             connectionSection
             approvalsSection
             accountsSection
+            vaultSection
             appearanceSection
             storageSection
             rosterSection
@@ -218,7 +245,7 @@ struct SettingsScreen: View {
         .task { await model.loadCacheState() }
         .task { await loadApprovals() }
         .sheet(isPresented: $showLog) {
-            ClientLogView(title: "Log", header: logHeader)
+            ClientLogView(title: "Log", header: logHeader, uploader: model.clientLogUploader)
             .hermesSheetChrome()
         }
         .mobileConnectionBanner(connection: app.visibleConnection,
@@ -231,7 +258,9 @@ struct SettingsScreen: View {
             Button("Unpair", role: .destructive) {
                 Task { await app.unpair() }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("The refresh token is deleted from this phone. The device stays in the host's list until you revoke it there.")
         }
@@ -276,6 +305,7 @@ struct SettingsScreen: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hermeyFocusQuiet()
             }
         } header: {
             Text("Approvals · all bots")
@@ -291,7 +321,9 @@ struct SettingsScreen: View {
                 if let mode = pendingApprovalMode { Task { await applyApprovalMode(mode) } }
                 pendingApprovalMode = nil
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingApprovalMode = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("Allow always runs every guarded action on every bot without asking. Auto is the safer default.")
         }
@@ -363,6 +395,7 @@ struct SettingsScreen: View {
                         .foregroundStyle(model.connection.isLive ? Tokens.accentText : Tokens.textDim)
                 }
                 .disabled(!model.connection.isLive)
+                .hermeyFocusQuiet()
 
                 Button {
                     app.isPairingPresented = true
@@ -371,6 +404,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
 
                 Button(role: .destructive) {
                     showUnpairConfirm = true
@@ -378,6 +412,7 @@ struct SettingsScreen: View {
                     Label("Unpair this phone", systemImage: "iphone.slash")
                         .font(TypeScale.font(TypeScale.md))
                 }
+                .hermeyFocusQuiet()
             } else {
                 Button {
                     app.isPairingPresented = true
@@ -386,6 +421,7 @@ struct SettingsScreen: View {
                         .font(TypeScale.font(TypeScale.md))
                         .foregroundStyle(Tokens.accentText)
                 }
+                .hermeyFocusQuiet()
             }
         } header: {
             sectionHeader("Connection")
@@ -448,6 +484,7 @@ struct SettingsScreen: View {
             }
             .tint(Tokens.success)
             .accessibilityIdentifier("chatCloseKeyboardAfterSend")
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.showReasoning) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -460,6 +497,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.reasoningExpandedByDefault) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -472,6 +510,7 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
 
             Toggle(isOn: $model.showToolCalls) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -484,13 +523,35 @@ struct SettingsScreen: View {
                 }
             }
             .tint(Tokens.success)
+            .hermeyFocusQuiet()
+
+            // "Start a new chat after": the ceiling a bot's one conversation is rolled at. A menu
+            // picker inside the row, the shape iOS uses for a short list of choices — and the
+            // sentence under it says **moves**, because nothing is deleted.
+            Picker(selection: Binding(get: { model.botChatCeiling },
+                                      set: { model.botChatCeiling = $0 })) {
+                ForEach(BotChatCeiling.choices, id: \.self) { choice in
+                    Text(BotChatCeiling.label(choice)).tag(choice)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start a new chat after")
+                        .font(TypeScale.font(TypeScale.md))
+                        .foregroundStyle(Tokens.textPrimary)
+                    Text(BotChatCeiling.explanation)
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textGroupedSecondary)
+                }
+            }
+            .accessibilityIdentifier("chatCeilingPicker")
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Chat")
         } footer: {
             // Compaction is the host's job, at its own `compression.threshold` — it compacts at the
             // start of a turn when the context crosses it. An app-side threshold was a second
             // opinion nobody asked for, and it could compact a thread the host was about to.
-            Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is.")
+            Text("The host compacts a conversation on its own when it nears the model's window. The header still shows how full the context is. Never leaves the conversation whole; it only pages faster.")
                 .font(TypeScale.font(TypeScale.label))
         }
     }
@@ -527,6 +588,7 @@ struct SettingsScreen: View {
                 }
                 .padding(.vertical, 2)
             }
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Devices")
         } footer: {
@@ -584,6 +646,7 @@ struct SettingsScreen: View {
                 }
                 .padding(.vertical, 2)
             }
+            .hermeyFocusQuiet()
         } header: {
             sectionHeader("Diagnostics")
         } footer: {
@@ -707,6 +770,7 @@ struct CheckForUpdatesRow: View {
             }
         }
         .accessibilityIdentifier("checkForUpdates")
+        .hermeyFocusQuiet()
     }
 
     /// The build is always named: a person deciding about an update wants to know which one they
@@ -759,6 +823,7 @@ struct SettingsSheet: View {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Done") { dismiss() }
                             .accessibilityIdentifier("settings.done")
+                            .hermeyFocusQuiet()
                     }
                 }
         }
@@ -851,6 +916,7 @@ struct DevicesScreen: View {
                     .padding(.vertical, 2)
                 }
                 .disabled(!app.isPaired)
+                .hermeyFocusQuiet()
             } footer: {
                 Text("A code is single-use and expires in minutes.")
                     .font(TypeScale.font(TypeScale.label))
@@ -871,6 +937,7 @@ struct DevicesScreen: View {
                                     prompt = .remove(device)
                                 }
                                 .disabled(app.removingDevice || app.store.host == nil)
+                                .hermeyFocusQuiet()
                             }
                         }
                 }
@@ -909,7 +976,9 @@ struct DevicesScreen: View {
                             titleVisibility: .visible,
                             presenting: prompt) { prompt in
             Button(prompt.confirmTitle, role: .destructive) { confirm(prompt) }
+            .hermeyFocusQuiet()
             Button(prompt.cancelTitle, role: .cancel) { self.prompt = nil }
+            .hermeyFocusQuiet()
         } message: { prompt in
             Text(prompt.message)
         }
@@ -979,6 +1048,7 @@ struct DevicesScreen: View {
             .disabled(app.removingDevice || app.store.host == nil)
             .accessibilityLabel("Remove \(device.name) permanently")
             .accessibilityIdentifier("devices.remove.\(device.deviceID)")
+            .hermeyFocusQuiet()
         } else {
             Button("Revoke") {
                 Haptics.selection()
@@ -990,6 +1060,7 @@ struct DevicesScreen: View {
             .disabled(app.store.host == nil)
             .accessibilityLabel("Revoke \(device.name)")
             .accessibilityIdentifier("devices.revoke.\(device.deviceID)")
+            .hermeyFocusQuiet()
         }
     }
 
@@ -1085,6 +1156,7 @@ struct QuietBotsScreen: View {
                     }
                     .tint(Tokens.accent)
                     .listRowBackground(Tokens.surface)
+                    .hermeyFocusQuiet()
                 }
             } footer: {
                 Text("Off means this bot never buzzes. Its replies still count on its row and in the badge.")

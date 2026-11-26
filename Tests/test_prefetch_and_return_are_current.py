@@ -122,7 +122,9 @@ class TheRuntimeSessionIsReleased(unittest.TestCase):
     def test_the_real_client_warms_without_attaching(self) -> None:
         actor = (ROOT / "Sources" / "HermesKit" / "GatewayClientActor.swift").read_text(encoding="utf-8")
         warm = actor.split("public func warmResume(", 1)[1].split("public func liveSessionIDs(", 1)[0]
-        self.assertIn("performResume(id, profile: profile)", warm)
+        # Through the shared resume flight (`resumeOnce`) since the open path learned to join it;
+        # the invariant this test owns is the same: a warm does not adopt the pane's runtime id.
+        self.assertIn("resumeOnce(id, profile: profile)", warm)
         self.assertNotIn("attach(", warm, "a warm must not adopt the runtime id the pane owns")
         self.assertNotIn("boundProfile = ", warm, "a warm must not rebind the socket's profile")
 

@@ -24,8 +24,10 @@ mod browser;
 mod bridge_routes;
 mod cards;
 mod backup;
+mod client_logs;
 mod cli;
 mod credentials;
+mod secrets;
 mod search;
 mod transfers;
 mod gateway_guard;
@@ -40,6 +42,7 @@ mod display;
 mod display_container;
 mod engine_auth;
 mod engine_client;
+mod messages;
 mod model_settings;
 mod pairing;
 mod parity_gaps;
@@ -57,6 +60,7 @@ mod skills;
 mod skills_dialect;
 mod store;
 mod update;
+mod vault;
 mod voice;
 mod workspace;
 
@@ -542,6 +546,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(reactions::get_reactions).put(reactions::put_reaction),
         )
         .route("/v1/search", get(search::search))
+        // The two message verbs, agreed by every device: retire some messages, or retire one and
+        // everything painted after it (what "edit and resend" needs). Both close the engine's live
+        // copy first and then write `active=0, compacted=0` — a soft retire, never a row gone. See
+        // messages.rs.
+        .route("/v1/messages/delete", post(messages::post_delete))
+        .route("/v1/messages/truncate", post(messages::post_truncate))
         // The service's own next version: a report anyone paired can read, and a press that only
         // the owner's devices can make. See update.rs for the checksum and the rollback.
         .route(
@@ -570,6 +580,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/v1/credentials/cards/{card_id}/answer", post(credentials::answer_card))
         .route("/v1/credentials/cards/{card_id}/cancel", post(credentials::cancel_card))
         .route("/v1/credentials/cards/{card_id}/consume", post(credentials::consume_card))
+        // The vault's face to the owner: names and labels, never a value. Adding is still the
+        // `store` card above; an edit (PATCH) can only change an item that already exists — its name,
+        // its value, or both — and answers with the name it now has. The name may hold one `/`, hence
+        // the wildcard, and the client percent-encodes it.
+        .route("/v1/vault", get(vault::list))
+        .route(
+            "/v1/vault/{*name}",
+            axum::routing::delete(vault::delete_item).patch(vault::edit_item),
+        )
+        // A device's own log, saved as a file on this host so it can be read here instead of pasted
+        // into a chat. A plain bearer POST, unlike the socket it came from: see client_logs.rs. The
+        // framework ceiling sits above the handler's own 2 MiB so a 413 carries its sentence.
+        .route(
+            "/v1/client-logs",
+            post(client_logs::post_log)
+                .layer(axum::extract::DefaultBodyLimit::max(client_logs::MAX_BODY_BYTES)),
+        )
         .route("/v1/voice/transcribe", post(voice::transcribe))
         .route("/v1/voice/synthesize", post(voice::synthesize))
         .route(

@@ -93,6 +93,7 @@ pub const EVENTS: &[&str] = &[
     "local_computer.skill",
     "credentials.requested",
     "credentials.answered",
+    "credentials.stored",
     "credentials.consumed",
     "credentials.cancelled",
     "browser.connected",
@@ -749,7 +750,7 @@ mod tests {
         // Assembled at runtime on purpose: a key-shaped *literal* in the source is itself a finding
         // for `Tools/ci/secret_scan.sh`, which looks for the shape of a real credential rather than
         // the words. The value still has to look like one at runtime, or the test proves nothing.
-        let token = concat!("Bearer sk-live-", "0123456789", "-", "not-a-canary");
+        let token = concat!("Bearer test-credential-", "0123456789", "-", "not-a-canary");
         log.emit(
             "client_request",
             Event {
@@ -766,7 +767,7 @@ mod tests {
         .expect("known event");
 
         let text = read(log.path());
-        assert!(!text.contains("sk-live"), "the credential reached the file: {text}");
+        assert!(!text.contains("test-credential"), "the credential reached the file: {text}");
         assert!(!text.contains("Bearer"));
         let record: Value = serde_json::from_str(text.trim()).expect("valid JSON");
         assert_eq!(record["device"], "unknown");

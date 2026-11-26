@@ -1,12 +1,12 @@
 //! Login cards: the bot asks, the owner answers, the bot consumes — once.
 //!
 //! ```text
-//! GET  /v1/credentials/cards              → [{kind,id,site,fields,options,note,asked_by,state,expires_at}]
-//! POST /v1/credentials/cards              → create (a bot asks for a credential)
+//! GET  /v1/credentials/cards              → [{kind,id,site,fields,masked,store,submit,options,note,asked_by,state,expires_at}]
+//! POST /v1/credentials/cards              → create (a bot asks for a credential; `store` saves it)
 //! GET  /v1/credentials/cards/{id}         → one card, still without its answer
 //! POST /v1/credentials/cards/{id}/answer   {values:{field:value}}
 //! POST /v1/credentials/cards/{id}/cancel
-//! POST /v1/credentials/cards/{id}/consume  → {values} exactly once
+//! POST /v1/credentials/cards/{id}/consume  → {values} once, or {stored:[{field,name}],ok} for `store`
 //! ```
 //!
 //! The rules that make this safe to expose:
@@ -24,10 +24,16 @@
 //!   without bound. The grace window keeps a just-consumed card readable, which is the difference
 //!   between a caller hearing "already used" and "no such card".
 //!
+//! * **No route serves it: a stored answer goes to the vault.** A card created with `store: true` has its
+//!   answer written to the host's secret store (`secrets.rs`, `0600`, beside `bridge.db`) at the moment
+//!   the owner submits. The card keeps the **name** it was saved under, never the value, and `consume`
+//!   acknowledges `{name, field}` — which is what lets a bot keep using a credential it has never seen.
+//!   A card without `store` is unchanged: its answer is handed over once and kept nowhere.
+//!
 //! Storage is the service's own SQLite `documents` table, one JSON document for the whole card set —
 //! the volume is a handful of pending prompts, and it needs no schema of its own. The database file is
 //! owner-only (0600), the same posture as the engine's credential file: values are stored only between
-//! `answer` and `consume`, then dropped.
+//! `answer` and `consume`, then dropped. A `store` card puts nothing of the value in that table at all.
 
 use crate::routes::{require_device, AppState};
 use axum::extract::{Path, State};
@@ -44,6 +50,10 @@ const DEFAULT_TTL_SECONDS: f64 = 900.0; // 15 minutes
 const MAX_TTL_SECONDS: f64 = 86_400.0;
 const MAX_PENDING: usize = 32;
 const MAX_FIELD_NAME: usize = 64;
+/// A hostname in a certificate is 253 bytes and a note is one line the owner reads on a card.
+const MAX_SITE_BYTES: usize = 253;
+const MAX_NOTE_BYTES: usize = 240;
+const MAX_OPTIONS: usize = 8;
 /// How long a spent or expired card is kept before it is pruned. Long enough that a caller which
 /// lost the reply still hears "already used"/"expired" instead of "no such card".
 const SWEEP_GRACE_SECONDS: f64 = 600.0;
@@ -77,12 +87,26 @@ fn expired(card: &Value) -> bool {
 }
 
 /// What the app may see: never `values`.
+///
+/// `masked` is the host's own answer to "which of these are secrets", so the app never has to guess
+/// from a field's name — a field called `api key` is masked because it is not one of the ordinary
+/// ones, and a new secret-shaped field needs no app release to be hidden. `submit` is the button's
+/// words, also host-decided: a bot cannot label a stored key "fill it in" and have it typed into a page.
 fn view(card: &Value) -> Value {
+    let fields: Vec<String> = card
+        .get("fields")
+        .and_then(|f| f.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let store = card.get("store").and_then(Value::as_bool).unwrap_or(false);
     json!({
         "kind": card.get("kind").cloned().unwrap_or_else(|| json!("login")),
         "id": card.get("id"),
         "site": card.get("site"),
-        "fields": card.get("fields").cloned().unwrap_or_else(|| json!([])),
+        "fields": fields,
+        "masked": crate::secrets::masked_fields(&fields),
+        "store": store,
+        "submit": if store { "Save to the vault" } else { "Fill it in" },
         "options": card.get("options").cloned().unwrap_or_else(|| json!([])),
         "note": card.get("note").cloned().unwrap_or_else(|| json!("")),
         // Always a string: the app's decoder has a non-optional `askedBy`, so a null here used to
@@ -189,6 +213,15 @@ pub struct CreateCard {
     pub asked_by: Option<String>,
     #[serde(default)]
     pub ttl_seconds: Option<f64>,
+    /// Save the answer in the host's secret store instead of handing it to the caller. This is the
+    /// difference between a login (typing a value into a page once) and a credential the bot needs
+    /// again tomorrow (an API key): the second one has to have somewhere to live, and it is not the
+    /// bot's context.
+    #[serde(default)]
+    pub store: bool,
+    /// The vault item's label. Absent means `<site>/<field>`, minted by the host.
+    #[serde(default)]
+    pub save_as: Option<String>,
 }
 
 pub async fn create_card(
@@ -201,6 +234,32 @@ pub async fn create_card(
     if site.is_empty() {
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "a site is required"));
     }
+    if site.len() > MAX_SITE_BYTES {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "that site is longer than 253 characters"));
+    }
+    let note = body.note.unwrap_or_default().trim().to_string();
+    if note.chars().count() > MAX_NOTE_BYTES {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "the note is longer than one line"));
+    }
+    if body.options.len() > MAX_OPTIONS {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "too many options for one card"));
+    }
+    // A `save_as` label has to be a name the store will accept, checked here rather than at answer
+    // time: a card that promises "saved as <name>" must not discover the name was impossible after
+    // the owner has typed a password into it.
+    let save_as = match body.save_as.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(name) if crate::secrets::valid_name(name) => Some(name.to_string()),
+        Some(_) => {
+            return Err(bad(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "a saved name is letters, digits, '.', '_', '-' and one '/', up to 96 characters",
+            ))
+        }
+    };
+    if save_as.is_some() && !body.store {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "save_as needs store: true"));
+    }
     let mut fields: Vec<String> = body
         .fields
         .iter()
@@ -212,6 +271,12 @@ pub async fn create_card(
     }
     if fields.len() > 8 {
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "too many fields for one card"));
+    }
+    if save_as.is_some() && fields.len() != 1 {
+        return Err(bad(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "save_as names one value, so the card asks for one field",
+        ));
     }
 
     let mut cards = load(&st);
@@ -226,14 +291,20 @@ pub async fn create_card(
 
     let id = crate::auth::random_token(12);
     let ttl = body.ttl_seconds.unwrap_or(DEFAULT_TTL_SECONDS).clamp(30.0, MAX_TTL_SECONDS);
+    let asked_by = body.asked_by.unwrap_or_default().trim().to_string();
+    if asked_by.len() > 64 || !asked_by.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "asked_by must be a bot's name"));
+    }
     let card = json!({
         "id": id,
         "kind": body.kind.unwrap_or_else(|| "login".to_string()),
         "site": site,
         "fields": fields,
         "options": body.options,
-        "note": body.note.unwrap_or_default(),
-        "asked_by": body.asked_by.unwrap_or_default(),
+        "note": note,
+        "asked_by": asked_by,
+        "store": body.store,
+        "save_as": save_as,
         "state": "pending",
         "created_at": now(),
         "expires_at": now() + ttl,
@@ -290,17 +361,58 @@ pub async fn answer_card(
     if values.is_empty() {
         return Err(bad(StatusCode::UNPROCESSABLE_ENTITY, "no answers for that request"));
     }
+    // A value is a line, not an upload. Refused here, before anything is remembered anywhere, and the
+    // message says the limit rather than quoting what was typed.
+    if values
+        .values()
+        .any(|v| v.as_str().map(|t| t.len()).unwrap_or(0) > crate::secrets::MAX_VALUE_BYTES)
+    {
+        return Err(bad(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("one value is larger than {} bytes", crate::secrets::MAX_VALUE_BYTES),
+        ));
+    }
 
-    card["values"] = Value::Object(values);
+    let store = card.get("store").and_then(Value::as_bool).unwrap_or(false);
+    if store {
+        // Straight into the host's vault, and only the name is kept on the card. A `put` that fails
+        // names the reason and the item, never the value, so this error can travel back to the app.
+        let site = card.get("site").and_then(|s| s.as_str()).unwrap_or("").to_string();
+        let kind = card.get("kind").and_then(|k| k.as_str()).unwrap_or("login").to_string();
+        let note = card.get("note").and_then(|n| n.as_str()).unwrap_or("").to_string();
+        let save_as = card.get("save_as").and_then(|s| s.as_str()).map(str::to_string);
+        let mut stored = Vec::new();
+        for (field, value) in values.iter() {
+            let name = save_as
+                .clone()
+                .unwrap_or_else(|| crate::secrets::name_for(&site, field));
+            let text = value.as_str().unwrap_or_default();
+            crate::secrets::put(&st, &name, text)
+                .map_err(|why| bad(StatusCode::UNPROCESSABLE_ENTITY, why))?;
+            // The row the owner's Vault pane draws: where it is for, what asked for it, and when —
+            // the card's own scalars, never the answer. Written after the value lands, so an index
+            // record without a secret cannot appear.
+            crate::vault::note_stored(&st, &name, &kind, &site, &note);
+            stored.push(json!({ "field": field, "name": name }));
+        }
+        card["stored"] = json!(stored);
+        card["values"] = Value::Null;
+    } else {
+        card["values"] = Value::Object(values);
+    }
     card["state"] = json!("answered");
     card["answered_at"] = json!(now());
     // The record is taken from the card as it now stands, and the audit helper reads only the
     // site/kind — `values` is present on it and still goes nowhere.
     let record = card.clone();
     save(&st, cards);
-    audit(&st, "credentials.answered", &device, &record, "answered");
+    if store {
+        audit(&st, "credentials.stored", &device, &record, "stored");
+    } else {
+        audit(&st, "credentials.answered", &device, &record, "answered");
+    }
     // The answer is acknowledged by state only; it is never echoed back.
-    Ok(Json(json!({"id": card_id, "state": "answered"})))
+    Ok(Json(json!({ "id": card_id, "state": "answered" })))
 }
 
 pub async fn cancel_card(
@@ -340,6 +452,8 @@ pub async fn consume_card(
         return Err(bad(StatusCode::GONE, "that request has expired"));
     }
     let values = card.get("values").cloned().unwrap_or_else(|| json!({}));
+    // Kept before the state moves on: a stored answer's only trace is the name it went under.
+    let stored = card.get("stored").cloned().filter(|s| !s.is_null());
     // One read, then it is gone: a replay must not be able to collect the secret twice.
     card["state"] = json!("consumed");
     card["values"] = Value::Null;
@@ -350,7 +464,17 @@ pub async fn consume_card(
     let record = card.clone();
     save(&st, cards);
     audit(&st, "credentials.consumed", &device, &record, "consumed");
-    Ok(Json(json!({"id": card_id, "values": values})))
+    if let Some(stored) = stored {
+        // A stored card never carried the value here: it went into the vault when the owner submitted,
+        // so all a caller gets is the name it can ask a fill to use.
+        return Ok(Json(json!({
+            "id": card_id,
+            "state": "consumed",
+            "ok": true,
+            "stored": stored,
+        })));
+    }
+    Ok(Json(json!({ "id": card_id, "values": values })))
 }
 
 #[cfg(test)]
@@ -429,6 +553,8 @@ mod tests {
             note: None,
             asked_by: Some("cody".to_string()),
             ttl_seconds: None,
+            store: false,
+            save_as: None,
         })
     }
 
@@ -574,5 +700,268 @@ mod tests {
         assert!(cards.contains_key("waiting"), "a live card is never swept");
         assert!(cards.contains_key("just-spent"), "a just-spent card still answers \"already used\"");
         assert!(!cards.contains_key("long-gone"), "a card from hours ago must not accumulate");
+    }
+
+    // --- store mode: the answer has somewhere to live that is not the bot ---------------------
+
+    fn ask_store(fields: &[&str], save_as: Option<&str>) -> Json<CreateCard> {
+        Json(CreateCard {
+            kind: Some("secret".to_string()),
+            site: "api.openai.com".to_string(),
+            fields: fields.iter().map(|f| f.to_string()).collect(),
+            options: Vec::new(),
+            note: Some("Reading the model list".to_string()),
+            asked_by: Some("cody".to_string()),
+            ttl_seconds: None,
+            store: true,
+            save_as: save_as.map(str::to_string),
+        })
+    }
+
+    /// The whole point of `store`: the owner's answer lands in the vault, and every answer a caller
+    /// can see — the card, the list, consume, the audit — names an item and never carries the value.
+    #[tokio::test]
+    async fn a_stored_answer_goes_to_the_vault_and_never_comes_back() {
+        let dir = scratch("store");
+        let st = state(&dir);
+
+        let created = create_card(
+            State(Arc::clone(&st)),
+            auth(),
+            ask_store(&["api key"], None),
+        )
+        .await
+        .expect("ask")
+        .0;
+        let id = created["id"].as_str().expect("id").to_string();
+        assert_eq!(created["store"], true);
+        assert_eq!(created["submit"], "Save to the vault");
+        assert_eq!(created["masked"][0], "api key", "an api key is a masked field");
+        assert!(created.get("values").is_none());
+
+        answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("api key", SECRET)]),
+        )
+        .await
+        .expect("answer");
+
+        // It is in the store, under the name the site and field mint.
+        let stored = crate::secrets::get(&st, "api.openai.com/api-key");
+        assert_eq!(stored.as_deref(), Some(SECRET), "the value reached the vault");
+
+        // And the owner's Vault pane can see it as a row: the name, where it is for, and what asked
+        // for it — with the value nowhere in what the pane is served.
+        let vault = crate::vault::list(State(Arc::clone(&st)), auth())
+            .await
+            .expect("vault list")
+            .0;
+        assert_eq!(vault["items"][0]["name"], "api.openai.com/api-key");
+        assert_eq!(vault["items"][0]["site"], "api.openai.com");
+        assert_eq!(vault["items"][0]["note"], "Reading the model list");
+        assert_eq!(vault["items"][0]["kind"], "secret");
+        assert!(
+            !vault.to_string().contains(SECRET),
+            "the vault list carried the value: {vault}"
+        );
+
+        // In none of the places a caller can read.
+        let seen = get_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("read")
+            .0;
+        let listed = list_cards(State(Arc::clone(&st)), auth()).await.expect("list").0;
+        assert!(!seen.to_string().contains(SECRET), "the card carried the value: {seen}");
+        assert!(!listed.to_string().contains(SECRET), "the list carried the value");
+        let document = st.store.doc_or(DOC_KEY, json!(null)).to_string();
+        assert!(
+            !document.contains(SECRET),
+            "the value reached the card document (bridge.db), which is a store of prompts, not secrets"
+        );
+
+        let ack = consume_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("consume")
+            .0;
+        assert_eq!(ack["ok"], true);
+        assert_eq!(ack["stored"][0]["field"], "api key");
+        assert_eq!(ack["stored"][0]["name"], "api.openai.com/api-key");
+        assert!(
+            ack.get("values").is_none(),
+            "a stored card hands over no values: {ack}"
+        );
+        assert!(!ack.to_string().contains(SECRET), "the acknowledgement carried the value: {ack}");
+
+        // The audit says a value was stored, by site and outcome — and cannot say more.
+        let records = st.audit.all("credentials.stored");
+        assert_eq!(records.len(), 1, "one step, one record");
+        assert_eq!(records[0]["outcome"], "stored");
+        assert_eq!(records[0]["reason"], "api.openai.com");
+        assert!(
+            !records[0].to_string().contains(SECRET),
+            "an audit record carried the value"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `save_as` is the vault item's label, so the bot can name it back later. It is checked when the
+    /// card is *made*, before the owner types anything into it.
+    #[tokio::test]
+    async fn a_saved_name_is_validated_when_the_card_is_asked_for() {
+        let dir = scratch("save-as");
+        let st = state(&dir);
+
+        let created = create_card(
+            State(Arc::clone(&st)),
+            auth(),
+            ask_store(&["api key"], Some("openai.main")),
+        )
+        .await
+        .expect("ask")
+        .0;
+        assert_eq!(created["store"], true);
+        let id = created["id"].as_str().unwrap().to_string();
+        answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("api key", SECRET)]),
+        )
+        .await
+        .expect("answer");
+        let ack = consume_card(State(Arc::clone(&st)), auth(), Path(id))
+            .await
+            .expect("consume")
+            .0;
+        assert_eq!(ack["stored"][0]["name"], "openai.main");
+        assert_eq!(crate::secrets::get(&st, "openai.main").as_deref(), Some(SECRET));
+
+        // Names that could be a path, an empty one, and one without `store` are all refused.
+        for bad_name in ["/etc/passwd", "../x", "a b"] {
+            let refused = create_card(
+                State(Arc::clone(&st)),
+                auth(),
+                ask_store(&["api key"], Some(bad_name)),
+            )
+            .await
+            .expect_err(bad_name);
+            assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY, "{bad_name}");
+        }
+        let mut no_store = ask_store(&["api key"], Some("openai.main"));
+        no_store.0.store = false;
+        let refused = create_card(State(Arc::clone(&st)), auth(), no_store)
+            .await
+            .expect_err("save_as without store");
+        assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY);
+
+        let refused = create_card(
+            State(Arc::clone(&st)),
+            auth(),
+            ask_store(&["username", "password"], Some("one.name")),
+        )
+        .await
+        .expect_err("one name cannot hold two fields");
+        assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A value is a line: the ceiling is refused with its own code and the card stays open.
+    #[tokio::test]
+    async fn an_oversized_value_is_refused_and_nothing_is_stored() {
+        let dir = scratch("oversize");
+        let st = state(&dir);
+        let id = create_card(State(Arc::clone(&st)), auth(), ask_store(&["api key"], None))
+            .await
+            .expect("ask")
+            .0["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let huge = "x".repeat(crate::secrets::MAX_VALUE_BYTES + 1);
+        let refused = answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("api key", &huge)]),
+        )
+        .await
+        .expect_err("too large");
+        assert_eq!(refused.0, StatusCode::PAYLOAD_TOO_LARGE);
+        let body = refused.1 .0.to_string();
+        assert!(!body.contains("xxxx"), "the refusal quoted the value: {body}");
+        assert!(
+            crate::secrets::get(&st, "api.openai.com/api-key").is_none(),
+            "a refused answer stored nothing"
+        );
+        let still = get_card(State(Arc::clone(&st)), auth(), Path(id))
+            .await
+            .expect("read")
+            .0;
+        assert_eq!(still["state"], "pending", "the owner can answer again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The card without `store` keeps the contract it shipped with: the value is handed over once,
+    /// kept nowhere, and a second consume finds nothing.
+    #[tokio::test]
+    async fn an_ordinary_card_still_hands_its_value_over_exactly_once() {
+        let dir = scratch("once");
+        let st = state(&dir);
+        let id = create_card(
+            State(Arc::clone(&st)),
+            auth(),
+            ask("secret", &["username", "password"]),
+        )
+        .await
+        .expect("ask")
+        .0["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+        answer_card(
+            State(Arc::clone(&st)),
+            auth(),
+            Path(id.clone()),
+            answers(&[("username", "mo@example.test"), ("password", SECRET)]),
+        )
+        .await
+        .expect("answer");
+
+        let collected = consume_card(State(Arc::clone(&st)), auth(), Path(id.clone()))
+            .await
+            .expect("consume")
+            .0;
+        assert_eq!(collected["values"]["password"], SECRET);
+        assert!(collected.get("stored").is_none(), "no store, no handles");
+        // Nothing of it went to the vault: that destination is opt-in.
+        assert!(crate::secrets::get(&st, "example.test/password").is_none());
+
+        let again = consume_card(State(Arc::clone(&st)), auth(), Path(id))
+            .await
+            .expect_err("a replay collects nothing");
+        assert_eq!(again.0, StatusCode::CONFLICT);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The app is told which fields are secrets, so it never has to recognise a name to mask it.
+    #[test]
+    fn the_view_names_the_masked_fields_and_the_buttons_words() {
+        let card = json!({
+            "id": "c1", "kind": "secret", "site": "example.test",
+            "fields": ["username", "password", "api key"], "store": true,
+            "state": "pending", "expires_at": 1.0,
+        });
+        let asked = view(&card);
+        assert_eq!(asked["masked"], json!(["password", "api key"]));
+        assert_eq!(asked["store"], true);
+        assert_eq!(asked["submit"], "Save to the vault");
+        assert!(!asked["masked"].to_string().contains("username"), "a plain field is not masked");
+
+        let mut filling = card.clone();
+        filling["store"] = json!(false);
+        assert_eq!(view(&filling)["submit"], "Fill it in");
     }
 }

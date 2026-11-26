@@ -72,6 +72,20 @@ when the Mac wakes, which is a different thing.
 - The bot list is the home screen. Tap a bot for its endless conversation; the room list is behind the
   three-dot menu.
 
+## The model pill
+
+On its own row under the message field, both apps show one pill: the bot's `provider/model` and how full
+its context is, as `540k/1M Tokens`. It sits under the field rather than inside it, so it never reads as
+part of what you type. Press it and the model picker opens — the same sheet the bot panel's **Model** row
+opens on the Mac, and the drawer's on the phone.
+
+- **The count arrives with a turn.** Usage comes back when a turn completes, so before the first reply
+  the pill names the model alone rather than a made-up zero.
+- **It never pushes the box around.** Typing cannot re-lay it out, and on a narrow phone it truncates
+  to the model name instead of wrapping.
+- **It replaces two chips.** The provider and the context count used to sit in separate chips under the
+  pill; there is now one rule for the phone and the Mac.
+
 ## The bell, and what is waiting
 
 The top row of the bot list holds the bell and the ＋. The bell wears a dot, not a number, when any bot
@@ -106,11 +120,10 @@ press it and the normal download-and-install window opens. Nothing installs with
 ## Desktop pets
 
 On the Mac a bot can put its own picture on your desktop: no frame, no window background, just the icon
-on your wallpaper, moving and blinking on its own. Click it and a frosted balloon opens beside it — type
-a question, press Return, and the answer arrives in the balloon, scrollable, with a Copy button, and a
-badge on the icon when a reply lands while Hermey is minimised. Drag it anywhere and it stays there per
-screen; right-click → **Close pet** switches it off again. Off by default, one switch per bot in that
-bot's settings. A pet is the bot's picture — or, once the bot has a face of its own (below), that face
+on your wallpaper, moving and blinking on its own. Click it for a frosted balloon — type, press Return,
+read the answer, Copy it. It wears a badge when a reply lands while Hermey is minimised, drags anywhere
+and stays there per screen, and right-click → **Close pet** switches it off. Off by default, one switch
+per bot in that bot's settings. A pet is the bot's picture — or, once the bot has a face of its own (below), that face
 in whatever state the bot is in.
 
 [`docs/PETS.md`](PETS.md) is the reader's page: what a pet is, the switch, the balloon and a
@@ -122,8 +135,10 @@ A bot can wear a face it draws instead of a picture you chose. Open that bot's s
 **Avatar** tab — the same editor on the Mac and the phone — and the top of it is a live preview of the
 draft, drawn in the state the bot is actually in.
 
-- **Six presets to start from:** a blob, a box, a mug, a sprout, a cat and an egg. Each is a solid
-  silhouette with two eyes, chosen so the face still reads at the size of a row in the bot list.
+- **Twelve shapes to start from:** a blob, a box, a mug, a sprout, a cat, an egg, a bottle, a star, a
+  droplet, an hourglass, an open book and a mushroom. Each is a solid silhouette with two eyes, chosen
+  so the face still reads at the size of a row in the bot list. **Random** rolls a shape, a material and
+  a colour together when you would rather meet one than pick one.
 - **Paste a definition.** The JSON box takes an avatar in the
   [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) v1 format — Dominik Scholz's
   MIT-licensed spec and renderer, which is where these shapes and the eye placement come from. A
@@ -131,6 +146,17 @@ draft, drawn in the state the bot is actually in.
   it had.
 - **Nudge it by hand:** the colour, and the eyes' position, spacing and scale. Those edit the same
   definition the preview draws, so what you see is what gets saved.
+- **Four materials.** **Solid** is the flat body it has always been. **Glass** is lit: a three-stop
+  ramp, one specular streak, a rim that catches the light and a soft glow. **Matte** takes the shine
+  away — felt or unglazed clay, dark soft edges and a faint grain. **Metal** puts one hard horizon line
+  across the body with a narrow bright rim and no halo. What gets drawn follows the size: a row in the
+  bot list carries the ramp, the rim and the contact band, the pet adds the streak and a glow kept
+  inside its window, the editor's preview adds the eye's catchlight. The eight states tint the rim, and
+  **Blocked** calms the colour instead of turning it red.
+- **It moves like the picture faces.** A drawn face uses the same idle motion and the same pose for
+  the state it is in, so choosing one does not make a bot go still.
+- **One place to pick a face.** This tab is the only chooser: the old *Choose bot icon* control is
+  gone from the Mac's About tab and the phone's identity section.
 - **Save** stores the face. **Reset** deletes it, and the bot goes back to the picture or the
   shape-and-palette face it wore before.
 
@@ -155,6 +181,20 @@ something else — and the old three words (Working, Needs you, Finished) are go
   run the host reported failed.
 - **Done** is a finished turn, held for a few seconds before the face falls back to **Idle**. A
   background run is **Idle** on purpose — helper work should not look like a conversation.
+- **No state wears a mark, and no state is smaller than another.** Every state is drawn at the one
+  resting size with the one pair of eyes; a state says what it is doing with its own motion. **Blocked**
+  used to give its body over to an exclamation mark and draw no eyes beside it — which made the one
+  state a person most needs to notice the one that stopped looking like the bot. It now stops stiller
+  than anything else and looks straight back, with a slow, deep pulse in the body, and keeps its face.
+  **Waiting for you** leans aside and glances at what it waits on, with a slower blink and breathe than
+  **Idle**. **Thinking** leans and looks up and away. **Done** turns once with its ribbons, at **Idle**'s
+  size and with **Idle**'s eyes.
+
+## The bot list's row menu
+
+A row's **⋯** menu appears on hover, on selection and from the keyboard, and reserves no space when it
+is hidden — a long bot name gets the width instead. Hovering a row also wakes its avatar for a small
+hop, so a list of bots reads as alive before you open any of them.
 
 ## Reactions — one emoji, both devices
 
@@ -267,13 +307,11 @@ live but input is inert. **Take over** asks the host for the control lease and e
 pointer; **Hand back** returns it. Closing the pane hands control back on its own, so a bot is never
 locked out by a viewer you forgot.
 
-**Full screen** is the arrows in the pane's header. On the Mac it puts the *window* into full screen —
-the same thing the green button does — so the sidebar, the transcript and the traffic lights all go;
-leaving it the system's way (green button, ⌃⌘F) puts the pane back in its panel. On the phone the pane
-drops its own header, the status bar and the safe-area inset and runs edge to edge. Either platform
-shows one floating bar over the picture: take over / hand back, zoom −/+, the level, **Fit**, and the
-way out. `Esc` leaves full screen too (on the Mac the shell answers it, unless a text field has the
-caret).
+**Full screen** is the arrows in the pane's header. On the Mac it takes the *window* full screen, so the
+sidebar, the transcript and the traffic lights all go; leaving it the system's way (green button, ⌃⌘F)
+puts the pane back in its panel. On the phone the pane drops its own header, the status bar and the
+safe-area inset. Either platform keeps one floating bar over the picture: take over / hand back, zoom
+−/+, the level, **Fit**, and the way out. `Esc` leaves it too, unless a text field has the caret.
 
 While the picture is bigger than its frame it zooms and pans between 1× and 5×:
 
@@ -298,6 +336,8 @@ Dock tile or the app icon; zero clears it.
 - Settings → **Notifications** (macOS) or **Settings → Replies** (iOS) has one switch and a
   per-bot **quiet** list. A quieted bot still counts on its row and in the badge; it just never
   buzzes. The switch is shared by the two apps, the system permission is not.
+- **The banner wears the face you chose.** A notification's icon is the bot's own avatar rather than
+  the old shape picture, drawn at whatever size the system asks for.
 - **macOS** delivers a banner as soon as the host reports the reply, even while the app is in the
   background, and clicking it opens that conversation.
 - **iOS** delivers a banner while the app is running. Once the phone has put the app away there is

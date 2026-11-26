@@ -11,6 +11,9 @@ public struct Card: Sendable, Equatable {
         case approval
         case task
         case draftEmail = "draft-email"
+        /// A short structured answer with one real picture: the glance a query like "where is the
+        /// Golden Gate Bridge" or "find me this on amazon.de" deserves.
+        case infographic
 
         /// Unknown input is not coerced: it fails validation, so the card degrades to
         /// "Card not available" rather than drawing an unexpected layout.
@@ -129,6 +132,69 @@ public struct Card: Sendable, Equatable {
         }
     }
 
+    /// An `infographic` card's own block: the answer, as a glance.
+    ///
+    /// Every field is optional or defaulted on purpose, for the same reason `Email` is: the file is
+    /// written by a bot, and a card that lost one value should still draw the rest. The facts are
+    /// what carry it — the host refuses fewer than three, the view draws whatever survived.
+    public struct Infographic: Sendable, Equatable {
+        /// The one number that matters. For a product that is the price, with who sells it and
+        /// whether it is in stock as two small rows beneath.
+        public struct Highlight: Sendable, Equatable {
+            public let label: String?
+            public let value: String
+            public let seller: String?
+            public let availability: String?
+
+            public init(label: String? = nil,
+                        value: String,
+                        seller: String? = nil,
+                        availability: String? = nil) {
+                self.label = label
+                self.value = value
+                self.seller = seller
+                self.availability = availability
+            }
+        }
+
+        /// The one outbound link: the place's page, or the product listing.
+        public struct Link: Sendable, Equatable {
+            public let label: String
+            public let url: URL
+
+            public init(label: String, url: URL) {
+                self.label = label
+                self.url = url
+            }
+        }
+
+        public let subtitle: String?
+        /// The picture, already checked to be http(s). `nil` means there is no picture to draw —
+        /// never a placeholder claiming to be one.
+        public let imageURL: URL?
+        public let imageCaption: String?
+        public let highlight: Highlight?
+        public let facts: [Row]
+        public let link: Link?
+        public let source: String?
+
+        public init(subtitle: String? = nil,
+                    imageURL: URL? = nil,
+                    imageCaption: String? = nil,
+                    highlight: Highlight? = nil,
+                    facts: [Row] = [],
+                    link: Link? = nil,
+                    source: String? = nil) {
+            self.subtitle = subtitle
+            self.imageURL = imageURL
+            self.imageCaption = imageCaption
+            self.highlight = highlight
+            self.facts = facts
+            self.link = link
+            self.source = source
+        }
+    }
+
     /// What a button is, once the card is resolved: tappable, ticked, or merely locked.
     public enum ActionState: Sendable, Equatable {
         case available
@@ -146,6 +212,8 @@ public struct Card: Sendable, Equatable {
     /// The message a `draft-email` carries. `nil` for the other kinds, and for a draft-email whose
     /// `email` block was absent or unreadable — that card still draws, under its title.
     public let email: Email?
+    /// What an `infographic` carries. `nil` for the other kinds.
+    public let infographic: Infographic?
 
     public init(schema: String = "card.v1",
                 kind: Kind,
@@ -154,7 +222,8 @@ public struct Card: Sendable, Equatable {
                 body: [BodyBlock] = [],
                 actions: [Action] = [],
                 resolved: Resolved? = nil,
-                email: Email? = nil) {
+                email: Email? = nil,
+                infographic: Infographic? = nil) {
         self.schema = schema
         self.kind = kind
         self.title = title
@@ -163,6 +232,7 @@ public struct Card: Sendable, Equatable {
         self.actions = actions
         self.resolved = resolved
         self.email = email
+        self.infographic = infographic
     }
 
     /// Whether the owner has already chosen.
@@ -278,6 +348,27 @@ private struct RawCard: Decodable {
     /// `draft-email` only. A card of another kind that carries one is not an error — the field is
     /// read and simply not drawn.
     var email: Failable<RawEmail>?
+    /// `infographic` only, and flat on purpose (the host's schema keeps the document small): the
+    /// picture is a URL plus a caption beside it, not a nested object.
+    var subtitle: String?
+    var image: String?
+    var imageCaption: String?
+    var facts: [Failable<RawRow>]?
+    var highlight: Failable<RawHighlight>?
+    var link: Failable<RawLink>?
+    var source: String?
+}
+
+private struct RawHighlight: Decodable {
+    var label: String?
+    var value: String?
+    var seller: String?
+    var availability: String?
+}
+
+private struct RawLink: Decodable {
+    var label: String?
+    var url: String?
 }
 
 private struct RawEmail: Decodable {
@@ -326,9 +417,21 @@ private extension RawCard {
         guard let schema = schema, schema == "card.v1" else { return failure }
         guard let rawKind = Card.trimmed(kind), let kind = Card.Kind(wire: rawKind) else { return failure }
         guard let title = Card.trimmed(title), !title.isEmpty else { return failure }
-        guard let rawStatus = status?.value,
-              let rawState = Card.trimmed(rawStatus.state),
-              let state = Card.StatusState(rawValue: rawState) else { return failure }
+
+        // An infographic is of a place or a product, and it is finished the moment it is written:
+        // it has nothing to be pending about and its layout draws no chip, so a missing `status` is
+        // that kind's normal shape rather than a broken document. Every other kind still requires
+        // one — and a status that is present but unreadable is a broken card for all four.
+        let state: Card.StatusState
+        if let rawStatus = status?.value {
+            guard let rawState = Card.trimmed(rawStatus.state),
+                  let parsed = Card.StatusState(rawValue: rawState) else { return failure }
+            state = parsed
+        } else if kind == .infographic {
+            state = .done
+        } else {
+            return failure
+        }
 
         let rawActions = actions ?? []
         guard rawActions.count <= 3 else { return failure }
@@ -367,14 +470,19 @@ private extension RawCard {
                                })
         }
 
+        // Only an infographic card reads the flat fields. Another kind that carries them is not an
+        // error — they are read and not drawn.
+        let infographic = kind == .infographic ? Card.infographic(from: self) : nil
+
         return .available(Card(schema: schema,
                                kind: kind,
                                title: title,
-                               status: Card.Status(state: state, label: Card.trimmed(rawStatus.label)),
+                               status: Card.Status(state: state, label: Card.trimmed(status?.value?.label)),
                                body: decodedBody,
                                actions: decodedActions,
                                resolved: resolution,
-                               email: email))
+                               email: email,
+                               infographic: infographic))
     }
 }
 
@@ -382,6 +490,65 @@ private extension Card {
     static func trimmed(_ value: String?) -> String? {
         guard let value = value else { return nil }
         return value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// A trimmed string, or nil when it is blank: an empty optional is an absent one.
+    static func text(_ value: String?) -> String? {
+        guard let text = trimmed(value), !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// A picture or a link the card may draw: http(s), with a host, inside the host's own ceiling.
+    ///
+    /// The host refuses anything else, but a card can also arrive from a snapshot written before
+    /// that rule existed — and `URL(string:)` happily returns a `javascript:` URL. One gate, in one
+    /// place, so no view has to wonder what it was handed. A userinfo URL is refused for the reason
+    /// the host refuses it: `https://upload.wikimedia.org@evil.example/x.jpg` reads like Wikimedia
+    /// and resolves to somebody else's host.
+    static func httpURL(_ value: String?) -> URL? {
+        guard let text = text(value), text.count <= 2048,
+              let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty,
+              url.user == nil, url.password == nil else { return nil }
+        return url
+    }
+
+    /// The flat `infographic` fields, read leniently.
+    ///
+    /// A fact without a label or a value is dropped; an image that is not an http(s) URL is no
+    /// image at all and takes its caption with it (a caption over no picture claims something the
+    /// card does not show); a link that cannot be opened is not drawn.
+    static func infographic(from raw: RawCard) -> Infographic {
+        let facts = (raw.facts ?? []).compactMap { entry -> Row? in
+            guard let row = entry.value,
+                  let label = text(row.label), let value = text(row.value) else { return nil }
+            return Row(label: label, value: value)
+        }
+
+        var highlight: Infographic.Highlight?
+        if let raw = raw.highlight?.value, let value = text(raw.value) {
+            highlight = Infographic.Highlight(label: text(raw.label),
+                                             value: value,
+                                             seller: text(raw.seller),
+                                             availability: text(raw.availability))
+        }
+
+        var link: Infographic.Link?
+        if let raw = raw.link?.value,
+           let label = text(raw.label),
+           let url = httpURL(raw.url) {
+            link = Infographic.Link(label: label, url: url)
+        }
+
+        let image = httpURL(raw.image)
+        return Infographic(subtitle: text(raw.subtitle),
+                           imageURL: image,
+                           imageCaption: image == nil ? nil : text(raw.imageCaption),
+                           highlight: highlight,
+                           facts: facts,
+                           link: link,
+                           source: text(raw.source))
     }
 
     /// `text` keeps its whitespace (a paragraph's line breaks are content); `kv` rows are arrays

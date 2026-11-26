@@ -67,10 +67,12 @@ struct MacRoutineEditorSheet: View {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .accessibilityIdentifier("routine.cancel")
+                .hermeyFocusQuiet()
             Button("Create Routine") { Task { await save() } }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!draft.isCreatable)
                 .accessibilityIdentifier("routine.create")
+                .hermeyFocusQuiet()
         }
         .padding(.horizontal, 16)
         .frame(height: 52)
@@ -99,6 +101,7 @@ struct MacRoutineEditorSheet: View {
                 }
                 .labelsHidden()
                 .frame(width: 130)
+                .hermeyFocusQuiet()
 
                 switch draft.schedule.mode {
                 case .daily, .weekly, .monthly:
@@ -110,6 +113,7 @@ struct MacRoutineEditorSheet: View {
                         }
                         .labelsHidden()
                         .frame(width: 120)
+                        .hermeyFocusQuiet()
                     }
                     if draft.schedule.mode == .monthly {
                         Picker("", selection: $draft.schedule.dayOfMonth) {
@@ -119,6 +123,7 @@ struct MacRoutineEditorSheet: View {
                         }
                         .labelsHidden()
                         .frame(width: 90)
+                        .hermeyFocusQuiet()
                     }
                     DatePicker("", selection: clockBinding, displayedComponents: .hourAndMinute)
                         .labelsHidden()
@@ -129,6 +134,7 @@ struct MacRoutineEditorSheet: View {
                         Text("Every \(draft.schedule.repeatCount)")
                     }
                     .frame(width: 160)
+                    .hermeyFocusQuiet()
                     Picker("", selection: $draft.schedule.repeatUnit) {
                         ForEach(RoutineSchedule.RepeatUnit.allCases) { unit in
                             Text(unit.label).tag(unit)
@@ -136,6 +142,7 @@ struct MacRoutineEditorSheet: View {
                     }
                     .labelsHidden()
                     .frame(width: 110)
+                    .hermeyFocusQuiet()
 
                 case .once:
                     DatePicker("", selection: $draft.schedule.onceAt,
@@ -188,6 +195,7 @@ struct MacRoutineEditorSheet: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 280, alignment: .leading)
+                .hermeyFocusQuiet()
 
                 Text("Results are always kept in the routine's history too.")
                     .font(TypeScale.font(TypeScale.sm))

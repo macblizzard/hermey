@@ -79,20 +79,30 @@ class TheDrawnBranchReusesOneMotionLanguage(unittest.TestCase):
         self.source = read(BOT_AVATAR_VIEW)
         self.drawn = swift_declaration(self.source, "private func drawnBody(")
         self.shape = swift_declaration(self.source, "private func content(")
+        # The frame chooser itself: a result builder cannot hold an `if` that assigns, so both
+        # branches ask one helper instead of repeating the ladder.
+        self.helper = swift_declaration(self.source, "private func motionFrame(")
 
     def test_the_drawn_branch_asks_for_the_shared_frame(self) -> None:
-        self.assertEqual(self.drawn.count("BotAvatarMotion.performedFrame("), 1,
-                         "the drawn branch no longer asks the shape face's motion for its frame")
+        self.assertIn("motionFrame(at: time, traits: traits, moves: moves, awake: awake)", self.drawn,
+                      "the drawn branch no longer asks the one frame chooser for its frame")
+        self.assertEqual(self.helper.count("BotAvatarMotion.performedFrame("), 1,
+                         "the frame chooser no longer asks the shape face's motion for its frame")
         for argument in ("activity: activity",
                          "traits: traits",
-                         "at: context.date.timeIntervalSinceReferenceDate",
+                         "at: time",
                          "side: Double(size)"):
-            self.assertIn(argument, self.drawn, f"the drawn frame is missing {argument!r}")
+            self.assertIn(argument, self.helper, f"the drawn frame is missing {argument!r}")
+        # `time` is the timeline's own date, hoisted so the wake frame can share it.
+        self.assertIn("let time = context.date.timeIntervalSinceReferenceDate", self.drawn)
 
     def test_both_branches_call_the_same_function(self) -> None:
-        # Two call sites, one motion language: the shape body and the drawn body, nothing else.
-        self.assertEqual(self.source.count("BotAvatarMotion.performedFrame("), 2,
-                         "a third motion source has appeared, or one of the two was lost")
+        # One call site, two callers: the shape body and the drawn body both ask `motionFrame`, and
+        # `motionFrame` is the only thing that asks the motion for a frame.
+        self.assertEqual(self.source.count("BotAvatarMotion.performedFrame("), 1,
+                         "a second motion source has appeared")
+        self.assertEqual(self.source.count("motionFrame(at: time, traits: traits, moves: moves, awake: awake)"), 2,
+                         "one of the two branches stopped asking the shared frame chooser")
 
     def test_the_body_is_applied_the_way_the_shape_path_applies_it(self) -> None:
         # The shape path first, so the drawn one is checked against what it is copying.
@@ -187,11 +197,13 @@ class TheEyesAreHandedOverNotSecondClocked(unittest.TestCase):
         self.assertEqual([path.name for path in sites], ["BotAvatarView.swift"],
                          "a surface builds its own eye pose instead of the shared frame's")
         drawn = swift_declaration(read(BOT_AVATAR_VIEW), "private func drawnBody(")
-        self.assertIn("eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil", drawn,
+        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil", drawn,
                       "the override is applied even when the face is holding still")
 
     def test_the_rest_pose_channels_of_the_drawn_face_are_untouched(self) -> None:
-        for channel in ("pose.slit = 1", "pose.mark = .dots", "pose.mark = .bang", "pose.arch = 1"):
+        # The eye override supersedes blink, gaze and squint; the channels it does not own are still
+        # set where they were — the mood's arc, the face's lean, and the ribbons a turn sweeps.
+        for channel in ("pose.arch = 1", "pose.tilt = 0.32", "pose.ribbons = max(0, min(1, min(since / 0.1,"):
             self.assertIn(channel, self.state, f"the eye override work dropped {channel!r}")
 
 
@@ -236,18 +248,19 @@ class EveryCalmCaseHoldsTheRestPose(unittest.TestCase):
                      "animates: animates && appAllowsMotion",
                      "&& scenePhase == .active",
                      "minimumSize: animatingFrom",
-                     "paused: !moves"):
+                     "paused: !moves && !awake"):
             self.assertIn(gate, self.drawn, f"the drawn branch lost the {gate!r} gate")
 
     def test_no_motion_means_the_rest_frame(self) -> None:
-        self.assertIn(": .rest", self.drawn)
-        self.assertIn("eyeOverride: moves ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil",
+        helper = swift_declaration(read(BOT_AVATAR_VIEW), "private func motionFrame(")
+        self.assertIn("return .rest", helper)
+        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil",
                       self.drawn)
 
     def test_the_app_switch_reaches_the_drawn_breath_too(self) -> None:
         # The drawn branch used to pass `animates: animates`, so Settings → Appearance could not
         # stop a generated face at all.
-        self.assertIn("animates: animates && appAllowsMotion,", self.drawn)
+        self.assertIn("animates: (animates || awake) && appAllowsMotion,", self.drawn)
 
     def test_the_floor_and_its_callers_are_unchanged(self) -> None:
         self.assertIn("animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize",

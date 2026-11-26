@@ -43,16 +43,23 @@ struct SidebarBotList: View {
 
     private var icons: [String: BotFaceChoice] { store.botFaces }
 
-    /// The row under the pointer, or whose overflow menu is open. One value for the whole list, so
-    /// exactly one row can be lit — the panel's own convention (`MacBotPanel.hovered`).
+    /// The row under the pointer. One value for the whole list, so exactly one row can be lit —
+    /// the panel's own convention (`MacBotPanel.hovered`). Bot rows take their hover from
+    /// `HoverRow`; this one is for the rows drawn outside it — rooms, findings, hidden bots.
     @State private var hoveredRow: String?
+
+    /// The row the keyboard is actually on — tab focus, not the search list's highlight — so the
+    /// row can draw its own "live" state for a keyboard user who has never touched the pointer.
+    /// `nil` while no row holds focus, which is the resting case: a focused key is a per-row fact,
+    /// so it cannot be read off a single `hoveredRow`.
+    @FocusState private var focusedRow: String?
 
     /// Arrow/Page/Home keys for the roster. The list already scrolls to `highlighted`; this is the
     /// pointer-free way to move through what is on screen.
     @State private var keyboardScroll = KeyboardScrollHandle()
 
-    /// The header's **+** menu asks for the category prompt through here; the row's own menu needs
-    /// no router — it is the native `Menu` its ⋯ opens. See `BotMenuRouter`.
+    /// The header's **+** menu asks for the category prompt through here; a row's own menu needs no
+    /// router — it is the `contextMenu` the row carries. See `BotMenuRouter`.
     @ObservedObject private var menuRouter = BotMenuRouter.shared
 
     /// One sheet at a time: sessions for a bot, or the category prompt. Two `.sheet` modifiers on
@@ -164,6 +171,7 @@ struct SidebarBotList: View {
                    isPresented: Binding(get: { failure != nil },
                                         set: { if !$0 { failure = nil } })) {
                 Button("OK", role: .cancel) { failure = nil }
+                .hermeyFocusQuiet()
             } message: {
                 Text(failure ?? "")
             }
@@ -199,7 +207,9 @@ struct SidebarBotList: View {
                                     set: { if !$0 { pendingCategoryDelete = nil } }),
                presenting: pendingCategoryDelete) { category in
             Button("Delete category", role: .destructive) { delete(category) }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingCategoryDelete = nil }
+            .hermeyFocusQuiet()
         } message: { category in
             Text("The bots in it move to Uncategorized. Nothing is deleted but the group.")
         }
@@ -258,6 +268,7 @@ struct SidebarBotList: View {
                                         Label("Delete group chat", systemImage: "trash")
                                     }
                                 }
+                                .hermeyFocusQuiet()
                             }
 
                             Divider().padding(.horizontal, 8).padding(.vertical, 4)
@@ -457,6 +468,7 @@ struct SidebarBotList: View {
                 .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
                 .id(SidebarSearchRow.message(hit.id))
                 .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+                .hermeyFocusQuiet()
             }
 
         case .messagesEmpty:
@@ -551,6 +563,7 @@ struct SidebarBotList: View {
         .help(roomsCollapsed ? "Expand \(BotGrouping.roomsName)" : "Collapse \(BotGrouping.roomsName)")
         .accessibilityLabel("\(BotGrouping.roomsName), \(roomRows.count) group chats")
         .accessibilityHint(roomsCollapsed ? "Expand" : "Collapse")
+        .hermeyFocusQuiet()
     }
 
     /// A heading is a control, not a label: clicking it folds the group away, and right-clicking
@@ -611,6 +624,7 @@ struct SidebarBotList: View {
                 }
             }
         }
+        .hermeyFocusQuiet()
     }
 
     /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
@@ -645,6 +659,11 @@ private struct HoverRow<Content: View>: View {
         // transitions continuously. That is the sticky feel the conversation pane no longer has.
         let isPinned = model.isPinned(botID: bot.id)
 
+        // Keyboard focus is a real affordance here (Tab reaches the row and Space opens it), so it
+        // draws the row's own "this one is live" state — the hover fill and its hairline — instead of
+        // the system's accent ring, which `hermeyFocusQuiet()` keeps off.
+        let holdsKeyboardFocus = focusedRow == bot.id
+
         return Button {
             guard !isSelected else { return }
             Haptics.selection()
@@ -662,7 +681,12 @@ private struct HoverRow<Content: View>: View {
                               color: store.botFaces[bot.id]?.raw,
                               activity: store.activity(for: bot.id),
                               size: metrics.avatar,
-                              animates: store.activity(for: bot.id) != .idle)
+                              animates: store.activity(for: bot.id) != .idle,
+                              // The pointer is on this row, so its face wakes: one greeting, then the
+                              // reference's own idle float, for as long as the pointer stays.
+                              // It lifts the resting `animates` rule for this row only, and the row's
+                              // frame never changes size, so nothing re-lays while the face moves.
+                              wakesOnHover: isHovered)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.
@@ -734,75 +758,41 @@ private struct HoverRow<Content: View>: View {
 
                 if model.hasUnread(bot.id) {
                     UnreadBeacon(diameter: 7)
-                        .opacity(isHovered ? 0 : 1)
                 }
             }
             .padding(.horizontal, metrics.rowPadding)
             .padding(.vertical, metrics.rowPadding)
             .frame(height: metrics.rowHeight)
             // The hover fill is the row's own background, drawn at a fixed size: nothing here is
-            // padded, scaled or re-laid-out by the pointer, so a row never moves under it.
+            // padded, scaled or re-laid-out by the pointer, so a row never moves under it. Keyboard
+            // focus gets the same fill — the row's own signal that it is the live one — because the
+            // system's focus ring is off (`hermeyFocusQuiet()`).
             .background(
                 RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
                     .fill(isSelected || isKeyboardSelected ? Tokens.controlActive
-                          : (isHovered ? Tokens.controlHover : .clear))
+                          : (isHovered || holdsKeyboardFocus ? Tokens.controlHover : .clear))
             )
             // One hairline on hover, the chat header pill's own signal (a scale would move the hit
-            // box, which is what made that pill feel like it ignored clicks).
+            // box, which is what made that pill feel like it ignored clicks). A keyboard-focused row
+            // wears it too: focus is not hover, and a fill alone would not say which row it is.
             .overlay(
                 RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
                     .strokeBorder(Tokens.borderStrong,
-                                  lineWidth: isHovered && !isSelected ? 1 : 0)
+                                  lineWidth: (isHovered || holdsKeyboardFocus) && !isSelected ? 1 : 0)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // The keyboard's own row: tab focus is what lights it without a pointer, and the binding is
+        // keyed by bot id so exactly one row can hold it.
+        .focused($focusedRow, equals: bot.id)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous))
-        // The ⋯ is a sibling of the row's button, not a button inside it: a control nested in a
-        // button's label is a control macOS never delivers a click to.
-        .overlay(alignment: .trailing) {
-            overflowButton(for: bot, isVisible: isHovered)
-                .padding(.trailing, metrics.rowPadding + 2)
-        }
         .contextMenu {
             BotRowMenu(menu: rowMenu(for: bot))
         }
         .help(bot.displayName)
         .accessibilityLabel(accessibilityLabel(for: bot))
-    }
-
-    /// The row's ⋯: the same entries the right-click opens, as a native menu. It used to be a
-    /// popover the row drew itself, because ⌘E could not raise a `Menu` from the menu bar — ⌘E opens
-    /// the bot's panel now, so the pointer's menu went back to being a menu.
-    ///
-    /// Hidden until the pointer is on the row (or a menu is open), in a fixed slot so revealing it
-    /// moves nothing.
-    @ViewBuilder
-    private func overflowButton(for bot: Bot, isVisible: Bool) -> some View {
-        Menu {
-            BotRowMenu(menu: rowMenu(for: bot))
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Tokens.textSecondary)
-                .frame(width: 20, height: 18)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Tokens.control)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(Tokens.border, lineWidth: 1)
-                )
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .opacity(isVisible ? 1 : 0)
-        .allowsHitTesting(isVisible)
-        .help("Bot menu")
-        .accessibilityLabel("Bot menu")
+        .hermeyFocusQuiet()
     }
 
     /// A hidden bot is not gone: the filter reveals it here, and one click puts it back.
@@ -851,6 +841,7 @@ private struct HoverRow<Content: View>: View {
         }
         .help("Show \(bot.displayName) in the bot list")
         .accessibilityLabel("Show \(bot.displayName)")
+        .hermeyFocusQuiet()
     }
 
     /// One row that says why the block is empty — and it is a statement about *both* halves of the
@@ -934,14 +925,28 @@ private struct HoverRow<Content: View>: View {
                 isHidden: model.isHidden(botID: bot.id),
                 categories: model.botCategories,
                 currentCategoryID: model.categoryID(for: bot.id),
+                previous: model.previousConversations(for: bot.id),
                 openSettings: { store.openSettings(for: bot) },
                 togglePin: { model.togglePin(botID: bot.id) },
                 toggleHidden: { model.toggleHidden(botID: bot.id) },
                 showSessions: { showSessions(for: bot) },
+                openPrevious: { row in openPrevious(row, for: bot) },
                 assignCategory: { categoryID in assign(category: categoryID, to: bot) },
                 newCategory: { sheet = .newCategory(bot) },
                 renameCategory: { category in sheet = .renameCategory(category) },
                 deleteCategory: { category in pendingCategoryDelete = category })
+    }
+
+    /// Open an archived conversation from the bot's menu.
+    ///
+    /// The bot is moved to first — a menu on a row that is not the selected bot still means *that*
+    /// bot's history — and the archived id is then resumed through the ordinary `select`, so the
+    /// transcript is the host's real one and paging works. Ownership does not move: the next tap on
+    /// the bot's row resolves the live Bot Chat again, because a roll re-pointed the name.
+    private func openPrevious(_ row: BotChatArchive.Previous, for bot: Bot) {
+        Task { @MainActor in
+            await model.openPreviousConversation(row, for: bot.id, pinsForThisVisit: false)
+        }
     }
 
     // MARK: Category writes

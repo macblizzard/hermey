@@ -29,8 +29,11 @@ struct BotModelSettingsScreen: View {
     var deleteBot: (() async throws -> Void)? = nil
     /// The bot's own generated avatar, as the host stores it, and the door to save or clear it.
     /// `nil` for the closure hides the Avatar tab, the same rule as every other verb here.
+    ///
+    /// The closure takes a `BotAvatarSelection` — one family of face, with the other cleared — so a
+    /// Classic pick and a drawn avatar cannot both be stored.
     var avatar: BotAvatarDocument? = nil
-    var saveAvatar: ((BotAvatarDocument?) async throws -> Void)? = nil
+    var saveAvatar: ((BotAvatarSelection?) async throws -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -59,7 +62,7 @@ struct BotModelSettingsScreen: View {
          loadMemory: (() async throws -> BotMemory)? = nil,
          deleteBot: (() async throws -> Void)? = nil,
          avatar: BotAvatarDocument? = nil,
-         saveAvatar: ((BotAvatarDocument?) async throws -> Void)? = nil) {
+         saveAvatar: ((BotAvatarSelection?) async throws -> Void)? = nil) {
         self.bot = bot
         self.icon = icon
         self.saveDescription = saveDescription
@@ -85,6 +88,7 @@ struct BotModelSettingsScreen: View {
                     .labelsHidden()
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+                    .hermeyFocusQuiet()
                 }
                 List {
                     if tab == .avatar, let saveAvatar {
@@ -111,7 +115,7 @@ struct BotModelSettingsScreen: View {
                             .foregroundStyle(Tokens.textPrimary)
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.hermeyFocusQuiet() }
             }
         }
     }
@@ -145,6 +149,7 @@ struct BotModelSettingsScreen: View {
                     }
                 }
                 .disabled(deleting)
+                .hermeyFocusQuiet()
                 if let deleteError {
                     Text(deleteError)
                         .font(TypeScale.font(TypeScale.sm))
@@ -172,7 +177,9 @@ struct BotModelSettingsScreen: View {
                         deleting = false
                     }
                 }
+                .hermeyFocusQuiet()
                 Button("Cancel", role: .cancel) {}
+                .hermeyFocusQuiet()
             } message: {
                 Text("This cannot be undone from the app.")
             }
@@ -187,6 +194,7 @@ struct BotModelSettingsScreen: View {
                     Button(action: editSoul) {
                         Label("Soul", systemImage: "doc.text")
                     }
+                    .hermeyFocusQuiet()
                 }
                 if let loadMemory {
                     Button {
@@ -198,6 +206,7 @@ struct BotModelSettingsScreen: View {
                         BotMemorySheet(botName: bot.displayName, load: loadMemory)
                         .hermesSheetChrome()
                     }
+                    .hermeyFocusQuiet()
                 }
             } header: {
                 Text("Identity")
@@ -211,15 +220,16 @@ struct BotModelSettingsScreen: View {
 
     // MARK: Avatar
 
-    /// The bot's own generated face: presets, a JSON import, colour and eye placement, a live
-    /// preview and Save/Reset. Nothing in it can reach the bot's config or its soul — the only
-    /// closure it is given saves an avatar document.
+    /// The bot's face, from either family: the Classic row, the drawn presets, a JSON import,
+    /// colour and eye placement, a live preview and Save/Reset. Nothing in it can reach the bot's
+    /// config or its soul — the only closure it is given saves a face.
     @ViewBuilder
-    private func avatarSection(save: @escaping (BotAvatarDocument?) async throws -> Void) -> some View {
+    private func avatarSection(save: @escaping (BotAvatarSelection?) async throws -> Void) -> some View {
         Section {
             OpenBotAvatarEditor(botID: bot.id,
                                 botName: bot.displayName,
                                 stored: avatar,
+                                face: icon,
                                 previewState: .idle,
                                 save: save)
                 .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
@@ -227,7 +237,8 @@ struct BotModelSettingsScreen: View {
             Text("Avatar")
         } footer: {
             Text("A generated avatar replaces this bot's picture. It is drawn on every device from "
-                 + "the definition, so it costs no storage and stays sharp at any size. Saving here "
+                 + "the definition, so it costs no storage and stays sharp at any size. A Classic face "
+                 + "is one of the bodies this app already ships, in a palette colour. Saving either "
                  + "changes nothing about how the bot thinks.")
         }
     }
@@ -251,6 +262,7 @@ struct BotModelSettingsScreen: View {
                     }
                 }
                 .disabled(descriptionBusy || trimmedDescription == savedDescription)
+                .hermeyFocusQuiet()
                 if let descriptionError {
                     Text(descriptionError).font(.caption).foregroundStyle(Tokens.danger)
                 } else if descriptionSaved {

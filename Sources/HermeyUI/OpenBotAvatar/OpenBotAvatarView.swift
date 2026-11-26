@@ -1,5 +1,11 @@
 import Foundation
+// Conditional, and the only conditional import in this file: `init(activity:)` below maps the app's
+// vocabulary onto these eight states, and that mapping needs `HermesKit`. Everything else here —
+// the view, the document, the ink — is drawing, and the iOS Live Activity compiles this same file into
+// its own module (`project.yml`) so the card can hold the face without linking the networking stack.
+#if canImport(HermesKit)
 import HermesKit
+#endif
 import SwiftUI
 
 /// A bot's generated avatar, drawn natively: the definition's outline given the volume upstream
@@ -13,6 +19,11 @@ import SwiftUI
 ///                   size: 32)
 /// ```
 ///
+/// `state` takes one of the eight names (`.thinking`) or a definition of the host's own
+/// (`AvatarStateDefinition`) — upstream 0.5.0's point, that a host can add a state without a new case
+/// in an enum we ship. A change of state or mood eases in over `OpenBotAvatarEasing.changeMilliseconds`
+/// from the pose that was on screen, and the eyes morph from one shape to the next while it does.
+///
 /// It is a sibling of `BotAvatarView`, not a replacement: a bot with no generated avatar keeps the
 /// shape-and-palette face it has today, and one with a definition draws this instead. That is the
 /// rule every surface follows (`BotAvatarView` takes both and picks), so a list row cannot end up
@@ -21,8 +32,8 @@ import SwiftUI
 /// **Motion.** Sampled at 10 Hz — the same cadence the pets animate at — through a `Canvas`, from a
 /// pose that is a pure function of time. Under Reduce Motion, below `animatingFrom`, in a background
 /// window, or when `animates` is false, it holds the rest pose and costs nothing. The drawing itself
-/// never allocates geometry: the body's cross-sections and the marks are built once per definition
-/// and cached (`OpenBotAvatarModel`), and a frame only transforms them.
+/// never allocates geometry: the body's cross-sections, the ribbon hoops' reach and the outline are
+/// built once per definition and cached (`OpenBotAvatarModel`), and a frame only transforms them.
 ///
 /// That is the face's *breathing*. Where the app shows a bot beside its name, `BotAvatarView` also
 /// performs the shared face's motion over it (the hop, the flip, the darts) and hands the eye pose
@@ -34,8 +45,8 @@ public struct OpenBotAvatarView: View {
     /// The stored `material`: a flat solid or the reference's glass. It reaches here from the
     /// avatar library with the definition, so no surface chooses it per call site.
     public var material: BotAvatarMaterial
-    /// What the bot is doing.
-    public var state: OpenBotAvatarState
+    /// What the bot is doing: one of the eight names, or a definition of the host's own.
+    public var state: OpenBotAvatarStateChoice
     /// How it feels; `happy` draws the eyes as arcs.
     public var mood: BotAvatarMood
     public var size: CGFloat
@@ -54,6 +65,11 @@ public struct OpenBotAvatarView: View {
     /// every caller that draws this view directly — keeps the avatar's own idle blinking.
     public var eyeOverride: OpenBotAvatarEyeOverride?
 
+    /// What this surface keeps between frames: when the state began, and what a change is easing in
+    /// from. A plain object, stepped once per frame — no published state, so a frame cannot invalidate
+    /// the view it is drawing.
+    @State private var animator = OpenBotAvatarStateAnimator()
+
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -61,7 +77,7 @@ public struct OpenBotAvatarView: View {
     public init(definition: BotAvatarDefinition,
                 color: String? = nil,
                 material: BotAvatarMaterial = .solid,
-                state: OpenBotAvatarState = .idle,
+                state: OpenBotAvatarStateChoice = .idle,
                 mood: BotAvatarMood = .neutral,
                 size: CGFloat = 36,
                 backdrop: OpenBotAvatarBackdrop? = nil,
@@ -99,8 +115,13 @@ public struct OpenBotAvatarView: View {
             if let model = OpenBotAvatarModel.model(for: definition) {
                 TimelineView(.animation(minimumInterval: Self.frameInterval, paused: !moves)) { context in
                     let time = moves ? context.date.timeIntervalSinceReferenceDate : 0
+                    // One step per frame: how long this state has been showing, and what to ease in
+                    // from. A still frame asks for the same step and eases nothing.
+                    let step = animator.step(state: state, mood: mood, at: context.date,
+                                             reducedMotion: !moves)
                     let pose = state.pose(mood: mood, time: time, seed: seed, reducedMotion: !moves,
-                                          eyeOverride: eyeOverride)
+                                          eyeOverride: eyeOverride, stateAge: step.stateAge,
+                                          blend: step.blend)
                     Canvas { context, canvasSize in
                         OpenBotAvatarRenderer.draw(model,
                                                    pose: pose,
@@ -109,7 +130,9 @@ public struct OpenBotAvatarView: View {
                                                    into: &context,
                                                    size: canvasSize,
                                                    color: resolvedColor,
-                                                   ink: Self.ink(for: resolvedColor))
+                                                   ink: Self.ink(for: resolvedColor),
+                                                   still: !moves,
+                                                   time: time)
                     }
                 }
             } else {
@@ -140,6 +163,7 @@ public struct OpenBotAvatarView: View {
 
 // MARK: - The app's vocabulary, mapped
 
+#if canImport(HermesKit)
 public extension OpenBotAvatarState {
     /// The avatar pose for an activity the app already tracks.
     ///
@@ -168,6 +192,15 @@ public extension OpenBotAvatarState {
     }
 }
 
+public extension OpenBotAvatarStateChoice {
+    /// The same mapping for the type a surface passes as `state`, so a call site that read
+    /// `.init(activity:)` when the parameter was the enum still reads the same way.
+    init(activity: BotAvatarActivity) {
+        self = .named(OpenBotAvatarState(activity: activity))
+    }
+}
+#endif
+
 // MARK: - What is stored
 
 /// One bot's generated avatar, as the host stores it: the definition, the colour it is drawn in,
@@ -181,14 +214,14 @@ public extension OpenBotAvatarState {
 /// ```
 ///
 /// `material` is absent or null on every document written before it existed, and that means
-/// `solid` — so nothing already saved changes and there is no migration. A value that is neither
-/// `solid` nor `glass` is refused by `BotAvatarMaterial(validating:)`, the same rule (and the same
-/// sentence) the host applies when it answers 400.
+/// `solid` — so nothing already saved changes and there is no migration. A value that is none of
+/// `solid`, `glass`, `matte` or `metal` is refused by `BotAvatarMaterial(validating:)`, the same rule
+/// (and the same sentence) the host applies when it answers 400.
 public struct BotAvatarDocument: Hashable, Sendable, Codable {
     public var definition: BotAvatarDefinition
     /// `#RRGGBB`, or nil to draw the house colour.
     public var color: String?
-    /// `solid` or `glass`. Absent means `solid`.
+    /// One of `BotAvatarMaterial`'s values. Absent means `solid`.
     public var material: BotAvatarMaterial
 
     public init(definition: BotAvatarDefinition,

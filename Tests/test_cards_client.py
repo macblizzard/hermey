@@ -40,7 +40,7 @@ def imports(source: str) -> set[str]:
 class TargetTests(unittest.TestCase):
     def test_the_target_is_foundation_and_swiftui_only(self) -> None:
         for name in ("CardMarker", "CardModel", "CardTheme", "CardView", "CardsSettings", "CardLoader",
-                     "DraftEditing"):
+                     "DraftEditing", "InfographicCard", "CardImageLoader"):
             self.assertTrue((TARGET / f"{name}.swift").is_file(), name)
 
         imported: set[str] = set()
@@ -48,7 +48,22 @@ class TargetTests(unittest.TestCase):
             imported |= imports(path.read_text())
         # `HermesKit` is the client (and `CardFetch`); nothing else. A design system, a transport of
         # its own or an app module here would make the target untestable without one.
-        self.assertEqual(imported, {"Foundation", "SwiftUI", "HermesKit"})
+        #
+        # The one addition is the platform's own image framework, which `CardImageLoader` needs to
+        # decode an infographic's hero picture (`NSImage`/`UIImage`). It is allowed only inside a
+        # `canImport` branch, so the target still builds on any Apple platform, and the design
+        # system is still never imported.
+        self.assertEqual(imported - {"AppKit", "UIKit"}, {"Foundation", "SwiftUI", "HermesKit"})
+        # …and only under a guard. An unconditional `import AppKit` is how a target stops building
+        # for the phone, so each platform import must sit inside a `canImport` block (a `#else` a few
+        # lines below the `#if` counts: UIKit is preferred where both exist).
+        for path in TARGET.glob("*.swift"):
+            lines = path.read_text().splitlines()
+            for index, line in enumerate(lines):
+                if line.strip() in ("import AppKit", "import UIKit"):
+                    window = lines[max(0, index - 4):index]
+                    self.assertTrue(any(entry.startswith("#if canImport(") for entry in window),
+                                    f"{path.name}:{index + 1}: platform import outside a canImport branch")
 
     def test_the_design_system_is_not_imported(self) -> None:
         # HermesCards depends on HermesKit only. Colours arrive through CardTheme, never through
@@ -225,7 +240,7 @@ class ModelTests(unittest.TestCase):
 
     def test_the_kind_cases_are_pinned_in_swift(self) -> None:
         for name in (
-            "testTheThreeKindsAreTheOnesTheSpecNames",
+            "testTheKindsAreTheOnesTheSpecNames",
             "testATaskCardDecodesItsStatusChipAndBody",
             "testTheStatusChipPrefersTheBotsOwnLabel",
             "testEveryStatusStateReadsInWords",
@@ -242,6 +257,13 @@ class ModelTests(unittest.TestCase):
             "testASingleShortLineIsTheLeadLine",
             "testAMultiLineOrLongBodyIsNotALeadLine",
             "testAnEmptyBodyDrawsNothingAtAll",
+            "testAnInfographicDecodesItsPictureFactsAndHighlight",
+            "testAnInfographicNeedsNoStatus",
+            "testAProductInfographicCarriesPriceSellerAndAvailability",
+            "testAnInfographicWithoutAPictureStillDecodes",
+            "testAnImageThatIsNotHTTPIsNoImageAndTakesItsCaption",
+            "testAFactWithNoValueOrLabelIsDroppedAndTheRestSurvive",
+            "testAnInfographicLinkThatCannotBeOpenedIsNotDrawn",
         ):
             self.assertIn(name, KINDS_TESTS, name)
 

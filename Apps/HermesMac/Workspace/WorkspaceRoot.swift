@@ -123,8 +123,8 @@ struct WorkspaceRoot: View {
         .task(id: ObjectIdentifier(store.model)) {
             ReplyNotifier.shared.onGraphite = { botID in store.selectBot(botID) }
             // The banner wears the bot's own face: the app icon cannot vary per notification, an
-            // attachment can (same trick as the phone's push icons).
-            ReplyNotifier.shared.faceFor = { botID in store.botFaces[botID]?.raw }
+            // attachment can (same trick as the phone's push icons). `MacFaceCache` renders it from
+            // the bot's drawn avatar, so nothing here has to hand the notifier a face.
             ReplyNotifier.shared.requestAuthorizationIfNeeded()
             ReplyNotifier.shared.updateBadge(store.model.badgeCount)
             store.model.replyNotificationSink = { note in
@@ -156,11 +156,15 @@ struct WorkspaceRoot: View {
         }
         // One animation owner for the palette's whole lifecycle: the backdrop fades, the panel
         // rises a few points, and closing is the same motion in reverse.
-        // One animation owner for the shell: the palette, and the sidebar's insertion/removal. Both are
-        // opacity + a few points of translation, which the compositor can run without re-laying out the
-        // transcript on every frame.
+        //
+        // **Nothing here animates the panes.** `WorkspaceRoot` used to carry
+        // `.animation(WorkspaceMotion.sidebar, value: store.isSidebarHidden)` as well, on top of the
+        // `withAnimation` in `WorkspaceStore.toggleSidebar()` — two owners for one state change, so the
+        // shell's layout ran through two transactions per frame while the pane slid. Either one alone
+        // makes the `.transition` below run; the store's is the one kept, because it is the door: every
+        // caller (floor toggle, ⌘S, the View menu, Escape) goes through it, while this modifier would
+        // only cover the copies that happen to be inside this tree.
         .animation(WorkspaceMotion.sheet, value: store.isPalettePresented)
-        .animation(WorkspaceMotion.sidebar, value: store.isSidebarHidden)
         // **One** sheet modifier, two routes.
         //
         // SwiftUI attaches a sheet per modifier: two `.sheet` modifiers on the same view means the
@@ -215,7 +219,8 @@ struct WorkspaceRoot: View {
             case .logs:
                 // The same view Settings → About embeds, presented as the window's modal so Escape and
                 // the backdrop close it like every other route here.
-                ClientLogView(title: "Log", header: logHeader)
+                ClientLogView(title: "Log", header: logHeader,
+                              uploader: store.model.clientLogUploader)
             case .botSettings(let bot):
                 MacBotSettingsSheet(model: store.model,
                                     store: store,
@@ -324,15 +329,20 @@ struct WorkspaceRoot: View {
     /// fixed frame the panel was not. Rather than guess at a fix, the app now names what it actually
     /// has open — its windows with their frames, plus every flag that could raise an overlay — so the
     /// culprit is read out of Settings → View log instead of inferred from a photograph.
-    /// Render and upload each bot's face once per change, only when a relay is registered.
+    /// Render each bot's face for the banner cache, and upload it when a relay is registered.
     ///
-    /// Nothing is sent without a relay: the image exists to be shown in a banner, and a host with no
-    /// Bark URL would only store bytes nobody reads.
+    /// The cache is filled whether or not a relay exists: it is what a *local* banner reads, and the
+    /// host's stored copy is only the relay's. Nothing is sent without a relay — a host with no Bark
+    /// URL would only store bytes nobody reads.
+    @MainActor
     private func uploadPushFaces() async {
+        // One render per face, at launch and after a save; `attachment(for:)` is a file read.
+        await MacFaceCache.refresh(faces: store.botFaces, avatars: store.botAvatars)
         let relay = UserDefaults.standard.string(forKey: PushRelay.urlKey) ?? ""
         guard !relay.isEmpty else { return }
         await store.model.syncPushIcons { id in
-            PushIcon.png(for: id, color: store.botFaces[id]?.raw)
+            // The drawn avatar first, the shape face for a bot without one.
+            PushIcon.png(for: id, avatar: store.botAvatars[id], color: store.botFaces[id]?.raw)
         }
     }
 
@@ -450,10 +460,7 @@ struct WorkspaceShell: View {
                         client: store.computer,
                         isFullScreen: fullScreen,
                         onToggleFullScreen: { store.isComputerFullScreen = !fullScreen },
-                        onClose: {
-                            store.isComputerPanelPresented = false
-                            store.isComputerFullScreen = false
-                        })
+                        onClose: { store.closeComputerPanel() })
     }
 
     private var sidebarBinding: Binding<CGFloat> {
@@ -513,6 +520,12 @@ struct WorkspaceShell: View {
                 }
                     // With the computer beside it the reading pane hands back some width rather than
                     // pushing the window's edges out of view.
+                    //
+                    // **Width, and only width.** Nothing here reads a pane's state, and nothing in the
+                    // conversation does: its header height, its top inset, the transcript's measure and
+                    // the composer's position are the same numbers whether the bot list is showing or
+                    // the panel is open. That is what makes one smooth horizontal move possible — there
+                    // is no vertical value on this side of the divider for a pane to move.
                     .frame(minWidth: store.isComputerPanelPresented
                                   ? WindowLayout.conversationMinWithComputer
                                   : WindowLayout.conversationMin,
@@ -521,6 +534,15 @@ struct WorkspaceShell: View {
                     // A new bot is a new conversation: re-creating the pane drops the old scroll
                     // position and any approval sheet that belonged to the last bot.
                     .id(model.activeRoom.map { "room-\($0.id)" } ?? model.selectedBotID ?? "no-bot")
+                    // One layout for the whole move, resolved at the width it is going to have.
+                    //
+                    // Without this the column's width is an animated value, so the transcript is
+                    // handed a *new* width on every frame of the pane's 180 ms: the text re-wraps
+                    // eleven times, every row's height changes with it, the scroll view's document
+                    // grows and shrinks, and the reader sees the conversation bob up and down while the
+                    // pane slides (reported 2026-11-25). A geometry group resolves the subtree once,
+                    // against the final width, so the only thing in motion is the pane's own edge.
+                    .geometryGroup()
 
             // The bot's own panel, on the trailing edge: the phone's drawer as a pane. It is not
             // modal — the transcript keeps scrolling behind it, and a compaction keeps reporting
@@ -539,7 +561,12 @@ struct WorkspaceShell: View {
                            ? 0
                            : max(WindowLayout.botPanelWidth, WindowLayout.computerMin))
             } else if store.isBotPanelPresented {
+                // A pane on the trailing edge: **width only**. Its own frame is a `width`, and this
+                // slot adds neither height nor padding, so opening it cannot move the conversation's
+                // header, its insets or its composer a point — the transcript is handed less room to
+                // the right and nothing above or below it changes.
                 MacBotPanel(model: model, store: store)
+                    .frame(maxHeight: .infinity)
                     .transition(.move(edge: .trailing))
             }
         }
@@ -603,7 +630,9 @@ struct WorkspaceShell: View {
                     await model.refreshRooms()
                 }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }

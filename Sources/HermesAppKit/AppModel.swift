@@ -89,7 +89,21 @@ public final class AppModel: ObservableObject {
     /// The second half of "the app is usable": a roster of names with no session list behind it is
     /// the bot list as it looks while it is still assembling, which is what the launch screen covers.
     @Published public private(set) var sessionsAnswered = false
-    @Published public var selectedSessionID: SessionID?
+    @Published public var selectedSessionID: SessionID? {
+        didSet {
+            // The count describes exactly one conversation. A different id means a different chat —
+            // a new one, a re-minted one, a pick in All Sessions — and the number on screen was
+            // measured on the previous one, so it goes rather than describing the wrong chat.
+            // `nil` is not evidence of a change (a switch clears the id before the new bot's own is
+            // restored), so only a concrete, different id drops anything.
+            guard let shown = contextUsageSession,
+                  let now = selectedSessionID, now != shown else { return }
+            contextUsed = nil
+            contextMax = nil
+            contextUsageSession = nil
+            forgetContextUsage(for: selectedBotID, keeping: now)
+        }
+    }
     /// Sessions this app created that the host has not persisted yet (see `newSession`).
     ///
     /// `session.create` deliberately writes no row until the first prompt, so a draft cannot be
@@ -98,7 +112,7 @@ public final class AppModel: ObservableObject {
     /// the row.
     @Published public private(set) var draftSessionIDs: Set<SessionID> = []
     @Published public private(set) var transcript: [TranscriptEntry] = [] {
-        didSet { visibleTranscriptCache = nil }
+        didSet { transcriptDidChange(from: oldValue) }
     }
     /// Where "load earlier" continues from, and how many rows the whole conversation holds.
     ///
@@ -169,6 +183,18 @@ public final class AppModel: ObservableObject {
     /// returned early because that id was not `selectedSessionID`.
     private var sessionAliases: [SessionID: SessionID] = [:]
 
+    /// The **durable** id for each id this model has held a conversation under.
+    ///
+    /// A reaction is filed by the durable id — the one the session list shows and a later resume
+    /// accepts — because that is the only id both devices know. The runtime id is minted per attach:
+    /// the Mac and the phone are attached at different moments, so the same conversation reaches
+    /// them under two different strings, and a reaction filed under a runtime id is one the other
+    /// device's read can never find.
+    ///
+    /// Normally `selectedSessionID` is already durable and this lookup is the identity. It is not
+    /// after the window adopts a *moved* conversation from an event, whose id is the runtime one.
+    private var durableIDs: [SessionID: SessionID] = [:]
+
     /// Moved session ids already asked about, so one idle id cannot cost a resume per event.
     private var adoptAttempted: Set<SessionID> = []
 
@@ -227,9 +253,42 @@ public final class AppModel: ObservableObject {
     /// the menu, and on this host that is an Anthropic model the app was never using.
     @Published public private(set) var modelLabel: String?
 
+    /// The provider beside it (`opencode-go` for `deepseek-v4.1-flash`), as the host named it.
+    ///
+    /// Kept apart from the label because the composer's chrome prints `provider/model`, and the
+    /// label the host sends is the model alone. Nil whenever `modelLabel` is: a provider with no
+    /// model is not a model name, and the line shows nothing rather than half of one.
+    @Published public private(set) var modelProvider: String?
+
     /// Tokens the context held after the last completed turn, and the window it is filling.
+    ///
+    /// The only place the host reports this is `message.complete`'s `usage` — no call the app makes
+    /// when it *opens* a bot carries it (`session.resume` decodes rows, an inflight turn, requests,
+    /// a cursor and a total; `session.list` rows carry a title, a preview and a message count). So a
+    /// fresh launch used to show the model with no count until a turn finished, which is the
+    /// complaint this pair answers: the last number the host gave is kept per bot on disk and put
+    /// back the instant the bot opens (see `restoreContextUsage`), never computed from anything.
     @Published public private(set) var contextUsed: Int?
     @Published public private(set) var contextMax: Int?
+
+    /// The last `usage` the host reported for a bot, with the conversation it described.
+    ///
+    /// The session id travels with the numbers on purpose: a count restored for a conversation the
+    /// bot no longer owns would describe a different chat, so a restored value is only shown while
+    /// the session on screen is still the one it was measured on (`contextUsageSession`), and the
+    /// record is dropped the moment a different conversation is selected.
+    private struct ContextUsageRecord: Codable, Equatable {
+        var session: SessionID
+        var used: Int
+        /// 0 when the host sent no `context_max` — the row then reads `394k Tokens` rather than
+        /// claiming a limit it was never given.
+        var max: Int
+    }
+
+    /// Per bot, so a number can never appear under another bot's name.
+    private var contextUsageRecords: [String: ContextUsageRecord] = [:]
+    /// The conversation the pair on screen describes. Nil when nothing is being claimed.
+    private var contextUsageSession: SessionID?
 
     /// A compaction is running on the host. It is a real model turn, so the UI shows a quiet note
     /// rather than a spinner — and nothing may start a second one while it runs.
@@ -266,20 +325,49 @@ public final class AppModel: ObservableObject {
     /// still short enough that nobody stares at a spinner for an afternoon.
     public static let compactionPatience: TimeInterval = 300
 
+    /// Cached rows for `visibleTranscript`, maintained instead of rebuilt.
+    ///
+    /// The transcript is read on every body pass — the list, the search field, the context gauge —
+    /// and re-filtering it each time showed up as avoidable work on long conversations. A page
+    /// landing invalidates it, and the invalidation used to cost three whole-array filters over the
+    /// 6,400 rows already on screen; the cache now splices the page on (see
+    /// `TranscriptVisibilityCache`). The flags are part of its key, so a switch that hides tool
+    /// calls does not keep serving the old rows.
+    private var visibleTranscriptCache = TranscriptVisibilityCache()
+
+    /// The ids in `transcript`, maintained on every change.
+    ///
+    /// `loadEarlierHistory` de-duplicates a page against what is already drawn, and it used to
+    /// build `Set(transcript.map(\.id))` for every page — 6,400 string hashes on the main actor for
+    /// each 400-row page that landed. The set is now a row of bookkeeping in `transcriptDidChange`.
+    private var transcriptIDs: Set<String> = []
+
+    /// What the last change to `transcript` was. Read by the views' caches so they can skip a walk
+    /// of the whole conversation; see `TranscriptSplices`.
+    public private(set) var transcriptSplice: TranscriptSplice = .replaced
+
+    /// Keeps the derived state in step with `transcript` in one place, so no call site has to
+    /// remember which caches exist.
+    private func transcriptDidChange(from old: [TranscriptEntry]) {
+        let splice = TranscriptSplices.detect(previous: old, entries: transcript)
+        transcriptSplice = splice
+        switch splice {
+        case .appended(let count):
+            for entry in transcript.suffix(count) { transcriptIDs.insert(entry.id) }
+        case .prepended(let count):
+            for entry in transcript.prefix(count) { transcriptIDs.insert(entry.id) }
+        case .unchanged:
+            break
+        case .replaced:
+            transcriptIDs = Set(transcript.map(\.id))
+        }
+    }
+
     /// Bumped every time a reconnect re-reads the open transcript in place.
     ///
     /// The rows are *replaced*, not cleared and refilled, so the scroll view keeps its offset — which
     /// is why a foreground left the reader somewhere in the middle of a chat instead of at its end.
     /// The shell watches this and lands at the newest message, the same rule as opening the thread.
-    /// Cached rows for `visibleTranscript`, invalidated whenever `transcript` changes.
-    ///
-    /// The transcript is read on every body pass — the list, the search field, the context gauge —
-    /// and re-filtering it each time showed up as avoidable work on long conversations. The cache is
-    /// keyed by the two visibility flags as well, so a switch that hides tool calls does not keep
-    /// serving the old rows.
-    private var visibleTranscriptCache: (showToolCalls: Bool, showReasoning: Bool,
-                                         rows: [TranscriptEntry])?
-
     @Published public private(set) var transcriptReloads = 0
 
     /// The last transcript this process saw for each session, painted the instant a chat is opened.
@@ -317,12 +405,46 @@ public final class AppModel: ObservableObject {
     @Published public var showToolCalls: Bool {
         didSet { Self.defaults.set(showToolCalls, forKey: Keys.showToolCalls) }
     }
+
+    /// **Settings → "Start a new chat after"**: the ceiling a bot's one conversation is rolled at.
+    ///
+    /// Stored as the raw choice (`0` = Never, see ``BotChatCeiling``) so the settings row can show
+    /// exactly what the owner picked. Written straight through on change — the roll reads this
+    /// property at the moment of the open, so a new value takes effect on the next open with no
+    /// restart, and no other state has to be told about it.
+    @Published public var botChatCeiling: Int {
+        didSet {
+            let settled = BotChatCeiling.sanitised(botChatCeiling)
+            Self.defaults.set(settled, forKey: Keys.botChatCeiling)
+            if settled != botChatCeiling {
+                // Refused rather than written: a value the row cannot show is one the owner cannot
+                // undo, so the picker snaps back to a real choice.
+                botChatCeiling = settled
+            }
+        }
+    }
+
+    /// The ceiling the roll actually applies, `nil` when the owner chose Never.
+    var botChatLimit: Int? { BotChatCeiling.limit(from: botChatCeiling) }
     enum Keys {
         static let showReasoning = "hermes.showReasoning"
         static let reasoningExpanded = "hermey.showReasoningExpanded"
         static let showToolCalls = "hermes.showToolOutput"
         /// One stored session id per bot — the endless-chat contract (`docs/ENDLESS-CHAT.md` §2).
         static let endlessSessionPrefix = "hermes.endlessSession."
+        /// The archived Bot Chats rolled out of the way, one JSON document per bot, newest first.
+        ///
+        /// Per bot and per device: the host's own `session.list` hides an archived row, so this
+        /// document is the only index of the conversations a roll moved aside. It is written by the
+        /// roll and never by anything else, and it has no delete.
+        static let previousChatsPrefix = "hermes.previousChats."
+        /// "Start a new chat after" — the owner's ceiling, per app (see `BotChatCeiling`).
+        ///
+        /// A `UserDefaults` value rather than a host one on purpose: it is a preference about how
+        /// *this* app behaves, and the phone is allowed a smaller chat than the Mac.
+        static let botChatCeiling = BotChatCeiling.key
+        /// A roll this device has begun but not finished recording, per bot (see `beginRollJournal`).
+        static let rollJournalPrefix = "hermes.rollJournal."
         /// The id this device reset, until something newer is published. The bridge's PUT has no
         /// "clear" (`bot_sessions.py`: a null is a 422, "never a delete"), so without this a reset
         /// device would adopt the very conversation it just forgot on its next open.
@@ -373,6 +495,68 @@ public final class AppModel: ObservableObject {
     /// as "Start the conversation with …" — a lie about a conversation that exists. This flag lets
     /// the pane say what is actually happening, and it is false the moment anything is on screen.
     @Published public private(set) var isOpeningConversation = false
+
+    // MARK: One open at a time
+
+    /// The bot whose open is in flight, or `nil`.
+    ///
+    /// A row tap starts an open; the row reads this to show that its tap landed, and a second tap on
+    /// the *same* row while this is set is nothing at all. That is the whole answer to "if I keep
+    /// tapping it crashes": a tap storm used to start one `Task` per tap, each of them pushing its
+    /// own screen and each of them capturing/resetting/resuming the one shared transcript.
+    @Published public private(set) var openingBotID: String?
+
+    /// Why the last open did not finish, for the conversation to say out loud beside a Retry.
+    ///
+    /// The host answers `session.resume` on a 120-second timer, and a resume that queues behind a
+    /// launch sweep (or an agent build) can be silent for longer than anyone will wait without
+    /// pressing something. A deadline and this value are how that wait stops being a frozen pane.
+    public struct OpenFailure: Equatable {
+        public var botID: String
+        public var message: String
+        public var timedOut: Bool
+    }
+    @Published public private(set) var openFailure: OpenFailure?
+
+    /// The open in flight, so a newer open can cancel it and a disappearing screen can too.
+    private var openTask: Task<SessionID?, Never>?
+    /// Which open the state above belongs to. A late answer from a superseded open must not clear
+    /// the newer one's state.
+    private var openGeneration = 0
+    /// Bumped by every user open, so the launch sweep can tell that somebody is waiting.
+    private var userOpenGeneration = 0
+    /// The launch sweep's own task, so a tap can stand the walk down immediately.
+    ///
+    /// The sweep is not an annoyance that can simply be skipped for one iteration: it is a chain of
+    /// `session.resume` calls on the one socket, and the host answers those one at a time. Cancelling
+    /// the task is the closest a client can get to a priority queue — an open never queues behind
+    /// the *rest* of the roster, only behind the single warm already on the wire, which the sweep's
+    /// own measurements put at 0.03–0.7 s. Nothing is lost by abandoning the walk: every bot it has
+    /// not reached is just a bot whose cache stays as it was.
+    private var prefetchTask: Task<Void, Never>?
+    /// The background fill of older pages after a windowed resume (see `scheduleHistoryBackfill`).
+    private var backfillTask: Task<Void, Never>?
+    /// The bot the fill belongs to, so a screen going away only stops *its own* fill.
+    private var backfillBotID: String?
+    /// Bumped whenever the transcript is replaced outright, so a decoration pass computed against
+    /// older rows cannot land on newer ones.
+    private var decorationGeneration = 0
+    /// How long the host gets before the pane offers a Retry.
+    ///
+    /// Short on purpose: the cached rows are already on screen, so a wait longer than this is
+    /// indistinguishable from a broken screen. Nothing is abandoned — the call is left running and
+    /// a late answer still fills the chat — but the screen stops looking frozen and says so.
+    public static let openDeadline: TimeInterval = 12
+
+    /// When the open on screen began, so the pane can say how long it has been waiting.
+    ///
+    /// A resume of a long conversation is a real wait — the host builds the whole transcript
+    /// (measured 6.2 s and 7.5 MiB for 6,778 rows) and its own retries used to queue behind each
+    /// other. A spinner with no number is indistinguishable from a frozen app, so the pane counts.
+    @Published public private(set) var openStartedAt: Date?
+
+    /// How long a wait is "normal" before the pane explains itself in words as well as a spinner.
+    public static let slowOpenNotice: TimeInterval = 4
 
     /// What a bot's conversation looked like the last time it was on screen.
     ///
@@ -592,12 +776,19 @@ public final class AppModel: ObservableObject {
         showReasoning = defaults.object(forKey: Keys.showReasoning) as? Bool ?? true
         reasoningExpandedByDefault = defaults.object(forKey: Keys.reasoningExpanded) as? Bool ?? false
         showToolCalls = defaults.object(forKey: Keys.showToolCalls) as? Bool ?? true
+        // "Start a new chat after". Read as the raw choice and sanitised: an unset key means the
+        // shipped default (2,000), and a value no picker can show falls back to it rather than
+        // silently disabling the roll.
+        botChatCeiling = BotChatCeiling.sanitised(defaults.object(forKey: Keys.botChatCeiling) as? Int)
         // Read here, not on connect: Settings can be opened before a host answers, and a toggle
         // that shows "on" until the socket comes up would be a lie about a stored choice.
         loadNotificationSettings()
         // The groups are the host's, but the last document read is cached per host: a launch with
         // no wire still draws the list the owner is used to instead of one Uncategorized bucket.
         loadCachedBotCategories()
+        // The last context this host reported per bot, so the composer can show it on the first
+        // frame of a launch instead of only after a turn.
+        loadContextUsage()
     }
 
     // MARK: Cache controls
@@ -667,6 +858,11 @@ public final class AppModel: ObservableObject {
     /// spreadsheet — over one freshly minted device ticket per request. Injected by each app for
     /// the same reason `hostUpdateClient` is: the model owns no pairing and mints nothing.
     public var attachmentClient: AttachmentFileClient?
+
+    /// Where Settings → View log's "Send log to host" posts. Injected by each app for the same
+    /// reason `hostUpdateClient` is, and deliberately *not* routed over the relay socket: a busy
+    /// conversation must not be able to delay a log upload, and an upload must not take a slot.
+    public var clientLogUploader: ClientLogUploadClient?
 
     /// A local file a viewer can open, for a file the chat names.
     ///
@@ -1289,6 +1485,137 @@ public final class AppModel: ObservableObject {
         return String(line.prefix(120))
     }
 
+    /// Begin **one** open of a bot: the synchronous half, before any screen is pushed.
+    ///
+    /// Everything here runs before the first `await`, which is the point: the cached snapshot is on
+    /// screen before the navigation animation starts, so a conversation this device already holds
+    /// never shows an empty pane. The order is the one `endlessSession` documents and must keep —
+    /// capture the bot being left, clear, select, restore — and it is done here rather than in the
+    /// pushed screen so the first frame the user sees is already the right transcript.
+    ///
+    /// Returns `false` when this bot is already opening. A second tap on the same row is then
+    /// *nothing*: no second `Task`, no second push, no second resume. A tap on a different bot
+    /// cancels the open in flight and starts this one instead.
+    @discardableResult
+    public func beginOpen(_ botID: String) -> Bool {
+        guard openingBotID != botID else { return false }
+        openTask?.cancel()
+        openTask = nil
+        openGeneration &+= 1
+        // The user is waiting: the launch sweep stands down (see `prefetchConversations`) — and it
+        // stands down *now*, mid-walk, rather than after the bot it is warming.
+        userOpenGeneration &+= 1
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        // The background fill of older rows belongs to the conversation being left.
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
+        openingBotID = botID
+        openFailure = nil
+        if botID != selectedBotID {
+            captureConversation(for: selectedBotID)
+            resetForBotSwitch()
+            // [B2 navigation] only a tap reaches this: `beginOpen` is the row (or the banner it
+            // stands in for), and nothing background calls it.
+            selectedBotID = botID
+            activeRoom = nil
+        }
+        // Synchronous, and ahead of every host call: this is the paint that makes an open instant.
+        // A pane that already holds *this* bot's rows is left alone — it may be a conversation the
+        // person picked in All Sessions (`openSession`), and restoring the bot's snapshot over it
+        // would replace what they just chose.
+        let alreadyHolding = transcriptOwner == botID && !transcript.isEmpty
+        let restored = alreadyHolding || restoreConversation(for: botID)
+        isOpeningConversation = !restored
+        return true
+    }
+
+    /// Finish the open `beginOpen` started, on a deadline, with a failure the screen can offer a Retry for.
+    ///
+    /// The host call was never a blocking wait — `session.resume` is an `await` — but it was an
+    /// unbounded one: the client's own timer is 120 s, and a resume queued behind the launch sweep
+    /// on the host is indistinguishable from a frozen app. The deadline puts a sentence and a Retry
+    /// over the cached rows after `openDeadline`; the call itself keeps running, so a resume that
+    /// answers late still fills the chat and takes the sentence away.
+    @discardableResult
+    public func openNow(_ botID: String) async -> SessionID? {
+        // A conversation can be on screen without a row tap: a banner, a deep link, a restore. The
+        // gate is the same one the row uses, so those paths paint the cache and coalesce too.
+        if openingBotID != botID {
+            guard beginOpen(botID) else { return nil }
+        } else if let inFlight = openTask {
+            // Already running: a second caller (a `.task` that fired again, a banner and a tap
+            // landing together) waits for *that* open rather than starting a competing one.
+            return await inFlight.value
+        }
+        let generation = openGeneration
+        openStartedAt = Date()
+        // [B2 navigation] `select: true` is correct here and only here: `openNow` is what a tap
+        // (or the banner that stands in for one) resolves to.
+        let work = Task { @MainActor in await self.endlessSession(for: botID, select: true) }
+        openTask = work
+        // The pane stops waiting at the deadline; the host call is left running, because it is the
+        // only thing that can answer and a resume that lands late still fills the chat. What the
+        // deadline buys is the sentence and the Retry over the cached rows — a screen that is
+        // waiting, instead of one that looks broken.
+        let watchdog = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.openDeadline))
+            guard !Task.isCancelled, generation == self.openGeneration else { return }
+            self.openFailure = OpenFailure(botID: botID,
+                                           message: "the host has not answered in "
+                                                    + "\(Int(Self.openDeadline))s",
+                                           timedOut: true)
+        }
+        let opened = await work.value
+        watchdog.cancel()
+        // A newer open owns the state now: its own `openNow` will clear what it set.
+        guard generation == openGeneration else { return opened }
+        openTask = nil
+        isOpeningConversation = false
+        openingBotID = nil
+        openStartedAt = nil
+        if let opened {
+            // It answered after all, possibly after the deadline: take the sentence away.
+            openFailure = nil
+        } else if !work.isCancelled {
+            // Not a cancellation: the host answered, and refused. The reason is already in
+            // `lastSendError` (see `reportOpenFailure`).
+            openFailure = OpenFailure(botID: botID,
+                                      message: lastSendError ?? "the conversation could not be opened",
+                                      timedOut: false)
+        }
+        return opened
+    }
+
+    /// Leave an open. Called when the conversation's screen goes away, and only for its own bot: a
+    /// screen that is disappearing *because* the next one was pushed must not cancel the next one.
+    public func endOpen(_ botID: String) {
+        // The screen is going away: the fill it started has nobody to arrive for. Only *this* bot's
+        // fill — the screen that disappears because the next one was pushed must not cancel the
+        // next bot's fill, which was started a moment ago.
+        if backfillBotID == botID {
+            backfillTask?.cancel()
+            backfillTask = nil
+            backfillBotID = nil
+        }
+        guard openingBotID == botID else { return }
+        openTask?.cancel()
+        openTask = nil
+        openGeneration &+= 1
+        openingBotID = nil
+        isOpeningConversation = false
+        openStartedAt = nil
+    }
+
+    /// Ask the host again for the conversation on screen, after the deadline or a refusal.
+    public func retryOpen(_ botID: String) async -> SessionID? {
+        openFailure = nil
+        openingBotID = nil
+        _ = beginOpen(botID)
+        return await openNow(botID)
+    }
+
     /// Switch bots.
     ///
     /// Everything on screen belongs to the bot it came from — the transcript, the pending
@@ -1297,6 +1624,9 @@ public final class AppModel: ObservableObject {
     /// bot's conversation under the new bot's name.
     public func selectBot(_ id: String?) async {
         let resolved = id ?? Self.defaultBot(in: bots, hostName: hostName)?.id
+        // A second entry for the bot whose open is already in flight is the tap storm, not a second
+        // switch: it would capture the half-restored pane and resume the same conversation again.
+        if let resolved, resolved == openingBotID { return }
         guard resolved != selectedBotID else {
             await loadSessions()
             return
@@ -1310,6 +1640,21 @@ public final class AppModel: ObservableObject {
         activeRoom = nil
         if let resolved { restoreConversation(for: resolved) }
         await loadSessions()
+    }
+
+    /// Run the sweep under a task this model owns, so a tap can cancel it.
+    ///
+    /// The shells (iOS at launch and on every reconnect, the Mac behind its window) call this
+    /// rather than awaiting `prefetchConversations` directly: a sweep awaited by a `.task` modifier
+    /// is a sweep nobody can stand down, so a tap during launch waited for the rest of the roster.
+    public func startPrefetch() {
+        // The newest trigger wins: a reconnect's sweep should replace one that is still walking,
+        // and a cancelled sweep stops at its next bot (it is only a cache warm).
+        prefetchTask?.cancel()
+        prefetchTask = Task { [weak self] in
+            guard let self else { return }
+            await self.prefetchConversations()
+        }
     }
 
     /// Warm every bot's conversation in the background, so opening one paints instead of waiting.
@@ -1352,8 +1697,15 @@ public final class AppModel: ObservableObject {
         // `connection.isLive` is the pairing answer that matters here: an unpaired model has no
         // transport, and the socket is the thing this sweep reads through.
         guard connection.isLive, bots.count > 1, !isPrefetching else { return }
+        // A sweep is a convenience; an open is what the person asked for. Never start one behind an
+        // open, and never begin one at all while the screen is not idle.
+        guard openingBotID == nil, !Task.isCancelled else { return }
         isPrefetching = true
         defer { isPrefetching = false }
+        // Which user open this sweep is walking under. A tap bumps it, and the walk stops: the host
+        // answers one `session.resume` at a time, so every bot left in this loop is a bot the
+        // person opening a chat would be queued behind.
+        let sweepUnder = userOpenGeneration
 
         // The host's own view of what it is holding, taken before the sweep: a runtime id here is a
         // pane somebody has attached, and the sweep must never close it. Unknown (a client with no
@@ -1368,6 +1720,14 @@ public final class AppModel: ObservableObject {
         var stranded: [String] = []
         for bot in bots.prefix(Self.conversationCacheLimit) {
             guard connection.isLive else { break }
+            // Somebody is opening a chat right now: the walk ends here — `return`, not `break`, so
+            // not even the closing lines run behind their resume. A tap cancels this task outright
+            // (`beginOpen`), which is what makes an open preempt the sweep: the one warm already on
+            // the wire finishes (0.03–0.7 s measured) and nothing more is started. The host answers
+            // one `session.resume` at a time, so a client cannot reorder one it has already sent —
+            // cancelling the walk is the priority queue, and this guard is the belt to that brace
+            // (a sweep started before `prefetchTask` existed still stops at the next bot).
+            if Task.isCancelled || openingBotID != nil || sweepUnder != userOpenGeneration { return }
             // The conversation on screen has its own lifecycle; the sweep must not touch it.
             if bot.id == selectedBotID { continue }
             // Already warm and recent: another read buys nothing.
@@ -1394,7 +1754,7 @@ public final class AppModel: ObservableObject {
                     // warm minted — the only id `session.close` below will accept.
                     let resumed = try await client.warmResume(stored, profile: bot.id)
                     let seconds = Date().timeIntervalSince(started)
-                    warmedThisBot = warmConversation(bot.id, session: stored, resumed: resumed)
+                    warmedThisBot = await warmConversation(bot.id, session: stored, resumed: resumed)
                     if warmedThisBot { resumeSeconds.append(seconds) }
                     // Released before the next bot: one at a time is the whole point. A session that
                     // was already live answers with *its* runtime id and is not ours to close, and a
@@ -1404,6 +1764,10 @@ public final class AppModel: ObservableObject {
                         catch { stranded.append("\(bot.id): \(error.localizedDescription)") }
                     }
                     break
+                } catch is CancellationError {
+                    // Superseded: a person opened a chat, or the app went away. Not a failure, and
+                    // not something to report — the summary would be about a walk nobody finished.
+                    return
                 } catch {
                     lastError = error
                     guard attempt == 0, Self.isStaleSessionError(error) else { break }
@@ -1506,12 +1870,16 @@ public final class AppModel: ObservableObject {
     /// with nothing in it yet.
     @discardableResult
     private func warmConversation(_ botID: String, session: SessionID,
-                                  resumed: SessionResume) -> Bool {
+                                  resumed: SessionResume) async -> Bool {
         let entries = resumed.entries
         guard !entries.isEmpty else { return false }
+        // The vault join (one small JSON read, plus the bytes of the pictures this chat sent) is
+        // disk work: it is done off the main actor, because this sweep runs behind a screen the
+        // person is already using, and a roster-wide pass used to hold the main thread for it.
+        let decorated = await SentAttachmentVault.decorated(entries, sessionID: session)
         conversationCache[botID] = ConversationSnapshot(
             sessionID: session,
-            entries: SentAttachmentVault.decorate(entries, sessionID: session),
+            entries: decorated,
             // No cursor, and deliberately: paging is answered from the bridge's copy of *this*
             // connection's resume, and this one is closed before the next bot. "Load earlier"
             // therefore waits for the real resume on open — which a paged snapshot always gets,
@@ -1600,7 +1968,13 @@ public final class AppModel: ObservableObject {
             ClientLog.note("resume kept \(merged.entries.count - entries.count) earlier rows",
                            level: .info, category: "paging")
         }
-        transcript = SentAttachmentVault.decorate(merged.entries, sessionID: sessionID)
+        // The rows land **undecorated**, and the sent pictures are attached by a pass off the main
+        // actor a moment later (`scheduleDecoration`). `decorate` reads the attachment vault and the
+        // bytes of every picture the chat sent, and on a 6,778-row chat it ran *inside* this adopt —
+        // a synchronous per-row pass on the main actor at exactly the moment the reader is waiting
+        // for the pane, which is the stutter this removed. The text is what must be there
+        // immediately; a picture attached 20 ms later is invisible as a delay.
+        transcript = merged.entries
         // The scroll-jump report in one line: a transcript whose *first* row changes is a
         // transcript the reader's position cannot survive, so say when it happened and what it was
         // replaced with. Without this the app can only say that the pane moved.
@@ -1613,6 +1987,31 @@ public final class AppModel: ObservableObject {
         transcriptOwner = owner
         earlierCursor = merged.cursor
         historyTotal = total
+        if let owner { scheduleDecoration(for: owner, sessionID: sessionID) }
+    }
+
+    /// Attach the sent pictures to the rows just adopted, off the main actor.
+    ///
+    /// Skips entirely when this session has no vault records, which is every conversation that has
+    /// never sent a file: no task, no second publish, nothing to lose. When there are records the
+    /// join runs detached and the result is only drawn if the transcript is still the one the join
+    /// was computed against — a turn arriving, a bot switch or a pager fetch in the meantime wins,
+    /// and the next adopt decorates it anyway.
+    private func scheduleDecoration(for botID: String, sessionID: String) {
+        guard SentAttachmentVault.hasRecords(sessionID: sessionID) else { return }
+        decorationGeneration &+= 1
+        let generation = decorationGeneration
+        let rows = transcript
+        Task { @MainActor in
+            let decorated = await SentAttachmentVault.decorated(rows, sessionID: sessionID)
+            guard generation == self.decorationGeneration,
+                  self.transcriptOwner == botID,
+                  self.selectedBotID == botID,
+                  self.selectedSessionID == sessionID,
+                  self.transcript.count == rows.count,
+                  self.transcript.last?.id == rows.last?.id else { return }
+            self.transcript = decorated
+        }
     }
 
     /// Whether a write of `botID`'s rows may land on the transcript that is on screen.
@@ -1642,6 +2041,11 @@ public final class AppModel: ObservableObject {
     /// already holds is the difference between a warm launch and one that looks cold.
     @discardableResult
     public func restoreConversation(for botID: String) -> Bool {
+        // The count first, and synchronously: it is the half of the row that a fresh launch used to
+        // lose. `restoreContextUsage` paints from the last number this device heard for the bot —
+        // keyed to the session it was measured on — or draws nothing at all when it never had one.
+        // When a snapshot is here too, its own numbers (captured with its session) outrank the disk.
+        restoreContextUsage(for: botID, session: conversationCache[botID]?.sessionID)
         guard let snapshot = conversationCache[botID] else {
             ClientLog.note("no cached conversation for \(botID): the pane has to wait for a resume",
                            level: .info, category: "cache")
@@ -1655,14 +2059,24 @@ public final class AppModel: ObservableObject {
         earlierCursor = snapshot.earlierCursor
         historyTotal = snapshot.historyTotal
         pendingRequests = snapshot.openRequests
-        contextUsed = snapshot.contextUsed
-        contextMax = snapshot.contextMax
+        if let used = snapshot.contextUsed {
+            contextUsed = used
+            contextMax = snapshot.contextMax
+            contextUsageSession = snapshot.sessionID
+        }
         return true
     }
 
     private func resetForBotSwitch() {
         botEpoch += 1
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
+        decorationGeneration &+= 1
         selectedSessionID = nil
+        // The id-to-durable map belongs to the launch, not to the bot: draining it here would make
+        // a return to a conversation this process already resolved ask again for nothing. It is
+        // cleared only by the model's own lifetime.
         // Drafts are scoped to the bot that created them (a draft has no profile on the host yet).
         draftSessionIDs = []
         sessions = []
@@ -1678,8 +2092,9 @@ public final class AppModel: ObservableObject {
         isStreaming = false
         runningSessions = []
         pendingRequests = []
-        contextUsed = nil
-        contextMax = nil
+        // Including the claim: the pair on screen was measured on the bot being left, and the next
+        // bot's own record (if it has one) is restored a line later by `restoreConversation`.
+        clearContextUsage()
         compactionNotice = nil
         sending = false
         lastSendError = nil
@@ -1849,6 +2264,9 @@ public final class AppModel: ObservableObject {
         cacheTranscriptSoon(session)
         ClientLog.note("followed \(bot) into \(session) (\(open ?? "nothing") was on screen)",
                        level: .info, category: "session")
+        // The window moved to another conversation: its reactions are that conversation's, and the
+        // map still holds the ones it left behind.
+        refreshReactions()
     }
 
     /// Follow a bot's conversation to the id the host says it owns now.
@@ -1959,6 +2377,18 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// One session id as this window knows it.
+    ///
+    /// `sessionAliases` is the map from the runtime id the host minted for an attach — and the
+    /// durable id it named beside it — to the id the conversation is held under. Every frame that
+    /// names a conversation has to go through it: the two apps are attached at different moments, so
+    /// the same conversation reaches each of them under a different runtime id, and comparing the
+    /// raw strings is how one device's frame was dropped by the other.
+    private static func resolveSession(_ session: SessionID,
+                                       aliases: [SessionID: SessionID]) -> SessionID {
+        aliases[session] ?? session
+    }
+
     /// Record the transcript for a session so leaving and coming back is instant.
     private func remember(_ id: SessionID, entries: [TranscriptEntry], cursor: Int?, total: Int) {
         guard !entries.isEmpty else { return }
@@ -2000,6 +2430,27 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    /// Paint the on-disk copy of a bot's conversation, before the open makes any host call.
+    ///
+    /// Keyed by the id this device remembered rather than the host's canonical one, because the
+    /// canonical identity *is* a round trip and a conversation already on this device must not wait
+    /// for it. The store is an actor, so the read and the decode are off the main actor; the paint
+    /// itself is one assignment, which is what the first frame draws.
+    ///
+    /// - Returns: whether rows were painted. `false` means there is nothing on disk for this bot
+    ///   (a first visit, a cache that was reset), and the pane keeps saying what it is doing.
+    @discardableResult
+    private func paintDiskCopy(for botID: String) async -> Bool {
+        // A pane that already holds rows is a warm return or a pick in All Sessions; neither is
+        // this path's to overwrite.
+        guard transcript.isEmpty else { return false }
+        let hint = pinnedSessionPicks[botID] ?? Self.defaults.string(forKey: Self.endlessKey(botID))
+        guard let hint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        return await paintCachedConversation(hint, botID: botID)
+    }
+
     /// Put the last cached copy of a chat on screen before the host answers.
     ///
     /// Shared by both open paths — a plain `select` and the endless-chat opener — so a cold launch
@@ -2013,8 +2464,13 @@ public final class AppModel: ObservableObject {
         // After the reads, not before them: the point of the check is what moved while they ran.
         let owner = botID ?? selectedBotID
         if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
+        // The vault join reads one small file and the bytes of the pictures this chat sent, so it
+        // runs off the main actor; the owner is checked again afterwards because a bot switch during
+        // that read is exactly what the check exists to catch.
+        let decorated = await SentAttachmentVault.decorated(cached.messages, sessionID: id)
+        if let owner, !mayOwn(owner, writing: "a cached transcript") { return false }
         selectedSessionID = id
-        transcript = SentAttachmentVault.decorate(cached.messages, sessionID: id)
+        transcript = decorated
         if let index { transcript = index.attachMissing(to: transcript) }
         transcriptOwner = owner
         earlierCursor = cached.cursor
@@ -2046,6 +2502,11 @@ public final class AppModel: ObservableObject {
     }
 
     public func select(_ id: SessionID) async {
+        // A pick is a visit, not a change of ownership: the number on screen belongs to the
+        // conversation being left, so the claim is dropped *before* the id moves. Dropping it here
+        // (rather than letting the observer see S1 → S2) is what keeps the bot's own record alive
+        // for the conversation this pick will return to.
+        clearContextUsage()
         selectedSessionID = id
         noteSessionOwner(id)
         // Reactions belong to the conversation, not to the pane: read them for the one being
@@ -2070,8 +2531,11 @@ public final class AppModel: ObservableObject {
         reasoningText = ""
         liveTools = []
         isStreaming = false
-        contextUsed = nil
-        contextMax = nil
+        // The count belongs to the conversation being opened: drop whatever the previous one left,
+        // then put back the number this device last heard for *this* session, if it has one. A
+        // session nobody reported usage for draws nothing, exactly as before.
+        clearContextUsage()
+        restoreContextUsage(for: selectedBotID, session: id)
         pendingRequests = []
         // A draft has no row on the host yet: resuming it answers 4007 "session not found", which
         // used to be painted as an unreachable host. Its pane is empty by definition, so adopt it
@@ -2176,6 +2640,12 @@ public final class AppModel: ObservableObject {
         if let stored = resumed.storedSessionID, stored != session {
             noteSessionOwner(stored)
             sessionAliases[stored] = session
+        }
+        // …and the durable id is remembered for this conversation, because that is the one a
+        // reaction is filed under on every device.
+        durableIDs[session] = resumed.storedSessionID ?? session
+        if let stored = resumed.storedSessionID, stored != session {
+            durableIDs[stored] = stored
         }
         setStreamed(resumed.liveText)
         isStreaming = resumed.isStreaming
@@ -2350,12 +2820,187 @@ public final class AppModel: ObservableObject {
                        + "(\(transcript.count) rows)", level: .info, category: "session")
     }
 
+    // MARK: - Editing and deleting a message
+
+    /// The destructive verb the owner just chose, waiting for a confirmation.
+    ///
+    /// Nothing has been sent at this point — this is only the sentence ("this message and the 12
+    /// after it will be retired"), and the shells draw it as an alert with a destructive button.
+    /// `PendingMessageAction` owns the wording so the Mac and the phone cannot say different things.
+    @Published public var pendingMessageAction: PendingMessageAction?
+
+    /// The message an edit is rewriting, and the conversation it belongs to.
+    ///
+    /// Held until the edited text is sent: `send()` retires that message and everything after it
+    /// **first**, so the turn the model is fed has one ask and one answer rather than the old answer
+    /// still sitting above a new question. The session travels with the row id because a bot switch
+    /// between choosing the verb and pressing send must not truncate the wrong conversation.
+    public struct PendingEdit: Equatable, Sendable {
+        public let rowID: Int64
+        public let session: SessionID
+    }
+    @Published public private(set) var pendingEdit: PendingEdit?
+
+    /// The conversation as both devices know it: the durable (stored) id. A retire addresses rows by
+    /// that id — the runtime id a resume mints is a key no row in `state.db` carries.
+    public var durableSessionID: SessionID? { reactionSession }
+
+    /// "Edit and resend" on one of the owner's own messages.
+    ///
+    /// Offered on any of the owner's messages, not only the last turn's: truncating from an older
+    /// ask is exactly as meaningful ("ask that again, differently"), and the confirmation names how
+    /// many later messages go with it, so the cost is stated rather than hidden by a restriction.
+    public func requestEditAndResend(_ entry: TranscriptEntry) {
+        guard client.bridgeAvailable, let rowID = entry.rowID, !isStreaming,
+              durableSessionID != nil else { return }
+        pendingMessageAction = PendingMessageAction(kind: .editAndResend,
+                                                    rowID: rowID,
+                                                    text: entry.displayText,
+                                                    trailing: trailingMessages(after: entry))
+    }
+
+    /// Delete on any message. Withheld while a turn is answering: the host refuses it too (409), but
+    /// a verb that can only fail is not a verb worth showing.
+    public func requestDelete(_ entry: TranscriptEntry) {
+        guard client.bridgeAvailable, let rowID = entry.rowID, !isStreaming else { return }
+        pendingMessageAction = PendingMessageAction(kind: .delete,
+                                                    rowID: rowID,
+                                                    text: entry.displayText,
+                                                    trailing: 0)
+    }
+
+    public func cancelMessageAction() { pendingMessageAction = nil }
+
+    /// Drop an edit that has not been sent — "never mind". The composer keeps what is in it; only the
+    /// link to the old message goes, so the next send is an ordinary message.
+    public func cancelEdit() {
+        pendingEdit = nil
+    }
+
+    /// The confirmation's count: how many messages are painted *after* this one in the transcript on
+    /// screen. Counted here, from the transcript, because the confirmation must say the true number
+    /// before anything reaches the host.
+    public func trailingMessages(after entry: TranscriptEntry) -> Int {
+        guard let index = transcript.firstIndex(where: { $0.id == entry.id }) else { return 0 }
+        return max(0, transcript.count - index - 1)
+    }
+
+    /// Run the confirmed verb. Both paths are one host call, and both end with a re-resume.
+    ///
+    /// The alert hands its own presented value back rather than letting this read the published
+    /// property again: SwiftUI writes `isPresented = false` while the button's action is being
+    /// dispatched, and the binding's setter clears `pendingMessageAction` — so a version of this
+    /// method that looked the action up itself found nil and returned, which is a confirmation that
+    /// appears and then does nothing. The parameter is that bug, closed.
+    public func confirmMessageAction(_ presented: PendingMessageAction? = nil) async {
+        guard let action = presented ?? pendingMessageAction else { return }
+        pendingMessageAction = nil
+        switch action.kind {
+        case .editAndResend:
+            // Nothing is destroyed yet: the composer opens with the old words and the retire happens
+            // when the owner sends (`send()`), so a change of mind costs nothing.
+            replyTarget = nil
+            draft = action.text
+            if let session = durableSessionID {
+                pendingEdit = PendingEdit(rowID: action.rowID, session: session)
+            }
+        case .delete:
+            await deleteMessage(rowID: action.rowID)
+        }
+    }
+
+    /// Retire one message on the host, then rebuild the conversation from its rows.
+    public func deleteMessage(rowID: Int64) async {
+        guard let bot = selectedBotID, let session = durableSessionID else { return }
+        do {
+            let result = try await client.deleteMessages(bot: bot, session: session,
+                                                         messageIDs: [rowID])
+            ClientLog.note("retired message \(rowID) in \(session): \(result.retired) row(s), "
+                           + "\(result.displayCount) left", level: .info, category: "session")
+            lastSendError = nil
+            await reloadAfterRetire()
+        } catch {
+            // The host's own sentence: "still answering — wait for the turn to finish", or "no such
+            // message". Nothing changed, so the transcript stays exactly as it is.
+            lastSendError = Self.retireReason(error)
+        }
+    }
+
+    /// Re-resume the open conversation after a retire.
+    ///
+    /// This is not decoration: the route **closed** the engine's live copy before it moved the rows,
+    /// so the socket's session no longer exists and a resume is what rebuilds the transcript from the
+    /// database (and what the next prompt is submitted into). The retired rows do not come back
+    /// because they are no longer in the display set — which is also why the other device converges:
+    /// it resumes the same rows.
+    @discardableResult
+    public func reloadAfterRetire() async -> Bool {
+        guard let sid = selectedSessionID else { return false }
+        // A moved conversation was adopted under its runtime id; the durable one is what a resume of
+        // "this chat" means. Normally they are the same and this is a no-op.
+        let durable = durableIDs[sid] ?? sid
+        if durable != sid {
+            await select(durable)
+            return true
+        }
+        return await refreshTranscript(sid)
+    }
+
+    /// A refusal said in a sentence a person can act on. The host already writes one; a dropped
+    /// socket does not, and "The operation couldn't be completed" is not a sentence about a message.
+    private static func retireReason(_ error: Error) -> String {
+        if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            return description
+        }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain || ns.domain == NSPOSIXErrorDomain {
+            return "the host could not be reached, so nothing was changed"
+        }
+        return error.localizedDescription
+    }
+
     public func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // An attachment on its own is a complete message: a PDF with no comment is a normal thing
         // to send, and refusing it here made "attach a file, tap send" look like a dead button.
         guard let sid = selectedSessionID, !sending,
               !text.isEmpty || !pendingAttachments.isEmpty else { return }
+        // An edit in progress retires the old message — and everything painted after it — **before**
+        // this turn is sent, so the model is fed one ask and one answer. It runs before the draft is
+        // cleared and before `sending` is set: a refusal here leaves the words exactly where they are
+        // ("If truncation fails, the text stays in the composer and nothing is lost"), and the owner
+        // can send again or give up without retyping anything.
+        if let edit = pendingEdit, edit.session == sid {
+            do {
+                _ = try await client.truncateMessages(bot: selectedBotID ?? "",
+                                                      session: edit.session,
+                                                      fromMessageID: edit.rowID)
+                pendingEdit = nil
+                // The route closed the engine's live copy, so a resume is what puts this conversation
+                // back on the socket with the retired rows gone — and what the prompt below needs in
+                // order to have a session to be submitted into.
+                await reloadAfterRetire()
+            } catch {
+                // The link to the old message survives a refusal the owner can wait out (a busy turn,
+                // an unreachable host): pressing Send again then retries the *same* operation. A
+                // message the host no longer has is the one case where it cannot — the edit applies
+                // to nothing, so the text becomes an ordinary message instead of a promise to
+                // truncate a row that is gone.
+                if let refusal = error as? MessageRetireError,
+                   case .refused(let status, _) = refusal, status == 404 {
+                    pendingEdit = nil
+                }
+                draft = text
+                lastSendError = Self.retireReason(error)
+                ClientLog.note("truncate before resend failed: \(Self.retireReason(error)); "
+                               + "the text stays in the composer",
+                               level: .error, category: "send")
+                return
+            }
+        } else {
+            // An edit chosen in another conversation is not this conversation's to truncate.
+            pendingEdit = nil
+        }
         let attachedNames = pendingAttachments.map(\.name)
         // The bubble draws what was sent: the host's transcript carries no attachment metadata, so
         // this list is the only thing that can put a picture in the chat.
@@ -2732,6 +3377,16 @@ public final class AppModel: ObservableObject {
         let restored = restoreConversation(for: botID)
         isOpeningConversation = !restored
         defer { isOpeningConversation = false }
+        // **The disk copy, before either round trip.** This is the whole difference between a cold
+        // tap on an 8,000-row chat showing its newest rows at once and showing "Opening…" for two
+        // round trips first: `loadModelLabel` (`model.options`) and `canonicalChatIdentity`
+        // (`session.list`) used to run before `openStoredConversation` reached the cache at all, so
+        // the only copy of a long chat a fresh launch had was behind both of them.
+        //
+        // The hint is the id this device remembered (or a pick made in All Sessions) — all the cache
+        // needs. The canonical identity below may disagree; the resume then replaces the pane with
+        // the host's rows, and the cache is never the authority, only the first frame.
+        if await paintDiskCopy(for: botID) { isOpeningConversation = false }
         // A cache is only allowed to stand in for a host read when the app can *prove* the host has
         // written nothing since. Three independent facts say otherwise, and any one of them means
         // the resume runs (the cached rows stay on screen while it does, so the pane is never
@@ -2773,6 +3428,28 @@ public final class AppModel: ObservableObject {
         let socketSaidSo = unseenSessions.contains { announced in
             let known = sessionAliases[announced] ?? announced
             return known == cachedSession || sessionBots[known] == botID
+        }
+        // **The ceiling, before anything is opened.** A Bot Chat at or past the owner's "Start a new
+        // chat after" setting is rolled here, so this open lands on the fresh conversation instead
+        // of spending its whole deadline on the 4.5 MB one (`cody`: 6,806 messages, 120 s timeout,
+        // no open at all).
+        //
+        // It sits above the cached-pane shortcut on purpose: a snapshot of a 6,000-row chat paints
+        // instantly, and trusting that paint would postpone the roll for as long as the owner keeps
+        // coming back. `max(historyTotal, transcript.count)` is what this device already knows about
+        // the conversation — 0 on a cold open, where the host must be asked; the restored total
+        // otherwise — and it is only used to decide whether asking the host is worth a round trip.
+        // The decision itself is always the host's count, inside `rollBotChatIfNeeded`.
+        //
+        // A pick from All Sessions outranks it: the owner asked for a specific conversation, and a
+        // roll changes which chat the *bot* owns.
+        let knownSize = max(historyTotal, transcript.count)
+        if pinnedSessionPicks[botID] == nil, let ceiling = botChatLimit,
+           knownSize == 0 || knownSize >= ceiling,
+           let rolled = await rollBotChatIfNeeded(for: botID) {
+            ClientLog.note("opened \(botID) on the fresh Bot Chat \(rolled) the ceiling minted",
+                           level: .info, category: "session")
+            return rolled
         }
         if restored, pinnedSessionPicks[botID] == nil, connection.isLive,
            let stamp = conversationCacheStamp[botID],
@@ -2951,6 +3628,11 @@ public final class AppModel: ObservableObject {
             throw CancellationError()
         }
         selectedSessionID = stored
+        // The host has just named the conversation this bot owns, which is the one fact an open can
+        // offer about a stored number: if the record was measured on *this* session it is put back
+        // (a cold launch's number, or one a pick in All Sessions pushed off screen); if it was not,
+        // nothing is drawn. Nothing on the wire reports usage here — see `restoreContextUsage`.
+        restoreContextUsage(for: botID, session: stored)
         adoptResume(resumed.entries, cursor: resumed.earlierCursor,
                     total: resumed.historyTotal, sessionID: stored, botID: botID)
         pendingRequests = resumed.openRequests
@@ -2960,6 +3642,13 @@ public final class AppModel: ObservableObject {
         unseenSessionOrder.removeAll { $0 == stored }
         captureConversation(for: botID)
         cacheTranscriptSoon(stored)
+        // The resume carried the newest page only; fetch a few more behind it so scrolling back
+        // does not mean tapping "load earlier" forty times.
+        scheduleHistoryBackfill()
+        // Reactions belong to the conversation, not to the pane: read the host's the moment it is
+        // the one on screen. Waiting for the next socket `ready` is what left a badge set on the
+        // other device invisible in a conversation that had just been opened.
+        refreshReactions()
         // Whatever actually opened is the best cache this device can keep — including a host id
         // that replaced a different local one. The DURABLE key is what gets stored: the runtime id
         // is minted per attach and stops resolving when the host's runtime goes away, which is how
@@ -3238,8 +3927,10 @@ public final class AppModel: ObservableObject {
         reasoningText = ""
         liveTools = []
         isStreaming = false
-        contextUsed = nil
-        contextMax = nil
+        // The conversation this number was measured on is being forgotten, so the stored copy goes
+        // with it: a reset chat must not reopen showing the size of the one that was deleted.
+        clearContextUsage()
+        forgetContextUsage(for: botID)
         compactionNotice = nil
         runningSessions.remove(stored)
     }
@@ -3288,6 +3979,342 @@ public final class AppModel: ObservableObject {
             Self.defaults.set(fresh, forKey: Self.endlessKey(bot))
         }
         await loadBotPreviews(force: true)
+    }
+
+    // MARK: The ceiling on one Bot Chat
+
+    /// The conversations a roll moved aside for this bot, newest first.
+    ///
+    /// Read straight from this device's document (`hermes.previousChats.<bot>`): the host's
+    /// `session.list` **hides** an archived row, so there is no listing to read them from, and the
+    /// document is written by the roll alone. Synchronous on purpose — a menu draws it, and the bot
+    /// panel must not wait a round trip to say what came before this chat.
+    public func previousConversations(for botID: String) -> [BotChatArchive.Previous] {
+        BotChatArchive.decode(Self.defaults.data(forKey: Self.previousKey(botID)))
+    }
+
+    private static func previousKey(_ botID: String) -> String {
+        Keys.previousChatsPrefix + botID
+    }
+
+    /// Add one rolled conversation to the bot's document. Append-and-sort, never a rewrite of the
+    /// ones already there: the list has no ceiling and no delete.
+    private func recordPrevious(_ row: BotChatArchive.Previous, for botID: String) {
+        let rows = BotChatArchive.upserting(row, into: previousConversations(for: botID))
+        Self.defaults.set(BotChatArchive.encode(rows), forKey: Self.previousKey(botID))
+    }
+
+    // MARK: The roll's journal
+
+    /// The roll's two-phase commit, on this device.
+    ///
+    /// The host's commit is its own (`createCanonicalSession` moves the name atomically), but this
+    /// device's half — "the old id is now in Previous conversations" — is a second write, and a
+    /// crash between the two would leave the owner with a 6,806-message chat that is archived (so
+    /// no listing shows it) and unlisted here. The journal is written **before** the archive and
+    /// cleared only once the entry is stored, so an open after such a crash finishes the
+    /// bookkeeping instead of losing the conversation.
+    private static func journalKey(_ botID: String) -> String {
+        Keys.rollJournalPrefix + botID
+    }
+
+    private func beginRollJournal(_ row: BotChatArchive.Previous, for botID: String) {
+        Self.defaults.set(BotChatArchive.encode([row]), forKey: Self.journalKey(botID))
+    }
+
+    private func clearRollJournal(for botID: String) {
+        Self.defaults.removeObject(forKey: Self.journalKey(botID))
+    }
+
+    /// Finish a roll this device committed to but never recorded.
+    ///
+    /// Only ever acts on the host's own answer: with a canonical row in hand, a journaled id that is
+    /// **not** that row means the roll went through and the entry was never stored. An equal id
+    /// means nothing moved (the create was refused, or the roll never started), and a host that
+    /// could not be asked does not get to settle anything.
+    private func settleRollJournal(for botID: String, canonical: SessionID) {
+        guard let pending = BotChatArchive.decode(Self.defaults.data(forKey: Self.journalKey(botID))).first
+        else { return }
+        guard pending.id != canonical else {
+            clearRollJournal(for: botID)
+            return
+        }
+        recordPrevious(pending, for: botID)
+        clearRollJournal(for: botID)
+        ClientLog.note("recorded \(pending.id) in \(botID)'s Previous conversations: a roll was "
+                       + "interrupted after the host had already moved the name",
+                       level: .warning, category: "session")
+    }
+
+    /// Open an archived conversation by hand.
+    ///
+    /// Deliberately **not** `endlessSession`: this is a visit, not a change of ownership. The bot's
+    /// Bot Chat stays the chat that opens when its row is tapped, which is the whole point of the
+    /// roll; this only resumes the old id so its transcript can be read, and — stated plainly —
+    /// **a message sent here goes into this old conversation**, because the host appends to
+    /// whatever session the composer is pointed at. The row's own label says so rather than
+    /// pretending the pane is read-only.
+    ///
+    /// - Parameter pinsForThisVisit: the phone navigates to a conversation *screen*, which resolves
+    ///   the bot again on appear (`openNow` → `endlessSession`) and would replace this id with the
+    ///   live Bot Chat. Recording the id as this bot's pick survives exactly that open — the pick
+    ///   is consumed by it — so the *next* tap on the bot lands on the live chat again. The Mac
+    ///   opens in place and passes `false`, so no pick is left behind at all.
+    public func openPreviousConversation(_ row: BotChatArchive.Previous, for botID: String,
+                                        pinsForThisVisit: Bool = true) async {
+        if pinsForThisVisit {
+            await openSession(row.id, for: botID)
+        } else {
+            if botID != selectedBotID {
+                captureConversation(for: selectedBotID)
+                resetForBotSwitch()
+                // [B2 navigation] the owner picked this bot's old conversation from its menu: the
+                // bot moves because the transcript he asked for belongs to it.
+                selectedBotID = botID
+                await loadModelLabel()
+            }
+            if selectedSessionID != row.id { await select(row.id) }
+        }
+        // The host's own total for the archived conversation, if the resume answered: the row's
+        // number follows the transcript rather than the day it was archived. Its id and its place
+        // in the list do not move.
+        if selectedSessionID == row.id, historyTotal > 0, historyTotal != row.count {
+            let rows = BotChatArchive.refreshing(previousConversations(for: botID), id: row.id,
+                                                 count: historyTotal, lastActive: nil)
+            Self.defaults.set(BotChatArchive.encode(rows), forKey: Self.previousKey(botID))
+        }
+    }
+
+    /// The number the roll decides on: the host's own count for this bot's Bot Chat.
+    ///
+    /// `live_message_count` — the host's display count, the same row grouping a transcript read
+    /// paints — so it cannot lag the rows an open would show, and it is not this app's own array
+    /// (which is a *page* now that resumes are windowed). See
+    /// `GatewayClientProtocol.botChatRow(profile:)` for the measured difference between it and the
+    /// denormalised `message_count` (6,136 vs 675 on `cody`'s chat).
+    ///
+    /// Deliberately one call: the exact-title read is one row, and it is asked once per open — never
+    /// per turn, and never while the owner is typing.
+    func hostBotChatRow(for botID: String) async -> BotChatRow? {
+        do {
+            return try await client.botChatRow(profile: botID)
+        } catch {
+            ClientLog.note("could not measure \(botID)'s Bot Chat: \(error.localizedDescription); "
+                           + "leaving the conversation as it is",
+                           level: .info, category: "session")
+            return nil
+        }
+    }
+
+    /// Whether a turn is writing into `botID`'s conversation right now.
+    ///
+    /// Three facts, because any one of them alone misses a case: this device's own stream
+    /// (`isStreaming` for the bot on screen), a send still in flight (`sending`), an approval the
+    /// host is holding open (`pendingRequests`), and the tracker's face — which is the only one that
+    /// sees a turn started by cron, by the other device or by another bot.
+    func turnInFlight(for botID: String) -> Bool {
+        if sending { return true }
+        if isStreaming, selectedBotID == botID { return true }
+        if !pendingRequests.isEmpty, selectedBotID == botID { return true }
+        return BotChatArchive.turnIsInFlight(activity(forBot: botID))
+    }
+
+    /// Roll this bot's Bot Chat over if it is at the ceiling **and** nothing is in flight.
+    ///
+    /// Returns the id of the fresh conversation when a roll completed — the caller opens it instead
+    /// of the archived one — and `nil` in every other case, including every failure. A `nil` here is
+    /// the promise that nothing moved: the bot stays on the conversation it had.
+    ///
+    /// The order is the crash-safety argument, and it is not the obvious one:
+    ///
+    /// 1. **Archive the old row.** It cannot be avoided: the host keeps the title `Bot Chat` unique
+    ///    (`hermes_state_titles._resolve_title_conflict`) and frees it only for a conflict that is
+    ///    *archived and hidden* — which the canonical chat is. Until this lands, the successor
+    ///    cannot take the name. Reversible (`unarchiveSession`), and archived means the row stops
+    ///    resolving as the bot's chat at once, so no tap can land on it in between.
+    /// 2. **Mint the successor with the canonical name — the commit point.** The host stores a new
+    ///    session as a *draft*: `title` and `hidden` wait in the record and no row is written until
+    ///    the first prompt (`_ensure_session_db_row`). So this call does not rename anything yet,
+    ///    but it is the moment the outcome stops being reversible in this device's favour: its
+    ///    returned id is what every pointer below adopts, and on that first prompt the host hands
+    ///    the name to it and clears the archived row's title in the same write. A different
+    ///    idempotency key than the ordinary create is required — the gateway's 300 s dedupe would
+    ///    otherwise hand back the live session that was just archived.
+    /// 3. **Confirm the old chat is no longer the bot's chat.** One read. `nil` is the expected
+    ///    answer (no canonical row exists while the successor is a draft); the archived id is the
+    ///    one answer that means the archive did not take, and then the roll is undone.
+    /// 4. **Only now** is the old id recorded in Previous conversations, the local key rewritten and
+    ///    the bridge's own pointer published. Between steps 2 and 4 the app's own key carries the
+    ///    bot's identity — `canonicalChatIdentity` answers nothing, and `CanonicalBotChat.plan`
+    ///    adopts this id — which is why a crash here is repaired by the journal rather than left to
+    ///    chance.
+    @discardableResult
+    func rollBotChatIfNeeded(for botID: String) async -> SessionID? {
+        guard connection.isLive else { return nil }
+        // A roll this device began and a crash interrupted is finished first — even if the owner
+        // has since chosen Never, because the entry is what keeps the archived chat reachable.
+        let hasJournal = Self.defaults.data(forKey: Self.journalKey(botID)) != nil
+        guard botChatLimit != nil || hasJournal else { return nil }
+        guard let row = await hostBotChatRow(for: botID) else { return nil }
+        // The host has answered with the chat that IS the bot's now, so a journaled id that is not
+        // it belongs in Previous conversations. Done before the ceiling is read, so the list is
+        // right on the open that follows the crash.
+        settleRollJournal(for: botID, canonical: row.id)
+        guard let limit = botChatLimit else { return nil }
+        let alreadyArchived = previousConversations(for: botID).contains { $0.id == row.id }
+        let inFlight = turnInFlight(for: botID)
+        guard BotChatArchive.shouldRoll(count: row.count, limit: limit, inFlight: inFlight,
+                                        currentID: row.id, alreadyArchived: alreadyArchived) else {
+            if inFlight, row.count >= limit {
+                ClientLog.note("\(botID)'s Bot Chat is at \(row.count) messages, over the \(limit) "
+                               + "ceiling, but a turn is in flight: the roll waits",
+                               level: .info, category: "session")
+            }
+            return nil
+        }
+        return await rollBotChat(row, count: row.count, botID: botID)
+    }
+
+    /// The roll itself, once ``rollBotChatIfNeeded(for:)`` has decided it may happen.
+    private func rollBotChat(_ row: BotChatRow, count: Int, botID: String) async -> SessionID? {
+        let archived = row.id
+        // 0. The journal, before anything moves: if this process dies between the host's commit
+        //    and the list write below, the next open finishes the job (see `settleRollJournal`).
+        let stamp = botPreviewTimes[botID] ?? transcript.last?.at ?? Date()
+        beginRollJournal(BotChatArchive.Previous(id: archived, count: count,
+                                                 lastActive: stamp, archivedAt: Date()),
+                         for: botID)
+        // 1. The old row leaves the identity behind. Failing here changes nothing at all.
+        do {
+            try await client.archiveSession(archived, profile: botID)
+        } catch {
+            clearRollJournal(for: botID)
+            ClientLog.note("could not archive \(botID)'s Bot Chat (\(archived), \(count) messages); "
+                           + "the conversation is unchanged: \(error.localizedDescription)",
+                           level: .error, category: "session")
+            Self.noteSessionSync("could not archive “\(botID)”'s Bot Chat: \(error.localizedDescription)")
+            return nil
+        }
+        // 1b. And it must be *hidden* too, or the host will not let the successor take the name:
+        // `_resolve_title_conflict` frees a conflicting title only for an archived **and hidden**
+        // canonical row. A Bot Chat is born hidden, so this is a no-op in the ordinary case; a chat
+        // this app *adopted* from a pre-canonical session can be visible, and then this is what
+        // makes the transfer possible. Best effort — a host without the route is answered by the
+        // confirmation below.
+        do {
+            try await client.setSessionHidden(true, session: archived, profile: botID)
+        } catch {
+            ClientLog.note("could not hide \(archived) for \(botID) "
+                           + "(\(error.localizedDescription)); the successor may have to adopt the "
+                           + "name on its first turn",
+                           level: .warning, category: "session")
+        }
+        // 2. The successor, with the canonical name — the commit point.
+        let created: SessionID
+        do {
+            created = try await client.createCanonicalSession(
+                profile: botID,
+                idempotencyKey: "bot-chat:\(botID):\(archived)")
+        } catch {
+            ClientLog.note("the successor Bot Chat for \(botID) was refused "
+                           + "(\(error.localizedDescription)); putting \(archived) back",
+                           level: .error, category: "session")
+            // The undo is what decides whether the journal survives: if the row could not be put
+            // back, it is archived and nameless, and the next open must list it rather than let it
+            // disappear behind an id nothing shows.
+            if await unarchive(archived, botID: botID) { clearRollJournal(for: botID) }
+            return nil
+        }
+        // 3. The host's own answer, not this device's hope: the archived chat must no longer be
+        //    this bot's chat. `nil` is the expected answer — the host writes no row for a fresh
+        //    session until its first prompt, so between the archive and that prompt the bot has no
+        //    canonical row at all. A *different* id is also fine (the host materialised the
+        //    successor). The one answer that means the roll did not take is the archived id.
+        let confirmed = await hostBotChatRow(for: botID)
+        if confirmed?.id == archived {
+            ClientLog.note("the roll for \(botID) did not take: the host still calls \(archived) "
+                           + "its Bot Chat after archiving it; undoing it",
+                           level: .error, category: "session")
+            Self.noteSessionSync("the host did not accept the roll for “\(botID)”; "
+                                 + "the old conversation is unchanged")
+            if await unarchive(archived, botID: botID) { clearRollJournal(for: botID) }
+            return nil
+        }
+        // 4. The archive is a fact from here on, so the list records it before anything else.
+        recordPrevious(BotChatArchive.Previous(id: archived, count: count,
+                                               lastActive: stamp, archivedAt: Date()),
+                       for: botID)
+        clearRollJournal(for: botID)
+        // The archived chat's rows must not repaint under the fresh conversation: the snapshot is
+        // keyed by bot, and it still holds the 6,000-row transcript.
+        conversationCache.removeValue(forKey: botID)
+        conversationCacheOrder.removeAll { $0 == botID }
+        conversationCacheHostStamp.removeValue(forKey: botID)
+        conversationCacheReadFromHost.removeValue(forKey: botID)
+        forgetContextUsage(for: botID)
+        // A third Bot Chat appeared while this was in flight (another device rolled, or a manual
+        // mint). The archived conversation is listed either way; what must not happen is this
+        // device pointing the bot at a chat the host does not call its own.
+        if let confirmed, confirmed.id != created {
+            canonicalChatIDCache.removeValue(forKey: botID)
+            canonicalChatIDStamp.removeValue(forKey: botID)
+            ClientLog.note("the roll for \(botID) left \(archived) archived, but the host's Bot Chat "
+                           + "is now \(confirmed.id), not \(created); leaving it alone",
+                           level: .warning, category: "session")
+            return nil
+        }
+        canonicalChatIDCache[botID] = created
+        canonicalChatIDStamp[botID] = Date()
+        ClientLog.note("rolled \(botID)'s Bot Chat at \(count) messages: \(archived) moved to "
+                       + "Previous conversations, \(created) is the bot's chat now",
+                       level: .info, category: "session")
+        // The pane moves to the fresh conversation, and the two pointers this device owns are
+        // written with it: the local key and the bridge's row (`hermeyd` delivers bot-to-bot
+        // messages to `bot_sessions.stored_session_id`, so a stale row there would keep aiming
+        // them at the archived conversation). `adoptCreated` does all three — store the key, mark
+        // the draft, select it, publish — exactly as a brand-new Bot Chat is opened. Until the
+        // host writes the successor's row (its first prompt), that key *is* the bot's identity:
+        // `canonicalChatIdentity` answers nothing, and `CanonicalBotChat.plan` adopts this id.
+        return await adoptCreated(created, botID: botID)
+    }
+
+    /// Put an archived row back, best effort. The roll's undo, and the reason a half-finished roll
+    /// leaves the owner where he was.
+    ///
+    /// - Returns: whether the row is live again. The journal is cleared only on `true`: a row that
+    ///   could not be put back is archived and nameless, and the next open must list it rather than
+    ///   leave it unreachable.
+    @discardableResult
+    private func unarchive(_ stored: SessionID, botID: String) async -> Bool {
+        do {
+            try await client.unarchiveSession(stored, profile: botID)
+            ClientLog.note("un-archived \(stored) for \(botID): the roll was undone",
+                           level: .info, category: "session")
+            return true
+        } catch {
+            ClientLog.note("could not un-archive \(stored) for \(botID): \(error.localizedDescription)",
+                           level: .error, category: "session")
+            return false
+        }
+    }
+
+    /// The bot's Bot Chat was rolled by a turn that just settled.
+    ///
+    /// Runs off the turn's own completion, never inside it: the rows this turn wrote are already in
+    /// the transcript (and on the host), and nothing is streaming. Gated on the local evidence
+    /// first — `max(historyTotal, transcript.count)` is a **lower bound** on the conversation's size
+    /// (a windowed resume holds only a page, so the host's total is the honest figure), and it is
+    /// used for nothing but deciding whether asking the host is worth a round trip. The decision
+    /// itself is always the host's number, in ``rollBotChatIfNeeded(for:)``.
+    func rollBotChatAfterTurn(for botID: String) async {
+        guard let limit = botChatLimit else { return }
+        guard botID == selectedBotID else { return }
+        let evidence = max(historyTotal, transcript.count)
+        guard evidence >= limit else { return }
+        if await rollBotChatIfNeeded(for: botID) != nil {
+            // The next open must not re-read the ceiling from a cache of the archived chat.
+            await loadBotPreviews(force: true)
+        }
     }
 
     /// What the bridge says this bot's conversation is, normalised for `EndlessSessionPolicy`.
@@ -3386,9 +4413,11 @@ public final class AppModel: ObservableObject {
             }
             // Refresh first, then report: the notice is set last so nothing inside the refresh can
             // overwrite it, and the context gauge is cleared because it showed the *pre*-compaction
-            // size. The next turn's `usage` is the first honest number after a compaction.
+            // size — including the stored copy, so a relaunch cannot resurrect it. The next turn's
+            // `usage` is the first honest number after a compaction.
             await refreshTranscript(sid)
-            contextUsed = nil
+            clearContextUsage()
+            forgetContextUsage(for: selectedBotID)
             compactionNotice = "conversation compacted"
             finishCompaction()
         } catch {
@@ -3473,6 +4502,100 @@ public final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Context usage that survives a launch
+
+    /// Where a bot's last reported `usage` is kept: `UserDefaults`, per host, beside the other
+    /// per-bot facts this app already stores there (`botActivity`, the unread stamps, the endless
+    /// session id). Synchronous on purpose — the open path reads it before its first `await`, which
+    /// an actor (the disk cache) cannot answer.
+    private var contextUsageKey: String { "hermes.contextUsage.\(hostName)" }
+
+    private func loadContextUsage() {
+        guard let data = Self.defaults.data(forKey: contextUsageKey),
+              let decoded = try? JSONDecoder().decode([String: ContextUsageRecord].self, from: data)
+        else { return }
+        contextUsageRecords = decoded
+    }
+
+    private func saveContextUsage() {
+        guard let data = try? JSONEncoder().encode(contextUsageRecords) else { return }
+        Self.defaults.set(data, forKey: contextUsageKey)
+    }
+
+    /// Put the last number this device heard for `botID` back on screen.
+    ///
+    /// Called from `restoreConversation` (which both open paths run synchronously, before their
+    /// first host call), from `select` and from `adoptStoredConversation`, so the row reads
+    /// `394k/1M Tokens` on a cold launch instead of waiting for a turn. A bot that has never
+    /// reported usage has no record and nothing is drawn — the model alone, exactly as before.
+    /// `session` is the conversation the pane is about, when it is known: a record measured on a
+    /// different one is not painted. Nothing here computes a number; there is nothing to compute it
+    /// from, and the row would rather draw nothing than a guess.
+    @discardableResult
+    private func restoreContextUsage(for botID: String?, session: SessionID?) -> Bool {
+        guard let botID, let record = contextUsageRecords[botID] else { return false }
+        // The conversation the pane is about, when it is known: the snapshot's own id as it is about
+        // to be painted, else whatever the pane already holds. A record measured elsewhere is not
+        // painted over the wrong chat — and it is not deleted here either: it belongs to the bot's
+        // own conversation, and a glance at another session of the same bot must not destroy it.
+        // The delete happens where a change is *learned* (`selectedSessionID`'s observer).
+        if let known = session ?? selectedSessionID, known != record.session {
+            ClientLog.note("kept \(record.used) tokens of context for \(botID) in the store: "
+                           + "they were measured on \(record.session), \(known) is on screen",
+                           level: .info, category: "usage")
+            return false
+        }
+        contextUsed = record.used
+        contextMax = record.max > 0 ? record.max : nil
+        // Claimed by the session it was measured on: if the host resolves a different conversation
+        // for this bot, the `selectedSessionID` observer drops it before it can describe that chat.
+        contextUsageSession = record.session
+        ClientLog.note("restored \(record.used) tokens of context for \(botID) (session \(record.session))",
+                       level: .info, category: "usage")
+        return true
+    }
+
+    /// Record a `usage` the host just reported, under the bot that was on screen.
+    ///
+    /// This is the only writer: the numbers come from the host's `message.complete` and from
+    /// nothing else — never from a transcript's length, which measures how much was said rather
+    /// than how much of the window it filled.
+    private func claimContextUsage(used: Int, max: Int, session: SessionID, botID: String?) {
+        contextUsed = used
+        // A host that omits `context_max` must not turn the gauge into "100%".
+        if max > 0 { contextMax = max }
+        contextUsageSession = session
+        guard let botID else { return }
+        // What the row says now, so the restored row cannot disagree with the live one.
+        contextUsageRecords[botID] = ContextUsageRecord(session: session,
+                                                        used: used,
+                                                        max: contextMax ?? 0)
+        saveContextUsage()
+    }
+
+    /// Clear the pair on screen without touching what is stored for another conversation.
+    private func clearContextUsage() {
+        contextUsed = nil
+        contextMax = nil
+        contextUsageSession = nil
+    }
+
+    /// Drop a stored number that no longer describes the conversation now on screen.
+    private func forgetContextUsage(for botID: String?, keeping session: SessionID) {
+        guard let botID, let record = contextUsageRecords[botID], record.session != session else { return }
+        contextUsageRecords.removeValue(forKey: botID)
+        saveContextUsage()
+        ClientLog.note("dropped the stored context usage for \(botID): it was measured on "
+                       + "\(record.session), and \(session) is on screen", level: .info, category: "usage")
+    }
+
+    /// Forget a bot's number outright — the conversation it described is gone (a reset), or a
+    /// compaction rewrote it so the size it measured is no longer the size of this chat.
+    private func forgetContextUsage(for botID: String?) {
+        guard let botID, contextUsageRecords.removeValue(forKey: botID) != nil else { return }
+        saveContextUsage()
+    }
+
     private static func endlessKey(_ botID: String) -> String {
         Keys.endlessSessionPrefix + botID
     }
@@ -3504,9 +4627,14 @@ public final class AppModel: ObservableObject {
             // Scoped to the open bot: an unscoped catalogue answers for whichever profile the
             // gateway defaults to, which is why the chip kept saying deepseek after a bot's own
             // default had been changed to something else.
-            modelLabel = try await client.modelCatalog(profile: selectedBotID).current?.label
+            let current = try await client.modelCatalog(profile: selectedBotID).current
+            modelLabel = current?.label
+            // The provider travels with the model: the composer's chrome prints `provider/model`,
+            // and a label on its own cannot say which provider is answering.
+            modelProvider = current?.provider
         } catch {
             modelLabel = nil
+            modelProvider = nil
         }
     }
 
@@ -3891,6 +5019,41 @@ public final class AppModel: ObservableObject {
         try await client.cancelCredentialCard(id: id)
     }
 
+    /// The host's vault by name (`GET /v1/vault`) — never by value, because `VaultItem` carries none.
+    ///
+    /// Reached from the Mac's and the phone's Vault panes, which show what this returns and nothing
+    /// else. A failure is thrown rather than turned into `[]`: the panes must be able to tell an empty
+    /// vault from a host they could not reach.
+    public func vaultItems() async throws -> [VaultItem] {
+        try await client.vaultItems()
+    }
+
+    /// Forget one saved secret (`DELETE /v1/vault/{name}`). The host answers 404 for a name it does not
+    /// have, and the pane surfaces that instead of removing the row as if it had worked.
+    public func deleteVaultItem(name: String) async throws {
+        try await client.deleteVaultItem(name: name)
+    }
+
+    /// Rename a saved secret and, when `value` is given, replace what is stored under it
+    /// (`PATCH /v1/vault/{name}`).
+    ///
+    /// `value` is the only value this side ever handles on the vault's behalf, and it travels one way:
+    /// into the request. Nothing comes back to keep — the host answers with the item's new name — so a
+    /// sheet that calls this has nothing left to clear but the field it was typed into.
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        try await client.editVaultItem(name: name, rename: rename, value: value)
+    }
+
+    /// Ask the host for a `store` card so the owner can type one value into the sheet that already
+    /// exists. The value never passes through this call — only the name and the labels do.
+    public func createVaultEntryCard(name: String, site: String?, note: String?) async throws -> CredentialCard {
+        try await client.createCredentialCard(site: site ?? "this host",
+                                              fields: ["secret"],
+                                              store: true,
+                                              saveAs: name,
+                                              note: note)
+    }
+
     /// One native agent card (`GET /v1/cards/{id}?session=…&message=…`) — the document a `::card{…}`
     /// line in a reply names.
     ///
@@ -3910,20 +5073,69 @@ public final class AppModel: ObservableObject {
     /// behaviour it had before they were synced. Everything else asks the host.
     public var reactionsAreHostBacked: Bool { client.bridgeAvailable }
 
-    /// The emoji on one message, in the conversation on screen.
+    /// The emoji on one message of the conversation on screen.
     ///
     /// One map serves both cases: the host's answer when paired, the device's own document when
     /// not. The views never touch `@AppStorage` — one place decides, so a reaction can no longer be
     /// "local" on one device and invisible on the other.
-    public func reaction(for key: ReactionKey) -> String? {
-        reactions[key.storageKey]
+    ///
+    /// The caller supplies only the message half, from the shared rule
+    /// (``ReactionKey/message(rowID:entryID:)``); the host, bot and session are this model's. A shell
+    /// that assembled the composite itself is how a badge could be stored under a name the row never
+    /// looked up.
+    public func reaction(forMessage message: String) -> String? {
+        guard let key = conversationReactionKey(message) else { return nil }
+        return reactions[key.storageKey]
+    }
+
+    /// Set or clear one message's reaction, given the message half of its key.
+    public func setReaction(_ emoji: String?, forMessage message: String) async {
+        guard let key = conversationReactionKey(message) else { return }
+        await setReaction(emoji, for: key)
+    }
+
+    /// The emoji on one transcript row of the conversation on screen.
+    public func reaction(forRowID rowID: Int64?, entryID: String) -> String? {
+        reaction(forMessage: ReactionKey.message(rowID: rowID, entryID: entryID))
+    }
+
+    /// Set or clear the reaction on one row of the conversation on screen.
+    ///
+    /// The toggle the pickers have always had: the emoji already there is removed, any other
+    /// replaces it — so a message can only ever wear one reaction, from either device.
+    public func react(_ emoji: String, rowID: Int64?, entryID: String) async {
+        let message = ReactionKey.message(rowID: rowID, entryID: entryID)
+        guard let key = conversationReactionKey(message) else { return }
+        await setReaction(reactions[key.storageKey] == emoji ? nil : emoji, for: key)
+    }
+
+    /// One message's full key: this model's host, bot and session, and the caller's message half.
+    ///
+    /// The session is the **durable** id, not whichever id this window happens to be attached as: a
+    /// runtime id is minted per attach, so a key built from it is one the other device can never
+    /// compute.
+    private func conversationReactionKey(_ message: String) -> ReactionKey? {
+        guard let bot = selectedBotID, let session = reactionSession else { return nil }
+        return ReactionKey(host: hostName, bot: bot, session: session, message: message)
+    }
+
+    /// The conversation on screen, as both devices know it.
+    ///
+    /// `selectedSessionID` is normally the durable id already; it is not when the window adopted a
+    /// moved conversation from an event. `durableIDs` is what `adopt` recorded for that id.
+    private var reactionSession: SessionID? {
+        guard let session = selectedSessionID else { return nil }
+        return durableIDs[session] ?? session
     }
 
     /// Set one reaction, or clear it with `nil` (the toggle is the caller's, as it always was).
     ///
-    /// Paired, the host is the truth: the badge moves now and is put back if the write fails, so a
-    /// reaction never looks saved when the other device will never see it. Unpaired, it is the
-    /// device's own document and no network is touched — the offline behaviour, unchanged.
+    /// Paired, the host is the truth: the badge moves now and is put back if the host **refuses**
+    /// it, so a reaction never looks saved when the other device will never see it. A host that
+    /// never answered — offline, a dead ticket — is a tap kept on this device and handed over on the
+    /// next open, because the reader's own reaction must not blink away under their finger.
+    /// Unpaired, it is the device's own document and no network is touched: the offline behaviour,
+    /// unchanged.
     public func setReaction(_ emoji: String?, for key: ReactionKey) async {
         guard ReactionKey.isValidMessage(key.message) else { return }
         guard client.bridgeAvailable else {
@@ -3936,32 +5148,46 @@ public final class AppModel: ObservableObject {
         do {
             try await client.setReaction(bot: key.bot, session: key.session,
                                          message: key.message, emoji: emoji, by: deviceName)
-        } catch {
-            // Revert: a badge the host does not have is a lie the other device will contradict at
-            // the next open.
+            // This device's copy follows the host's: an offline launch draws the same badge, and
+            // the next open has nothing left to hand over.
+            reactionLocal.set(emoji, for: key.storageKey)
+        } catch ReactionSyncError.refused(let status, let detail) {
+            // The host answered and said no (a key it cannot place, an emoji it will not store).
+            // Putting the badge back is what keeps the screen honest: the other device would
+            // contradict it at the next open.
             apply(previous, to: key.storageKey)
-            lastSendError = "could not save the reaction: \(error.localizedDescription)"
-            ClientLog.note("reaction write failed for \(key.message): \(error.localizedDescription)",
+            reactionLocal.set(previous, for: key.storageKey)
+            lastSendError = "could not save the reaction: "
+                + (detail ?? "the host refused it (\(status))")
+            ClientLog.note("reaction write refused for \(key.message): \(status) \(detail ?? "")",
+                           level: .warning, category: "reactions")
+        } catch {
+            // No answer at all: keep the tap, keep it on this device, and let the next open push it.
+            reactionLocal.set(emoji, for: key.storageKey)
+            reactionsImported.remove(conversationID(bot: key.bot, session: key.session))
+            lastSendError = "saved on this device; it will sync when the host is reached"
+            ClientLog.note("reaction write unreachable for \(key.message): \(error.localizedDescription)",
                            level: .warning, category: "reactions")
         }
     }
 
     /// Fill `reactions` for whatever conversation is on screen.
     ///
-    /// Called on every session open and bot switch. The transcript does not wait for it: this is a
-    /// separate read with its own timeout, and a badge arriving a moment late is better than a pane
-    /// held shut by an HTTP round trip.
-    private func refreshReactions() {
+    /// Called on every conversation open (`adoptStoredConversation`, `paintAdoptedConversation`), on
+    /// every bot pick that resumes one (`select`), on every socket `ready` — which is also what a
+    /// reconnect and a foreground arrive as — and by each shell when it comes back to the front. The
+    /// host is the truth, and this read is what makes a reaction set on the other device appear here
+    /// even when its live frame was missed while this app was asleep.
+    public func refreshReactions() {
         reactionsTask?.cancel()
-        guard let bot = selectedBotID, let session = selectedSessionID else {
+        guard let bot = selectedBotID, let session = reactionSession else {
             reactions = [:]
             return
         }
-        guard client.bridgeAvailable else {
-            // Unpaired: the device's own document, which is all there is.
-            reactions = localReactions(bot: bot, session: session)
-            return
-        }
+        // What this device already knows, at once. Paired, it is the last answer the host gave
+        // (mirrored on every read); unpaired, it is all there is.
+        reactions = localReactions(bot: bot, session: session)
+        guard client.bridgeAvailable else { return }
         let epoch = botEpoch
         reactionsTask = Task { [weak self] in
             await self?.loadReactions(bot: bot, session: session, epoch: epoch)
@@ -3969,25 +5195,41 @@ public final class AppModel: ObservableObject {
     }
 
     private func loadReactions(bot: String, session: SessionID, epoch: Int) async {
-        await importLocalReactions(bot: bot, session: session, epoch: epoch)
         do {
             let rows = try await client.reactions(bot: bot, session: session)
-            guard epoch == botEpoch, selectedSessionID == session, selectedBotID == bot else { return }
-            var next: [String: String] = [:]
+            guard epoch == botEpoch, reactionSession == session, selectedBotID == bot else { return }
+            var host: [String: String] = [:]
             for (message, reaction) in rows {
                 let key = ReactionKey(host: hostName, bot: bot, session: session, message: message)
-                next[key.storageKey] = reaction.emoji
+                host[key.storageKey] = reaction.emoji
             }
-            reactions = next
+            // Then hand over what this device holds and the host has never seen — a tap made
+            // offline, or a reaction from before the host owned them — once, and only where the
+            // host answered nothing. A key the host already has is the host's answer, not ours to
+            // overwrite with an older copy.
+            let known = Set(rows.keys)
+            let handed = await importLocalReactions(bot: bot, session: session,
+                                                    known: known, epoch: epoch)
+            guard epoch == botEpoch, reactionSession == session, selectedBotID == bot else { return }
+            for (message, emoji) in handed {
+                let key = ReactionKey(host: hostName, bot: bot, session: session, message: message)
+                host[key.storageKey] = emoji
+            }
+            // The device's copy becomes what the host just agreed to: an offline launch draws the
+            // same badges, and an entry the other device cleared cannot come back from this cache.
+            reactionLocal.replaceConversation(
+                ReactionKey.conversationPrefix(host: hostName, bot: bot, session: session),
+                with: host)
+            reactions = host
         } catch is CancellationError {
             return
         } catch ReactionSyncError.noBridge {
             // The route is not there (an older host): this device keeps its own copy, and the
             // behaviour is what it was before reactions were synced.
-            guard epoch == botEpoch, selectedSessionID == session else { return }
+            guard epoch == botEpoch, reactionSession == session else { return }
             reactions = localReactions(bot: bot, session: session)
         } catch {
-            guard epoch == botEpoch, selectedSessionID == session else { return }
+            guard epoch == botEpoch, reactionSession == session else { return }
             // The host could not answer. Draw what this device already had rather than nothing —
             // and do not treat it as an error the reader has to dismiss.
             reactions = localReactions(bot: bot, session: session)
@@ -3996,37 +5238,41 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    /// Hand the device's reactions for one conversation to the host, once.
+    /// Hand the device's reactions for one conversation to the host — once, and only the ones the
+    /// host has nothing for.
     ///
-    /// This is what stops an upgrade from losing them: a reaction set while unpaired (or before the
-    /// host owned them) is still in the local document, and the first paired open pushes it up. The
-    /// conversation is then marked imported and never pushed again — the host is the truth, and a
-    /// re-send would resurrect a reaction the other device has since cleared.
-    private func importLocalReactions(bot: String, session: SessionID, epoch: Int) async {
-        let conversation = "\(bot)\u{0}\(session)"
-        guard !reactionsImported.contains(conversation) else { return }
+    /// This is what stops an upgrade, or a tap made offline, from being lost: the reaction is still
+    /// in the local document, and the first open with the host reachable pushes it up. The
+    /// conversation is then marked imported — the host is the truth, and a re-send would resurrect a
+    /// reaction the other device has since cleared. A `known` key is never touched: overwriting the
+    /// host's copy with this device's older one is the same bug from the other side.
+    ///
+    /// Returns the ones that landed, keyed by the message half, so the caller can draw them without
+    /// a second round trip.
+    private func importLocalReactions(bot: String, session: SessionID,
+                                      known: Set<String>, epoch: Int) async -> [String: String] {
+        let conversation = conversationID(bot: bot, session: session)
+        guard !reactionsImported.contains(conversation) else { return [:] }
         var pending: [(key: ReactionKey, emoji: String)] = []
         for (storageKey, emoji) in reactionLocal.all() {
             guard let key = ReactionKey.parse(storageKey),
                   key.host == hostName, key.bot == bot, key.session == session,
-                  ReactionKey.isValidMessage(key.message) else { continue }
+                  ReactionKey.isValidMessage(key.message),
+                  !known.contains(key.message) else { continue }
             pending.append((key: key, emoji: emoji))
         }
         guard !pending.isEmpty else {
             reactionsImported.insert(conversation)
-            return
+            return [:]
         }
-        // Show them at once: a badge this device set is the reader's, and it must not blink while
-        // the host is told.
-        for (key, emoji) in pending where reactions[key.storageKey] == nil {
-            reactions[key.storageKey] = emoji
-        }
+        var landed: [String: String] = [:]
         var allLanded = true
         for (key, emoji) in pending {
-            if epoch != botEpoch { return }
+            if epoch != botEpoch { return landed }
             do {
                 try await client.setReaction(bot: key.bot, session: key.session,
                                              message: key.message, emoji: emoji, by: deviceName)
+                landed[key.message] = emoji
             } catch {
                 // Offline, or the host refused one: try the whole set again on the next open
                 // rather than marking the conversation imported and losing it.
@@ -4036,6 +5282,7 @@ public final class AppModel: ObservableObject {
         if allLanded {
             reactionsImported.insert(conversation)
         }
+        return landed
     }
 
     /// The device's own reactions for one conversation, keyed by storage key.
@@ -4047,6 +5294,12 @@ public final class AppModel: ObservableObject {
             out[storageKey] = emoji
         }
         return out
+    }
+
+    /// One conversation, as the imported-set spells it. A NUL cannot appear in a profile name or a
+    /// session id, so two different pairs cannot share one string.
+    private func conversationID(bot: String, session: SessionID) -> String {
+        "\(bot)\u{0}\(session)"
     }
 
     /// Put one emoji in the in-memory map (or take it out).
@@ -5068,11 +6321,18 @@ public final class AppModel: ObservableObject {
             // after *every* reply just to reorder one row; the host's own timestamps arrive on the
             // next list appearance or foreground, which is when the other device's turns matter.
             if let bot = selectedBotID { recordActivity(for: bot) }
+            // The ceiling, once the turn has settled. Deferred into its own task so the reply on
+            // screen is finished with before anything moves: a roll here archives this very
+            // conversation and puts the fresh one on screen, and doing that inside the completion
+            // would tear down the state the lines above are still writing.
+            if let bot = selectedBotID {
+                Task { @MainActor [weak self] in await self?.rollBotChatAfterTurn(for: bot) }
+            }
         case .contextUsage(let session, let used, let max, _):
             guard session == selectedSessionID else { return }
-            contextUsed = used
-            // A host that omits `context_max` must not turn the gauge into "100%".
-            if max > 0 { contextMax = max }
+            // The pair, the claim and the stored copy move together: the number the user reads,
+            // the conversation it was measured on, and what the next launch restores.
+            claimContextUsage(used: used, max: max, session: session, botID: selectedBotID)
         case .toolStart(let session, let name, let callID, let input):
             guard session == selectedSessionID else { return }
             beginLiveTurn()
@@ -5137,18 +6397,32 @@ public final class AppModel: ObservableObject {
             // The other device reacted. Applied only to the conversation on screen and only for the
             // bot it names: `reactions` holds one conversation, and a frame for another one must
             // not decorate this transcript. A removal arrives as `emoji == nil`.
+            //
+            // The frame names the session the reacting device sent — the durable id it filed under.
+            // `sessionAliases` is the map between that and the runtime id this socket may be
+            // attached as, and this is the same resolution the error branch does: comparing the raw
+            // string is how a reaction made on one device was dropped by the other because the two
+            // apps had spelled one conversation two ways. The badge also goes in under the durable
+            // id the rows look up (`filed`), never under the frame's spelling of it.
             guard bot.isEmpty || bot == selectedBotID,
-                  session == selectedSessionID,
-                  let botID = selectedBotID else { return }
-            let key = ReactionKey(host: hostName, bot: botID, session: session, message: message)
+                  let botID = selectedBotID,
+                  let filed = reactionSession else { return }
+            // The frame names the session the reacting device filed it under — its durable id. It is
+            // resolved through the alias table as well, in case this socket is attached to the same
+            // conversation under a runtime id.
+            let named = Self.resolveSession(session, aliases: sessionAliases)
+            guard named == filed || named == selectedSessionID else { return }
+            let key = ReactionKey(host: hostName, bot: botID, session: filed, message: message)
             apply(emoji, to: key.storageKey)
+            // And the device's copy follows, so a launch with no wire draws the same badge.
+            reactionLocal.set(emoji, for: key.storageKey)
         case .error(let session, _, let message):
             // The host's failure text belongs to the conversation it names, and one socket serves
             // every bot this app opens — including the ones it opens in the background to read their
             // previews. Painting those without asking which session they were about put "could not
             // start the assistant … no LLM provider configured" from another bot's session into the
             // `cody` pane, whose own conversation was fine.
-            let named = sessionAliases[session] ?? session
+            let named = Self.resolveSession(session, aliases: sessionAliases)
             guard !named.isEmpty, named == selectedSessionID else {
                 ClientLog.note("host error for \(named.isEmpty ? "no session" : named) while "
                                + "\(selectedSessionID ?? "nothing") is open: \(message)",
@@ -5315,13 +6589,69 @@ public final class AppModel: ObservableObject {
     /// Whether the host holds rows older than the ones on screen.
     public var hasEarlierHistory: Bool { (earlierCursor ?? 0) > 0 }
 
+    /// How many rows the automatic fill will pull behind a windowed resume.
+    ///
+    /// A ceiling, not a target: the newest page plus these is more than anyone scrolls back in one
+    /// sitting, and the manual row still fetches further for the reader who does.
+    public static let autoBackfillRows = 1200
+    /// Rows per background page — the same order as the relay's own page ceiling.
+    public static let backfillPage = 400
+
+    /// Fill the pages behind a windowed resume in the background, so going back is not 44 taps.
+    ///
+    /// A resume carries the newest page and nothing else (`history.shown` says how much), and every
+    /// row behind it stayed on the host until the reader asked 150 at a time. The cost of a page is
+    /// a read of the relay's own copy of this connection's resume — no engine work, no agent — so a
+    /// few pages after an open are cheap; what was expensive was making a person tap for them.
+    ///
+    /// Bounded (`autoBackfillRows`), chunked (one page, then a breath), silent (no scroll
+    /// re-anchor — see `loadEarlierHistory`), and cancelled by a bot switch, by leaving the screen,
+    /// or by the next open.
+    public func scheduleHistoryBackfill() {
+        backfillTask?.cancel()
+        backfillTask = nil
+        backfillBotID = nil
+        guard let sid = selectedSessionID, let botID = selectedBotID,
+              (earlierCursor ?? 0) > 0 else { return }
+        backfillBotID = botID
+        backfillTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled,
+                  self.selectedSessionID == sid,
+                  self.selectedBotID == botID,
+                  (self.earlierCursor ?? 0) > 0,
+                  self.transcript.count < Self.autoBackfillRows {
+                let before = self.transcript.count
+                // Yield before the page: the fill runs behind a screen somebody is reading, and a
+                // page's arrival re-draws the rows that are already on screen. Starting the next
+                // page in the same main-actor turn as the last one's arrival is how one 1,200-row
+                // fill used to become a single unbounded slice.
+                await Task.yield()
+                await self.loadEarlierHistory(limit: Self.backfillPage, silent: true)
+                // Nothing arrived: a manual tap is in flight, or the host has nothing older. Either
+                // way this loop must not spin.
+                guard self.transcript.count > before else { return }
+                // One page, then a breath: this runs behind a screen somebody is reading, and the
+                // socket is also carrying the live conversation.
+                try? await Task.sleep(nanoseconds: 120_000_000)
+            }
+        }
+    }
+
     /// Pull the next page of older rows and put them above what is already drawn.
     ///
     /// The page ends exactly where the oldest row on screen begins — the bridge slices its copy of
     /// this connection's own resume by `cursor` — so this can only extend the transcript, never
     /// repeat or skip a row. Prepending shifts every row down, so the fold is remembered as
     /// `earlierAnchor` and the views re-anchor to it instead of jumping to the newest message.
-    public func loadEarlierHistory(limit: Int = 150) async {
+    public func loadEarlierHistory(limit: Int = 400, silent: Bool = false) async {
+        // A tap is the reader going back by hand: the fill stops, so the pages they ask for are the
+        // pages that land and no silent one arrives on top of them mid-scroll.
+        if !silent {
+            backfillTask?.cancel()
+            backfillTask = nil
+            backfillBotID = nil
+        }
         guard !loadingEarlier, let sid = selectedSessionID, (earlierCursor ?? 0) > 0 else { return }
         loadingEarlier = true
         defer { loadingEarlier = false }
@@ -5337,8 +6667,10 @@ public final class AppModel: ObservableObject {
                 let page = try await client.historyPage(sid, profile: selectedBotID,
                                                         cursor: cursor, limit: limit)
                 guard selectedSessionID == sid else { return }
-                let known = Set(transcript.map(\.id))
-                let fresh = page.entries.filter { !known.contains($0.id) }
+                // De-duplicated against the ids the model already holds, which `transcriptDidChange`
+                // maintains: `Set(transcript.map(\.id))` here was 6,400 string hashes on the main
+                // actor for every page that landed.
+                let fresh = page.entries.filter { !transcriptIDs.contains($0.id) }
                 ClientLog.note("earlier page: asked at \(cursor), got \(page.entries.count) rows, "
                                + "\(fresh.count) new, cursor now \(page.cursor.map(String.init) ?? "nil")",
                                level: .info, category: "paging")
@@ -5355,11 +6687,18 @@ public final class AppModel: ObservableObject {
                     }
                     continue
                 }
-                transcript.insert(contentsOf: SentAttachmentVault.decorate(fresh, sessionID: sid),
-                                  at: 0)
+                let decorated = await SentAttachmentVault.decorated(fresh, sessionID: sid)
+                // The vault join is a suspension: the conversation can have moved under it.
+                guard selectedSessionID == sid else { return }
+                transcript.insert(contentsOf: decorated, at: 0)
                 turnRowStart += fresh.count
-                earlierAnchor = fold
-                earlierLoads += 1
+                // A page the *reader* asked for is re-anchored to the row they were reading; a page
+                // the background fill fetched is not, because nobody was looking at the fold — the
+                // reader is at the newest rows and a re-anchor would yank them into history.
+                if !silent {
+                    earlierAnchor = fold
+                    earlierLoads += 1
+                }
                 cacheTranscriptSoon(sid)
                 return
             } catch {
@@ -5374,17 +6713,15 @@ public final class AppModel: ObservableObject {
 
     /// The rows the transcript draws. Every other reader (counts, search over history, the last
     /// reply) keeps `transcript`: hiding a card is a display choice, not a loss of history.
+    ///
+    /// The cache splices a page onto what it already filtered instead of walking the conversation
+    /// again — a page landing above the reader is the one moment this list changes while the main
+    /// actor is busy drawing, and a 6,400-row walk there is 6,400 rows the reader never asked to
+    /// see re-filtered.
     public var visibleTranscript: [TranscriptEntry] {
-        if let cached = visibleTranscriptCache,
-           cached.showToolCalls == showToolCalls,
-           cached.showReasoning == showReasoning {
-            return cached.rows
-        }
-        let rows = TranscriptVisibility.rows(transcript,
-                                              showToolCalls: showToolCalls,
-                                              showReasoning: showReasoning)
-        visibleTranscriptCache = (showToolCalls, showReasoning, rows)
-        return rows
+        visibleTranscriptCache.rows(transcript,
+                                    showToolCalls: showToolCalls,
+                                    showReasoning: showReasoning)
     }
 
     /// The running turn's cards, or nothing when the user turned tool calls off.

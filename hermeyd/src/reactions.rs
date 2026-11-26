@@ -900,4 +900,97 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// A bearer for one paired device. Access tokens are the long-lived credential the relay and a
+    /// script use, and each names its own device — which is what makes this two devices rather than
+    /// one caller twice.
+    fn device_header(st: &Arc<AppState>, device: &str) -> HeaderMap {
+        let token = st.tickets.mint_access(device);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        headers
+    }
+
+    /// The next frame the host publishes, decoded.
+    async fn next_frame(heard: &mut tokio::sync::broadcast::Receiver<String>) -> Value {
+        let line = tokio::time::timeout(std::time::Duration::from_secs(2), heard.recv())
+            .await
+            .expect("the frame was published")
+            .expect("the channel is open");
+        serde_json::from_str(&line).expect("a JSON frame")
+    }
+
+    /// The report, at the route level: "I gave a thumbs-up on the Mac and it never reached the
+    /// phone; on the phone I gave a heart and it never reached the PC."
+    ///
+    /// Two paired devices, one message. A writes and B reads the same emoji; B replaces it and A's
+    /// socket hears the replacement (one badge, not two); B clears it and both the next read and the
+    /// live frame agree it is gone. This is the part of the path the host owns — the frames it emits
+    /// are the ones both apps decode — so a break in it is a break the apps cannot fix.
+    #[tokio::test]
+    async fn two_devices_agree_on_one_reaction_and_on_its_removal() {
+        let dir = scratch("two-devices");
+        let st = state(&dir);
+        let mac = device_header(&st, "device-mac");
+        let phone = device_header(&st, "device-phone");
+        let mut heard = st.relay_sockets.subscribe();
+
+        put_reaction(
+            State(Arc::clone(&st)),
+            mac.clone(),
+            Json(put_body(BOT, SESSION, "row:7", "👍", "Mo's Mac")),
+        )
+        .await
+        .expect("the Mac's reaction is stored");
+        let set = next_frame(&mut heard).await;
+        assert_eq!(set["params"]["type"], "reaction.updated");
+        assert_eq!(set["params"]["payload"]["message"], "row:7");
+        assert_eq!(set["params"]["payload"]["emoji"], "👍");
+
+        let on_phone = get_reactions(State(Arc::clone(&st)), phone.clone(), Query(get_q(BOT, SESSION)))
+            .await
+            .expect("the phone can read it");
+        assert_eq!(
+            reactions_of(&on_phone.0),
+            vec![("row:7".to_string(), "👍".to_string(), "Mo's Mac".to_string())]
+        );
+
+        // The phone reacts to the same message: it replaces rather than adding a second badge, and
+        // the Mac's open socket hears it without asking.
+        put_reaction(
+            State(Arc::clone(&st)),
+            phone.clone(),
+            Json(put_body(BOT, SESSION, "row:7", "❤️", "iPhone")),
+        )
+        .await
+        .expect("the phone's replaces it");
+        let replaced = next_frame(&mut heard).await;
+        assert_eq!(replaced["params"]["payload"]["emoji"], "❤️");
+        assert_eq!(replaced["params"]["payload"]["by"], "iPhone");
+        let on_mac = get_reactions(State(Arc::clone(&st)), mac.clone(), Query(get_q(BOT, SESSION)))
+            .await
+            .expect("the Mac reads the same conversation");
+        assert_eq!(reactions_of(&on_mac.0).len(), 1, "one message wears one reaction");
+
+        // Cleared on the phone: the frame says `null` (not "absent"), and the Mac's next read is
+        // empty — so the badge cannot survive on either device.
+        put_reaction(
+            State(Arc::clone(&st)),
+            phone.clone(),
+            Json(put_body(BOT, SESSION, "row:7", "", "iPhone")),
+        )
+        .await
+        .expect("cleared");
+        let cleared = next_frame(&mut heard).await;
+        assert!(cleared["params"]["payload"]["emoji"].is_null());
+        let after = get_reactions(State(Arc::clone(&st)), mac, Query(get_q(BOT, SESSION)))
+            .await
+            .expect("read");
+        assert!(reactions_of(&after.0).is_empty(), "a cleared reaction is gone on both");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

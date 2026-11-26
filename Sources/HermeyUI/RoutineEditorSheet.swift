@@ -84,6 +84,7 @@ public struct RoutineEditorSheet: View {
                     }
                     .font(TypeScale.font(TypeScale.md))
                     .accessibilityIdentifier("routine.deliver")
+                    .hermeyFocusQuiet()
                 } footer: {
                     Text("Results are always kept in the routine's history too.")
                         .font(TypeScale.font(TypeScale.sm))
@@ -123,6 +124,7 @@ public struct RoutineEditorSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
@@ -131,6 +133,7 @@ public struct RoutineEditorSheet: View {
                         Button("Create Routine") { Task { await save() } }
                             .disabled(!draft.isCreatable)
                             .accessibilityIdentifier("routine.create")
+                            .hermeyFocusQuiet()
                     }
                 }
             }
@@ -148,6 +151,7 @@ public struct RoutineEditorSheet: View {
         }
         .pickerStyle(.segmented)
         .accessibilityIdentifier("routine.mode")
+        .hermeyFocusQuiet()
 
         switch draft.schedule.mode {
         case .daily, .weekly, .monthly:
@@ -157,6 +161,7 @@ public struct RoutineEditorSheet: View {
                         Text(RoutineSchedule.weekdayName(day)).tag(day)
                     }
                 }
+                .hermeyFocusQuiet()
             }
             if draft.schedule.mode == .monthly {
                 Picker("Day", selection: $draft.schedule.dayOfMonth) {
@@ -164,6 +169,7 @@ public struct RoutineEditorSheet: View {
                         Text(RoutineSchedule.ordinal(day)).tag(day)
                     }
                 }
+                .hermeyFocusQuiet()
             }
             timePicker
 
@@ -172,12 +178,14 @@ public struct RoutineEditorSheet: View {
                 Text("Every \(draft.schedule.repeatCount) \(draft.schedule.repeatUnit.label.lowercased())")
                     .font(TypeScale.font(TypeScale.md))
             }
+            .hermeyFocusQuiet()
             Picker("Unit", selection: $draft.schedule.repeatUnit) {
                 ForEach(RoutineSchedule.RepeatUnit.allCases) { unit in
                     Text(unit.label).tag(unit)
                 }
             }
             .pickerStyle(.segmented)
+            .hermeyFocusQuiet()
 
         case .once:
             DatePicker("Time", selection: $draft.schedule.onceAt,

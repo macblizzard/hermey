@@ -192,6 +192,20 @@ public protocol BotSessionPointerStore: Sendable {
     /// `POST /v1/credentials/cards/{id}/cancel`
     func cancelCredentialCard(id: String) async throws
 
+    /// `GET /v1/vault` — the stashed secrets by name (never by value).
+    func vaultItems() async throws -> [VaultItem]
+    /// `DELETE /v1/vault/{name}`
+    func deleteVaultItem(name: String) async throws
+    /// `PATCH /v1/vault/{name}` — rename an item and/or replace its value, in one request.
+    ///
+    /// `rename` is the name it should have afterwards; `value` is the replacement, or `nil` to keep the
+    /// one the host holds. The reply says which half happened and never anything that was typed, which
+    /// is why this returns nothing: there is no value to return and no need to invent a shape for one.
+    func editVaultItem(name: String, rename: String, value: String?) async throws
+    /// `POST /v1/credentials/cards` — make a card; a Vault pane makes a `store` one.
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard
+
     /// `GET /v1/integrations` — connectable services and whether this host can connect them at all.
     func integrations() async throws -> IntegrationsState
     /// `POST /v1/integrations/{slug}/connect` — the hosted sign-in URL to open.
@@ -225,6 +239,22 @@ public protocol BotSessionPointerStore: Sendable {
     /// the change on the app socket, so the caller does not have to.
     func setReaction(bot: String, session: SessionID, message: String,
                      emoji: String?, by: String) async throws
+
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The host refuses a turn that is running (409), closes the engine's live copy first, and then
+    /// writes `active=0, compacted=0` — a soft retire, never a row gone. The reply carries the
+    /// conversation's new display count. Requirements, not extension-only functions, so a call
+    /// through `any BotSessionPointerStore` reaches the real implementation (see the note on `rooms`).
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it.
+    ///
+    /// What "edit and resend" is built on: the old ask and its answer go, then the owner's new text
+    /// is sent as an ordinary turn against the same conversation.
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult
 
     /// `GET /v1/bot-transfers?between=a,b` — the exchanges between two bots, oldest first.
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer]
@@ -332,6 +362,16 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
 
+    func vaultItems() async throws -> [VaultItem] { throw BotAdminUnavailable() }
+    func deleteVaultItem(name: String) async throws { throw BotAdminUnavailable() }
+    func editVaultItem(name: String, rename: String, value: String?) async throws {
+        throw BotAdminUnavailable()
+    }
+    func createCredentialCard(site: String, fields: [String], store: Bool,
+                              saveAs: String?, note: String?) async throws -> CredentialCard {
+        throw BotAdminUnavailable()
+    }
+
     func integrations() async throws -> IntegrationsState {
         throw BotAdminUnavailable()
     }
@@ -381,6 +421,20 @@ public extension BotSessionPointerStore {
                      emoji: String?, by: String) async throws {
         _ = (bot, session, message, emoji, by)
         throw ReactionSyncError.noBridge
+    }
+
+    /// A store that predates the message routes cannot retire anything. The menus never offer the
+    /// verbs without a bridge, so this is the answer to a caller that asked anyway.
+    func deleteMessages(bot: String, session: SessionID, messageIDs: [Int64]) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, messageIDs)
+        throw MessageRetireError.noBridge
+    }
+
+    func truncateMessages(bot: String, session: SessionID, fromMessageID: Int64) async throws
+        -> MessageRetireResult {
+        _ = (bot, session, fromMessageID)
+        throw MessageRetireError.noBridge
     }
     func botTransfers(between first: String, and second: String, limit: Int) async throws -> [BotTransfer] {
         throw BotAdminUnavailable()
@@ -750,10 +804,18 @@ enum Failure: Error, Equatable, LocalizedError {
     /// dropped rather than guessed at: drawing a blank badge is worse than drawing none.
     public func reactions(bot: String, session sessionID: SessionID) async throws -> [String: Reaction] {
         let path = "v1/reactions?bot=\(Self.queryValue(bot))&session=\(Self.queryValue(sessionID))"
-        let data = try await bridgeGET(path, timeout: 20)
+        let data: Data
+        do {
+            data = try await bridgeGET(path, timeout: 20)
+        } catch Failure.rejected(let status, let detail) {
+            // The one shape the caller can act on: the host answered and refused, which is not the
+            // same as a host that never answered. `AppModel` keeps the badge in the second case and
+            // puts it back in this one.
+            throw ReactionSyncError.refused(status: status, detail: detail)
+        }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rows = object["reactions"] as? [String: Any] else {
-            throw Failure.rejected(status: 502, detail: "the host sent no reactions")
+            throw ReactionSyncError.refused(status: 502, detail: "the host sent no reactions")
         }
         var out: [String: Reaction] = [:]
         for (message, value) in rows {
@@ -773,13 +835,57 @@ enum Failure: Error, Equatable, LocalizedError {
         guard ReactionKey.isValidMessage(message) else {
             throw ReactionSyncError.refused(status: 422, detail: "message must start with row: or live:")
         }
-        _ = try await bridgePUT("v1/reactions",
-                                body: ["bot": bot,
-                                       "session": sessionID,
-                                       "message": message,
-                                       "emoji": emoji ?? "",
-                                       "by": by],
-                                timeout: 20)
+        do {
+            _ = try await bridgePUT("v1/reactions",
+                                    body: ["bot": bot,
+                                           "session": sessionID,
+                                           "message": message,
+                                           "emoji": emoji ?? "",
+                                           "by": by],
+                                    timeout: 20)
+        } catch Failure.rejected(let status, let detail) {
+            throw ReactionSyncError.refused(status: status, detail: detail)
+        }
+    }
+
+    /// `POST /v1/messages/delete` — retire these messages from the conversation on every device.
+    ///
+    /// The ids are the transcript's own row ids (`TranscriptEntry.rowID`), and they are the only
+    /// thing that travels: the route never accepts a path. A refusal keeps the host's own sentence,
+    /// because `409 turn_running` and `404 no_such_message` ask the owner for different things.
+    public func deleteMessages(bot: String, session sessionID: SessionID,
+                               messageIDs: [Int64]) async throws -> MessageRetireResult {
+        guard !messageIDs.isEmpty else {
+            throw MessageRetireError.refused(status: 422, detail: "no message ids")
+        }
+        return try await retire("v1/messages/delete",
+                                body: ["bot": bot, "session": sessionID, "message_ids": messageIDs])
+    }
+
+    /// `POST /v1/messages/truncate` — retire this message and everything painted after it.
+    public func truncateMessages(bot: String, session sessionID: SessionID,
+                                 fromMessageID: Int64) async throws -> MessageRetireResult {
+        guard fromMessageID > 0 else {
+            throw MessageRetireError.refused(status: 422, detail: "from_message_id must be positive")
+        }
+        return try await retire("v1/messages/truncate",
+                                body: ["bot": bot, "session": sessionID,
+                                       "from_message_id": fromMessageID])
+    }
+
+    /// Both message verbs: one POST, one decoded answer. The timeout is the resume's, because the
+    /// route may have to close a live session first and that waits for the engine.
+    private func retire(_ path: String, body: [String: Any]) async throws -> MessageRetireResult {
+        let data: Data
+        do {
+            data = try await bridgePOST(path, body: body, timeout: 30)
+        } catch Failure.rejected(let status, let detail) {
+            throw MessageRetireError.refused(status: status, detail: detail)
+        }
+        guard let result = MessageRetireResult.decode(data) else {
+            throw MessageRetireError.unreadable
+        }
+        return result
     }
 
     /// A query value that cannot reshape the request: everything outside the unreserved set is
@@ -962,6 +1068,49 @@ enum Failure: Error, Equatable, LocalizedError {
     public func cancelCredentialCard(id: String) async throws {
         let card = try Self.pathComponent(id)
         _ = try await bridgePOST("v1/credentials/cards/\(card)/cancel", body: [:], timeout: 20)
+    }
+
+    /// `GET /v1/vault` — names, labels, dates; nothing that was typed. A body that is not a vault
+    /// listing throws rather than reading as an empty vault.
+    public func vaultItems() async throws -> [VaultItem] {
+        try VaultItem.list(from: try await bridgeGET("v1/vault", timeout: 20))
+    }
+
+    /// `DELETE /v1/vault/{name}`. The name may hold one `/`, which `pathComponent` percent-encodes;
+    /// a name the host does not have comes back as a rejection, not a quiet success.
+    public func deleteVaultItem(name: String) async throws {
+        let item = try Self.pathComponent(name)
+        _ = try await bridgeDELETE("v1/vault/\(item)", timeout: 20)
+    }
+
+    /// `PATCH /v1/vault/{name}` — the item's new name, and a replacement value when there is one.
+    ///
+    /// One request for both halves, because the host writes them in one transaction: a rename cannot
+    /// land without the value it came with. An absent `value` is not sent at all rather than sent empty,
+    /// so "leave it as it is" is expressible on the wire and distinguishable from a client bug.
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        let item = try Self.pathComponent(name)
+        var body: [String: Any] = ["rename": rename]
+        if let value, !value.isEmpty {
+            body["value"] = value
+        }
+        _ = try await bridgePATCH("v1/vault/\(item)", body: body, timeout: 20)
+    }
+
+    /// `POST /v1/credentials/cards`. Only the words a card needs are sent; the value is answered later,
+    /// by the owner, into the card this returns.
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
+        var body: [String: Any] = [
+            "kind": "secret",
+            "site": site,
+            "fields": fields,
+            "store": store,
+        ]
+        if let saveAs, !saveAs.isEmpty { body["save_as"] = saveAs }
+        if let note, !note.isEmpty { body["note"] = note }
+        let data = try await bridgePOST("v1/credentials/cards", body: body, timeout: 20)
+        return try JSONDecoder().decode(CredentialCard.self, from: data)
     }
 
     /// `GET /v1/integrations`. The key that makes these work never travels — only the state does.

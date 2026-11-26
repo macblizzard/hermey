@@ -64,6 +64,15 @@ public actor GatewayClient: GatewayClientProtocol {
     // MARK: - Tuning
 
     public struct Timeouts: Sendable, Equatable {
+        /// How long one `session.resume` may take before the client stops waiting for it.
+        ///
+        /// Named, and never zero: this call carries a whole transcript — measured 6.2 s and
+        /// 7.5 MiB for the owner's 6,778-row Bot Chat on an idle host, more under load — so a
+        /// short timer would abort a resume that was going to answer. The pane does not wait this
+        /// long in silence: `AppModel.openDeadline` puts a sentence and a Retry over the cached
+        /// rows at 12 s while this call keeps running.
+        public static let resumeTimeout: TimeInterval = 120
+
         /// Every ordinary call. `session.list` and `session.resume` can be slow on a cold profile,
         /// which is why they are separate — 60 s of silence from `session.list` was observed on a
         /// real gateway, so the ceiling has to be generous but finite.
@@ -79,7 +88,7 @@ public actor GatewayClient: GatewayClientProtocol {
 
         public init(call: TimeInterval = 30,
                     sessionList: TimeInterval = 120,
-                    sessionResume: TimeInterval = 120,
+                    sessionResume: TimeInterval = Timeouts.resumeTimeout,
                     handshake: TimeInterval = 20,
                     compress: TimeInterval = 660) {
             self.call = call
@@ -197,6 +206,23 @@ public actor GatewayClient: GatewayClientProtocol {
     }
 
     private var reads: [ReadKey: ReadFlight] = [:]
+
+    /// The `session.resume` in flight for one conversation, so a retry joins it.
+    ///
+    /// The same argument as `reads`, for the one call where it matters most: the host builds the
+    /// WHOLE transcript for every resume and its projection holds the interpreter while it does
+    /// (measured 6.2 s per call on 6,778 rows; three sent at once answered at 6.2 s, 12.6 s and
+    /// 18.5 s). The open path can ask more than once while it waits — a deadline Retry, a banner,
+    /// a reconnect — and every one of those used to queue another full render behind the first,
+    /// which is how a slow open became a 120 s timeout. A repeat now awaits the call already in
+    /// flight: one render, one answer, both callers.
+    private struct ResumeKey: Hashable {
+        let profile: String
+        let id: SessionID
+    }
+
+    /// `session.resume` calls in flight, keyed by the conversation they resolve.
+    private var resumeFlights: [ResumeKey: Task<GatewayPayloadDecoder.Resume, Error>] = [:]
 
     /// The runtime id every session-scoped call needs, and the durable id only `session.resume`
     /// accepts. They are different values on the wire and both have to be remembered.
@@ -320,9 +346,34 @@ public actor GatewayClient: GatewayClientProtocol {
 
     public func resumeSession(_ id: SessionID, profile: String?) async throws -> SessionResume {
         if let profile, !profile.isEmpty { boundProfile = profile }
-        let resumed = try await performResume(id, profile: profile ?? boundProfile)
+        let resumed = try await resumeOnce(id, profile: profile ?? boundProfile)
         attach(resumed, announced: false)
         return resumed.resume
+    }
+
+    /// One `session.resume` per conversation at a time. See `resumeFlights`.
+    private func resumeOnce(_ id: SessionID,
+                            profile: String?) async throws -> GatewayPayloadDecoder.Resume {
+        let key = ResumeKey(profile: profile ?? "", id: id)
+        if let flight = resumeFlights[key] {
+            ClientLog.note("resume of \(id) joined the one already in flight "
+                           + "(one transcript build, not two)",
+                           level: .info, category: "session")
+            let joined = try await flight.value
+            // Awaiting an unstructured task does not observe the caller's cancellation, and the
+            // open path relies on it (`endOpen` cancels the open, not the host's work).
+            if Task.isCancelled { throw CancellationError() }
+            return joined
+        }
+        let flight = Task { try await performResume(id, profile: profile) }
+        resumeFlights[key] = flight
+        defer { resumeFlights[key] = nil }
+        let resumed = try await flight.value
+        // The shared call outlives any one caller, so the leaving pane is checked here rather than
+        // trusting cancellation to have reached the host: an `attach` for a conversation the user
+        // left would adopt a runtime id the open chat does not own.
+        if Task.isCancelled { throw CancellationError() }
+        return resumed
     }
 
     public func warmResume(_ id: SessionID, profile: String) async throws -> SessionResume {
@@ -331,7 +382,7 @@ public actor GatewayClient: GatewayClientProtocol {
         // and then `addressableID` would translate the open chat's stored id with a stranger's
         // runtime id — `4001 session not found` on the next send. The profile travels explicitly in
         // the params instead (`performResume`), which is all the host needs to resolve the stored id.
-        let resumed = try await performResume(id, profile: profile)
+        let resumed = try await resumeOnce(id, profile: profile)
         return resumed.resume
     }
 
@@ -435,6 +486,45 @@ public actor GatewayClient: GatewayClientProtocol {
         _ = try await perform("session.archive", params: .object(params), timeout: timeouts.call)
     }
 
+    /// The same route with `archived: false` — the roll's undo.
+    ///
+    /// The host reads this as a flag (`methods_session.py`: `archived = is_truthy_value(params.get(
+    /// "archived", True))`), so clearing it puts the row back in every list it came from without
+    /// touching a message.
+    public func unarchiveSession(_ session: SessionID, profile: String?) async throws {
+        var params: [String: JSONValue] = ["session_id": .string(session),
+                                           "archived": .bool(false)]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.archive", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// `session.set_hidden` — the other half of what frees the canonical title.
+    ///
+    /// `hidden` is a required field on the host (`"hidden required"` otherwise), and passing the
+    /// stored id is enough: the host resolves a live record first and the profile's database second.
+    public func setSessionHidden(_ hidden: Bool, session: SessionID, profile: String?) async throws {
+        var params: [String: JSONValue] = ["session_id": .string(session),
+                                           "hidden": .bool(hidden)]
+        if let profile, !profile.isEmpty { params["profile"] = .string(profile) }
+        _ = try await perform("session.set_hidden", params: .object(params), timeout: timeouts.call)
+    }
+
+    /// The canonical row and the host's own count for it: `session.list {title: "Bot Chat"}`.
+    ///
+    /// An exact-title lookup, which the host answers window-free — one row plus one display-count
+    /// query — and which hides an archived row, so `nil` after a roll means "there is no Bot Chat
+    /// to measure" rather than "0 messages". `perform`, not `performRead`: a memoised count would
+    /// keep serving the pre-roll number to the very open that rolled it.
+    public func botChatRow(profile: String) async throws -> BotChatRow? {
+        var params: [String: JSONValue] = [
+            "title": .string(CanonicalBotChat.title),
+            "limit": .int(1),
+        ]
+        if !profile.isEmpty { params["profile"] = .string(profile) }
+        let result = try await perform("session.list", params: .object(params), timeout: timeouts.sessionList)
+        return GatewayPayloadDecoder.botChatRow(result)
+    }
+
     /// The tail every create shares: learn both ids, bind the profile, and answer with the **stored**
     /// one.
     ///
@@ -525,6 +615,23 @@ public actor GatewayClient: GatewayClientProtocol {
         guard let sessionPointer else { throw ReactionSyncError.noBridge }
         try await sessionPointer.setReaction(bot: bot, session: session, message: message,
                                              emoji: emoji, by: by)
+    }
+
+    /// `POST /v1/messages/delete` — the host retires the rows on every device, and the caller
+    /// re-resumes. No bridge means no route, which is `noBridge` and not an invented success.
+    public func deleteMessages(bot: String, session: SessionID,
+                               messageIDs: [Int64]) async throws -> MessageRetireResult {
+        guard let sessionPointer else { throw MessageRetireError.noBridge }
+        return try await sessionPointer.deleteMessages(bot: bot, session: session,
+                                                       messageIDs: messageIDs)
+    }
+
+    /// `POST /v1/messages/truncate` — the other half of edit-and-resend.
+    public func truncateMessages(bot: String, session: SessionID,
+                                 fromMessageID: Int64) async throws -> MessageRetireResult {
+        guard let sessionPointer else { throw MessageRetireError.noBridge }
+        return try await sessionPointer.truncateMessages(bot: bot, session: session,
+                                                         fromMessageID: fromMessageID)
     }
 
     // MARK: Shared conversation pointer
@@ -702,6 +809,29 @@ public actor GatewayClient: GatewayClientProtocol {
     public func cancelCredentialCard(id: String) async throws {
         guard let sessionPointer else { throw BotAdminUnavailable() }
         try await sessionPointer.cancelCredentialCard(id: id)
+    }
+
+    public func vaultItems() async throws -> [VaultItem] {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.vaultItems()
+    }
+
+    public func deleteVaultItem(name: String) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.deleteVaultItem(name: name)
+    }
+
+    public func editVaultItem(name: String, rename: String, value: String?) async throws {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        try await sessionPointer.editVaultItem(name: name, rename: rename, value: value)
+    }
+
+    public func createCredentialCard(site: String, fields: [String], store: Bool,
+                                     saveAs: String?, note: String?) async throws -> CredentialCard {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.createCredentialCard(site: site, fields: fields,
+                                                             store: store, saveAs: saveAs,
+                                                             note: note)
     }
 
     public func integrations() async throws -> IntegrationsState {

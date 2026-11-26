@@ -31,6 +31,13 @@
 //! A snapshot is only a fallback for a *missing* file. A file that exists but is too large, is not
 //! JSON, or resolves outside the base is refused with its own code — the client shows "not
 //! available" for that card rather than a stale one.
+//!
+//! Kind schemas: `approval`, `task` and `draft-email` are validated by the app's `CardModel`, whose
+//! rules predate this route. The `infographic` kind — a short structured answer with one real
+//! picture — is validated *here*, on arrival, because it is the first kind that names a remote URL:
+//! `image` and `link.url` must be http(s), the title, facts and highlight are length-bounded, and
+//! every refusal names the field (`facts[2].value must be 1-80 characters`) so the bot can fix what
+//! it wrote. A card that fails is refused with `422 bad_card` and never snapshotted.
 
 use crate::routes::{require_device, AppState};
 use axum::extract::{Path, Query, State};
@@ -46,6 +53,23 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// The contract's ceiling, and also the snapshot's: a card is data, not an upload.
 pub const MAX_CARD_BYTES: u64 = 32 * 1024;
+
+// The ceilings an `infographic` card is held to. A card is a glance: a title that needs two lines is
+// a paragraph, and a value that wraps twice is a sentence the reply should have carried instead.
+const MIN_INFO_FACTS: usize = 3;
+const MAX_INFO_FACTS: usize = 8;
+const MAX_INFO_TITLE: usize = 120;
+const MAX_INFO_SUBTITLE: usize = 160;
+const MAX_INFO_FACT_LABEL: usize = 40;
+const MAX_INFO_FACT_VALUE: usize = 80;
+const MAX_INFO_HIGHLIGHT: usize = 40;
+/// A seller or an availability note is one short row, never a paragraph.
+const MAX_INFO_ASIDE: usize = 60;
+const MAX_INFO_CAPTION: usize = 120;
+const MAX_INFO_SOURCE: usize = 80;
+const MAX_INFO_LINK_LABEL: usize = 40;
+/// Long enough for a real product page, short enough that a card cannot become a URL dump.
+const MAX_CARD_URL: usize = 2048;
 
 /// Longest id the marker contract allows (`^[A-Za-z0-9_-]{1,40}$`).
 const MAX_ID_LEN: usize = 40;
@@ -65,6 +89,10 @@ pub enum CardError {
     OutsideBase,
     TooLarge,
     BadCard,
+    /// A card of a kind this route validates that broke that kind's own schema. The payload names
+    /// the field: a bot that wrote a 400-character title has to be told *which* field to fix, not
+    /// only that the document is refused.
+    BadField(String),
     Missing,
 }
 
@@ -74,7 +102,9 @@ impl CardError {
             CardError::BadId => "bad_id",
             CardError::OutsideBase => "outside_base",
             CardError::TooLarge => "too_large",
-            CardError::BadCard => "bad_card",
+            // A broken field and a broken document are the same class to a client: this card cannot
+            // be drawn. The `detail` is what tells the two apart.
+            CardError::BadCard | CardError::BadField(_) => "bad_card",
             CardError::Missing => "no_such_card",
         }
     }
@@ -84,7 +114,7 @@ impl CardError {
             CardError::BadId => StatusCode::BAD_REQUEST,
             CardError::OutsideBase => StatusCode::FORBIDDEN,
             CardError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-            CardError::BadCard => StatusCode::UNPROCESSABLE_ENTITY,
+            CardError::BadCard | CardError::BadField(_) => StatusCode::UNPROCESSABLE_ENTITY,
             CardError::Missing => StatusCode::NOT_FOUND,
         };
         (
@@ -258,6 +288,9 @@ fn read_card(base: &FsPath, id: &str) -> Result<(Value, String), CardError> {
     if !card.is_object() {
         return Err(CardError::BadCard);
     }
+    // A kind that carries its own schema is checked before the read counts as a good one: an
+    // invalid card must not be snapshotted, or it would keep drawing after the bot fixed the file.
+    validate_kind(&card).map_err(CardError::BadField)?;
     let mtime = meta
         .modified()
         .map(iso8601)
@@ -280,11 +313,185 @@ fn same_inode(_: &std::fs::Metadata, _: &FsPath) -> Result<(), CardError> {
     Ok(())
 }
 
+/// `http://` or `https://`, an authority, and no whitespace.
+///
+/// Deliberately a scheme gate rather than a URL parser: the client hands the string to `URL`, and
+/// what this route has to guarantee is that a card cannot name a `file:`, `data:` or `javascript:`
+/// URL dressed as a picture — and that it is not a 4 KB redirect chain.
+fn is_http_url(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() || value.chars().count() > MAX_CARD_URL {
+        return false;
+    }
+    if value.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let rest = match value.get(..8) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("https://") => &value[8..],
+        _ => match value.get(..7) {
+            Some(prefix) if prefix.eq_ignore_ascii_case("http://") => &value[7..],
+            _ => return false,
+        },
+    };
+    // An authority is the part before the first `/`, `?` or `#`, and it cannot be empty: `http://`
+    // alone is not an address any client can open.
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !authority.is_empty() && !authority.starts_with('/') && !authority.contains('@')
+}
+
+fn bounded_text(value: Option<&Value>, max: usize) -> Result<Option<String>, ()> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => {
+            let text = s.trim();
+            if text.chars().count() > max {
+                return Err(());
+            }
+            Ok(Some(text.to_string()))
+        }
+        _ => Err(()),
+    }
+}
+
+fn required_text(value: Option<&Value>, max: usize) -> Result<String, ()> {
+    match bounded_text(value, max)? {
+        Some(text) if !text.is_empty() => Ok(text),
+        _ => Err(()),
+    }
+}
+
+/// The `infographic` schema: a short title, one real picture, the number that matters, three to
+/// eight facts, an optional link and a source line.
+///
+/// Only this kind is checked here. The other three predate this route and are validated by the
+/// app's `CardModel`; this one is checked on arrival because it is the first kind that carries a
+/// remote URL, and a host that served `image: "javascript:…"` would be handing the client something
+/// no renderer should have to defend against.
+///
+/// Every refusal names the field (`facts[2].value …`), because the bot that wrote the file is the
+/// one who can fix it.
+fn validate_infographic(card: &Value) -> Result<(), String> {
+    required_text(card.get("title"), MAX_INFO_TITLE)
+        .map_err(|_| format!("title must be 1-{MAX_INFO_TITLE} characters"))?;
+
+    bounded_text(card.get("subtitle"), MAX_INFO_SUBTITLE).map_err(|_| {
+        format!("subtitle must be a string of at most {MAX_INFO_SUBTITLE} characters")
+    })?;
+
+    let facts = match card.get("facts") {
+        Some(Value::Array(items)) => items,
+        _ => {
+            return Err(format!(
+                "facts must be a list of {MIN_INFO_FACTS}-{MAX_INFO_FACTS} {{label, value}} objects"
+            ))
+        }
+    };
+    if facts.len() < MIN_INFO_FACTS || facts.len() > MAX_INFO_FACTS {
+        return Err(format!(
+            "facts must hold {MIN_INFO_FACTS}-{MAX_INFO_FACTS} entries, not {}",
+            facts.len()
+        ));
+    }
+    for (index, fact) in facts.iter().enumerate() {
+        required_text(fact.get("label"), MAX_INFO_FACT_LABEL).map_err(|_| {
+            format!("facts[{index}].label must be 1-{MAX_INFO_FACT_LABEL} characters")
+        })?;
+        required_text(fact.get("value"), MAX_INFO_FACT_VALUE).map_err(|_| {
+            format!("facts[{index}].value must be 1-{MAX_INFO_FACT_VALUE} characters")
+        })?;
+    }
+
+    match card.get("highlight") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(highlight)) => {
+            required_text(highlight.get("value"), MAX_INFO_HIGHLIGHT).map_err(|_| {
+                format!("highlight.value must be 1-{MAX_INFO_HIGHLIGHT} characters")
+            })?;
+            for (field, max) in [
+                ("label", MAX_INFO_HIGHLIGHT),
+                ("seller", MAX_INFO_ASIDE),
+                ("availability", MAX_INFO_ASIDE),
+            ] {
+                bounded_text(highlight.get(field), max)
+                    .map_err(|_| format!("highlight.{field} must be at most {max} characters"))?;
+            }
+        }
+        _ => {
+            return Err(
+                "highlight must be an object {value, label?, seller?, availability?}".to_string(),
+            )
+        }
+    }
+
+    let image = match card.get("image") {
+        None | Some(Value::Null) => None,
+        Some(value) => {
+            if url_too_long(Some(value)) {
+                return Err(format!("image must be at most {MAX_CARD_URL} characters"));
+            }
+            match value.as_str() {
+                Some(url) if is_http_url(url) => Some(url.trim().to_string()),
+                _ => return Err("image must be an http(s) URL".to_string()),
+            }
+        }
+    };
+    let caption = bounded_text(card.get("imageCaption"), MAX_INFO_CAPTION)
+        .map_err(|_| format!("imageCaption must be at most {MAX_INFO_CAPTION} characters"))?;
+    if image.is_none() && caption.is_some() {
+        // A caption over no picture is a claim about something the card does not show.
+        return Err("imageCaption needs an image".to_string());
+    }
+
+    match card.get("link") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(link)) => {
+            required_text(link.get("label"), MAX_INFO_LINK_LABEL)
+                .map_err(|_| format!("link.label must be 1-{MAX_INFO_LINK_LABEL} characters"))?;
+            match link.get("url").and_then(Value::as_str) {
+                Some(url) if is_http_url(url) => {}
+                Some(_) if url_too_long(link.get("url")) => {
+                    return Err(format!(
+                        "link.url must be at most {MAX_CARD_URL} characters"
+                    ))
+                }
+                _ => return Err("link.url must be an http(s) URL".to_string()),
+            }
+        }
+        _ => return Err("link must be an object {label, url}".to_string()),
+    }
+
+    bounded_text(card.get("source"), MAX_INFO_SOURCE)
+        .map_err(|_| format!("source must be at most {MAX_INFO_SOURCE} characters"))?;
+
+    Ok(())
+}
+
+/// A URL that failed the scheme gate still needs its own answer when the only fault is its length.
+fn url_too_long(value: Option<&Value>) -> bool {
+    value
+        .and_then(Value::as_str)
+        .map(|url| url.chars().count() > MAX_CARD_URL)
+        .unwrap_or(false)
+}
+
+/// The kinds this route validates, and the ones it leaves to the client.
+fn validate_kind(card: &Value) -> Result<(), String> {
+    match card.get("kind").and_then(Value::as_str) {
+        Some("infographic") => validate_infographic(card),
+        _ => Ok(()),
+    }
+}
+
 /// The skill's own stop rule: `resolved` set, or a terminal state. `awaiting-approval` is the
 /// whole point of an approval card, so it is emphatically not final.
 pub fn is_final(card: &Value) -> bool {
     let resolved = card.get("resolved").map(|r| !r.is_null()).unwrap_or(false);
     if resolved {
+        return true;
+    }
+    // An infographic is a still picture of an answer: nothing about it is going to change, so a
+    // reader should never keep re-reading it.
+    if card.get("kind").and_then(Value::as_str) == Some("infographic") {
         return true;
     }
     matches!(
@@ -378,11 +585,13 @@ pub async fn get_card(
     }
 
     if let Some(refusal) = refusal {
-        let detail = match refusal {
-            CardError::TooLarge => "card file is larger than 32 KB",
-            CardError::OutsideBase => "card file resolves outside the cards directory",
-            CardError::BadCard => "card file is not a JSON object",
-            _ => "card file is not readable",
+        let detail = match &refusal {
+            CardError::TooLarge => "card file is larger than 32 KB".to_string(),
+            CardError::OutsideBase => "card file resolves outside the cards directory".to_string(),
+            CardError::BadCard => "card file is not a JSON object".to_string(),
+            // The field is the whole message: this is the one refusal a bot reads and fixes.
+            CardError::BadField(field) => format!("infographic card: {field}"),
+            _ => "card file is not readable".to_string(),
         };
         return Err(refusal.into_fail(detail));
     }
@@ -526,6 +735,49 @@ mod tests {
             .unwrap_or("<none>")
             .to_string();
         (fail.0, code)
+    }
+
+    /// The human half of a refusal: the field a fixed bot has to change.
+    fn err_detail(fail: Fail) -> String {
+        fail.1
+             .0
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or("<none>")
+            .to_string()
+    }
+
+    /// An `infographic` document: the shape a bot writes for "where is the Golden Gate Bridge".
+    ///
+    /// The picture URL is textual and never fetched: a test that reached the network would be a
+    /// test that fails on a train. A real one is a public Wikimedia Commons file, e.g.
+    /// `https://upload.wikimedia.org/wikipedia/commons/0/0c/GoldenGateBridge-001.jpg`.
+    fn infographic() -> Value {
+        json!({
+            "schema": "card.v1",
+            "kind": "infographic",
+            "title": "Golden Gate Bridge",
+            "subtitle": "San Francisco, California",
+            "image": "https://example.com/golden-gate.jpg",
+            "imageCaption": "The bridge from Fort Point",
+            "highlight": { "label": "Main span", "value": "1,280 m" },
+            "facts": [
+                { "label": "Opened", "value": "27 May 1937" },
+                { "label": "Total length", "value": "2,737 m" },
+                { "label": "Clearance", "value": "67 m" },
+                { "label": "Colour", "value": "International Orange" }
+            ],
+            "link": { "label": "Wikipedia", "url": "https://example.com/golden-gate" },
+            "source": "Wikipedia"
+        })
+    }
+
+    fn serve(dir: &Path, tag: &str) -> (Arc<AppState>, PathBuf) {
+        let st = state(dir);
+        let cwd = dir.join("bot-cwd");
+        std::fs::create_dir_all(&cwd).unwrap();
+        session_row(&st.engine_home, tag, SESSION, Some(&cwd));
+        (st, cwd)
     }
 
     #[tokio::test]
@@ -836,6 +1088,314 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// The card a short query deserves: one real picture, the number that matters, four facts.
+    ///
+    /// It has no `status` at all — an infographic is finished the moment it is written — and the
+    /// route says so with `final: true`, so nothing ever re-reads it.
+    #[tokio::test]
+    async fn an_infographic_is_served_and_is_already_final() {
+        let dir = scratch("info");
+        let (st, cwd) = serve(&dir, "cody");
+        write_card(&cwd, CARD, &infographic().to_string());
+
+        let ok = fetch(&st, auth(), CARD, SESSION, "m-1")
+            .await
+            .expect("served");
+        assert_eq!(ok.0["card"]["kind"], "infographic");
+        assert_eq!(ok.0["card"]["title"], "Golden Gate Bridge");
+        assert_eq!(ok.0["card"]["facts"].as_array().unwrap().len(), 4);
+        assert_eq!(ok.0["final"], true, "an infographic is never polled");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The picture is optional: a card about a shop's opening hours still lays out without one.
+    #[tokio::test]
+    async fn an_infographic_with_no_image_still_serves() {
+        let dir = scratch("info-no-image");
+        let (st, cwd) = serve(&dir, "cody");
+        let mut card = infographic();
+        card.as_object_mut().unwrap().remove("image");
+        card.as_object_mut().unwrap().remove("imageCaption");
+        write_card(&cwd, CARD, &card.to_string());
+
+        let ok = fetch(&st, auth(), CARD, SESSION, "m-1")
+            .await
+            .expect("served");
+        assert!(ok.0["card"].get("image").is_none());
+        assert_eq!(ok.0["card"]["title"], "Golden Gate Bridge");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every refusal names the field, because the bot that wrote the file is the one who fixes it.
+    #[tokio::test]
+    async fn a_field_outside_its_bound_is_refused_by_name() {
+        let dir = scratch("info-fields");
+        let (st, cwd) = serve(&dir, "cody");
+
+        let cases: Vec<(&str, Value, &str)> = vec![
+            (
+                "title",
+                {
+                    let mut card = infographic();
+                    card["title"] = json!("t".repeat(MAX_INFO_TITLE + 1));
+                    card
+                },
+                "title must be 1-120 characters",
+            ),
+            (
+                "title-missing",
+                {
+                    let mut card = infographic();
+                    card.as_object_mut().unwrap().remove("title");
+                    card
+                },
+                "title must be 1-120 characters",
+            ),
+            (
+                "facts-too-few",
+                {
+                    let mut card = infographic();
+                    card["facts"] = json!([
+                        { "label": "Opened", "value": "1937" },
+                        { "label": "Length", "value": "2,737 m" }
+                    ]);
+                    card
+                },
+                "facts must hold 3-8 entries, not 2",
+            ),
+            (
+                "facts-too-many",
+                {
+                    let mut card = infographic();
+                    card["facts"] = json!(vec![
+                        json!({ "label": "L", "value": "v" });
+                        MAX_INFO_FACTS + 1
+                    ]);
+                    card
+                },
+                "facts must hold 3-8 entries, not 9",
+            ),
+            (
+                "fact-value",
+                {
+                    let mut card = infographic();
+                    card["facts"][1]["value"] = json!("v".repeat(MAX_INFO_FACT_VALUE + 1));
+                    card
+                },
+                "facts[1].value must be 1-80 characters",
+            ),
+            (
+                "highlight-seller",
+                {
+                    let mut card = infographic();
+                    card["highlight"]["seller"] = json!("s".repeat(MAX_INFO_ASIDE + 1));
+                    card
+                },
+                "highlight.seller must be at most 60 characters",
+            ),
+            (
+                "source",
+                {
+                    let mut card = infographic();
+                    card["source"] = json!("s".repeat(MAX_INFO_SOURCE + 1));
+                    card
+                },
+                "source must be at most 80 characters",
+            ),
+            (
+                "link",
+                {
+                    let mut card = infographic();
+                    card["link"]["url"] = json!("example.com/nowhere");
+                    card
+                },
+                "link.url must be an http(s) URL",
+            ),
+        ];
+
+        for (name, card, expected) in cases {
+            write_card(&cwd, CARD, &card.to_string());
+            let (status, body) = fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err();
+            let code = body
+                .0
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("<none>")
+                .to_string();
+            let detail = body
+                .0
+                .get("detail")
+                .and_then(Value::as_str)
+                .unwrap_or("<none>")
+                .to_string();
+            assert_eq!(
+                (status, code.as_str()),
+                (StatusCode::UNPROCESSABLE_ENTITY, "bad_card"),
+                "{name}"
+            );
+            assert!(detail.contains(expected), "{name}: {detail}");
+            assert!(detail.contains("infographic card"), "{name}: {detail}");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An image is a URL, and only a scheme a client can actually load.
+    #[tokio::test]
+    async fn an_image_that_is_not_http_is_refused() {
+        let dir = scratch("info-image");
+        let (st, cwd) = serve(&dir, "cody");
+
+        for url in [
+            "file:///etc/passwd",
+            "data:image/png;base64,AAAA",
+            "javascript:alert(1)",
+            "//example.com/a.jpg",
+            "example.com/a.jpg",
+            "http://",
+            "https://exa mple.com/a.jpg",
+        ] {
+            let mut card = infographic();
+            card["image"] = json!(url);
+            write_card(&cwd, CARD, &card.to_string());
+            let refused = fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err();
+            assert_eq!(refused.0, StatusCode::UNPROCESSABLE_ENTITY, "{url}");
+            assert!(
+                err_detail(refused).contains("image must be an http(s) URL"),
+                "{url}"
+            );
+        }
+
+        // …and a URL that is only too long is told so, rather than called a bad scheme.
+        let mut card = infographic();
+        card["image"] = json!(format!("https://example.com/{}", "a".repeat(MAX_CARD_URL)));
+        write_card(&cwd, CARD, &card.to_string());
+        let detail = err_detail(fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err());
+        assert!(
+            detail.contains("image must be at most 2048 characters"),
+            "{detail}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A caption with no picture is a claim about something the card does not show.
+    #[tokio::test]
+    async fn a_caption_without_an_image_is_refused() {
+        let dir = scratch("info-caption");
+        let (st, cwd) = serve(&dir, "cody");
+        let mut card = infographic();
+        card.as_object_mut().unwrap().remove("image");
+        write_card(&cwd, CARD, &card.to_string());
+
+        let detail = err_detail(fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err());
+        assert!(detail.contains("imageCaption needs an image"), "{detail}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A product: the price is the highlight, and the seller and availability ride with it.
+    #[tokio::test]
+    async fn a_product_infographic_carries_price_seller_and_availability() {
+        let dir = scratch("info-product");
+        let (st, cwd) = serve(&dir, "cody");
+        let card = json!({
+            "schema": "card.v1",
+            "kind": "infographic",
+            "title": "Anker 737 Power Bank",
+            "subtitle": "24,000 mAh, 140 W",
+            "image": "https://example.com/anker-737.jpg",
+            "imageCaption": "Front and side",
+            "highlight": {
+                "label": "Price",
+                "value": "€ 129.99",
+                "seller": "Sold by Anker Direct DE",
+                "availability": "In stock"
+            },
+            "facts": [
+                { "label": "Capacity", "value": "24,000 mAh" },
+                { "label": "Output", "value": "140 W" },
+                { "label": "Ports", "value": "2 × USB-C, 1 × USB-A" }
+            ],
+            "link": { "label": "Open on amazon.de", "url": "https://example.com/dp/B0B4Q1KZ2F" },
+            "source": "amazon.de · checked just now"
+        });
+        write_card(&cwd, CARD, &card.to_string());
+
+        let ok = fetch(&st, auth(), CARD, SESSION, "m-1")
+            .await
+            .expect("served");
+        assert_eq!(ok.0["card"]["highlight"]["value"], "€ 129.99");
+        assert_eq!(
+            ok.0["card"]["highlight"]["seller"],
+            "Sold by Anker Direct DE"
+        );
+        assert_eq!(ok.0["card"]["highlight"]["availability"], "In stock");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The other kinds are untouched: their schema is the client's, and this route still serves an
+    /// approval card that has no facts at all.
+    #[tokio::test]
+    async fn another_kind_is_not_held_to_the_infographic_schema() {
+        let dir = scratch("info-other-kind");
+        let (st, cwd) = serve(&dir, "cody");
+        write_card(&cwd, CARD, &valid_card("Book the cabin"));
+
+        let ok = fetch(&st, auth(), CARD, SESSION, "m-1")
+            .await
+            .expect("served");
+        assert_eq!(ok.0["card"]["kind"], "approval");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A refused card is not a read: nothing is snapshotted, so a deleted file has nothing to draw
+    /// and a fixed file is what the next reader gets.
+    #[tokio::test]
+    async fn a_refused_infographic_is_never_snapshotted() {
+        let dir = scratch("info-snapshot");
+        let (st, cwd) = serve(&dir, "cody");
+        let mut broken = infographic();
+        broken["title"] = json!("t".repeat(MAX_INFO_TITLE + 1));
+        let path = write_card(&cwd, CARD, &broken.to_string());
+
+        let _ = fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err();
+        std::fs::remove_file(&path).unwrap();
+        let (status, code) = err_code(fetch(&st, auth(), CARD, SESSION, "m-1").await.unwrap_err());
+        assert_eq!(
+            (status, code.as_str()),
+            (StatusCode::NOT_FOUND, "no_such_card"),
+            "a refused card left no snapshot behind"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn http_urls_are_the_only_scheme_an_image_may_name() {
+        assert!(is_http_url("https://upload.wikimedia.org/a.jpg"));
+        assert!(is_http_url("http://example.com/a.jpg?w=800"));
+        assert!(is_http_url("HTTPS://EXAMPLE.COM/a.jpg"));
+        assert!(is_http_url("https://localhost:8080/a.jpg"));
+        assert!(!is_http_url("file:///etc/passwd"));
+        assert!(!is_http_url("data:image/png;base64,AAAA"));
+        assert!(!is_http_url("javascript:alert(1)"));
+        assert!(!is_http_url("//example.com/a.jpg"));
+        assert!(!is_http_url("example.com/a.jpg"));
+        assert!(!is_http_url("https://"));
+        assert!(!is_http_url("https:///a.jpg"));
+        assert!(!is_http_url("https://user:pass@example.com/a.jpg"));
+        assert!(!is_http_url("https://example.com/a b.jpg"));
+        assert!(!is_http_url(&format!(
+            "https://example.com/{}",
+            "a".repeat(MAX_CARD_URL)
+        )));
+    }
+
     /// Only `done`/`error`/`resolved` stop the poll: an approval is exactly what must keep polling.
     #[test]
     fn final_follows_the_skills_stop_rule() {
@@ -851,6 +1411,10 @@ mod tests {
         )));
         // A card without a status object is the client's problem, not a final one.
         assert!(!is_final(&json!({"title": "x"})));
+        // An infographic is a still picture of an answer: final without a status at all.
+        assert!(is_final(
+            &json!({"kind": "infographic", "title": "Golden Gate Bridge"})
+        ));
     }
 
     #[test]

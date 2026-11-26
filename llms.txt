@@ -48,7 +48,7 @@ then install the app on a phone or Mac and pair it with a short code.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how `hermeyd` relays the engine's WebSocket; the protocol.
 - [SECURITY.md](SECURITY.md): threat model, what is and is not protected, reporting a vulnerability.
 - [docs/CREDENTIALS.md](docs/CREDENTIALS.md): login cards — a bot signs in without ever seeing the secret.
-- [docs/agent-cards.md](docs/agent-cards.md): agent cards — `::card` + `card.v1`, three kinds (approval, task, draft-email), and the rule that a question with options is always a card.
+- [docs/agent-cards.md](docs/agent-cards.md): agent cards — `::card` + `card.v1`, four kinds (approval, task, draft-email, infographic), and the rule that a question with options is always a card.
 - [setup/SKILL.md](setup/SKILL.md): the same install packaged as a Hermes agent skill.
 - [CONTRIBUTING.md](CONTRIBUTING.md): build, test and release from source.
 
@@ -74,11 +74,17 @@ then install the app on a phone or Mac and pair it with a short code.
   the desktop pet, the chat header and the iOS Live Activity all print that word, so the surfaces cannot
   disagree. Derived from run status and the last tool called, never from a provider's free-text status.
 - Avatars: a bot may wear a generated face instead of an icon picture — an
-  [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) v1 definition (MIT, Dominik Scholz)
-  plus a colour. It lives in the same document as the bot icons (`/v1/bot-icons`, keyed by bot, fields
-  `avatar`, `definition`, `color`); the host validates a definition and refuses an invalid one with its
-  reasons, and `null` clears it. No separate route exists. It draws in the bot list row, the chat header
-  and the desktop pet.
+  [open-bot-avatar](https://github.com/DominikScholz/open-bot-avatar) v1 definition (MIT, Dominik Scholz).
+  It lives in the same document as the bot icons (`/v1/bot-icons`, keyed by bot, fields `avatar`,
+  `definition`, `color`, `material`), so there is no separate route. The host validates a definition and
+  refuses an invalid one with its reasons; `null` clears. `material` is `solid` | `glass` | `matte` |
+  `metal`; absent or `null` means solid (so anything written before the field keeps the face it had) and
+  an unknown value is refused. Solid is a flat body; glass adds a ramp, halo, sheen, specular streak, rim
+  and contact band with detail that follows the draw size; matte drops the specular for a dark soft edge
+  and faint grain; metal is a hard horizon line with a narrow bright rim and no halo. The eight states
+  tint the rim (`blocked` calms the tint rather than turning it red). Twelve starting shapes, plus a
+  Random pick of shape, material and colour. It draws in the bot list row, the chat header and the
+  desktop pet.
 - Requirements: Linux with systemd or macOS, Hermes installed, the service account sharing the
   engine's UID, Tailscale (or your own TLS proxy).
 - Versions: the apps are `0.1.<run>` (tag `v0.1.N`); `hermeyd` has its own series

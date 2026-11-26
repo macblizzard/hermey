@@ -81,6 +81,7 @@ public struct AddBotSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if busy {
@@ -88,6 +89,7 @@ public struct AddBotSheet: View {
                     } else {
                         Button("Create") { Task { await create() } }
                             .disabled(!canCreate)
+                            .hermeyFocusQuiet()
                     }
                 }
             }
@@ -234,6 +236,7 @@ public struct ManageBotsSheet: View {
                             }
                             .labelsHidden()
                             .pickerStyle(.menu)
+                            .hermeyFocusQuiet()
                             Spacer(minLength: 0)
                         }
                         HStack(spacing: 14) {
@@ -244,6 +247,7 @@ public struct ManageBotsSheet: View {
                                 Text("Visible").font(TypeScale.font(TypeScale.caption))
                             }
                             .labelsHidden()
+                            .hermeyFocusQuiet()
                             Text(hidden(bot.id) ? "Hidden" : "Visible")
                                 .font(TypeScale.font(TypeScale.caption))
                                 .foregroundStyle(Tokens.textMuted)
@@ -263,6 +267,7 @@ public struct ManageBotsSheet: View {
                                 Text("Active").font(TypeScale.font(TypeScale.caption))
                             }
                             .labelsHidden()
+                            .hermeyFocusQuiet()
                             Text(disabled.contains(bot.id) ? "Off" : "Active")
                                 .font(TypeScale.font(TypeScale.caption))
                                 .foregroundStyle(Tokens.textMuted)
@@ -276,6 +281,7 @@ public struct ManageBotsSheet: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(Tokens.danger)
+                            .hermeyFocusQuiet()
                         }
                         .disabled(busy == bot.id)
                     }
@@ -288,7 +294,7 @@ public struct ManageBotsSheet: View {
             .inlineSheetTitle()
             .sheetSizing()
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.hermeyFocusQuiet() }
             }
             .overlay(alignment: .bottom) {
                 if let failure {
@@ -304,6 +310,7 @@ public struct ManageBotsSheet: View {
                    isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
                 TextField("type \(confirming?.id ?? "")", text: $typedName)
                 Button("Cancel", role: .cancel) { confirming = nil }
+                .hermeyFocusQuiet()
                 Button("Delete", role: .destructive) {
                     guard let bot = confirming else { return }
                     Task {
@@ -318,6 +325,7 @@ public struct ManageBotsSheet: View {
                     }
                 }
                 .disabled(typedName != (confirming?.id ?? ""))
+                .hermeyFocusQuiet()
             } message: {
                 Text("The profile is removed from the host. A copy is kept on the server for a week.")
             }
@@ -384,12 +392,13 @@ public struct SoulEditorSheet: View {
             .sheetSizing(minWidth: 560, minHeight: 520)
             .inlineSheetTitle()
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.hermeyFocusQuiet() }
                 ToolbarItem(placement: .confirmationAction) {
                     if saving {
                         ProgressView()
                     } else {
                         Button("Save") { Task { await commit() } }.disabled(!dirty || loading)
+                        .hermeyFocusQuiet()
                     }
                 }
             }

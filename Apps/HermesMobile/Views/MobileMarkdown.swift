@@ -466,6 +466,12 @@ struct MobileTypingIndicator: View {
 /// parse was inside the body, so a long conversation re-parsed every visible row to draw one caret.
 /// Keyed on the text itself, so a row that has not changed cannot be re-parsed, and a streaming
 /// bubble (which parses incrementally elsewhere) is unaffected.
+///
+/// The instance cache is only the fast path. A row inside a `LazyVStack` is destroyed when it leaves
+/// the viewport, so scrolling up through a long chat created a fresh cache for every row it drew
+/// again and re-parsed text that had not changed since the last time. The parse now lives in a
+/// process-wide store keyed by the text, bounded in entries and characters, so a row that comes back
+/// costs a dictionary lookup whatever its array identity.
 final class RowMarkdownCache {
     private var text: String?
     private var blocks: [Block] = []
@@ -477,16 +483,103 @@ final class RowMarkdownCache {
     /// pass was part of the scroll freeze on long messages.
     func sanitized(_ raw: String) -> String {
         if rawSource == raw { return cleanSource }
+        let clean = MarkdownParseStore.shared.sanitized(raw)
         rawSource = raw
-        cleanSource = HermesFileLinks.removingLinks(from: raw)
-        return cleanSource
+        cleanSource = clean
+        return clean
     }
 
     func parse(_ source: String) -> [Block] {
         if text == source { return blocks }
-        let fresh = IncrementalMarkdown.parse(source)
+        let fresh = MarkdownParseStore.shared.blocks(for: source)
         text = source
         blocks = fresh
         return fresh
+    }
+}
+
+/// Parsed markdown for the whole app, bounded, keyed by the text.
+///
+/// Two things it is for, both measured on the scroll freeze:
+///
+/// * a row that is destroyed and rebuilt (scroll up, scroll back) does not re-parse its markdown;
+/// * a long message the reader opens is parsed once in the process, not once per row instance.
+///
+/// Bounded by entry count and by characters: the entries are whole message texts and a transcript
+/// can hold thousands. Eviction only costs a re-parse of a row someone scrolls back to.
+final class MarkdownParseStore {
+    static let shared = MarkdownParseStore()
+
+    private let lock = NSLock()
+    private var blocks: [String: [Block]] = [:]
+    private var order: [String] = []
+    private var characters = 0
+    private var clean: [String: String] = [:]
+    private var cleanOrder: [String] = []
+
+    /// Enough for several screens of rows, small enough to be nothing.
+    private let limit = 48
+    private let cleanLimit = 96
+    private let maxCharacters = 512 * 1024
+    private let maxEntryCharacters = 64 * 1024
+
+    func blocks(for source: String) -> [Block] {
+        lock.lock()
+        if let hit = blocks[source] {
+            lock.unlock()
+            return hit
+        }
+        lock.unlock()
+        // Parsed outside the lock: a 20 kB message is milliseconds, and holding the lock through it
+        // would serialise every other row's lookup behind it.
+        let fresh = IncrementalMarkdown.parse(source)
+        lock.lock()
+        if blocks[source] == nil {
+            blocks[source] = fresh
+            order.append(source)
+            characters += source.count
+            while order.count > limit || characters > maxCharacters {
+                guard !order.isEmpty else { break }
+                let old = order.removeFirst()
+                blocks.removeValue(forKey: old)
+                characters -= old.count
+            }
+        }
+        lock.unlock()
+        return fresh
+    }
+
+    /// `HermesFileLinks.removingLinks`, once per distinct message.
+    func sanitized(_ raw: String) -> String {
+        lock.lock()
+        if let hit = clean[raw] {
+            lock.unlock()
+            return hit
+        }
+        lock.unlock()
+        let stripped = HermesFileLinks.removingLinks(from: raw)
+        lock.lock()
+        if clean[raw] == nil {
+            clean[raw] = stripped
+            cleanOrder.append(raw)
+            while cleanOrder.count > cleanLimit {
+                let old = cleanOrder.removeFirst()
+                clean.removeValue(forKey: old)
+            }
+        }
+        lock.unlock()
+        return stripped
+    }
+
+    /// For tests: what the store is holding.
+    var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return blocks.count
+    }
+
+    func removeAll() {
+        lock.lock(); defer { lock.unlock() }
+        blocks.removeAll(); order.removeAll(); characters = 0
+        clean.removeAll(); cleanOrder.removeAll()
     }
 }

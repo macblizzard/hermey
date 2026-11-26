@@ -84,6 +84,22 @@ struct BotListScreen: View {
         lastOpenedBotsJSON = json
     }
 
+    /// One tap, one open.
+    ///
+    /// `beginOpen` is the gate and it is deliberately first: it paints the cached conversation
+    /// synchronously (before the push, so the first frame of the next screen is already the right
+    /// transcript), and it answers `false` for a bot that is already opening — which makes a second
+    /// tap on the same row *nothing at all*, rather than a second `Task`, a second push and a second
+    /// resume racing the first. A tap on a different row cancels the open in flight.
+    ///
+    /// The push itself stays with the tab that owns the navigation stack: `onGraphite` is called
+    /// once per accepted tap, and the tab keeps one screen for one open.
+    private func openBot(_ bot: Bot) {
+        guard model.beginOpen(bot.id) else { return }
+        recordOpened(bot)
+        onGraphite(bot)
+    }
+
     private var hiddenBots: [Bot] {
         model.bots.filter { model.isHidden(botID: $0.id) }
     }
@@ -195,7 +211,9 @@ struct BotListScreen: View {
                 // is the only reason a group made here appears there.
                 writeCategories { try await model.addBotCategory(name: name) }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { newCategoryName = "" }
+            .hermeyFocusQuiet()
         } message: {
             Text("Groups live on the host, so the Mac shows the same ones. A bot with no group sits in Uncategorized.")
         }
@@ -220,7 +238,9 @@ struct BotListScreen: View {
                     await model.refreshRooms()
                 }
             }
+            .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { pendingRoomDelete = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The room is removed from every device. Its transcript stays on the host.")
         }
@@ -283,8 +303,7 @@ struct BotListScreen: View {
                                  showWaiting = false
                                  model.markBotRead(botID)
                                  if let bot = model.bots.first(where: { $0.id == botID }) {
-                                     recordOpened(bot)
-                                     onGraphite(bot)
+                                     openBot(bot)
                                  }
                              },
                              onUpdateHost: {
@@ -363,10 +382,11 @@ struct BotListScreen: View {
     private var metrics: BotListMetrics { BotListMetrics(scale: listScale) }
 
     private func row(for bot: Bot) -> some View {
-        Button {
+        // The row that is opening says so: the tap registered, and pressing it again is nothing.
+        let opening = model.openingBotID == bot.id
+        return Button {
             Haptics.selection()
-            recordOpened(bot)
-            onGraphite(bot)
+            openBot(bot)
         } label: {
             HStack(alignment: .center, spacing: metrics.gap) {
                 // A bot always has a face: the one stored for it, otherwise the body and colour its
@@ -427,7 +447,7 @@ struct BotListScreen: View {
 
                     }
 
-                    Text(model.botPreviews[bot.id] ?? subtitle(for: bot))
+                    Text(opening ? "Opening…" : (model.botPreviews[bot.id] ?? subtitle(for: bot)))
                         .font(TypeScale.font(metrics.previewSize,
                                              weight: model.hasUnread(bot.id) ? .medium : .regular))
                         .foregroundStyle(model.hasUnread(bot.id) ? Tokens.textSecondary : Tokens.textMuted)
@@ -446,6 +466,7 @@ struct BotListScreen: View {
             .padding(.vertical, metrics.rowPadding)
             .frame(minHeight: metrics.rowHeight)
             .contentShape(Rectangle())
+            .opacity(opening ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -483,6 +504,14 @@ struct BotListScreen: View {
             } label: {
                 Label("All sessions…", systemImage: "clock.arrow.circlepath")
             }
+            // The conversations the ceiling rolled out of the way, newest first, each with the
+            // host's own count and its last-message date. Long-press is where the phone keeps the
+            // per-bot verbs (All sessions is here too), and the same list the Mac's menu draws.
+            Menu {
+                previousItems(for: bot)
+            } label: {
+                Label("Previous conversations", systemImage: "archivebox")
+            }
             Button {
                 model.togglePin(botID: bot.id)
             } label: {
@@ -509,6 +538,7 @@ struct BotListScreen: View {
             }
             .tint(model.isPinned(botID: bot.id) ? Tokens.textMuted : Tokens.accent)
             .accessibilityLabel(model.isPinned(botID: bot.id) ? "Unpin" : "Pin")
+            .hermeyFocusQuiet()
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
@@ -518,9 +548,11 @@ struct BotListScreen: View {
             }
             .tint(Tokens.warning)
             .accessibilityLabel("Mark unread")
+            .hermeyFocusQuiet()
         }
         .accessibilityLabel(accessibilityLabel(for: bot))
         .accessibilityHint("Opens the conversation with this bot")
+        .hermeyFocusQuiet()
     }
 
     /// A description written on the host is the useful line; without one, name what the row is.
@@ -538,6 +570,43 @@ struct BotListScreen: View {
         if model.isPinned(botID: bot.id) { parts.append("pinned") }
         if bot.id == lastOpenedID { parts.append("last opened") }
         return parts.joined(separator: ", ")
+    }
+
+    /// The archived conversations for one bot, newest first — the rows of the
+    /// **Previous conversations** submenu.
+    ///
+    /// Each row carries the host's own count and its last-message date, so the list says how big
+    /// the chat the ceiling moved aside was. The closing line is the honest one: what opens is the
+    /// real archived transcript, and a message sent there continues *that* conversation — it does
+    /// not become the bot's chat again.
+    @ViewBuilder
+    private func previousItems(for bot: Bot) -> some View {
+        let rows = model.previousConversations(for: bot.id)
+        if rows.isEmpty {
+            Text("None yet")
+        }
+        ForEach(rows) { row in
+            Button {
+                Haptics.selection()
+                openPrevious(row, for: bot)
+            } label: {
+                Label(BotChatArchive.rowLabel(row), systemImage: "text.bubble")
+            }
+            .hermeyFocusQuiet()
+        }
+        if !rows.isEmpty {
+            Divider()
+            Text("Sending in one continues that old chat")
+        }
+    }
+
+    /// Open an archived conversation. The bot's own chat is untouched: the next tap on its row
+    /// resolves the live Bot Chat again, because the roll moved the name to the fresh one.
+    private func openPrevious(_ row: BotChatArchive.Previous, for bot: Bot) {
+        Task { @MainActor in
+            await model.openPreviousConversation(row, for: bot.id)
+            openBot(bot)
+        }
     }
 
     // MARK: Empty states
@@ -604,6 +673,7 @@ struct BotListScreen: View {
             Button(role: .destructive) { pendingRoomDelete = room } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .hermeyFocusQuiet()
         }
         // A row in a `.plain` List gets the cell's own background — black under a hidden scroll
         // background — and its own separators and insets. A room is a row in the same list as a
@@ -612,6 +682,7 @@ struct BotListScreen: View {
         .listRowBackground(Tokens.canvas)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding, bottom: 0, trailing: Geometry.rosterListPadding))
+        .hermeyFocusQuiet()
     }
 
     /// What the search found *inside* the conversations — the reason the field exists.
@@ -638,6 +709,7 @@ struct BotListScreen: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: Geometry.rosterListPadding,
                                               bottom: 0, trailing: Geometry.rosterListPadding))
                     .accessibilityLabel("\(model.bots.first { $0.id == hit.profile }?.displayName ?? hit.profile): \(hit.snippet)")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -729,11 +801,13 @@ struct BotListScreen: View {
                 Label("Move “\(category.name)” Up", systemImage: "arrow.up")
             }
             .disabled(!model.canMoveBotCategory(id: category.id, by: -1))
+            .hermeyFocusQuiet()
 
             Button { move(category, by: 1) } label: {
                 Label("Move “\(category.name)” Down", systemImage: "arrow.down")
             }
             .disabled(!model.canMoveBotCategory(id: category.id, by: 1))
+            .hermeyFocusQuiet()
         }
     }
 
@@ -763,6 +837,7 @@ struct BotListScreen: View {
             // A long press is where the phone keeps the verbs a row has; an empty builder for
             // Pinned and Uncategorized presents nothing rather than a menu with nothing in it.
             .contextMenu { categoryArrangeItems(group) }
+            .hermeyFocusQuiet()
 
             // And the visible door, because a long press on a heading is not something a person
             // finds. Only categories get it: Pinned and Uncategorized cannot move (2026-11-21).
@@ -778,6 +853,7 @@ struct BotListScreen: View {
                 }
                 .menuIndicator(.hidden)
                 .accessibilityLabel("Arrange \(group.name)")
+                .hermeyFocusQuiet()
             }
         }
         .textCase(nil)
@@ -878,6 +954,7 @@ struct BotListScreen: View {
                         Text("Show").foregroundStyle(Tokens.accentText)
                     }
                 }
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -1080,6 +1157,7 @@ struct BotListScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(searchOpen ? "Close search" : "Search bots")
+                .hermeyFocusQuiet()
             }
             // One group, because the order inside it is the order on screen: the bell, Settings,
             // then the create menu. Two separate trailing items would leave the pairing to
@@ -1103,6 +1181,7 @@ struct BotListScreen: View {
                                     ? "Nothing waiting"
                                     : "Waiting: \(waitingBots.count) \(waitingBots.count == 1 ? "bot" : "bots")")
                 .accessibilityIdentifier("botList.notifications")
+                .hermeyFocusQuiet()
 
                 // Settings used to be the last row of the menu, which is where an app-level
                 // destination goes to be missed: a person looking for theme, pairing or update
@@ -1120,6 +1199,7 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
                 .accessibilityIdentifier("botList.settings")
+                .hermeyFocusQuiet()
 
                 // A plus, because that is what the menu is for: everything in it creates or
                 // maintains something. It wore ⋯ while it also carried navigation (Settings,
@@ -1178,6 +1258,7 @@ struct BotListScreen: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Add or manage")
                 .accessibilityIdentifier("botList.add")
+                .hermeyFocusQuiet()
             }
         }
         if !app.isPaired {
@@ -1188,6 +1269,7 @@ struct BotListScreen: View {
                     Label("Pair", systemImage: "link.badge.plus")
                 }
                 .tint(Tokens.accentText)
+                .hermeyFocusQuiet()
             }
         }
     }
@@ -1217,6 +1299,7 @@ struct BotListScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
+                .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 14)

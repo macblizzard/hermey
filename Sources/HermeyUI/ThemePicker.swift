@@ -71,5 +71,6 @@ public struct ThemePicker: View {
         .buttonStyle(.plain)
         .accessibilityLabel(theme.name)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .hermeyFocusQuiet()
     }
 }

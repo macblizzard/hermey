@@ -41,6 +41,7 @@ Shown after a choice, or whenever a value must be typed.
 | fields | one or more masked inputs: `username` + `password`, or a single `one-time code` |
 | fills | what the value will be placed into: "the password field on the sign-in form" |
 | expires | 15 minutes by default (`ttl_seconds`, clamped to 30 s – 24 h) |
+| store | `true` saves the answer in the host's vault instead of filling a page — see below |
 
 Rules:
 
@@ -48,6 +49,26 @@ Rules:
   to the transcript, never logged, and never stored after the fill.
 - The app records that a login happened and when. Not what was typed.
 - One-time codes are single use and expire with the card.
+
+### `store`: a credential the bot will need again
+
+A login is typed once. An API key is not: it has to live somewhere the bot can use it tomorrow without
+the bot ever holding it. That is the same card with `store: true`.
+
+| | fill card (default) | stored card |
+| --- | --- | --- |
+| where the answer goes | the extension fills it into the page | `hermeyd`'s vault (`<state>/secrets.json`, `0600`) |
+| what `consume` returns | `{values}` — once | `{ok: true, stored: [{field, name}]}` — never a value |
+| how the bot uses it later | it does not; the card is spent | `fill` with `{"name": "password", "secret": "<name>"}` |
+| the app's button | *Fill it in* | *Save to the vault* |
+
+The name is `<site>/<field>` (`doctolib.de/password`, `api.openai.com/api-key`) or whatever the bot
+asked for with `save_as`, and it is the only thing that leaves the host. A value larger than 4 KB is
+refused with its own code. The vault is never served by a route: the only reader is a fill, whose reply
+is the extension's own field names and booleans.
+
+The owner sees the difference, because the sheet says where the value is going: *"Saved to the vault on
+this host — the bot gets its name, never the value"* rather than *"Typed straight into the page"*.
 
 ## Card 3 — confirm
 
@@ -82,9 +103,56 @@ The bot learns **yes or no**. It never sees the token behind the connection.
 - the site it is on,
 - which sign-in method the owner chose,
 - whether the fill succeeded, and the page's own response (wrong password, bad code),
-- for a confirm card, yes or no.
+- for a confirm card, yes or no,
+- for a stored card, the **name** the value was saved under — and never the value.
 
 That is the complete list. If a future feature needs more, it goes in this document first.
+
+## The vault, and the pane that shows it
+
+A card made with `store: true` writes its answer into the host's vault — `<state>/secrets.json`,
+`0600`, a name→value map, atomic write, never served in full by any route. The owner can now see what is
+in it from **Settings → Vault** on both the Mac and the phone, and that screen has exactly three verbs —
+list, edit, delete:
+
+```
+GET    /v1/vault           → {"items": [{name, kind, addedAt, site?, note?}]}
+PATCH  /v1/vault/{*name}   → {"name": "<name after>", "renamed": bool, "replaced": bool}
+                           | 404 no such item | 422 bad name or nothing to change
+                           | 413 value too large | 409 name taken or unreadable store
+DELETE /v1/vault/{*name}   → {"deleted": "<name>"} | 404 | 422 | 409
+```
+
+`PATCH` carries `{"rename": "<the new name>", "value": "<a replacement>"}`; both are optional and an
+absent one means "leave it alone". There is no `{id}`-style path parameter and neither name may be a
+path — both are held to the same `valid_name` pattern a card's `save_as` is, checked before any lookup.
+
+- **A value has nowhere to travel.** The item type the host serialises (`VaultItem` in
+  `hermeyd/src/vault.rs`) has no member a value could occupy, and the module never calls
+  `secrets::get`. The app's copy (`VaultItem` in `Sources/HermesKit/VaultItems.swift`) has no such field
+  either, so there is no reveal control to build and nothing for one to reveal. The edit's answer is a
+  name and two booleans — the type a reply is built from could not carry a value even by mistake.
+- **Adding has one door.** The pane does not post a value: "Add a secret" asks the host for a
+  `store`-mode card (`POST /v1/credentials/cards` with `save_as: <the name>`) and presents the *same*
+  masked sheet a bot's card opens. The value goes into that `SecureField`, to the host, and nowhere else.
+  A blank value is refused on that path (`secrets::put` will not store nothing).
+- **Editing is write-only, and it is one transaction.** `PATCH` hands both halves to `secrets::edit`,
+  which removes the old key and inserts the new one on **one** map and publishes it with the same
+  `save` an add uses — temp file, `0600`, rename — so a rename cannot land without the value it came
+  with, or the reverse. A value that is `null`/absent/empty keeps what is stored, which is what makes a
+  rename-only edit expressible; an edit that would change nothing is a 422 rather than a silent success.
+  No route returns the value, so the sheet's field starts empty and says *"Leave blank to keep the
+  current value."*
+- **Deleting is the store's own removal.** `secrets::remove` rewrites the map without the name, so the
+  value stops existing; the route answers 404 for a name the vault does not have rather than pretending.
+- **Labels live beside the store, not in it.** `site`, `note`, `kind` and `addedAt` are kept in the host's
+  document store under `vault:index`, keyed by name, written when a stored card is answered. That keeps
+  `secrets.json` one format with no migration; an entry with no record (saved before this pane existed) is
+  still listed and dated by the file. A rename moves that record rather than copying it, so the old name
+  cannot hand its labels to a later secret; a lost record degrades to the store's own timestamp, never to
+  a lost secret.
+- **A broken host is not an empty vault.** An unreachable host, a refused request and an unreadable store
+  each produce an error sentence and no list; only a real answer renders the empty state.
 
 ## Fill targets
 
@@ -95,9 +163,9 @@ That is the complete list. If a future feature needs more, it goes in this docum
 | the owner's Mac browser | the same extension, installed by hand; later, the Mac app may fill through its own browser surface |
 | native app windows | out of scope for this version; a bot must ask the owner to type |
 
-The extension is preferred because it needs no launch flags: it works for a browser the owner started
-themselves, and it is the same component on the Mac, where launch flags cannot reach at all. It never
-stores, logs or resends a value, and its reply is an id and a boolean.
+The extension needs no launch flags, so it reaches a browser the owner started themselves — and it is
+the same component on the Mac, where launch flags cannot reach at all. It never stores, logs or resends
+a value, and its reply is an id and a boolean.
 
 ## When it cannot work
 

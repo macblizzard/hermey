@@ -7,18 +7,20 @@ import UIKit
 import AppKit
 #endif
 
-/// Which list a copy handed over. The two are different promises, and the confirmation names
-/// which one was kept: what the filter admits, or everything the log still holds.
-private enum ClientLogCopyScope {
-    case shown
-    case all
-}
-
 /// A copy that actually happened, so the sheet can say how much of the log left it rather than
-/// claiming a success it cannot measure.
+/// claiming a success it cannot measure. The scope is `ClientLogCopyScope` (HermesKit), which owns
+/// both the list a scope copies and the words it is offered in — a label built here and a list built
+/// there is how a menu starts lying about what it wrote.
 private struct ClientLogCopyReceipt {
     let count: Int
     let scope: ClientLogCopyScope
+}
+
+/// What the one upload of this sheet's lifetime did. `nil` until the owner presses the button: this
+/// sheet never sends on its own, and a saved path or a refusal is the record of a press.
+private enum ClientLogSendOutcome {
+    case saved(ClientLogUploadReceipt)
+    case failed(String)
 }
 
 /// Settings → View log.
@@ -26,7 +28,13 @@ private struct ClientLogCopyReceipt {
 /// The app's own memory of what it did and where it failed, in the one place a user can reach it
 /// after a screen only told them "something went wrong". It is deliberately plain: a monospaced
 /// list with errors marked — because the reader is either scanning for the failure's clock time or
-/// copying the whole thing into a message.
+/// handing the log to whoever will read it.
+///
+/// **Two ways out, for two different readers.** A copy goes into a chat, so it takes a *portion*
+/// (the newest 100 or 500 lines, or the lines on screen) as readily as the whole thing. A press of
+/// Send log to host leaves a file on the machine the app is paired to — the owner's own request:
+/// "wouldn't it better if u save the log on server side as well so that i wont have to paste the
+/// whole log for u to investigate?"
 ///
 /// **One view for both apps.** The phone reaches it from Settings → Diagnostics, the Mac from
 /// Settings → About; both present *this* struct, and every control lives in the sheet's own header
@@ -37,11 +45,14 @@ private struct ClientLogCopyReceipt {
 ///
 /// Build 0.1.611 proved the point again from the other side: the Copy, Share and Clear buttons were
 /// `ToolbarItem`s, and the owner photographed a Mac sheet whose only buttons were Close and
-/// Refresh. Copy, share and clear now sit in the body beside the entry count, where the filter
+/// Refresh. Copy, share, send and clear now sit in the body beside the entry count, where the filter
 /// controls have always been — so they are visible however the sheet is presented.
 public struct ClientLogView: View {
     private let title: String
     private let header: String
+    /// The host's door for a saved log, or nil when this device is not paired with one. Resolved by
+    /// the app shell (a ticket is minted per press), never built here: `HermeyUI` knows no host.
+    private let uploader: ClientLogUploadClient?
 
     @Environment(\.dismiss) private var dismiss
     /// The lines on screen and whether new ones are taken as they are written.
@@ -69,13 +80,24 @@ public struct ClientLogView: View {
     /// Bumped when the reader asks to be taken back to the newest line (resuming a paused tail, or
     /// flipping the order). A counter rather than a Bool so two requests in a row both land.
     @State private var jumpToken = 0
+    /// A press of "Send log to host" is in flight: the button spins and cannot be pressed twice.
+    @State private var sending = false
+    /// What that press did — the path the host answered with, or the sentence it was refused in.
+    /// Both are drawn inside the sheet, because a failure that dismisses the sheet takes the log the
+    /// reader was about to explain with it.
+    @State private var sendOutcome: ClientLogSendOutcome?
 
     /// - Parameters:
     ///   - title: the sheet's title.
     ///   - header: the context line above the log (build, platform, host, connection state).
-    public init(title: String = "Log", header: String = "") {
+    ///   - uploader: where "Send log to host" posts, from the app shell. Nil on a device with no
+    ///     paired host — the button then says so instead of offering a press that cannot work.
+    public init(title: String = "Log",
+                header: String = "",
+                uploader: ClientLogUploadClient? = nil) {
         self.title = title
         self.header = header
+        self.uploader = uploader
     }
 
     // MARK: The reader's choice
@@ -133,7 +155,9 @@ public struct ClientLogView: View {
                     ClientLog.shared.clear()
                     feed.reload()
                 }
+                .hermeyFocusQuiet()
                 Button("Keep it", role: .cancel) {}
+                .hermeyFocusQuiet()
             } message: {
                 Text("The entries are deleted from this device. Nothing on the host changes.")
             }
@@ -165,9 +189,9 @@ public struct ClientLogView: View {
     // MARK: Controls
     //
     // Every option the two apps have, in the sheet rather than in a toolbar: search, level,
-    // category, order, live pause, entry count, and — in their own row under it — copy shown, copy
-    // all, share and clear. The count and the pause state are always phrased in words, not only in
-    // a highlight.
+    // category, order, live pause, entry count, and — in their own row under it — the copy menu,
+    // share, send to host and clear. The count and the pause state are always phrased in words, not
+    // only in a highlight.
 
     private var controls: some View {
         VStack(spacing: 6) {
@@ -225,6 +249,7 @@ public struct ClientLogView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear the search")
+                .hermeyFocusQuiet()
             }
         }
         .padding(.horizontal, 8)
@@ -257,6 +282,7 @@ public struct ClientLogView: View {
         .accessibilityValue(order.detail)
         .help(order.detail)
         .frame(maxWidth: .infinity)
+        .hermeyFocusQuiet()
     }
 
     private var levelPicker: some View {
@@ -272,6 +298,7 @@ public struct ClientLogView: View {
         .labelsHidden()
         .controlSize(.small)
         .accessibilityLabel("Level")
+        .hermeyFocusQuiet()
     }
 
     private var categoryPicker: some View {
@@ -287,6 +314,7 @@ public struct ClientLogView: View {
         .labelsHidden()
         .controlSize(.small)
         .accessibilityLabel("Category")
+        .hermeyFocusQuiet()
     }
 
     /// Pause is the difference between a log that scrolls under the reader's eyes and one that
@@ -318,6 +346,7 @@ public struct ClientLogView: View {
         .buttonStyle(.plain)
         .help(feed.isLive ? "Pause the live tail" : "Resume the live tail")
         .accessibilityLabel(feed.isLive ? "Pause the live tail" : "Resume the live tail")
+        .hermeyFocusQuiet()
     }
 
     private var countLine: String {
@@ -330,76 +359,85 @@ public struct ClientLogView: View {
 
     /// What the count line says for a moment after a copy: the number is the point. "Copied" on its
     /// own cannot tell the reader whether the filter went with it, and a bare "Copied" is also how a
-    /// sheet lies about an export it never wrote.
+    /// sheet lies about an export it never wrote. The scope's own sentence is used so the menu, the
+    /// copy and this line cannot describe three different lists.
     private var copiedNotice: String? {
         guard let copied else { return nil }
-        let noun = copied.count == 1 ? "line" : "lines"
-        switch copied.scope {
-        case .shown: return "Copied \(copied.count) \(noun) shown"
-        // Short enough to survive a narrow phone at one line: the entry count is the other half of
-        // this column, and a message that truncates is a message that did not say what happened.
-        case .all: return "Copied all \(copied.count) \(noun)"
-        }
+        return copied.scope.receipt(count: copied.count)
     }
 
     // MARK: Handing the log to someone else
 
-    /// Copy shown, copy all, share and clear — in the sheet's body, not its toolbar.
+    /// Copy, share, send and clear — in the sheet's body, not its toolbar.
     ///
     /// They were toolbar items until build 0.1.611, where the Mac sheet drew Close and Refresh and
     /// dropped the rest; a control the sheet cannot show is not a control. These sit under the
     /// filter row, in the same column as the entry count, and both platforms get this one row.
     private var handoffControls: some View {
         // One row when the sheet is wide enough, two when it is not: an iPhone in portrait with a
-        // Dynamic Type bump should wrap rather than clip a word off "Copy shown".
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                copyShownButton
-                copyAllButton
-                shareButton
-                Spacer(minLength: 4)
-                clearButton
-            }
-            VStack(alignment: .leading, spacing: 6) {
+        // Dynamic Type bump should wrap rather than clip a word off "Send log to host".
+        VStack(alignment: .leading, spacing: 6) {
+            ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    copyShownButton
-                    copyAllButton
+                    copyMenu
+                    shareButton
+                    sendButton
                     Spacer(minLength: 4)
                     clearButton
                 }
-                shareButton
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        copyMenu
+                        shareButton
+                        Spacer(minLength: 4)
+                        clearButton
+                    }
+                    sendButton
+                }
             }
+            sendStatus
         }
     }
 
-    /// The lines on screen, in the reader's order: what the old single Copy button wrote.
-    private var copyShownButton: some View {
-        Button {
-            copy(shown, scope: .shown)
+    /// The four copies, in one menu: the newest 100 lines, the newest 500, the lines on screen, or
+    /// everything the filter admits. Each item carries the size of the pool it would take — "(of 812)"
+    /// — because the complaint that produced this menu was that a copy took the whole log and there was
+    /// no way to ask for less: "would be better if i could just copy a portion of the log like last 100
+    /// lines and so on instead of copying the whole thing".
+    ///
+    /// The counts are read at draw time from the same query the copy uses, so a filter typed a moment
+    /// ago is already reflected in the numbers.
+    private var copyMenu: some View {
+        Menu {
+            ForEach(ClientLogCopyScope.allCases) { scope in
+                Button(scope.title(available: availableCount(scope))) {
+                    copy(scope)
+                }
+                .disabled(availableCount(scope) == 0)
+                .help(copyHelp(scope))
+            }
         } label: {
-            handoffLabel("Copy shown", "doc.on.doc")
+            handoffLabel("Copy…", "doc.on.doc")
         }
+        .menuIndicator(.hidden)
         .buttonStyle(.plain)
-        .disabled(shown.isEmpty)
-        .opacity(shown.isEmpty ? 0.45 : 1)
-        .help("Copy the lines on screen")
-        .accessibilityLabel("Copy shown")
-        .accessibilityHint("Puts the lines on screen on the clipboard")
+        .fixedSize()
+        .disabled(logAdmittedCount == 0 && shown.isEmpty)
+        .opacity(logAdmittedCount == 0 && shown.isEmpty ? 0.45 : 1)
+        .help("Copy a portion of the log, or all of it")
+        .accessibilityLabel("Copy")
+        .accessibilityHint("Offers the newest 100 lines, the newest 500, the lines on screen, or all of them")
+        .hermeyFocusQuiet()
     }
 
-    /// The whole buffer, paused-held lines included, with the order kept and the filter dropped.
-    private var copyAllButton: some View {
-        Button {
-            copyAll()
-        } label: {
-            handoffLabel("Copy all", "doc.on.doc.fill")
+    /// The sentence under each menu item, so the difference between four copies is not a guess.
+    private func copyHelp(_ scope: ClientLogCopyScope) -> String {
+        switch scope {
+        case .last100: return "Copy the newest 100 lines the filter admits"
+        case .last500: return "Copy the newest 500 lines the filter admits"
+        case .shown: return "Copy the lines on screen, in the order they are in"
+        case .all: return "Copy every line the filter admits, including lines a paused tail is holding back"
         }
-        .buttonStyle(.plain)
-        .disabled(feed.entries.isEmpty)
-        .opacity(feed.entries.isEmpty ? 0.45 : 1)
-        .help("Copy every line in the log, including lines a paused tail is holding back")
-        .accessibilityLabel("Copy all")
-        .accessibilityHint("Puts every line in the log on the clipboard")
     }
 
     /// The same text as Copy shown, handed to the system's share sheet — the phone's route to
@@ -413,6 +451,56 @@ public struct ClientLogView: View {
         .opacity(shown.isEmpty ? 0.45 : 1)
         .help("Send the lines on screen to another app")
         .accessibilityLabel("Share log")
+        .hermeyFocusQuiet()
+    }
+
+    /// One tap, one file on the host. Not a button that also copies, and not a background sync: the
+    /// owner asked to stop pasting the log into a chat, not to have the app send it without being asked.
+    private var sendButton: some View {
+        Button {
+            sendLog()
+        } label: {
+            HStack(spacing: 4) {
+                handoffLabel("Send log to host", "arrow.up.doc")
+                if sending { ProgressView().controlSize(.mini) }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(uploader == nil || sending || logAdmittedCount == 0)
+        .opacity(uploader == nil || logAdmittedCount == 0 ? 0.45 : 1)
+        .help(uploader == nil
+              ? "No host is paired with this device, so there is nowhere to save the log"
+              : "Save this log as a file on the host, where it can be read without pasting it")
+        .accessibilityLabel("Send log to host")
+        .accessibilityHint("Saves the log as a file on the paired host and shows the path")
+        .hermeyFocusQuiet()
+    }
+
+    /// What the press did, under the row it was pressed in: the path on success (the one fact the
+    /// owner can act on), or the reason on failure. The sheet stays open either way.
+    @ViewBuilder
+    private var sendStatus: some View {
+        if sending {
+            Text("Sending the log to the host…")
+                .font(.system(size: 9.5, design: .monospaced))
+                .foregroundStyle(Tokens.textMuted)
+        } else if let sendOutcome {
+            switch sendOutcome {
+            case let .saved(receipt):
+                Text("Saved on the host: \(receipt.path)")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(Tokens.accentText)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Saved on the host at \(receipt.path)")
+            case let .failed(reason):
+                Text("Not sent — \(reason)")
+                    .font(.system(size: 9.5, design: .monospaced))
+                    .foregroundStyle(Tokens.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("The log was not sent: \(reason)")
+            }
+        }
     }
 
     private var clearButton: some View {
@@ -426,6 +514,7 @@ public struct ClientLogView: View {
         .opacity(feed.entries.isEmpty ? 0.45 : 1)
         .help("Delete the entries on this device")
         .accessibilityLabel("Clear log")
+        .hermeyFocusQuiet()
     }
 
     /// One look for every control in that row: a small capsule in the app's control colour with a
@@ -539,6 +628,7 @@ public struct ClientLogView: View {
             }
             .font(TypeScale.font(TypeScale.md))
             .padding(.top, 2)
+            .hermeyFocusQuiet()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -558,6 +648,7 @@ public struct ClientLogView: View {
         ToolbarItem(placement: .cancellationAction) {
             Button("Close") { dismiss() }
                 .font(TypeScale.font(TypeScale.md))
+                .hermeyFocusQuiet()
         }
         ToolbarItemGroup(placement: .primaryAction) {
             // Re-read without closing the sheet: a log that is only read on open cannot show the
@@ -568,6 +659,7 @@ public struct ClientLogView: View {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
             .help("Read the log again")
+            .hermeyFocusQuiet()
             // Copy, share and clear are deliberately *not* here: see `handoffControls`. On the Mac
             // this group is exactly what the sheet dropped in build 0.1.611.
         }
@@ -611,19 +703,37 @@ public struct ClientLogView: View {
         ClientLog.text(of: entries, header: header)
     }
 
-    /// Every line the log holds, in the reader's order and with no filter applied.
+    /// Every line the log holds that the filter admits, in the reader's order, with the newest
+    /// `limit` kept when the scope is a tail.
     ///
     /// Read from the log rather than from `feed.entries` because a paused tail holds new lines back
     /// in the feed — and "all" is the one action whose meaning includes them. Copying is not a
     /// request to resume, so the tail stays paused.
-    private func allEntries() -> [ClientLogEntry] {
+    private func logEntries(limit: Int?) -> [ClientLogEntry] {
         ClientLog.shared.flushNow()
         let buffer = ClientLog.shared.snapshot()
-        return ClientLogQuery(order: order).apply(to: buffer)
+        return query.apply(to: buffer, limit: limit)
     }
 
-    private func copyAll() {
-        copy(allEntries(), scope: .all)
+    /// How many lines the log would hand this scope, for the label. Read without the flush: a count
+    /// must not write to disk on every redraw, and the buffer is the same list the flush writes.
+    private var logAdmittedCount: Int {
+        query.apply(to: ClientLog.shared.snapshot()).count
+    }
+
+    /// The pool a scope copies from, counted. `shown` is the feed (what the reader is looking at);
+    /// the other three read the log, so a paused tail does not make "all" smaller than it is.
+    private func availableCount(_ scope: ClientLogCopyScope) -> Int {
+        scope == .shown ? shown.count : logAdmittedCount
+    }
+
+    private func copy(_ scope: ClientLogCopyScope) {
+        switch scope {
+        case .shown:
+            copy(shown, scope: .shown)
+        case .all, .last100, .last500:
+            copy(logEntries(limit: scope.lineLimit), scope: scope)
+        }
     }
 
     private func copy(_ entries: [ClientLogEntry], scope: ClientLogCopyScope) {
@@ -655,6 +765,62 @@ public struct ClientLogView: View {
             guard sequence == copySequence else { return }
             copied = nil
         }
+    }
+
+    // MARK: Saving the log on the host
+
+    /// One tap: the same bytes a copy would write, posted to the host, which answers with the path.
+    ///
+    /// Nothing here is automatic. The sheet does not send on appear, on an error, or after a copy —
+    /// the owner asked for a place to read the log, not for the app deciding when to send it. The
+    /// scope is *all* (everything the filter admits, paused-held lines included) because the file is
+    /// meant to be the whole answer for whoever reads it on the host; the filter that produced it
+    /// travels in the envelope, so a file narrowed to errors says why it is short.
+    private func sendLog() {
+        guard let uploader, !sending else { return }
+        let entries = logEntries(limit: nil)
+        guard !entries.isEmpty else { return }
+        sending = true
+        sendOutcome = nil
+        let payload = ClientLogUploadPayload(
+            device: Self.deviceName,
+            appVersion: Self.bundleValue("CFBundleShortVersionString"),
+            appBuild: Self.bundleValue("CFBundleVersion"),
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            scope: .all,
+            level: levelFilter?.filterName,
+            category: categoryFilter,
+            search: query.trimmedSearch.isEmpty ? nil : query.trimmedSearch,
+            // The UTC moment this file describes; the host writes its own stamp in the filename.
+            capturedAt: Date(),
+            text: exportText(entries))
+        Task {
+            do {
+                let receipt = try await uploader.send(payload)
+                sendOutcome = .saved(receipt)
+            } catch {
+                // Every case of `ClientLogUploadError` has its own sentence, and the sheet keeps
+                // itself open with it: a 403, a 413 and an unreachable host are three different
+                // problems and the reader is the one who can act on any of them.
+                sendOutcome = .failed(error.localizedDescription)
+            }
+            sending = false
+        }
+    }
+
+    /// This device's own name, as its owner set it in Settings — what the host's filename carries.
+    /// Read here rather than in `HermesKit` so that module stays Foundation-only, and spelled the
+    /// same way `SettingsScreen.logHeader` already reads the OS name beside it.
+    private static var deviceName: String {
+        #if os(iOS)
+        return UIDevice.current.name
+        #else
+        return Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        #endif
+    }
+
+    private static func bundleValue(_ key: String) -> String {
+        (Bundle.main.object(forInfoDictionaryKey: key) as? String) ?? ""
     }
 }
 

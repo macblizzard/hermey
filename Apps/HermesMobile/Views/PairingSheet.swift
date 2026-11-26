@@ -48,6 +48,7 @@ struct PairingSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .foregroundStyle(Tokens.textMuted)
+                        .hermeyFocusQuiet()
                 }
             }
         }
@@ -75,7 +76,9 @@ struct PairingSheet: View {
                 }
                 pendingScannedHost = nil
             }
+            .hermeyFocusQuiet()
             Button("Keep \(host)", role: .cancel) { pendingScannedHost = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text("The code came with a host address. Only continue if that is the machine you just ran `hermey pair` on.")
         }

@@ -75,26 +75,9 @@ public enum TranscriptGrouping {
 /// 40 ms. On a long conversation that is a full walk to draw a caret (the jitter reported
 /// 2026-11-14). The rows are append-only within a conversation, so a cheap signature is enough to
 /// know whether the last pass still applies.
-public final class TranscriptRowCache {
-    private var signature: Signature?
-    private var cached: [TranscriptRow] = []
+///
+/// That signature was `(count, lastID)` and it stopped being enough the moment a page of history
+/// landed *above* the reader: a prepend changes the count and not the last id, so a 6,400-row
+/// conversation was regrouped from scratch per page (the scroll freeze reported 2026-11-25). The
+/// cache now lives in `IncrementalTranscriptRows.swift` and splices instead of rebuilding.
 
-    private struct Signature: Equatable {
-        let count: Int
-        let lastID: String?
-        let running: [String]
-    }
-
-    public init() {}
-
-    public func rows(_ entries: [TranscriptEntry], running: Set<String> = []) -> [TranscriptRow] {
-        let next = Signature(count: entries.count,
-                             lastID: entries.last?.id,
-                             running: running.sorted())
-        if next == signature { return cached }
-        let fresh = TranscriptGrouping.rows(entries, running: running)
-        signature = next
-        cached = fresh
-        return fresh
-    }
-}

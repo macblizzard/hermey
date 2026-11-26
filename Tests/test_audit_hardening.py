@@ -111,10 +111,19 @@ class AuditHardening(unittest.TestCase):
         self.assertIn('lastSendError = "could not withdraw the request:', app)
 
     def test_visible_transcript_is_cached_until_the_transcript_changes(self) -> None:
+        # Shape updated 2026-11-25 (scroll freeze): the cache is no longer a tuple invalidated by
+        # `visibleTranscriptCache = nil`. A page landing *above* the reader invalidated it several
+        # times a second and each invalidation re-ran three whole-array filters over 6,400 rows, so
+        # the cache now splices the page on (`TranscriptVisibilityCache`) and is kept in step from
+        # one place, `transcriptDidChange`. The three things this test has always meant are still
+        # asserted: there is a cache, every transcript change goes through it, and the visibility
+        # flags are part of its key.
         app = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text()
-        self.assertIn("private var visibleTranscriptCache:", app)
-        self.assertIn("didSet { visibleTranscriptCache = nil }", app)
-        self.assertIn("cached.showToolCalls == showToolCalls", app)
+        self.assertIn("private var visibleTranscriptCache = TranscriptVisibilityCache()", app)
+        self.assertIn("didSet { transcriptDidChange(from: oldValue) }", app)
+        rows = (ROOT / "Sources" / "HermesKit" / "IncrementalTranscriptRows.swift").read_text()
+        self.assertIn("showToolCalls != self.showToolCalls", rows)
+        self.assertIn("showReasoning != self.showReasoning", rows)
 
     def test_act_validates_against_every_online_display(self) -> None:
         actions = (ROOT / "Apps" / "HermesMac" / "LocalComputer" / "ComputerActions.swift").read_text()

@@ -34,9 +34,10 @@ final class BotMenuRouter: ObservableObject {
 
 /// Everything a bot's row menu can do, in one value.
 ///
-/// One description, two containers: the row's `contextMenu` (right-click) and the `Menu` behind its
-/// ⋯ open the same entries, so the two doors cannot drift apart and every verb lands on the same
-/// store or model call whichever was used.
+/// One description, one container: the row's `contextMenu` — right-click on the Mac, long press on
+/// the phone — opens these entries, and every verb lands on the same store or model call. (The
+/// row's ⋯ was removed at the owner's request on 2026-11-25; this menu is the row's only door, so
+/// there is no second copy left to drift.)
 struct BotMenu {
     let bot: Bot
     let face: BotFaceChoice?
@@ -44,11 +45,15 @@ struct BotMenu {
     let isHidden: Bool
     let categories: [BotCategory]
     let currentCategoryID: String?
+    /// The conversations a roll moved aside, newest first (`AppModel.previousConversations`).
+    let previous: [BotChatArchive.Previous]
 
     let openSettings: () -> Void
     let togglePin: () -> Void
     let toggleHidden: () -> Void
     let showSessions: () -> Void
+    /// Open one archived conversation — read and scroll, and a message sent there continues it.
+    let openPrevious: (BotChatArchive.Previous) -> Void
     /// `nil` puts the bot back in Uncategorized.
     let assignCategory: (String?) -> Void
     let newCategory: () -> Void
@@ -56,11 +61,10 @@ struct BotMenu {
     let deleteCategory: (BotCategory) -> Void
 }
 
-// MARK: - The native menu (right-click, and the row's ⋯)
+// MARK: - The native menu (the row's context menu)
 
-/// The row's menu. `Group` is what makes one description work in two containers — the row's
-/// `contextMenu` and the `Menu` behind its ⋯ — both native menus, so both flatten the group into
-/// items and the entries cannot drift apart.
+/// The row's menu. `Group` keeps it one description whatever container draws it — the row's
+/// `contextMenu` today, a native menu on both platforms, so the entries cannot drift apart.
 struct BotRowMenu: View {
     let menu: BotMenu
 
@@ -69,11 +73,13 @@ struct BotRowMenu: View {
             Button { menu.openSettings() } label: {
                 Label("Bot Settings", systemImage: "gearshape")
             }
+            .hermeyFocusQuiet()
 
             Button { menu.togglePin() } label: {
                 Label(menu.isPinned ? "Unpin" : "Pin to top",
                       systemImage: menu.isPinned ? "pin.slash" : "pin")
             }
+            .hermeyFocusQuiet()
 
             Divider()
 
@@ -82,12 +88,21 @@ struct BotRowMenu: View {
             } label: {
                 Label("Category", systemImage: "folder")
             }
+            .hermeyFocusQuiet()
 
             Divider()
 
             Button { menu.showSessions() } label: {
                 Label("All sessions…", systemImage: "clock.arrow.circlepath")
             }
+            .hermeyFocusQuiet()
+
+            Menu {
+                previousItems
+            } label: {
+                Label("Previous conversations", systemImage: "archivebox")
+            }
+            .hermeyFocusQuiet()
 
             Divider()
 
@@ -95,6 +110,7 @@ struct BotRowMenu: View {
                 Label(menu.isHidden ? "Show bot" : "Hide bot",
                       systemImage: menu.isHidden ? "eye" : "eye.slash")
             }
+            .hermeyFocusQuiet()
         }
     }
 
@@ -114,6 +130,7 @@ struct BotRowMenu: View {
                       ? "✓ \(category.name)" : category.name,
                       systemImage: "folder")
             }
+            .hermeyFocusQuiet()
         }
 
         if !menu.categories.isEmpty { Divider() }
@@ -121,11 +138,41 @@ struct BotRowMenu: View {
         Button { menu.newCategory() } label: {
             Label("New category…", systemImage: "folder.badge.plus")
         }
+        .hermeyFocusQuiet()
 
         Button { menu.assignCategory(nil) } label: {
             Label("Remove from category", systemImage: "folder.badge.minus")
         }
         .disabled(menu.currentCategoryID == nil)
+        .hermeyFocusQuiet()
+    }
+
+    /// The conversations the ceiling rolled out of the way, newest first, each with the host's own
+    /// count and its last-message date.
+    ///
+    /// A submenu rather than a sheet: there is no cap on how many archived chats exist, and a menu
+    /// lists forty of them as readily as two. The last line is the honest half — a message sent in
+    /// the transcript that opens is appended to *that* conversation, which no longer opens when the
+    /// bot's row is tapped.
+    @ViewBuilder
+    private var previousItems: some View {
+        if menu.previous.isEmpty {
+            Text("None yet")
+        }
+
+        ForEach(menu.previous) { row in
+            Button {
+                menu.openPrevious(row)
+            } label: {
+                Label(BotChatArchive.rowLabel(row), systemImage: "text.bubble")
+            }
+            .hermeyFocusQuiet()
+        }
+
+        if !menu.previous.isEmpty {
+            Divider()
+            Text("Sending in one continues that old chat")
+        }
     }
 }
 

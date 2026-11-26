@@ -126,6 +126,7 @@ struct UpdatePrompt: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Tokens.accent)
+                .hermeyFocusQuiet()
 
                 // One button per sideloading app actually installed on this phone: AltStore,
                 // SideStore and Feather all accept an IPA by deep link but under different URLs,
@@ -142,6 +143,7 @@ struct UpdatePrompt: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(Tokens.accentText)
+                    .hermeyFocusQuiet()
                 }
 
                 Button {
@@ -155,6 +157,7 @@ struct UpdatePrompt: View {
                 .foregroundStyle(Tokens.textMuted)
                 // Escape on a hardware keyboard dismisses, the same as the button and the swipe.
                 .keyboardShortcut(.cancelAction)
+                .hermeyFocusQuiet()
             }
             .padding(.top, 18)
         }

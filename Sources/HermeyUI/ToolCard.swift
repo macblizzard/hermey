@@ -1,4 +1,5 @@
 import Foundation
+import HermesKit
 import SwiftUI
 
 /// A tool call in the transcript: what ran, how long it took, and what it printed.
@@ -8,6 +9,10 @@ import SwiftUI
 /// the spec) because a tool that prints a thousand lines must not push the answer off the
 /// screen. The 12-line rule lives in one place, `shouldStartExpanded`, so a screen cannot
 /// decide differently.
+///
+/// Past that first disclosure the output is the same kind of body a message is, so it takes
+/// the same clamp (`LongMessageBody`, fifty plain lines): a 400-line `read_file` result was
+/// four hundred numbered rows laid out in one card, and the card is on screen while it does it.
 public struct ToolCard: View {
     public enum Status: Equatable {
         case running
@@ -47,6 +52,9 @@ public struct ToolCard: View {
     private let exitCode: Int?
     private let stdoutLines: Int?
     private let workingDirectory: String?
+    /// The message this card belongs to, for the body's clamp — an opened output stays open when a
+    /// lazy stack rebuilds the row. Empty for a card that stands alone (a preview, a sheet).
+    private let messageID: String
 
     @State private var expanded: Bool
 
@@ -58,7 +66,8 @@ public struct ToolCard: View {
                 exitCode: Int? = nil,
                 stdoutLines: Int? = nil,
                 workingDirectory: String? = nil,
-                startsExpanded: Bool? = nil) {
+                startsExpanded: Bool? = nil,
+                messageID: String = "") {
         self.name = name
         self.summary = summary
         self.status = status
@@ -67,6 +76,7 @@ public struct ToolCard: View {
         self.exitCode = exitCode
         self.stdoutLines = stdoutLines
         self.workingDirectory = workingDirectory
+        self.messageID = messageID
         _expanded = State(initialValue: startsExpanded ?? ToolCard.shouldStartExpanded(output))
     }
 
@@ -154,6 +164,7 @@ public struct ToolCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText)
         .accessibilityHint(expanded ? "Collapse tool output" : "Expand tool output")
+        .hermeyFocusQuiet()
     }
 
     @ViewBuilder
@@ -177,10 +188,25 @@ public struct ToolCard: View {
 
     private var outputBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ToolBodyView(text: outputText,
-                         font: Tokens.mono,
-                         color: Tokens.textSecondary,
-                         gutterColor: Tokens.textMuted)
+            // The output is a body: past fifty lines the tail waits behind "Show full message",
+            // exactly as a long reply's does. Plain text either way — there is no markdown here.
+            ClampedBody(TranscriptClamp.Body(text: outputText),
+                        messageID: messageID.isEmpty ? name + ":output" : messageID + ":output",
+                        font: Tokens.mono,
+                        color: output == nil || output?.isEmpty == true ? Tokens.textDim : Tokens.textSecondary,
+                        lineSpacing: 6,
+                        whole: {
+                            ToolBodyView(text: outputText,
+                                         font: Tokens.mono,
+                                         color: Tokens.textSecondary,
+                                         gutterColor: Tokens.textMuted)
+                        },
+                        expanded: {
+                            ToolBodyView(text: outputText,
+                                         font: Tokens.mono,
+                                         color: Tokens.textSecondary,
+                                         gutterColor: Tokens.textMuted)
+                        })
                 .foregroundStyle(output == nil || output?.isEmpty == true ? Tokens.textDim : Tokens.textSecondary)
                 .lineSpacing(6)
                 .textSelection(.enabled)
@@ -211,14 +237,14 @@ public struct ToolCard: View {
         }
         // A stored JSON result becomes the text inside it; a call whose arguments were all there
         // was becomes the command; anything else is shown as it arrived.
-        if let body = ToolPayload.info(raw: output)?.body, !body.isEmpty { return body }
+        if let body = ToolPayload.remembered(output)?.body, !body.isEmpty { return body }
         return Self.readableCall(name: name, raw: output)
     }
 
     /// Footer facts: whatever the caller measured, plus what the payload itself admits to (an exit
     /// status, a line count) — a card that showed neither said nothing about a command that failed.
-    private var resolvedExitCode: Int? { exitCode ?? ToolPayload.info(raw: output)?.exitCode }
-    private var resolvedStdoutLines: Int? { stdoutLines ?? ToolPayload.info(raw: output)?.lineCount }
+    private var resolvedExitCode: Int? { exitCode ?? ToolPayload.remembered(output)?.exitCode }
+    private var resolvedStdoutLines: Int? { stdoutLines ?? ToolPayload.remembered(output)?.lineCount }
 
     private var hasFooter: Bool {
         resolvedExitCode != nil || resolvedStdoutLines != nil || (workingDirectory?.isEmpty == false)

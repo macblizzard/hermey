@@ -49,6 +49,13 @@ struct ScrollViewportProbe: NSViewRepresentable {
         private var lastVerdict: Bool?
         private var pendingSignal = Int.min
         private var lastScrolledSignal = Int.min
+        /// The document height this probe last saw, so a change of *width* can be told from a change of
+        /// height. A pane opening on either edge hands this view a narrower column without a single new
+        /// message arriving.
+        private var lastDocumentHeight: CGFloat?
+        /// One follow in flight at a time. A resize hands the scroll view a frame change per frame of
+        /// its animation; without this, each one queued its own four-pass jump and they all landed.
+        private var followInFlight = false
 
         /// The probe never draws and never takes a click: it is a measuring device, not a view.
         override var isFlipped: Bool { true }
@@ -132,15 +139,42 @@ struct ScrollViewportProbe: NSViewRepresentable {
         ///
         /// Never while the in-chat search is open (`followsGrowth`): the search owns the reading
         /// position, and the reader is looking at a row they jumped to, not at the newest message.
+        ///
+        /// And only when the **height** grew, not whenever the document's frame changed. Opening a
+        /// sidebar or the bot panel animates the conversation's width, and a width is a layout: every
+        /// row re-wraps, the document is handed a new frame on every frame of the pane's animation, and
+        /// this handler used to take each of those for a new message at the foot and jump the transcript
+        /// to its end — once per frame, against an easing move. That is the up-and-down the owner saw
+        /// while a sidebar opened or closed (reported 2026-11-25). A width-only change re-measures the
+        /// verdict and touches nothing.
         private func contentGrew() {
+            let height = enclosingScrollView?.documentView?.frame.height
+            let grew = height.map { now in
+                guard let last = lastDocumentHeight else { return true }
+                return now > last + 0.5
+            } ?? false
+            if let height { lastDocumentHeight = height }
+
             if followsGrowth, lastVerdict != false {
-                scrollToBottom(attempts: 4)
+                if grew { followGrowth() } else { report() }
             } else {
                 report()
             }
             // A lazy transcript grows as it lays out; an open that was already waiting for its
             // rows gets its chance here.
             performPendingScroll()
+        }
+
+        /// Follow the growth that arrived, one jump in flight.
+        ///
+        /// A stream of growth (a reply being written) and a resize both arrive as several frame changes
+        /// in a row. The jump already retries while the lazy rows measure themselves, so a second
+        /// request while the first is running is the same correction twice — which is what made a
+        /// following transcript overshoot and settle, over and over, instead of moving once.
+        private func followGrowth() {
+            guard !followInFlight else { return }
+            followInFlight = true
+            scrollToBottom(attempts: 4) { [weak self] in self?.followInFlight = false }
         }
 
         // MARK: Scrolling
@@ -160,9 +194,13 @@ struct ScrollViewportProbe: NSViewRepresentable {
         ///
         /// One jump is not enough: each new lazy row pushes the end further down, so the first
         /// attempt lands short of the bottom by however much the last screens of history added.
-        private func scrollToBottom(attempts: Int) {
+        ///
+        /// `then` runs once the last attempt has, which is what lets the caller keep exactly one follow
+        /// in flight (see `followGrowth`).
+        private func scrollToBottom(attempts: Int, then done: (() -> Void)? = nil) {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let scroll = self.enclosingScrollView, let document = scroll.documentView else {
+                    done?()
                     return
                 }
                 let clip = scroll.contentView
@@ -172,10 +210,15 @@ struct ScrollViewportProbe: NSViewRepresentable {
                     clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: target))
                     scroll.reflectScrolledClipView(clip)
                 }
+                // Our own jump is not growth: keep the baseline current so the next frame change is
+                // measured against where the document actually is.
+                self.lastDocumentHeight = document.frame.height
                 // Re-report: the jump changed the verdict, and the button's visibility follows it.
                 self.report()
                 if attempts > 1, distance > 0.5 {
-                    self.scrollToBottom(attempts: attempts - 1)
+                    self.scrollToBottom(attempts: attempts - 1, then: done)
+                } else {
+                    done?()
                 }
             }
         }

@@ -187,7 +187,7 @@ class TheCardIsOneTypeInTwoProcesses(unittest.TestCase):
     def test_the_bot_name_travels_in_the_attributes(self) -> None:
         # One turn belongs to one bot from start to finish, so the name is fixed at request time.
         self.assertIn("public var botName: String", ATTRIBUTES)
-        self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
+        self.assertIn("HermeyTurnAttributes(botName: name", COORDINATOR)
 
     def test_the_extension_does_not_link_the_app(self) -> None:
         # A widget extension loads in its own process; importing the app's module or package stack
@@ -310,7 +310,7 @@ class TheCoordinatorRidesTheModelsExistingState(unittest.TestCase):
         self.assertIn("model.$isStreaming", COORDINATOR)
         # A second turn is not a second transition, and a redraw is not a turn.
         self.assertIn(".removeDuplicates()", COORDINATOR)
-        self.assertIn("func attach(to model: AppModel)", COORDINATOR)
+        self.assertIn("func attach(to model: AppModel", COORDINATOR)
 
     def test_a_turn_begin_starts_and_a_turn_end_finishes(self) -> None:
         sink = COORDINATOR[COORDINATOR.index(".sink"):COORDINATOR.index(".store(in:")]
@@ -359,7 +359,7 @@ class TheCoordinatorRidesTheModelsExistingState(unittest.TestCase):
         self.assertIn("await leftover.update(content)", sweep)
         self.assertIn("phase: .done", sweep)
         self.assertNotIn(".end(", sweep)
-        attach = body("func attach(to model: AppModel)")
+        attach = body("func attach(to model: AppModel")
         self.assertIn("retireLeftovers()", attach)
 
     def test_a_new_turn_waits_for_the_sweep(self) -> None:
@@ -611,7 +611,7 @@ class TheCoordinatorHandsTheReplyOver(unittest.TestCase):
 
     def test_the_name_is_short_before_it_is_drawn_here_too(self) -> None:
         # The island's own shortening is a display rule; the coordinator still sends the real name.
-        self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
+        self.assertIn("HermeyTurnAttributes(botName: name", COORDINATOR)
 
 
 class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
@@ -627,9 +627,10 @@ class TheCardIsGlassWithWordsOnIt(unittest.TestCase):
 
     def test_the_working_card_draws_the_step_line(self) -> None:
         card = piece("private struct HermeyTurnLockScreen: View")
-        self.assertIn(
-            "HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
-            card)
+        self.assertRegex(
+            card,
+            r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+            r"\s+tone: \.card")
         # Unconditionally: nothing in the card's body branches on the phase, so the sentence saying
         # what the bot is doing is drawn from the first second of the turn, not only at `Done`.
         self.assertNotIn("phase == .done", card)
@@ -773,7 +774,9 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         # The complaint was the lock screen, so the layout that failed is the one pinned: the card
         # draws the named status line, and the line is the state's step when there is one.
         card = piece("private struct HermeyTurnLockScreen: View")
-        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)", card)
+        self.assertRegex(card,
+                         r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+                         r"\s+tone: \.card")
         self.assertIn("Text(line)", piece("private struct HermeyTurnStatusLine: View"))
         status = piece("private struct HermeyTurnStatusLine: View")
         self.assertIn("let step = state.step", status)
@@ -796,7 +799,7 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
     def test_progress_is_pushed_while_the_turn_runs(self) -> None:
         # The path the feature was missing: `begin` wrote the state once and nothing refreshed it,
         # so the lock screen held the frame from `request` until the turn ended.
-        attach = body("func attach(to model: AppModel)")
+        attach = body("func attach(to model: AppModel")
         for source in ("model.$liveTools", "model.$streamingText", "model.$reasoningText"):
             self.assertIn(source, attach)
         self.assertIn("self.progress()", attach)
@@ -807,7 +810,8 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         # Normalised before it is compared, so a token that does not change the line is not an
         # update — otherwise a streaming reply costs one activity write per token.
         self.assertIn("let step = normalisedStep(for: phase)", progress)
-        self.assertIn("guard step != lastStep || phase != lastPhase else { return }", progress)
+        self.assertIn("guard step != lastStep || phase != lastPhase || state != lastState else { return }",
+                      progress)
 
     def test_the_step_is_the_apps_own_vocabulary(self) -> None:
         # Same words every surface reads: the tracker's activity word, and the tool that is out.
@@ -833,7 +837,7 @@ class TheCardAlwaysSaysWhatItIsDoing(unittest.TestCase):
         self.assertEqual([path.name for path in conformances], ["HermeyTurnAttributes.swift"])
         self.assertIn("ActivityConfiguration(for: HermeyTurnAttributes.self)", WIDGET)
         self.assertEqual(set(re.findall(r"Activity<(\w+)>", COORDINATOR)), {"HermeyTurnAttributes"})
-        self.assertIn("HermeyTurnAttributes(botName: name)", COORDINATOR)
+        self.assertIn("HermeyTurnAttributes(botName: name", COORDINATOR)
 
 
 if __name__ == "__main__":
@@ -959,8 +963,9 @@ class TheIslandSaysOneWord(unittest.TestCase):
         # Drawn for every phase: nothing in the card branches on it.
         card = piece("private struct HermeyTurnLockScreen: View")
         self.assertNotIn("phase ==", card)
-        self.assertIn("HermeyTurnStatusLine(state: state, botName: botName, isStale: isStale, tone: .card)",
-                      card)
+        self.assertRegex(card,
+                         r"HermeyTurnStatusLine\(state: state,\s+botName: botName,\s+isStale: isStale,"
+                         r"\s+tone: \.card")
 
     def test_the_new_phase_travels_in_both_directions(self) -> None:
         # Encoding is the synthesised one, so the raw value *is* the wire form: `needsYou` has to be
@@ -997,7 +1002,7 @@ class TheIslandSaysOneWord(unittest.TestCase):
         self.assertIn("model.hasPendingRequests ? .needsYou : .working", phase)
         # Subscribed, or the card would never be told: its own sink, because `CombineLatest4` is as
         # wide as Combine goes.
-        attach = body("func attach(to model: AppModel)", COORDINATOR)
+        attach = body("func attach(to model: AppModel", COORDINATOR)
         self.assertIn("model.$pendingRequests", attach)
         self.assertIn("self.progress()", attach)
         # Not invented from the text: no trailing-question-mark test, no reply sniffing.

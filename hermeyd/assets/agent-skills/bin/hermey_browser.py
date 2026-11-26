@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """Open a page on the bot screen: wake the desktop if it is asleep, launch the browser, navigate.
 
-    hermey_browser.py open https://www.doctolib.de/patient/login
+    hermey_browser.py open https://www.zoopla.co.uk/     # THE fallback rung: one command, idempotent
     hermey_browser.py status
 
-This exists because waking the desktop and having a browser on it are two different things, and a bot that
-only did the first reported "Missing X server" or stared at an empty screen. One command now covers both,
-and it waits until the sign-in extension has actually connected, so a login card can be filled the moment
-this returns.
+This is the command a bot uses when a plain fetch was blocked, and it is the only one it needs: waking the
+desktop and having a browser on it are two different things, and a bot that only did the first reported
+"Missing X server" or stared at an empty screen. `open` covers both — it starts the desktop if it is down
+(running is not an error, it returns at once), launches the browser if none is connected, navigates, and
+waits until the sign-in extension has connected, so a login card can be filled the moment this returns.
+
+Stale state is expected and handled, because a previous run may have been killed: runtime.start() reclaims a
+display whose X lock names a dead pid, reaps an Xvnc orphaned by a SIGKILLed launcher, and `start.lock` /
+`lease.lock` are flock() locks whose owner dying releases them (the files stay behind and that is fine — an
+empty lock file is not a held lock).
 
 The browser is the one the bot desktop resolves (dock flags included, extension preloaded). It is launched
 detached: the caller's shell going away must not take the browser with it — that killed three attempts of
@@ -105,6 +111,11 @@ if action == "open":
     if os.geteuid() == 0 and os.path.isdir("/run/systemd/system"):
         cmd = ["systemctl", "reset-failed", "hermey-bot-browser"]
         subprocess.run(cmd, capture_output=True)
+        # A launch that died leaves the transient unit LOADED, and `systemd-run --unit=` then refuses with
+        # "Unit ... was already loaded or has a fragment file" — an exit 1 for a browser that is merely
+        # restarting. Reaching this point means no browser is connected, so stopping the stale unit is
+        # killing nobody's work.
+        subprocess.run(["systemctl", "stop", "hermey-bot-browser"], capture_output=True)
         run = ["systemd-run", "--unit=hermey-bot-browser", "--description=Hermey bot browser",
                *[f"--setenv={k}={v}" for k, v in (("DISPLAY", env.get("DISPLAY", ":20")),
                                                   ("XAUTHORITY", env["XAUTHORITY"] if "XAUTHORITY" in env else ""))
@@ -120,6 +131,10 @@ if action == "open":
                          start_new_session=True, cwd=str(state))
     print(json.dumps({"launched": True, "display": env.get("DISPLAY"), "exe": exe,
                       "user_data_dir": user_data_dir}))
+elif action == "where":
+    # Which jar the bot browser will use. The caller needs it to tell ITS browser from another profile's:
+    # the path is configurable (``browser.user_data_dir``), so matching on a name substring is wrong.
+    print(json.dumps({"user_data_dir": str(browser.profile_dir()), "exe": browser.executable()}))
 else:
     status = runtime.status()
     print(json.dumps({"running": bool(getattr(status, "running", False)),
@@ -141,16 +156,25 @@ def ask_agent(action: str, url: str = "") -> dict:
         return {"error": "unreadable answer from the agent tree"}
 
 
-def clear_stale_browser() -> int:
-    """Kill a browser that is running but not connected.
+def clear_stale_browser(user_data_dir: str) -> int:
+    """Kill OUR browser when it is running but not connected.
 
     Chromium is single-instance per profile: if one is alive without the extension attached, every new
     launch prints "Opening in existing browser session", exits 0, and the caller waits forever for a socket
     that will never open. Killing it is the only way back, and the profile keeps the cookies — so a login
     done earlier survives.
+
+    Scoped to THIS profile's jar and to a windowed browser. An earlier version matched any Chromium whose
+    command line contained ``browser-profile`` or ``chrome-profile`` — which is every sibling profile's
+    headless tool browser as well (``/var/lib/hermes/chrome-profile-<profile>``), so opening the bot
+    browser killed other bots' browser sessions mid-task. The jar is configurable, so compare the resolved
+    path Chrome was given, and leave ``--headless`` alone: that one never holds the visible screen.
     """
     import signal
 
+    if not user_data_dir:
+        return 0
+    wanted = os.path.realpath(user_data_dir)
     killed = 0
     for entry in os.scandir("/proc"):
         if not entry.name.isdigit():
@@ -161,9 +185,13 @@ def clear_stale_browser() -> int:
                 cmd = handle.read().replace(b"\0", b" ").decode(errors="replace")
         except OSError:
             continue
-        if os.path.basename(exe) != "chrome" or "browser-profile" not in cmd and "chrome-profile" not in cmd:
+        if os.path.basename(exe) != "chrome":
             continue
-        if "--type=" in cmd:
+        if "--type=" in cmd or "--headless" in cmd:
+            continue
+        jar = next((arg.split("=", 1)[1] for arg in cmd.split()
+                    if arg.startswith("--user-data-dir=")), "")
+        if not jar or os.path.realpath(jar) != wanted:
             continue
         try:
             os.kill(int(entry.name), signal.SIGTERM)
@@ -190,6 +218,18 @@ def browsers() -> int:
         return -1
 
 
+def act(payload: dict) -> dict:
+    """One control message to the browser channel (no credential: that listener serves /v1/browser/* only)."""
+    request = urllib.request.Request(
+        f"{endpoints()[1]}/v1/browser/act",
+        data=json.dumps(payload).encode(),
+        method="POST",
+        headers={"content-type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=60) as reply:
+        return json.load(reply)
+
+
 def main() -> int:
     action = sys.argv[1] if len(sys.argv) > 1 else "status"
     if action not in ("open", "status"):
@@ -207,8 +247,31 @@ def main() -> int:
               + f"; browsers connected: {max(browsers(), 0)}")
         return 0
 
+    where = ask_agent("where")
+    if where.get("error"):
+        print(f"could not resolve the bot browser: {where['error']}", file=sys.stderr)
+        return 1
+    if browsers() > 0:
+        # Already up — navigate what is there. Launching again would only be forwarded to the running
+        # instance (or refused by systemd as "unit already loaded"), and an idempotent command must not
+        # return non-zero for the state it was asked to reach.
+        state = ask_agent("status")
+        display = state.get("display")
+        if url:
+            try:
+                answer = act({"type": "goto", "url": url})
+            except Exception as exc:  # noqa: BLE001 - a channel we cannot talk to is reported, not raised
+                print(f"browser is up on {display} but could not be navigated: {exc}", file=sys.stderr)
+                return 1
+            if answer.get("ok") is False:
+                print(f"browser is up on {display} but refused the navigation: "
+                      f"{answer.get('error') or answer}", file=sys.stderr)
+                return 1
+        print(f"browser already open on {display}" + (f" at {url}" if url else "")
+              + "; sign-in extension connected")
+        return 0
     if browsers() == 0:
-        killed = clear_stale_browser()
+        killed = clear_stale_browser(str(where.get("user_data_dir") or ""))
         if killed:
             print(f"cleared {killed} browser(s) holding the profile without a connection", file=sys.stderr)
 

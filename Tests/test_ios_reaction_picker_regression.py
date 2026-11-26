@@ -17,8 +17,8 @@ class ReactionPickerRegressionTests(unittest.TestCase):
         self.assertIn("showingActions = true", SOURCE)
         self.assertIn(".popover(isPresented: $showingActions", SOURCE)
         self.assertIn(".presentationCompactAdaptation(.popover)", SOURCE)
-        self.assertIn("QuickReactionRow(selected:", SOURCE)
-        self.assertIn("setReaction(emoji)", SOURCE)
+        self.assertIn("QuickReactionRow(selected: reaction)", SOURCE)
+        self.assertIn("onReact(emoji)", SOURCE)
         self.assertIn("showingActions = false", SOURCE)
         # The two-step door is gone: no grid, no "Add reaction" item.
         self.assertNotIn("showingReactionPicker", SOURCE)
@@ -31,14 +31,22 @@ class ReactionPickerRegressionTests(unittest.TestCase):
 
     def test_the_reaction_is_shared_rather_than_kept_on_the_device(self):
         # The storage moved: it used to be this app's `@AppStorage`, which is why a reaction made on
-        # the Mac never appeared here. One key rule (shared with the Mac) and the model's map now.
-        self.assertIn("ReactionKey.message(rowID: entry.rowID, entryID: entry.id)", SOURCE)
-        self.assertIn("app.model.reaction(for: key)", SOURCE)
-        self.assertIn("await app.model.setReaction(next, for: key)", SOURCE)
-        # The toggle is unchanged: tapping the emoji already there clears it.
-        self.assertIn("currentReaction == emoji ? nil : emoji", SOURCE)
-        self.assertIn('.accessibilityLabel("Remove \\(ReactionEmoji.name(emoji)) reaction")', SOURCE)
-        # And the row no longer writes a device-local document of its own.
+        # the Mac never appeared here. The model owns the key and the map now; the row is handed a
+        # *value* so a badge that arrives by WS repaints the row it belongs to instead of waiting for
+        # the next scroll (a row that reached into a model it does not observe never repainted).
+        self.assertIn("var reaction: String? = nil", SOURCE)
+        self.assertIn("var onReact: (String) -> Void = { _ in }", SOURCE)
+        self.assertIn("if let emoji = reaction {", SOURCE)
+        self.assertIn("Button(emoji) { onReact(emoji) }", SOURCE)
+        self.assertIn(r'.accessibilityLabel("Remove your \(ReactionEmoji.name(emoji)) reaction")',
+                      SOURCE)
+        # The screen is what reads and writes, through the model's one rule.
+        screen = (ROOT / "Apps" / "HermesMobile" / "Views" / "ConversationScreen.swift").read_text()
+        self.assertIn("reaction: model.reaction(forRowID: entry.rowID,", screen)
+        self.assertIn("entryID: entry.id)", screen)
+        self.assertIn("Task { await model.react(emoji, rowID: entry.rowID,", screen)
+        # And the row no longer spells a key or writes a device-local document of its own.
+        self.assertNotIn("ReactionKey(", SOURCE)
         self.assertNotIn('@AppStorage("', SOURCE)
         self.assertNotIn("storedReactions", SOURCE)
 

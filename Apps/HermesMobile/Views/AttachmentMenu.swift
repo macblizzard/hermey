@@ -43,6 +43,7 @@ struct AttachmentMenu: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .hermeyFocusQuiet()
             }
         }
         .padding(.vertical, 10)

@@ -69,6 +69,7 @@ struct BotToolsSheet: View {
                         Text(failure)
                     } actions: {
                         Button("Try again") { Task { await load() } }
+                        .hermeyFocusQuiet()
                     }
                 } else if isEmpty {
                     ContentUnavailableView {
@@ -87,6 +88,7 @@ struct BotToolsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
+                    .hermeyFocusQuiet()
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -95,6 +97,7 @@ struct BotToolsSheet: View {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh \(kind.title)")
+                    .hermeyFocusQuiet()
                 }
             }
         }
@@ -165,6 +168,7 @@ struct BotToolsSheet: View {
         }
         .disabled(busy)
         .opacity(busy ? 0.5 : 1)
+        .hermeyFocusQuiet()
     }
 
     private func setSkill(_ skill: ProfileSkill, enabled: Bool) async {

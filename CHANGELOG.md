@@ -4,6 +4,103 @@ All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
 ### Added
+- **Edit a saved secret, and never see it.** Every row in **Settings → Vault** — the Mac's tab and the
+  phone's screen — now has **Edit**: rename the item, replace its value, or both, in one save. The value
+  field starts empty and says *"Leave blank to keep the current value"*, because there is nothing to
+  prefill it with: no route returns a stored value, and the new `PATCH /v1/vault/{name}` answers with the
+  item's new name and two booleans and nothing else. A rename and a replacement are one write
+  (`secrets::edit`, through the same temp-file-then-rename an add uses), so a rename cannot land without
+  its value or the reverse. A name another item already holds is refused (409) instead of swallowing it,
+  editing a name nobody saved is a 404, and an edit that would change nothing is a 422 rather than a silent
+  success. Adding is untouched — a new item still comes from the masked `store` card, where a blank value
+  is still refused — and the labels a row shows move with a rename rather than being copied to it.
+  `hermeyd` **0.8.8**.
+- **The bot's own face on the Live Activity — and it moves.** The Lock Screen card and the island's
+  expanded leading slot now draw the *same* avatar as the chat header: the same renderer, the same
+  eight-state motion, so a thinking bot leans and looks up on the Lock Screen instead of showing a
+  generic speech bubble, a blocked one stares back, and one on the computer leans aside with its eyes
+  on the screen. The drawing is compiled into the extension from `HermeyUI`'s own `OpenBotAvatar`
+  sources — one implementation, two processes, the arrangement `BotStateWord` already had — and it is
+  resolved from the definition the activity carries, through `BotAvatarLibrary` and the same document
+  initialiser the host's answer goes through, so there is no bitmap and nothing is decoded per frame.
+  The pose is `OpenBotAvatarState`'s, driven by `TimelineView(.animation)` at the app's own 10 Hz;
+  an Always-On Lock Screen or a stale card holds the stance rather than asking for frames the system
+  will not composite. A bot with no drawn avatar keeps exactly the card it had — the phase's symbol,
+  at the size it always was. The compact pill and `minimal` keep that symbol too: a face below the
+  avatar's 24 pt floor is mud, and its width would widen the island.
+- **Copy a portion of the log, or leave the whole thing on the host.** View log's Copy is now a menu of
+  four — **Copy last 100 lines**, **Copy last 500 lines**, **Copy shown**, **Copy all** — each labelled
+  with the size of the list it would take ("Copy last 100 lines (of 812)"), and all four narrowed by
+  whatever level, category or search the sheet is filtered to, so a copy is the tail of what is on
+  screen rather than the whole file. The owner asked for exactly that: *"would be better if i could just
+  copy a portion of the log like last 100 lines and so on instead of copying the whole thing and paste
+  here on chat."* Beside it, **Send log to host** posts those same bytes — plus the device name, app
+  version and build, OS, capture time and active filters — to a new `POST /v1/client-logs` on the host,
+  which writes `/var/log/hermey/client-<device>-<UTC minute>.log` (0640 root:root, one file per device
+  per minute, never overwritten: a second upload inside the same minute answers 409 rather than
+  truncating) and answers with the path the sheet then shows. It is a plain bearer POST, not the relay
+  socket, so a busy conversation cannot delay it; 2 MiB on both ends with a sentence saying so; a
+  failure (403, 409, 413, unreachable) is shown in the sheet, which stays open. Nothing is ever uploaded
+  on its own — *"wouldn't it better if u save the log on server side as well so that i wont have to
+  paste the whole log for u to investigate?"*
+- **Your host has a vault, and Settings now shows it.** A new **Vault** tab on the Mac and a **Vault**
+  row under **Settings → Secrets** on the phone list the secrets the host holds — by name, with where
+  each is for and when it was added — and let you add one or delete one. The pane never shows a value:
+  the row type on the wire (`GET /v1/vault`) has no field to carry one, and there is no reveal control
+  to press. **Add a secret** asks the host for the same `store`-mode card a bot's request makes and
+  opens the *same* masked sheet, so a value still enters the host exactly one way; **Delete** removes
+  the name from the vault (ask first, and a refusal is shown rather than swallowed). A host that cannot
+  be reached says so instead of drawing an empty vault, and an empty vault says what the vault is for.
+- **The Avatar tab offers the Classic faces again, beside your own.** A new **Classic** row — the
+  eight bodies and palette colours this app already ships, as eight whole faces rather than a body
+  picker and a colour picker that could disagree — sits under the custom presets, scrolls if the
+  sheet is narrow, and says which of the two families the bot is on now. The two are alternatives in
+  storage, not a pair: saving a Classic face clears the bot's drawn avatar (`definition`, `color`,
+  `material`), and saving a preset or a Random pick clears the Classic face — one request either
+  way, so a bot cannot wear a drawing that outranks the face you just chose. Reset clears both and
+  leaves the face the bot's id derives. Nothing new is drawn: the faces are the existing tables, and
+  the rakazo notice is untouched.
+
+### Changed
+- **Fifty lines, then a button — on every kind of message.** The scroll freeze the 0.1.670 clamp was
+  for came back with the same two screenshots: a bot's reply whose every identifier is inline code,
+  and the `[ASYNC DELEGATION BATCH COMPLETE — deleg_…]` system row. Neither was a 20,000-character
+  log, so neither tripped the old rule — and the rows that did get clamped were only the plain-prose
+  ones, because anything carrying a `::` marker was exempt. Now every body a row draws goes through
+  one decision and one view (`TranscriptClamp.plan`, `ClampedBody` in `HermeyUI`, shared by the phone
+  and the Mac): past **50 lines**, **4,000 characters** or **40 inline-code spans**, a message shows
+  its first fifty lines as plain text with **Show full message · 312 more lines** beneath it, which
+  becomes **Show less** when opened. The collapsed row parses no markdown, styles no span and
+  measures no table — the markdown a reply always had is built only when you ask for it, off the main
+  actor, and the opened row stays open while you scroll. System, reasoning, tool-run and delegation
+  rows and their cards clamp too; the only exemptions are the four small structured cards (approval,
+  draft-email, infographic, secure-entry), enumerated in one place with the reason each is there. No
+  message is truncated: the full text is kept, selectable, and what Copy copies.
+- **A long chat opens, and a slow open says so.** cody's Bot Chat holds 6,778 messages (~4.5 MB of
+  text) and took long enough to open that the phone's `session.resume` timer fired at 120 s and the
+  pane stayed empty. Measured on the host: reading the rows is 0.03 s; the engine's *display
+  projection* of the whole lineage is 6.2–9.2 s per resume, 7.5 MiB in one frame, and three sent
+  together answered at 6.2 s, 12.6 s and 18.5 s because the gateway renders them in turn. The app
+  retries an open it is waiting on, so a 6 s answer became a 120 s timeout. Now one conversation
+  being resumed is one engine request — a repeat is parked and answered from that reply, on both
+  the host (`hermeyd`) and the client — and the pane counts the wait out loud ("the host is sending
+  this chat's history — 14s") with a Retry beside it, instead of spinning in silence. Nothing is
+  trimmed: the phone still receives the newest page with `history{total,cursor}`, and every older
+  message stays reachable by scrolling back. A windowed *resume* on the engine side still needs an
+  upstream change (`omit_messages` is only an empty ack), so a cold open of a chat this size is one
+  render, not instant — but it is one, not one per retry.
+- **A bot's message is drawn in that bot's colour, not the app's.** One resolver
+  (`BotAvatarTint.resolve`) now answers "what colour is this bot" — its drawn avatar's stored colour
+  when it has one, its shape or photo face otherwise, the id's own otherwise — and every surface
+  that shows a bot's identity asks it, so a green avatar no longer keeps the blue bubble its old
+  shape face picked. Your own bubble is unchanged (the same 0.16 wash and 0.45 border, in the bot's
+  colour, as before); a bot's *own* bubble — in a room, and a bot-to-bot message on both apps — is
+  filled with its colour deepened on Midnight and paled on Parchment, edged in the colour itself,
+  and written in the ink that measures best against that fill rather than in an assumed white. A
+  bot whose avatar is nearly white on Parchment is the one face whose bubble is carried by its
+  border alone.
+
+### Added
 - **A bot's face can be made of glass.** A new `material` on the avatar document (`solid` | `glass`,
   absent meaning solid) picks between the 0.1.648 flat body and the reference's lit one: a three-stop
   ramp, one specular streak, a Fresnel rim and a contact shadow, with the eight states as an accent
@@ -92,6 +189,42 @@ All notable changes to Hermey are recorded here. The format follows
   per frame (`BotAvatarPerformance`, tests in `BotAvatarPerformanceTests`).
 
 ### Fixed
+- **A long bot chat opens on its newest rows at once, and scrolling back does not mean forty taps.**
+  The disk copy of a chat was read *after* two round trips — `model.options` and `session.list` — so a
+  cold tap on a chat with thousands of rows showed "Opening…" for the length of both before the cache
+  was even opened. It is now the first `await` of the open, off the main actor and keyed by the id
+  this device remembered, so the newest rows are on screen before either call is made and the resume
+  replaces them when it lands. The launch sweep — which warmed up to 24 bots on the one socket, 150 ms
+  apart — is now a task the model owns, and a tap cancels it mid-flight instead of waiting for the
+  in-flight warm and then the rest of the roster. Behind a windowed resume the app fills older pages
+  itself (a page is a read of the relay's own copy, so no agent work), bounded, silent and
+  cancellable, and one "load earlier" is 400 rows rather than 150. The adopted transcript no longer
+  joins the attachment vault on the main actor — that per-row pass over every row is detached now, and
+  the rows are on screen while it happens.
+- **The host pages a resume before it reads it.** The relay used to parse the whole `session.resume`
+  frame into 6,778 rows, slice the newest page off the end, and measure every row a second time to
+  cache it. It now borrows the message array as raw text, counts it (which is what `history.total`
+  reports), parses only the newest page, and keeps the rest as the bytes it arrived as for
+  `session.history` to page from. Measured on a synthetic 6,778-row / 3.4 MB resume in a debug build:
+  **434 ms → 92 ms**. The device cache keeps 2,000 rows per chat instead of 500, and a trimmed
+  transcript keeps its paging cursor (moved forward by the rows it lost) instead of dropping it.
+- **Opening a bot from the phone's list is instant, and tapping it again does nothing.** The 15–20 s
+  "stuck, then it loads" was four things at once. A tap started a `Task` per press and every one of
+  them pushed another conversation screen, so a tap storm during the push animation stacked a screen
+  per tap and each screen ran its own capture/reset/resume against the one shared transcript — two
+  of those interleave at every `await` and each reset makes the other's resume answer be dropped,
+  which is the screen that never leaves "Opening…". The resume itself is answered on a 120 s client
+  timer and queued on the host behind the launch sweep, which walks the whole roster one
+  `session.resume` at a time, so the wait had neither an end nor anything to press. And on the main
+  actor, painting a transcript joined the sent-attachment vault (a JSON read plus the bytes of every
+  picture the chat ever sent) while every user row re-read the bytes of every picture it referenced
+  *in its body* — a disk read per body pass, 25 a second while a turn streams. Now: one open at a
+  time (`beginOpen` answers "no" to a second tap on the same row and cancels the open in flight for a
+  different one), one screen per open, the cached conversation painted synchronously on the tap
+  before any `await` and before the push, the vault join and its picture bytes memoised and run off
+  the main actor, the row's reference join resolved once per row outside its body, the host given
+  `openDeadline` (12 s) before the pane says so beside a **Retry** with the cached rows still behind
+  it, and the launch sweep standing down the moment a person opens a chat.
 - **The View menu no longer offers tabs.** "Show Tab Bar" and "Show All Tabs" were AppKit's automatic
   window-tabbing items: Hermey has one window per scene and never a tab, so both sat above the
   Bigger/Smaller/Default Text Size entries as items that could not do anything. `NSWindow
@@ -1336,3 +1469,332 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 ### Changed
 - `hermeyd` **0.6.0**: the bot icon document accepts a `definition` and `color` per bot, and refuses an
   invalid definition with the reason (so the editor can show it instead of silently saving).
+
+## [0.1.649] — 2026-11-24
+
+### Added
+- **Glass avatars.** A bot's drawn face now has a material. Choose **Glass** in the Avatar tab and the shape
+  is lit like glass — a soft coloured halo, a vertical colour ramp, a form sheen, one specular streak, a
+  bright Fresnel rim and a contact shadow at the bottom — instead of a flat fill. The rim and glow pulse with
+  what the bot is doing, and the look holds at 26 pt in a list row as well as full size on the pet and in the
+  editor. **Solid** stays the default, so nothing you already saved changes.
+- **Motions that match the old face.** The drawn avatar used to only breathe; it now hops, tilts, flips,
+  makes quick eye darts and squints while it works, on exactly the same clock and performance the picture
+  avatars have — one motion language, not two.
+
+### Fixed
+- **The avatar follows you everywhere.** A stored avatar only appeared in a few places: the bot settings
+  header, the right-hand bot panel, transcript rows and the activity badges kept drawing the old face. All of
+  them now read the stored avatar, so a change shows up without a relaunch.
+- **One place to choose a face.** The duplicate *Choose bot icon* control is gone from the About tab (Mac) and
+  the identity section (iPhone); the Avatar tab is the only place a face is picked.
+
+### Changed
+- `hermeyd` **0.7.0**: the stored face carries a `material`, validated on the way in — an unknown value is
+  refused with the reason instead of being saved.
+
+## [0.1.650] — 2026-11-24
+
+### Fixed
+- **A notification icon is the avatar you chose.** Banners, the push relay's icon and the notification list
+  used to show a bot's old shape picture even after you gave it a drawn avatar. They now render the avatar you
+  saved — at rest, so it costs nothing per notification — and a bot without one keeps exactly the picture it had.
+
+## [0.1.651] — 2026-11-24
+
+### Fixed
+- **The ring around grouped bot faces.** A group-chat row drew a thin circle behind every face, which looked
+  wrong around a square or cat-shaped avatar — a dark ring with gaps. It now only draws that circle for the
+  old picture faces, and lets a drawn avatar be separated by its own outline.
+- **Icons in the message menu.** Only *Share* had one. Select Text, Read Aloud, Add Reaction, Copy Message and
+  the phone's Reply/Copy code block all carry their own icon now, in one consistent style.
+
+### Added
+- **The model and its context, at the composer.** Above the box on both the Mac and the phone: the bot's
+  `provider/model` and how much of its context is used (`540k/1M Tokens`). It sits outside the text field, never
+  covers or reflows what you type, and drops to the model alone on a narrow window.
+
+## [0.1.652] — 2026-11-24
+
+### Added
+- **Two more materials.** Besides **Solid** and **Glass**, a face can now be **Matte** (no specular at all —
+  felt or clay: a dark soft edge, a hint of grain) or **Metal** (a hard horizon line across the body, a narrow
+  bright rim, no halo). Both were built as rows in the material table, so nothing else in the app changed.
+- **Six more shapes, and a Random button.** The Avatar tab now offers twelve starting silhouettes (bottle,
+  star, droplet, hourglass, book, mushroom join the first six), and **Random** rolls a shape, a material and a
+  colour together — never the same combination twice.
+
+### Fixed
+- **Extra eyes while a bot thinks.** The thinking and blocked states drew their mark *and* the face's eyes,
+  and the eyes never shrank with the body, so a small body sat between two full-size eyes. A mark state now
+  gives the face up entirely, as the reference does.
+- **The iPhone Lock Screen card's alignment.** Its two text rows had two different left edges (the phase
+  symbol indented the second one) and the block sat low; they share one edge now and the block is centred.
+
+### Changed
+- **The row menu hides until you need it.** On the Mac the ⋯ on a bot row appears on hover, selection or
+  keyboard focus and no longer reserves space — and hovering a row wakes its avatar for a small hop and a look
+  toward the pointer.
+- **Model and context moved into the composer.** They are one pill in the composer's own control row: the model
+  name, how much context it is using, and a chevron. Click the pill to open the model picker.
+
+## [0.1.653] — 2026-11-24
+
+### Fixed
+- **The model pill in the composer is as tall as the buttons beside it.** It was collapsing to the height of its
+  own text, which made it read as a slim bar next to the round attach and send controls.
+
+## [0.1.654] — 2026-11-24
+
+### Fixed
+- **The model pill sits under the text, not beside it.** On the Mac it shared the field's row between the
+  paperclip and the placeholder, which read as part of the input; both apps now draw it on its own row beneath
+  the field, lined up with where the text starts.
+
+## [0.1.655] — 2026-11-24
+
+### Changed
+- **No more blue focus rings.** macOS draws its keyboard-focus effect in the accent blue; the app's chrome never
+  wears it. Every button, picker, toggle, menu and link now suppresses that drawing — and keyboard focus still
+  works: a focused bot row and the composer's model pill show the app's own quiet fill instead.
+
+### Removed
+- The old Hermes-to-Rakazo parity tasklist (`docs/LOCAL_COMPUTER_PARITY.md`) and its test, which outlived the
+  thing they tracked.
+
+## [0.1.656] — 2026-11-24
+
+### Fixed
+- **The model pill lines up with the message.** It sat 8 pt left of the typed text because the composer row's own
+  inset was missing from its leading padding.
+
+## [0.1.657] — 2026-11-24
+
+### Fixed
+- **The token count shows on the phone too.** A narrow pill used to drop the whole count and keep only the model
+  name, so the number lived on the Mac and not on the iPhone. The count now holds its room and the model name
+  truncates instead.
+
+## [0.1.658] — 2026-11-24
+
+### Changed
+- **The model and the token count now share a row, one at each end.** The count used to sit inside the model
+  pill, so on a narrow phone the model name was squeezed to fit it. The pill holds the model and its chevron on
+  the left, the context count sits on the right with its own width, and neither can shrink the other.
+
+## [0.1.659] — 2026-11-24
+
+### Fixed
+- **The composer's session row starts at the `+` button's edge**, not under the message text, and the token count
+  keeps a clear margin inside the rounded corner instead of running to the card's edge.
+
+## [0.1.660] — 2026-11-25
+
+### Added
+- **The bubble takes the bot's colour.** A bot's own messages are tinted with that bot's avatar colour — so a
+  green bot is green in the list, in the header and in its bubbles — with the ink measured against the fill for
+  contrast. Your own bubbles are unchanged.
+- **The classic faces are back as a choice.** The Avatar tab has a CLASSIC row of the eight original faces and
+  colours: pick one and the bot wears exactly the face it had before drawable avatars, or customise one instead.
+  The two never mix.
+
+### Changed
+- **Softer default shapes.** The twelve starting silhouettes are filleted — corners rounded by 5% of the shape's
+  size — so they read softly at 26 pt instead of knife-edged. A definition you paste yourself is left exactly as
+  you wrote it.
+
+### Fixed
+- **Opening a bot on the iPhone is instant.** The attachment vault was read from disk inside the open (and again
+  inside every transcript row's body), and the resume call queued behind the launch sweep — that was the 15–20
+  second freeze. It now paints from cache, gives up with a Retry after 12 s, and repeated taps are ignored
+  instead of pushing a second screen and crashing.
+
+## [0.1.661] — 2026-11-25
+
+### Fixed
+- **Reactions travel between devices.** A thumbs-up on the Mac now shows on the iPhone (and back) without
+  reopening anything: the app was only re-reading reactions from one code path its normal open never took, and
+  it filed them under an id the other device could not ask for. Both fixed, with a live push and a refetch on
+  open as the fallback.
+- **Thinking avatars are the same size as every other state**, with normal eyes — they used to shrink to 42%
+  and lose their face to a three-dot mark.
+
+### Changed
+- **The token count is always there.** Each bot remembers the last number the host reported, so the composer
+  shows it the moment a conversation opens instead of only after a turn. A brand-new bot still shows the model
+  alone.
+- **The sidebar's `＋` has a hover state and takes every click** — a full-width title-bar drag area was
+  swallowing the press.
+- **The desktop composer's `+` opens one file panel** for any photo or file instead of a two-item menu.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.1**: the reactions route's coverage, including two devices agreeing on one reaction and on
+  its removal.
+
+## [0.1.662] — 2026-11-25
+
+### Fixed
+- **Waiting and blocked avatars wear their own eyes.** Blocked drew at 32% behind a bang mark and waiting turned
+  its eyes into a slit; every state now draws the resting silhouette with a normal face and differs only in
+  motion. Blocked is the stillest state with an unblinking stare and the deepest pulse; waiting leans and looks
+  aside.
+- **The sidebar's `＋` hover fires, and you can see it.** A borderless menu swallows SwiftUI's hover events, so
+  the state never flipped; it now comes from an AppKit tracking area behind the button, and the fill, glyph and
+  hairline all move.
+- **Collapsing the panel no longer sends its toggle to the title bar.** It floats on the window's floor at the
+  exact height of the panel's own bar, so the glyph does not move when the panel slides away.
+- **The composer's `+` reaches your Photos library again.** The single file panel was the right idea, but with
+  the panel taking any file the Photos source disappears from it — the panel now carries its own `Photos…`
+  button and hands over to the system photo picker.
+
+## [0.1.663] — 2026-11-25
+
+### Changed
+- **The composer's `+` is a two-entry menu again: Photos… and Files…** The single panel could not reach the
+  Photos library, and that is where the pictures are.
+
+### Fixed
+- **The sidebar's `＋` hover, again.** The tracking area was still at the mercy of the menu's own cell deciding
+  what the view in front hears; the pointer is now sampled from the window's event stream, so nothing in front
+  can hide it.
+
+## [0.1.664] — 2026-11-25
+
+### Fixed
+- **The Mac's message menu shows its icons.** Every row carried a glyph already — the iPhone drew them — but
+  SwiftUI's macOS menu builds its items from a button's title and dropped the image, so only `Share` (a system
+  link) was marked. The menu is a real `NSMenu` now, with each item's image set from its row's own symbol, popped
+  on right-click and reachable from the keyboard with the `⋯` on the action line.
+
+## [0.1.665] — 2026-11-25
+
+### Fixed
+- **The Mac's message menu icons are visible.** They were there in 0.1.664, tinted into the dark menu: a
+  template image is re-tinted by whatever draws it, and inside a menu that tint followed an appearance the app
+  was not showing. The glyph is now coloured for the menu's own appearance and the menu draws in the app's.
+
+## [0.1.666] — 2026-11-25
+
+### Changed
+- **Secure entries keep the secret.** The credential card existed and worked, but it handed the value to the bot,
+  which is no use for an API key and the wrong place for a password. A card can now say *store*: the value goes
+  to a vault on the host, and the bot gets back a name it can use later (and fill into a page by name) — never
+  the value itself.
+- **Every field but a username is masked.** Masking used to key off the literal field name "password", so an
+  API key was drawn in clear text.
+- **The card says where it goes**, instead of promising a page it did not have.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.2**: the vault, the masked fields, the store path, and the name-resolved fill.
+
+## [0.1.667] — 2026-11-25
+
+### Added
+- **Infographic cards.** A short query can come back as a card with one real picture: hero image with a caption,
+  three to eight facts, the number that matters in a tinted block (a price, with seller and availability), one
+  link and a source. The layout is shared by the Mac and the iPhone; a dead image falls back to the caption.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.3**: the infographic schema and its named rejections.
+
+## [0.1.668] — 2026-11-25
+
+### Added
+- **Infographic cards, for real this time.** 0.1.667 announced them and did not contain them: the branch was
+  merged before its work was committed. This build carries the kind, the host validation and the shared layout.
+  A short query comes back as a card with one real picture and a caption, three to eight facts, the number that
+  matters highlighted (a price, with seller and availability), one link and a source.
+
+## [0.1.669] — 2026-11-25
+
+### Fixed
+- **A long Bot Chat opens.** Your cody chat was 6,778 messages and the host built all of it — 7.5 MiB in one
+  frame, ~10 s — while retries stacked more renders on top, which is how an open became a 120-second wait. The
+  host now pages the reply from its text before parsing it (434 ms → 92 ms on a 3.4 MB resume), answers duplicate
+  resumes from one render, and the phone paints its own disk copy before any round trip.
+- **The launch sweep no longer queues behind your tap.** Opening a bot cancels the background warm-up mid-flight
+  instead of waiting its turn.
+- **The pane says what it is doing** when the host is slow: "sending this chat's history — 14s · every message is
+  kept", with a Retry bar, instead of a silent spinner.
+
+### Added
+- **Start a new chat after** — Settings → Chat on both apps, 1,000 / 2,000 / 5,000 / Never, default 2,000. At the
+  ceiling the bot's chat rolls to a fresh conversation and the old one moves to **Previous conversations**, with
+  every message kept and its count and date shown.
+- **A vault panel in settings** on the Mac and the iPhone: saved secrets by name only, add through the masked
+  sheet, delete with a confirmation.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.4**: pages the resume from its text, parks duplicate resumes, keeps 2,500 rows of device cache
+  with its cursor, and serves the vault's name-only list.
+
+## [0.1.670] — 2026-11-25
+
+### Fixed
+- **Scrolling a long chat no longer freezes the app.** Grouping and the visible rows were rebuilt from the whole
+  transcript on every page that landed (4.5 M rows walked in ten seconds of scrolling); they are spliced now, so a
+  page costs its own 400 rows. Tool payloads are parsed once, not twice per frame.
+- **One huge log message no longer hangs a row.** Anything over 4,000 characters or 60 lines renders as a 24-line
+  preview with "Show full message", which parses on demand instead of drawing hundreds of markdown blocks.
+
+### Added
+- **View Log copies a portion**: last 100 / last 500 / shown / all, each respecting the active filter, with the
+  pool size in the label.
+- **Send log to host**: one tap writes the same bytes to /var/log/hermey/ on the host (0640, never overwritten,
+  2 MiB cap) and shows you the path — so a report comes with a pointer instead of a paste.
+
+### Changed (hermeyd)
+- `hermeyd` **0.8.6**: the client-log upload route, and `session.set_hidden` is allowed through the bridge so the
+  2,000-message roll actually takes effect.
+
+## [0.1.671] — 2026-11-25
+
+### Fixed
+- **Long messages collapse at 50 lines**, on both Mac and iPhone, with a button that says
+  `Show full message · 32 more lines` and then `Show less`. This now covers the shapes that slipped through
+  the first version — delegation and system rows, tool results and reasoning — because those were exempt.
+  The collapsed row does no markdown work at all: no parse, no per-span styling, no measurement.
+- **The conversation no longer bobs when a sidebar opens or closes.** The transcript was re-wrapping at the
+  animated width, the composer's height re-fed the foot inset, and the viewport probe took every width change
+  for a new message and yanked the scroll — four times per slide. The column resolves its geometry once at
+  the final width, the probe follows height only, and one curve (0.18 s) owns both panes.
+
+### Changed
+- `hermeyd` **0.8.7** (version bump with the app; the host code is unchanged from 0.8.6).
+
+## [0.1.672] — 2026-11-26
+
+### Added
+- **Edit a vault item**: rename it and replace its value from the vault pane on Mac and iPhone. The value
+  field starts empty and says "leave blank to keep the current value"; the host never sends a stored secret
+  back, and a failed write leaves the item exactly as it was.
+- `hermeyd` **0.8.8**: `PATCH /v1/vault/{name}`, write-only, one atomic store write.
+
+### Changed
+- **The bot list row has no ⋯ any more.** Hover, selection and keyboard focus all showed it over the same
+  menu the row's right-click already opens, so it is gone; the hover fill and hairline stay.
+- **The group-chat composer stopped explaining itself**: no "⏎ send · ⇧⏎ newline" line, placeholder is
+  just "Message the group". Direct messages are unchanged.
+
+## [0.1.673] — 2026-11-26
+
+### Added
+- **Edit and resend, and delete.** Any message's menu — right-click on the Mac, long-press on the phone —
+  now has **Edit and resend** on your own messages and **Delete** on any of them. Edit prefills the composer
+  with that text; sending retires it and everything after it and runs the edit as a fresh turn. Both ask
+  once, in a card that says exactly how many messages are involved, and both are withheld while a turn is
+  still streaming.
+- `hermeyd` **0.8.9**: `POST /v1/messages/delete` and `POST /v1/messages/truncate`. They refuse unless the
+  engine says that conversation is idle, close the session first so nothing keeps serving the old copy, and
+  then *retire* rows (`active = 0, compacted = 0`) — the same write the engine's own undo makes. Nothing is
+  ever deleted from the database.
+
+## [0.1.674] — 2026-11-26
+
+### Fixed
+- **Edit and resend, and Delete now actually run.** The confirmation appeared and then nothing happened: the
+  alert's dismissal cleared the pending action while the button was still being dispatched, so the verb read
+  nothing to do. The alert now hands its own presented action back, on both the Mac and the phone.
+
+### Changed
+- `hermeyd` **0.8.10** (version bump with the app; no host change).

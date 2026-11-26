@@ -84,6 +84,7 @@ struct AboutSettingsTab: View {
                 }
                 .controlSize(.small)
                 .accessibilityIdentifier("aboutCheckForUpdates")
+                .hermeyFocusQuiet()
             }
             .padding(.top, 26)
             .padding(.bottom, 18)
@@ -106,11 +107,13 @@ struct AboutSettingsTab: View {
                     }
                 }
                 .accessibilityIdentifier("aboutCopyDiagnostics")
+                .hermeyFocusQuiet()
 
                 // The reason behind "something went wrong", one click from the version number
                 // people are asked for first. Same viewer as the phone's Settings → View log.
                 Button("View log…") { showLog = true }
                     .accessibilityIdentifier("aboutViewLog")
+                    .hermeyFocusQuiet()
 
                 Spacer()
 
@@ -125,7 +128,8 @@ struct AboutSettingsTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Tokens.canvas)
         .sheet(isPresented: $showLog) {
-            ClientLogView(title: "Log", header: logHeader)
+            ClientLogView(title: "Log", header: logHeader,
+                          uploader: store.model.clientLogUploader)
             .hermesSheetChrome()
         }
     }
@@ -159,6 +163,7 @@ struct AboutSettingsTab: View {
                 if let update = store.model.hostUpdate, update.showsNotes, let notes = update.notesURL {
                     Link("What's new", destination: notes)
                         .font(TypeScale.font(TypeScale.micro))
+                        .hermeyFocusQuiet()
                 }
 
                 hostAction
@@ -201,6 +206,7 @@ struct AboutSettingsTab: View {
                 .controlSize(.small)
                 .disabled(true)
                 .accessibilityIdentifier("aboutHostCheck")
+                .hermeyFocusQuiet()
         } else if let update = store.model.hostUpdate, let title = update.buttonTitle {
             Button(title) {
                 Task { await self.store.model.beginHostUpdate() }
@@ -209,11 +215,13 @@ struct AboutSettingsTab: View {
             .controlSize(.small)
             .disabled(!update.canStartPress)
             .accessibilityIdentifier("aboutHostUpdate")
+            .hermeyFocusQuiet()
         } else if let update = store.model.hostUpdate, update.isSettled {
             Button("Dismiss") { self.store.model.dismissHostUpdate() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityIdentifier("aboutHostDismiss")
+                .hermeyFocusQuiet()
         } else {
             Button("Check now") {
                 Task { await self.store.model.checkHostUpdate(refresh: true) }
@@ -222,6 +230,7 @@ struct AboutSettingsTab: View {
             .controlSize(.small)
             .disabled(store.model.hostCheckRunning)
             .accessibilityIdentifier("aboutHostCheck")
+            .hermeyFocusQuiet()
         }
     }
 

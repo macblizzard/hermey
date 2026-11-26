@@ -55,11 +55,14 @@ struct ConversationScreen: View {
 
     /// The bot's swatch, from the shared face cache: your own bubbles are drawn in it, so the one
     /// place that says which bot you are talking to does not need a label.
+    ///
+    /// One rule, `BotAvatarTint.resolve` — the drawn avatar's stored colour when the bot has one, its
+    /// shape face otherwise. Written out here before, which is why a bot with a drawn green avatar
+    /// kept the blue bubble its old shape face had picked.
     private var botTint: Color {
-        // The stored face's colour when the user chose one, otherwise the colour this bot's id
-        // derives — the same rule the avatar draws, from the same resolver.
-        (app.botFaces[bot.id]?.identity(for: bot.id).color
-            ?? BotAvatarIdentity.resolve(identity: bot.id).color).color
+        BotAvatarTint.resolve(botID: bot.id,
+                              face: app.botFaces[bot.id],
+                              document: app.botAvatars[bot.id]).color
     }
 
     /// The conversation's verbs, as a page rather than the bar's ⋯ (see `ConversationDrawer`).
@@ -269,6 +272,11 @@ struct ConversationScreen: View {
         }
         .onDisappear {
             model.setVisibleBot(nil)
+            // The open is this screen's business: leaving it cancels the host call and clears the
+            // gate, so the next open (of this bot or another) starts clean. `endOpen` only acts when
+            // this screen's bot is the one opening, so a screen that is disappearing *because* the
+            // next one was pushed cannot cancel the next one.
+            model.endOpen(bot.id)
             Task { await model.reportPresence(bot: nil) }
         }
         .task(id: bot.id) {
@@ -411,14 +419,35 @@ struct ConversationScreen: View {
             Button("Reset conversation", role: .destructive) {
                 Task { await resetConversation() }
             }
+            .hermeyFocusQuiet()
             Button("Keep it", role: .cancel) {}
+            .hermeyFocusQuiet()
         } message: {
             Text("This phone forgets its thread with \(title) and starts a new one on the next message. The old conversation stays on the host, and you can still open it there.")
         }
         .alert("Couldn’t add attachment", isPresented: noticeBinding) {
             Button("OK", role: .cancel) { notice = nil }
+            .hermeyFocusQuiet()
         } message: {
             Text(notice ?? "")
+        }
+        // The one confirmation for both destructive message verbs. The sentence comes from
+        // `PendingMessageAction`, so the phone says exactly what the Mac says, and nothing is
+        // retired by a single tap.
+        .alert(model.pendingMessageAction?.title ?? "",
+               isPresented: Binding(get: { model.pendingMessageAction != nil },
+                                    set: { presented in
+                                        if !presented { model.cancelMessageAction() }
+                                    }),
+               presenting: model.pendingMessageAction) { action in
+            Button(action.confirmTitle, role: action.kind == .delete ? .destructive : nil) {
+                Task { await model.confirmMessageAction(action) }
+            }
+            .hermeyFocusQuiet()
+            Button("Cancel", role: .cancel) { model.cancelMessageAction() }
+            .hermeyFocusQuiet()
+        } message: { action in
+            Text(action.message)
         }
     }
 
@@ -451,6 +480,7 @@ struct ConversationScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back to the bots")
+                .hermeyFocusQuiet()
 
                 Spacer(minLength: 0)
 
@@ -480,6 +510,7 @@ struct ConversationScreen: View {
                                        showsDot: true, size: .small)
                         }
                         .buttonStyle(.plain)
+                        .hermeyFocusQuiet()
                     }
                     if model.isCompressing {
                         StatusChip("compacting…", tone: .neutral, showsProgress: true, size: .small)
@@ -520,6 +551,7 @@ struct ConversationScreen: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(title), chat actions")
         .accessibilityIdentifier("chatDrawerButton")
+        .hermeyFocusQuiet()
     }
 
     /// The composer over the transcript, measured: the last row scrolls clear of whatever height
@@ -539,43 +571,20 @@ struct ConversationScreen: View {
             .padding(.bottom, 2)
     }
 
-    // The status strip is gone: the pill carries the bot and its state, and the drawer carries
-    // the host's own facts. What is left of it is the two chips in `floatingTop`.
-
-    /// `deepseek-v4.1-flash` fits; a provider-qualified id does not, and the chip is
-    /// `fixedSize`, so it is shortened here rather than pushing the latency chip off.
-    private var modelChipLabel: String? {
-        guard let raw = model.modelLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else { return nil }
-        let words = raw.split(separator: " ")
-        let short = words.prefix(2).joined(separator: " ")
-        guard !short.isEmpty else { return nil }
-        return short.count <= 22 ? short : String(short.prefix(21)) + "…"
-    }
-
-    /// `12k / 1M` — only when the host has reported both halves of the window.
-    /// "43k / 200k" when the host reports a window, "43k" when it does not — the desktop shows
-    /// both facts and the phone showed neither.
-    private var contextUsage: String? {
-        guard let used = model.contextUsed else { return nil }
-        if let limit = model.contextMax, limit > 0 {
-            return "\(MobileTokens.short(used)) / \(MobileTokens.short(limit))"
-        }
-        return MobileTokens.short(used)
-    }
+    /// The status strip is gone: the pill carries the bot and its state, and the drawer carries
+    /// the host's own facts. What is left of it is the two chips in `floatingTop`.
+    ///
+    /// The model and the context count used to be formatted here (`modelChipLabel`, `contextUsage`,
+    /// `contextTint`) for chips under the pill. Those chips are gone, and the two facts now live in
+    /// the composer itself, on the model pill — printed by `ComposerModelPill`/`SessionLine` for
+    /// **both** apps, so there is one `540k/1M Tokens` rule rather than a phone copy and a desktop
+    /// copy of it.
 
     /// How much conversation is on screen, the same count the desktop's subtitle carries.
     private var entryCountLabel: String? {
         let count = model.transcript.count
         guard count > 0 else { return nil }
         return count == 1 ? "1 entry" : "\(count) entries"
-    }
-
-    private var contextTint: Color {
-        guard let fraction = model.contextFraction else { return Tokens.textDim }
-        if fraction >= 0.85 { return Tokens.danger }
-        if fraction >= 0.70 { return Tokens.warning }
-        return Tokens.textDim
     }
 
     // MARK: Transcript
@@ -635,15 +644,18 @@ struct ConversationScreen: View {
             Button { moveSearch(-1) } label: { Image(systemName: "chevron.up") }
                 .disabled(found.isEmpty)
                 .accessibilityLabel("Previous search result")
+                .hermeyFocusQuiet()
             Button { moveSearch(1) } label: { Image(systemName: "chevron.down") }
                 .disabled(found.isEmpty)
                 .accessibilityLabel("Next search result")
+                .hermeyFocusQuiet()
             Button("Done") {
                 searchFocused = false
                 isSearching = false
                 searchText = ""
                 searchIndex = 0
             }
+            .hermeyFocusQuiet()
         }
         // The same glass the pill above it wears: the field used to be bare text on the
         // transcript, so it read as part of the conversation rather than as a control over it
@@ -865,11 +877,28 @@ struct ConversationScreen: View {
 
             // Consecutive tool calls fold into one line, the same way they do on the Mac: a turn
             // that makes thirty calls should not fill the screen with thirty cards.
-            ForEach(rowCache.rows(model.visibleTranscript + model.visibleLiveToolEntries,
-                                  running: runningToolIDs)) { row in
+            //
+            // `appending:` rather than `visibleTranscript + liveToolEntries`: that `+` built a
+            // fresh six-thousand-element array on every body pass, and the cache already knows what
+            // changed. `id: \.id` states the identity the reader's position depends on — the
+            // message's own id, never its index — so a page landing above the reader cannot
+            // re-key a row and throw away its parsed markdown.
+            ForEach(rowCache.rows(model.visibleTranscript,
+                                  appending: model.visibleLiveToolEntries,
+                                  running: runningToolIDs), id: \.id) { row in
                 switch row {
                 case .entry(let entry):
-                    MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id)
+                    MobileTranscriptRow(entry: entry, botTint: botTint, botID: bot.id,
+                                        reaction: model.reaction(forRowID: entry.rowID,
+                                                                 entryID: entry.id),
+                                        onReact: { emoji in
+                                            Task { await model.react(emoji, rowID: entry.rowID,
+                                                                     entryID: entry.id) }
+                                        },
+                                        canReact: model.selectedSessionID != nil,
+                                        onEditAndResend: { model.requestEditAndResend($0) },
+                                        onDelete: { model.requestDelete($0) },
+                                        turnRunning: model.isStreaming)
                         .overlay {
                             if selectedSearchID == entry.id {
                                 RoundedRectangle(cornerRadius: 8)
@@ -880,7 +909,18 @@ struct ConversationScreen: View {
                         .id(entry.id)
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        MobileTranscriptRow(entry: entry, botTint: botTint, running: runningToolIDs, botID: bot.id)
+                        MobileTranscriptRow(entry: entry, botTint: botTint,
+                                            running: runningToolIDs, botID: bot.id,
+                                            reaction: model.reaction(forRowID: entry.rowID,
+                                                                     entryID: entry.id),
+                                            onReact: { emoji in
+                                                Task { await model.react(emoji, rowID: entry.rowID,
+                                                                         entryID: entry.id) }
+                                            },
+                                            canReact: model.selectedSessionID != nil,
+                                            onEditAndResend: { model.requestEditAndResend($0) },
+                                            onDelete: { model.requestDelete($0) },
+                                            turnRunning: model.isStreaming)
                     }
                     .id(run.id)
                 }
@@ -1016,15 +1056,38 @@ struct ConversationScreen: View {
             && model.reasoningText.isEmpty
     }
 
+    /// What the pane says while a conversation is being resumed.
+    ///
+    /// A spinner alone is a frozen screen with an animation on it. The host assembles the whole
+    /// transcript for a resume (measured 6.2 s and 7.5 MiB for a 6,778-row chat on an idle host,
+    /// and its own retries used to queue behind each other), so the wait is counted out loud and
+    /// named for what it is: the history arriving, not the app hanging. After `openDeadline` the
+    /// Retry sits above it and the count keeps going under it — the resume is still running.
     private var openingState: some View {
-        HStack(spacing: 10) {
-            SpinningRing(color: Tokens.textMuted, size: 12, lineWidth: 1.5)
-            Text("Opening \(title)…")
-                .font(TypeScale.font(TypeScale.lg))
-                .foregroundStyle(Tokens.textMuted)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let waited = model.openStartedAt.map { max(0, context.date.timeIntervalSince($0)) } ?? 0
+            VStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    SpinningRing(color: Tokens.textMuted, size: 12, lineWidth: 1.5)
+                    Text("Opening \(title)…")
+                        .font(TypeScale.font(TypeScale.lg))
+                        .foregroundStyle(Tokens.textMuted)
+                }
+                if waited >= AppModel.slowOpenNotice {
+                    Text("the host is sending this chat's history — \(Int(waited))s")
+                        .font(TypeScale.font(TypeScale.sm))
+                        .foregroundStyle(Tokens.textSecondary)
+                    Text("every message is kept; a long chat just takes the host longer to assemble")
+                        .font(TypeScale.font(TypeScale.label))
+                        .foregroundStyle(Tokens.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+            .padding(.horizontal, 24)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .accessibilityIdentifier("openingState")
     }
 
     /// Live tool calls for the turn in flight.
@@ -1061,7 +1124,12 @@ struct ConversationScreen: View {
 
     private var composerArea: some View {
         VStack(spacing: 0) {
-            if let error = model.lastSendError {
+            // The open did not finish inside its deadline, or the host refused it. This is *the*
+            // difference between "stuck for 20 seconds" and "this screen is waiting, and here is
+            // the tap that asks again" — the cached rows are still behind it.
+            if let failure = model.openFailure, failure.botID == bot.id {
+                openFailureBar(failure)
+            } else if let error = model.lastSendError {
                 sendErrorBar(error)
             }
 
@@ -1085,6 +1153,7 @@ struct ConversationScreen: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Cancel reply")
+                    .hermeyFocusQuiet()
                 }
                 .foregroundStyle(Tokens.textMuted)
                 .padding(.horizontal, 16)
@@ -1104,6 +1173,10 @@ struct ConversationScreen: View {
                     .transition(.opacity)
             }
 
+            // The model and how full its context is: inside the composer, in the row the paperclip
+            // and the send arrow live in, as one pill that opens this bot's model picker. Same
+            // view, same formatter as the desktop's pill — and a narrow phone drops the count and
+            // keeps the model name and the chevron.
             Composer(text: $model.draft,
                      // Floating, like the desktop's: the field is a capsule over the transcript,
                      // not a bordered box standing on the floor of a bar.
@@ -1116,6 +1189,15 @@ struct ConversationScreen: View {
                      micTint: voice.state == .recording ? Tokens.danger : nil,
                      micAccessibilityLabel: micLabel,
                      isMicEnabled: sessionID != nil,
+                     // The same pill the desktop draws, for this bot: tapping it opens the sheet
+                     // the drawer's Model row opens (`BotModelSheet`), which writes through
+                     // `configureModel` and refreshes `modelLabel` for the open bot.
+                     sessionRow: ComposerSessionRow(provider: model.modelProvider,
+                                                    model: model.modelLabel,
+                                                    used: model.contextUsed,
+                                                    limit: model.contextMax,
+                                                    isEnabled: sessionID != nil,
+                                                    onOpen: { showModel = true }),
                      onSend: { Task { await model.send() } },
                      onAttach: {
                          withAnimation(.spring(response: 0.26, dampingFraction: 0.86)) {
@@ -1214,6 +1296,7 @@ struct ConversationScreen: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Remove \(attachment.name)")
+                        .hermeyFocusQuiet()
                     }
                     .foregroundStyle(Tokens.textSecondary)
                     .padding(.horizontal, 10)
@@ -1249,6 +1332,35 @@ struct ConversationScreen: View {
         .background(Tokens.dangerSoft)
     }
 
+    /// The open ran out of time, or the host refused it — said in words, with the one tap that asks again.
+    ///
+    /// A screen that is waiting says so; a screen that gave up has to offer the way back. Without
+    /// this the only cure was to leave the chat and come in again (the reported "I have to force
+    /// close the app and open it again").
+    private func openFailureBar(_ failure: AppModel.OpenFailure) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: failure.timedOut ? "clock.arrow.circlepath" : "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(Tokens.danger)
+
+            Text(failure.message)
+                .font(TypeScale.font(TypeScale.sm))
+                .foregroundStyle(Tokens.textSecondary)
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            TextButton("Retry", tone: Tokens.accentText) {
+                Task { await retryOpen() }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tokens.dangerSoft)
+        .accessibilityIdentifier("openFailureBar")
+    }
+
     // MARK: Endless session
 
     /// One thread per bot: resume the stored session, or let the model create and store a
@@ -1256,18 +1368,22 @@ struct ConversationScreen: View {
     /// and the model does the attaching (bot switch, resume, transcript) in one place, so
     /// there is no second resume here.
     private func openConversation() async {
-        // Do NOT paint the cache here. `endlessSession` captures the bot being left, switches, and
-        // restores the target's snapshot — all synchronously, before its first await — and a restore
-        // done *before* the switch makes that capture store the incoming bot's rows under the outgoing
-        // bot's cache. That is how opening another bot and coming back showed the other bot's chat
-        // (reported 2026-11-17). `isBlank` is already computed from the transcript, so a warm restore
-        // means no spinner without any help here.
+        // Do NOT paint the cache here. The paint belongs to `beginOpen`, which runs *synchronously*
+        // on the tap — capture the bot being left, clear, select, restore — so the first frame of
+        // this screen is already the right transcript, and a restore done here would either be a
+        // frame late or (done before the switch) file the incoming bot's rows under the outgoing
+        // bot's cache, which is how opening another bot and coming back showed the other bot's chat
+        // (reported 2026-11-17).
+        //
+        // `openNow` is also the one-open gate: a second tap on the same row has already been
+        // answered "no" by `beginOpen`, a tap on another row has cancelled this open, and the host
+        // gets `openDeadline` seconds before the pane offers a Retry instead of a frozen screen.
         isOpening = true
 
         // [B2 navigation] This screen *is* the navigation: the row that pushed it selected this bot,
         // and `.task(id: bot.id)` opens the conversation the person just asked for. `select: true` is
         // correct here and nowhere else in this file.
-        if let sid = await model.endlessSession(for: bot.id, select: true) {
+        if let sid = await model.openNow(bot.id) {
             sessionID = sid
         } else {
             sessionID = nil
@@ -1275,6 +1391,18 @@ struct ConversationScreen: View {
 
         // Requests that were already open when this session was resumed belong in the
         // transcript, not in a sheet the user never asked for; only *arrivals* pop one.
+        lastSeenRequestCount = model.pendingRequests.count
+        hasLoaded = true
+        isOpening = false
+        openScrollSignal += 1
+    }
+
+    /// Ask the host again after the open's deadline or a refusal. The cached rows never left.
+    private func retryOpen() async {
+        isOpening = true
+        if let sid = await model.retryOpen(bot.id) {
+            sessionID = sid
+        }
         lastSeenRequestCount = model.pendingRequests.count
         hasLoaded = true
         isOpening = false
@@ -1522,6 +1650,7 @@ struct ConversationScreen: View {
             .transition(.opacity.combined(with: .scale(scale: 0.92)))
             .accessibilityIdentifier("conversationScrollToBottom")
             .accessibilityLabel("Scroll to latest message")
+            .hermeyFocusQuiet()
         }
     }
 }
