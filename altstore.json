@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.687",
-          "buildVersion": "687",
-          "date": "2026-11-26T23:11:32Z",
-          "localizedDescription": "Faces are brighter with a short tinted glow so they pop on dark surfaces (eyes keep their contrast), and choosing an avatar preset now changes the shape itself, not just the caption.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.687/Hermey-0.1.687-b687.ipa",
-          "size": 6235805,
+          "version": "0.1.688",
+          "buildVersion": "688",
+          "date": "2026-11-26T23:23:45Z",
+          "localizedDescription": "The avatar halo no longer bands, and hermeyd 0.8.22 is deployed; releases now publish their matching hermeyd tag, so About's Check now keeps working.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.688/Hermey-0.1.688-b688.ipa",
+          "size": 6235768,
           "minOSVersion": "17.0",
-          "sha256": "a52fe6113f9d61ebeb1f5c85a759147e21bc2007b478fcfbded2804ca2bcd849"
+          "sha256": "1d8590ebecc0a8ce9cacd0846dcc00bd92be83bae39e6f91ab0986ddcf614bb9"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.687 (687)",
-      "identifier": "hermes-0.1.687-687",
-      "caption": "Faces are brighter with a short tinted glow so they pop on dark surfaces (eyes keep their contrast), and choosing an avatar preset now changes the shape itself, not just the caption.",
-      "date": "2026-11-26T23:11:32Z",
+      "title": "Hermes 0.1.688 (688)",
+      "identifier": "hermes-0.1.688-688",
+      "caption": "The avatar halo no longer bands, and hermeyd 0.8.22 is deployed; releases now publish their matching hermeyd tag, so About's Check now keeps working.",
+      "date": "2026-11-26T23:23:45Z",
       "tintColor": "#9A9AA0"
     }
   ],
