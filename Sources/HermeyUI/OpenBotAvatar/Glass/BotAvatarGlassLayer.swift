@@ -292,6 +292,10 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
                          points: CGSize,
                          pixels: CGSize,
                          device: MTLDevice) -> MTLTexture? {
+        guard pixels.width.isFinite, pixels.height.isFinite,
+              pixels.width >= 1, pixels.height >= 1,
+              points.width > 0, points.height > 0, points.width.isFinite, points.height.isFinite
+        else { return nil }
         let width = max(1, Int(pixels.width.rounded()))
         let height = max(1, Int(pixels.height.rounded()))
         guard points.width > 0, points.height > 0,
@@ -324,7 +328,14 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         let scale = Float(pixels.width / points.width)
         let span = Float(0.5 * min(points.width, points.height))
         func unit(_ pixels: Float) -> UInt8 {
-            UInt8(clamping: Int((pixels / scale / span * 255).rounded()))
+            // A zero-sized or not-yet-laid-out surface divides by zero and the distance field turns
+            // into NaN/inf — and `Int(_:)` on a non-finite Float is a **trap**, which crashed the
+            // whole app on the main thread inside `MTKView.draw`. Clamp, never trap: a body with no
+            // extent simply has no mask.
+            guard scale.isFinite, scale > 0, span.isFinite, span > 0 else { return 0 }
+            let scaled = (pixels / scale / span * 255).rounded()
+            guard scaled.isFinite else { return 0 }
+            return UInt8(clamping: Int(max(0, min(scaled, 255))))
         }
 
         var packed = [UInt8](repeating: 0, count: width * height * 4)
