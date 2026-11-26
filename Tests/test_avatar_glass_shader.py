@@ -554,8 +554,9 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("float shoulder = softbox(reflDirS, float3(-0.52, -0.68, 0.52)", source)
         # The tint is decoded to linear light before the optics, and gamma-encoded exactly once after.
         self.assertIn("float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));", source)
-        # The body's pixels and the page's light are each encoded exactly once.
-        self.assertEqual(source.count("1.0 / 2.2"), 2)
+        # The body's pixels, the page's light, and the halo's colour are each encoded exactly once —
+        # and no more: a fourth encode is a term that was added in the wrong space.
+        self.assertEqual(source.count("1.0 / 2.2"), 3)
         # A solid piece of glass: thickness, a lit rim, a key on the face, and something under it.
         self.assertIn("float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);", source)
         # The geometry is renderer.ts's inflate solid, not a quarter circle of our own.
@@ -585,7 +586,10 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         # …and the blend is premultiplied over, as the fragment writes.
         self.assertIn("attachment.sourceRGBBlendFactor = .one", layer)
         self.assertIn("attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha", layer)
-        self.assertIn("float3 outRGB = col * alpha + causticRGB * (arcA + poolA * 0.55);", msl_code())
+        # The halo is premultiplied into the same sum: `haloA` is its own alpha, so a glow never
+        # brightens the pane by mass where the body does not stand.
+        self.assertIn("float3 outRGB = col * alpha + haloRGB * haloA + causticRGB * (arcA + poolA * 0.55);",
+                      msl_code())
 
     def test_the_fallback_is_untouched(self):
         # Reduce transparency still gets the painted material, and the painter still paints its six
@@ -905,7 +909,7 @@ class TheBodyCarriesItsOwnColour(unittest.TestCase):
         self.assertIn("float3 hueUnit = jewelTint / max(dot(jewelTint, float3(0.2126, 0.7152, 0.0722)), "
                       "0.02);", source)
         self.assertIn("float3 ownLight = hueUnit * (kSelfLightLevel * pageDark);", source)
-        self.assertIn("#define kSelfLightLevel 0.40", source)
+        self.assertIn("#define kSelfLightLevel 0.70", source)
         # It is added to the page, not mixed into it: a mix with a dark page degenerates to the page,
         # which is exactly the fault ("the mix degenerates to pure transmission") this guard exists for.
         self.assertIn("float3 carried = pageLight + ownLight * kSelfLightRoom;", source)
@@ -988,10 +992,78 @@ class TheBodyCarriesItsOwnColour(unittest.TestCase):
         self.assertIn("func busyPage(width: Int, height: Int) -> [UInt8]", main)
         # The mirror carries the same constants, and reports the band rather than an adjective.
         mirror = read(ROOT / "Tools" / "glass-proof" / "numbers.py")
-        for literal in ("SELF_LIGHT_LUM = 0.40", "SELF_LIGHT_ROOM = 0.35", "SELF_LIGHT_DENSITY = 0.78",
+        for literal in ("SELF_LIGHT_LUM = 0.70", "SELF_LIGHT_ROOM = 0.35", "SELF_LIGHT_DENSITY = 0.78",
                         "SELF_LIGHT_DIM = 0.050", "SELF_LIGHT_LIT = 0.550"):
             self.assertIn(literal, mirror, literal)
         self.assertIn("#define kSelfLightDensity 0.78", msl_code())
+
+
+class TheBodyGlowsWithoutBeingWashed(unittest.TestCase):
+    """The trial: brighter on a dark pane, a halo outside the silhouette, and the face still readable.
+
+    0.1.686 gave the body its own colour so a dark pane could not black it out, and the owner answered
+    "they all feel a bit dark, maybe a little brighter with a little glow would make them pop better".
+    Two numbers carry that and nothing else: `kSelfLightLevel` (how bright the body's own light is) and
+    `kGlowRadius` / `kGlowStrength` (the halo). Both are named, bounded, and tied to the body's own
+    size, and neither may touch the light page — a warm halo on paper is a grey smudge.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "glass_numbers_glow", ROOT / "Tools" / "glass-proof" / "numbers.py")
+        cls.numbers = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.numbers)
+
+    def test_the_glow_is_two_named_bounded_constants_tied_to_the_side(self):
+        source = msl_code()
+        self.assertIn("#define kGlowRadius 0.16", source)
+        self.assertIn("#define kGlowStrength 0.45", source)
+        # Named, and in a band: a radius that is a share of the form (never wider than half of it, or
+        # the halo is a fog around the head) and a strength that is an alpha (never 1, or it is a block
+        # of paint on the page).
+        radius = float(source.split("#define kGlowRadius")[1].split("\n")[0])
+        strength = float(source.split("#define kGlowStrength")[1].split("\n")[0])
+        self.assertTrue(0.02 <= radius <= 0.50, f"glow radius {radius} is out of band")
+        self.assertTrue(0.05 <= strength <= 0.80, f"glow strength {strength} is out of band")
+        # It scales: the radius is the body's own half width times the constant, not a point size.
+        self.assertIn("float glowRadius = max(0.75, kGlowRadius * halfExtent.x);", source)
+        # It is outside the silhouette only, and it is off on a light page — `pageDark` is exactly zero
+        # there, so #F2F2F2 gets the pixels it had.
+        self.assertIn("* exp(-max(outside, 0.0) / glowRadius)", source)
+        self.assertIn("float halo = kGlowStrength * pageDark", source)
+        self.assertIn("float haloA = clamp(halo * page, 0.0, 1.0);", source)
+        # Cheap by construction: one Gaussian on a distance field the pass already samples.
+        for expensive in ("CIGaussianBlur", "shadow(", "MPSImageGaussianBlur", "makeTexture"):
+            self.assertNotIn(expensive, source, expensive)
+
+    def test_the_eyes_clear_three_to_one_at_the_size_the_trial_was_rendered(self):
+        """The eye ratio wins any argument with the brightness target: measured, on every named page.
+
+        The mirror is evaluated at 200 pt — the size the trial picture is — over the three surfaces a
+        face is judged on. If a brighter body ever pushes the ink below 3:1 the picture is not the
+        trial any more, and this is the assert that says so.
+        """
+        mirror = self.numbers
+        surface = mirror.surface(200.0)
+        centre = mirror.deepest_point(surface)
+        ink = mirror.relative((mirror.INK,) * 3)
+        for name, page_rgb, backdrop in (
+                ("pane", (0x23 / 255,) * 3, 0x1E),
+                ("ctrl", (0x23 / 255,) * 3, 0x2B),
+                ("lit", (0xF0 / 255, 0xEE / 255, 0xE6 / 255), 0xF2)):
+            pixel = mirror.shade(surface, centre, page_rgb=page_rgb)
+            rgb = tuple(pixel["colour"][i] * pixel["alpha"] + backdrop / 255 * (1 - pixel["alpha"])
+                        for i in range(3))
+            body = mirror.relative(rgb)
+            ratio = (max(body, ink) + 0.05) / (min(body, ink) + 0.05)
+            self.assertGreaterEqual(ratio, 3.0, f"the eyes read {ratio:.2f}:1 on the {name}")
+            if name == "pane":
+                # …and the body really is in the band the trial claims, not merely above the ink.
+                self.assertGreater(body, 0.24, f"the body is {body:.3f} on the pane, too dark again")
+                self.assertLess(body, 0.33, f"the body is {body:.3f} on the pane, over-bright")
 
 
 class TheThreeTargetsAreSteps(unittest.TestCase):

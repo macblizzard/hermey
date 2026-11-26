@@ -247,9 +247,14 @@ enum HermeyGlassSource {
         /// is `jewelTint` divided by its own luminance, so a blue bot and an amber one land in the same
         /// brightness band and only their hue differs. That band is chosen from the ink, not by eye: the
         /// eyes are opaque `.082` (relative luminance 0.0075), so a body behind them needs 0.122 of
-        /// relative luminance before the pair reads 3:1 — and this level puts the body's centre at 0.173
-        /// behind the pane, i.e. 3.9:1, with the light page's 11.2:1 unchanged above it.
-        #define kSelfLightLevel 0.40
+        /// relative luminance before the pair reads 3:1 — and this level puts the body's centre at 0.262
+        /// behind the pane, i.e. 5.4:1, with the light page's 11.2:1 unchanged above it.
+        ///
+        /// Raised from 0.40 at the owner's word ("they all feel a bit dark… brighter would make them
+        /// pop"): 0.262 is the middle of the 0.25…0.30 band a lit face wants on the pane, and it costs
+        /// chroma — 0.67 to 0.44 on the same body, still unmistakably amber, which is the honest price
+        /// of brightness in a body whose emission is normalised to a luminance.
+        #define kSelfLightLevel 0.70
         #define kPageSelfDark 0.05
         #define kPageSelfLit 0.55
 
@@ -311,6 +316,20 @@ enum HermeyGlassSource {
         /// within two points of it — a stencil twice this wide gives a ridge that survives ten points
         /// past the corner, which is a smear, not a line.
         #define kJoinStencil 1.0
+
+        /// The glow: a short, tinted halo *outside* the silhouette, and nothing else.
+        ///
+        /// One term, not a bloom: no blur, no second pass, no shadow layer — a Gaussian on the distance
+        /// field the mask already carries, which is why it costs a handful of instructions where the
+        /// transmission already is. Its radius is a *fraction of the body's own half width*, so a 24 pt
+        /// avatar and a 200 pt one glow by the same share of their form instead of the small one losing
+        /// the halo and the big one wearing a fog. Its strength is an alpha, bounded below 1 so a halo
+        /// can never be a block of colour on the page.
+        ///
+        /// Gated by `pageDark`, which is zero on a light page: a warm halo on paper is a grey smudge,
+        /// and the light-page body the owner already liked keeps exactly the pixels it had.
+        #define kGlowRadius 0.16
+        #define kGlowStrength 0.45
 
         #define kPlatePattern 0
 
@@ -1197,6 +1216,18 @@ enum HermeyGlassSource {
                                       / max(0.45, arcWidth * 0.60), 2.0));
             foldDark *= below * smoothstep(0.0, 0.5, outside) * 0.55;
 
+            // The glow. One Gaussian on the distance field this pass already reads, outside the
+            // silhouette: the body sits in a pool of its own light instead of being cut out of the pane.
+            // The radius is a share of the body's half width (`kGlowRadius`) so it scales with the form;
+            // the inner ramp is the same share again, so the halo never paints over the rim it surrounds.
+            float glowRadius = max(0.75, kGlowRadius * halfExtent.x);
+            float halo = kGlowStrength * pageDark
+                       * exp(-max(outside, 0.0) / glowRadius)
+                       * smoothstep(0.0, glowRadius * 0.22, outside);
+            // Tinted by the body's own hue, lifted a third of the way to white: a halo that is the pure
+            // tint reads as a coloured sticker; one that is white reads as a lens flare.
+            float3 haloRGB = pow(clamp(mix(jewelTint, float3(1.0), 0.30), 0.0, 1.0), float3(1.0 / 2.2));
+
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
             // A half-bit dither on the way out. The body's gradients run smooth over hundreds of pixels
@@ -1224,8 +1255,11 @@ enum HermeyGlassSource {
             float shadeA = clamp((shadowAlpha + foldDark) * page, 0.0, 1.0);
             float arcA = clamp(caustic * page, 0.0, 1.0);
             float poolA = clamp(nearPool * page, 0.0, 1.0);
-            float3 outRGB = col * alpha + causticRGB * (arcA + poolA * 0.55);
-            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA + poolA * 0.55, 0.0, 1.0);
+            // The halo shares the body's page term: where the glass already covers the pixel it is
+            // *behind* the body, and the body's own alpha is what hides it.
+            float haloA = clamp(halo * page, 0.0, 1.0);
+            float3 outRGB = col * alpha + haloRGB * haloA + causticRGB * (arcA + poolA * 0.55);
+            float outA = clamp(alpha + shadeA * (1.0 - alpha) + haloA + arcA + poolA * 0.55, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
         }
 """

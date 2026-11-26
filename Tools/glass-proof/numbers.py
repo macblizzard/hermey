@@ -315,11 +315,16 @@ PAGE_SHEEN_FLOOR = 0.03
 # backdrop's own luminance (`SELF_LIGHT_DIM`…`SELF_LIGHT_LIT`, in linear light: #2B2B2B is fully dim,
 # #F2F2F2 fully lit). It is a light, not a paint: it lands in `carried`, which the plate, the interior's
 # slices, the wall's reflection, the bounce and the focus all take, so the body still has one source.
-SELF_LIGHT_LUM = 0.40
+SELF_LIGHT_LUM = 0.70
 SELF_LIGHT_ROOM = 0.35
 SELF_LIGHT_DENSITY = 0.78
 SELF_LIGHT_DIM = 0.050
 SELF_LIGHT_LIT = 0.550
+# `kGlowRadius` / `kGlowStrength`: the halo outside the silhouette. Radius is a share of the body's
+# half width (so it scales with the form), strength is an alpha. Not modelled below — the mirror
+# measures the *body*, and the halo lives outside it — but pinned here so the two sides cannot drift.
+GLOW_RADIUS = 0.16
+GLOW_STRENGTH = 0.45
 ABSORPTION_OPACITY = 0.26
 # `kAbsorbGain` / `kAbsorbFloor`: how hard the path absorbs, per unit of optical thickness.
 ABSORB_GAIN = 0.40
