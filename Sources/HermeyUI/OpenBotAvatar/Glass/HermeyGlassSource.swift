@@ -212,6 +212,18 @@ enum HermeyGlassSource {
         /// to arrive visibly compressed, bent and — past the point where the traced ray folds — inverted.
         /// A smooth studio can only ever be tinted, which is why a picture of one proves translucency and
         /// nothing about refraction.
+        /// The bounce's gain, and the junction line's: how much of the wall's light survives the return
+        /// trip, and how hot the crease is where two bevels meet. Both are gains on light the terms above
+        /// already measured — never a colour invented here.
+        #define kBounceGain 1.05
+        #define kJoinGain 0.90
+        #define kJoinFresnel 1.60
+        /// The junction's stencil, in pixels: four taps this far out give the field's own second
+        /// difference, which is the crease. One point, so the ridge is the junction's own and dies
+        /// within two points of it — a stencil twice this wide gives a ridge that survives ten points
+        /// past the corner, which is a smear, not a line.
+        #define kJoinStencil 1.0
+
         #define kPlatePattern 0
 
         // MARK: - Upstream's constants
@@ -808,6 +820,21 @@ enum HermeyGlassSource {
             gather /= float(kInteriorSteps);
             float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;
 
+            // 4b — the bounce. Light that crossed the front face does not only pass through: what
+            // strikes the far wall comes back out of the front again, and that returning light is the
+            // difference between a lit room and a gradient. The wall is lit by the same studio the
+            // gather integrates, so the term is that studio *at the wall*, weighted by how square the
+            // wall stands to the incoming ray — and by the light's own two-way path through the body,
+            // `beer * beer`, which is the thickness field's transmittance squared, not a constant: a
+            // fin's edge glows because the path there is short in both directions, and a belly full of
+            // amber swallows its own bounce.
+            float wallFacing = clamp(dot(into, n2S), 0.0, 1.0);
+            float3 wallLight = sampleInternalStudio(exitPoint / max(u, 0.0001), -n2S, jewelTint,
+                                                    rearTIR ? 1.0 : 0.0, eyeRel, detail);
+            float3 bounce = wallLight * (wallFacing * wallFacing) * (beer * beer)
+                          * (1.0 - F1) * kBounceGain * detail;
+            through += bounce;
+
             // The rim's width, solved from the profile instead of chosen: the inset at which the bevel's
             // slope falls to `1.5`, i.e. where the surface is still more than 35° from the viewer. Inverting
             // `rise = rz*(side/bevel)/rxy` gives `side = k/sqrt(1+k²)`, so a steep edge is a thin line and
@@ -881,6 +908,25 @@ enum HermeyGlassSource {
             // threshold happened to land, which is why the two lines were sometimes one. Dark, because
             // a TIR'd ray comes back off the wall carrying the studio behind the body, which is the
             // darkest thing in the room.
+            // 6b — where two walls meet. A concave junction is a crease in the inside distance: the
+            // bevel climbing off one wall meets the one climbing off the other, their normals oppose
+            // across the meet, and the refracted image of the wall doubles up along it. That doubling
+            // is a hard, bright line, and it is the thing that separates a solid piece of glass from a
+            // tinted jelly — jelly has no corners inside it. Read from the same packed field, at a
+            // stencil in points rather than in texels so the line is the same width at every size, and
+            // gated to the wall: deeper in, the same ridge is the medial axis of the belly, which is a
+            // plateau, not a junction.
+            float2 joinTexel = kJoinStencil * (pixels / max(size, float2(1.0)));
+            float joinAround = float(bodyLayer.sample(bodySampler, (pos.xy + float2(joinTexel.x, 0.0)) / pixels).g)
+                             + float(bodyLayer.sample(bodySampler, (pos.xy - float2(joinTexel.x, 0.0)) / pixels).g)
+                             + float(bodyLayer.sample(bodySampler, (pos.xy + float2(0.0, joinTexel.y)) / pixels).g)
+                             + float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, joinTexel.y)) / pixels).g);
+            float joinRidge = max(0.0, (float(silhouette.g) - joinAround * 0.25) * maxInset);
+            float joinLine = smoothstep(0.06, 0.30, joinRidge);
+            joinLine *= (1.0 - smoothstep(0.10, 0.45, inset / max(halfDepth, 0.001)))
+                      * smoothstep(0.20, 0.80, coverage) * detail;
+            accum += mix(jewelTint, float3(1.0), 0.62) * (joinLine * (kJoinGain + kJoinFresnel * F1));
+
             float darkInset = criticalInset(rxy, rz);
             float darkWidth = max(0.50, rimWidth * 0.24);
             float darkLine = bandCoverage(inset, darkInset, darkWidth, foot);

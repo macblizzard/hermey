@@ -300,11 +300,30 @@ PLATE_GAIN = 1.35
 INTERIOR_GAIN = 1.35
 ABSORPTION_OPACITY = 0.45
 PLATE_FOLD = 1.55
+BOUNCE_GAIN = 1.05
+JOIN_GAIN = 0.90
+JOIN_FRESNEL = 1.60
+JOIN_STENCIL = 1.0
 
 
 def sin_critical() -> float:
     """`sinCritical()` — the cosine of the critical angle, from `IOR` and nothing else."""
     return math.sqrt(1.0 - 1.0 / (IOR * IOR))
+
+
+def join_ridge(point, outline, h: float) -> float:
+    """`joinRidge` — the field's own second difference at a stencil `h` points wide.
+
+    Positive where the inside distance has a ridge: a concave junction, where the bevel climbing off
+    one wall meets the one climbing off the other. Negative on a convex bulge, which the shader's
+    `max(0, …)` rejects.
+    """
+    centre, _ = distance_to_outline(point, outline)
+    around = 0.0
+    for dx, dy in ((h, 0.0), (-h, 0.0), (0.0, h), (0.0, -h)):
+        neighbour, _ = distance_to_outline((point[0] + dx, point[1] + dy), outline)
+        around += neighbour
+    return centre - around * 0.25
 
 
 def body_side(s: float, rxy: float) -> float:
@@ -556,6 +575,18 @@ def shade(surface_numbers, point):
     gather = [g / INTERIOR_STEPS for g in gather]
     through = [(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i] for i in range(3)]
 
+    # 4b — the bounce: light that crossed the front face, struck the far wall and came back out. The
+    # wall is lit by the same studio the gather integrates; the weight is how square it stands to the
+    # incoming ray and the two-way path through the body (`beer * beer`, the thickness field's own
+    # transmittance squared).
+    wall_facing = max(0.0, min(1.0, dot3(into, n2)))
+    wall_light = inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
+                              (-n2[0], -n2[1], -n2[2]), jewel, 1.0 if rear_tir else 0.0,
+                              eye_rel, detail)
+    bounce = [wall_light[i] * (wall_facing * wall_facing) * (beer[i] * beer[i])
+              * (1.0 - f1) * BOUNCE_GAIN * detail for i in range(3)]
+    through = [through[i] + bounce[i] for i in range(3)]
+
     graze_k = 1.5 * rxy / max(rz, 0.001)
     rim_width = max(1.0, rxy * (1.0 - graze_k / math.sqrt(1.0 + graze_k * graze_k)))
 
@@ -593,6 +624,15 @@ def shade(surface_numbers, point):
              * (0.25 + 0.75 * f1) for i, c in enumerate(accum)]
     accum = [c + mix(rim_light[i], 1.0, 0.30) * (rim_core * smoothstep(0.25, 0.85, coverage) * 0.62
                                                 * (0.35 + 0.65 * facing)) for i, c in enumerate(accum)]
+
+    # 6b — where two walls meet: the field's ridge at a two-point stencil, gated to the wall, lit.
+    join = join_ridge(point, surface_numbers["outline"], JOIN_STENCIL)
+    join_ridge_value = max(0.0, join)
+    join_line = smoothstep(0.06, 0.30, join_ridge_value)
+    join_line *= (1.0 - smoothstep(0.10, 0.45, inset / max(half_depth, 0.001))) \
+        * smoothstep(0.20, 0.80, coverage) * detail
+    accum = [accum[i] + mix(jewel[i], 1.0, 0.62) * (join_line * (JOIN_GAIN + JOIN_FRESNEL * f1))
+             for i in range(3)]
 
     dark_inset = critical_inset(rxy, rz)
     dark_width = max(0.50, rim_width * 0.24)
@@ -662,6 +702,7 @@ def shade(surface_numbers, point):
         "optical": optical, "path": path_length, "rearTIR": rear_tir, "beer": beer,
         "lumThrough": lum_through,
         "caustic": caustic, "landing": landing,
+        "bounce": max(bounce), "joinLine": join_line, "joinRidge": join_ridge_value,
     }
 
 
