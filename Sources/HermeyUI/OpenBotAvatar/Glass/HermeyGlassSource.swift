@@ -380,10 +380,10 @@ enum HermeyGlassSource {
                 // room behind it has to be a room with edges in it, not a gradient. A window standing
                 // behind and above the body, a tube light beside it, and the shelf it stands on: four
                 // straight edges, one thin line, one horizon, each of which arrives bent.
-                float window = footedStep(-0.36, 0.020, uv.x, foot.x)
-                             * footedStep(0.52, 0.020, -uv.x, foot.x)
-                             * footedStep(-1.35, 0.020, uv.y, foot.y)
-                             * footedStep(0.02, 0.020, -uv.y, foot.y);
+                float window = footedStep(-0.36, 0.012, uv.x, foot.x)
+                             * footedStep(0.52, 0.012, -uv.x, foot.x)
+                             * footedStep(-1.35, 0.012, uv.y, foot.y)
+                             * footedStep(0.02, 0.012, -uv.y, foot.y);
                 // The room outside the window falls away, and the window itself is a box of light with
                 // a gradient in it. Contrast, not level: the body has to stay on this page's darkness
                 // while the studio behind it becomes something with a shape.
@@ -393,16 +393,16 @@ enum HermeyGlassSource {
                 // The tube light: the one feature thin enough to read as a line through the wall.
                 // Their widths carry the same footprint rule the edges do: a tube narrower than the
                 // pixel it lands on is a row of dots, not a line.
-                float tubeW = max(0.048, foot.x * 1.60);
+                float tubeW = max(0.030, foot.x * 1.20);
                 float tube = exp(-pow((uv.x - 0.70) / tubeW, 2.0))
                            * footedStep(0.34, 0.02, -uv.y, foot.y) * footedStep(-0.95, 0.02, uv.y, foot.y);
-                col += float3(0.95, 0.98, 1.0) * (tube * 1.05);
-                float tube2 = exp(-pow((uv.x + 0.22) / max(0.042, foot.x * 1.40), 2.0))
+                col += float3(0.95, 0.98, 1.0) * (tube * 1.90);
+                float tube2 = exp(-pow((uv.x + 0.22) / max(0.024, foot.x * 1.10), 2.0))
                             * footedStep(0.30, 0.02, uv.y, foot.y);
-                col += float3(0.90, 0.94, 1.0) * (tube2 * 0.80);
+                col += float3(0.90, 0.94, 1.0) * (tube2 * 1.20);
 
                 // The shelf the body stands on, as a horizon.
-                col += float3(0.72, 0.78, 0.90) * (footedStep(0.60, 0.018, uv.y, foot.y) * 0.30);
+                col += float3(0.72, 0.78, 0.90) * (footedStep(0.60, 0.010, uv.y, foot.y) * 0.34);
 
                 // And the narrow right-hand strip (shaders.ts:153): upstream's second key, which is
                 // the edge the eye reads the body's turn against.
@@ -904,41 +904,44 @@ enum HermeyGlassSource {
                                 + 0.30 * rimBand,
                                 0.34, 0.97);
 
-            // 8 — the page, from the same field: the light the body passed, and the shadow it casts.
+            // 8 — the page, from the same field. Two things happen where glass meets paper: a short
+            // contact shadow under the body, and the caustic — the light that crossed the bottom wall
+            // and landed past the footprint, at the distance `causticLanding` solves for.
             //
-            // The wall's light leaves the bevel between the critical inset and the flat face, and lands
-            // between the footprint and `causticLanding`: the lit patch is bounded by the *last ray*,
-            // and the rays pile up toward the footprint. Both numbers come from the thickness profile —
-            // `landing` is solved from `bodyRise`/`bodyHeight` at the critical inset — so the patch is
-            // the shape of the body, not a disc around it.
+            // `outside` is the distance from the drawn silhouette, so both follow the outline exactly
+            // rather than an ellipse fitted to the box. The shadow is black at its own opacity, so the
+            // page goes darker; the caustic is light, so it goes warmer. They are the same field.
+            float shadowAlpha = exp(-outside / max(0.7, foot * 1.6)) * smoothstep(0.0, 0.35, outside) * 0.62;
+            // Where the wall's light lands: an arc *parallel to the silhouette* at the solved
+            // distance — focused by the thickness, not blurred out of the middle. Its inner edge is
+            // the fold, where the mapping from the wall to the page turns over; its outer edge is a
+            // short falloff, because the focus has a width.
             float landing = causticLanding(rxy, rz, flatZ);
-            float litReach = max(0.6, landing);
-            float spread = clamp(outside / litReach, 0.0, 1.0);
-            float density = (1.0 - spread) * (1.0 - 0.45 * spread) * 0.62;
-            // The last ray: every bevel inset below the critical one is trapped, so the mapping from the
-            // bevel to the page ends at `litReach`, and the light jumps to nothing there. That boundary is
-            // the bright curve a caustic is read by — sharp on the outside, with the pile-up behind it.
-            float lastRay = exp(-pow((outside - litReach) / max(0.45, litReach * 0.055), 2.0));
-            // Only beneath. The wall's light goes down, so the patch fades as the contour turns up the
+            float arcWidth = max(0.55, landing * 0.085);
+            float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
+            // Only beneath. The wall's light goes down, so the arc fades as the contour turns up the
             // sides. Read off the pixel's own height against the body's box, which is stable along the
-            // whole bottom; a normal taken from the field's quantised outside channel was not.
+            // whole bottom; a normal taken from an 8-bit distance field was not, and broke the arc up.
             float below = smoothstep(0.30, 0.86, (position.y - centre.y) / max(halfExtent.y, 1.0));
-            float lit = (density * 0.52 + lastRay * 0.95) * below * smoothstep(0.0, 0.30, outside);
-
+            // A caustic has a *hard* inner edge and a short outer one: inside the focal line the wall's
+            // light has not converged yet, past it the focus has a width. Cutting the inner side and
+            // letting only the outer Gaussian through is what makes it a line instead of a halo.
+            arc *= smoothstep(landing - arcWidth * 1.7, landing - arcWidth * 0.15, outside);
             // How bright: the wall's own transmission. A short path through amber is nearly white, so
-            // the patch is warm; the longer the wall, the more of it the tint eats. Same absorption as
+            // the arc is warm; the longer the wall, the more of it the tint eats. Same absorption as
             // the body, at the wall's own path — no separate colour for the light on the page.
             float wallPath = 2.0 * bodyHeight(criticalInset(rxy, rz), rxy, rz, flatZ);
             float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
-            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.70) * wallBeer * 1.15;
-            float caustic = clamp(lit, 0.0, 1.0) * 0.95;
-
-            // The page's two darks. Contact: glass on paper hides it for a point or two. Cast: past the
-            // last ray nothing arrives, so the body's shadow starts where its light ends — a short band
-            // at the boundary, not a blur under the whole body.
-            float contact = exp(-outside / max(0.8, foot * 2.0)) * smoothstep(0.0, 0.22, outside) * 0.55;
-            float cast = smoothstep(litReach * 0.97, litReach * 1.10, outside)
-                       * exp(-max(outside - litReach, 0.0) / max(1.1, litReach * 0.18)) * below * 0.50;
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 2.05;
+            float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95;
+            // The light that only grazed the wall lands closer in and dimmer: a short warm lift under
+            // the footprint, which is what binds the arc to the body instead of leaving it floating.
+            float nearPool = exp(-outside / max(1.1, landing * 0.30)) * below * smoothstep(0.0, 0.4, outside) * 0.30;
+            // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
+            // that contrast is what makes a caustic a curve rather than a glow.
+            float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.55, 0.4))
+                                      / max(0.45, arcWidth * 0.60), 2.0));
+            foldDark *= below * smoothstep(0.0, 0.5, outside) * 0.55;
 
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
@@ -955,16 +958,16 @@ enum HermeyGlassSource {
             // pixel the body does not cover a speck of opacity.
             alpha *= coverage;
 
-            // Premultiplied over whatever is behind the view, back to front. The page's darks are black
-            // at an opacity, so they darken it; the caustic is light, and — this is the part the old
-            // page got wrong — it is composited in the same space as the body's pixels, so the linear
-            // `causticLight` is gamma-encoded once here instead of being added to an encoded sum.
-            float3 causticRGB = pow(clamp(causticLight, 0.0, 1.0), float3(1.0 / 2.2));
+            // Premultiplied over whatever is behind the view, back to front: the contact shadow and the
+            // fold's dark edge lie on the page (black at an opacity, so they darken it), and the arc's
+            // light is added over them. A pixel outside the body is `1 - alpha`, so nothing painted
+            // here can reach through the glass itself.
             float page = 1.0 - alpha;
-            float shadeA = clamp((contact + cast) * page, 0.0, 1.0);
+            float shadeA = clamp((shadowAlpha + foldDark) * page, 0.0, 1.0);
             float arcA = clamp(caustic * page, 0.0, 1.0);
-            float3 outRGB = col * alpha + causticRGB * arcA;
-            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA, 0.0, 1.0);
+            float poolA = clamp(nearPool * page, 0.0, 1.0);
+            float3 outRGB = col * alpha + causticLight * (arcA + poolA * 0.55);
+            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA + poolA * 0.55, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
         }
 """
