@@ -178,7 +178,7 @@ struct ConversationPane: View {
                                     }),
                presenting: model.pendingMessageAction) { action in
             Button(action.confirmTitle, role: action.kind == .delete ? .destructive : nil) {
-                Task { await model.confirmMessageAction() }
+                Task { await model.confirmMessageAction(action) }
             }
             .hermeyFocusQuiet()
             Button("Cancel", role: .cancel) { model.cancelMessageAction() }

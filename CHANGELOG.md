@@ -1788,3 +1788,13 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   engine says that conversation is idle, close the session first so nothing keeps serving the old copy, and
   then *retire* rows (`active = 0, compacted = 0`) — the same write the engine's own undo makes. Nothing is
   ever deleted from the database.
+
+## [0.1.674] — 2026-11-26
+
+### Fixed
+- **Edit and resend, and Delete now actually run.** The confirmation appeared and then nothing happened: the
+  alert's dismissal cleared the pending action while the button was still being dispatched, so the verb read
+  nothing to do. The alert now hands its own presented action back, on both the Mac and the phone.
+
+### Changed
+- `hermeyd` **0.8.10** (version bump with the app; no host change).

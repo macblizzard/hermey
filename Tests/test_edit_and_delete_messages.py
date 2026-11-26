@@ -236,7 +236,7 @@ class TheAppConverges(unittest.TestCase):
         self.assertIn("pendingEdit = nil", send)
 
     def test_the_composer_is_prefilled_from_the_message(self) -> None:
-        confirm = body_of(MODEL, "public func confirmMessageAction() async")
+        confirm = body_of(MODEL, "public func confirmMessageAction(")
         self.assertIn("draft = action.text", confirm)
         self.assertIn("PendingEdit(rowID: action.rowID, session: session)", confirm)
 
@@ -302,7 +302,9 @@ class TheConfirmation(unittest.TestCase):
         for shell in (MAC_PANE, IOS_SCREEN):
             self.assertIn(".alert(model.pendingMessageAction?.title ?? \"\"", shell)
             self.assertIn("Text(action.message)", shell)
-            self.assertIn("await model.confirmMessageAction()", shell)
+            self.assertIn("await model.confirmMessageAction(action)", shell,
+                          "the alert must hand its presented action back: reading the published\n"
+                          "property again finds nil, because dismissing clears it first")
         # Both offer a way out that changes nothing.
         for shell in (MAC_PANE, IOS_SCREEN):
             self.assertIn('Button("Cancel", role: .cancel)', shell)

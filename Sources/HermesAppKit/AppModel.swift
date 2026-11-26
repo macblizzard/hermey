@@ -2886,8 +2886,14 @@ public final class AppModel: ObservableObject {
     }
 
     /// Run the confirmed verb. Both paths are one host call, and both end with a re-resume.
-    public func confirmMessageAction() async {
-        guard let action = pendingMessageAction else { return }
+    ///
+    /// The alert hands its own presented value back rather than letting this read the published
+    /// property again: SwiftUI writes `isPresented = false` while the button's action is being
+    /// dispatched, and the binding's setter clears `pendingMessageAction` — so a version of this
+    /// method that looked the action up itself found nil and returned, which is a confirmation that
+    /// appears and then does nothing. The parameter is that bug, closed.
+    public func confirmMessageAction(_ presented: PendingMessageAction? = nil) async {
+        guard let action = presented ?? pendingMessageAction else { return }
         pendingMessageAction = nil
         switch action.kind {
         case .editAndResend:
