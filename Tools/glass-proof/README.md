@@ -15,7 +15,9 @@ Compiles the avatar sources the pass needs together with `main.swift` into one m
 goes through the **app's own** types: `HermeyGlassEngine.shared` (the run-time shader compile),
 `BotAvatarGlassSurface.make` (the uniforms), `BotAvatarGlassDrawer.makeMask` (the silhouette and its
 distance field). It renders the `cat` preset offscreen at **24, 48 and 200 pt** in **idle** and
-**working**, and writes, per case:
+**working**, over the app's own two passes — the Metal body, then the `Canvas`
+that draws the eyes and the marks on top of it (`ImageRenderer`, the route
+`BotAvatarIcon` takes for a still) — and writes, per case:
 
 | file | what it is |
 | --- | --- |
@@ -24,9 +26,16 @@ distance field). It renders the `cat` preset offscreen at **24, 48 and 200 pt** 
 | `cat-<state>-<side>pt-pattern.png` | the **refraction proof**: the same pass over a checkerboard |
 | `cat-<state>-<side>pt-zoom.png` | nearest-neighbour ×N of the 24 and 48 pt cases |
 
+The four surfaces a face is judged on are `-pane` (the bot list), `-ctrl` (`#2B2B2B`, one step up, so
+a body tuned to a single number cannot pass), `-lit` (the light page `#F2F2F2`) and `-busy` (a
+generated page of rows, captions and separators — a face that reads on a flat pane and disappears
+among text has not been fixed).
+
 It also prints, per case, `cover` (pixels the body covers), `mean` and `max` alpha inside the
-silhouette. Two composites are the point: a translucent body changes with what is behind it, an
-opaque one does not.
+silhouette, and the numbers behind the picture: the body's relative luminance against each page,
+its hue and chroma, and the eye ink's contrast against it. Those are read off the same frame with the
+features *left out* — the eyes are opaque ink exactly where the body is measured — while the pictures
+carry the face.
 
 One case at a time while a target is being judged, the full grid when it is done:
 
