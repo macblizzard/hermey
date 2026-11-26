@@ -943,7 +943,7 @@ enum HermeyGlassSource {
             // the fold, where the mapping from the wall to the page turns over; its outer edge is a
             // short falloff, because the focus has a width.
             float landing = causticLanding(rxy, rz, flatZ);
-            float arcWidth = max(0.55, landing * 0.085);
+            float arcWidth = max(0.45, landing * 0.055);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
             // Which way this part of the contour faces, from the field itself: the gradient of
             // `outside` is the outward normal of the silhouette, so its downward component is how much
@@ -968,9 +968,11 @@ enum HermeyGlassSource {
             float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
             float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 1.55;
             float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95;
-            // The light that only grazed the wall lands closer in and dimmer: a short warm lift under
-            // the footprint, which is what binds the arc to the body instead of leaving it floating.
-            float nearPool = exp(-outside / max(1.1, landing * 0.30)) * below * smoothstep(0.0, 0.4, outside) * 0.26;
+            // The light that crossed the thin wall and did not converge: a warm falloff from the
+            // footprint out to the arc. It is what binds the two together — without it the page under
+            // the body is pure black and the caustic reads as a detached neon line, because on a dark
+            // page a shadow is invisible while the light that caused it is not.
+            float nearPool = exp(-outside / max(1.1, landing * 0.60)) * below * smoothstep(0.0, 0.4, outside) * 0.34;
             // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
             // that contrast is what makes a caustic a curve rather than a glow.
             float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.55, 0.4))
