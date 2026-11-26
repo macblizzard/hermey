@@ -527,10 +527,8 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)", layer)
         self.assertNotIn("CGFloat(tint.red)", layer)
         # The field is the drawn outline's, built on the CPU once per size — not the body's bbox.
-        self.assertIn("private static func distanceField(", layer)
-        self.assertIn("let inset = distanceField(coverage, width: width, height: height, inside: true)",
-                      layer)
-        self.assertIn("let outside = distanceField(coverage, width: width, height: height, inside: false)",
+        self.assertIn("private static func analyticField(", layer)
+        self.assertIn("let field = Self.analyticField(path: path, coverage: coverage, points: points,",
                       layer)
         self.assertNotIn("sdRoundedBox", source)
 
@@ -590,6 +588,62 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         paint = code(read(PAINT)).lower()
         for layer in ("halo", "ramp", "sheen", "streak", "rim", "contact"):
             self.assertIn(layer, paint, layer)
+
+
+class TheFieldIsAnalytic(unittest.TestCase):
+    """The mask's distance is measured from the outline, not relaxed across a raster of it.
+
+    This is the striping's cause, in one place: a chamfer (or any binary-mask) transform returns
+    whole-pixel values, the fragment reads one of them as the argument of the bevel and differentiates
+    the same channel for its normal, and a distance field's iso-lines run parallel to the outline — so
+    the steps came out as vertical bands. The field must be a point-to-segment distance or the bands
+    come back, however smooth the terms downstream look.
+    """
+
+    def test_the_field_is_point_to_segment_not_a_relaxation(self):
+        layer = code(read(LAYER))
+        self.assertIn("private static func analyticField(", layer)
+        self.assertIn("for segment in segments {", layer)
+        # The projection onto the segment: a clamped dot product, then the point's distance to it.
+        self.assertIn("let t = length2 > 1e-9 ? max(0, min(1, (wx * segment.ex + wy * segment.ey) "
+                      "/ length2)) : 0", layer)
+        self.assertIn("let qx = wx - segment.ex * t, qy = wy - segment.ey * t", layer)
+        # …and no two-sweep chamfer left anywhere: its `√2` diagonal step was the staircase.
+        self.assertNotIn("distanceField(", layer)
+        self.assertNotIn("squareRoot()\n        var field", layer)
+        self.assertNotIn("let diagonal", layer)
+
+    def test_the_curves_are_flattened_to_a_tolerance(self):
+        layer = code(read(LAYER))
+        self.assertIn("private static func segments(of path: Path, tolerance: Float = 0.06)",
+                      layer)
+        self.assertIn("if depth >= 12 || max(away(p1), away(p2)) <= CGFloat(tolerance) {", layer)
+        # Every element kind is carried, or a rounded preset would lose its curves.
+        for element in (".moveToPoint", ".addLineToPoint", ".addQuadCurveToPoint",
+                        ".addCurveToPoint", ".closeSubpath"):
+            self.assertIn(element, layer, element)
+
+    def test_the_sample_is_a_pixel_centre_in_the_path_s_own_points(self):
+        layer = code(read(LAYER))
+        self.assertIn("let stepX = Float(points.width) / Float(width)", layer)
+        self.assertIn("let sampleX = (Float(x) + 0.5) * stepX", layer)
+        self.assertIn("let sampleY = (Float(y) + 0.5) * stepY", layer)
+        # The sign is the drawn silhouette's — the same fill the Canvas draws.
+        self.assertIn("let inside = coverage[index] > 127", layer)
+        # Half the view's short side is the unit, exactly what the shader multiplies back by.
+        self.assertIn("let span = Float(0.5 * min(points.width, points.height))", layer)
+        self.assertIn("float maxInset = 0.5 * min(size.x, size.y);", msl_code())
+
+    def test_the_geometry_of_the_mask_is_unchanged(self):
+        layer = code(read(LAYER))
+        # Still an RGBA16F texture, still packed by hand, still one per pixel size — and still no
+        # `Float16`, whose conversions the x86_64 slice of the universal build cannot always use.
+        self.assertIn("pixelFormat: .rgba16Float", layer)
+        self.assertIn("packed[i * 4] = Self.halfBits(1)", layer)
+        self.assertIn("packed[i * 4 + 3] = Self.halfBits(Float(coverage[i]) / 255)", layer)
+        self.assertIn("private static func halfBits(_ value: Float) -> UInt16", layer)
+        self.assertNotIn("Float16(", layer)
+        self.assertIn("if texture == nil || texture?.width != Int(pixels.width)", layer)
 
 
 class TheThreeTargetsAreSteps(unittest.TestCase):

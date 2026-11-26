@@ -279,6 +279,16 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// material is drawn at. It costs twice the texture's memory and nothing per frame: the mask is
     /// rebuilt only when the drawable's pixel size changes.
     ///
+    /// Why the field is *analytic*: the two channels below used to come from a chamfer transform of
+    /// the filled raster, which measures pixel centre to pixel centre — every value a whole number of
+    /// pixels, biased by half a pixel and drifting with the edge's angle. The fragment reads the field
+    /// as the argument of the bevel and differentiates it for the normal, so a fixed step per pixel
+    /// became a step in the shading, and because a distance field's iso-lines run *parallel to the
+    /// outline*, on a near-vertical edge those steps were vertical: the body was banded. `analyticField`
+    /// measures point to segment instead, so there is no grid in the value at all; the gradient the
+    /// shader reads is the outline's own normal, to the flattening's tolerance.
+
+    ///
     /// * `a` — the drawn silhouette, antialiased (what limits the shaded region);
     /// * `g` — how far inside the outline the pixel is, in points, normalised to half the view's
     ///   short side (the shader multiplies by `0.5 * min(size)`); `b` — the same outside it;
@@ -326,26 +336,17 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
             for x in 0..<width { coverage[y * width + x] = row[x * 4 + 3] }
         }
 
-        let inset = distanceField(coverage, width: width, height: height, inside: true)
-        let outside = distanceField(coverage, width: width, height: height, inside: false)
-        // One green/blue unit is half the view's short side, in points — what the shader can read
-        // back from `size`, so no seventh uniform is needed.
-        let scale = Float(pixels.width / points.width)
-        let span = Float(0.5 * min(points.width, points.height))
-        func unit(_ pixels: Float) -> Float {
-            // A zero-sized or not-yet-laid-out surface divides by zero and the distance field turns
-            // into NaN/inf, and a non-finite value in the texture is a normal that is not a direction.
-            guard scale.isFinite, scale > 0, span.isFinite, span > 0 else { return 0 }
-            let scaled = pixels / scale / span
-            guard scaled.isFinite else { return 0 }
-            return max(0, min(scaled, 1))
-        }
+        // The field, measured against the outline itself rather than against a raster of it: a
+        // signed distance in points, normalised to half the view's short side — the one unit the
+        // shader can read back from `size`, so no seventh uniform is needed. Positive is inside.
+        let field = Self.analyticField(path: path, coverage: coverage, points: points,
+                                       width: width, height: height)
 
         var packed = [UInt16](repeating: 0, count: width * height * 4)
         for i in 0..<(width * height) {
             packed[i * 4] = Self.halfBits(1)
-            packed[i * 4 + 1] = Self.halfBits(unit(inset[i]))
-            packed[i * 4 + 2] = Self.halfBits(unit(outside[i]))
+            packed[i * 4 + 1] = Self.halfBits(max(0, field[i]))
+            packed[i * 4 + 2] = Self.halfBits(max(0, -field[i]))
             packed[i * 4 + 3] = Self.halfBits(Float(coverage[i]) / 255)
         }
 
@@ -379,49 +380,163 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         return UInt16(((exponent + 15) << 10) | mantissa)
     }
 
-    /// The distance, in pixels, from every pixel to the nearest pixel on the other side of the
-    /// outline: a two-pass chamfer transform with unit steps across and `√2` diagonally.
+    /// One straight piece of the outline, with the vector it runs along kept beside it.
     ///
-    /// `inside` picks which side is measured — how deep into the body, or how far out of it. A
-    /// 3×4 neighbourhood and two sweeps is the standard approximation: exact for axis-aligned
-    /// edges, within a few per cent on a diagonal, which is far below one rim's width.
-    private static func distanceField(_ coverage: [UInt8], width: Int, height: Int,
-                                      inside: Bool) -> [Float] {
-        let far: Float = 1e6
-        let diagonal = Float(2.0).squareRoot()
-        var field = [Float](repeating: far, count: width * height)
-        for i in 0..<field.count where (coverage[i] > 127) != inside {
-            field[i] = 0
+    /// The flattening's own scratch type: a `Path` is curves, and a point-to-*segment* distance needs
+    /// segments, so the curves are cut into chords once per rebuild and the loop below only ever does
+    /// `ax + ex·t`.
+    private struct GlassSegment {
+        var ax: Float, ay: Float      // the start
+        var ex: Float, ey: Float      // end − start
+        var minX: Float, minY: Float  // the segment's own box, for the cheap rejection below
+        var maxX: Float, maxY: Float
+    }
+
+    /// Every pixel's distance to the outline, computed from the path — not from a raster of it.
+    ///
+    /// The value is the true distance from the pixel's centre to the nearest point of the outline,
+    /// in points, normalised to half the view's short side — the shader's own unit — and signed by
+    /// the drawn silhouette: positive inside, negative outside. Nothing in it is a whole pixel, so the
+    /// fragment's finite difference of it is the outline's normal rather than the grid's.
+    ///
+    /// Cost: one point-to-segment test per pixel per segment, once per rebuild — the cat's outline is
+    /// ~90 segments at 200 pt — so tens of millions of multiply-adds on the main thread when the
+    /// avatar's pixel size changes, and nothing at all per frame. A segment whose own box is already
+    /// further away than the nearest hit so far is rejected without projecting onto it, and a
+    /// distance past the `span` the texture can hold is clamped, because the shader clamps it too.
+    private static func analyticField(path: Path, coverage: [UInt8], points: CGSize,
+                                      width: Int, height: Int) -> [Float] {
+        let span = Float(0.5 * min(points.width, points.height))
+        // A zero-sized or not-yet-laid-out surface would divide by zero, and a non-finite value in
+        // the texture is a normal that is not a direction.
+        guard span.isFinite, span > 0, width > 0, height > 0 else {
+            return [Float](repeating: 0, count: max(0, width * height))
         }
+        let segments = Self.segments(of: path)
+        guard !segments.isEmpty else { return [Float](repeating: 0, count: width * height) }
+
+        // The points the mask is drawn in: the path's own coordinates, at one sample per pixel centre.
+        let stepX = Float(points.width) / Float(width)
+        let stepY = Float(points.height) / Float(height)
+        let far = span * span
+
+        var field = [Float](repeating: 0, count: width * height)
         for y in 0..<height {
+            let sampleY = (Float(y) + 0.5) * stepY
             for x in 0..<width {
-                let index = y * width + x
-                var distance = field[index]
-                if distance == 0 { continue }
-                if y > 0 {
-                    distance = min(distance, field[index - width] + 1)
-                    if x > 0 { distance = min(distance, field[index - width - 1] + diagonal) }
-                    if x + 1 < width { distance = min(distance, field[index - width + 1] + diagonal) }
+                let sampleX = (Float(x) + 0.5) * stepX
+                var best = far
+                for segment in segments {
+                    // The box's own distance is a floor for the segment's, so a segment that cannot
+                    // beat what is already found is rejected in six comparisons instead of a projection.
+                    let dx = max(segment.minX - sampleX, 0) + max(sampleX - segment.maxX, 0)
+                    let dy = max(segment.minY - sampleY, 0) + max(sampleY - segment.maxY, 0)
+                    if dx * dx + dy * dy >= best { continue }
+                    let wx = sampleX - segment.ax, wy = sampleY - segment.ay
+                    let length2 = segment.ex * segment.ex + segment.ey * segment.ey
+                    let t = length2 > 1e-9 ? max(0, min(1, (wx * segment.ex + wy * segment.ey) / length2)) : 0
+                    let qx = wx - segment.ex * t, qy = wy - segment.ey * t
+                    let distance2 = qx * qx + qy * qy
+                    if distance2 < best { best = distance2 }
                 }
-                if x > 0 { distance = min(distance, field[index - 1] + 1) }
-                field[index] = distance
-            }
-        }
-        for y in stride(from: height - 1, through: 0, by: -1) {
-            for x in stride(from: width - 1, through: 0, by: -1) {
+                let distance = min(best.squareRoot(), span)
                 let index = y * width + x
-                var distance = field[index]
-                if distance == 0 { continue }
-                if y + 1 < height {
-                    distance = min(distance, field[index + width] + 1)
-                    if x > 0 { distance = min(distance, field[index + width - 1] + diagonal) }
-                    if x + 1 < width { distance = min(distance, field[index + width + 1] + diagonal) }
-                }
-                if x + 1 < width { distance = min(distance, field[index + 1] + 1) }
-                field[index] = distance
+                // The sign is the drawn silhouette's own: the raster is the authority on which side
+                // of the outline a pixel is, because it is the same fill the Canvas draws.
+                let inside = coverage[index] > 127
+                field[index] = (inside ? distance : -distance) / span
             }
         }
         return field
+    }
+
+    /// The outline as line segments, in the points the path was built in.
+    ///
+    /// Curves are cut until the control polygon is within the tolerance of the chord — 0.06 pt, a
+    /// tenth of the smallest pixel this material is drawn at — so the polyline is the outline for
+    /// every purpose below and a corner stays a corner.
+    private static func segments(of path: Path, tolerance: Float = 0.06) -> [GlassSegment] {
+        // The path's own elements, in the order and the coordinate space they were built in. The
+        // block only appends: `applyWithBlock` is escaping, so nothing that has to look ahead lives
+        // inside it.
+        enum Element {
+            case move(CGPoint)
+            case line(CGPoint)
+            case quad(CGPoint, CGPoint)                  // end, control
+            case curve(CGPoint, CGPoint, CGPoint)        // end, control 1, control 2
+            case close
+        }
+        var elements: [Element] = []
+        path.cgPath.applyWithBlock { element in
+            let points = element.pointee.points
+            switch element.pointee.type {
+            case .moveToPoint: elements.append(.move(points[0]))
+            case .addLineToPoint: elements.append(.line(points[0]))
+            case .addQuadCurveToPoint: elements.append(.quad(points[1], points[0]))
+            case .addCurveToPoint: elements.append(.curve(points[2], points[0], points[1]))
+            case .closeSubpath: elements.append(.close)
+            @unknown default: break
+            }
+        }
+
+        var out: [GlassSegment] = []
+        var current = CGPoint.zero
+        var start = CGPoint.zero
+
+        func mid(_ a: CGPoint, _ b: CGPoint) -> CGPoint {
+            CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+        }
+        func append(_ a: CGPoint, _ b: CGPoint) {
+            let ax = Float(a.x), ay = Float(a.y), bx = Float(b.x), by = Float(b.y)
+            out.append(GlassSegment(ax: ax, ay: ay, ex: bx - ax, ey: by - ay,
+                                    minX: min(ax, bx), minY: min(ay, by),
+                                    maxX: max(ax, bx), maxY: max(ay, by)))
+        }
+        func cubic(_ p0: CGPoint, _ p1: CGPoint, _ p2: CGPoint, _ p3: CGPoint, depth: Int) {
+            let dx = p3.x - p0.x, dy = p3.y - p0.y
+            let chord = (dx * dx + dy * dy).squareRoot()
+            func away(_ p: CGPoint) -> CGFloat {
+                if chord < 1e-6 {
+                    return ((p.x - p0.x) * (p.x - p0.x) + (p.y - p0.y) * (p.y - p0.y)).squareRoot()
+                }
+                return abs((p.x - p0.x) * dy - (p.y - p0.y) * dx) / chord
+            }
+            if depth >= 12 || max(away(p1), away(p2)) <= CGFloat(tolerance) {
+                append(p0, p3)
+                return
+            }
+            let p01 = mid(p0, p1), p12 = mid(p1, p2), p23 = mid(p2, p3)
+            let p012 = mid(p01, p12), p123 = mid(p12, p23), middle = mid(p012, p123)
+            cubic(p0, p01, p012, middle, depth: depth + 1)
+            cubic(middle, p123, p23, p3, depth: depth + 1)
+        }
+
+        for element in elements {
+            switch element {
+            case .move(let point):
+                current = point
+                start = point
+            case .line(let point):
+                append(current, point)
+                current = point
+            case .quad(let end, let control):
+                // The same curve as a cubic, with its controls at the control point's thirds.
+                cubic(current,
+                      CGPoint(x: current.x + 2.0 / 3.0 * (control.x - current.x),
+                              y: current.y + 2.0 / 3.0 * (control.y - current.y)),
+                      CGPoint(x: end.x + 2.0 / 3.0 * (control.x - end.x),
+                              y: end.y + 2.0 / 3.0 * (control.y - end.y)),
+                      end, depth: 0)
+                current = end
+            case .curve(let end, let control1, let control2):
+                cubic(current, control1, control2, end, depth: 0)
+                current = end
+            case .close:
+                if current != start { append(current, start) }
+                current = start
+            }
+        }
+        return out
     }
 }
 
