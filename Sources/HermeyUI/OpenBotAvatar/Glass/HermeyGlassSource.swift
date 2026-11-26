@@ -931,7 +931,13 @@ enum HermeyGlassSource {
             // `outside` is the distance from the drawn silhouette, so both follow the outline exactly
             // rather than an ellipse fitted to the box. The shadow is black at its own opacity, so the
             // page goes darker; the caustic is light, so it goes warmer. They are the same field.
-            float shadowAlpha = exp(-outside / max(0.7, foot * 1.6)) * smoothstep(0.0, 0.35, outside) * 0.62;
+            // Contact is two terms, not one: a dark line where the glass touches paper (a point or two
+            // wide, and the darkest thing on the page) and a short penumbra behind it. One soft
+            // exponential was neither — it darkened too slowly to read as contact and too little to
+            // anchor the body.
+            float tight = exp(-outside / max(0.75, foot * 1.5)) * smoothstep(0.0, 0.30, outside) * 0.72;
+            float penumbra = exp(-outside / max(2.0, foot * 4.0)) * smoothstep(0.0, 0.6, outside) * 0.24;
+            float shadowAlpha = tight + penumbra;
             // Where the wall's light lands: an arc *parallel to the silhouette* at the solved
             // distance — focused by the thickness, not blurred out of the middle. Its inner edge is
             // the fold, where the mapping from the wall to the page turns over; its outer edge is a
@@ -939,10 +945,18 @@ enum HermeyGlassSource {
             float landing = causticLanding(rxy, rz, flatZ);
             float arcWidth = max(0.55, landing * 0.085);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
-            // Only beneath. The wall's light goes down, so the arc fades as the contour turns up the
-            // sides. Read off the pixel's own height against the body's box, which is stable along the
-            // whole bottom; a normal taken from an 8-bit distance field was not, and broke the arc up.
-            float below = smoothstep(0.30, 0.86, (position.y - centre.y) / max(halfExtent.y, 1.0));
+            // Which way this part of the contour faces, from the field itself: the gradient of
+            // `outside` is the outward normal of the silhouette, so its downward component is how much
+            // of the wall stands over the page. It is smooth along the contour and costs two
+            // derivatives — no extra sample, and no hand-placed ellipse. The wall's light goes down, so
+            // the arc dies around the bottom corners instead of ringing the body.
+            float2 outwardN = normalize(float2(dFdx(outside), dFdy(outside)) + float2(1e-6f));
+            float under = clamp(outwardN.y, 0.0, 1.0);
+            float facing = under * under;
+            // A coarse gate on the same thing, so a horizontal stretch of contour below the ears (where
+            // the normal is ambiguous) cannot light up.
+            float below = smoothstep(0.16, 0.62, (position.y - centre.y) / max(halfExtent.y, 1.0))
+                        * smoothstep(0.10, 0.55, facing);
             // A caustic has a *hard* inner edge and a short outer one: inside the focal line the wall's
             // light has not converged yet, past it the focus has a width. Cutting the inner side and
             // letting only the outer Gaussian through is what makes it a line instead of a halo.
@@ -952,11 +966,11 @@ enum HermeyGlassSource {
             // the body, at the wall's own path — no separate colour for the light on the page.
             float wallPath = 2.0 * bodyHeight(criticalInset(rxy, rz), rxy, rz, flatZ);
             float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
-            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 2.05;
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 1.55;
             float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95;
             // The light that only grazed the wall lands closer in and dimmer: a short warm lift under
             // the footprint, which is what binds the arc to the body instead of leaving it floating.
-            float nearPool = exp(-outside / max(1.1, landing * 0.30)) * below * smoothstep(0.0, 0.4, outside) * 0.30;
+            float nearPool = exp(-outside / max(1.1, landing * 0.30)) * below * smoothstep(0.0, 0.4, outside) * 0.26;
             // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
             // that contrast is what makes a caustic a curve rather than a glow.
             float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.55, 0.4))
@@ -982,11 +996,15 @@ enum HermeyGlassSource {
             // fold's dark edge lie on the page (black at an opacity, so they darken it), and the arc's
             // light is added over them. A pixel outside the body is `1 - alpha`, so nothing painted
             // here can reach through the glass itself.
+            // The page's light is linear and the body's pixels are already encoded (`col`), so the
+            // caustic is encoded once here. Added in the wrong space it is a dull red smear — which is
+            // what a caustic measured in linear light and written into an sRGB sum looks like.
+            float3 causticRGB = pow(clamp(causticLight, 0.0, 1.0), float3(1.0 / 2.2));
             float page = 1.0 - alpha;
             float shadeA = clamp((shadowAlpha + foldDark) * page, 0.0, 1.0);
             float arcA = clamp(caustic * page, 0.0, 1.0);
             float poolA = clamp(nearPool * page, 0.0, 1.0);
-            float3 outRGB = col * alpha + causticLight * (arcA + poolA * 0.55);
+            float3 outRGB = col * alpha + causticRGB * (arcA + poolA * 0.55);
             float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA + poolA * 0.55, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
         }
