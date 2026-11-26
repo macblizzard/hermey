@@ -1849,3 +1849,16 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The app no longer crashes on launch.** A glass body whose view had no size yet divided by zero, the distance
   field became non-finite, and converting that to `Int` trapped on the main thread. The mask now refuses a surface
   with no extent and clamps every value.
+
+## [0.1.681] — 2026-11-26
+
+### Added
+- **Idle avatars float.** A gentle two-way drift, ±2 % of the avatar's side over 4.2 s, with a per-avatar phase
+  offset so a column of bots is out of step. It rides the clock the breathing already uses, adds no timer and no
+  layer, and Reduce Motion freezes it. Every other state draws exactly as before.
+
+### Fixed
+- **Settings ▸ About now tells the truth.** Check now built its URL with a literal `%3F` instead of a query, so the
+  host answered 404 and the app swallowed it silently — which is why the row sat on a stale 0.8.9 until a hermeyd
+  restart forced a reconnect. The press now asks correctly, logs one line, reports a failure on the row, and the
+  version shown is always the host's own `current`. A published release the host has not offered reads as news.
