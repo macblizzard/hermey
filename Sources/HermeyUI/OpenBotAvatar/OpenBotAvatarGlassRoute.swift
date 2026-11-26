@@ -33,10 +33,11 @@ import Metal
 /// rim and the compact plan's three layers are the legible drawing.
 ///
 /// There is no third route, and no call site chooses: a surface passes its material and its size and
-/// gets what that surface should draw (`OpenBotAvatarView`), and the frame that follows it draws the
-/// ribbons' `Canvas`, the body's Metal pass and the eyes' `Canvas` in the renderer's paint order.
-/// `Tests/test_bot_avatar_glass.py` holds the single decision point and the single fallback to
-/// exactly that shape.
+/// gets what that surface should draw (`OpenBotAvatarView`), and the renderer follows the route it is
+/// handed (`OpenBotAvatarRenderer.draw(_:pass:route:…)`). A surface with no view to ask — the avatar
+/// editor's material row, which has to say what Glass really is — asks `drawn`, which is `decide`
+/// under a name that says what it answers. `Tests/test_bot_avatar_glass.py` holds the single decision
+/// point and the single fallback to exactly that shape.
 public enum BotAvatarGlassRoute: Hashable, Sendable {
 
     /// The painted material: the six `Canvas` layers. The fallback, and the only drawing for Solid,
@@ -65,6 +66,18 @@ public enum BotAvatarGlassRoute: Hashable, Sendable {
         // The process itself: a Metal device, the shader compiled in it, and not a preview.
         guard BotAvatarGlassShader.isAvailable else { return .canvas }
         return .metal
+    }
+
+    /// What a surface of this size draws in this process — `decide`, under a name that says what it
+    /// answers, for a caller that has no view to ask.
+    ///
+    /// The avatar editor's material row is that caller: it has to tell a person whether the Glass
+    /// they are about to save will be a lit surface here or the painted one, and it must not answer
+    /// that with its own copy of the four guards. There is still one decision — this calls it.
+    public static func drawn(material: BotAvatarMaterial,
+                             side: Double,
+                             reduceTransparency: Bool) -> BotAvatarGlassRoute {
+        decide(material: material, side: side, reduceTransparency: reduceTransparency)
     }
 }
 
