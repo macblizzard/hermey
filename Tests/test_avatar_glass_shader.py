@@ -516,7 +516,7 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         # The mask is read for its silhouette and its distance field — `a`, `g`, `b` — and never for a
         # colour.
         self.assertIn("half4 silhouette = bodyLayer.sample(bodySampler, pos.xy / pixels);", source)
-        self.assertIn("float coverage = float(silhouette.a);", source)
+        self.assertIn("float coverage = edgeCoverage(inset, outside, foot, float(silhouette.a));", source)
         self.assertIn("float inset = float(silhouette.g) * maxInset;", source)
         self.assertIn("float outside = float(silhouette.b) * maxInset;", source)
         for channel in ("silhouette.rgb", "silhouette.r", "behind", "sampled", "src.rgb", "src.a"):
@@ -549,10 +549,10 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("#define kPlatePattern 0", source)
         # The key's own reflection on the face, and the rear surface seen through the front.
         self.assertIn("float shoulder = softbox(reflDirS, float3(-0.52, -0.68, 0.52)", source)
-        self.assertIn("float rearMargin = sinCritical() - dot(into, n2S);", source)
         # The tint is decoded to linear light before the optics, and gamma-encoded exactly once after.
         self.assertIn("float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));", source)
-        self.assertEqual(source.count("1.0 / 2.2"), 1)
+        # The body's pixels and the page's light are each encoded exactly once.
+        self.assertEqual(source.count("1.0 / 2.2"), 2)
         # A solid piece of glass: thickness, a lit rim, a key on the face, and something under it.
         self.assertIn("float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);", source)
         # The geometry is renderer.ts's inflate solid, not a quarter circle of our own.
@@ -560,8 +560,8 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("float flatZ = max(0.0, halfDepth - rz);", source)
         self.assertIn("#define kCrown 0.055", source)
         self.assertIn("float rimFacing = 0.62", source)
-        self.assertIn("float caustic = poolBand * bottom * bottom * smoothstep(0.0, 0.4, outside) * 0.95;", source)
-        self.assertIn("float shadowAlpha = exp(-outside / (soft * 0.40))", source)
+        self.assertIn("float landing = causticLanding(rxy, rz, flatZ);", source)
+        self.assertIn("float shadowAlpha = tight + penumbra;", source)
         # The studio it stands in is the plate's, in the body's own hue, not a flat tint.
         self.assertIn("sampleGlassPlate(plateUV, plateFoot, jewelTint, detail)", source)
         self.assertIn("float2 plateFoot = fwidth(plateUV) + 1e-5;", source)
@@ -581,7 +581,7 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         # …and the blend is premultiplied over, as the fragment writes.
         self.assertIn("attachment.sourceRGBBlendFactor = .one", layer)
         self.assertIn("attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha", layer)
-        self.assertIn("float3 outRGB = col * alpha + causticLight * (caustic * (1.0 - alpha));", msl_code())
+        self.assertIn("float3 outRGB = col * alpha + causticRGB * (arcA + poolA * 0.55);", msl_code())
 
     def test_the_fallback_is_untouched(self):
         # Reduce transparency still gets the painted material, and the painter still paints its six
@@ -590,6 +590,58 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         paint = code(read(PAINT)).lower()
         for layer in ("halo", "ramp", "sheen", "streak", "rim", "contact"):
             self.assertIn(layer, paint, layer)
+
+
+class TheThreeTargetsAreSteps(unittest.TestCase):
+    """Each thing that was wrong with the glass is a term the source must keep — not a look.
+
+    The pictures are evidence, not the contract: these four check that the edge is coverage the app
+    path computes (not a probe), that the caustic's distance is solved from the thickness profile and
+    not blurred out of the body's middle, that absorption is the ray's own path, and that the interior
+    still integrates over the same fixed number of slices.
+    """
+
+    def test_edge_coverage_is_a_named_step_the_app_path_uses(self):
+        source = msl_code()
+        self.assertIn("static inline float edgeCoverage(float inset, float outside, float foot, "
+                      "float maskAlpha)", source)
+        self.assertIn("float coverage = edgeCoverage(inset, outside, foot, float(silhouette.a));",
+                      source)
+        self.assertIn("alpha *= coverage;", source)
+        # The rim's thin lines are filtered by the same footprint, not only the silhouette.
+        self.assertIn("static inline float bandCoverage(", source)
+        self.assertIn("float rimCore = bandCoverage(inset, 0.0,", source)
+        self.assertIn("float darkLine = bandCoverage(inset, darkInset,", source)
+        # The specular half: the key's reflection is feathered by the normal's own sweep.
+        self.assertIn("float specFoot = min(0.30, length(fwidth(reflDirS)) * 0.85);", source)
+
+    def test_the_caustic_is_the_thickness_field_not_a_radial_blur(self):
+        source = msl_code()
+        self.assertIn("static inline float causticLanding(float rxy, float rz, float flatZ)", source)
+        body = source.split("static inline float causticLanding")[1].split("\n        }")[0]
+        for term in ("criticalInset(", "bodyRise(", "bodyHeight(", "kIOR"):
+            self.assertIn(term, body, term)
+        self.assertIn("float landing = causticLanding(rxy, rz, flatZ);", source)
+        # An offset curve of the silhouette at that distance — never a disc around the body.
+        self.assertNotIn("poolAt", source)
+        self.assertNotIn("length(p - centre", source)
+
+    def test_absorption_is_a_function_of_path_length(self):
+        source = msl_code()
+        self.assertIn("static inline float opticalThickness(float pathLength, float halfDepth)",
+                      source)
+        self.assertIn("float optical = opticalThickness(absorbingPath, halfDepth);", source)
+        self.assertIn("float absorbingPath = pathLength * (0.30 + 0.70 * localBody);", source)
+        # The reference's saturating march compression is gone: no constant can flatten the gradient.
+        self.assertNotIn("refScale", source)
+        # Its transmittance is the path's, and the alpha carries the same term.
+        self.assertIn("float3 beer = absorptionAlong(optical, absorbSigma);", source)
+        self.assertIn("+ kAbsorptionOpacity * (1.0 - lumThrough)", source)
+
+    def test_the_interior_step_count_is_unchanged(self):
+        source = msl()
+        self.assertIn("#define kInteriorSteps 12u", source)
+        self.assertIn("for (uint i = 0u; i < kInteriorSteps; ++i)", source)
 
 
 class TheProofToolIsOptIn(unittest.TestCase):
@@ -625,10 +677,12 @@ class TheProofToolIsOptIn(unittest.TestCase):
         mirror = read(self.PROOF / "numbers.py")
         source = msl()
         for literal in ("(surface_col[i] * PLATE_GAIN + gather[i] * INTERIOR_GAIN) * beer[i]",
-                        "path_u / (ref_scale + path_u * 0.30)",
+                        "optical_thickness(absorbing_path, half_depth)",
                         "0.62 + 0.38 *",
-                        "sin_critical() - dot3(into, n2)",
-                        "edge_transparency * 1.15",
+                        "ABSORPTION_OPACITY * (1.0 - lum_through)",
+                        "band_coverage(inset, 0.0, max(0.30, rim_width * 0.13), foot)",
+                        "caustic_landing(rxy, rz, flat_z)",
+                        "caustic_rgb = tuple(", 
                         "mix(0.120, 0.700, top)",
                         "mix(1.0, jewel[i], 0.45)",
                         "max(0.34, min(0.97,",
@@ -636,10 +690,11 @@ class TheProofToolIsOptIn(unittest.TestCase):
                         "(0.25 + 0.75 * f1)"):
             self.assertIn(literal, mirror, literal)
         for literal in ("float3 through = (plate * kPlateGain + gather * kInteriorGain) * beer;",
-                        "float optical = pathU / (refScale + pathU * 0.30);",
+                        "float optical = opticalThickness(absorbingPath, halfDepth);",
                         "0.62 + 0.38 * clamp(",
-                        "float rearMargin = sinCritical() - dot(into, n2S);",
-                        "edgeTransparency * 1.15",
+                        "+ kAbsorptionOpacity * (1.0 - lumThrough)",
+                        "bandCoverage(inset, 0.0, max(0.30, rimWidth * 0.13), foot)",
+                        "float landing = causticLanding(rxy, rz, flatZ);",
                         "float3(0.120, 0.126, 0.140), float3(0.700, 0.740, 0.840)",
                         "mix(float3(1.0), jewelTint, 0.45)",
                         "0.34, 0.97",

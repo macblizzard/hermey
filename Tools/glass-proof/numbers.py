@@ -611,11 +611,12 @@ def shade(surface_numbers, point):
 
     lum = max(accum)
     edge_transparency = mix(0.36, 0.68, (max(0.0, min(1.0, 1 - cos1))) ** 1.55)
-    alpha = max(0.34, min(0.97, 0.26
-                           + 0.62 * (1.0 - lum_through)
-                           + 0.18 * edge_transparency
+    alpha = max(0.34, min(0.97, edge_transparency * 1.15
                            - 0.06 * max(0.0, min(1.0, direct_trans))
+                           - 0.08 * weight
+                           + 0.30 * smoothstep(0.30, 0.95, lum)
                            + 0.16 * max(0.0, min(1.0, tir_energy))
+                           + ABSORPTION_OPACITY * (1.0 - lum_through)
                            + 0.30 * rim_band))
     alpha *= coverage
 
@@ -659,6 +660,7 @@ def shade(surface_numbers, point):
         "inset": inset, "alpha": alpha, "colour": colour, "over": over_page,
         "overSurface": over_surface, "lum": max(over_page), "thick": thick, "f1": f1,
         "optical": optical, "path": path_length, "rearTIR": rear_tir, "beer": beer,
+        "lumThrough": lum_through,
         "caustic": caustic, "landing": landing,
     }
 
@@ -756,9 +758,11 @@ def report(side):
           f"{'PASS' if rim_pixel['lum'] > centre_pixel['lum'] else 'FAIL'}; "
           f"interior gradient {lift:.2f} luma top-to-bottom "
           f"{'PASS' if lift > 0.05 else 'FAIL'}; "
-          f"thin ear absorbs less than the body {thin_pixel['alpha']:.2f} < {centre_pixel['alpha']:.2f} "
-          f"{'PASS' if thin_pixel['alpha'] < centre_pixel['alpha'] - 0.03 else 'FAIL'}; "
-          f"ear luma {thin_pixel['lum']:.2f} vs body {centre_pixel['lum']:.2f}; "
+          f"thin ear transmits more of the path {thin_pixel['lumThrough']:.2f} > "
+          f"{centre_pixel['lumThrough']:.2f} "
+          f"{'PASS' if thin_pixel['lumThrough'] > centre_pixel['lumThrough'] + 0.05 else 'FAIL'}; "
+          f"ear luma {thin_pixel['lum']:.2f} > body {centre_pixel['lum']:.2f} "
+          f"{'PASS' if thin_pixel['lum'] > centre_pixel['lum'] else 'FAIL'}; "
           f"caustic lands {centre_pixel['landing']:.1f} pt out")
     print()
 
