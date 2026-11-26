@@ -166,17 +166,22 @@ struct Rendered {
 func featureLayer(model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
                   points: CGSize, pixels: CGSize, dark: Bool) -> [UInt8]? {
     let width = Int(pixels.width), height = Int(pixels.height)
-    let view = Canvas { context, size in
-        OpenBotAvatarRenderer.draw(model, pose: pose, material: .glass,
-                                   backdrop: .themed(dark: dark), into: &context, size: size,
-                                   color: OpenBotAvatarRenderer.defaultColor,
-                                   ink: OpenBotAvatarRenderer.defaultInk,
-                                   still: true, time: 0, pass: .over)
+    // `ImageRenderer` is main-actor work and this is a command-line tool: the top-level script already
+    // runs on the main thread, so the isolation is assumed rather than hopped to.
+    let image: CGImage? = MainActor.assumeIsolated {
+        let view = Canvas { context, size in
+            OpenBotAvatarRenderer.draw(model, pose: pose, material: .glass,
+                                       backdrop: .themed(dark: dark), into: &context, size: size,
+                                       color: OpenBotAvatarRenderer.defaultColor,
+                                       ink: OpenBotAvatarRenderer.defaultInk,
+                                       still: true, time: 0, pass: .over)
+        }
+        .frame(width: points.width, height: points.height)
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = Double(width) / max(points.width, 1)
+        return renderer.cgImage
     }
-    .frame(width: points.width, height: points.height)
-    let renderer = ImageRenderer(content: view)
-    renderer.scale = Double(width) / max(points.width, 1)
-    guard let image = MainActor.assumeIsolated({ renderer.cgImage }) else { return nil }
+    guard let image else { return nil }
 
     var rgba = [UInt8](repeating: 0, count: width * height * 4)
     guard let space = CGColorSpace(name: CGColorSpace.sRGB),
