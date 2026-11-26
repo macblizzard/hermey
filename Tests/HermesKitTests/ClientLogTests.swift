@@ -603,7 +603,9 @@ final class StubProtocol: URLProtocol {
 
     static func session(error: Error? = nil) -> URLSession {
         lock.lock()
-        storedReply = Reply(status: 200, body: Data())
+        // **Not** the reply: every test sets `reply` *before* it asks for a session, so resetting it
+        // here silently replaced the answer under the test — which is why the 201 case saw an empty
+        // 200 and reported `malformedResponse`, and the 413 case was treated as a success.
         storedError = error
         recorded = []
         lock.unlock()

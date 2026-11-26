@@ -164,9 +164,12 @@ fn python_title(value: &str) -> String {
 /// The sender's profile id is in brackets when the caller knows it: `Assistant (cody) → Ops:`. It
 /// is what lets the apps turn this row back into a face and a name instead of a prefix.
 fn label(sender: &str, target: &str, text: &str, sender_profile: Option<&str>) -> String {
+    // The pet's wire id is `desktop-pet`; the name the bot and the owner read is `Desktop Pet`.
+    // Title-casing the id gave `Desktop-Pet`, which is a slug leaking into a sentence.
+    let sender_title = if sender == PET_SENDER { PET_TITLE.to_string() } else { python_title(sender) };
     let who = match sender_profile {
-        Some(profile) => format!("{} ({profile})", python_title(sender)),
-        None => python_title(sender),
+        Some(profile) => format!("{} ({profile})", sender_title),
+        None => sender_title,
     };
     format!("{who} → {}: {}", python_title(target), text.trim())
 }
