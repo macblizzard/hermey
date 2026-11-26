@@ -176,6 +176,19 @@ struct SidebarBotList: View {
                 Text(failure ?? "")
             }
         }
+        // The list's clock: which window this list is in, and whether the person allows motion.
+        // The probe is a measuring view — it never draws and never takes a click.
+        .background(
+            BotListWindowProbe { window in faceClock.attach(window: window) }
+                .allowsHitTesting(false)
+        )
+        // Reduce Motion, the app's own switch and a backgrounded app each stop the clock's timer —
+        // not the faces only. The window's focus and occlusion need no input here: the clock hears
+        // those notifications itself.
+        .onAppear { syncFaceClock() }
+        .onChange(of: systemReduceMotion) { _, _ in syncFaceClock() }
+        .onChange(of: appAllowsMotion) { _, _ in syncFaceClock() }
+        .onChange(of: scenePhase) { _, _ in syncFaceClock() }
         .sheet(item: $sheet) { sheet in
             switch sheet {
             case .sessions(let bot):
@@ -630,6 +643,38 @@ struct SidebarBotList: View {
     /// The list's size, dragged in Appearance. Same key as the phone: one choice per person.
     @AppStorage(BotListMetrics.storageKey) private var listScale = BotListMetrics.defaultScale
 
+    // MARK: - The list's one clock
+
+    /// The clock every visible idle row floats on. **One for the whole list**: the rows read it, and
+    /// nothing else does — so a tick re-evaluates the three or four face views that are on screen and
+    /// none of the list's own body (no re-filtering, no re-grouping, no `LazyVStack` diff, no
+    /// re-layout). See `BotListClock` for why the beat is 3 Hz and when it stops.
+    ///
+    /// Owned here rather than higher up so it dies with the panel: the sidebar's hidden state removes
+    /// this view entirely (`WorkspaceRoot`), so a closed panel has no object *and* no timer. It is
+    /// held in a box and **not** as a `@StateObject` on the clock itself: a `@StateObject` subscribes
+    /// to its object, so every tick would re-evaluate this whole list — the filter, the grouping, the
+    /// `LazyVStack` diff — which is exactly the cost the clock exists to avoid. The box publishes
+    /// nothing, so it keeps the single owner and drops the subscription; the rows read the clock as
+    /// their own `@ObservedObject`, and nothing else in this view does.
+    @StateObject private var faceClocks = FaceClockBox()
+    private var faceClock: BotListClock { faceClocks.clock }
+    /// Reduce Motion, read here as well as in each face: the clock must not even tick, and the face
+    /// must not even be able to drift, so both ends answer.
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// A minimised or backgrounded app stops the clock; the window's own focus and occlusion are the
+    /// clock's business (it hears those notifications itself).
+    @Environment(\.scenePhase) private var scenePhase
+    /// The app's own motion switch (Settings → Appearance), the same key every face reads.
+    @AppStorage(BotAvatarMotion.defaultsKey) private var appAllowsMotion = true
+
+    /// Hands the list's three motion facts to the clock. Called on appear and whenever one changes;
+    /// the clock stops its timer when the answer is no, so this is also the path by which Reduce
+    /// Motion takes effect without a relaunch.
+    private func syncFaceClock() {
+        faceClock.setMotionAllowed(!systemReduceMotion && appAllowsMotion && scenePhase == .active)
+    }
+
 
 /// One row's hover, held by the row.
 ///
@@ -643,6 +688,62 @@ private struct HoverRow<Content: View>: View {
     var body: some View {
         content(inside)
             .onHover { inside = $0 }
+    }
+}
+
+/// The list's clock, held without being subscribed to.
+///
+/// `@StateObject` on `BotListClock` itself would re-evaluate the whole list on every tick — the
+/// filter, the grouping, the `LazyVStack` — which is the cost this feature exists to avoid. This box
+/// publishes nothing, so the list reads it for ownership only; the rows subscribe to `clock`.
+private final class FaceClockBox: ObservableObject {
+    let clock = BotListClock()
+}
+
+/// One row's face, reading the list's clock while — and only while — it is on screen.
+///
+/// The row draws `BotAvatarView` with the same three things it always did — the bot's face, its
+/// activity, the row's size — plus one instant from `BotListClock`. An idle row therefore drifts;
+/// a busy row is untouched, because `animates:` is still the activity's own answer and its own
+/// timeline still runs at its own beat. Hover arrives as `wakesOnHover:` and still wins: `motionFrame`
+/// asks "awake" before "drifting", so a pointer on the row keeps the 30 Hz greeting and float it has
+/// today.
+///
+/// `onScreen` is the row's own answer to "am I visible", and it is what makes this honest: a row the
+/// `LazyVStack` has not materialised is not built at all, one it has dropped is counted out, and
+/// either way the face is handed no instant and draws its rest pose. Nothing here is time-based —
+/// no timer, no display link, no `TimelineView` of its own.
+private struct DriftingFace: View {
+    @ObservedObject var clock: BotListClock
+    var identity: String
+    var color: String?
+    var activity: BotAvatarActivity
+    var size: CGFloat
+    var animates: Bool
+    var wakesOnHover: Bool
+
+    @State private var onScreen = false
+
+    var body: some View {
+        BotAvatarView(identity: identity,
+                      color: color,
+                      activity: activity,
+                      size: size,
+                      animates: animates,
+                      wakesOnHover: wakesOnHover,
+                      idleDriftAt: onScreen ? clock.time : nil)
+            // Appear and disappear are the `LazyVStack`'s own lifecycle, which is the one measure of
+            // "in the visible rectangle" this list already relies on for its scroll cost.
+            .onAppear { report(onScreen: true) }
+            .onDisappear { report(onScreen: false) }
+    }
+
+    /// One report per crossing. SwiftUI can deliver these more than once for one row (a re-parent on
+    /// a scroll, a list rebuilding around it), and the clock is counting rows, not events.
+    private func report(onScreen visible: Bool) {
+        guard visible != onScreen else { return }
+        onScreen = visible
+        if visible { clock.rowAppeared() } else { clock.rowDisappeared() }
     }
 }
 
@@ -675,18 +776,22 @@ private struct HoverRow<Content: View>: View {
                 // around the face, which is where this app already puts it.
                 //
                 // The pose is the tracker's, so a row that is *not* the open conversation still says
-                // `reading` or `computer` while that bot works. Only a moving bot animates: an idle
-                // row is a legend, and a 20 fps timeline per row is pure heat.
-                BotAvatarView(identity: bot.id,
-                              color: store.botFaces[bot.id]?.raw,
-                              activity: store.activity(for: bot.id),
-                              size: metrics.avatar,
-                              animates: store.activity(for: bot.id) != .idle,
-                              // The pointer is on this row, so its face wakes: one greeting, then the
-                              // reference's own idle float, for as long as the pointer stays.
-                              // It lifts the resting `animates` rule for this row only, and the row's
-                              // frame never changes size, so nothing re-lays while the face moves.
-                              wakesOnHover: isHovered)
+                // `reading` or `computer` while that bot works. A *busy* row animates on its own
+                // timeline as it always has; an idle row is handed the list's one slow clock instead
+                // (`DriftingFace`), so it drifts at 3 Hz while it is on screen and holds still the
+                // moment it is not. Two dozen idle rows at a busy face's cadence is pure heat; one
+                // shared tick for the visible ones is a slow float.
+                DriftingFace(clock: faceClock,
+                             identity: bot.id,
+                             color: store.botFaces[bot.id]?.raw,
+                             activity: store.activity(for: bot.id),
+                             size: metrics.avatar,
+                             animates: store.activity(for: bot.id) != .idle,
+                             // The pointer is on this row, so its face wakes: one greeting, then the
+                             // reference's own idle float, for as long as the pointer stays.
+                             // It lifts the resting `animates` rule for this row only, and the row's
+                             // frame never changes size, so nothing re-lays while the face moves.
+                             wakesOnHover: isHovered)
                     // Same two indicators as the phone, by the same instruction: the count on the
                     // face says *how much* is waiting, the beacon at the row's edge says *something*
                     // is. A single dot lost the number the user asked for twice.

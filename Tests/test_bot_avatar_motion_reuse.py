@@ -197,7 +197,9 @@ class TheEyesAreHandedOverNotSecondClocked(unittest.TestCase):
         self.assertEqual([path.name for path in sites], ["BotAvatarView.swift"],
                          "a surface builds its own eye pose instead of the shared frame's")
         drawn = swift_declaration(read(BOT_AVATAR_VIEW), "private func drawnBody(")
-        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil", drawn,
+        # Three ways in and no fourth: acting, the pointer's greeting, or the list's slow idle drift
+        # (`idleDriftAt`), which moves the eyes on the same float the body is drawn on.
+        self.assertIn("eyeOverride: (moves || awake || driftInstant != nil)", drawn,
                       "the override is applied even when the face is holding still")
 
     def test_the_rest_pose_channels_of_the_drawn_face_are_untouched(self) -> None:
@@ -254,8 +256,10 @@ class EveryCalmCaseHoldsTheRestPose(unittest.TestCase):
     def test_no_motion_means_the_rest_frame(self) -> None:
         helper = swift_declaration(read(BOT_AVATAR_VIEW), "private func motionFrame(")
         self.assertIn("return .rest", helper)
-        self.assertIn("eyeOverride: (moves || awake) ? OpenBotAvatarEyeOverride(eyes: frame.eyes) : nil",
-                      self.drawn)
+        # The drift is the one instant a still frame may be drawn at, and it is a frame like any
+        # other: `.rest` is what is left when nothing at all asked for motion.
+        self.assertIn("if let drift = driftInstant {", helper)
+        self.assertIn("eyeOverride: (moves || awake || driftInstant != nil)", self.drawn)
 
     def test_the_app_switch_reaches_the_drawn_breath_too(self) -> None:
         # The drawn branch used to pass `animates: animates`, so Settings → Appearance could not
