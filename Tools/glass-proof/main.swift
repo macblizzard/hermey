@@ -105,7 +105,6 @@ let patternPipeline: MTLRenderPipelineState? = {
     descriptor.label = "HermeyGlassProofPattern"
     descriptor.vertexFunction = vertex
     descriptor.fragmentFunction = fragment
-    descriptor.rasterSampleCount = HermeyGlassEngine.sampleCount
     if let attachment = descriptor.colorAttachments[0] {
         attachment.pixelFormat = HermeyGlassEngine.pixelFormat
         attachment.isBlendingEnabled = true
@@ -165,25 +164,13 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
                                                               mipmapped: false)
     descriptor.usage = [.renderTarget, .shaderRead]
     descriptor.storageMode = .managed
-    // The multisample target the app's pipeline is built for, and the single-sample image it resolves
-    // into. The picture is then the app's own coverage — four samples per pixel over the supersampled
-    // geometry — rather than a proof that drew at one.
-    let samples = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                           width: sampleWidth, height: sampleHeight,
-                                                           mipmapped: false)
-    samples.textureType = .type2DMultisample
-    samples.sampleCount = HermeyGlassEngine.sampleCount
-    samples.usage = .renderTarget
-    samples.storageMode = .private
     guard let target = device.makeTexture(descriptor: descriptor),
-          let multisample = device.makeTexture(descriptor: samples),
           let commandBuffer = queue.makeCommandBuffer() else { return nil }
 
     let pass = MTLRenderPassDescriptor()
-    pass.colorAttachments[0].texture = multisample
-    pass.colorAttachments[0].resolveTexture = target
+    pass.colorAttachments[0].texture = target
     pass.colorAttachments[0].loadAction = .clear
-    pass.colorAttachments[0].storeAction = .multisampleResolve
+    pass.colorAttachments[0].storeAction = .store
     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
 
     guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
