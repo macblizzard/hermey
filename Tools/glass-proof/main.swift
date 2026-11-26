@@ -196,7 +196,7 @@ func featureLayer(model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
 
 /// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
 func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState,
-            dark: Bool = true) -> Rendered? {
+            dark: Bool = true, withFeatures: Bool = true) -> Rendered? {
     let points = CGSize(width: side, height: side)
     let finalPixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
     let width = Int(finalPixels.width), height = Int(finalPixels.height)
@@ -268,7 +268,8 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     var body = downsampled(rgba, width: sampleWidth, height: sampleHeight)
     // The face features, over the body, exactly where the app puts them: the `Canvas` pass runs
     // after the glass, and a picture of the body alone cannot be judged as a face.
-    if let features = featureLayer(model: model, pose: pose, points: points, pixels: finalPixels,
+    if withFeatures,
+       let features = featureLayer(model: model, pose: pose, points: points, pixels: finalPixels,
                                    dark: dark) {
         for i in stride(from: 0, to: body.count, by: 4) {
             let a = Double(features[i + 3]) / 255
@@ -501,7 +502,10 @@ for side in sides {
             let overLit = composite(lit, over: litBackground)
             writePNG(overLit, width: lit.width, height: lit.height,
                      to: outDirectory.appendingPathComponent("\(stem)-lit.png"))
-            let atCentre = relativeLuminance(meanColor(overLit, width: lit.width, height: lit.height,
+            let litBody = render(side: side, state: state, pipeline: pipeline, dark: false,
+                                 withFeatures: false) ?? lit
+            let atCentre = relativeLuminance(meanColor(composite(litBody, over: litBackground),
+                                                        width: lit.width, height: lit.height,
                                                         centre: centre, side: patch))
             let pageLum = relativeLuminance((0xF2 / 255.0, 0xF2 / 255.0, 0xF2 / 255.0))
             print(String(format: "  lit centre %.3f (%+.0f%% of page)  eyes %.2f:1",
@@ -527,6 +531,12 @@ for side in sides {
             alphaMax = max(alphaMax, Int(frame.rgba[i]))
         }
         let mean = covered > 0 ? alphaSum / Double(covered) : 0
+        // The numbers are read off the same frame with the face features *left out*: the eyes are
+        // opaque ink sitting exactly where the body is measured, so a picture-based reading of "the
+        // body's centre" is a reading of the ink. The body's own value is what the eyes are judged
+        // against, and the pictures are what a person looks at.
+        let bodyOnly = render(side: side, state: state, pipeline: pipeline,
+                              withFeatures: false) ?? frame
         let padded = stem.padding(toLength: 22, withPad: " ", startingAt: 0)
         print(String(format: "%@ %dx%d  cover=%d  mean=%.2f  max=%.2f  mask=%.0f ms",
                      padded, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
@@ -542,11 +552,11 @@ for side in sides {
         // step darker than it is, which is how a 3.9:1 face was once reported at 1.8:1.
         var line = ""
         for (label, over, pageLum) in [
-            ("pane", composite(frame, over: paneBackground),
+            ("pane", composite(bodyOnly, over: paneBackground),
              relativeLuminance((0x1E / 255.0, 0x1E / 255.0, 0x1E / 255.0))),
-            ("ctrl", composite(frame, over: controlBackground),
+            ("ctrl", composite(bodyOnly, over: controlBackground),
              relativeLuminance((0x2B / 255.0, 0x2B / 255.0, 0x2B / 255.0))),
-            ("busy", composite(frame, over: busy),
+            ("busy", composite(bodyOnly, over: busy),
              relativeLuminance((0x1E / 255.0, 0x1E / 255.0, 0x1E / 255.0))),
         ] {
             let atCentre = relativeLuminance(meanColor(over, width: frame.width, height: frame.height,
