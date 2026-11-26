@@ -342,12 +342,11 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         }
 
         var packed = [UInt16](repeating: 0, count: width * height * 4)
-        let white = Float16(1).bitPattern
         for i in 0..<(width * height) {
-            packed[i * 4] = white
-            packed[i * 4 + 1] = Float16(unit(inset[i])).bitPattern
-            packed[i * 4 + 2] = Float16(unit(outside[i])).bitPattern
-            packed[i * 4 + 3] = Float16(Float(coverage[i]) / 255).bitPattern
+            packed[i * 4] = Self.halfBits(1)
+            packed[i * 4 + 1] = Self.halfBits(unit(inset[i]))
+            packed[i * 4 + 2] = Self.halfBits(unit(outside[i]))
+            packed[i * 4 + 3] = Self.halfBits(Float(coverage[i]) / 255)
         }
 
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float,
@@ -358,6 +357,26 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
                         withBytes: packed, bytesPerRow: width * 8)
         return texture
+    }
+
+    /// IEEE-754 binary16 bits for a value in 0…1, rounded to nearest.
+    ///
+    /// Written out rather than `Float16(value).bitPattern`: the release binary is universal, and
+    /// `Float16`'s conversions are not available to the x86_64 slice in every toolchain we build with
+    /// — the build failed there and only there. This is arithmetic over a range already clamped to
+    /// 0…1: a subnormal branch (2⁻²⁴ steps) and an exponent-plus-mantissa branch, which is exact to
+    /// half's own precision.
+    private static func halfBits(_ value: Float) -> UInt16 {
+        let clamped = max(0, min(value, 1))
+        if clamped < 6.1035156e-5 {                       // below half's smallest normal, 2⁻¹⁴
+            return UInt16((clamped / 5.9604645e-8).rounded())
+        }
+        let exponent = Int(floor(log2(clamped)))          // -14…0
+        let mantissa = Int(((clamped / pow(2, Float(exponent))) - 1) * 1024 + 0.5)
+        if mantissa >= 1024 {
+            return UInt16((exponent + 16) << 10)          // rounded up into the next binade
+        }
+        return UInt16(((exponent + 15) << 10) | mantissa)
     }
 
     /// The distance, in pixels, from every pixel to the nearest pixel on the other side of the
