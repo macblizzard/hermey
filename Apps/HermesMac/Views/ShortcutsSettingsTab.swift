@@ -54,9 +54,10 @@ struct ShortcutsSettingsTab: View {
                 .padding(.leading, 2)
 
             VStack(spacing: 0) {
+                // The rows *are* the registry, filtered to this group: no title is spelled here.
                 let rows = ShortcutRegistry.actions.filter { $0.group == group }
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, action in
-                    if index > 0 {
+                ForEach(rows) { action in
+                    if action.id != rows.first?.id {
                         Divider().overlay(Tokens.border)
                     }
                     row(action)
