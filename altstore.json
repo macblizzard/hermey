@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.675",
-          "buildVersion": "675",
-          "date": "2026-11-26T08:06:37Z",
-          "localizedDescription": "Avatar renderer follows open-bot-avatar 0.5: custom states, marks as values, the nine-ribbon cage for done, and eyes that morph instead of swapping.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.675/Hermey-0.1.675-b675.ipa",
-          "size": 5986976,
+          "version": "0.1.676",
+          "buildVersion": "676",
+          "date": "2026-11-26T09:03:13Z",
+          "localizedDescription": "Glass is a real lit, refracting surface on the Mac and iPhone (Metal, compiled at runtime so no Xcode component is needed), and the avatar editor now has a state strip plus an Example custom state.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.676/Hermey-0.1.676-b676.ipa",
+          "size": 6123698,
           "minOSVersion": "17.0",
-          "sha256": "4869ad4254e1b02adaf148511566e6dbdd193cb76be2129444848fb7f154321d"
+          "sha256": "7ce80630967770765d63d165d68a7c1c249b977e7ad1332aa417d7c2d4604708"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.675 (675)",
-      "identifier": "hermes-0.1.675-675",
-      "caption": "Avatar renderer follows open-bot-avatar 0.5: custom states, marks as values, the nine-ribbon cage for done, and eyes that morph instead of swapping.",
-      "date": "2026-11-26T08:06:37Z",
+      "title": "Hermes 0.1.676 (676)",
+      "identifier": "hermes-0.1.676-676",
+      "caption": "Glass is a real lit, refracting surface on the Mac and iPhone (Metal, compiled at runtime so no Xcode component is needed), and the avatar editor now has a state strip plus an Example custom state.",
+      "date": "2026-11-26T09:03:13Z",
       "tintColor": "#9A9AA0"
     }
   ],
