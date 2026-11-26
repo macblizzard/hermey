@@ -1034,7 +1034,7 @@ class TheBodyGlowsWithoutBeingWashed(unittest.TestCase):
         # there, so #F2F2F2 gets the pixels it had.
         self.assertIn("* exp(-max(outside, 0.0) / glowRadius)", source)
         self.assertIn("float halo = kGlowStrength * pageDark", source)
-        self.assertIn("float haloA = clamp(halo * page, 0.0, 1.0);", source)
+        self.assertIn("float haloA = clamp(halo * page + dither / 255.0, 0.0, 1.0);", source)
         # Cheap by construction: one Gaussian on a distance field the pass already samples.
         for expensive in ("CIGaussianBlur", "shadow(", "MPSImageGaussianBlur", "makeTexture"):
             self.assertNotIn(expensive, source, expensive)
