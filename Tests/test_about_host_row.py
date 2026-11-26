@@ -113,6 +113,10 @@ class TheThreeAnswersReadDifferently(unittest.TestCase):
         self.assertIn("hostCheckFailure", TONE, "a failed press is not the same grey as a good one")
         # And with no answer at all, the reason a press did nothing is the line.
         self.assertIn('return "could not check: \\(failure)"', LINE)
+        # A published release the host has not offered is stated as news, never as an offer with no
+        # button behind it.
+        self.assertIn('return "\\(status.current) · \\(latest) published; this host has not offered it"',
+                      LINE)
 
     def test_a_host_that_cannot_update_itself_is_not_painted_as_an_offer(self) -> None:
         # Accent means "there is something to press"; this host has nothing to press.

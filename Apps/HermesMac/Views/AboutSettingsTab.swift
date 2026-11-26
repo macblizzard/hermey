@@ -263,13 +263,20 @@ struct AboutSettingsTab: View {
     private var hostLine: String {
         guard store.isPaired else { return "not paired" }
         if let status = store.model.hostStatus {
+            // A press that could not be answered says so first: the number beside it is a fact, but
+            // whether an update is on offer was true of the *last* answer, not of this press.
+            if let failure = store.model.hostCheckFailure {
+                return "\(status.current) · could not check: \(failure)"
+            }
             if status.hasNewerRelease, let latest = status.latest {
+                // A published release the host has not offered is news, not a button: say exactly
+                // that, so the row never claims an offer the button cannot make.
+                if !status.available {
+                    return "\(status.current) · \(latest) published; this host has not offered it"
+                }
                 return status.canSelfUpdate
                     ? "\(status.current) · \(latest) available"
                     : "\(status.current) · \(latest) is out; this host does not update itself"
-            }
-            if let failure = store.model.hostCheckFailure {
-                return "\(status.current) · could not check: \(failure)"
             }
             if status.latest == nil { return "\(status.current) · could not check" }
             return "\(status.current) · up to date"
