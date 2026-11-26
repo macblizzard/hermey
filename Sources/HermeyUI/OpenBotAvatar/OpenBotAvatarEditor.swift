@@ -9,8 +9,18 @@ import SwiftUI
 /// * a **live preview** of the draft, at the bot's current state, which is the only thing here that
 ///   answers "what will it look like"; it is drawn large enough (200 pt) that a glass body's
 ///   streak and catchlight are visible, because a material chosen at thumbnail size is a guess;
+/// * a **state strip** — the eight activity states as chips, plus one **Example** chip that draws a
+///   state of the host's own (`AvatarStateDefinition`), because a renderer that can be told a state
+///   by name and a definition of its own is only useful if the editor can show both. A tap moves the
+///   preview above; nothing is saved and no bot's activity is touched, so trying `blocked` on a bot
+///   that is working cannot make the app say it is blocked. The strip wraps into rows rather than
+///   scrolling sideways, so it fits a phone at the default text size and cannot push the sheet
+///   around when the selection changes (a chip's width depends on its word, never on being chosen);
 /// * a **material** choice — the rows of `BotAvatarMaterialSpec.all`, so the list grows with the
-///   table and this view never hard-codes two cases;
+///   table and this view never hard-codes two cases — and, under Glass, one line saying which of
+///   glass's two drawings *this* device will really use, asked of `BotAvatarGlassRoute` rather than
+///   promised by the copy. Glass on a phone and glass in a preview process are not the same surface,
+///   and a row that called both "3D" would be lying about one of them;
 /// * **twelve presets** to start from (a blob, a box, a mug, a sprout, a cat, an egg, a bottle, a
 ///   star, a droplet, an hourglass, an open book and a mushroom) and a **Random** button beside
 ///   them that applies a shape, a material and a colour at once — all three read from the tables
@@ -39,10 +49,18 @@ public struct OpenBotAvatarEditor: View {
     /// The fixed face the host stores for this bot (`bots.color`), or nil when its id derives one.
     /// Seed of the Classic row's selection, and the other half Reset clears.
     public let face: BotFaceChoice?
-    /// The state the preview shows. A surface that knows what the bot is doing passes it.
+    /// The state the preview shows when the sheet opens: the host may pass what the bot is doing now
+    /// (the Mac does), and the default — `.idle`, which is what the phone passes — is the calm face.
+    /// It seeds the strip's first selection and nothing else: the strip is a preview control, so the
+    /// choice lives in this view and never travels back to a bot's activity.
     public var previewState: OpenBotAvatarState
     /// Saves one family — or, with nil, clears both. Errors are shown inline.
     public let save: (BotAvatarSelection?) async throws -> Void
+
+    /// The side the preview is drawn at, in points. It is the number `facePreview` passes as `size:`
+    /// — the material row asks the glass route about it, because "will this device draw glass as a
+    /// lit surface" is a question about the size it is drawn at. A guard keeps the two equal.
+    static let previewSide: Double = 200
 
     /// Which family the draft is in. The preview, the Save button and the dirty check all follow
     /// it, so "what will this bot wear" has one answer on this screen.
@@ -58,10 +76,17 @@ public struct OpenBotAvatarEditor: View {
     @State private var resetting = false
     @State private var saveError: String?
     @State private var savedNote: String?
-    @State private var state: OpenBotAvatarState
+    /// What the preview draws: one of the eight names, or the example definition. It is a preview
+    /// choice, so it is a `@State` here and nowhere else — no store, no bot, no activity.
+    @State private var previewChoice: OpenBotAvatarStateChoice
     /// The last pick the Random button applied, as `OpenBotAvatarRandomPick.combination`, so the
     /// next press cannot land on the same shape + material + colour.
     @State private var lastRandomPick: String?
+
+    /// A person who has asked for less transparency gets the painted glass. Read here so the material
+    /// row can say what the preview above it will really draw — the same environment
+    /// `OpenBotAvatarView` reads for itself.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private enum JSONStatus: Equatable {
         case ok
@@ -106,7 +131,9 @@ public struct OpenBotAvatarEditor: View {
         // Solid first: a bot that has never chosen a material is the face it already wears.
         _material = State(initialValue: stored?.material ?? .solid)
         _jsonText = State(initialValue: (try? seed.jsonText()) ?? "")
-        _state = State(initialValue: previewState)
+        // The strip opens on the state the host passed, which is `idle` unless a surface knew what
+        // the bot was doing. A tap moves it; nothing else in this view reads or writes a bot's state.
+        _previewChoice = State(initialValue: OpenBotAvatarStateChoice(previewState))
         // Which family the bot is on now, from the host's own two answers: a stored definition wins
         // on every surface, so a bot that has one is on the drawn family whatever else is stored.
         // A bot with neither is on the Classic family — the face its id derives — and the row shows
@@ -161,17 +188,12 @@ public struct OpenBotAvatarEditor: View {
                         .foregroundStyle(Tokens.textSecondary)
                 }
                 Spacer(minLength: 0)
-                if family == .custom {
-                    Picker("Preview state", selection: $state) {
-                        ForEach(OpenBotAvatarState.allCases, id: \.self) { state in
-                            Text(state.rawValue.capitalized).tag(state)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .hermeyFocusQuiet()
-                }
+            }
+            // The strip belongs to the preview, not to a settings section: it is how the person asks
+            // the drawing above "and what do you look like while you think". Only the drawn family
+            // has states to show — a Classic face is one body and one palette, held at rest.
+            if family == .custom {
+                stateStrip
             }
             Text(previewNote)
                 .font(TypeScale.font(TypeScale.sm))
@@ -198,10 +220,15 @@ public struct OpenBotAvatarEditor: View {
                           label: "\(botName)'s avatar",
                           ignoresStoredAvatar: true)
         case .custom:
+            // The strip's choice goes straight in as `state:` — one of the eight names or the
+            // example definition, which is the same parameter the app passes a bot's real state
+            // through. Nothing is keyed on it: a change of state must not remount this view, because
+            // the animator inside it is what eases the change, and the model it draws is cached by
+            // the definition (`OpenBotAvatarModel.model(for:)`), so tapping a chip re-decodes nothing.
             OpenBotAvatarView(definition: draft,
                               color: colorHex,
                               material: material,
-                              state: OpenBotAvatarStateChoice(state),
+                              state: previewChoice,
                               size: 200,
                               label: "\(botName)'s avatar")
         }
@@ -231,6 +258,72 @@ public struct OpenBotAvatarEditor: View {
         }
     }
 
+    // MARK: - State strip
+
+    /// The eight states — and one of a host's own — as chips under the preview.
+    ///
+    /// **Why a strip and not a menu.** A state is the part of a face that changes while it is worn,
+    /// and a menu hides seven of the eight behind a tap and a popover: a person comparing `waiting`
+    /// with `blocked` would do it one popover at a time, and could not see both drawings. Nine short
+    /// words are cheap to show, and each one is a recognisable face at 200 pt.
+    ///
+    /// **Why it wraps.** Nine chips at the default text size come to roughly 540 pt, so they are not
+    /// one row on a 393 pt phone. The alternatives were a horizontal scroll — which hides the Example
+    /// chip past the edge, on the one platform where it must be discoverable — or shrinking the words
+    /// below the type scale. `GridItem(.adaptive(minimum:))` wraps into rows of equal columns instead:
+    /// four across a phone, five across the Mac's 520 pt sheet, with `minimumScaleFactor` so a longer
+    /// word at a larger text size shrinks instead of truncating. Equal columns are also what keeps
+    /// the sheet still: a chip's width comes from its column, never from its word or from being
+    /// selected, so a tap cannot reflow the strip.
+    ///
+    /// **The ninth chip** is `OpenBotAvatarExampleState`: a real `AvatarStateDefinition`, drawn by
+    /// the same renderer as the eight, so the state API 0.5.1 added is visible in the product rather
+    /// than only in the source. It is a chip and not its own row because it is the same kind of thing
+    /// as the other eight — a state to look at — and a row of one would read as a setting.
+    private var stateStrip: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 6)], spacing: 6) {
+            ForEach(OpenBotAvatarState.allCases, id: \.self) { activity in
+                stateChip(OpenBotAvatarStateChoice(activity), title: activity.rawValue.capitalized)
+            }
+            stateChip(OpenBotAvatarStateChoice(OpenBotAvatarExampleState.definition), title: "Example")
+        }
+    }
+
+    /// One chip: its word in the house type and tokens, and a selection that changes fill, text
+    /// colour and border but **not** the font or the padding — a chip that grew when chosen would
+    /// move its neighbours, and the preview above it.
+    ///
+    /// The button's whole effect is the `@State` it sets. It writes no store, no bot and no activity:
+    /// the strip is a window on the renderer, not a remote control for a bot.
+    private func stateChip(_ choice: OpenBotAvatarStateChoice, title: String) -> some View {
+        let chosen = previewChoice.id == choice.id
+        return Button {
+            previewChoice = choice
+        } label: {
+            Text(title)
+                .font(TypeScale.font(TypeScale.sm, weight: .medium))
+                .foregroundStyle(chosen ? Tokens.accent : Tokens.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
+                        .fill(chosen ? Tokens.controlActive : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Tokens.radiusControl, style: .continuous)
+                        .strokeBorder(chosen ? Tokens.accent : Tokens.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(Text(title))
+        .accessibilityAddTraits(chosen ? [.isSelected] : [])
+        .hermeyFocusQuiet()
+    }
+
     // MARK: - Material
 
     /// The materials the table holds, as a choice. Driven by `BotAvatarMaterialSpec.all` rather than
@@ -251,6 +344,37 @@ public struct OpenBotAvatarEditor: View {
                 .font(TypeScale.font(TypeScale.sm))
                 .foregroundStyle(Tokens.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
+            // Glass is two drawings — the Metal surface on an app surface above the shader's floor,
+            // the painted material everywhere else — and the row says which one *this* device will
+            // use rather than promising the better of the two. Asked of the route, never assumed:
+            // the answer depends on the process (a Metal device, a bundle carrying `default.metallib`,
+            // not a preview), on Reduce Transparency, and on the size the preview is drawn at.
+            if material == .glass {
+                Text(glassSurfaceNote)
+                    .font(TypeScale.font(TypeScale.sm))
+                    .foregroundStyle(Tokens.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// What Glass really is here, at the size the preview draws it — one short line, and the honest
+    /// one. It asks `BotAvatarGlassRoute` (through `drawn`, which is `decide`) so this row cannot
+    /// drift from what the preview above is doing: when the view falls back to the painter, so does
+    /// this sentence, and the copy never promises refraction a phone cannot draw.
+    private var glassSurfaceNote: String {
+        let route = BotAvatarGlassRoute.drawn(material: material,
+                                              side: Self.previewSide,
+                                              reduceTransparency: reduceTransparency)
+        switch route {
+        case .metal:
+            return "Drawn as a lit, refracting surface on this device."
+        case .canvas:
+            // Two reasons reach the painter, and they read differently to a person: a setting they
+            // chose, or simply what this process can do. Both are said, neither is dressed up.
+            return reduceTransparency
+                ? "Drawn as a painted surface on this device — Reduce Transparency is on."
+                : "Drawn as a painted surface on this device."
         }
     }
 
@@ -640,5 +764,30 @@ public struct OpenBotAvatarEditor: View {
             }
             resetting = false
         }
+    }
+}
+
+// MARK: - An example state
+
+/// One state of a host's own, small enough to read in the editor.
+///
+/// `AvatarStateDefinition` is an id and a pose — nothing else — so a state of your own is a few lines
+/// rather than a new case in an enum we ship. It works wherever a name does: `OpenBotAvatarView`'s
+/// `state:` takes either. The editor draws this one as its ninth chip, which is the point — the API
+/// can be seen rather than only described.
+///
+/// The pose starts from the calm one (`ctx.rest(1)`: the body breathes and looks about as `idle`
+/// does) and adds one thing, a slow lean. `ctx.wave(period, phase)` is a sine on the avatar's own
+/// clock, so two avatars in this state do not move in step, and it returns 0 under Reduce Motion —
+/// which is why nothing here has to test for it.
+public enum OpenBotAvatarExampleState {
+
+    /// A slow lean with the eyes travelling across the face. Two definitions with one id are the same
+    /// state, so this id — `example` — is what names it everywhere.
+    public static let definition = AvatarStateDefinition(id: "example") { ctx in
+        var pose = ctx.rest(1)  // the calm pose, then only what differs
+        pose.roll = -5 * ctx.wave(2.8, 0)  // a lean, once every 2.8 s
+        pose.gazeX = 0.7 * ctx.wave(4.2, .pi / 3)  // the eyes drift with it
+        return pose
     }
 }
