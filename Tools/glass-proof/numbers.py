@@ -591,14 +591,14 @@ def shade(surface_numbers, point):
     rim_core = band_coverage(inset, 0.0, max(0.30, rim_width * 0.13), foot)
     accum = [c + rim_light[i] * (rim_band * (0.55 + surface_numbers["rim"] * rim_gain)) * facing
              * (0.25 + 0.75 * f1) for i, c in enumerate(accum)]
-    accum = [c + mix(rim_light[i], 1.0, 0.30) * (rim_core * smoothstep(0.25, 0.85, coverage) * 0.55
+    accum = [c + mix(rim_light[i], 1.0, 0.30) * (rim_core * smoothstep(0.25, 0.85, coverage) * 0.62
                                                 * (0.35 + 0.65 * facing)) for i, c in enumerate(accum)]
 
     dark_inset = critical_inset(rxy, rz)
-    dark_width = max(0.45, rim_width * 0.20)
+    dark_width = max(0.50, rim_width * 0.24)
     dark_line = band_coverage(inset, dark_inset, dark_width, foot)
     dark_line *= smoothstep(0.30, 0.75, body_side(inset, rxy))
-    accum = [mix(c, c * 0.30 + key_colour[i] * 0.05, max(0.0, min(1.0, dark_line)) * 0.78 * detail)
+    accum = [mix(c, c * 0.30 + key_colour[i] * 0.05, max(0.0, min(1.0, dark_line)) * 0.92 * detail)
              for i, c in enumerate(accum)]
 
     accum = [c * exposure for c in accum]
