@@ -547,13 +547,19 @@ public final class OpenBotAvatarModel {
         var silhouette = Path()
         for part in volume.parts { silhouette.addPath(part.core.path) }
         self.silhouette = silhouette
-        var rxy = 0.0, rz = 0.0, halfDepth = 0.0
-        for part in volume.parts {
-            rxy = Swift.max(rxy, part.rxy)
-            rz = Swift.max(rz, part.rz)
-            halfDepth = Swift.max(halfDepth, part.depth / 2)
+        // The *deepest* part's three numbers, together — never three independent maxima.
+        //
+        // `renderer.ts` builds each inflate part from its own `depth`, `rxy` and `rz` (186-190) and bakes
+        // them into one solid (256-261), so `rxy` is the radius that part's `rz` rounds *its* depth with.
+        // Taking the maximum of each separately can hand the shader a bevel belonging to one part over the
+        // depth of another, which draws an edge that is not the edge of anything. Ours is the largest part,
+        // and the shipped presets are one subpath each — a per-part profile would need a second mask channel
+        // saying which part a pixel belongs to, and no preset has two.
+        var profile = (rxy: 0.0, rz: 0.0, halfDepth: 0.0)
+        for part in volume.parts where part.depth / 2 > profile.halfDepth * 0.999 {
+            profile = (part.rxy, part.rz, part.depth / 2)
         }
-        self.glassProfile = (rxy, rz, halfDepth)
+        self.glassProfile = profile
     }
 
     /// The model for a definition, or nil when the contract refuses it (a caller that already

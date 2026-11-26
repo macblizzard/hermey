@@ -4,23 +4,35 @@
 //  Why it exists: the glass is a Metal fragment pass and a `MetalKit` view, so there is nothing in
 //  this repository's test suite that can see it, and nobody reviewing a change can eyeball the app on
 //  a device from here. This tool draws the same fragment, with the same uniforms, the same library
-//  (`HermeyGlassEngine.shared`, i.e. the run-time compile the app itself uses) and the same
-//  silhouette mask (`BotAvatarGlassDrawer.makeMask`), and writes the result composited over the
-//  theme's dark canvas — which is what a person watching the avatar sees.
+//  (`HermeyGlassSource.msl`, i.e. the run-time compile the app itself does) and the same silhouette
+//  mask (`BotAvatarGlassDrawer.makeMask`), and writes the result composited over the theme's dark
+//  canvas — which is what a person watching the avatar sees.
 //
 //  It is **opt-in and never part of the app**: no target in `project.yml` compiles this folder, and
 //  nothing in `Sources/` refers to it. It is built and run by `Tools/glass-proof/render.sh` on a Mac
 //  (`swiftc` over the avatar sources it needs), not by the app's build.
 //
-//  Usage:  glass-proof <output directory> [--scale 2] [--sides 24,48,200] [--states idle,working]
+//  Usage:  glass-proof <output directory> [--scale 2] [--supersample 2] [--sides 24,48,200]
+//                       [--states idle,working]
 //
 //  What it writes, for each case `<shape>-<state>-<side>pt`:
 //
 //  * `…-canvas.png`  — over the dark theme canvas (`Theme`'s `#0A0A0A`), the app's own background;
 //  * `…-surface.png` — over the raised surface (`#232323`): a translucent body changes with what is
 //    behind it, an opaque one does not, so this pair is the translucency proof;
+//  * `…-pattern.png` — **the refraction proof.** The same fragment, recompiled from the same string
+//    with `kPlatePattern` switched to 1, so the studio behind the body is a coarse checkerboard drawn
+//    *by the shader* and then carried through the traced ray. Straight cells mean light went through
+//    flat glass; compressed cells mean a lens; cells that fold back on themselves mean the ray turned
+//    over at the wall. A composite of a pattern *behind* the view could not show any of that, because
+//    the shader cannot sample what is behind it — which is why the pattern is inside the plate.
 //  * `…-zoom.png`    — the same pixels, nearest-neighbour magnified, for the 24 and 48 pt cases,
 //    because a 48 px PNG is not something an eye reads in a chat window.
+//
+//  Every case is rendered at `--supersample` times the pixel size and box-filtered down, so the
+//  silhouette's edge — and the plate's, and the two rim lines' — are antialiased in the picture rather
+//  than stair-stepped. The app draws at native resolution with the mask's own antialiasing; this is a
+//  proof, and a proof should not be argued with about its edges.
 //
 //  It also prints one line per case with the alpha statistics inside the silhouette (`cover`, `mean`,
 //  `max`) — a claim about translucency that is a number, not an adjective.
@@ -52,6 +64,7 @@ func option(_ name: String, _ fallback: String) -> String {
 }
 
 let scale = Double(option("--scale", "2")) ?? 2
+let supersample = max(1, Int(option("--supersample", "2")) ?? 2)
 let sides = option("--sides", "24,48,200").split(separator: ",").compactMap { Double($0) }
 let states = option("--states", "idle,working").split(separator: ",").map(String.init)
 
@@ -72,6 +85,39 @@ guard engine.isReady,
     exit(2)
 }
 
+/// The same MSL with the proof's studio switched on, and a pipeline built from it.
+///
+/// The app's engine is untouched: it compiles `HermeyGlassSource.msl` once per process and this is a
+/// second library in the *proof tool*, for a picture the app never draws. One substitution, no edited
+/// shader — so what the pattern picture shows is the transform the app's pass applies, including its
+/// absorption, its rim and its two edges.
+let patternPipeline: MTLRenderPipelineState? = {
+    let source = HermeyGlassSource.msl.replacingOccurrences(of: "#define kPlatePattern 0",
+                                                            with: "#define kPlatePattern 1")
+    guard source != HermeyGlassSource.msl,
+          let library = try? device.makeLibrary(source: source, options: nil),
+          let vertex = library.makeFunction(name: "hermeyGlassVertex"),
+          let fragment = library.makeFunction(name: "hermeyGlassBody") else {
+        FileHandle.standardError.write(Data("glass-proof: the pattern variant did not compile\n".utf8))
+        return nil
+    }
+    let descriptor = MTLRenderPipelineDescriptor()
+    descriptor.label = "HermeyGlassProofPattern"
+    descriptor.vertexFunction = vertex
+    descriptor.fragmentFunction = fragment
+    if let attachment = descriptor.colorAttachments[0] {
+        attachment.pixelFormat = HermeyGlassEngine.pixelFormat
+        attachment.isBlendingEnabled = true
+        attachment.rgbBlendOperation = .add
+        attachment.alphaBlendOperation = .add
+        attachment.sourceRGBBlendFactor = .one
+        attachment.sourceAlphaBlendFactor = .one
+        attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+    }
+    return try? device.makeRenderPipelineState(descriptor: descriptor)
+}()
+
 guard let cat = OpenBotAvatarPresets.all.first(where: { $0.id == "cat" }),
       let model = OpenBotAvatarModel.model(for: cat) else {
     FileHandle.standardError.write(Data("glass-proof: the cat preset did not validate\n".utf8))
@@ -89,10 +135,13 @@ struct Rendered {
     var height: Int
 }
 
-func render(side: Double, state: OpenBotAvatarState) -> Rendered? {
+/// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
+func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState) -> Rendered? {
     let points = CGSize(width: side, height: side)
-    let pixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
-    let width = Int(pixels.width), height = Int(pixels.height)
+    let finalPixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
+    let width = Int(finalPixels.width), height = Int(finalPixels.height)
+    let sampleWidth = width * supersample, sampleHeight = height * supersample
+    let pixels = CGSize(width: sampleWidth, height: sampleHeight)
 
     // A still frame of the state, at the pose the app holds when it is not animating: the same
     // uniforms a screenshot of a paused avatar would be drawn with.
@@ -108,10 +157,10 @@ func render(side: Double, state: OpenBotAvatarState) -> Rendered? {
 
     var uniforms = surface.uniforms
     uniforms.size = SIMD4<Float>(Float(points.width), Float(points.height),
-                                 Float(width), Float(height))
+                                 Float(sampleWidth), Float(sampleHeight))
 
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                                                              width: width, height: height,
+                                                              width: sampleWidth, height: sampleHeight,
                                                               mipmapped: false)
     descriptor.usage = [.renderTarget, .shaderRead]
     descriptor.storageMode = .managed
@@ -141,9 +190,9 @@ func render(side: Double, state: OpenBotAvatarState) -> Rendered? {
     commandBuffer.waitUntilCompleted()
 
     // BGRA premultiplied, y down from the top-left — `[[position]]`'s own orientation.
-    var bgra = [UInt8](repeating: 0, count: width * height * 4)
-    target.getBytes(&bgra, bytesPerRow: width * 4,
-                    from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+    var bgra = [UInt8](repeating: 0, count: sampleWidth * sampleHeight * 4)
+    target.getBytes(&bgra, bytesPerRow: sampleWidth * 4,
+                    from: MTLRegionMake2D(0, 0, sampleWidth, sampleHeight), mipmapLevel: 0)
     var rgba = [UInt8](repeating: 0, count: bgra.count)
     for i in stride(from: 0, to: bgra.count, by: 4) {
         rgba[i] = bgra[i + 2]
@@ -151,7 +200,33 @@ func render(side: Double, state: OpenBotAvatarState) -> Rendered? {
         rgba[i + 2] = bgra[i]
         rgba[i + 3] = bgra[i + 3]
     }
-    return Rendered(rgba: rgba, width: width, height: height)
+    return Rendered(rgba: downsampled(rgba, width: sampleWidth, height: sampleHeight),
+                    width: width, height: height)
+}
+
+/// A box filter over the supersampled frame: premultiplied, so the average is the average.
+func downsampled(_ rgba: [UInt8], width: Int, height: Int) -> [UInt8] {
+    guard supersample > 1 else { return rgba }
+    let outWidth = width / supersample, outHeight = height / supersample
+    var out = [UInt8](repeating: 0, count: outWidth * outHeight * 4)
+    let perPixel = supersample * supersample
+    for y in 0..<outHeight {
+        for x in 0..<outWidth {
+            var sum = [Int](repeating: 0, count: 4)
+            for dy in 0..<supersample {
+                let row = (y * supersample + dy) * width
+                for dx in 0..<supersample {
+                    let source = (row + x * supersample + dx) * 4
+                    for channel in 0..<4 { sum[channel] += Int(rgba[source + channel]) }
+                }
+            }
+            let destination = (y * outWidth + x) * 4
+            for channel in 0..<4 {
+                out[destination + channel] = UInt8(clamping: sum[channel] / perPixel)
+            }
+        }
+    }
+    return out
 }
 
 // MARK: - Writing
@@ -213,7 +288,7 @@ for side in sides {
             FileHandle.standardError.write(Data("glass-proof: no state called \(name)\n".utf8))
             continue
         }
-        guard let frame = render(side: side, state: state) else {
+        guard let frame = render(side: side, state: state, pipeline: pipeline) else {
             FileHandle.standardError.write(Data("glass-proof: \(name) at \(side) pt did not render\n".utf8))
             continue
         }
@@ -229,6 +304,14 @@ for side in sides {
                                width: frame.width, height: frame.height, by: factor),
                      width: frame.width * factor, height: frame.height * factor,
                      to: outDirectory.appendingPathComponent("\(stem)-zoom.png"))
+        }
+
+        // The refraction proof: the same body over a studio that has edges in it.
+        if let patternPipeline,
+           let patternFrame = render(side: side, state: state, pipeline: patternPipeline) {
+            writePNG(composite(patternFrame, over: canvasBackground),
+                     width: patternFrame.width, height: patternFrame.height,
+                     to: outDirectory.appendingPathComponent("\(stem)-pattern.png"))
         }
 
         // The numbers behind the picture: how much of the body the surface covers, and how much of
