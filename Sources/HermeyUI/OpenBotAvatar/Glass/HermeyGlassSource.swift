@@ -380,10 +380,10 @@ enum HermeyGlassSource {
                 // room behind it has to be a room with edges in it, not a gradient. A window standing
                 // behind and above the body, a tube light beside it, and the shelf it stands on: four
                 // straight edges, one thin line, one horizon, each of which arrives bent.
-                float window = footedStep(-0.36, 0.012, uv.x, foot.x)
-                             * footedStep(0.52, 0.012, -uv.x, foot.x)
-                             * footedStep(-1.35, 0.012, uv.y, foot.y)
-                             * footedStep(0.02, 0.012, -uv.y, foot.y);
+                float window = footedStep(-0.36, 0.020, uv.x, foot.x)
+                             * footedStep(0.52, 0.020, -uv.x, foot.x)
+                             * footedStep(-1.35, 0.020, uv.y, foot.y)
+                             * footedStep(0.02, 0.020, -uv.y, foot.y);
                 // The room outside the window falls away, and the window itself is a box of light with
                 // a gradient in it. Contrast, not level: the body has to stay on this page's darkness
                 // while the studio behind it becomes something with a shape.
@@ -393,16 +393,16 @@ enum HermeyGlassSource {
                 // The tube light: the one feature thin enough to read as a line through the wall.
                 // Their widths carry the same footprint rule the edges do: a tube narrower than the
                 // pixel it lands on is a row of dots, not a line.
-                float tubeW = max(0.030, foot.x * 1.20);
+                float tubeW = max(0.048, foot.x * 1.60);
                 float tube = exp(-pow((uv.x - 0.70) / tubeW, 2.0))
                            * footedStep(0.34, 0.02, -uv.y, foot.y) * footedStep(-0.95, 0.02, uv.y, foot.y);
-                col += float3(0.95, 0.98, 1.0) * (tube * 1.50);
-                float tube2 = exp(-pow((uv.x + 0.22) / max(0.024, foot.x * 1.10), 2.0))
+                col += float3(0.95, 0.98, 1.0) * (tube * 1.05);
+                float tube2 = exp(-pow((uv.x + 0.22) / max(0.042, foot.x * 1.40), 2.0))
                             * footedStep(0.30, 0.02, uv.y, foot.y);
-                col += float3(0.90, 0.94, 1.0) * (tube2 * 1.00);
+                col += float3(0.90, 0.94, 1.0) * (tube2 * 0.80);
 
                 // The shelf the body stands on, as a horizon.
-                col += float3(0.72, 0.78, 0.90) * (footedStep(0.60, 0.010, uv.y, foot.y) * 0.34);
+                col += float3(0.72, 0.78, 0.90) * (footedStep(0.60, 0.018, uv.y, foot.y) * 0.30);
 
                 // And the narrow right-hand strip (shaders.ts:153): upstream's second key, which is
                 // the edge the eye reads the body's turn against.
@@ -914,7 +914,7 @@ enum HermeyGlassSource {
             float landing = causticLanding(rxy, rz, flatZ);
             float litReach = max(0.6, landing);
             float spread = clamp(outside / litReach, 0.0, 1.0);
-            float density = mix(1.0, 0.30, spread * spread);
+            float density = (1.0 - spread) * (1.0 - 0.45 * spread) * 0.62;
             // The last ray: every bevel inset below the critical one is trapped, so the mapping from the
             // bevel to the page ends at `litReach`, and the light jumps to nothing there. That boundary is
             // the bright curve a caustic is read by — sharp on the outside, with the pile-up behind it.
