@@ -1870,3 +1870,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   drift on a 38 pt face, roughly what a single hovered row used to cost. The timer stops when the window is not
   key, when the panel is collapsed, when more than 32 rows are on screen, and under Reduce Motion; a row that
   scrolls away settles to rest.
+
+## [0.1.683] — 2026-11-26
+
+### Fixed
+- **The glass stopped banding.** Its interior was read from a chamfer transform of the filled raster — whole
+  pixels, biased by edge angle — so the shader was refracting a staircase and every near-vertical edge came out
+  striped. The field is now computed analytically from the silhouette path, once per size change (about 35 ms at
+  200 pt on a 2x surface), and the body is smooth at 200, 48 and 24 pt.
+- **Thicker glass now behaves like it.** A bounce term follows the ray's own optical path, the wall junction
+  carries a real refracted line instead of a streak, and the caustic's landing, width and brightness come from
+  the body's measured thickness — the thin flanks and corners cast hotter and tighter than the belly.
