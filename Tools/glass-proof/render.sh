@@ -53,4 +53,11 @@ SDK="$(xcrun --show-sdk-path --sdk macosx)"
 swiftc -Onone -sdk "$SDK" -target "$(uname -m)-apple-macos14.0" \
   -o "$OUT/glass-proof" "${SOURCES[@]}"
 
-"$OUT/glass-proof" "$OUT"
+# Arguments after the output directory go to the tool (`--sides 200 --states idle`, say): a single
+# case while a target is being judged, the full grid when it is done.
+if [ "$#" -gt 1 ]; then
+  shift
+  "$OUT/glass-proof" "$OUT" "$@"
+else
+  "$OUT/glass-proof" "$OUT"
+fi

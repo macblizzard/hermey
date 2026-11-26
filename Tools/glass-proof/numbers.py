@@ -328,6 +328,41 @@ def body_rise(s: float, rxy: float, rz: float) -> float:
     return CROWN + rz * (side / bevel) / max(rxy, 0.001)
 
 
+def critical_slope() -> float:
+    """`criticalSlope()` — `tan(asin(1/IOR))`, from the same sine `sin_critical()` returns."""
+    sine = sin_critical()
+    return sine / math.sqrt(max(1.0 - sine * sine, 0.02))
+
+
+def critical_inset(rxy: float, rz: float) -> float:
+    """`criticalInset()` — the inset where the bevel's own slope reaches the critical angle."""
+    k = max((critical_slope() - CROWN) * rxy / max(rz, 0.001), 0.0)
+    return rxy * (1.0 - k / math.sqrt(1.0 + k * k))
+
+
+def caustic_landing(rxy: float, rz: float, flat_z: float) -> float:
+    """`causticLanding()` — where the wall's light lands, solved at the critical inset."""
+    at = critical_inset(rxy, rz)
+    deflection = math.atan(max(body_rise(at, rxy, rz), 0.0)) * (IOR - 1.0)
+    return 2.0 * body_height(at, rxy, rz, flat_z) * math.tan(max(0.0, min(1.35, deflection)))
+
+
+def optical_thickness(path_length: float, half_depth: float) -> float:
+    """`opticalThickness()` — the path in body half-depths, linear in the path."""
+    return path_length / max(half_depth * 1.75, 0.001)
+
+
+def band_coverage(x: float, centre: float, half_width: float, foot: float) -> float:
+    """`bandCoverage()` — a band box-filtered over one pixel."""
+    return max(0.0, min(1.0, (half_width + 0.5 * foot - abs(x - centre)) / max(foot, 1e-3)))
+
+
+def edge_coverage(inset: float, outside: float, foot: float, mask_alpha: float) -> float:
+    """`edgeCoverage()` — the drawn edge's coverage reconciled with the field's own ramp."""
+    ramp = max(0.0, min(1.0, 0.5 + (inset - outside) / max(foot, 0.001)))
+    return max(0.0, min(1.0, 0.5 * max(0.0, min(1.0, mask_alpha)) + 0.5 * ramp))
+
+
 def body_exit(s: float, reach: float, rxy: float, rz: float, flat_z: float) -> float:
     """`bodyExit` — the inset the ray reaches on the back surface, in three refinements."""
     entry = body_height(s, rxy, rz, flat_z)
@@ -423,9 +458,10 @@ def shade(surface_numbers, point):
     rim_gain, exposure, absorption = 1.25, 1.0, 1.0
 
     signed, inland = distance_to_outline(point, surface_numbers["outline"])
-    coverage = 1.0 if signed >= 0 else 0.0
     inset = max(signed, 0.0)
     outside = max(-signed, 0.0)
+    foot = 0.5                                   # one pixel at the proof's 2x scale
+    coverage = edge_coverage(inset, outside, foot, 1.0 if signed >= 0 else 0.0)
     outward = (-inland[0], -inland[1])
 
     # `pow(tint, 2.2)` — sRGB in, linear optics, gamma out.
@@ -465,7 +501,6 @@ def shade(surface_numbers, point):
 
     weight = 1.0 - f1
     unit = max(side, side) / 100.0
-    half_depth_u = half_depth / max(unit, 0.0001)
 
     into = refract(rd, n1, 1.0 / IOR) or reflect_dir(rd, n1)
     into = normalise(into)
@@ -480,7 +515,6 @@ def shade(surface_numbers, point):
     n2_neg = (-n2[0], -n2[1], -n2[2])
 
     leaving = refract(into, n2_neg, IOR)
-    rear_margin = sin_critical() - dot3(into, n2)
     rear_tir = leaving is None
     if rear_tir:
         leaving = normalise(reflect_dir(into, n2_neg))
@@ -499,9 +533,9 @@ def shade(surface_numbers, point):
     uv = fold_into_plate((land[0] / half_extent[0], land[1] / half_extent[1]))
     surface_col = glass_plate(uv, jewel, detail)
 
-    path_u = path_length / max(unit, 0.0001)
-    ref_scale = max(half_depth_u * 2.2, 14.0)
-    optical = path_u / (ref_scale + path_u * 0.30)
+    local_body = smoothstep(0.03, 0.85, inset / max(half_depth, 0.001))
+    absorbing_path = path_length * (0.30 + 0.70 * local_body)
+    optical = optical_thickness(absorbing_path, half_depth)
     beer = tuple(math.exp(-sigma[i] * optical) for i in range(3))
     lum_through = sum(beer[i] * (0.2126, 0.7152, 0.0722)[i] for i in range(3))
     refl_env = inner_studio(tuple(v / max(unit, 0.0001) for v in exit_point),
@@ -554,11 +588,18 @@ def shade(surface_numbers, point):
     rim_dir = normalise((-0.55, -0.80, 0.0))
     facing = 0.62 + 0.38 * max(0.0, min(1.0, (screen[0] * rim_dir[0] + screen[1] * rim_dir[1]) * 0.5 + 0.5))
     rim_light = tuple(mix(jewel[i], (0.95, 1.0, 1.0)[i], 0.55) for i in range(3))
+    rim_core = band_coverage(inset, 0.0, max(0.30, rim_width * 0.13), foot)
     accum = [c + rim_light[i] * (rim_band * (0.55 + surface_numbers["rim"] * rim_gain)) * facing
              * (0.25 + 0.75 * f1) for i, c in enumerate(accum)]
+    accum = [c + mix(rim_light[i], 1.0, 0.30) * (rim_core * smoothstep(0.25, 0.85, coverage) * 0.62
+                                                * (0.35 + 0.65 * facing)) for i, c in enumerate(accum)]
 
-    rear_line = (1.0 - smoothstep(0.0, 0.18, abs(rear_margin))) * detail
-    accum = [mix(c, c * 0.34 + key_colour[i] * 0.06, rear_line * 0.72) for i, c in enumerate(accum)]
+    dark_inset = critical_inset(rxy, rz)
+    dark_width = max(0.50, rim_width * 0.24)
+    dark_line = band_coverage(inset, dark_inset, dark_width, foot)
+    dark_line *= smoothstep(0.30, 0.75, body_side(inset, rxy))
+    accum = [mix(c, c * 0.30 + key_colour[i] * 0.05, max(0.0, min(1.0, dark_line)) * 0.92 * detail)
+             for i, c in enumerate(accum)]
 
     accum = [c * exposure for c in accum]
     peak = max(accum)
@@ -581,17 +622,36 @@ def shade(surface_numbers, point):
 
     colour = tuple(max(0.0, min(1.0, c)) ** (1 / 2.2) for c in accum)
 
-    # The contact shadow and the pool, both read off the field's outside distance.
-    soft = max(1.0, 0.05 * max(side, side))
-    shadow = math.exp(-outside / (soft * 0.40)) * smoothstep(0.0, 0.4, outside) * 0.62
-    band = math.exp(-(((outside - soft * 0.22) / (soft * 0.42)) ** 2))
-    bottom = max(0.0, min(1.0, 0.45 + 0.75 * outward[1]))
-    caustic = band * bottom * smoothstep(0.0, 0.4, outside) * 0.62
-    caustic_light = tuple(mix(jewel[i], (1.0, 0.94, 0.84)[i], 0.66) * (0.55 + 0.45 * (1.0 - thick))
-                          for i in range(3))
-
-    premultiplied = tuple(colour[i] * alpha + caustic_light[i] * (caustic * (1.0 - alpha)) for i in range(3))
-    out_alpha = max(alpha + shadow * (1.0 - alpha), caustic * (1.0 - alpha))
+    # The page: the wall's light at its solved landing, and the two darks that frame it.
+    landing = caustic_landing(rxy, rz, flat_z)
+    arc_width = max(0.60, landing * 0.055)
+    arc = math.exp(-(((outside - landing) / arc_width) ** 2))
+    # The contour's own outward normal, from the field. The mirror has no screen derivatives, so it
+    # takes the nearest outline point's own normal — the same quantity.
+    under = max(0.0, min(1.0, outward[1]))
+    facing = under * under
+    below = smoothstep(0.16, 0.62, (point[1] - centre[1]) / max(half_extent[1], 1.0)) \
+        * smoothstep(0.10, 0.55, facing)
+    arc *= smoothstep(landing - arc_width * 2.4, landing - arc_width * 0.60, outside)
+    wall_path = 2.0 * body_height(critical_inset(rxy, rz), rxy, rz, flat_z)
+    wall_beer = tuple(math.exp(-sigma[i] * optical_thickness(wall_path, half_depth)) for i in range(3))
+    caustic_light = tuple(mix(jewel[i], (1.0, 0.96, 0.90)[i], 0.68) * wall_beer[i] * 1.55 for i in range(3))
+    caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95
+    near_pool = math.exp(-outside / max(1.1, landing * 0.60)) * below \
+        * smoothstep(1.1, 3.2, outside) * 0.34
+    fold_dark = math.exp(-(((outside - max(landing - arc_width * 1.55, 0.4))
+                            / max(0.45, arc_width * 0.60)) ** 2))
+    fold_dark *= below * smoothstep(0.0, 0.5, outside) * 0.55
+    tight = math.exp(-outside / max(0.70, foot * 1.4)) * smoothstep(0.0, 0.28, outside) * 0.80
+    penumbra = math.exp(-outside / max(2.0, foot * 4.0)) * smoothstep(0.0, 0.6, outside) * 0.24
+    shadow = tight + penumbra
+    caustic_rgb = tuple(max(0.0, min(1.0, c)) ** (1 / 2.2) for c in caustic_light)
+    page = 1.0 - alpha
+    shade = max(0.0, min(1.0, (shadow + fold_dark) * page))
+    arc_a = max(0.0, min(1.0, caustic * page))
+    pool_a = max(0.0, min(1.0, near_pool * page))
+    premultiplied = tuple(colour[i] * alpha + caustic_rgb[i] * (arc_a + pool_a * 0.55) for i in range(3))
+    out_alpha = max(0.0, min(1.0, alpha + shade * (1.0 - alpha) + arc_a + pool_a * 0.55))
     over_page = tuple(premultiplied[i] + (0x0A / 255) * (1.0 - out_alpha) for i in range(3))
     # The same pixel over the raised surface: a translucent body changes with what is behind it, an
     # opaque one does not, so this pair is the translucency measured rather than asserted.
@@ -600,6 +660,8 @@ def shade(surface_numbers, point):
         "inset": inset, "alpha": alpha, "colour": colour, "over": over_page,
         "overSurface": over_surface, "lum": max(over_page), "thick": thick, "f1": f1,
         "optical": optical, "path": path_length, "rearTIR": rear_tir, "beer": beer,
+        "lumThrough": lum_through,
+        "caustic": caustic, "landing": landing,
     }
 
 
@@ -627,10 +689,26 @@ def scanline(numbers, y, count=121):
     return [(point, shade(numbers, point)) for point in points]
 
 
+def thin_point(numbers):
+    """The deepest point of the left ear — the thinnest part of the body, and the one a person reads."""
+    outline = numbers["outline"]
+    min_x, max_x, min_y, max_y = bounds(outline)
+    best = None
+    for row in range(16):
+        for column in range(16):
+            point = (min_x + (0.23 + 0.12 * column / 15) * (max_x - min_x),
+                     min_y + (0.05 + 0.16 * row / 15) * (max_y - min_y))
+            distance, _ = distance_to_outline(point, outline)
+            if best is None or distance > best[0]:
+                best = (distance, point)
+    return best[1]
+
+
 def report(side):
     numbers = surface(side)
     centre = deepest_point(numbers)
     centre_pixel = shade(numbers, centre)
+    thin_pixel = shade(numbers, thin_point(numbers))
     rim_width = max(1.0, 0.035 * side)
     samples = scanline(numbers, centre[1])
     inside = [(point, pixel) for point, pixel in samples if pixel["alpha"] > 0]
@@ -655,6 +733,7 @@ def report(side):
           f"detail {numbers['detail']:.0f}")
     print(line("centre", centre_pixel))
     print(line("mid", half_pixel))
+    print(line("thin", thin_pixel))
     print(line("rim", rim_pixel))
 
     # The alpha profile across the body, at the deepest row.
@@ -678,7 +757,13 @@ def report(side):
           f"rim brighter than centre {rim_pixel['lum']:.2f} > {centre_pixel['lum']:.2f} "
           f"{'PASS' if rim_pixel['lum'] > centre_pixel['lum'] else 'FAIL'}; "
           f"interior gradient {lift:.2f} luma top-to-bottom "
-          f"{'PASS' if lift > 0.05 else 'FAIL'}")
+          f"{'PASS' if lift > 0.05 else 'FAIL'}; "
+          f"thin ear transmits more of the path {thin_pixel['lumThrough']:.2f} > "
+          f"{centre_pixel['lumThrough']:.2f} "
+          f"{'PASS' if thin_pixel['lumThrough'] > centre_pixel['lumThrough'] + 0.05 else 'FAIL'}; "
+          f"ear luma {thin_pixel['lum']:.2f} > body {centre_pixel['lum']:.2f} "
+          f"{'PASS' if thin_pixel['lum'] > centre_pixel['lum'] else 'FAIL'}; "
+          f"caustic lands {centre_pixel['landing']:.1f} pt out")
     print()
 
 

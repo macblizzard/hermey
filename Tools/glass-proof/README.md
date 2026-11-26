@@ -28,6 +28,15 @@ It also prints, per case, `cover` (pixels the body covers), `mean` and `max` alp
 silhouette. Two composites are the point: a translucent body changes with what is behind it, an
 opaque one does not.
 
+One case at a time while a target is being judged, the full grid when it is done:
+
+```sh
+Tools/glass-proof/render.sh /tmp/glass-proof --sides 200 --states idle
+```
+
+Arguments after the output directory go to the tool itself (`--sides`, `--states`, `--scale`,
+`--supersample`), so a single 200 pt idle case is one `swiftc` and a few milliseconds of GPU.
+
 `-pattern.png` is the one that shows *refraction*. The shader cannot sample what is behind the view,
 so a composite of a pattern would only prove translucency; instead the tool recompiles the same MSL
 string with `kPlatePattern` set to 1, which swaps the studio for a coarse checkerboard **inside the
@@ -37,7 +46,12 @@ wall. Everything else (absorption, the rim, the two edges) is unchanged, so the 
 with one constant different.
 
 Every case is rendered `--supersample 2` (the default) and box-filtered down, so the silhouette, the
-plate's edges and the two rim lines are antialiased in the picture.
+plate's edges and the two rim lines are antialiased in the picture. The mask the pass reads is
+half-float (RGBA16F), not RGBA8: its green and blue channels are the two distance fields, so 8 bits
+per channel quantised the inset to ~0.4 pt at 200 pt — coarser than a pixel — and the surface normal,
+the rim's width and every gradient were read off that quantisation. The packing is written out in
+`BotAvatarGlassDrawer.halfBits` rather than using `Float16`, whose conversions the x86_64 slice of
+the universal build cannot use.
 
 ## `numbers.py` — the arithmetic (needs nothing)
 
@@ -52,9 +66,13 @@ that matter — the centre is translucent, the rim is more opaque than the centr
 than the centre, and the interior has a gradient.
 
 It mirrors `bodyTransform`, `makePart`'s thickness/`partDepth`/`rxy`/`rz`, `glassProfile`,
-`BotAvatarGlassSurface.make` and the fragment, and computes the distance field exactly against the
-outline's segments instead of chamfering a raster. `Tests/test_avatar_glass_shader.py` pins the
-literals both sides use, so the mirror cannot drift from the shader silently.
+`BotAvatarGlassSurface.make` and the fragment — including `edgeCoverage`, `bandCoverage`,
+`criticalInset`, `causticLanding` and `opticalThickness` — and computes the distance field exactly
+against the outline's segments instead of chamfering a raster. It reports the body's **centre**,
+**mid**, the **thin** point of the left ear, and the **rim**, so the absorption gradient the pass
+claims is a pair of numbers at 24, 48 and 200 pt rather than an adjective.
+`Tests/test_avatar_glass_shader.py` pins the literals both sides use, so the mirror cannot drift from
+the shader silently.
 
 Known differences, so nobody reads more into the numbers than is there: the mirror flattens the
 authored path (the preset is softened with a 5 % fillet on sharp corners), holds the idle pose, and
