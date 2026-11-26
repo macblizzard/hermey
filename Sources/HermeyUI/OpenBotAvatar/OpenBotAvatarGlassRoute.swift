@@ -151,10 +151,37 @@ struct BotAvatarGlassUniforms {
     /// `(points x, points y, pixels x, pixels y)` — filled in at draw time, where the drawable's own
     /// size is the authority on the second pair.
     var size: SIMD4<Float> = .zero
+    /// `(r, g, b, 1)` — the app's own surface behind the body, sRGB, or `.zero` where the surface
+    /// cannot name one (the desktop pet, on a wallpaper it does not know). The fragment transmits this
+    /// through the body, which is what makes the glass a tint over the page instead of a coloured block.
+    var page: SIMD4<Float> = .zero
 }
 
 /// One frame's numbers for the glass shader: the values themselves, and the uniforms built from them.
 struct BotAvatarGlassSurface: Sendable {
+
+    /// The surface an avatar of this backdrop is drawn over, as the shader's `page` uniform.
+    ///
+    /// These are `Theme`'s own tokens — `dark.surface` `#232323`, `light.surface` `#F0EEE6` — and not a
+    /// colour invented here: an avatar in a list sits on the theme's raised surface, and that is the
+    /// light the body has to transmit. A surface that cannot know its page (the desktop pet, over a
+    /// wallpaper) answers `.zero`, and the fragment then lights the body from the studio alone, which is
+    /// exactly what it did before this term existed.
+    ///
+    /// The limit, stated where it is: only the *default* theme's surfaces are named. A theme with a
+    /// different canvas is a few points off in the transmitted colour — a tint, not a tint of the wrong
+    /// colour — because the theme itself is not threaded this far. It is the honest bound of "the view
+    /// knows what is behind it" without passing a whole theme into a Metal uniform.
+    static func page(for backdrop: OpenBotAvatarBackdrop) -> SIMD4<Float> {
+        switch backdrop {
+        case .themed(dark: true):
+            return SIMD4<Float>(Float(0x23) / 255, Float(0x23) / 255, Float(0x23) / 255, 1)
+        case .themed(dark: false):
+            return SIMD4<Float>(Float(0xF0) / 255, Float(0xEE) / 255, Float(0xE6) / 255, 1)
+        case .pet:
+            return .zero
+        }
+    }
 
     /// The layer's size in points — the shader's `position` space.
     var size: CGSize
@@ -168,6 +195,8 @@ struct BotAvatarGlassSurface: Sendable {
     var pose: SIMD4<Float>
     /// `(hairline, exposure, rim gain, absorption)`.
     var tone: SIMD4<Float>
+    /// The app's surface behind the body — `(r, g, b, 1)` in sRGB, or `.zero` where it is not known.
+    var page: SIMD4<Float> = .zero
 
     /// The fragment function's bindings, ready for `setFragmentBytes`.
     ///
@@ -175,7 +204,7 @@ struct BotAvatarGlassSurface: Sendable {
     /// size is the drawable's, and it is only known once there is one.
     var uniforms: BotAvatarGlassUniforms {
         BotAvatarGlassUniforms(tint: SIMD4(Float(tint.red), Float(tint.green), Float(tint.blue), 1),
-                               shape: shape, profile: profile, pose: pose, tone: tone)
+                               shape: shape, profile: profile, pose: pose, tone: tone, page: page)
     }
 
     /// The numbers for one frame, from the values the painter already computed.
@@ -231,6 +260,11 @@ struct BotAvatarGlassSurface: Sendable {
                            Float(max(0, profile.rz * pointsPerUnit)),
                            Float((minX + maxX) / 2), Float((minY + maxY) / 2)),
             pose: SIMD4(Float(pose.yaw), Float(pose.pitch), Float(pose.light.rim), detail),
-            tone: SIMD4(Float(hairline), 1, 1.25, 1))
+            tone: SIMD4(Float(hairline), 1, 1.25, 1),
+            // The page the body stands on, from the surface it is drawn over. `Theme`'s own tokens: the
+            // dark scheme's raised surface `#232323` and the light scheme's `#F0EEE6` — the two colours
+            // an avatar in a list, a header or a sheet actually sits on. The pet returns `.zero`, which
+            // is the fragment's named fallback to the studio plate.
+            page: BotAvatarGlassSurface.page(for: backdrop))
     }
 }
