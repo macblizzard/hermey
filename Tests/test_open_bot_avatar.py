@@ -837,12 +837,14 @@ class AnIdleBotHoversAndOnlyAnIdleBot(unittest.TestCase):
             self.assertGreater(amplitude / 100 * side, 0.3, f"invisible at {side} pt")
         # The body is validated inside 6…94 of the 0…100 box, so ± this amplitude cannot reach the
         # frame's edge — the float trades height only.
-        body = self.hover()
         self.assertLessEqual(amplitude, BODY_MIN)
         self.assertLessEqual(amplitude, 100 - BODY_MAX)
         # No size change at all: a body that grew and shrank is a breath, and the breath is `rest`'s.
-        for channel in ("pose.sx", "pose.sy", "pose.scale", "bodyScale"):
-            self.assertNotIn(channel, body + self.branch("idle").split("Self.hover")[0].split("else {")[-1])
+        # The hover's own line names no scale, and idle's only size write is still the happy hop's.
+        for channel in ("pose.sx", "pose.sy", "pose.scale"):
+            self.assertNotIn(channel, self.hover(), f"the hover changes {channel}")
+        self.assertEqual(len(re.findall(r"pose\.sx", self.branch("idle"))), 0)
+        self.assertEqual(len(re.findall(r"pose\.sy", self.branch("idle"))), 1)
 
     def test_the_renderer_adds_no_layer_for_it(self) -> None:
         renderer = self.code(read(RENDERER))
