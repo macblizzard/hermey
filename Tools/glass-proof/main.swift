@@ -196,7 +196,7 @@ func featureLayer(model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
 
 /// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
 func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState,
-            dark: Bool = true, withFeatures: Bool = true) -> Rendered? {
+            dark: Bool = true, withFeatures: Bool = true, studio: Bool = false) -> Rendered? {
     let points = CGSize(width: side, height: side)
     let finalPixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
     let width = Int(finalPixels.width), height = Int(finalPixels.height)
@@ -223,6 +223,12 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     var uniforms = surface.uniforms
     uniforms.size = SIMD4<Float>(Float(points.width), Float(points.height),
                                  Float(sampleWidth), Float(sampleHeight))
+    // The refraction proof is a picture of what the traced ray *lands on*, and once a surface names
+    // its page that landing is one flat colour — nothing to bend. So the pattern case is drawn with
+    // the page withheld (`w` 0, the studio's own room), which is the same body the pet gets and the
+    // plate the checkerboard lives in. Everything else — absorption, the rim, both edges — is
+    // unchanged, so the picture is this pass with one uniform different.
+    if studio { uniforms.page = .zero }
 
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                                                               width: sampleWidth, height: sampleHeight,
@@ -514,7 +520,7 @@ for side in sides {
 
         // The refraction proof: the same body over a studio that has edges in it.
         if let patternPipeline,
-           let patternFrame = render(side: side, state: state, pipeline: patternPipeline) {
+           let patternFrame = render(side: side, state: state, pipeline: patternPipeline, studio: true) {
             writePNG(composite(patternFrame, over: canvasBackground),
                      width: patternFrame.width, height: patternFrame.height,
                      to: outDirectory.appendingPathComponent("\(stem)-pattern.png"))
