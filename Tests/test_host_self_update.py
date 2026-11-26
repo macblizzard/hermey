@@ -396,6 +396,6 @@ class TheReleaseTagsHermeyd(unittest.TestCase):
         self.assertNotRegex(body, r'hermeyd-v\d+\.\d+\.\d+')
 
     def test_it_is_idempotent_and_cannot_fail_a_shipped_release(self) -> None:
-        body = self.PATH.read_text().split("def ensure_hermeyd_tag(", 1)[1]
+        body = self.PATH.read_text().split("def ensure_hermeyd_tag(", 1)[1].split("\n\n\nif __name__", 1)[0]
         self.assertIn('"ls-remote"', body)          # already published: a no-op
         self.assertNotIn("raise SystemExit", body)   # a push failure is reported, not fatal
