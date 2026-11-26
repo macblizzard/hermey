@@ -237,35 +237,48 @@ class ThePhoneStillHasExactlyItsOwnRows(unittest.TestCase):
 
 
 class TheKeyboardCanReachTheMenu(unittest.TestCase):
-    """A right-click is not the only door: the row's ⋯ raises the same `NSMenu`."""
+    """A right-click is not the only door: *Message Actions…* (⌘⇧M) raises the same `NSMenu`.
+
+    The row's `⋯` was that door until 2026-11-26, when the owner asked for it to go: the right-click
+    menu *is* the row's menu. The keyboard's door is the menu bar's command now, and it reaches the
+    very same AppKit menu — the row registers its anchor by message id, and the command raises the
+    menu of the row the keyboard is on. So the two halves this class has always held together are
+    unchanged: the keyboard gets the whole menu, and both doors open one menu.
+    """
 
     ROW = read(MAC_ROW)
     PRESENTER = read(PRESENTER)
+    SCROLL = read(MAC / "Conversation" / "TranscriptScroll.swift")
+    APP = read(MAC / "HermesMacApp.swift")
 
-    def test_the_action_line_carries_a_menu_glyph(self) -> None:
+    def test_the_command_replaces_the_glyph(self) -> None:
         actions = between(self.ROW, "private var messageActions: some View {",
                           "private func actionGlyph(")
-        self.assertIn('systemImage: "ellipsis"', actions)
-        self.assertIn("menuAnchor.present()", actions)
-        # It is a button like the others, so it says what it is — and it is the one glyph on the
-        # line that Tab stops on, with a quiet fill for the keyboard since it draws no ring.
-        self.assertIn('help: "All message actions"', actions)
-        self.assertIn("keyboardStop: true", actions)
-        self.assertIn(".focused($menuGlyphFocused)", actions)
-        self.assertIn("isHighlighted: menuGlyphFocused", actions)
-        self.assertIn("@FocusState private var menuGlyphFocused: Bool", self.ROW)
-        # The other verbs stay pointer shortcuts: they are rows in this very menu.
-        self.assertIn(".focusable(keyboardStop)", self.ROW)
+        # No glyph, and nothing left of the focus state that kept it on screen.
+        self.assertNotIn('systemImage: "ellipsis"', actions)
+        self.assertNotIn("menuAnchor.present()", actions)
+        self.assertNotIn("menuGlyphFocused", self.ROW)
+        self.assertNotIn("keyboardStop", self.ROW)
+        # The keyboard's door, in the menu bar, with the key the row's own comment promised.
+        self.assertIn('Button("Message Actions…")', self.APP)
+        self.assertIn('.keyboardShortcut("m", modifiers: [.command, .shift])', self.APP)
+        self.assertIn("MessageMenuDirectory.requestActions()", self.APP)
+        # And the transcript answers it for the row the keyboard is on.
+        self.assertIn("NotificationCenter.default.publisher(for: .messageActionsRequested)",
+                      self.SCROLL)
+        self.assertIn("MessageMenuDirectory.shared.present(for:", self.SCROLL)
+        self.assertIn("@FocusState private var focusedRow: String?", self.SCROLL)
 
     def test_it_raises_the_same_menu_below_the_row(self) -> None:
         self.assertIn("func presentBelow()", self.PRESENTER)
-        self.assertIn("host?.presentBelow()", self.PRESENTER)
+        self.assertIn("host.presentBelow()", self.PRESENTER)
+        self.assertIn("func present(for row: String?) -> Bool", self.PRESENTER)
         # The anchor is handed the very view that owns the rows, so both doors show one menu.
         self.assertIn("anchor?.host = view", self.PRESENTER)
         self.assertEqual(self.PRESENTER.count("MessageMenuRouter(items: items, host: self"), 1)
 
     def test_the_pointer_path_and_the_keyboard_path_share_one_builder(self) -> None:
-        # `present(at:)` (right-click) and `presentBelow()` (⋯) both funnel into `show(point:)`,
+        # `present(at:)` (right-click) and `presentBelow()` (⌘⇧M) both funnel into `show(point:)`,
         # which is the only caller of the router — so the two menus cannot hold different rows.
         show = between(self.PRESENTER, "private func show(point: NSPoint) {", "\n    }")
         self.assertIn("MessageMenuRouter(items: items", show)

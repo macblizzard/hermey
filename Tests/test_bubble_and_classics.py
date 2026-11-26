@@ -312,8 +312,14 @@ class TheBotsOwnBubblesTakeItsColour(unittest.TestCase):
         # inside a lazy stack must not reach for a store.
         self.assertIn("var faces: [String: BotFaceChoice] = [:]", read(MAC_TRANSCRIPT))
         scroll = read(APPS / "HermesMac" / "Conversation" / "TranscriptScroll.swift")
-        self.assertEqual(scroll.count("faces: faces,"), 2,
-                         "a row is built without the face map, so its bubble cannot know the colour")
+        # One builder, so every row gets the map: `messageRow` is the only place a row is made, and
+        # it hands it the faces, the tint, the session and the keyboard's focus in one place.
+        self.assertEqual(scroll.count("TranscriptRowView(entry: entry"), 1,
+                         "a row is built outside the one builder, so it can miss the face map")
+        self.assertEqual(scroll.count("messageRow(entry)"), 2,
+                         "both a plain row and a row inside a tool run are drawn by the builder")
+        builder = scroll.split("private func messageRow(")[1]
+        self.assertIn("faces: faces,", builder)
         self.assertIn("@Environment(\\.botAvatars) private var avatarLibrary", read(MAC_TRANSCRIPT))
         self.assertIn("@Environment(\\.botAvatars) private var avatarLibrary", read(ROOMS))
 

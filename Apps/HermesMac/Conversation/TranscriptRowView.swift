@@ -68,12 +68,13 @@ struct TranscriptRowView: View {
     var reaction: (String) -> String? = { _ in nil }
     var onReact: (String, String?) -> Void = { _, _ in }
     @State private var showingReactions = false
-    /// The row's handle on the AppKit view that owns this message's menu, so the `⋯` in the action
-    /// line can raise the same `NSMenu` the right-click does — the keyboard's way into every verb,
-    /// including the ones SwiftUI's context menu never offered to a key.
+    /// The row's handle on the AppKit view that owns this message's menu.
+    ///
+    /// The menu itself is raised by a right-click (or ctrl-click) anywhere in the row — the row has
+    /// no `⋯` any more (asked for 2026-11-26: the right-click menu is the row's menu). The anchor
+    /// still exists because the keyboard's door is now the menu bar's *Message Actions…* (⌘⇧M),
+    /// which asks the directory for the focused row's anchor and presents this same `NSMenu`.
     @State private var menuAnchor = MessageMenuAnchor()
-    /// Where the keyboard is, on the one glyph that is a tab stop: the `⋯` that raises the menu.
-    @FocusState private var menuGlyphFocused: Bool
     /// The window's one voice. `@ObservedObject` so the row repaints the moment another message
     /// takes the speaker away from it.
     @ObservedObject private var speech = SpeechReader.shared
@@ -135,7 +136,14 @@ struct TranscriptRowView: View {
             // taken from the window's event stream, so selection and the glyphs still work.
             content
                 .overlay { MessageContextMenu(items: menuItems, anchor: menuAnchor) }
-                .onAppear(perform: wireAttachmentOpener)
+                .onAppear {
+                    wireAttachmentOpener()
+                    // The row's menu becomes reachable from the menu bar (⌘⇧M) for as long as the
+                    // row is built. Registered by entry id: the command names a row, and this is
+                    // the only place a row's own `NSMenu` can be raised from outside it.
+                    MessageMenuDirectory.shared.register(menuAnchor, for: entry.id)
+                }
+                .onDisappear { MessageMenuDirectory.shared.unregister(entry.id) }
             if let emoji = currentReaction {
                 Button(emoji) { toggleReaction(emoji) }
                     .help("Remove your \(ReactionEmoji.name(emoji)) reaction")
@@ -776,49 +784,37 @@ struct TranscriptRowView: View {
                 }
             }
 
-            // The whole menu, reachable without a mouse — and the one glyph on this line that is a
-            // keyboard stop (the others are pointer shortcuts for verbs that all sit in this menu,
-            // which is why they are not tab stops). Tab reaches it, its quiet fill says where the
-            // keyboard is, and Space or Return opens the *same* `NSMenu` the right-click raises:
-            // once open it is AppKit's menu, so arrows, Return and Escape behave as in any Mac
-            // menu — including the rows SwiftUI's context menu never offered to a key.
-            actionGlyph("menu", systemImage: "ellipsis",
-                        tint: menuGlyphFocused ? Tokens.textPrimary : Tokens.textMuted,
-                        help: "All message actions",
-                        keyboardStop: true,
-                        isHighlighted: menuGlyphFocused) {
-                menuAnchor.present()
-            }
-            .focused($menuGlyphFocused)
+            // No `⋯` here any more (asked for 2026-11-26): every verb on this line is already in the
+            // row's menu, and the menu is raised by a right-click anywhere in the row. The keyboard's
+            // door to that same menu is the menu bar's *Message Actions…* (⌘⇧M), which acts on the
+            // row Tab is on — so nothing here has to be a tab stop, and no control on this line is.
         }
     }
 
     /// One glyph of the action line.
     ///
-    /// `keyboardStop` is the decision about whether Tab reaches the control at all — the row's
-    /// verbs are pointer shortcuts and are not tab stops, but the menu glyph is, because it is the
-    /// only way to the rows without a mouse. `isHighlighted` lets a keyboard stop carry the same
-    /// quiet fill the pointer gets, since `hermeyFocusQuiet()` leaves it no ring of its own.
+    /// None of these is a tab stop (`focusable(false)`): each is a pointer shortcut for a verb that
+    /// sits in the row's menu, and the menu — not the glyph — is what the keyboard opens, from the
+    /// menu bar's *Message Actions…*. So Tab never walks a row's glyphs and never lands on a small
+    /// target that duplicates something already reachable by key.
     private func actionGlyph(_ id: String,
                              systemImage: String,
                              tint: Color = Tokens.textMuted,
                              help: String,
-                             keyboardStop: Bool = false,
-                             isHighlighted: Bool = false,
                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(hoveredAction == id || isHighlighted ? Tokens.textPrimary : tint)
+                .foregroundStyle(hoveredAction == id ? Tokens.textPrimary : tint)
                 .frame(width: 24, height: 20)
                 .background(
                     RoundedRectangle(cornerRadius: Tokens.radiusSmall, style: .continuous)
-                        .fill(hoveredAction == id || isHighlighted ? Tokens.controlHover : .clear)
+                        .fill(hoveredAction == id ? Tokens.controlHover : .clear)
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(keyboardStop)
+        .focusable(false)
         .onHover { inside in
             if inside { hoveredAction = id }
             else if hoveredAction == id { hoveredAction = nil }
