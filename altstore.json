@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.685",
-          "buildVersion": "685",
-          "date": "2026-11-26T21:17:06Z",
-          "localizedDescription": "Brighter glass that transmits the surface behind it, a Settings > Shortcuts panel you can rebind (menus follow live), no more three-dot under messages (right-click / long-press and Cmd-Shift-M carry every verb), the bot settings header draws its face, and a 15% bigger status-line avatar.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.685/Hermey-0.1.685-b685.ipa",
-          "size": 6231072,
+          "version": "0.1.686",
+          "buildVersion": "686",
+          "date": "2026-11-26T21:58:46Z",
+          "localizedDescription": "Hotfix for the black faces: the glass now carries the bot's own colour on top of whatever it transmits, so a face never collapses into a dark background; eyes stay above 3:1 and light pages keep the brighter look.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.686/Hermey-0.1.686-b686.ipa",
+          "size": 6234023,
           "minOSVersion": "17.0",
-          "sha256": "dc43aa1b216e81239b9ab7c983ed9937da878a9b3d2be3f3342a937359feea4a"
+          "sha256": "4da19f37ec72091693de188e36ea90c500fcea5827c136526a2de5136a515d16"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.685 (685)",
-      "identifier": "hermes-0.1.685-685",
-      "caption": "Brighter glass that transmits the surface behind it, a Settings > Shortcuts panel you can rebind (menus follow live), no more three-dot under messages (right-click / long-press and Cmd-Shift-M carry every verb), the bot settings header draws its face, and a 15% bigger status-line avatar.",
-      "date": "2026-11-26T21:17:06Z",
+      "title": "Hermes 0.1.686 (686)",
+      "identifier": "hermes-0.1.686-686",
+      "caption": "Hotfix for the black faces: the glass now carries the bot's own colour on top of whatever it transmits, so a face never collapses into a dark background; eyes stay above 3:1 and light pages keep the brighter look.",
+      "date": "2026-11-26T21:58:46Z",
       "tintColor": "#9A9AA0"
     }
   ],
