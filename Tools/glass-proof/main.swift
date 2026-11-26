@@ -152,6 +152,43 @@ struct Rendered {
     var height: Int
 }
 
+// MARK: - The face features
+
+/// The eyes — and whatever else the `.over` pass draws on the body — as premultiplied RGBA, at the
+/// body's own pixel size.
+///
+/// Why the proof needs them: the glass body is a Metal pass, but the eyes are `Canvas` work drawn
+/// *after* it, so a proof of the shader alone shows a coloured shape with no features at all. That is
+/// fine for judging absorption and refraction and useless for judging a face — which is the thing the
+/// owner photographed when the list went black. This renders the app's own `.over` pass through
+/// `ImageRenderer` (the route `BotAvatarIcon` takes for a still), so the picture is the app's two
+/// passes stacked in the app's own order.
+func featureLayer(model: OpenBotAvatarModel, pose: OpenBotAvatarPose,
+                  points: CGSize, pixels: CGSize, dark: Bool) -> [UInt8]? {
+    let width = Int(pixels.width), height = Int(pixels.height)
+    let view = Canvas { context, size in
+        OpenBotAvatarRenderer.draw(model, pose: pose, material: .glass,
+                                   backdrop: .themed(dark: dark), into: &context, size: size,
+                                   color: OpenBotAvatarRenderer.defaultColor,
+                                   ink: OpenBotAvatarRenderer.defaultInk,
+                                   still: true, time: 0, pass: .over)
+    }
+    .frame(width: points.width, height: points.height)
+    let renderer = ImageRenderer(content: view)
+    renderer.scale = Double(width) / max(points.width, 1)
+    guard let image = MainActor.assumeIsolated({ renderer.cgImage }) else { return nil }
+
+    var rgba = [UInt8](repeating: 0, count: width * height * 4)
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+          let context = CGContext(data: &rgba, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: width * 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+        return nil
+    }
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    return rgba
+}
+
 /// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
 func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState,
             dark: Bool = true) -> Rendered? {
@@ -223,8 +260,22 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
         rgba[i + 2] = bgra[i]
         rgba[i + 3] = bgra[i + 3]
     }
-    return Rendered(rgba: downsampled(rgba, width: sampleWidth, height: sampleHeight),
-                    width: width, height: height)
+    var body = downsampled(rgba, width: sampleWidth, height: sampleHeight)
+    // The face features, over the body, exactly where the app puts them: the `Canvas` pass runs
+    // after the glass, and a picture of the body alone cannot be judged as a face.
+    if let features = featureLayer(model: model, pose: pose, points: points, pixels: finalPixels,
+                                   dark: dark) {
+        for i in stride(from: 0, to: body.count, by: 4) {
+            let a = Double(features[i + 3]) / 255
+            for channel in 0..<3 {
+                body[i + channel] = UInt8(max(0, min(255,
+                    (Double(features[i + channel]) + Double(body[i + channel]) * (1 - a)).rounded())))
+            }
+            body[i + 3] = UInt8(max(0, min(255,
+                (Double(features[i + 3]) + Double(body[i + 3]) * (1 - a)).rounded())))
+        }
+    }
+    return Rendered(rgba: body, width: width, height: height)
 }
 
 /// A box filter over the supersampled frame: premultiplied, so the average is the average.
