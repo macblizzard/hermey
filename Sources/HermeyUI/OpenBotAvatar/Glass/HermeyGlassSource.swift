@@ -853,7 +853,7 @@ enum HermeyGlassSource {
             // brightness is a stroked outline however thin it is.
             accum += rimLight * (rimBand * (0.55 + pose.z * tone.z)) * rimFacing * (0.25 + 0.75 * F1);
             accum += mix(rimLight, float3(1.0), 0.30)
-                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.62 * (0.35 + 0.65 * rimFacing));
+                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.50 * (0.35 + 0.65 * rimFacing));
 
             // The second line: where the light stops leaving the glass. `criticalInset` is the point of
             // the bevel whose normal is at the critical angle — solved from `rxy`/`rz`, so it sits one
@@ -917,24 +917,31 @@ enum HermeyGlassSource {
             // the fold, where the mapping from the wall to the page turns over; its outer edge is a
             // short falloff, because the focus has a width.
             float landing = causticLanding(rxy, rz, flatZ);
-            float arcWidth = max(0.75, landing * 0.16);
+            float arcWidth = max(0.55, landing * 0.085);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
             // Only beneath. The wall's light goes down, so the arc fades as the contour turns up the
             // sides. Read off the pixel's own height against the body's box, which is stable along the
             // whole bottom; a normal taken from an 8-bit distance field was not, and broke the arc up.
             float below = smoothstep(0.30, 0.86, (position.y - centre.y) / max(halfExtent.y, 1.0));
+            // A caustic has a *hard* inner edge and a short outer one: inside the focal line the wall's
+            // light has not converged yet, past it the focus has a width. Cutting the inner side and
+            // letting only the outer Gaussian through is what makes it a line instead of a halo.
+            arc *= smoothstep(landing - arcWidth * 1.7, landing - arcWidth * 0.15, outside);
             // How bright: the wall's own transmission. A short path through amber is nearly white, so
             // the arc is warm; the longer the wall, the more of it the tint eats. Same absorption as
             // the body, at the wall's own path — no separate colour for the light on the page.
             float wallPath = 2.0 * bodyHeight(criticalInset(rxy, rz), rxy, rz, flatZ);
             float3 wallBeer = absorptionAlong(opticalThickness(wallPath, halfDepth), absorbSigma);
-            float3 causticLight = mix(jewelTint, float3(1.0, 0.95, 0.86), 0.55) * wallBeer * 1.35;
-            float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.88;
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.96, 0.90), 0.68) * wallBeer * 2.05;
+            float caustic = arc * below * smoothstep(0.0, 0.5, outside) * 0.95;
+            // The light that only grazed the wall lands closer in and dimmer: a short warm lift under
+            // the footprint, which is what binds the arc to the body instead of leaving it floating.
+            float nearPool = exp(-outside / max(1.1, landing * 0.30)) * below * smoothstep(0.0, 0.4, outside) * 0.30;
             // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
             // that contrast is what makes a caustic a curve rather than a glow.
-            float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.9, 0.4))
-                                      / max(0.5, arcWidth * 0.55), 2.0));
-            foldDark *= below * smoothstep(0.0, 0.5, outside) * 0.58;
+            float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.55, 0.4))
+                                      / max(0.45, arcWidth * 0.60), 2.0));
+            foldDark *= below * smoothstep(0.0, 0.5, outside) * 0.55;
 
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
@@ -958,8 +965,9 @@ enum HermeyGlassSource {
             float page = 1.0 - alpha;
             float shadeA = clamp((shadowAlpha + foldDark) * page, 0.0, 1.0);
             float arcA = clamp(caustic * page, 0.0, 1.0);
-            float3 outRGB = col * alpha + causticLight * arcA;
-            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA, 0.0, 1.0);
+            float poolA = clamp(nearPool * page, 0.0, 1.0);
+            float3 outRGB = col * alpha + causticLight * (arcA + poolA * 0.55);
+            float outA = clamp(alpha + shadeA * (1.0 - alpha) + arcA + poolA * 0.55, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
         }
 """
