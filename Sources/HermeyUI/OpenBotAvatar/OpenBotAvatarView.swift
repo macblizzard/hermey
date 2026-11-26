@@ -206,8 +206,14 @@ public struct OpenBotAvatarView: View {
                                                still: still, time: time, pass: .behind)
                 }
                 // The body: the reference's lit, refracting surface, drawn by the runtime shader over
-                // the same silhouette the `Canvas` route fills.
-                BotAvatarGlassView(surface: glass, path: model.silhouette.applying(face))
+                // the same silhouette the `Canvas` route fills. `maskKey` is the body itself, not the
+                // frame: the drawer keeps that silhouette's texture, and it must be rebuilt when the
+                // *shape* changes (a preset, a paste, a save) or the new body would be drawn through
+                // the old one's mask. The pose rides in `path` and is not part of the key, because it
+                // moves every frame and a mask per frame is two chamfer passes per frame.
+                BotAvatarGlassView(surface: glass,
+                                   path: model.silhouette.applying(face),
+                                   maskKey: model.bodyKey)
                 Canvas { context, canvasSize in
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
                                                backdrop: surface, into: &context, size: canvasSize,

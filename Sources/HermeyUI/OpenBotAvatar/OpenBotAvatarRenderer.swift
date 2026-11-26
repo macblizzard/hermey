@@ -514,6 +514,17 @@ public final class OpenBotAvatarModel {
     /// silhouette, flat, so glass and solid wear the same shape.
     public let silhouette: Path
 
+    /// What the body *is*, as one string: the definition's own outline.
+    ///
+    /// The silhouette is the whole of the drawing's *shape*, and the shape is the body path and
+    /// nothing else. The colour, the material, the size and the state change how that shape is
+    /// drawn; none of them changes which shape it is. So anything that caches a *drawing* of this
+    /// body — the glass shader's silhouette mask is the one that does — has to carry this key, or a
+    /// new preset reuses the last one's picture and the avatar keeps a body nobody asked for while
+    /// its caption and its eyes move on. That is exactly what was reported on 2026-11-26: Book, then
+    /// Mug, captioned correctly, both drawn as the stored cat.
+    public var bodyKey: String { definition.body.path }
+
     /// How far the body reaches from the hoops' centre, for a working turn's hoop and for a
     /// celebration's cage — measured once, from the body's own outline, and never per frame.
     public var ribbonRims: (work: OpenBotAvatarRibbons.Rim, cage: OpenBotAvatarRibbons.Rim) {
