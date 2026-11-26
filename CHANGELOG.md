@@ -1810,3 +1810,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed
 - `hermeyd` **0.8.11** (version bump with the app; no host change).
+
+## [0.1.676] — 2026-11-26
+
+### Added
+- **Glass is a real surface now.** On the app's own drawing (Mac window, iPhone) a glass avatar is shaded by a
+  Metal pass — Fresnel, a key and a rim softbox, an internal caustic, refraction and Beer-Lambert absorption —
+  with the terms and constants taken from open-bot-avatar's own glass shader. The painted glass stays as the
+  fallback the platform chooses (Reduce Transparency, a very small size, previews, the Live Activity).
+
+### Changed
+- `hermeyd` **0.8.12** (version bump with the app; no host change).
