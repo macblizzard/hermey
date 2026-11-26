@@ -85,3 +85,6 @@ venv/
 # A curl whose output path was a URL created this directory once; never track it
 /https:
 *.dmg
+
+# The proof tool writes PNGs here when a session pulls them back for review.
+.proof/
