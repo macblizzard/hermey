@@ -1256,8 +1256,10 @@ enum HermeyGlassSource {
             float arcA = clamp(caustic * page, 0.0, 1.0);
             float poolA = clamp(nearPool * page, 0.0, 1.0);
             // The halo shares the body's page term: where the glass already covers the pixel it is
-            // *behind* the body, and the body's own alpha is what hides it.
-            float haloA = clamp(halo * page, 0.0, 1.0);
+            // *behind* the body, and the body's own alpha is what hides it. It is dithered with the
+            // same half-bit the body's gradients take, or its fade bands into the 8-bit target the
+            // same way an undithered body gradient does.
+            float haloA = clamp(halo * page + dither / 255.0, 0.0, 1.0);
             float3 outRGB = col * alpha + haloRGB * haloA + causticRGB * (arcA + poolA * 0.55);
             float outA = clamp(alpha + shadeA * (1.0 - alpha) + haloA + arcA + poolA * 0.55, 0.0, 1.0);
             return half4(half3(outRGB), half(outA));
