@@ -250,12 +250,16 @@ struct BotSidebarView: View {
         }
         // ⇧⌘N: the ⌘N a Mac user reaches for was freed when "New Session" went away (a bot has one
         // conversation), and nothing in the window takes it. It exists only while this panel does —
-        // the bell is the panel's own door.
-        .keyboardShortcut("n", modifiers: [.command, .shift])
+        // the bell is the panel's own door. Read from the registry (Settings → Shortcuts, row
+        // "Waiting for You"), like every other key in the app: this is a view rather than a menu
+        // item, so SwiftUI re-applies the equivalent as soon as the binding changes.
+        .hermeyShortcut("bell.waiting", using: store.shortcuts)
         // A dot for anything behind this bell: replies, or a host update. The update row is the
         // reason a dot can be up with no bot waiting.
         .waitingDot(!waitingBots.isEmpty || store.model.hostUpdate?.wantsAttention == true)
-        .help("Waiting for you (⇧⌘N)")
+        // The tooltip is the registry's answer too: a help tag that outlived a rebind would teach
+        // the old key, which is the drift this feature exists to end.
+        .help("Waiting for you (\(store.shortcuts.label("bell.waiting") ?? "no shortcut"))")
         .popover(isPresented: $showsNotifications, arrowEdge: .top) {
             WaitingBotsInbox(bots: waitingBots,
                              hostUpdate: store.model.hostUpdate,

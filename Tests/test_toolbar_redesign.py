@@ -232,7 +232,9 @@ class TheMacBellIsRightAlignedAndHasAPopover(unittest.TestCase):
     def test_the_shortcut_does_not_collide(self) -> None:
         # ⇧⌘N: no other binding in the window takes it. ⌘F (find in conversation), ⌘K (palette),
         # ⇧⌘P (pair), ⇧⌘R (reconnect), ⌘S (panel), ⌘E (bot panel) all stay where they were.
-        self.assertIn('.keyboardShortcut("n", modifiers: [.command, .shift])', self.bell)
+        # The key is the registry's `bell.waiting` row (⇧⌘N by default), read through the same
+        # modifier the menu bar uses, so a rebind reaches this button too.
+        self.assertIn('.hermeyShortcut("bell.waiting", using: store.shortcuts)', self.bell)
         app = (ROOT / "Apps" / "HermesMac" / "HermesMacApp.swift").read_text(encoding="utf-8")
         store_src = (ROOT / "Apps" / "HermesMac" / "Workspace" / "WorkspaceStore.swift").read_text(
             encoding="utf-8")

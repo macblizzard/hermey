@@ -62,10 +62,10 @@ class TheViewMenuHasNoTabItems(unittest.TestCase):
         self.assertIn('Button("Bigger Text") { store.stepTextSize(1) }', self.app)
         self.assertIn('Button("Smaller Text") { store.stepTextSize(-1) }', self.app)
         self.assertIn('Button("Default Text Size") { store.resetTextSize() }', self.app)
-        for key in ('.keyboardShortcut("+", modifiers: .command)',
-                    '.keyboardShortcut("-", modifiers: .command)',
-                    '.keyboardShortcut("0", modifiers: .command)'):
-            self.assertIn(key, self.app)
+        # The combinations themselves are registry rows now (`text.bigger`, `text.smaller`,
+        # `text.default`); the menu item is still the discoverable copy of each.
+        for identifier in ("text.bigger", "text.smaller", "text.default"):
+            self.assertIn(f'.hermeyShortcut("{identifier}", using: shortcuts)', self.app)
         # Full screen is AppKit's own item and nothing here replaces or removes it.
         self.assertNotIn("Enter Full Screen", self.app)
         self.assertNotIn(".fullScreen", self.app)

@@ -72,7 +72,9 @@ class TheNameIsTheControl(unittest.TestCase):
         # the transcript for a job the panel already does, so "⌘E" read as settings rather than as
         # the panel (reported 2026-11-15). The key, the popover and the router state behind them are
         # gone; the panel and ⌘E share one owner.
-        self.assertIn('.keyboardShortcut("e", modifiers: .command)', APP)
+        # The key itself is the registry's (`view.botPanel`, ⌘E by default); the menu reads it
+        # through `hermeyShortcut`, which is what lets Settings → Shortcuts change it.
+        self.assertIn('.hermeyShortcut("view.botPanel", using: shortcuts)', APP)
         self.assertIn("store.toggleBotPanel()", APP)
         # The pill and the key must land on the same method, or the two doors can disagree.
         self.assertIn("store.toggleBotPanel()", HEADER)
