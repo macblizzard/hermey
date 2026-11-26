@@ -97,8 +97,8 @@ enum HermeyGlassSource {
         //  have and CI cannot install, so the file could not be built at all. It is a string:
         //  `HermeyGlassSource.msl`, right here, compiled once per process by `device.makeLibrary(source:)`
         //  into one `MTLLibrary`, whose fragment function draws the body into a `MetalKit` view sitting
-        //  between the avatar's two `Canvas` passes. A `SwiftUI::Layer` is not reachable from a
-        //  runtime-compiled library, so the body's silhouette arrives as a texture instead. If the compile
+        //  between the avatar's two `Canvas` passes; the body's silhouette arrives as a texture instead, because
+        //  a `SwiftUI::Layer` is not reachable from a runtime-compiled library. If the compile
         //  fails the process keeps `BotAvatarGlassShader.isAvailable` false, logs Metal's own error once,
         //  and every surface takes the painted material: the route degrades, it never crashes.
         //

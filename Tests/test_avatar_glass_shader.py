@@ -164,11 +164,10 @@ class SolidNeverReachesIt(unittest.TestCase):
         # The body's pass is a silhouette and a tint: `BotAvatarGlassSurface.make` reads the spec
         # once, for the colour `bodyColor` derives, and nothing below it can paint a material.
         layer = code(read(LAYER))
-        fill = layer.split("private static func makeTexture(")[1].split("guard let data = context.data")[0]
+        fill = layer.split("static func makeMask(")[1].split("guard let data = context.data")[0]
         for token in ("spec", "BotAvatarMaterialRender", "case .flat", "case .ramp", "paint("):
             self.assertNotIn(token, fill, token)
         # …and the tint arrives as a colour, not as the material it came from.
-        self.assertIn("tint: MaterialColor", layer)
         self.assertIn("let tint = OpenBotAvatarMaterialPaint.bodyColor(spec, light: pose.light, tint: color)",
                       code(read(ROUTE)))
 
@@ -289,7 +288,7 @@ class TheShaderIsCompiledNotBuilt(unittest.TestCase):
 
     def test_nothing_compiles_per_frame(self):
         layer = read(LAYER)
-        draw = layer.split("func draw(in view: MTKView)")[1].split("private static func makeTexture")[0]
+        draw = layer.split("func draw(in view: MTKView)")[1].split("static func makeMask")[0]
         for token in ("makeLibrary", "makeRenderPipelineState", "makeFunction", "makeSamplerState",
                       "makeCommandQueue"):
             self.assertNotIn(token, draw, token)
@@ -386,12 +385,13 @@ class NoPerFrameAllocation(unittest.TestCase):
                       read(LAYER))
 
     def test_the_texture_covers_what_the_shader_may_sample(self):
-        # The refraction reads 8 points out and the texture is the whole view, so a sample at the
+        # The refraction reads 8 points out and the mask is the whole view, so a sample at the
         # body's edge is still on a pixel — the job `maxSampleOffset` did for `.layerEffect`.
         self.assertIn("float2(-8.0), float2(8.0)", msl_code())
         layer = read(LAYER)
-        self.assertIn("makeTexture(path: path, tint: surface.tint,", layer)
-        self.assertIn("points: surface.size, pixels: pixels", layer)
+        self.assertIn("makeMask(path: path, points: surface.size, pixels: pixels", layer)
+        self.assertIn("scaleBy(x: CGFloat(width) / points.width, y: -CGFloat(height) / points.height",
+                      layer)
 
 
 class TheTermsAreUpstreams(unittest.TestCase):
@@ -485,6 +485,117 @@ class TheEightStatesAreUntouched(unittest.TestCase):
         # The shader's pass is between the two `Canvas` passes and nothing else is between them.
         self.assertEqual(metal_route.count("Canvas {"), 2)
         self.assertEqual(metal_route.count("BotAvatarGlassView("), 1)
+
+
+class TheBodyLooksLikeAGlass(unittest.TestCase):
+    """The shading: a studio behind the glass, a mask under it, light on the edge."""
+
+    def test_no_painted_body_is_asked_for_on_the_metal_route(self):
+        # The prime suspect for an opaque blob: a `Canvas` body drawn under the shader. The frame
+        # asks the renderer for `.behind` and `.over` only, and says so where the passes are named.
+        view = code(read(VIEW))
+        metal = view.split("case .metal:")[1]
+        self.assertNotIn("pass: .body", metal)
+        self.assertNotIn("pass: .all", metal)
+        self.assertEqual(metal.count("pass: .behind"), 1)
+        self.assertEqual(metal.count("pass: .over"), 1)
+        self.assertIn("assert(!OpenBotAvatarRenderer.Pass.behind.drawsBody", metal)
+        # …and the renderer's own gate is the one that does it.
+        renderer = code(read(RENDERER))
+        self.assertIn("if pass.drawsBody {", renderer)
+        self.assertIn("var drawsBody: Bool { self == .all || self == .body }", renderer)
+
+    def test_the_shader_never_reads_a_fill_from_the_texture(self):
+        source = msl_code()
+        # Only the alpha of the silhouette — never a colour — is read out of the mask.
+        self.assertIn("float coverage = float(bodyLayer.sample(bodySampler, pos.xy / pixels).a);", source)
+        self.assertNotIn("behind", source)
+        self.assertNotIn("sampled", source)
+        self.assertNotIn("src.rgb", source)
+        self.assertNotIn("src.a", source)
+        self.assertEqual(source.count("bodyLayer.sample"), 1)
+        # And the texture it is handed is a white mask, so even a mistake could not be the body's tint.
+        layer = read(LAYER)
+        self.assertIn("CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)", layer)
+        self.assertNotIn("CGFloat(tint.red)", layer)
+
+    def test_the_backdrop_is_a_studio_not_the_body(self):
+        source = msl_code()
+        self.assertIn("static inline float3 sampleGlassPlate(", source)
+        self.assertIn("float3 plate = sampleGlassPlate(plateUV, jewelTint, detail);", source)
+        self.assertIn("float3 through = plate * beer * mix(1.30, 0.62, thick);", source)
+        # The tint is decoded to linear light before the optics, and gamma-encoded exactly once after.
+        self.assertIn("float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));", source)
+        self.assertEqual(source.count("1.0 / 2.2"), 1)
+        # A solid piece of glass: thickness, a lit rim, a key on the face, and something under it.
+        self.assertIn("float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);", source)
+        self.assertIn("float rimFacing = 0.55", source)
+        self.assertIn("softbox(reflDirS, float3(-0.52, -0.68, 0.52), float2(0.22, 0.28), 0.10, -0.35)",
+                      source)
+        self.assertIn("float shadowAlpha = max(shadowShape * 0.55, contact * 0.30);", source)
+        # The studio it stands in is the plate's, in the body's own hue, not a flat tint.
+        self.assertIn("sampleGlassPlate(plateUV, jewelTint, detail)", source)
+        self.assertIn("travel = clamp(travel, float2(-8.0), float2(8.0));", source)
+
+    def test_the_layer_is_transparent_end_to_end(self):
+        layer = read(LAYER)
+        swift = code(layer)
+        self.assertIn("MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)", layer)
+        # The view cannot claim to be opaque, on either platform…
+        self.assertIn("final class BotAvatarGlassMTKView: MTKView {", swift)
+        self.assertIn("override var isOpaque: Bool { false }", swift)
+        self.assertIn("view.isOpaque = false", swift)
+        # …nor can its backing layer, which is the one AppKit actually composites.
+        self.assertIn("view.layer?.isOpaque = false", swift)
+        self.assertIn("metalLayer.isOpaque = false", swift)
+        self.assertIn("metalLayer.backgroundColor = nil", swift)
+        # …and the blend is premultiplied over, as the fragment writes.
+        self.assertIn("attachment.sourceRGBBlendFactor = .one", layer)
+        self.assertIn("attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha", layer)
+        self.assertIn("float3 outRGB = col * alpha;", msl_code())
+
+    def test_the_fallback_is_untouched(self):
+        # Reduce transparency still gets the painted material, and the painter still paints its six
+        # layers: the shader is an addition to the material, not a replacement for its fallback.
+        self.assertIn("guard !reduceTransparency else { return .canvas }", decide_body())
+        paint = code(read(PAINT)).lower()
+        for layer in ("halo", "ramp", "sheen", "streak", "rim", "contact"):
+            self.assertIn(layer, paint, layer)
+
+
+class TheProofToolIsOptIn(unittest.TestCase):
+    """The offscreen renderer exists, renders the asked-for cases, and no app target builds it."""
+
+    PROOF = ROOT / "Tools" / "glass-proof"
+
+    def test_it_renders_the_asked_for_cases(self):
+        main = read(self.PROOF / "main.swift")
+        self.assertIn('option("--sides", "24,48,200")', main)
+        self.assertIn('option("--states", "idle,working")', main)
+        self.assertIn('OpenBotAvatarPresets.all.first(where: { $0.id == "cat" })', main)
+        # The app's own compile, the app's own uniforms and the app's own mask — not a copy.
+        self.assertIn("HermeyGlassEngine.shared", main)
+        self.assertIn("BotAvatarGlassDrawer.makeMask", main)
+        self.assertIn("BotAvatarGlassSurface.make", main)
+        # Offscreen, over the theme's dark canvas and over the surface one step up from it.
+        self.assertIn("canvasBackground = (r: 0x0A, g: 0x0A, b: 0x0A)", main)
+        self.assertIn("surfaceBackground = (r: 0x23, g: 0x23, b: 0x23)", main)
+
+    def test_no_app_target_builds_it(self):
+        for name, block in target_blocks().items():
+            self.assertNotIn("Tools/glass-proof", block, name)
+        self.assertNotIn("Tools/glass-proof", read(PROJECT))
+        # No surface, view or model refers to it: the app cannot reach the proof at all.
+        for path in list((ROOT / "Sources").rglob("*.swift")) + list((ROOT / "Apps").rglob("*.swift")):
+            self.assertNotIn("glass-proof", code(read(path)), path.name)
+
+    def test_it_runs_from_a_shell_script_on_the_mac(self):
+        script = read(self.PROOF / "render.sh")
+        self.assertIn("swiftc", script)
+        self.assertIn("Glass/HermeyGlassSource.swift", script)
+        self.assertIn("Glass/BotAvatarGlassLayer.swift", script)
+        # One module, so the preview sees the same internal types the app does.
+        self.assertIn("Tools/glass-proof/main.swift", script)
 
 
 if __name__ == "__main__":
