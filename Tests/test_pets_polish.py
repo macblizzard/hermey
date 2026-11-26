@@ -53,6 +53,8 @@ VIEW = (PETS / "PetView.swift").read_text(encoding="utf-8")
 BALLOON = (PETS / "PetBalloonView.swift").read_text(encoding="utf-8")
 CONTROLLER = (PETS / "DesktopPetController.swift").read_text(encoding="utf-8")
 PLACEMENT = (PETS / "PetCalloutPlacement.swift").read_text(encoding="utf-8")
+CHAT = (ROOT / "Sources" / "HermesKit" / "PetChat.swift").read_text(encoding="utf-8")
+STORE = (ROOT / "Sources" / "HermesKit" / "PetConversationStore.swift").read_text(encoding="utf-8")
 
 
 def _tap_branch() -> str:
@@ -127,16 +129,16 @@ class TheBalloonIsSolidBlackWithWhiteInk(unittest.TestCase):
         self.assertGreaterEqual(green * alpha, 0.5, "...and still read as a warning")
         # Every piece of text and every control draws from those inks, not from `Tokens`.
         for view, marker in (
-            ("the answer", "private func answerText(_ answer: String) -> some View {"),
+            ("a bubble", "private func bubble(_ message: PetMessage) -> some View {"),
             ("the header", "private var header: some View {"),
-            ("the field", "private var field: some View {"),
+            ("the composer", "private var composer: some View {"),
             ("a button", "private struct CalloutButton: View {"),
         ):
             body = BALLOON.split(marker, 1)[1][:800]
             self.assertIn("foregroundStyle(PetBalloonInk.", body, f"{view} lost its pinned ink")
         self.assertIn("SpinningRing(color: PetBalloonInk.muted", BALLOON,
                       "the thinking ring is white too")
-        self.assertIn(".foregroundColor(PetBalloonInk.muted)", BALLOON, "so is the placeholder")
+        self.assertIn(".foregroundStyle(PetBalloonInk.muted)", BALLOON, "so is the placeholder")
 
     def test_the_hairline_is_a_faint_white_border(self):
         self.assertIn("static let edge = Color.white.opacity(0.18)", BALLOON)
@@ -186,59 +188,52 @@ class TheBalloonIsSolidBlackWithWhiteInk(unittest.TestCase):
         for ink in ("PetBalloonInk.primary", "PetBalloonInk.muted", "PetBalloonInk.danger"):
             self.assertIn(ink, BALLOON)
 
-    def test_the_field_thinking_and_answers_are_untouched(self):
-        self.assertIn(".disabled(!model.state.acceptsInput)", BALLOON)
+    def test_the_composer_thinking_and_copy_are_untouched(self):
+        self.assertIn(".disabled(!model.acceptsInput)", BALLOON)
         self.assertIn('Text("Thinking…")', BALLOON)
         self.assertIn("SpinningRing(color: PetBalloonInk.muted", BALLOON)
         self.assertIn('CalloutButton("Retry") { model.retry() }', BALLOON)
         self.assertIn('CalloutButton(copied ? "Copied" : "Copy")', BALLOON)
         self.assertIn("setString(text, forType: .string)", BALLOON, "Copy still copies")
         self.assertIn(".fixedSize(horizontal: false, vertical: true)", BALLOON)
+        self.assertIn("TextEditor(text: $model.draft)", BALLOON,
+                      "the composer is a text view, because Shift+Return is a newline")
 
 
-class TheAnswerGrowsToACapAndThenScrolls(unittest.TestCase):
-    """A two-line reply makes a small bubble; a thirty-line reply stops at 240 pt and scrolls.
+class TheThreadGrowsToACapAndThenScrolls(unittest.TestCase):
+    """A short chat makes a small bubble; a long one stops at 240 pt and scrolls.
 
     The bubble is sized by `fittingSize` on the hosting view, so anything flexible measures as
-    nothing — which is what hid the answer once already. Both branches therefore have a definite
-    height: the text's own, or the cap, written down.
+    nothing — which is what hid a long answer once already. The transcript's height is therefore
+    written down: the measured sum of the clamped bubbles, capped, and never a flexible frame.
     """
-
-    @staticmethod
-    def _answer_body() -> str:
-        """`answerBody`, from its signature to the text it shares."""
-        return (BALLOON.split("private func answerBody(_ answer: String) -> some View {", 1)[1]
-                       .split("/// The answer's words", 1)[0])
-
-    @staticmethod
-    def _answer_text() -> str:
-        """`answerText`: the one rendering both branches draw."""
-        return (BALLOON.split("private func answerText(_ answer: String) -> some View {", 1)[1]
-                       .split("private var header", 1)[0])
 
     def test_the_cap_is_240_points_beside_the_tail(self):
         metrics = BALLOON.split("enum PetCalloutMetrics {", 1)[1].split("\n}", 1)[0]
-        self.assertIn("static let answerCap: CGFloat = 240", metrics,
+        self.assertIn("static let transcriptCap: CGFloat = 240", metrics,
                       "one number, in the metrics enum, so the guard can hold it")
         self.assertIn("static let tailHeight: CGFloat = 13", metrics)
         self.assertIn("static let tailWidth: CGFloat = 26", metrics)
 
-    def test_the_answer_is_measured_at_the_width_it_is_drawn_at(self):
+    def test_the_bubbles_are_measured_at_the_width_they_are_drawn_at(self):
         self.assertIn("static var answerWidth: CGFloat { PetBalloonView.width - contentInset * 2 }",
                       BALLOON, "320 pt less the bubble's own padding, not a guessed column count")
         self.assertIn("static let contentInset: CGFloat = 14", BALLOON)
         self.assertIn(".padding(PetCalloutMetrics.contentInset)", BALLOON,
                       "the measured width and the laid-out width have to be the same padding")
+        self.assertIn("static var bubbleTextWidth: CGFloat { answerWidth * 0.82 - bubbleInset * 2 }",
+                      BALLOON, "a bubble stops short of the column so the two sides read apart")
 
     def test_the_height_is_measured_with_the_face_and_size_it_is_drawn_in(self):
-        self.assertIn("static func answerHeight(of answer: String) -> CGFloat", BALLOON)
+        self.assertIn("static func transcriptHeight(of messages: [PetMessage]) -> CGFloat", BALLOON)
+        self.assertIn("static func bubbleHeight(of text: String) -> CGFloat", BALLOON)
         self.assertIn(
             "NSFont.systemFont(ofSize: TypeScale.pointSize(Tokens.textSM), weight: .regular)",
             BALLOON,
             "the same face TypeScale.font(.system) resolves to, at the same hinted size — so a "
             "⌘+/⌘- step is measured too")
         self.assertIn("NSAttributedString(", BALLOON)
-        self.assertIn("with: NSSize(width: answerWidth, height: .greatestFiniteMagnitude)", BALLOON)
+        self.assertIn("with: NSSize(width: width, height: .greatestFiniteMagnitude)", BALLOON)
         self.assertIn(".usesLineFragmentOrigin", BALLOON)
         self.assertIn("return ceil(bounds.height)", BALLOON,
                       "a fractional height compared against an integer cap must not round down")
@@ -249,43 +244,41 @@ class TheAnswerGrowsToACapAndThenScrolls(unittest.TestCase):
             self.assertNotIn(guess, BALLOON,
                              "the cap is decided by measuring the text, not by dividing its length")
 
-    def test_the_branch_is_the_measured_height_against_the_cap(self):
-        body = self._answer_body()
+    def test_the_transcript_has_an_explicit_fixed_height_of_the_measured_thread(self):
+        self.assertIn("ScrollView(.vertical, showsIndicators: true)", BALLOON,
+                      "a long chat gets a scroller the owner can see")
         self.assertIn(
-            "if PetCalloutMetrics.answerHeight(of: answer) > PetCalloutMetrics.answerCap {", body,
-            "at or under the cap it draws exactly as before; only over it does it scroll")
-
-    def test_the_scroll_view_has_an_explicit_fixed_height_of_the_cap(self):
-        body = self._answer_body()
-        self.assertIn("ScrollView(.vertical, showsIndicators: true)", body,
-                      "a long answer gets a scroller the owner can see")
-        scroll_branch = body.split("} else {", 1)[0]
-        self.assertIn(".frame(height: PetCalloutMetrics.answerCap)", scroll_branch,
-                      "the height is the cap in points, never a flexible one")
-        self.assertNotIn("maxHeight", scroll_branch,
+            ".frame(height: PetCalloutMetrics.transcriptHeight(of: model.conversation.messages))",
+            BALLOON, "the height is measured in points, never a flexible one")
+        self.assertNotIn("maxHeight", BALLOON,
                          "a flexible height is exactly what collapsed the answer to zero")
-        self.assertNotIn("minHeight", scroll_branch)
-        self.assertNotIn("Spacer", scroll_branch)
+        self.assertNotIn("minHeight", BALLOON)
 
     def test_it_is_the_only_scroll_view_in_the_balloon(self):
         self.assertEqual(BALLOON.count("ScrollView("), 1,
-                         "the scroll branch and the plain branch are the only two renderings; a "
-                         "second, unfixed scroll view would be the old bug again")
+                         "one scroller, with a written-down height; a second, unfixed one would be "
+                         "the old bug again")
 
-    def test_both_branches_draw_the_same_selectable_text(self):
-        body = self._answer_body()
-        self.assertEqual(body.count("answerText(answer)"), 2,
-                         "one rendering, two sizes — short and long answers read the same")
-        text = self._answer_text()
-        self.assertIn(".textSelection(.enabled)", text, "the answer is selectable in both branches")
-        self.assertIn(".fixedSize(horizontal: false, vertical: true)", text,
-                      "under the cap it is the self-sizing Text it always was")
-        self.assertIn(".multilineTextAlignment(.leading)", text)
+    def test_every_bubble_clamps_and_keeps_the_full_text(self):
+        self.assertIn("Text(PetBrevity.clamp(message.text))", BALLOON,
+                      "the display is clamped: a pet's answer is one paragraph, not a page")
+        self.assertIn(".lineLimit(PetBrevity.lineLimit)", BALLOON)
+        self.assertIn(".help(message.text)", BALLOON, "the whole answer is under the pointer")
+        self.assertIn(".textSelection(.enabled)", BALLOON, "and still selectable")
+        self.assertIn("ForEach(model.conversation.messages)", BALLOON,
+                      "the transcript is every message, both roles")
+
+    def test_a_new_turn_scrolls_into_view(self):
+        self.assertIn("ScrollViewReader { proxy in", BALLOON)
+        self.assertIn(".onChange(of: model.conversation.count) { _, _ in scrollToEnd(proxy) }",
+                      BALLOON, "the newest line is the one a growing chat has to show")
 
     def test_copy_still_copies_the_whole_answer(self):
-        # The scroll branch shows a window onto the string; Copy is not limited by it.
+        # The bubble shows a clamped prefix; Copy is not limited by it.
         self.assertIn("setString(text, forType: .string)", BALLOON)
         self.assertIn('CalloutButton(copied ? "Copied" : "Copy")', BALLOON)
+        self.assertIn("model.conversation.lastBotMessage?.text", BALLOON,
+                      "Copy is the bot's newest answer, in full")
 
 
 class TheTailPointsAtThePet(unittest.TestCase):
@@ -540,50 +533,83 @@ class TheRestIsStillInPlace(unittest.TestCase):
         self.assertIn("NSHostingView(rootView: PetBalloonView(", BALLOON)
 
 
-class TheConversationOutlivesTheBalloon(unittest.TestCase):
-    """Closing the balloon is not a reset: the pet keeps what it last said."""
+class TheThreadSurvivesTheBalloon(unittest.TestCase):
+    """Closing is not a reset, and the thread is on disk: the chat comes back.
+
+    The owner reversed the first version here. It kept one exchange in memory and threw it away on
+    a click; he asked for a small persistent chat instead — a click away hides it, a click back
+    shows the same thread, a relaunch shows it too, and a bot message reopens it. What survives is
+    the *rule* the first version had: only an explicit action empties a conversation.
+    """
 
     @staticmethod
     def _dismiss() -> str:
-        return BALLOON.split("func dismiss() {", 1)[1].split("func clear() {", 1)[0]
+        return BALLOON.split("func dismiss() {", 1)[1].split("\n    }", 1)[0]
 
     @staticmethod
     def _clear() -> str:
-        return BALLOON.split("func clear() {", 1)[1].split("/// Cancel the turn", 1)[0]
+        return BALLOON.split("func clear() {", 1)[1].split("\n    }", 1)[0]
 
-    def test_a_dismissal_does_not_throw_the_answer_away(self):
+    def test_a_dismissal_closes_the_window_and_nothing_else(self):
         dismiss = self._dismiss()
-        self.assertIn("cancel()", dismiss, "an in-flight turn is cancelled, as before")
-        self.assertNotIn("state.dismiss()", dismiss,
-                         "the answer must still be in the model when the balloon reopens")
-        self.assertIn("if state.isAsking { state = kept ?? .idle }", dismiss,
-                      "a turn that never landed falls back to the exchange before it")
+        self.assertEqual("onDismiss?()", dismiss.strip(),
+                         "a dismissal is the window's business; the thread is not the window's")
+        for banned in ("conversation.reset()", "store.clear()", "draft = \"\""):
+            self.assertNotIn(banned, dismiss, f"a dismissal must not {banned}")
+        self.assertNotIn("cancel()", dismiss,
+                         "the turn keeps running: that answer is what reopens the balloon")
+
+    def test_closing_the_window_cancels_only_when_the_pet_is_going_away(self):
+        close = BALLOON.split("func close(cancellingTurn: Bool = false) {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("if cancellingTurn { model.cancel() }", close)
+        self.assertIn("pet.balloon?.close(cancellingTurn: true)", CONTROLLER,
+                      "a pet that is closed for good has no thread to come back to")
+        self.assertIn("pet.balloonModel?.cancel()", CONTROLLER)
 
     def test_the_model_is_the_pets_not_the_windows(self):
-        # The window is created per open and thrown away on close; the model lives on the instance.
+        # The window is created per open and thrown away on close; the model lives on the instance,
+        # built with the pet so a message can land before the balloon was ever opened.
         self.assertIn("var balloonModel: PetBalloonModel?", CONTROLLER)
-        self.assertIn("let model = pet.balloonModel ?? PetBalloonModel(botID: botID)", CONTROLLER)
-        self.assertIn("if pet.balloonModel == nil {", CONTROLLER,
-                      "the callbacks are wired once, on the model that outlives the window")
-        self.assertIn("pet.balloonModel = model", CONTROLLER)
-        # Nothing is persisted: the exchange is memory, for the pet's lifetime.
-        self.assertNotIn("balloonModel", (PETS / "PetSettings.swift").read_text(encoding="utf-8"))
-        self.assertNotIn("UserDefaults", BALLOON,
-                         "a desktop pet's transcript is not a document")
+        self.assertIn("let chat = PetBalloonModel(botID: bot.id, store: PetConversationStore(botID: bot.id))",
+                      CONTROLLER)
+        self.assertIn("instance.balloonModel = chat", CONTROLLER)
+        self.assertIn("pet.balloonModel?.cancel()", CONTROLLER)
 
-    def test_new_clears_the_screen_and_cancels_what_is_in_flight(self):
+    def test_the_thread_is_written_to_disk_per_bot(self):
+        self.assertIn("public struct PetConversationStore", STORE)
+        self.assertIn('static let folderName = "PetChat"', STORE)
+        self.assertIn("appendingPathComponent(folderName, isDirectory: true)", STORE)
+        self.assertIn(".appendingPathComponent(Self.fileName(for: botID) + \".json\"",
+                      STORE, "one file per bot, named from the id rather than from anything typed")
+        self.assertIn("public func load() -> PetConversation", STORE)
+        self.assertIn("public func save(_ conversation: PetConversation)", STORE)
+        self.assertIn("try encoder.encode(document).write(to: fileURL, options: .atomic)", STORE,
+                      "a half-written chat is not a chat")
+        self.assertIn("document.version == Self.version", STORE,
+                      "an older or corrupt file is a miss, never half-read")
+
+    def test_the_store_is_read_once_and_written_on_every_change(self):
+        self.assertIn("self.conversation = store.load()", BALLOON)
+        self.assertIn("store.save(conversation)", BALLOON)
+        run = BALLOON.split("private func run(_ question: String) {", 1)[1]
+        self.assertIn("conversation.append(PetMessage(role: .bot, text: reply))", run,
+                      "the bot's answer is a message in the thread, not an answer slot")
+        self.assertIn("store.save(conversation)", run.split("onBotMessage?()", 1)[0],
+                      "written before anyone is told about it")
+
+    def test_new_clears_the_thread_and_cancels_what_is_in_flight(self):
         clear = self._clear()
         self.assertIn("cancel()", clear, "a reply that lands after New must not paint itself")
-        self.assertIn("state.dismiss()", clear)
+        self.assertIn("conversation.reset()", clear, "the old thread is gone for good")
+        self.assertIn("store.clear()", clear, "…and so is the file that would bring it back")
         self.assertIn('draft = ""', clear, "an empty field, ready for a fresh question")
-        self.assertIn("kept = nil", clear, "the old exchange is gone for good")
 
     def test_the_new_button_exists_only_when_there_is_something_to_clear(self):
-        self.assertIn("var hasExchange: Bool { state.answer != nil || state.failure != nil }",
-                      BALLOON, "an answer or a failure — the two things on screen")
-        header = BALLOON.split("private var header: some View {", 1)[1].split("private var field", 1)[0]
-        self.assertIn('if model.hasExchange {', header,
-                      "the button appears with the exchange, not on an empty field")
+        self.assertIn("var canClear: Bool { !conversation.isEmpty }", BALLOON,
+                      "a thread with any message in it — that is what New would clear")
+        header = BALLOON.split("private var header: some View {", 1)[1].split("private var transcript", 1)[0]
+        self.assertIn("if model.canClear {", header,
+                      "the button appears with the thread, not on an empty field")
         self.assertIn('CalloutButton("New") { model.clear() }', header)
         # It lives beside Copy, in the header, and nowhere else.
         self.assertEqual(BALLOON.count('CalloutButton("New")'), 1, "one New, in the header")
@@ -592,14 +618,17 @@ class TheConversationOutlivesTheBalloon(unittest.TestCase):
         self.assertGreater(new_at, header.index("Spacer(minLength: 8)"),
                            "the buttons sit on the right of the header")
         self.assertLess(new_at, copy_at, "New sits beside Copy, before it")
-        self.assertIn("model.state.canRetry", header[new_at:])
+        self.assertIn("model.canRetry", header[new_at:])
 
-    def test_a_settled_turn_is_what_the_next_open_shows(self):
-        run = BALLOON.split("private func run(_ question: String) {", 1)[1]
-        self.assertGreaterEqual(run.count("kept = state"), 3,
-                                "answered, unanswered and failed all settle into the kept exchange")
-        self.assertIn("resizeAndPlace()", BALLOON,
-                      "the reopened window re-fits itself to the answer it now shows")
+    def test_a_short_answer_is_a_rule_and_a_clamp(self):
+        # The rule the model is asked to obey lives in the host's ask route (one place every balloon
+        # question passes through); the clamp here is the backstop that keeps a model that ignores
+        # it from turning the bubble into a page.
+        self.assertIn("public enum PetBrevity", CHAT)
+        self.assertIn("public static let sentenceLimit = 2", CHAT)
+        self.assertIn("public static let characterLimit", CHAT)
+        self.assertIn("public static func clamp(_ text: String) -> String", CHAT)
+        self.assertIn("Text(PetBrevity.clamp(message.text))", BALLOON)
 
 
 class TheBalloonSitsBesideThePet(unittest.TestCase):

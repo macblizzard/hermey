@@ -119,8 +119,11 @@ right-click ──► menu: Close pet ──► setting off, window closes, posi
 | Display unplugged, resolution change | Position clamped into the visible frame of the nearest screen on the next launch and on screen-change notifications. |
 | Sleep / wake, Space switch, Mission Control | `.canJoinAllSpaces`, `.fullScreenAuxiliary`; no re-layout, no jump. |
 | Many pets | Animations pause for occluded windows (`occlusionState`), and each pet's timer is independent so one stuck pet cannot freeze the rest. |
-| Long answer | Balloon caps at ~320 × 240 with a scroll view and Copy; the pet never grows. |
-| Question while one is in flight | The field is disabled and the balloon shows "still thinking" — one question at a time per pet. |
+| Long answer | Each bubble is clamped (one paragraph, two sentences) with the full text on hover and Copy, and the transcript caps at ~320 × 240 with a scroll view; the pet never grows. |
+| Question while one is in flight | The composer is disabled and the balloon shows "still thinking" — one question at a time per pet. |
+| A closed balloon, and the bot writes | It opens by itself to show the message, without taking the keyboard. |
+| Closing the balloon / quitting | A dismissal hides the window, not the thread: the chat is kept per bot on disk and read back at the next launch. `New` is the only clear. |
+| A long conversation | Twenty messages, both roles counted, then the composer greys out with the reason and `New` starts a clean chat. |
 | Quit the app | Pets disappear with it; enabled set persists, so they come back at launch. |
 | Several Macs | Each Mac has its own pets; nothing is shared. |
 
@@ -128,7 +131,8 @@ right-click ──► menu: Close pet ──► setting off, window closes, posi
 
 - No pet-to-pet interaction, no pathfinding across the desktop, no sounds.
 - No pet on iOS (a phone has no desktop; the icon in the bot list already covers that surface).
-- No pet-specific model or prompt: the pet asks the bot the same way you would.
+- No change to the bot's own conversation: a balloon question is answered in the pet's bounded
+  session, pinned to a fast model where the profile has one, and carries a one-line brevity rule.
 - No dragging between Spaces, and no snapping to window edges.
 
 ## Effort

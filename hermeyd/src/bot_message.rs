@@ -86,6 +86,21 @@ const PET_SENDER: &str = "desktop-pet";
 /// What the pet's own session is called, so the owner can open it and read what the balloon said.
 const PET_TITLE: &str = "Desktop Pet";
 
+/// How long a pet's answer may be, appended to every balloon question.
+///
+/// The balloon is a small chat beside an icon, not a page: a two-paragraph answer is unreadable
+/// there and costs the latency the pet's own session exists to avoid. It lives here, in the route
+/// that assembles the message, rather than in the app's view, because a view can only cut text the
+/// model already produced — the rule has to reach the model to make it shorter in the first place,
+/// and this is the one place every balloon question (Mac, phone, a script) passes through. The app
+/// still clamps what it *displays* as a backstop, since a prompt is not a contract.
+///
+/// One line, not a system prompt: `session.create` carries no prompt parameter (see
+/// `docs/HERMEYD.md`), and the pet's session is the bot's own — the owner's real conversation must
+/// not inherit this.
+const PET_BREVITY: &str =
+    "Reply in at most two sentences of plain text — no preamble, no lists, no headings.";
+
 /// The pet session's window, counted in transcript rows, and what forces a fresh session.
 ///
 /// Rotation rather than compaction: the gateway's compaction threshold is *profile* config, and a
@@ -154,6 +169,18 @@ fn label(sender: &str, target: &str, text: &str, sender_profile: Option<&str>) -
         None => python_title(sender),
     };
     format!("{who} → {}: {}", python_title(target), text.trim())
+}
+
+/// A pet's question: the ordinary label, then the one line that bounds the answer.
+///
+/// A second line rather than a suffix, so the owner's own words stay intact at the top of the row
+/// and the instruction reads as a rule rather than as part of his question.
+fn pet_message(sender: &str, target: &str, text: &str, sender_profile: Option<&str>) -> String {
+    format!(
+        "{}\n{}",
+        label(sender, target, text, sender_profile),
+        PET_BREVITY
+    )
 }
 
 fn unix_now() -> f64 {
@@ -369,7 +396,11 @@ pub(crate) fn plan_ask(profile: &str, body: &Value, is_disabled: bool) -> Result
         // The sender decides, and the sender is the only thing here the pet actually controls.
         pet: sender == PET_SENDER,
         text: question.trim().to_string(),
-        message: label(sender, profile, question, sender_profile.as_deref()),
+        message: if sender == PET_SENDER {
+            pet_message(sender, profile, question, sender_profile.as_deref())
+        } else {
+            label(sender, profile, question, sender_profile.as_deref())
+        },
         sender: sender.to_string(),
         sender_profile,
         timeout,
@@ -1962,6 +1993,26 @@ mod tests {
             );
         }
         assert!(!plan_ask("ops", &json!({"question": "hi"}), false).unwrap().pet);
+    }
+
+    #[test]
+    fn a_pet_question_says_how_long_the_answer_may_be_and_other_asks_do_not() {
+        let pet = plan_ask("ops", &json!({"question": "status?", "from": "desktop-pet"}), false)
+            .unwrap();
+        // The owner's words are still the first line, and the rule is one line of its own.
+        assert!(pet.message.starts_with("Desktop Pet → Ops: status?"), "{}", pet.message);
+        assert!(pet.message.ends_with(PET_BREVITY), "{}", pet.message);
+        assert_eq!(pet.message.matches(PET_BREVITY).count(), 1, "one rule per question");
+        assert!(PET_BREVITY.contains("two sentences"));
+        assert!(PET_BREVITY.contains("plain text"));
+        assert!(PET_BREVITY.contains("no lists"));
+
+        // The bot's real chat — and every other sender — is byte for byte the label it always was.
+        for sender in ["cody", "assistant", "desktop pets"] {
+            let other = plan_ask("ops", &json!({"question": "hi", "from": sender}), false).unwrap();
+            assert_eq!(other.message, label(sender, "ops", "hi", None), "{sender}");
+            assert!(!other.message.contains(PET_BREVITY), "{sender}");
+        }
     }
 
     #[tokio::test]

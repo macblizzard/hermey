@@ -13,9 +13,10 @@ private final class PetInstance {
     let hitView: PetHitTestView
     let model: PetModel
     var balloon: PetBalloonWindow?
-    /// The pet's conversation, kept for as long as the pet is: the balloon window comes and goes, and
-    /// the last exchange has to survive it. In memory only — a desktop pet's transcript is not a
-    /// document, and nothing about it belongs in `UserDefaults`.
+    /// The pet's conversation. It is built with the pet rather than with its first balloon, because
+    /// a reply that lands while the balloon is closed has to land *somewhere* — the model is the
+    /// thread, and the window is only a view of it. Its history is also on disk (`PetConversationStore`),
+    /// keyed by bot id, so a relaunch opens the chat the owner left rather than a blank field.
     var balloonModel: PetBalloonModel?
     var occlusionObserver: NSObjectProtocol?
 
@@ -205,6 +206,18 @@ final class DesktopPetController: ObservableObject {
         panel.orderFrontRegardless()
 
         let instance = PetInstance(bot: bot, panel: panel, hitView: hitView, model: model)
+        // The thread is the pet's, not the window's: created here so a message that arrives before
+        // the balloon was ever opened has somewhere to go, and so the stored chat is read once.
+        let chat = PetBalloonModel(botID: bot.id, store: PetConversationStore(botID: bot.id)) {
+            [weak self] question in
+            guard let store = self?.store else { throw BotAskError.unreachable }
+            return try await store.model.askBot(profile: bot.id,
+                                                question: question,
+                                                from: BotAsk.fromDesktopPet)
+        }
+        chat.onDismiss = { [weak self] in self?.dismissBalloon(botID: bot.id) }
+        chat.onBotMessage = { [weak self] in self?.botWrote(botID: bot.id) }
+        instance.balloonModel = chat
         pets[bot.id] = instance
         observeOcclusion(botID: bot.id)
         startCursorWatch()
@@ -222,8 +235,10 @@ final class DesktopPetController: ObservableObject {
     private func close(_ botID: String, reason: String,
                        writesSetting: Bool, forgetPosition: Bool) {
         guard let pet = pets.removeValue(forKey: botID) else { return }
-        pet.balloon?.close()
+        // The pet is going away for good: the turn goes with it, unlike a balloon being dismissed.
+        pet.balloon?.close(cancellingTurn: true)
         pet.balloon = nil
+        pet.balloonModel?.cancel()
         if let observer = pet.occlusionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -296,29 +311,20 @@ final class DesktopPetController: ObservableObject {
 
     // MARK: - Balloon
 
-    private func openBalloon(botID: String) {
-        guard let pet = pets[botID] else { return }
-        // The bubble is the reading: the badge goes, and the app's own dot for this bot with it, on
-        // the same rule the conversation uses. Before the early return, so a second click that only
-        // re-presents the window still counts.
-        clearUnread(for: botID)
+    /// Open the pet's chat, showing the thread it already has.
+    ///
+    /// `focus` is the whole difference between the two ways in: a click on the pet takes the
+    /// keyboard, because the owner is about to type; the bot writing something opens the balloon
+    /// **without** focus, so a desk toy cannot take the cursor out of the middle of his work.
+    private func openBalloon(botID: String, focus: Bool = true) {
+        guard let pet = pets[botID], let model = pet.balloonModel else { return }
+        // A balloon he opened is the reading: the badge goes, and the app's own dot for this bot
+        // with it. A balloon that opened itself is *not* a read of the bot's own chat, whose count
+        // is a different conversation, so it does not clear anything.
+        if focus { clearUnread(for: botID) }
         if let existing = pet.balloon {
-            existing.present()
+            existing.present(focus: focus)
             return
-        }
-        let store = self.store
-        // The model outlives the window: the pet keeps its last exchange for as long as it is on the
-        // screen, so a dismissal followed by a click shows the answer again instead of an empty box.
-        let model = pet.balloonModel ?? PetBalloonModel(botID: botID) { question in
-            guard let store else { throw BotAskError.unreachable }
-            return try await store.model.askBot(profile: botID,
-                                                question: question,
-                                                from: BotAsk.fromDesktopPet)
-        }
-        if pet.balloonModel == nil {
-            model.onDismiss = { [weak self] in self?.dismissBalloon(botID: botID) }
-            model.onAnswer = { [weak pet] in pet?.model.celebrate() }
-            pet.balloonModel = model
         }
         let window = PetBalloonWindow(model: model,
                                       botName: pet.bot.displayName,
@@ -326,17 +332,33 @@ final class DesktopPetController: ObservableObject {
                                           guard let pet else { return nil }
                                           return pet.panel.frame.insetBy(dx: pet.hitView.iconInset,
                                                                          dy: pet.hitView.iconInset)
-                                      })
+                                      },
+                                      autoFocus: focus)
         window.isOwnerWindow = { [weak pet] candidate in candidate === pet?.panel }
         window.onClose = { [weak self] in self?.pets[botID]?.balloon = nil }
         pet.balloon = window
         window.present()
-        ClientLog.note("pet \(botID): balloon opened", category: "pets")
+        let how = focus ? "" : " for a message"
+        ClientLog.note("pet \(botID): balloon opened\(how)", category: "pets")
+    }
+
+    /// The bot wrote into this pet's conversation.
+    ///
+    /// The pet hops at it either way — the same move an answer always got — and if the balloon is
+    /// closed it opens to show the message. Never a notification: the message itself is the
+    /// attention, and it arrives in the bubble that is already the pet's voice. Focus stays where
+    /// the owner left it.
+    private func botWrote(botID: String) {
+        guard let pet = pets[botID] else { return }
+        pet.model.celebrate()
+        guard pet.balloon == nil else { return }
+        openBalloon(botID: botID, focus: false)
     }
 
     private func dismissBalloon(botID: String) {
         guard let window = pets[botID]?.balloon else { return }
         pets[botID]?.balloon = nil
+        // Not a cancellation: the turn keeps running, and its answer is what reopens the balloon.
         window.close()
         ClientLog.note("pet \(botID): balloon closed", category: "pets")
     }

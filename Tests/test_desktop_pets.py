@@ -40,6 +40,7 @@ POINTER = (KIT / "EndlessSessionPointer.swift").read_text(encoding="utf-8")
 GATEWAY = (KIT / "GatewayClient.swift").read_text(encoding="utf-8")
 ACTOR = (KIT / "GatewayClientActor.swift").read_text(encoding="utf-8")
 STATE = (KIT / "PetBalloonState.swift").read_text(encoding="utf-8")
+CHAT = (KIT / "PetChat.swift").read_text(encoding="utf-8")
 
 
 class TheWindowIsOnlyAnIcon(unittest.TestCase):
@@ -263,8 +264,11 @@ class WiredExactlyOnce(unittest.TestCase):
         self.assertIn('category: "pets"', BALLOON)
 
     def test_one_question_at_a_time(self):
-        self.assertIn(".disabled(!model.state.acceptsInput)", BALLOON)
-        self.assertIn("guard !trimmed.isEmpty, !isAsking else { return false }", STATE)
+        self.assertIn(".disabled(!model.acceptsInput)", BALLOON)
+        # One turn in flight per pet, and the cap is one number the model owns.
+        self.assertIn("var acceptsInput: Bool { !isAsking && !conversation.isFull }", BALLOON)
+        self.assertIn("guard acceptsInput else { return }", BALLOON)
+        self.assertIn("public static let maxMessages = 20", CHAT)
 
     def test_the_balloon_is_a_separate_window_beside_the_pet(self):
         self.assertIn("NSWindow.Level.floating.rawValue + 1", BALLOON)
@@ -273,15 +277,18 @@ class WiredExactlyOnce(unittest.TestCase):
         self.assertIn("pet: petRect", BALLOON,
                       "the placement is given the pet's frame, not a centre point: that frame is "
                       "the thing the bubble must not cover")
-        self.assertIn("PetCalloutMetrics.answerHeight(of: answer)", BALLOON,
-                      "the answer's height is measured before the bubble settles on its size")
+        self.assertIn("PetCalloutMetrics.transcriptHeight(of: model.conversation.messages)", BALLOON,
+                      "the thread's height is measured before the bubble settles on its size")
         self.assertIn("hosting.sizingOptions = [.preferredContentSize]", BALLOON,
                       "the window is still only as big as the view that fills it")
         self.assertIn("setString(text, forType: .string)", BALLOON)
         self.assertIn("event.keyCode == 53", BALLOON, "Escape dismisses even with the field focused")
 
     def test_an_answer_makes_the_pet_hop(self):
-        self.assertIn("model.onAnswer = { [weak pet] in pet?.model.celebrate() }", CONTROLLER)
+        # The hop is the pet's reaction to the bot writing, whether the balloon was open or not.
+        self.assertIn("pet.model.celebrate()", CONTROLLER)
+        bot_wrote = CONTROLLER.split("private func botWrote(botID: String) {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("pet.model.celebrate()", bot_wrote)
         self.assertIn(".onChange(of: pet.celebrations)", VIEW)
         self.assertIn("accessibilityDisplayShouldReduceMotion else { return }", VIEW,
                       "Reduce Motion takes the hop away; it does not resize it")
@@ -403,8 +410,10 @@ class AReplyWhileHeIsAwayHopsAndWaits(unittest.TestCase):
                       "the log says why it hopped")
 
     def test_the_balloon_opening_clears_the_badge(self):
-        open_balloon = CONTROLLER.split("private func openBalloon(botID: String) {", 1)[1]
-        self.assertIn("clearUnread(for: botID)", open_balloon)
+        open_balloon = CONTROLLER.split("private func openBalloon(botID: String, focus: Bool = true) {", 1)[1]
+        self.assertIn("if focus { clearUnread(for: botID) }", open_balloon,
+                      "a balloon he opened is the reading; one that opened itself for a bot's "
+                      "message is not a read of the bot's own chat")
         self.assertLess(open_balloon.index("clearUnread(for: botID)"),
                         open_balloon.index("if let existing = pet.balloon"),
                         "the clear must come before the re-present early return")
@@ -441,11 +450,22 @@ class AReplyWhileHeIsAwayHopsAndWaits(unittest.TestCase):
                       "the bubble he is reading is not a reply he needs telling about — the pet's "
                       "own ask lands as a message in the app's own count")
 
-    def test_the_balloon_never_opens_itself(self):
-        self.assertEqual(1, CONTROLLER.count("openBalloon(botID: botID)"),
-                         "one call site: the click")
+    def test_only_a_bot_message_opens_the_balloon_by_itself(self):
+        """Two ways in, and nothing else presents a balloon.
+
+        The owner changed his mind here: the balloon used to be click-only, and now a bot message
+        that lands while it is closed opens it. What must not change is the restraint — the unread
+        and hop path still presents nothing, and the reply opens it *without* focus.
+        """
+        self.assertEqual(2, CONTROLLER.count("openBalloon(botID: botID"),
+                         "the click and the reply — nothing else presents a balloon")
         click = CONTROLLER.split("private func clicked(botID: String) {", 1)[1].split("private func", 1)[0]
         self.assertIn("openBalloon(botID: botID)", click)
+        wrote = CONTROLLER.split("private func botWrote(botID: String) {", 1)[1].split("\n    }", 1)[0]
+        self.assertIn("guard pet.balloon == nil else { return }", wrote,
+                      "a balloon already showing the answer is not re-presented")
+        self.assertIn("openBalloon(botID: botID, focus: false)", wrote,
+                      "the reply opens it without taking the keyboard")
         unread = self._unread_section()
         self.assertNotIn("openBalloon", unread, "the unread path never presents a window")
         self.assertNotIn("present()", unread)
