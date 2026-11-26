@@ -22,6 +22,7 @@ AVATAR="Sources/HermeyUI/OpenBotAvatar"
 SOURCES=(
   Sources/HermeyUI/BotAvatarIdentity.swift
   "$AVATAR/BotAvatarDefinition.swift"
+  "$AVATAR/OpenBotAvatarGeometry.swift"
   Sources/HermeyUI/BotAvatarGeometry.swift
   Sources/HermeyUI/BotAvatarPalette.swift
   Sources/HermeyUI/BotAvatarShape.swift
