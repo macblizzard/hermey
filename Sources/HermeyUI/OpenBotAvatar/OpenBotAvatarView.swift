@@ -71,6 +71,10 @@ public struct OpenBotAvatarView: View {
     @State private var animator = OpenBotAvatarStateAnimator()
 
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    /// A person who has asked for less transparency gets the calm painted glass: no refraction at
+    /// all, and the same three legible layers a list row draws. Read here, decided in
+    /// `BotAvatarGlassRoute.decide`, so no surface chooses for itself.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
 
@@ -110,8 +114,13 @@ public struct OpenBotAvatarView: View {
         let resolvedColor = color.flatMap(OpenBotAvatarColor.color(hex:)) ?? OpenBotAvatarRenderer.defaultColor
         let seed = BotAvatarHash.shippedHash(definition.id)
         let surface = backdrop ?? .themed(dark: colorScheme != .light)
+        // **The decision**, once, from the surface: what draws this bot's glass — the Metal body or
+        // the painted material. Nothing below asks again; `frame` follows it and the renderer follows
+        // the pass it is given.
+        let route = BotAvatarGlassRoute.decide(material: material, side: Double(size),
+                                               reduceTransparency: reduceTransparency)
 
-        Group {
+        return Group {
             if let model = OpenBotAvatarModel.model(for: definition) {
                 TimelineView(.animation(minimumInterval: Self.frameInterval, paused: !moves)) { context in
                     let time = moves ? context.date.timeIntervalSinceReferenceDate : 0
@@ -122,18 +131,8 @@ public struct OpenBotAvatarView: View {
                     let pose = state.pose(mood: mood, time: time, seed: seed, reducedMotion: !moves,
                                           eyeOverride: eyeOverride, stateAge: step.stateAge,
                                           blend: step.blend)
-                    Canvas { context, canvasSize in
-                        OpenBotAvatarRenderer.draw(model,
-                                                   pose: pose,
-                                                   material: material,
-                                                   backdrop: surface,
-                                                   into: &context,
-                                                   size: canvasSize,
-                                                   color: resolvedColor,
-                                                   ink: Self.ink(for: resolvedColor),
-                                                   still: !moves,
-                                                   time: time)
-                    }
+                    frame(model: model, pose: pose, route: route, surface: surface,
+                          color: resolvedColor, still: !moves, time: time)
                 }
             } else {
                 // A definition the contract refuses draws nothing rather than something wrong. Every
@@ -145,6 +144,72 @@ public struct OpenBotAvatarView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label ?? definition.name)
         .accessibilityHidden(label == nil)
+    }
+
+    /// One frame, in the number of `Canvas` passes the route needs.
+    ///
+    /// `.canvas` is the drawing this view has always made: one pass, all of it. `.metal` is the same
+    /// frame split into three — the ribbons that pass behind the body, the body alone, and everything
+    /// over it — because `.layerEffect` shades every pixel of the layer it is applied to, and the
+    /// shader must not touch an eye, a ribbon or a mark. The body's pass is filled flat by the
+    /// renderer and replaced, pixel for pixel, by the fragment pass; the other two are the renderer's
+    /// own drawing, unchanged.
+    ///
+    /// The three passes are the shader path's whole cost: two extra `Canvas` draws per avatar, and
+    /// only on an app surface that is drawing a glass body at 24 pt or more. A body under a mark, a
+    /// still frame and a reduced-transparency surface all take `.canvas`, which is one.
+    @ViewBuilder
+    private func frame(model: OpenBotAvatarModel,
+                       pose: OpenBotAvatarPose,
+                       route: BotAvatarGlassRoute,
+                       surface: OpenBotAvatarBackdrop,
+                       color: Color,
+                       still: Bool,
+                       time: Double) -> some View {
+        switch route {
+        case .canvas:
+            Canvas { context, canvasSize in
+                OpenBotAvatarRenderer.draw(model,
+                                           pose: pose,
+                                           material: material,
+                                           backdrop: surface,
+                                           into: &context,
+                                           size: canvasSize,
+                                           color: color,
+                                           ink: Self.ink(for: color),
+                                           still: still,
+                                           time: time)
+            }
+        case .metal:
+            // The layer's own size: the `Canvas` fills this view's frame, so the shader's `position`
+            // space is exactly it — the numbers below are in the same points the drawing is in.
+            let layerSize = CGSize(width: size, height: size)
+            let face = OpenBotAvatarRenderer.bodyTransform(model, pose: pose, size: layerSize)
+            let glass = BotAvatarGlassSurface.make(model: model, pose: pose, size: layerSize,
+                                                   face: face, color: color, backdrop: surface,
+                                                   material: material)
+            ZStack {
+                Canvas { context, canvasSize in
+                    OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
+                                               backdrop: surface, into: &context, size: canvasSize,
+                                               color: color, ink: Self.ink(for: color),
+                                               still: still, time: time, pass: .behind, route: route)
+                }
+                Canvas { context, canvasSize in
+                    OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
+                                               backdrop: surface, into: &context, size: canvasSize,
+                                               color: color, ink: Self.ink(for: color),
+                                               still: still, time: time, pass: .body, route: route)
+                }
+                .layerEffect(glass.shader, maxSampleOffset: BotAvatarGlassShader.maxSampleOffset)
+                Canvas { context, canvasSize in
+                    OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
+                                               backdrop: surface, into: &context, size: canvasSize,
+                                               color: color, ink: Self.ink(for: color),
+                                               still: still, time: time, pass: .over, route: route)
+                }
+            }
+        }
     }
 
     /// The eye ink: near-black on every body except the very dark ones, where it would disappear.

@@ -38,10 +38,7 @@ enum OpenBotAvatarMaterialPaint {
 
         // The bot's own colour, calmed on `blocked` when the material says a state may do that.
         // No new colour inputs: the tint *is* the palette the bot already chose.
-        let raw = MaterialColor(tint)
-        let base = spec.desaturatesWhenBlocked && light.desaturate > 0
-            ? raw.desaturated(by: light.desaturate)
-            : raw
+        let base = bodyColor(spec, light: light, tint: tint)
 
         // 1 — halo: the silhouette in the tint, a little low, blurred, inside the box only.
         if plan.halo, let halo = spec.halo {
@@ -163,6 +160,20 @@ enum OpenBotAvatarMaterialPaint {
         if plan.texture, let texture = spec.texture {
             paintTexture(texture, in: &context, silhouette: silhouette, bounds: bounds, base: base)
         }
+    }
+
+    /// The body's colour for one frame: the bot's own, calmed when the material lets a state calm it.
+    ///
+    /// One rule, three readers — the six painted layers, the flat fill the glass shader is handed, and
+    /// the shader's own tint (`BotAvatarGlassSurface`) — so `blocked` desaturates the same 15 % on
+    /// every glass surface, whichever one draws it.
+    static func bodyColor(_ spec: BotAvatarMaterialSpec,
+                          light: OpenBotAvatarLight,
+                          tint: Color) -> MaterialColor {
+        let raw = MaterialColor(tint)
+        return spec.desaturatesWhenBlocked && light.desaturate > 0
+            ? raw.desaturated(by: light.desaturate)
+            : raw
     }
 
     /// The body's vertical gradient, from the material's own four numbers.

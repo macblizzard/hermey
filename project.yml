@@ -42,6 +42,12 @@ targets:
           - "Resources/novnc/**"
       - path: Apps/Shared/BrandAssets.xcassets
         buildPhase: resources
+      # The glass material's shader, compiled into this app's `default.metallib`. It is a *source*
+      # here and not in `Sources/HermeyUI` because a package target's shaders land in the package's
+      # resource bundle, and the renderer looks the fragment function up in the app's own library;
+      # and it is not in the Live Activity's sources because a widget process draws the painted
+      # material — the fallback — and has no business carrying a metallib it never loads.
+      - path: Apps/Shared/Glass
       # A folder reference, not a group: noVNC's ES modules import each other by relative path, so
       # the tree must land in the bundle with its shape intact.
       - path: Apps/HermesMac/Resources/novnc
@@ -141,6 +147,9 @@ targets:
       # came to show six logos while the Mac showed thirteen.
       - path: Apps/Shared/BrandAssets.xcassets
         buildPhase: resources
+      # The same one shader file as the Mac (see there): compiled into this app's `default.metallib`
+      # and deliberately absent from the Live Activity, which draws the painted glass.
+      - path: Apps/Shared/Glass
       # Same reason as the Mac: a folder reference keeps noVNC's relative module imports working.
       - path: Apps/HermesMobile/Resources/novnc
         type: folder
