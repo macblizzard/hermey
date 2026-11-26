@@ -1960,3 +1960,14 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   its own hue on top of what shows through, scaled by the backdrop's luminance: over the pane a face is a dark
   *coloured* glass (measured on the 200 pt render: a saturated terracotta body with black eyes at better than
   3:1), over a light page it stays bright and transmitting as before.
+
+## [0.1.687] — 2026-11-26
+
+### Changed
+- **Brighter faces, with a little glow.** The glass body is lit further on dark surfaces and carries a short
+  tinted halo plus a faint inner luminescence, so a face pops on the pane instead of sitting dark behind its rim.
+  The eyes keep their contrast floor; a light page looks as it did.
+
+### Fixed
+- **A preset changes the shape, not just the caption.** The editor's preview and the header now draw the draft's
+  own body, and the drawing cache is keyed by that body, so choosing Mug actually gives you a mug.
