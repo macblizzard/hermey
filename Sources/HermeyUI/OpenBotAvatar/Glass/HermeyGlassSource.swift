@@ -935,7 +935,7 @@ enum HermeyGlassSource {
             // wide, and the darkest thing on the page) and a short penumbra behind it. One soft
             // exponential was neither — it darkened too slowly to read as contact and too little to
             // anchor the body.
-            float tight = exp(-outside / max(0.75, foot * 1.5)) * smoothstep(0.0, 0.30, outside) * 0.72;
+            float tight = exp(-outside / max(0.70, foot * 1.4)) * smoothstep(0.0, 0.28, outside) * 0.80;
             float penumbra = exp(-outside / max(2.0, foot * 4.0)) * smoothstep(0.0, 0.6, outside) * 0.24;
             float shadowAlpha = tight + penumbra;
             // Where the wall's light lands: an arc *parallel to the silhouette* at the solved
@@ -972,7 +972,8 @@ enum HermeyGlassSource {
             // footprint out to the arc. It is what binds the two together — without it the page under
             // the body is pure black and the caustic reads as a detached neon line, because on a dark
             // page a shadow is invisible while the light that caused it is not.
-            float nearPool = exp(-outside / max(1.1, landing * 0.60)) * below * smoothstep(0.0, 0.4, outside) * 0.34;
+            float nearPool = exp(-outside / max(1.1, landing * 0.60)) * below
+                           * smoothstep(1.1, 3.2, outside) * 0.34;
             // The fold's dark inner edge: the arc gathers light on one side and starves the other, and
             // that contrast is what makes a caustic a curve rather than a glow.
             float foldDark = exp(-pow((outside - max(landing - arcWidth * 1.55, 0.4))
