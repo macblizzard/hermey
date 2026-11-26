@@ -1951,3 +1951,12 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **The bot settings header draws the face.** It drew a stale snapshot (blank for a bot with no classic face);
   it now shows the bot's own avatar, and while the Avatar tab is open it follows the draft as you pick.
 - **The small face on the working line is 15 % larger**, hung off the text baseline so the row does not shift.
+
+## [0.1.686] — 2026-11-26
+
+### Fixed
+- **No more black faces.** 0.1.685 let the glass transmit whatever it sat on, so over the app's near-black
+  pane the body became the background — black — and the eyes sat at 1.1:1 against it. The material now carries
+  its own hue on top of what shows through, scaled by the backdrop's luminance: over the pane a face is a dark
+  *coloured* glass (measured on the 200 pt render: a saturated terracotta body with black eyes at better than
+  3:1), over a light page it stays bright and transmitting as before.
