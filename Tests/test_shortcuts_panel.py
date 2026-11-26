@@ -238,6 +238,12 @@ class OneMenu(unittest.TestCase):
 
 
 class OneDocument(unittest.TestCase):
+    def test_the_document_is_decodable_at_all(self) -> None:
+        # It has hand-written `init(from:)`/`encode(to:)`; without the conformance those are just
+        # two methods and `JSONDecoder().decode(ShortcutDocument.self, …)` does not compile.
+        document = read(DOCUMENT)
+        self.assertIn("public struct ShortcutDocument: Equatable, Sendable, Codable {", document)
+
     def test_the_store_is_one_key_of_overrides(self) -> None:
         document = read(DOCUMENT)
         self.assertIn('public static let defaultsKey = "hermey.shortcuts"', document)

@@ -59,7 +59,7 @@ public enum ShortcutBinding: Equatable, Sendable, Codable {
 /// this one has never heard of, and a hand-edited file can contain a key that is not a key. Neither
 /// may cost the owner every other binding, so decoding is per entry: a row that does not parse is
 /// discarded and the rest of the document stands. ``LenientBinding`` is where that happens.
-public struct ShortcutDocument: Equatable, Sendable {
+public struct ShortcutDocument: Equatable, Sendable, Codable {
 
     /// The schema version. Bumped only when the *document* changes shape, never when an action is
     /// added: overrides are keyed by id, so adding rows is not a migration.
