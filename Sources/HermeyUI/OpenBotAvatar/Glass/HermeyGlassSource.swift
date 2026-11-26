@@ -943,7 +943,7 @@ enum HermeyGlassSource {
             // the fold, where the mapping from the wall to the page turns over; its outer edge is a
             // short falloff, because the focus has a width.
             float landing = causticLanding(rxy, rz, flatZ);
-            float arcWidth = max(0.45, landing * 0.055);
+            float arcWidth = max(0.60, landing * 0.055);
             float arc = exp(-pow((outside - landing) / arcWidth, 2.0));
             // Which way this part of the contour faces, from the field itself: the gradient of
             // `outside` is the outward normal of the silhouette, so its downward component is how much
@@ -960,7 +960,7 @@ enum HermeyGlassSource {
             // A caustic has a *hard* inner edge and a short outer one: inside the focal line the wall's
             // light has not converged yet, past it the focus has a width. Cutting the inner side and
             // letting only the outer Gaussian through is what makes it a line instead of a halo.
-            arc *= smoothstep(landing - arcWidth * 1.7, landing - arcWidth * 0.15, outside);
+            arc *= smoothstep(landing - arcWidth * 2.4, landing - arcWidth * 0.60, outside);
             // How bright: the wall's own transmission. A short path through amber is nearly white, so
             // the arc is warm; the longer the wall, the more of it the tint eats. Same absorption as
             // the body, at the wall's own path — no separate colour for the light on the page.
