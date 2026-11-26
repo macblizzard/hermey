@@ -1915,3 +1915,21 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 - **Thicker glass now behaves like it.** A bounce term follows the ray's own optical path, the wall junction
   carries a real refracted line instead of a streak, and the caustic's landing, width and brightness come from
   the body's measured thickness — the thin flanks and corners cast hotter and tighter than the belly.
+
+## [0.1.684] — 2026-11-26
+
+### Added
+- **Settings ▸ Shortcuts.** Every keyboard action in one list — Navigation, Conversation, Message, Window —
+  with a recorder, a per-row reset and Restore Defaults. The Mac menus read the same list, so a rebound key
+  takes effect without a relaunch. A combination another action already owns is refused and named; macOS's
+  own combos (⌘Q, ⌘W, ⌘,) cannot be taken; ⌫ clears a row.
+- **Message Actions… (⌘⇧M)** opens the row menu from the keyboard for the message Tab is on.
+
+### Changed
+- **The ⋯ under every message is gone.** The right-click menu on the Mac and long-press on the phone carry
+  every verb; rows are tab stops with a quiet hairline instead of a focus ring.
+
+### Fixed
+- **The bot settings header draws the face.** It drew a stale snapshot (blank for a bot with no classic face);
+  it now shows the bot's own avatar, and while the Avatar tab is open it follows the draft as you pick.
+- **The small face on the working line is 15 % larger**, hung off the text baseline so the row does not shift.

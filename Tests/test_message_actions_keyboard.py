@@ -125,13 +125,17 @@ class TheKeyboardKeepsEveryVerb(unittest.TestCase):
         app = without_comments(self.APP)
         self.assertIn('Button("Message Actions…")', app)
         self.assertIn("MessageMenuDirectory.requestActions()", app)
-        self.assertIn('.keyboardShortcut("m", modifiers: [.command, .shift])', app)
+        # The key comes from the one registry Settings → Shortcuts edits, not spelled here.
+        self.assertIn('.hermeyShortcut("message.actions", using: shortcuts)', app)
+        registry = read(ROOT / "Sources" / "HermesKit" / "ShortcutRegistry.swift")
+        self.assertIn('id: "message.actions"', registry)
+        self.assertIn('defaultCombo: ShortcutCombo("m", .command, .shift)', registry)
         # In the Conversation menu, next to the other keys a reader would look for.
         menu = between(app, 'CommandMenu("Conversation")', "Menu(\"Switch Bot\")")
         self.assertIn('Button("Message Actions…")', menu)
         self.assertIn('Button("Find in Conversation…")', menu)
         # Never `.disabled`: a disabled menu item swallows its key equivalent for the rest of the run.
-        self.assertNotIn('.keyboardShortcut("m", modifiers: [.command, .shift])\n            .disabled',
+        self.assertNotIn('.hermeyShortcut("message.actions", using: shortcuts)\n            .disabled',
                          menu)
 
     def test_the_command_and_the_transcript_agree_on_one_notification(self) -> None:

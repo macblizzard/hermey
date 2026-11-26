@@ -388,6 +388,13 @@ public enum ShortcutRegistry {
     /// these are the keyboard's way into them, not a second menu.
     private static let message: [ShortcutAction] = [
         ShortcutAction(
+            id: "message.actions",
+            title: "Message Actions…",
+            detail: "Opens the row menu the right-click opens, for the message the keyboard is on.",
+            group: .message,
+            defaultCombo: ShortcutCombo("m", .command, .shift),
+            menuItemTitles: ["Message Actions…"]),
+        ShortcutAction(
             id: "message.copyLast",
             title: "Copy Last Message",
             detail: "The newest message in the conversation, onto the pasteboard.",

@@ -261,7 +261,10 @@ class TheKeyboardCanReachTheMenu(unittest.TestCase):
         self.assertNotIn("keyboardStop", self.ROW)
         # The keyboard's door, in the menu bar, with the key the row's own comment promised.
         self.assertIn('Button("Message Actions…")', self.APP)
-        self.assertIn('.keyboardShortcut("m", modifiers: [.command, .shift])', self.APP)
+        # The key lives in the registry (Settings → Shortcuts edits it), not in the menu source.
+        self.assertIn('.hermeyShortcut("message.actions", using: shortcuts)', self.APP)
+        registry = read(ROOT / "Sources" / "HermesKit" / "ShortcutRegistry.swift")
+        self.assertIn('id: "message.actions"', registry)
         self.assertIn("MessageMenuDirectory.requestActions()", self.APP)
         # And the transcript answers it for the row the keyboard is on.
         self.assertIn("NotificationCenter.default.publisher(for: .messageActionsRequested)",

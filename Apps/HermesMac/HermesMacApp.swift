@@ -298,7 +298,7 @@ struct WorkspaceCommands: Commands {
             Button("Message Actions…") {
                 MessageMenuDirectory.requestActions()
             }
-            .keyboardShortcut("m", modifiers: [.command, .shift])
+            .hermeyShortcut("message.actions", using: shortcuts)
 
             Divider()
 
