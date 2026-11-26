@@ -452,9 +452,15 @@ class SolidIsTheDefaultAndUntouched(unittest.TestCase):
         renderer = read(RENDERER)
         flat = renderer.split("case .flat:")[1].split("case .ramp:")[0]
         self.assertIn("for slice in drawnSlices(volume: volume, basis: basis)", flat)
-        self.assertIn("bodyContext.fill(slice.path,", flat)
-        self.assertIn("with: .color(color),", flat)
-        self.assertIn("FillStyle(eoFill: slice.evenOdd, antialiased: true)", flat)
+        self.assertIn(".slice(path: slice.path,", flat)
+        # Since 0.5.0 the fill lives behind the material's one entry point (`BotAvatarMaterialRender`,
+        # which draws the body and every part of a mark), so the same call is asserted where it now
+        # is: each cross-section filled flat in the body's colour, even-odd where the contour nests.
+        self.assertIn("BotAvatarMaterialRender.render(shapes,", flat)
+        entry = read(PAINT).split("enum BotAvatarMaterialRender {")[1]
+        self.assertIn("case .slice(let path, let transform, let evenOdd):", entry)
+        self.assertIn("layer.fill(path, with: .color(tint),", entry)
+        self.assertIn("style: FillStyle(eoFill: evenOdd, antialiased: true))", entry)
         # The renderer's default is still the solid face: a caller that says nothing gets 0.1.648.
         self.assertIn("material: BotAvatarMaterial = .solid", renderer)
 

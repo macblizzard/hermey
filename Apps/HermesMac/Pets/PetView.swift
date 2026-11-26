@@ -249,7 +249,7 @@ struct PetView: View {
                 OpenBotAvatarView(definition: avatar.definition,
                                   color: avatar.color,
                                   material: avatar.material,
-                                  state: pet.state,
+                                  state: OpenBotAvatarStateChoice(pet.state),
                                   size: side,
                                   // The pet floats over a wallpaper nobody knows, so its rim is
                                   // always two-tone and its halo blur is capped to the window's

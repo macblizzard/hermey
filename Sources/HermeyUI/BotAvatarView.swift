@@ -236,7 +236,7 @@ public struct BotAvatarView: View {
                                            minimumSize: animatingFrom)
         let awake = isAwake
         let traits = BotAvatarMotionTraits(identity: resolved.identity)
-        let state = OpenBotAvatarState(activity: activity)
+        let state = OpenBotAvatarStateChoice(activity: activity)
 
         return TimelineView(.animation(minimumInterval: awake ? BotAvatarWake.frameInterval
                                                               : BotAvatarMotion.frameInterval(for: activity),

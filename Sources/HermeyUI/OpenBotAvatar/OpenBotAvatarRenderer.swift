@@ -13,18 +13,23 @@ import AppKit
 /// The body is painted as the stack of cross-sections the volume inferred, back to front, each plane
 /// projected through the view rotation: that is what gives the silhouette depth without a 3-D model.
 /// The eyes are painted on the tangent plane under their own position, so they turn and tip with the
-/// face instead of floating above it. Around the body, and only behind it, sits the state's ribbons.
+/// face instead of floating above it. Around the body sit the state's ribbons: the pieces that pass
+/// behind it, and the pieces that pass in front of it along the top.
 ///
-/// ## One body, one pair of eyes, no marks
+/// ## One body, one pair of eyes, no marks in the eight
 ///
-/// Every state is drawn at the one resting size with the one pair of eyes: the eyes are drawn once
-/// per frame, after the body, unconditionally. There is no mark and no give-way gate any more —
-/// upstream's `blocked` handed the body and the face over to an exclamation mark, which at 24 pt
-/// read as a smaller, eyeless bot in exactly the state that most needed the bot to still look like
-/// itself. A state now says what it is doing with its motion (`OpenBotAvatarState`), and the only
-/// things that may change how an eye looks are the mood's arc and the shared frame's blink and
-/// squint. Nothing is drawn over the face: the ribbons are drawn behind the body, the catchlight is
-/// inside the eye it belongs to, and there is nothing else.
+/// Every built-in state is drawn at the one resting size with the one pair of eyes: the eyes are
+/// drawn once per frame, after the body, unconditionally. Upstream's `blocked` handed the body and the
+/// face over to an exclamation mark, which at 24 pt read as a smaller, eyeless bot in exactly the
+/// state that most needed the bot to still look like itself; `thinking` did the same with three dots.
+/// So no built-in state carries a mark, and nothing here shrinks the body for one: that is a
+/// deliberate difference from upstream, and `Tests/test_open_bot_avatar.py` refuses it coming back.
+///
+/// The machinery still exists, because a host may define a state of its own (`AvatarStateDefinition`)
+/// and ask it to give way to a mark. Then the pose carries `marks`, the body shrinks as they grow
+/// (upstream's `bodyScale`), and the material draws them — one entry point, `BotAvatarMaterialRender`,
+/// for the body and every part of every mark, so a solid bot's marks are solid and a glass bot's are
+/// glass. A blend between two such definitions can carry two marks at once, each part way in.
 ///
 /// ## Materials
 ///
@@ -38,9 +43,10 @@ import AppKit
 ///
 /// Every path this draws is built once, when the definition is first seen (`OpenBotAvatarModel`), and
 /// held in the definition's own coordinates: per frame the renderer only mutates the graphics
-/// context's transform and fills those paths. The two exceptions are the eyes, whose *shape* depends
-/// on the blink and the state — two small paths per frame, which is the whole animation budget.
-/// Nothing here reads a clock, allocates a bitmap or starts a timer; the view feeds it a time.
+/// context's transform and fills those paths. The exceptions are the eyes, whose *shape* depends on
+/// the blink and the state, and the ribbons, whose outline moves with the turn — small paths either
+/// way, and the whole animation budget. Nothing here reads a clock, allocates a bitmap or starts a
+/// timer; the view feeds it a time.
 public enum OpenBotAvatarRenderer {
 
     /// The default body colour: the app's own forge orange, the same ink the reference uses.
@@ -54,6 +60,12 @@ public enum OpenBotAvatarRenderer {
     /// looked up in `BotAvatarMaterialSpec.all` and the drawing follows the spec; a spec whose fill
     /// is `.flat` takes the slice-stack path below, untouched since 0.1.648, which is what keeps
     /// Solid exactly the face a bot already had.
+    ///
+    /// `still` freezes the things that would otherwise move on their own inside a frame that is
+    /// holding still (the marks of a definition of a host's own, which a reduced-motion surface must
+    /// hold at rest). The pose has already dropped the ribbons and the celebration's turn by then;
+    /// this is the one part the pose cannot express. `time` is the animation clock the marks are laid
+    /// out on — the same clock the pose was computed from, so a mark and its body agree.
     public static func draw(_ model: OpenBotAvatarModel,
                             pose: OpenBotAvatarPose,
                             material: BotAvatarMaterial = .solid,
@@ -61,7 +73,9 @@ public enum OpenBotAvatarRenderer {
                             into context: inout GraphicsContext,
                             size: CGSize,
                             color: Color,
-                            ink: Color) {
+                            ink: Color,
+                            still: Bool = false,
+                            time: Double = 0) {
         let volume = model.volume
         let side = min(size.width, size.height)
         guard side > 0 else { return }
@@ -78,29 +92,51 @@ public enum OpenBotAvatarRenderer {
         let pivot = volume.pivot
         let base = CGPoint(x: volume.box.center.x, y: volume.box.maxY)
         let root = rootTransform(pose: pose, base: base)
+        // How much of its size the body keeps while it gives way to its marks: 1 unless a pose
+        // carries a mark, which none of the eight built-in states ever does (see `bodyScale`).
+        let bodyScale = OpenBotAvatarMarks.bodyScale(pose.marks)
+        let shrink = bodyScale < 1 ? scaleAbout(pivot: pivot, by: bodyScale) : CGAffineTransform.identity
+        let seed = BotAvatarHash.shippedHash(model.definition.id)
 
-        // Ribbons sit behind the body: a halo that sweeps round it. Drawing them behind (rather than
-        // split in front and behind) keeps them off the face at every angle, which is the one place
-        // they would read as scribble at 24 pt.
-        if pose.ribbons > 0.01 {
-            drawRibbons(model: model, pose: pose, into: &context, viewport: viewport, root: root,
-                        color: color, pivot: pivot)
-        }
+        // Ribbons behind the body: they stay where the turn carried them while the body hops, and
+        // they pass behind it along the bottom and in front of it along the top of their hoop.
+        let rim = OpenBotAvatarRibbons.follow(pose.cage >= 0.5 ? model.ribbonRims.cage
+                                                               : model.ribbonRims.work,
+                                              lift: pose.lift, sx: pose.sx, sy: pose.sy, box: volume.box)
+        let ribbons = pose.ribbons > 0.01
+            ? OpenBotAvatarRibbons.pieces(box: volume.box, presence: pose.ribbons, seed: seed,
+                                          sweep: pose.sweep, cage: pose.cage, rim: rim)
+            : []
+        // Upstream grows its canvas to whatever the ribbons reach (`avatarExtent`); our canvas is the
+        // view's own frame, so a band or a cage that would reach past the 100-unit box is fitted
+        // inside it instead of being cut off by the edge. Counts, angles, easings and proportions
+        // among the ribbons are upstream's; only their distance from the body gives way, and only on
+        // a body wide enough to need it.
+        let fit = ribbonFit(rim)
+        draw(ribbons: ribbons.filter { !$0.front }, into: &context, viewport: viewport, color: color,
+             fit: fit, about: rim)
 
         switch spec.fill {
         case .flat:
             // The 0.1.648 body: the inferred volume's cross-sections, back to front, each filled
             // flat. Nothing below this line changed when materials arrived.
-            var bodyContext = context
-            for slice in drawnSlices(volume: volume, basis: basis) {
-                let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
-                bodyContext.transform = plane
-                    .concatenating(root)
-                    .concatenating(viewport)
-                bodyContext.fill(slice.path,
-                                 with: .color(color),
-                                 style: FillStyle(eoFill: slice.evenOdd, antialiased: true))
+            var shapes: [BotAvatarMaterialRender.Shape] = []
+            if bodyScale > 0.001 {
+                for slice in drawnSlices(volume: volume, basis: basis) {
+                    let plane = planeTransform(basis: basis, z: slice.z, pivot: pivot)
+                    shapes.append(.slice(path: slice.path,
+                                         transform: shrink.concatenating(plane)
+                                             .concatenating(root)
+                                             .concatenating(viewport),
+                                         evenOdd: slice.evenOdd))
+                }
             }
+            var bodyContext = context
+            BotAvatarMaterialRender.render(shapes, spec: spec, plan: plan, light: pose.light,
+                                           backdrop: backdrop, tint: color, side: side,
+                                           box: CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
+                                                       width: side, height: side),
+                                           into: &bodyContext)
         case .ramp:
             // One silhouette, painted from the material's spec. The front plane (z = 0) is the
             // outline the slice stack draws its core from, so the shape is the same one Solid
@@ -110,20 +146,31 @@ public enum OpenBotAvatarRenderer {
                 .concatenating(viewport)
             let box = CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
                              width: side, height: side)
-            OpenBotAvatarMaterialPaint.paint(spec,
-                                             light: pose.light,
-                                             backdrop: backdrop,
-                                             silhouette: model.silhouette.applying(face),
-                                             tint: color,
-                                             side: side,
-                                             box: box,
-                                             plan: plan,
-                                             into: &context)
+            BotAvatarMaterialRender.render([.silhouette(bodyScale > 0.001 ? model.silhouette.applying(face) : Path())],
+                                           spec: spec, plan: plan, light: pose.light, backdrop: backdrop,
+                                           tint: color, side: side, box: box, into: &context)
         }
         // The eyes ride the surface, so they are drawn over the body: one pair, once per frame, for
         // every state — there is no gate here that a state could reach to take its face away.
-        drawEyes(model: model, pose: pose, basis: basis, into: &context, viewport: viewport,
-                 root: root, ink: ink, pivot: pivot, catchlight: plan.catchlight)
+        if bodyScale > 0.001 {
+            drawEyes(model: model, pose: pose, basis: basis, into: &context, viewport: viewport,
+                     root: root, ink: ink, pivot: pivot, catchlight: plan.catchlight,
+                     shrink: shrink)
+        }
+
+        // The pieces of ribbon that pass in front of the body along the top of their hoop, then the
+        // marks — both over the face, as upstream paints them (`render.ts` `flatFrame`: ribbons
+        // behind, body, ribbons in front, marks last). For the eight built-in states both lists are
+        // empty, and both calls draw nothing.
+        draw(ribbons: ribbons.filter { $0.front }, into: &context, viewport: viewport, color: color,
+             fit: fit, about: rim)
+        BotAvatarMaterialRender.render(markShapes(pose.marks, model: model, seed: seed, still: still,
+                                                  time: time, transform: viewport),
+                                       spec: spec, plan: plan, light: pose.light, backdrop: backdrop,
+                                       tint: color, side: side,
+                                       box: CGRect(x: (size.width - side) / 2, y: (size.height - side) / 2,
+                                                   width: side, height: side),
+                                       into: &context)
     }
 
     // MARK: - View maths
@@ -169,6 +216,14 @@ public enum OpenBotAvatarRenderer {
             .concatenating(CGAffineTransform(translationX: 0, y: CGFloat(pose.lift)))
     }
 
+    /// A scale of `by` about `pivot`, in the body's own coordinates: how the body shrinks toward its
+    /// centre as it gives way to a mark (upstream's `shrink`, `render.ts` `flatFrame`).
+    static func scaleAbout(pivot: OpenBotAvatarGeometry.Point, by scale: Double) -> CGAffineTransform {
+        CGAffineTransform(translationX: -pivot.x, y: -pivot.y)
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(CGAffineTransform(translationX: pivot.x, y: pivot.y))
+    }
+
     /// The slices this view can show, back to front.
     ///
     /// A contour slice behind the core at rest adds nothing to the silhouette, and at small yaw it
@@ -192,9 +247,11 @@ public enum OpenBotAvatarRenderer {
 
     /// One pair of eyes, on the tangent plane under each eye's own position.
     ///
-    /// One chain, one shape per eye: the mood's arc or the ordinary pill. There is no third shape
-    /// and no give-way transform — the body is always the resting body, so an eye can never be
-    /// drawn at a size that does not belong to it.
+    /// One chain, one shape per eye. The plain pill and the plain arc are drawn as they always were —
+    /// they are exact, and every built-in state is exactly one of them. Every look in between (a
+    /// blend of the two, or a definition that asked for the slit) is one filled outline, morphed point
+    /// by point, so a change of mood or state moves the eyes from one shape to the next instead of
+    /// cutting inside a blink (`OpenBotAvatarEyes`, upstream's `eyes.ts`).
     static func drawEyes(model: OpenBotAvatarModel,
                          pose: OpenBotAvatarPose,
                          basis: ViewBasis,
@@ -203,7 +260,8 @@ public enum OpenBotAvatarRenderer {
                          root: CGAffineTransform,
                          ink: Color,
                          pivot: OpenBotAvatarGeometry.Point,
-                         catchlight: Bool = false) {
+                         catchlight: Bool = false,
+                         shrink: CGAffineTransform = .identity) {
         guard basis.facing > 0.05 else { return }
         let eyes = model.definition.eyes
         let scale = model.volume.eyeScale
@@ -214,12 +272,17 @@ public enum OpenBotAvatarRenderer {
         let centers = OpenBotAvatarGeometry.eyeCenters(eyes)
         let gazeX = max(-1, min(1, pose.gazeX)) * OpenBotAvatarGeometry.gazeX * scale
         let gazeY = max(-1, min(1, pose.gazeY)) * OpenBotAvatarGeometry.gazeY * scale
+        // What the mood and the state asked the eye's shape to be, as numbers that blend.
+        let look = OpenBotAvatarEyeLook(arc: pose.arch, slit: pose.slit)
+        let plain = OpenBotAvatarEyes.plain(look)
 
         for (index, center) in centers.enumerated() {
             let plane = model.volume.eyePlanes.indices.contains(index) ? model.volume.eyePlanes[index] : .init(z: 0, dzdx: 0, dzdy: 0)
             let z = plane.z + gazeX * plane.dzdx + gazeY * plane.dzdy
             let eyePoint = OpenBotAvatarGeometry.Point(center.x + gazeX, center.y + gazeY)
             let hip = OpenBotAvatarGeometry.Point(center.x, center.y + shift)
+            let spot = OpenBotAvatarEyes.Spot(x: eyePoint.x, y: eyePoint.y,
+                                              w: width, h: height, open: open, shift: shift)
 
             var layer = context
             var transform = planeTransform(basis: basis, z: z, pivot: pivot)
@@ -229,30 +292,34 @@ public enum OpenBotAvatarRenderer {
             transform.c += CGFloat(basis.sinYaw * plane.dzdy)
             transform.d -= CGFloat(basis.cosYaw * basis.sinPitch * plane.dzdy)
             // The eye's own plane, then the body's motion, then the view — the same chain the body
-            // takes, so an eye is always drawn on the body it belongs to.
-            layer.transform = transform
+            // takes, so an eye is always drawn on the body it belongs to. The body's give-way to a
+            // mark is inside that chain, so the eyes shrink with it.
+            layer.transform = shrink
+                .concatenating(transform)
                 .concatenating(root)
                 .concatenating(viewport)
 
-            if pose.arch >= 0.5 {
-                // The happy arc: a quadratic stroked with round caps, as upstream draws it.
-                let halfWidth = width * 0.72
-                let baseY = eyePoint.y + height * 0.10
-                var arc = Path()
-                arc.move(to: CGPoint(x: eyePoint.x - halfWidth, y: baseY))
-                arc.addQuadCurve(to: CGPoint(x: eyePoint.x + halfWidth, y: baseY),
-                                 control: CGPoint(x: eyePoint.x, y: eyePoint.y - height * 0.42))
-                layer.stroke(arc, with: .color(ink),
-                             style: StrokeStyle(lineWidth: CGFloat(width * 0.6), lineCap: .round))
+            if let plain {
+                switch plain {
+                case .arc:
+                    // The happy arc: a quadratic stroked with round caps, as upstream draws it, at
+                    // the fractions the validator keeps room for (`HAPPY_ARC`).
+                    layer.stroke(OpenBotAvatarEyes.arcPath(spot), with: .color(ink),
+                                 style: StrokeStyle(lineWidth: CGFloat(OpenBotAvatarEyes.arcStroke(spot)),
+                                                    lineCap: .round))
+                case .pill:
+                    let rect = CGRect(x: hip.x - width / 2, y: hip.y - open / 2, width: width, height: open)
+                    let pill = Path(roundedRect: rect, cornerRadius: min(width, open) / 2)
+                    layer.fill(pill, with: .color(ink))
+                }
             } else {
-                let rect = CGRect(x: hip.x - width / 2, y: hip.y - open / 2, width: width, height: open)
-                let pill = Path(roundedRect: rect, cornerRadius: min(width, open) / 2)
-                layer.fill(pill, with: .color(ink))
+                // Every look in between: one filled outline, morphed point by point.
+                layer.fill(OpenBotAvatarEyes.eyePath(look, spot: spot), with: .color(ink))
             }
 
             // The one reflection the spec allows on the eye, and only above 64 pt: a 1 pt dot at
             // 30 % white, in the pupil's upper left. Below that size it is mud, so it is not drawn.
-            if catchlight {
+            if catchlight, plain != nil {
                 // A point in the eye's own units: the layer's scale is how many points one unit is,
                 // so a 1 pt dot is `0.5 / pointsPerUnit` units in radius.
                 let pointsPerUnit = max(0.0001, (abs(layer.transform.a) * abs(layer.transform.d)).squareRoot())
@@ -265,33 +332,116 @@ public enum OpenBotAvatarRenderer {
         }
     }
 
+    // MARK: - Marks
+
+    /// The parts of the pose's marks, placed on the body and handed to the material.
+    ///
+    /// A mark is drawn *by the material*, not by a second painter — glass draws them in glass, a
+    /// solid body in its own flat tint, through the one entry point `BotAvatarMaterialRender.render`.
+    /// Marks stay put while the body hops and turns: upstream paints them with the root's motion
+    /// undone (`fixed = invert(root)`, `render.ts` `flatFrame`), and the ribbons the same way, so only
+    /// the viewport places them — a cage that hopped with the body would not be a cage. An empty
+    /// list — which is every built-in state — draws nothing.
+    static func markShapes(_ marks: [PoseMark],
+                           model: OpenBotAvatarModel,
+                           seed: UInt32,
+                           still: Bool,
+                           time: Double,
+                           transform: CGAffineTransform) -> [BotAvatarMaterialRender.Shape] {
+        OpenBotAvatarMarks.placed(marks,
+                                  in: model.volume.box,
+                                  seed: seed,
+                                  time: time,
+                                  still: still)
+            .map { part in
+                // Scale, move to the part's place in the mark, then turn about the mark's centre —
+                // upstream's `about(cx, cy, turn) · translate(x, y) · scale` (`render.ts`
+                // `effectsOf`).
+                let turn = part.turn
+                let cosTurn = cos(turn), sinTurn = sin(turn)
+                let aboutCentre = CGAffineTransform(
+                    a: CGFloat(cosTurn), b: CGFloat(sinTurn),
+                    c: CGFloat(-sinTurn), d: CGFloat(cosTurn),
+                    tx: CGFloat(part.x - cosTurn * part.x + sinTurn * part.y),
+                    ty: CGFloat(part.y - sinTurn * part.x - cosTurn * part.y)
+                )
+                let placed = CGAffineTransform(scaleX: CGFloat(part.scale), y: CGFloat(part.scale))
+                    .concatenating(CGAffineTransform(translationX: CGFloat(part.x), y: CGFloat(part.y)))
+                    .concatenating(aboutCentre)
+                return BotAvatarMaterialRender.Shape.mark(path: part.path,
+                                                          transform: placed.concatenating(transform),
+                                                          round: part.round)
+            }
+    }
+
     // MARK: - Ribbons
 
-    static func drawRibbons(model: OpenBotAvatarModel,
-                            pose: OpenBotAvatarPose,
-                            into context: inout GraphicsContext,
-                            viewport: CGAffineTransform,
-                            root: CGAffineTransform,
-                            color: Color,
-                            pivot: OpenBotAvatarGeometry.Point) {
-        let radiusX = model.volume.box.width / 2 + 6
-        let radiusY = model.volume.box.height / 2 + 5
-        let presence = max(0, min(1, pose.ribbons))
-        for index in 0..<3 {
+    /// How much the ribbons are drawn down to sit inside the 100-unit box, 1 when they already do.
+    ///
+    /// Upstream grows its canvas to whatever the ribbons reach (`avatarExtent`, and `fitSquare` laying
+    /// the bitmap over it), so its cage can stand well off the body and simply overflow the element.
+    /// Our canvas *is* the element's frame and clips. So a band that would reach past the box is
+    /// fitted about the hoops' centre instead of being cut by the edge — and never further than the
+    /// point where its inner ring touches the body, so a cage can wrap the bot but can never be drawn
+    /// through it. Counts, angles, easings and the proportions among the ribbons are upstream's; what
+    /// gives way on a body with no room round it is how far they stand off it.
+    ///
+    /// The farthest any ribbon reaches is the outermost ring (`OpenBotAvatarRibbons.reach`) plus half a
+    /// ribbon's width, from the centre. `50` keeps a hair of margin inside the box, so the outermost
+    /// ribbon's edge is not on the frame's own edge where antialiasing would trim it.
+    static func ribbonFit(_ rim: OpenBotAvatarRibbons.Rim) -> Double {
+        let reach = OpenBotAvatarRibbons.reach(rimMax: rim.reach)
+        guard reach.radius > 0 else { return 1 }
+        let farthest = max(max(rim.cx, 100 - rim.cx), max(rim.cy, 100 - rim.cy))
+        let extent = farthest + reach.radius + reach.band
+        guard extent > 50 else { return 1 }
+        // The cage's inner ring stands `rimMargin` outside the body: no fit may put it inside that.
+        let floor = (rim.reach + OpenBotAvatarRibbons.rimMargin) / reach.radius
+        return min(1, max(floor, 50 / extent))
+    }
+
+    /// The ribbon pieces, as filled outlines with a gradient along each one: lighter at the tail,
+    /// darker at the head, in the body's own colour.
+    ///
+    /// Upstream gives each ribbon a hue from an OKLCH ramp of the body's colour (`render.ts`
+    /// `ribbonPalette`); mixing toward white and black in sRGB is that read with a shorter table, and
+    /// at 26 pt it is the same "shades of the body's own colour" the reference has.
+    static func draw(ribbons: [OpenBotAvatarRibbons.Piece],
+                     into context: inout GraphicsContext,
+                     viewport: CGAffineTransform,
+                     color: Color,
+                     fit: Double = 1,
+                     about rim: OpenBotAvatarRibbons.Rim? = nil) {
+        guard !ribbons.isEmpty else { return }
+        let base = MaterialColor(color)
+        // The fit is about the hoops' centre, so the band keeps its shape and only its reach changes.
+        let scale: CGAffineTransform
+        if fit < 1, let rim {
+            scale = CGAffineTransform(translationX: CGFloat(-rim.cx), y: CGFloat(-rim.cy))
+                .concatenating(CGAffineTransform(scaleX: CGFloat(fit), y: CGFloat(fit)))
+                .concatenating(CGAffineTransform(translationX: CGFloat(rim.cx), y: CGFloat(rim.cy)))
+        } else {
+            scale = .identity
+        }
+        for piece in ribbons {
             var layer = context
-            let turn = pose.sweep + Double(index) * 2 * .pi / 3
-            // Unit circle → the body's ellipse → turned about the pivot → the body's own motion.
-            let transform = CGAffineTransform(scaleX: CGFloat(radiusX), y: CGFloat(radiusY))
-                .concatenating(CGAffineTransform(rotationAngle: CGFloat(turn)))
-                .concatenating(CGAffineTransform(translationX: CGFloat(pivot.x), y: CGFloat(pivot.y)))
-                .concatenating(root)
+            layer.transform = scale
                 .concatenating(viewport)
-            layer.transform = transform
-            // A third of the hoop, drawn at unit radius and stretched by the transform above.
-            layer.stroke(model.ribbonArc,
-                         with: .color(color.opacity(0.55 + 0.25 * presence)),
-                         style: StrokeStyle(lineWidth: 3.2 / max(radiusX, radiusY),
-                                            lineCap: .round))
+            let lane = piece.ribbon % OpenBotAvatarRibbons.lanes
+            let light = base.mixed(with: .white, 0.26 - 0.08 * Double(lane))
+            let dark = base.mixed(with: .black, 0.06 + 0.10 * Double(lane))
+            let long = (pow(piece.to.x - piece.from.x, 2) + pow(piece.to.y - piece.from.y, 2)).squareRoot() > 0.01
+            if long {
+                layer.fill(piece.path, with: .linearGradient(
+                    Gradient(stops: [
+                        .init(color: light.color, location: 0),
+                        .init(color: base.color, location: 0.5),
+                        .init(color: dark.color, location: 1),
+                    ]),
+                    startPoint: piece.from, endPoint: piece.to))
+            } else {
+                layer.fill(piece.path, with: .color(base.color))
+            }
         }
     }
 }
@@ -310,9 +460,20 @@ public final class OpenBotAvatarModel {
     /// silhouette, flat, so glass and solid wear the same shape.
     public let silhouette: Path
 
-    /// Unit shapes, drawn through a transform: the ribbon hoop. Held here so no frame builds a path
-    /// for it.
-    let ribbonArc: Path
+    /// How far the body reaches from the hoops' centre, for a working turn's hoop and for a
+    /// celebration's cage — measured once, from the body's own outline, and never per frame.
+    public var ribbonRims: (work: OpenBotAvatarRibbons.Rim, cage: OpenBotAvatarRibbons.Rim) {
+        rimLock.lock()
+        defer { rimLock.unlock() }
+        if let rims { return rims }
+        let polygons = volume.parts.flatMap { $0.polygons }
+        let built = OpenBotAvatarRibbons.rims(polygons: polygons, box: volume.box)
+        rims = built
+        return built
+    }
+
+    private let rimLock = NSLock()
+    private var rims: (work: OpenBotAvatarRibbons.Rim, cage: OpenBotAvatarRibbons.Rim)?
 
     private static let lock = NSLock()
     private static var cache: [String: OpenBotAvatarModel] = [:]
@@ -324,9 +485,6 @@ public final class OpenBotAvatarModel {
         var silhouette = Path()
         for part in volume.parts { silhouette.addPath(part.core.path) }
         self.silhouette = silhouette
-        var arc = Path()
-        arc.addArc(center: .zero, radius: 1, startAngle: .degrees(-52), endAngle: .degrees(52), clockwise: false)
-        ribbonArc = arc
     }
 
     /// The model for a definition, or nil when the contract refuses it (a caller that already
