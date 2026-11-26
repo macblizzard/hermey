@@ -1835,3 +1835,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   as two lines, a form-following highlight, exit refraction and full-weight TIR, and a caustic under the base.
   A proof render over a checkerboard shows the pattern magnified through the middle, compressed at the bevel and
   folded near the wall. Upstream's own `renderer.ts` geometry is the source of every constant.
+
+## [0.1.679] — 2026-11-26
+
+### Added
+- **Edit a bot's memory from its settings**, on Mac and iPhone. A Memory pane lists the two documents every bot
+  actually reads (`MEMORY.md`, `USER.md`) with their character budget, opens them in a plain text editor and saves
+  through new device-authenticated routes. A save is one atomic rename at the original mode, confirms once, and is
+  refused before it would exceed the bot's own budget — never truncated.
+- `hermeyd` **0.8.14**: `GET/PUT /v1/bots/{profile}/memory[/{name}]`, name-matched against two fixed documents.
+
+### Fixed
+- **The app no longer crashes on launch.** A glass body whose view had no size yet divided by zero, the distance
+  field became non-finite, and converting that to `Int` trapped on the main thread. The mask now refuses a surface
+  with no extent and clamps every value.
