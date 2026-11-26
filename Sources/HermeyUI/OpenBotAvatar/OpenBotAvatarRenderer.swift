@@ -465,7 +465,7 @@ public final class OpenBotAvatarModel {
     public var ribbonRims: (work: OpenBotAvatarRibbons.Rim, cage: OpenBotAvatarRibbons.Rim) {
         rimLock.lock()
         defer { rimLock.unlock() }
-        if let rims { return rims }
+        if let cached = rims { return cached }
         let polygons = volume.parts.flatMap { $0.polygons }
         let built = OpenBotAvatarRibbons.rims(polygons: polygons, box: volume.box)
         rims = built
