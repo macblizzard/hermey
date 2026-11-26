@@ -41,6 +41,11 @@ import SwiftUI
 import Metal
 import MetalKit
 import os
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 /// Once, not per avatar and not per frame.
 private let glassLog = Logger(subsystem: "dev.hermey.app", category: "glass")
@@ -250,14 +255,27 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         commandBuffer.commit()
     }
 
-    /// The body's silhouette, filled **white**, into an RGBA texture whose first row is the top of
-    /// the view — the orientation `[[position]]` uses.
+    /// The body's silhouette into an RGBA texture whose first row is the top of the view — the
+    /// orientation `[[position]]` uses — **and** the distance field of that outline.
     ///
-    /// The shader reads its alpha and only its alpha. Filling it in the body's tint was the old
-    /// design's one mistake with consequences: the refraction sample read that tint back, so "what is
-    /// behind the glass" was the glass, and an opaque blob is what that composites to. White is a
-    /// guard as well as a mask — a fragment that read the colour would come out white, and the
-    /// `Tests/test_avatar_glass_shader.py` guard refuses any read of it.
+    /// Filling it in the body's tint was the first design's one mistake with consequences: the
+    /// refraction sample read that tint back, so "what is behind the glass" was the glass, and an
+    /// opaque blob is what that composites to. Nothing here is the body's colour any more.
+    ///
+    /// * `a` — the drawn silhouette, antialiased (what limits the shaded region);
+    /// * `g` — how far inside the outline the pixel is, in points, normalised to half the view's
+    ///   short side (the shader multiplies by `0.5 * min(size)`); `b` — the same outside it;
+    /// * `r` — deliberately white, so a fragment that read the colour by mistake would come out
+    ///   white and be obvious, rather than the body's own tint.
+    ///
+    /// The field is the fix for a real flaw in the first pass: the shader used to measure "how deep
+    /// inside" against the body's *bounding box*, so a cat's ear — a thin fin inside a tall box — was
+    /// shaded as if it were the middle of a slab: no rim, no thinness, no glass. With the drawn
+    /// outline's own distance field, thin parts are thin, and the rim follows the silhouette the
+    /// person can see.
+    ///
+    /// Cost: two chamfer passes per rebuild, and a rebuild only when the pixel size changes — never
+    /// per frame.
     static func makeMask(path: Path,
                          points: CGSize,
                          pixels: CGSize,
@@ -280,15 +298,84 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         context.fillPath()
 
-        guard let data = context.data else { return nil }
+        guard let filled = context.data else { return nil }
+        var coverage = [UInt8](repeating: 0, count: width * height)
+        for y in 0..<height {
+            let row = filled.advanced(by: y * context.bytesPerRow).assumingMemoryBound(to: UInt8.self)
+            for x in 0..<width { coverage[y * width + x] = row[x * 4 + 3] }
+        }
+
+        let inset = distanceField(coverage, width: width, height: height, inside: true)
+        let outside = distanceField(coverage, width: width, height: height, inside: false)
+        // One green/blue unit is half the view's short side, in points — what the shader can read
+        // back from `size`, so no seventh uniform is needed.
+        let scale = Float(pixels.width / points.width)
+        let span = Float(0.5 * min(points.width, points.height))
+        func unit(_ pixels: Float) -> UInt8 {
+            UInt8(clamping: Int((pixels / scale / span * 255).rounded()))
+        }
+
+        var packed = [UInt8](repeating: 0, count: width * height * 4)
+        for i in 0..<(width * height) {
+            packed[i * 4] = 255
+            packed[i * 4 + 1] = unit(inset[i])
+            packed[i * 4 + 2] = unit(outside[i])
+            packed[i * 4 + 3] = coverage[i]
+        }
+
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
                                                                   width: width, height: height,
                                                                   mipmapped: false)
         descriptor.usage = .shaderRead
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
-                        withBytes: data, bytesPerRow: context.bytesPerRow)
+                        withBytes: packed, bytesPerRow: width * 4)
         return texture
+    }
+
+    /// The distance, in pixels, from every pixel to the nearest pixel on the other side of the
+    /// outline: a two-pass chamfer transform with unit steps across and `√2` diagonally.
+    ///
+    /// `inside` picks which side is measured — how deep into the body, or how far out of it. A
+    /// 3×4 neighbourhood and two sweeps is the standard approximation: exact for axis-aligned
+    /// edges, within a few per cent on a diagonal, which is far below one rim's width.
+    private static func distanceField(_ coverage: [UInt8], width: Int, height: Int,
+                                      inside: Bool) -> [Float] {
+        let far: Float = 1e6
+        let diagonal = Float(2.0).squareRoot()
+        var field = [Float](repeating: far, count: width * height)
+        for i in 0..<field.count where (coverage[i] > 127) != inside {
+            field[i] = 0
+        }
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y * width + x
+                var distance = field[index]
+                if distance == 0 { continue }
+                if y > 0 {
+                    distance = min(distance, field[index - width] + 1)
+                    if x > 0 { distance = min(distance, field[index - width - 1] + diagonal) }
+                    if x + 1 < width { distance = min(distance, field[index - width + 1] + diagonal) }
+                }
+                if x > 0 { distance = min(distance, field[index - 1] + 1) }
+                field[index] = distance
+            }
+        }
+        for y in stride(from: height - 1, through: 0, by: -1) {
+            for x in stride(from: width - 1, through: 0, by: -1) {
+                let index = y * width + x
+                var distance = field[index]
+                if distance == 0 { continue }
+                if y + 1 < height {
+                    distance = min(distance, field[index + width] + 1)
+                    if x > 0 { distance = min(distance, field[index + width - 1] + diagonal) }
+                    if x + 1 < width { distance = min(distance, field[index + width + 1] + diagonal) }
+                }
+                if x + 1 < width { distance = min(distance, field[index + 1] + 1) }
+                field[index] = distance
+            }
+        }
+        return field
     }
 }
 

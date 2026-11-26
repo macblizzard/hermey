@@ -234,9 +234,9 @@ for side in sides {
             alphaMax = max(alphaMax, Int(frame.rgba[i]))
         }
         let mean = covered > 0 ? alphaSum / Double(covered) : 0
-        print(String(format: "%-22s %dx%d  cover=%d  mean=%.2f  max=%.2f",
-                     (stem as NSString).utf8String!, frame.width, frame.height, covered, mean,
-                     Double(alphaMax) / 255))
+        let name = stem.padding(toLength: 22, withPad: " ", startingAt: 0)
+        print(String(format: "%@ %dx%d  cover=%d  mean=%.2f  max=%.2f",
+                     name, frame.width, frame.height, covered, mean, Double(alphaMax) / 255))
     }
 }
 

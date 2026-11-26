@@ -411,7 +411,7 @@ class TheTermsAreUpstreams(unittest.TestCase):
             ("peak / (1.0 + peak * 0.48)", "the tone map"),
             ("smoothstep(2.2, 5.2, peak)", "the white roll"),
             ("mix(0.36, 0.68, pow(1.0 - cos1, 1.55))", "the edge transparency"),
-            ("0.28, 0.98", "its clamp"),
+            ("0.34, 0.97", "its clamp, re-based so a translucent body stays translucent"),
             ("float3(1.0 / 2.2)", "the gamma"),
         ):
             self.assertIn(literal, source, why)
@@ -507,31 +507,42 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
 
     def test_the_shader_never_reads_a_fill_from_the_texture(self):
         source = msl_code()
-        # Only the alpha of the silhouette — never a colour — is read out of the mask.
-        self.assertIn("float coverage = float(bodyLayer.sample(bodySampler, pos.xy / pixels).a);", source)
-        self.assertNotIn("behind", source)
-        self.assertNotIn("sampled", source)
-        self.assertNotIn("src.rgb", source)
-        self.assertNotIn("src.a", source)
-        self.assertEqual(source.count("bodyLayer.sample"), 1)
-        # And the texture it is handed is a white mask, so even a mistake could not be the body's tint.
+        # The mask is read for its silhouette and its distance field — `a`, `g`, `b` — and never for a
+        # colour.
+        self.assertIn("half4 silhouette = bodyLayer.sample(bodySampler, pos.xy / pixels);", source)
+        self.assertIn("float coverage = float(silhouette.a);", source)
+        self.assertIn("float inset = float(silhouette.g) * maxInset;", source)
+        self.assertIn("float outside = float(silhouette.b) * maxInset;", source)
+        for channel in ("silhouette.rgb", "silhouette.r", "behind", "sampled", "src.rgb", "src.a"):
+            self.assertNotIn(channel, source, channel)
+        # And the texture it is handed is white with the outline in its alpha, so even a mistake could
+        # not be the body's tint.
         layer = read(LAYER)
         self.assertIn("CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)", layer)
         self.assertNotIn("CGFloat(tint.red)", layer)
+        # The field is the drawn outline's, built on the CPU once per size — not the body's bbox.
+        self.assertIn("private static func distanceField(", layer)
+        self.assertIn("let inset = distanceField(coverage, width: width, height: height, inside: true)",
+                      layer)
+        self.assertIn("let outside = distanceField(coverage, width: width, height: height, inside: false)",
+                      layer)
+        self.assertNotIn("sdRoundedBox", source)
 
     def test_the_backdrop_is_a_studio_not_the_body(self):
         source = msl_code()
         self.assertIn("static inline float3 sampleGlassPlate(", source)
         self.assertIn("float3 plate = sampleGlassPlate(plateUV, jewelTint, detail);", source)
-        self.assertIn("float3 through = plate * beer * mix(1.30, 0.62, thick);", source)
+        self.assertIn("float3 through = plate * beer * mix(1.15, 0.78, thick);", source)
+        # The key's own reflection on the face, and the rear surface seen through the front.
+        self.assertIn("float hood = 1.0 - smoothstep(-0.04, 0.12", source)
+        self.assertIn("abs(inset - rimWidth * 1.70)", source)
         # The tint is decoded to linear light before the optics, and gamma-encoded exactly once after.
         self.assertIn("float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));", source)
         self.assertEqual(source.count("1.0 / 2.2"), 1)
         # A solid piece of glass: thickness, a lit rim, a key on the face, and something under it.
         self.assertIn("float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);", source)
-        self.assertIn("float rimFacing = 0.55", source)
-        self.assertIn("softbox(reflDirS, float3(-0.52, -0.68, 0.52), float2(0.22, 0.28), 0.10, -0.35)",
-                      source)
+        self.assertIn("float rimFacing = 0.62", source)
+        self.assertIn("float caustic = (1.0 - smoothstep(0.10, 1.0, length(causticP))) * 0.75;", source)
         self.assertIn("float shadowAlpha = max(shadowShape * 0.55, contact * 0.30);", source)
         # The studio it stands in is the plate's, in the body's own hue, not a flat tint.
         self.assertIn("sampleGlassPlate(plateUV, jewelTint, detail)", source)
@@ -552,7 +563,7 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         # …and the blend is premultiplied over, as the fragment writes.
         self.assertIn("attachment.sourceRGBBlendFactor = .one", layer)
         self.assertIn("attachment.destinationRGBBlendFactor = .oneMinusSourceAlpha", layer)
-        self.assertIn("float3 outRGB = col * alpha;", msl_code())
+        self.assertIn("float3 outRGB = col * alpha + causticLight * (caustic * (1.0 - alpha));", msl_code())
 
     def test_the_fallback_is_untouched(self):
         # Reduce transparency still gets the painted material, and the painter still paints its six

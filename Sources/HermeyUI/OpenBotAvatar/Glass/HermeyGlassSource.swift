@@ -20,6 +20,18 @@ enum HermeyGlassSource {
     /// Absent from the Live Activity's build on purpose (`project.yml` sets `HERMEY_LIVE_ACTIVITY`
     /// there, and that target's sources exclude this folder): the widget process draws the painted
     /// material and has no business carrying a shader it will never compile.
+    ///
+    /// The first version of this pass drew the body but did not look like glass: the refracted ray
+    /// sampled the flat fill the body had been drawn into, so "what is behind the glass" was the
+    /// glass, and at 96 % opacity in the middle that composites to an opaque coloured blob. The pass
+    /// below shades from a studio plate of its own (`sampleGlassPlate`), decodes the tint to linear
+    /// light, lights the face with the one softbox that faces the viewer, weights the rim toward the
+    /// key, and draws the contact shadow the body sits in. Each departure from upstream is listed
+    /// with its reason in the string's own prologue, where the terms are.
+    ///
+    /// `Tools/glass-proof` renders this pass offscreen — 24, 48 and 200 pt, `cat`, idle and working,
+    /// over the theme's dark canvas and over its surface — so the look can be checked as pictures
+    /// rather than by adjective. It is not part of the app's build.
     static let msl = """
         //
         //  HermeyGlassSource.swift
@@ -237,14 +249,6 @@ enum HermeyGlassSource {
 
         // MARK: - The body's shape
 
-        /// A rounded box signed distance, negative inside: the part's box with its own inset radius as the
-        /// corner. The volume's outline is a blob, a box or a face, and this is the form that covers all
-        /// three; the *drawn* silhouette is still the body's own outline (the mask's alpha).
-        static inline float sdRoundedBox(float2 p, float2 halfExtent, float r) {
-            float2 q = abs(p) - (halfExtent - r);
-            return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - r;
-        }
-
         /// `OpenBotAvatarVolume.Part.surfaceHeight` — the front surface rising from the outline to a plateau
         /// `halfDepth` in the middle, over the inset `rxy` and the rise `rz`.
         static inline float surfaceHeight(float inset, float rxy, float rz, float halfDepth) {
@@ -310,35 +314,39 @@ enum HermeyGlassSource {
             float4 pose = uniforms.pose;
             float4 tone = uniforms.tone;
 
-            // Where the body is, and nothing else. The texture is a white fill, so a fragment that
-            // accidentally read its colour would come out white — the painted body cannot leak in here,
-            // which is the guard the old flat-fill texture could not offer.
-            float coverage = float(bodyLayer.sample(bodySampler, pos.xy / pixels).a);
+            // The mask, and nothing else: `a` is the drawn outline, `g` is how far inside it this pixel
+            // is and `b` how far outside — a distance field in points, built once per size by
+            // `BotAvatarGlassDrawer.makeMask`. Its colour is white, so a fragment that read it would
+            // come out white; the painted body cannot leak in here, which the old flat-fill texture
+            // could not promise.
+            half4 silhouette = bodyLayer.sample(bodySampler, pos.xy / pixels);
+            float coverage = float(silhouette.a);
+            float maxInset = 0.5 * min(size.x, size.y);
+            float inset = float(silhouette.g) * maxInset;
+            float outside = float(silhouette.b) * maxInset;
+
+            // The direction the surface falls away in, from the same field: the gradient of a distance
+            // field is a unit vector pointing inland, which is exactly what the dome's normal needs.
+            float2 texel = 0.75 * (pixels / max(size, float2(1.0)));
+            float2 gradSd = float2(float(bodyLayer.sample(bodySampler, (pos.xy + float2(texel.x, 0.0)) / pixels).g)
+                                 - float(bodyLayer.sample(bodySampler, (pos.xy - float2(texel.x, 0.0)) / pixels).g),
+                                   float(bodyLayer.sample(bodySampler, (pos.xy + float2(0.0, texel.y)) / pixels).g)
+                                 - float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, texel.y)) / pixels).g));
+            gradSd = normalize(gradSd + float2(1e-6));
 
             // The tint arrives as the sRGB value the `Canvas` would have filled; the optics below are
             // linear light, as upstream's are. Decoded once here, encoded once at the end.
             float3 tint = pow(max(uniforms.tint.rgb, float3(0.0)), float3(2.2));
 
             float2 halfExtent = max(shape.xy, float2(0.5));
-            float corner = min(min(shape.z, halfExtent.x), halfExtent.y);
             float2 centre = profile.zw;
             float2 p = position - centre;
             float halfDepth = max(shape.w, 0.0);
 
-            // How far inside the form this pixel is. A pixel outside the rounded form but inside the drawn
-            // outline — a blob's corner, a fin — is at the edge of the surface (inset 0, the normal at the
-            // rim, the rim band at its widest); the mask's own alpha is what limits the shaded region, so
-            // nothing here has to decide where the bot stops.
-            float sd = sdRoundedBox(p, halfExtent, corner);
-            float inset = max(-sd, 0.0);
-
-            // The height field, and the normal it implies: dh/d(inset) is the closed form of `surfaceHeight`,
-            // and the gradient of the distance is the direction the dome falls away in.
-            float2 gradSd = float2(sdRoundedBox(p + float2(0.75, 0.0), halfExtent, corner)
-                                 - sdRoundedBox(p - float2(0.75, 0.0), halfExtent, corner),
-                                   sdRoundedBox(p + float2(0.0, 0.75), halfExtent, corner)
-                                 - sdRoundedBox(p - float2(0.0, 0.75), halfExtent, corner)) / 1.5;
-
+            // The height field, and the normal it implies: `dh` is d(height)/d(inset), the closed form
+            // of `surfaceHeight`, and the field's gradient is the direction it falls away in. Where the
+            // body is thinner than its own inset radius — a cat's ear, a fin — the surface never
+            // reaches the plateau, which is what makes a thin part read as thin glass.
             float rxy = max(profile.x, 0.001);
             float rz = max(profile.y, 0.0);
             float dh = 0.0;
@@ -357,8 +365,8 @@ enum HermeyGlassSource {
             float F1 = fresnelSchlick(cos1);
 
             // 0 at the silhouette's edge, 1 on the plateau: the body's own optical thickness, which is
-            // what separates a solid piece of glass (thin, bright rim; deep, tinted middle) from a dome of
-            // tinted gloss.
+            // what separates a solid piece of glass (thin, bright rim; deep, tinted middle) from a dome
+            // of tinted gloss.
             float height = surfaceHeight(inset, rxy, rz, halfDepth);
             float thick = clamp(height / max(halfDepth, 0.001), 0.0, 1.0);
 
@@ -380,11 +388,15 @@ enum HermeyGlassSource {
             float3 reflDirS = reflect(rdS, n1S);
             float3 accum = sampleOuterStudio(reflDirS, jewelTint, detail) * F1;
 
-            // The key, seen flat-on. Upstream's two softboxes sit in front of the camera, so only a
-            // steep bevel reflects them and a dome facing us gets no highlight at all; this third lobe
-            // (shaders.ts:273, the eye's bead) is centred on the viewer's side, so the plateau catches it.
-            float keyFlat = softbox(reflDirS, float3(-0.52, -0.68, 0.52), float2(0.22, 0.28), 0.10, -0.35);
-            accum += float3(1.0) * (keyFlat * 1.45);                          // shaders.ts:273
+            // The key's own reflection on the dome: a hard-edged softbox high on the left, in the body's
+            // plane. Ours — but it is the single cue that separates a lit face from a painted ramp, and
+            // without it the only light on the body is a smooth gradient.
+            float2 hoodP = p / halfExtent - float2(-0.36, -0.50);
+            float hoodCos = cos(-0.42), hoodSin = sin(-0.42);
+            float2 hoodD = float2(hoodCos * hoodP.x - hoodSin * hoodP.y,
+                                  hoodSin * hoodP.x + hoodCos * hoodP.y) / float2(0.46, 0.105);
+            float hood = 1.0 - smoothstep(-0.04, 0.12, length(max(abs(hoodD) - float2(1.0), float2(0.0))));
+            accum += float3(1.0) * (hood * 1.9 * (0.45 + 0.55 * (1.0 - thick)));
 
             float weight = 1.0 - F1;
 
@@ -402,7 +414,7 @@ enum HermeyGlassSource {
             bool tir = length(rayDir) < 0.001;
             if (tir) {
                 exitDirS = reflect(rdS, n1S);
-                opticalDist = 1.15;
+                opticalDist = 0.42;
             } else {
                 rayDir = normalize(rayDir);
                 exitDirS = normalize(float3(rayDir.xy, -abs(rayDir.z)));
@@ -421,10 +433,11 @@ enum HermeyGlassSource {
             float2 plateUV = boxUV * mix(0.94, 0.76, thick) + travel / halfExtent;
             float3 plate = sampleGlassPlate(plateUV, jewelTint, detail);
 
-            // Beer-Lambert through the body's own thickness: thin at the rim (bright), deep at the plateau
-            // (the tint's own colour, darkened by its absorption).
-            float3 beer = exp(-absorbSigma * (0.55 + 2.60 * thick));
-            float3 through = plate * beer * mix(1.30, 0.62, thick);
+            // Beer-Lambert through the body's own thickness: thin at the rim (bright), deep at the
+            // plateau (the tint's own colour). `opticalDist` is upstream's compression, so a thick body
+            // stays as clear as a thin one instead of going to mud.
+            float3 beer = exp(-absorbSigma * (opticalDist * (0.30 + 0.60 * thick)));
+            float3 through = plate * beer * mix(1.15, 0.78, thick);
 
             // The light the body gathers in itself (the internal studio), strongest where the body is
             // thickest so it reads as depth rather than a wash.
@@ -434,16 +447,22 @@ enum HermeyGlassSource {
             through += internal * (0.24 + 0.36 * thick);
             accum += through * weight;
 
-            // 3 — the rim. Upstream's is the Fresnel term at the edge of a real 3-D solid; this carries the
-            // state's rim opacity (the eight states' light table) at the widest point of the falloff, and
-            // leans toward the side the key is on, so the edge catches light instead of glowing evenly.
+            // 3 — the rim, and the rear surface seen through the front. Upstream's rim is the Fresnel term
+            // at the edge of a real 3-D solid; this carries the state's rim opacity (the eight states'
+            // light table) at the widest point of the falloff and leans toward the key's side, so the edge
+            // catches light instead of glowing evenly. The inner line is one rim inside the outline: the
+            // back wall of the piece, which is what makes it read as a solid with thickness.
             float rimWidth = max(1.0, 0.035 * max(size.x, size.y));
             float rimBand = 1.0 - smoothstep(0.0, rimWidth, inset);
             float2 rimDir = normalize(float2(-0.55, -0.80));
-            float rimFacing = 0.55 + 0.45 * clamp(dot(normalize(nS.xy + float2(1e-5)), rimDir) * 0.5 + 0.5,
+            float rimFacing = 0.62 + 0.38 * clamp(dot(normalize(nS.xy + float2(1e-5f)), rimDir) * 0.5 + 0.5,
                                                   0.0, 1.0);
             float3 rimLight = mix(jewelTint, float3(0.95, 1.0, 1.0), 0.55);
             accum += rimLight * (rimBand * (0.55 + pose.z * tone.z)) * rimFacing;
+
+            float inner = 1.0 - smoothstep(rimWidth * 0.25, rimWidth * 0.90,
+                                           abs(inset - rimWidth * 1.70));
+            accum += mix(jewelTint, float3(1.0), 0.70) * (inner * 0.95);
 
             // A light page's hairline, outside the rim, so the silhouette holds on paper: the same job the
             // Canvas path's `outerHairline` does, done at the outermost point of the falloff.
@@ -466,35 +485,43 @@ enum HermeyGlassSource {
             }
 
             // shaders.ts:390-399 — how much of the pixel the surface keeps. Upstream's edge transparency
-            // between the middle and the rim; the luminance term is halved and the rim adds its own, so
+            // between the middle and the rim; the luminance term is added, and the rim adds its own, so
             // the body stays see-through where it is thick and solid where the light catches the edge.
             float lum = max(col.r, max(col.g, col.b));
             float edgeTransparency = mix(0.36, 0.68, pow(1.0 - cos1, 1.55));
-            float alpha = clamp(edgeTransparency
-                                - 0.10 * weight
-                                + 0.30 * smoothstep(0.35, 1.00, lum)
-                                + 0.26 * rimBand,
-                                0.28, 0.98);
+            float alpha = clamp(edgeTransparency * 1.15
+                                - 0.08 * weight
+                                + 0.34 * smoothstep(0.30, 0.95, lum)
+                                + 0.30 * rimBand,
+                                0.34, 0.97);
 
             // Never wider than the drawing itself: the mask's alpha is the silhouette, and a shader that
             // paints past it would put glass outside the bot.
             alpha *= coverage;
 
-            // The contact shadow: a soft pool under the base, plus a dark band just outside the outline.
-            // Ours — upstream's glass sits on a page that already has one, and this pass is the only thing
-            // drawn over the ribbons, so without it the body floats.
+            // The contact shadow and the caustic: a soft pool under the base, a dark band just outside the
+            // outline, and the warm light the body throws on the page beneath it. Ours — upstream's glass
+            // sits on a page that already has a shadow and a floor, and this pass is the only thing drawn
+            // over the ribbons.
             float2 shadowP = float2(p.x / max(halfExtent.x * 0.86, 0.5),
                                     (p.y - halfExtent.y * 0.96) / max(halfExtent.y * 0.16, 0.8));
             float shadowShape = 1.0 - smoothstep(0.15, 1.0, length(shadowP));
-            float contact = (1.0 - smoothstep(0.0, max(1.5, 0.055 * max(size.x, size.y)), max(sd, 0.0)))
-                          * step(0.0, sd);
+            float contact = (1.0 - smoothstep(0.0, max(1.5, 0.055 * max(size.x, size.y)), outside))
+                          * step(0.001, outside);
             float shadowAlpha = max(shadowShape * 0.55, contact * 0.30);
+
+            float2 causticP = float2(p.x / max(halfExtent.x * 0.46, 0.5),
+                                     (p.y - halfExtent.y * 1.03) / max(1.0, halfExtent.y * 0.055));
+            float caustic = (1.0 - smoothstep(0.10, 1.0, length(causticP))) * 0.75;
+
+            float3 causticLight = mix(jewelTint, float3(1.0, 0.92, 0.80), 0.55);
 
             col = pow(clamp(col, 0.0, 1.0), float3(1.0 / 2.2));               // shaders.ts:408
 
-            // Premultiplied over whatever is behind the view: the glass, and the shadow it sits in.
-            float3 outRGB = col * alpha;
-            float outA = alpha + shadowAlpha * (1.0 - alpha);
+            // Premultiplied over whatever is behind the view: the glass, the shadow it sits in, and the
+            // light it throws past its own edge.
+            float3 outRGB = col * alpha + causticLight * (caustic * (1.0 - alpha));
+            float outA = max(alpha + shadowAlpha * (1.0 - alpha), caustic * (1.0 - alpha));
             return half4(half3(outRGB), half(outA));
         }
 """
