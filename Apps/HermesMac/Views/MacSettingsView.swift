@@ -69,14 +69,21 @@ struct MacSettingsView: View {
             CachingSettingsTab(store: store)
                 .tabItem { Label("Caching", systemImage: "internaldrive") }
 
+            // The keyboard: every action the app answers to, with the combination it holds now and
+            // a field to change it. A Mac feature end to end — it edits the menu bar — so it sits
+            // beside About at the end rather than in the middle of the chat preferences. The phone
+            // has no such pane, and needs none: it has no hardware keyboard to bind.
+            ShortcutsSettingsTab(center: store.shortcuts)
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+
             // Last: a version number is something a user goes looking for, and it reports the
             // build CI stamped rather than anything this file could guess.
             AboutSettingsTab(store: store, checkForUpdates: checkForUpdates)
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        // Ten tabs now (Chat, Bots, Approvals, Integrations, Vault, Computer, Connection, Appearance,
-        // Notifications, Caching, About): the bar pushes the last tab behind a chevron when the window
-        // is too narrow.
+        // Twelve tabs now (Chat, Bots, Approvals, Integrations, Vault, Computer, Connection,
+        // Appearance, Notifications, Caching, Shortcuts, About): the bar pushes the last tab behind a
+        // chevron when the window is too narrow.
         .frame(width: 820, height: 500)
         .background(Tokens.canvas)
         // Settings is a separate window, so it carries its own direction: the window title, the tab

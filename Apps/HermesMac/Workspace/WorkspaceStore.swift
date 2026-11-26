@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import HermesAppKit
@@ -110,6 +111,11 @@ final class WorkspaceStore: ObservableObject {
     /// Set the first time the user asks to connect, so the empty panel can tell
     /// "not paired" apart from "paired, but nothing loaded yet".
     @Published private(set) var connectAttempted = false
+
+    /// **The keyboard.** One registry, one document, one object — read by the menu bar
+    /// (`WorkspaceCommands`), the ⌘K palette's hint text and Settings → Shortcuts, and written only
+    /// by that pane. It lives on the store because every verb the keys run is a verb of this store.
+    let shortcuts = ShortcutCenter()
 
     private let pairingStore = PairingStore()
     private var latencyTask: Task<Void, Never>?
@@ -332,6 +338,68 @@ final class WorkspaceStore: ObservableObject {
             await self.openConversation(for: id)
             self.model.draft = self.drafts[id] ?? ""
         }
+    }
+
+    /// ⌥⌘↓ / ⌥⌘↑: the next or previous bot in the panel's own order, round the ring.
+    ///
+    /// The order is `model.orderedBots` — pinned first, hidden ones absent — so the key walks exactly
+    /// what the panel draws. It wraps, because a list this short is a ring: from the last bot the
+    /// next press lands on the first, which is what every tab-switching key on the platform does.
+    func stepBot(_ delta: Int) {
+        let bots = model.orderedBots
+        guard !bots.isEmpty else { return }
+        let current = model.selectedBotID.flatMap { id in bots.firstIndex { $0.id == id } }
+        let next: Int
+        if let current {
+            next = ((current + delta) % bots.count + bots.count) % bots.count
+        } else {
+            next = delta >= 0 ? 0 : bots.count - 1
+        }
+        selectBot(bots[next].id)
+    }
+
+    // MARK: The last message
+
+    /// The newest thing said, from either side. Tool cards and the model's reasoning are skipped:
+    /// "copy the last message" must never put a shell command on the pasteboard because a tool ran
+    /// after the answer.
+    private var lastMessage: TranscriptEntry? {
+        model.transcript.last { ($0.role == .user || $0.role == .assistant) && !$0.text.isEmpty }
+    }
+
+    /// The newest message the *owner* typed — the only kind that can be edited and resent.
+    ///
+    /// A message another bot sent arrives as a user row (see `BotMessageLabel`), and is not this
+    /// owner's to rewrite, so it is excluded by the same test the transcript's own menu row uses.
+    private var lastOwnerMessage: TranscriptEntry? {
+        model.transcript.last {
+            $0.role == .user && BotMessageLabel.parse($0.text) == nil && !$0.text.isEmpty
+        }
+    }
+
+    /// ⇧⌘C: the last message, onto the pasteboard. The same pasteboard write the row's "Copy Message"
+    /// row does — one behaviour, two doors.
+    func copyLastMessage() {
+        guard let entry = lastMessage else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(entry.text, forType: .string)
+    }
+
+    /// ⌥⌘E: put the last thing the owner said back in the composer, for a second send.
+    ///
+    /// `requestEditAndResend` is the model's own verb, the same one the row's menu calls: it raises
+    /// the confirmation (or opens the composer, for the edit) and tells the host nothing until that
+    /// is confirmed.
+    func editLastMessage() {
+        guard let entry = lastOwnerMessage else { return }
+        model.requestEditAndResend(entry)
+    }
+
+    /// ⌘⌫: retire the last message, behind the same confirmation the row's menu raises.
+    func deleteLastMessage() {
+        guard let entry = lastMessage else { return }
+        model.requestDelete(entry)
     }
 
     /// Resume-or-create, then refresh the header's model chip.
@@ -595,6 +663,19 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    /// ⌘R: re-read the conversation from the host — a room's rows, or the selected bot's session.
+    ///
+    /// The palette has always advertised ⌘R for this and nothing bound it; the registry row does now,
+    /// and both doors call this one method.
+    func refreshConversation() {
+        guard isPaired else { return }
+        if model.activeRoom != nil {
+            model.requestRefresh()
+        } else if let bot = selectedBot, !model.isStreaming {
+            Task { [weak self] in await self?.openConversation(for: bot.id) }
+        }
+    }
+
     func retrySend() {
         guard canSend else { return }
         send()
@@ -797,7 +878,7 @@ final class WorkspaceStore: ObservableObject {
             title: "Find in Conversation…",
             subtitle: "Search the transcript on screen — the bot panel searches every conversation",
             systemImage: "magnifyingglass",
-            shortcut: "⌘F",
+            shortcut: shortcuts.label("chat.find"),
             group: .chat,
             isEnabled: model.selectedBotID != nil,
             run: { [weak self] in self?.openFindInChat() }))
@@ -807,7 +888,7 @@ final class WorkspaceStore: ObservableObject {
             title: "Interrupt the turn",
             subtitle: "Stop the running agent turn in this conversation",
             systemImage: "stop.fill",
-            shortcut: "⌘.",
+            shortcut: shortcuts.label("turn.interrupt"),
             group: .chat,
             isEnabled: canInterrupt,
             run: { [weak self] in self?.interrupt() }))
@@ -867,7 +948,7 @@ final class WorkspaceStore: ObservableObject {
             title: isSidebarHidden ? "Show bot panel" : "Hide bot panel",
             subtitle: "Collapse the list of bots to give the conversation the whole window",
             systemImage: "sidebar.leading",
-            shortcut: "⌘⌥S",
+            shortcut: shortcuts.label("view.sidebar"),
             group: .chat,
             isEnabled: true,
             run: { [weak self] in self?.toggleSidebar() }))
@@ -890,7 +971,7 @@ final class WorkspaceStore: ObservableObject {
             title: model.connection.isLive ? "Reconnect to host" : "Connect to host",
             subtitle: pairing.map { "Open the socket to \($0.displayHost)" } ?? "No host paired yet",
             systemImage: "bolt.horizontal",
-            shortcut: "⇧⌘R",
+            shortcut: shortcuts.label("host.connect"),
             group: .host,
             isEnabled: isPaired,
             run: { [weak self] in
@@ -932,7 +1013,7 @@ final class WorkspaceStore: ObservableObject {
             title: "Pair host…",
             subtitle: "Enter a wss:// URL and a device token",
             systemImage: "link",
-            shortcut: "⇧⌘P",
+            shortcut: shortcuts.label("host.pair"),
             group: .host,
             isEnabled: true,
             run: { [weak self] in self?.isPairSheetPresented = true }))
@@ -943,17 +1024,10 @@ final class WorkspaceStore: ObservableObject {
             subtitle: model.activeRoom.map { "Re-read \($0.name) from the host" }
                 ?? "Re-open this bot's conversation from the host",
             systemImage: "arrow.triangle.2.circlepath",
-            shortcut: "⌘R",
+            shortcut: shortcuts.label("chat.refresh"),
             group: .chat,
             isEnabled: isPaired,
-            run: { [weak self] in
-                guard let self else { return }
-                if self.model.activeRoom != nil {
-                    self.model.requestRefresh()
-                } else if let bot = self.selectedBot, !self.model.isStreaming {
-                    Task { await self.openConversation(for: bot.id) }
-                }
-            }))
+            run: { [weak self] in self?.refreshConversation() }))
 
         items.append(WorkspaceCommand(
             id: "bots.add",

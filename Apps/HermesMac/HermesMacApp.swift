@@ -154,12 +154,17 @@ struct HermesMacApp: App {
                     // paints instead of waiting on a resume. The model owns the task so a click on
                     // a bot can stand the walk down the way a tap does on the phone.
                     store.model.startPrefetch()
+                    // Last of the launch work: the menu bar exists by now, so the AppKit pass can
+                    // write the owner's own combinations into the real items. `Commands` already
+                    // reads the registry, so this is the guarantee rather than the first attempt —
+                    // see `ShortcutMenuSync`.
+                    store.shortcuts.installMenuSync()
                 }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1240, height: 840)
         .commands {
-            WorkspaceCommands(store: store, checkForUpdates: checkForUpdates)
+            WorkspaceCommands(store: store, checkForUpdates: checkForUpdates, shortcuts: store.shortcuts)
         }
 
         // A real Settings scene: ⌘, opens it, and it stays open beside the workspace instead of
@@ -185,13 +190,25 @@ struct HermesMacApp: App {
 
 /// The menu bar: everything the palette offers that also deserves a key.
 ///
-/// Kept as a plain reference rather than an observed object — menu items read the store when
-/// they are chosen (the closure), which is the only moment that has to be right.
+/// **Every key in here comes from `ShortcutRegistry`.** This file used to spell each combination by
+/// hand, in a dozen `.keyboardShortcut` declarations — which made the menu bar the second copy of the
+/// truth and the ⌘K palette the third. That modifier still reaches the screen, because it is what
+/// turns a `Button` into an `NSMenuItem` carrying a key equivalent, but the value it is given is read
+/// from the registry through ``hermeyShortcut(_:using:)``. Anything that is not a registry row (a
+/// window verb from a standard group) keeps its own declaration.
+///
+/// **Why `shortcuts` is observed.** A `Commands` body that reads an observed object is re-evaluated
+/// when that object publishes, so a fresh launch comes up with the owner's keys already in place.
+/// It is not enough on its own — AppKit keeps the item once built, and SwiftUI rebuilds on its own
+/// schedule — which is why `ShortcutMenuSync` also writes the equivalent into the real item the
+/// moment a binding changes. The two together are why a rebind takes effect without a relaunch.
 struct WorkspaceCommands: Commands {
     let store: WorkspaceStore
     /// The app's updater as an action: the controller itself is the `App`'s, and a second one in
     /// here would start a second check cycle against the same feed.
     let checkForUpdates: () -> Void
+    /// The keyboard's one source of truth — the same object Settings → Shortcuts edits.
+    @ObservedObject var shortcuts: ShortcutCenter
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -211,6 +228,7 @@ struct WorkspaceCommands: Commands {
             Button("Check for Updates…") {
                 checkForUpdates()
             }
+            .hermeyShortcut("app.checkForUpdates", using: shortcuts)
         }
 
         // No "New Session": a bot has exactly one conversation, so there is nothing to create.
@@ -218,7 +236,7 @@ struct WorkspaceCommands: Commands {
             Button("Pair Host…") {
                 store.isPairSheetPresented = true
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .hermeyShortcut("host.pair", using: shortcuts)
 
             Button("Manage Paired Devices…") {
                 openWindow(id: "paired-devices")
@@ -229,24 +247,24 @@ struct WorkspaceCommands: Commands {
         // app is read at draw time, so the shell is re-created exactly as a theme change does it.
         CommandGroup(after: .sidebar) {
             Button("Bigger Text") { store.stepTextSize(1) }
-                .keyboardShortcut("+", modifiers: .command)
+                .hermeyShortcut("text.bigger", using: shortcuts)
             Button("Smaller Text") { store.stepTextSize(-1) }
-                .keyboardShortcut("-", modifiers: .command)
+                .hermeyShortcut("text.smaller", using: shortcuts)
             Button("Default Text Size") { store.resetTextSize() }
-                .keyboardShortcut("0", modifiers: .command)
+                .hermeyShortcut("text.default", using: shortcuts)
         }
 
         CommandMenu("Conversation") {
             Button("Send Message") {
                 store.send()
             }
-            .keyboardShortcut(.return, modifiers: .command)
+            .hermeyShortcut("turn.send", using: shortcuts)
             .disabled(!store.canSend)
 
             Button("Interrupt Turn") {
                 store.interrupt()
             }
-            .keyboardShortcut(".", modifiers: .command)
+            .hermeyShortcut("turn.interrupt", using: shortcuts)
             .disabled(!store.canInterrupt)
 
             Divider()
@@ -260,7 +278,14 @@ struct WorkspaceCommands: Commands {
             Button("Find in Conversation…") {
                 store.openFindInChat()
             }
-            .keyboardShortcut("f", modifiers: .command)
+            .hermeyShortcut("chat.find", using: shortcuts)
+
+            // ⌘R — the palette has advertised this since it existed and nothing was bound to it.
+            Button("Refresh Conversation") {
+                store.refreshConversation()
+            }
+            .hermeyShortcut("chat.refresh", using: shortcuts)
+            .disabled(!store.isPaired)
 
             // ⌘⇧M — the keyboard's door to a message's verbs, and it replaces the `⋯` that used to
             // sit under every message. The right-click menu is the row's menu now; this opens that
@@ -280,7 +305,7 @@ struct WorkspaceCommands: Commands {
             Button(store.isSidebarHidden ? "Show Bot Panel" : "Hide Bot Panel") {
                 store.toggleSidebar()
             }
-            .keyboardShortcut("s", modifiers: .command)
+            .hermeyShortcut("view.sidebar", using: shortcuts)
 
             Divider()
 
@@ -288,6 +313,7 @@ struct WorkspaceCommands: Commands {
                 guard let bot = store.selectedBot else { return }
                 store.openSettings(for: bot)
             }
+            .hermeyShortcut("bot.settings", using: shortcuts)
             .disabled(store.selectedBot == nil)
 
             // ⌘E — the bot's panel on the right edge, the same panel the pill at the centre of the
@@ -304,7 +330,9 @@ struct WorkspaceCommands: Commands {
                 guard store.model.selectedBotID != nil else { return }
                 store.toggleBotPanel()
             }
-            .keyboardShortcut("e", modifiers: .command)
+            .hermeyShortcut("view.botPanel", using: shortcuts)
+
+            Divider()
 
             Menu("Switch Bot") {
                 ForEach(store.model.orderedBots) { bot in
@@ -318,6 +346,40 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store.model.orderedBots.isEmpty)
 
+            // ⌥⌘↓ / ⌥⌘↑ — the same walk, one press at a time. Not disabled with the list: a key
+            // equivalent on a disabled item stops working for the rest of the run, and the store
+            // checks the roster itself.
+            Button("Next Bot") {
+                store.stepBot(1)
+            }
+            .hermeyShortcut("bot.next", using: shortcuts)
+
+            Button("Previous Bot") {
+                store.stepBot(-1)
+            }
+            .hermeyShortcut("bot.previous", using: shortcuts)
+
+            Divider()
+
+            // The message verbs, on the last message rather than on a row: the transcript's own
+            // right-click menu still offers them on any message, and both doors call the same model
+            // methods. Never disabled — each one does nothing when there is no message to act on,
+            // which is quieter than a greyed row that swallows its key.
+            Button("Copy Last Message") {
+                store.copyLastMessage()
+            }
+            .hermeyShortcut("message.copyLast", using: shortcuts)
+
+            Button("Edit Last Message") {
+                store.editLastMessage()
+            }
+            .hermeyShortcut("message.editLast", using: shortcuts)
+
+            Button("Delete Last Message") {
+                store.deleteLastMessage()
+            }
+            .hermeyShortcut("message.deleteLast", using: shortcuts)
+
             Divider()
 
             Button(store.model.connection.isLive ? "Disconnect" : "Connect") {
@@ -329,6 +391,7 @@ struct WorkspaceCommands: Commands {
                     }
                 }
             }
+            .hermeyShortcut("host.connect", using: shortcuts)
             .disabled(!store.isPaired)
 
             Divider()
@@ -336,7 +399,7 @@ struct WorkspaceCommands: Commands {
             Button("Command Palette…") {
                 store.togglePalette()
             }
-            .keyboardShortcut("k", modifiers: .command)
+            .hermeyShortcut("palette.open", using: shortcuts)
         }
 
         // Settings… and Quit come from the standard groups: the `Settings` scene above owns ⌘,.

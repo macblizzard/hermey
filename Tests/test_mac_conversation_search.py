@@ -112,7 +112,8 @@ class TheThreeDoorsOpenTheSameBar(unittest.TestCase):
         # A key you cannot see is a key you cannot learn: the menu item is the discoverable copy.
         menu = APP.split('CommandMenu("Conversation")', 1)[1]
         self.assertIn('Button("Find in Conversation…")', menu)
-        self.assertIn(".keyboardShortcut(\"f\", modifiers: .command)", menu)
+        # ⌘F comes from the registry row `chat.find` (see test_shortcuts_panel).
+        self.assertIn('.hermeyShortcut("chat.find", using: shortcuts)', menu)
         self.assertIn("store.openFindInChat()", menu)
 
     def test_the_bot_panels_row_opens_it(self) -> None:

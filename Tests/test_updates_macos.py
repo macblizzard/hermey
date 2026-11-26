@@ -146,7 +146,8 @@ class TheAppOwnsTheUpdater(unittest.TestCase):
     def test_one_action_is_shared_by_the_menu_and_settings(self) -> None:
         self.assertIn("private var checkForUpdates: () -> Void {", APP)
         self.assertIn("self.updater.checkForUpdates(nil)", APP)
-        self.assertIn("WorkspaceCommands(store: store, checkForUpdates: checkForUpdates)", APP)
+        self.assertIn("WorkspaceCommands(store: store, checkForUpdates: checkForUpdates, "
+                      "shortcuts: store.shortcuts)", APP)
         self.assertIn("MacSettingsView(store: store, checkForUpdates: checkForUpdates)", APP)
 
     def test_no_installer_of_ours(self) -> None:
