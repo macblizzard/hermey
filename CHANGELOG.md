@@ -1821,3 +1821,17 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
 
 ### Changed
 - `hermeyd` **0.8.12** (version bump with the app; no host change).
+
+## [0.1.677] — 2026-11-26
+
+### Added
+- **The pet's callout is a small chat.** Tap the pet to open it, type, and the bot answers below; click away and it
+  hides but the thread is kept, and a new message from the bot opens it again by itself. Answers stay to two
+  sentences, the thread is capped at 20 messages, and at the cap the field greys out with a **New** button.
+- `hermeyd` **0.8.13**: the pet ask carries its brevity rule (`PET_BREVITY`).
+
+### Changed
+- **Glass has volume.** The body is raymarched as a solid: 12 interior slices, an elliptical edge bevel that reads
+  as two lines, a form-following highlight, exit refraction and full-weight TIR, and a caustic under the base.
+  A proof render over a checkerboard shows the pattern magnified through the middle, compressed at the bevel and
+  folded near the wall. Upstream's own `renderer.ts` geometry is the source of every constant.
