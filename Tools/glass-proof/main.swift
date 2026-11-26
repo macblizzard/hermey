@@ -128,6 +128,9 @@ try? FileManager.default.createDirectory(at: outDirectory, withIntermediateDirec
 
 // MARK: - One frame
 
+/// The last case's mask build, in milliseconds: the one CPU-side cost this pass pays, once per size.
+var lastMaskMilliseconds: Double = 0
+
 /// One case's pixels: premultiplied RGBA, y down, at the drawable's resolution.
 struct Rendered {
     var rgba: [UInt8]
@@ -151,9 +154,14 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     let surface = BotAvatarGlassSurface.make(model: model, pose: pose, size: points, face: face,
                                              color: OpenBotAvatarRenderer.defaultColor,
                                              backdrop: .themed(dark: true), material: .glass)
+    // How long the mask costs, per case: the analytic field is the one part of this pass that runs on
+    // the CPU, and it runs once per pixel size — so its number is the price of the fix, quoted rather
+    // than guessed.
+    let maskStart = CFAbsoluteTimeGetCurrent()
     guard let mask = BotAvatarGlassDrawer.makeMask(path: model.silhouette.applying(face),
                                                    points: points, pixels: pixels,
                                                    device: device) else { return nil }
+    lastMaskMilliseconds = (CFAbsoluteTimeGetCurrent() - maskStart) * 1000
 
     var uniforms = surface.uniforms
     uniforms.size = SIMD4<Float>(Float(points.width), Float(points.height),
@@ -326,8 +334,9 @@ for side in sides {
         }
         let mean = covered > 0 ? alphaSum / Double(covered) : 0
         let name = stem.padding(toLength: 22, withPad: " ", startingAt: 0)
-        print(String(format: "%@ %dx%d  cover=%d  mean=%.2f  max=%.2f",
-                     name, frame.width, frame.height, covered, mean, Double(alphaMax) / 255))
+        print(String(format: "%@ %dx%d  cover=%d  mean=%.2f  max=%.2f  mask=%.0f ms",
+                     name, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
+                     lastMaskMilliseconds))
     }
 }
 
