@@ -304,7 +304,7 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// and every gradient in the body banded at a width the eye reads as dither. A half float
     /// resolves the same field to 0.02 pt at 200 pt, which is below one pixel at every size this
     /// material is drawn at. It costs twice the texture's memory and nothing per frame: the mask is
-    /// rebuilt only when the drawable's pixel size changes.
+    /// rebuilt only when the body or the drawable's pixel size changes.
     ///
     /// Why the field is *analytic*: the two channels below used to come from a chamfer transform of
     /// the filled raster, which measures pixel centre to pixel centre — every value a whole number of
@@ -328,8 +328,8 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// outline's own distance field, thin parts are thin, and the rim follows the silhouette the
     /// person can see.
     ///
-    /// Cost: two chamfer passes per rebuild, and a rebuild only when the pixel size changes — never
-    /// per frame.
+    /// Cost: two chamfer passes per rebuild, and a rebuild only when the body or the pixel size
+    /// changes — never per frame.
     static func makeMask(path: Path,
                          points: CGSize,
                          pixels: CGSize,
