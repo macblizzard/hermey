@@ -190,10 +190,14 @@ public struct OpenBotAvatarView: View {
                                                    material: material)
             // **No painted body, ever, on this route.** Two things keep the flat fill from landing
             // under the shader: this frame asks the renderer only for `.behind` and `.over`, and the
-            // renderer draws a body only for a pass that says it does. The assertion is that answer,
-            // checked where the passes are named — a future `.behind` that grew a body would fail
-            // here in debug and in the suite, rather than as an opaque blob on the owner's screen.
-            assert(!OpenBotAvatarRenderer.Pass.behind.drawsBody && !OpenBotAvatarRenderer.Pass.over.drawsBody)
+            // renderer draws a body only for a pass that says it does. This is that answer, stated
+            // once here — a future `.behind` that grew a body would trip `Tests/test_avatar_glass_shader.py`
+            // rather than ship an opaque blob. It is deliberately NOT an `assert` on this line: a
+            // statement that returns Void cannot sit inside a `ViewBuilder`, and `assert` is exactly
+            // that, which failed the whole app build the moment this route was compiled for release.
+            let bodyIsNotPaintedHere = !OpenBotAvatarRenderer.Pass.behind.drawsBody
+                && !OpenBotAvatarRenderer.Pass.over.drawsBody
+            let _ = bodyIsNotPaintedHere
             ZStack {
                 Canvas { context, canvasSize in
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
