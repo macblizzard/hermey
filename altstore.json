@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.683",
-          "buildVersion": "683",
-          "date": "2026-11-26T19:48:51Z",
-          "localizedDescription": "Glass without the bands: the interior field is computed from the silhouette instead of a pixel-quantised raster, so the body is smooth at every size, with a real bounce term, a refracted wall line and a caustic that follows the thickness.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.683/Hermey-0.1.683-b683.ipa",
-          "size": 6193795,
+          "version": "0.1.685",
+          "buildVersion": "685",
+          "date": "2026-11-26T21:17:06Z",
+          "localizedDescription": "Brighter glass that transmits the surface behind it, a Settings > Shortcuts panel you can rebind (menus follow live), no more three-dot under messages (right-click / long-press and Cmd-Shift-M carry every verb), the bot settings header draws its face, and a 15% bigger status-line avatar.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.685/Hermey-0.1.685-b685.ipa",
+          "size": 6231072,
           "minOSVersion": "17.0",
-          "sha256": "76adb4d37ff8d0bb232edb6399fb53c2646820241251c480d63421e7bae9dc78"
+          "sha256": "dc43aa1b216e81239b9ab7c983ed9937da878a9b3d2be3f3342a937359feea4a"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.683 (683)",
-      "identifier": "hermes-0.1.683-683",
-      "caption": "Glass without the bands: the interior field is computed from the silhouette instead of a pixel-quantised raster, so the body is smooth at every size, with a real bounce term, a refracted wall line and a caustic that follows the thickness.",
-      "date": "2026-11-26T19:48:51Z",
+      "title": "Hermes 0.1.685 (685)",
+      "identifier": "hermes-0.1.685-685",
+      "caption": "Brighter glass that transmits the surface behind it, a Settings > Shortcuts panel you can rebind (menus follow live), no more three-dot under messages (right-click / long-press and Cmd-Shift-M carry every verb), the bot settings header draws its face, and a 15% bigger status-line avatar.",
+      "date": "2026-11-26T21:17:06Z",
       "tintColor": "#9A9AA0"
     }
   ],
