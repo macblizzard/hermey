@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.680",
-          "buildVersion": "680",
-          "date": "2026-11-26T15:26:23Z",
-          "localizedDescription": "Settings > About: Check now actually asks the host, and the row shows the version the host reports (0.8.14) instead of a stale value.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.680/Hermey-0.1.680-b680.ipa",
-          "size": 6187302,
+          "version": "0.1.681",
+          "buildVersion": "681",
+          "date": "2026-11-26T16:11:18Z",
+          "localizedDescription": "Idle avatars float gently now (per-bot phase, off under Reduce Motion), and Settings > About's Check now actually reaches the host and shows its real version.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.681/Hermey-0.1.681-b681.ipa",
+          "size": 6187345,
           "minOSVersion": "17.0",
-          "sha256": "cabd977c9bcd0626acceb2f4c2c581674556f249d77ab49a0559ba48edfea158"
+          "sha256": "1d25d7d5abf856c27e3c6094ce7c8169a8eb8b89b5c55e3b0ad20027b4bfe502"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.680 (680)",
-      "identifier": "hermes-0.1.680-680",
-      "caption": "Settings > About: Check now actually asks the host, and the row shows the version the host reports (0.8.14) instead of a stale value.",
-      "date": "2026-11-26T15:26:23Z",
+      "title": "Hermes 0.1.681 (681)",
+      "identifier": "hermes-0.1.681-681",
+      "caption": "Idle avatars float gently now (per-bot phase, off under Reduce Motion), and Settings > About's Check now actually reaches the host and shows its real version.",
+      "date": "2026-11-26T16:11:18Z",
       "tintColor": "#9A9AA0"
     }
   ],
