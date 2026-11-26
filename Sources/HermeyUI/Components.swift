@@ -103,6 +103,14 @@ public enum TypeScale {
         .system(size: pointSize(size), weight: weight)
     }
 
+    /// The same scale at a fixed pitch, for text that *is* a file rather than prose.
+    ///
+    /// Only the memory editor uses it: what is on screen there is the bot's memory file character for
+    /// character, and a proportional face would misrepresent a text the owner is asked to edit as text.
+    public static func mono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: pointSize(size), weight: weight, design: .monospaced)
+    }
+
     /// The size a step actually draws at: the design size times the user's step, on a half-point grid
     /// so the glyphs stay hinted.
     public static func pointSize(_ size: CGFloat) -> CGFloat {
