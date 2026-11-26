@@ -604,6 +604,12 @@ class TheFieldIsAnalytic(unittest.TestCase):
     def test_the_field_is_point_to_segment_not_a_relaxation(self):
         layer = code(read(LAYER))
         self.assertIn("private static func analyticField(", layer)
+        # …and the mask is *built* from it, not merely holding it: the packed channels are its only
+        # source, so there is nowhere for a rasterised field to come back in.
+        self.assertIn("let field = Self.analyticField(path: path, coverage: coverage, points: points,",
+                      layer)
+        self.assertIn("packed[i * 4 + 1] = Self.halfBits(max(0, field[i]))", layer)
+        self.assertIn("packed[i * 4 + 2] = Self.halfBits(max(0, -field[i]))", layer)
         self.assertIn("for segment in segments {", layer)
         # The projection onto the segment: a clamped dot product, then the point's distance to it.
         self.assertIn("let t = length2 > 1e-9 ? max(0, min(1, (wx * segment.ex + wy * segment.ey) "
