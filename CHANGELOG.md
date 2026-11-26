@@ -3,6 +3,26 @@
 All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
+### Fixed
+- **The settings header now wears the face you are choosing — and shows it at all.** The bot's avatar
+  beside its name in the Mac bot-settings sheet and on the iPhone settings screen was resolving the
+  *stored* face only, so with the Avatar tab open you picked Hourglass, the 200 pt preview became an
+  hourglass, and the head beside the title stayed on the Cat you had saved last week — which reads
+  exactly like "the presets do nothing". It also depended on the avatar library arriving through
+  `environment.botAvatars`, which a presented sheet is not guaranteed to inherit, so for a bot whose
+  only face is a drawn document it drew nothing at all. Both heads now draw the editor's own draft
+  (the editor reports it through `onFaceChange`, so the head and the preview cannot disagree) and,
+  before that tab opens, the sheet's *own* copy of the host's document — body, colour and material
+  together, through one new `document:` door on `BotAvatarView` that takes precedence over the
+  environment. One size for both platforms (`BotAvatarSize.settingsHeader`), still and static. The
+  twelve presets were already writing the whole definition — that path is now pinned by a test that
+  fails if a preset ever writes only the eyes — and the strip's six-column grid wraps, so all twelve
+  are on screen.
+- **A bigger face on the working line.** The small avatar that waits beside the "◉_◉ deliberating…"
+  status phrase — the same row on both shells — was 16 pt and read as a dot. It is 15 % bigger
+  (`WorkingStatus.avatarSide`, one constant), and the row is aligned on the text's first baseline so
+  the taller face hangs off the words instead of moving them.
+
 ### Added
 - **Edit a saved secret, and never see it.** Every row in **Settings → Vault** — the Mac's tab and the
   phone's screen — now has **Edit**: rename the item, replace its value, or both, in one save. The value

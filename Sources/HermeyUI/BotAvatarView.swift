@@ -1,6 +1,13 @@
 import HermesKit
 import SwiftUI
 
+/// The sizes a face is drawn at on more than one surface, so they are stated once.
+public enum BotAvatarSize {
+    /// The face beside a settings surface's title — the Mac bot-settings sheet's header and the
+    /// iPhone settings screen's principal toolbar item, which are the same idea on two platforms.
+    public static let settingsHeader: CGFloat = 26
+}
+
 /// A bot's face: one of the eight shipped bodies, the same two bar eyes on every one, and the
 /// activity the bot is in drawn as motion.
 ///
@@ -141,6 +148,18 @@ public struct BotAvatarView: View {
     /// The definition's colour: `#RRGGBB`, or nil for the house colour. Only read beside an explicit
     /// `definition:` — a stored definition brings its own stored colour with it.
     public var avatarColor: String?
+    /// The whole stored face — body, colour **and material** — when the caller already holds it.
+    ///
+    /// This is the third door through the same resolution, and it exists for one shape of caller:
+    /// a surface that was *handed* a document (the settings sheet's own `botAvatars` entry, or the
+    /// living draft the avatar editor is previewing) and must draw exactly that, without depending
+    /// on `environment.botAvatars` being in scope. A sheet is the case that made it necessary: the
+    /// library is injected at the app's roots, and a presented surface that never sees it fell back
+    /// to the shape face — or, for a bot whose only face is a drawn document, to nothing at all.
+    ///
+    /// Precedence is `document` → `definition` → the environment. `definition`/`avatarColor` stay
+    /// for a preview; this carries the material they cannot.
+    public var document: BotAvatarDocument?
     /// Draw the shape-and-palette face even when the environment holds a drawn avatar for this id.
     ///
     /// One caller: the Avatar tab's Classic row, which is offering the family the bot is *not* on.
@@ -176,6 +195,7 @@ public struct BotAvatarView: View {
                 pageBackground: Color? = nil,
                 definition: BotAvatarDefinition? = nil,
                 avatarColor: String? = nil,
+                document: BotAvatarDocument? = nil,
                 ignoresStoredAvatar: Bool = false) {
         self.identity = identity
         self.color = color
@@ -190,6 +210,7 @@ public struct BotAvatarView: View {
         self.pageBackground = pageBackground
         self.definition = definition
         self.avatarColor = avatarColor
+        self.document = document
         self.ignoresStoredAvatar = ignoresStoredAvatar
     }
 
@@ -348,6 +369,10 @@ public struct BotAvatarView: View {
     /// deliberately *not* consulted when the definition came from the host: the stored colour
     /// belongs to the stored body, and a stale `bots.color` must not repaint a newer face.
     private var face: BotAvatarDocument? {
+        // A document the caller already resolved — the settings sheet's own stored entry, or the
+        // draft the editor is drawing right now. It wins over everything: the caller is telling this
+        // view *which* face to draw, and the material travels with it.
+        if let document { return document }
         if let definition {
             return BotAvatarDocument(definition: definition, color: avatarColor)
         }

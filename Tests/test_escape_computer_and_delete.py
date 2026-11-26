@@ -241,10 +241,14 @@ class TheWorkingMarkIsTheBotsOwnFace(unittest.TestCase):
         # A caller with no bot still gets the wheel: a room has no single face to draw.
         self.assertIn("SpinningRing(color: Tokens.accent, size: 11, lineWidth: 1.5)", self.WORKING)
 
-    def test_the_row_is_still_the_bots_at_16_pt(self) -> None:
+    def test_the_row_is_still_the_bots_own_face(self) -> None:
         # The old spinner turned at whatever size it was asked for; the avatar holds still below its
-        # own floor, so this row never buys a timeline.
-        self.assertIn("size: 16,", self.WORKING)
+        # own floor, so this row never buys a timeline. The size is one constant — 16 pt +15 %, the
+        # owner's "increase the state avatar about 15%" (2026-11-26) — and the row is aligned on the
+        # text's baseline so a bigger face cannot move the words.
+        self.assertIn("public static let avatarSide: CGFloat = 16 * 1.15", self.WORKING)
+        self.assertIn("size: Self.avatarSide,", self.WORKING)
+        self.assertIn("HStack(alignment: .firstTextBaseline, spacing: 8)", self.WORKING)
         self.assertIn("WorkingStatus(bot: bot, activity: activity, color: color)", self.MAC_SCROLL)
 
     def test_one_row_not_two(self) -> None:

@@ -49,6 +49,9 @@ struct BotModelSettingsScreen: View {
     @State private var deleting = false
     /// Which tab is showing: the bot's identity, or its generated avatar.
     @State private var tab: SettingsTab = .about
+    /// The face the Avatar tab is showing right now — the editor's draft, reported by
+    /// `onFaceChange`. Nil until that tab has appeared, when the header draws the stored face.
+    @State private var liveFace: BotAvatarSelection?
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case about = "About"
@@ -108,9 +111,11 @@ struct BotModelSettingsScreen: View {
                 // is read.
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 8) {
-                        // A settings sheet is not a live surface: the face is the stored one,
-                        // still, because nothing here is being asked to show a run.
-                        BotAvatarView(identity: bot.id, color: icon?.raw, size: 24, animates: false)
+                        // A settings screen is not a live surface: the face is drawn still, because
+                        // nothing here is being asked to show a run. But it is the face being
+                        // *edited* while the Avatar tab is open — the editor reports its draft — so
+                        // picking a preset moves this head as well as the preview below it.
+                        headerAvatar
                         Text(bot.displayName)
                             .font(TypeScale.font(TypeScale.md, weight: .semibold))
                             .foregroundStyle(Tokens.textPrimary)
@@ -118,6 +123,28 @@ struct BotModelSettingsScreen: View {
                 }
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.hermeyFocusQuiet() }
             }
+        }
+    }
+
+    /// The face the header draws: the tab's live draft when there is one, else what the host stores.
+    ///
+    /// Three cases, one per family, so the head says the same thing the preview does — a Classic pick
+    /// draws the shape-and-palette face even for a bot that still has a drawing stored.
+    @ViewBuilder
+    private var headerAvatar: some View {
+        // While the Avatar tab is open this is the draft; on any other tab it is what the host has.
+        switch tab == .avatar ? liveFace : nil {
+        case .custom(let document):
+            BotAvatarView(identity: bot.id, size: BotAvatarSize.settingsHeader, animates: false,
+                          document: document)
+        case .classic(let choice):
+            BotAvatarView(identity: bot.id, color: choice.raw, size: BotAvatarSize.settingsHeader,
+                          animates: false, ignoresStoredAvatar: true)
+        case nil:
+            // Passed in, not read from the environment: this screen is presented, and a presented
+            // surface is exactly where the injected library is not guaranteed to be.
+            BotAvatarView(identity: bot.id, color: icon?.raw, size: BotAvatarSize.settingsHeader,
+                          animates: false, document: avatar)
         }
     }
 
@@ -234,6 +261,8 @@ struct BotModelSettingsScreen: View {
                                 stored: avatar,
                                 face: icon,
                                 previewState: .idle,
+                                // The head above draws this same face while the tab is open.
+                                onFaceChange: { liveFace = $0 },
                                 save: save)
                 .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
         } header: {

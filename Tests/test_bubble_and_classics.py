@@ -488,13 +488,16 @@ class TheEditorSaysWhichFamilyItIsOn(unittest.TestCase):
         self.assertIn("case .custom:", preview)
         self.assertIn("OpenBotAvatarView(definition: draft,", preview)
 
-    def test_only_the_editor_ignores_a_stored_avatar(self) -> None:
-        # The one bypass of the environment resolution, and it is a comparison the person is making.
+    def test_only_the_editing_surfaces_ignore_a_stored_avatar(self) -> None:
+        # The one bypass of the environment resolution, and it is a comparison the person is making:
+        # the editor's Classic row, and the settings header that now mirrors the draft beside the
+        # title (a Classic pick has to read as a Classic pick up there too, even for a bot that still
+        # has a drawing stored). No roster row, panel or transcript surface may take it.
         self.assertIn("if ignoresStoredAvatar { return nil }", read(BOT_AVATAR_VIEW))
         callers = [p for p in swift_files(UI) + swift_files(APPS)
                    if "ignoresStoredAvatar: true" in read(p)]
-        self.assertEqual([EDITOR], callers,
-                         "a surface other than the editor draws the face the host does not have")
+        self.assertEqual(sorted(callers, key=str), sorted([EDITOR, MAC_SHEET, IOS_SETTINGS], key=str),
+                         "a surface other than the editing ones draws the face the host does not have")
 
 
 class BothAppsOfferTheClassicFamily(unittest.TestCase):

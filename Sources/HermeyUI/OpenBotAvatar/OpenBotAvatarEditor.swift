@@ -56,6 +56,14 @@ public struct OpenBotAvatarEditor: View {
     public var previewState: OpenBotAvatarState
     /// Saves one family — or, with nil, clears both. Errors are shown inline.
     public let save: (BotAvatarSelection?) async throws -> Void
+    /// The face this editor is *showing*, before Save: the draft, or the Classic choice.
+    ///
+    /// The header beside the sheet's title draws the same face as the preview below it, and the
+    /// draft lives in this view — so the one way for it to know is to be told. Fires once on
+    /// appearance (the seeded face, so an unedited sheet is already right) and again on every change
+    /// of the family, the body, the colour or the material. It is **presentation only**: this reports
+    /// what is on screen, it never writes a store, and a caller that ignores it loses nothing.
+    public var onFaceChange: ((BotAvatarSelection) -> Void)?
 
     /// The side the preview is drawn at, in points. It is the number `facePreview` passes as `size:`
     /// — the material row asks the glass route about it, because "will this device draw glass as a
@@ -116,12 +124,14 @@ public struct OpenBotAvatarEditor: View {
                 stored: BotAvatarDocument?,
                 face: BotFaceChoice? = nil,
                 previewState: OpenBotAvatarState = .idle,
+                onFaceChange: ((BotAvatarSelection) -> Void)? = nil,
                 save: @escaping (BotAvatarSelection?) async throws -> Void) {
         self.botID = botID
         self.botName = botName
         self.stored = stored
         self.face = face
         self.previewState = previewState
+        self.onFaceChange = onFaceChange
         self.save = save
         // A bot with nothing stored starts on the first preset: an editor that opens on an empty box
         // asks the person to invent a path before they can press Save.
@@ -160,6 +170,30 @@ public struct OpenBotAvatarEditor: View {
             }
             actions
         }
+        // The header beside the title draws this same face, so every change of the draft, the colour,
+        // the material or the family tells the caller — and the first appearance reports the seeded
+        // face, so an untouched sheet is already right. Keyed on the face itself rather than on the
+        // four fields: two edits that draw the same face must not repaint the header.
+        .onAppear { reportFaceOnScreen() }
+        .onChange(of: faceOnScreen) { _, _ in reportFaceOnScreen() }
+    }
+
+    /// The face the preview is drawing, in the shape a caller stores.
+    ///
+    /// The Classic family has no draft document, so it answers with the chosen face — or, for a bot
+    /// that has chosen neither, with `nil`, which is the caller's cue to draw whatever the host has.
+    private var faceOnScreen: BotAvatarSelection? {
+        switch family {
+        case .custom:
+            return .custom(BotAvatarDocument(definition: draft, color: colorHex, material: material))
+        case .classic:
+            return classicChoice.map { .classic($0) } ?? BotAvatarSelection.stored(document: stored, face: face)
+        }
+    }
+
+    private func reportFaceOnScreen() {
+        guard let onFaceChange, let selection = faceOnScreen else { return }
+        onFaceChange(selection)
     }
 
     // MARK: - Preview

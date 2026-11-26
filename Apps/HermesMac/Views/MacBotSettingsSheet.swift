@@ -36,6 +36,10 @@ struct MacBotSettingsSheet: View {
 
     /// The pet switch, mirrored from `PetSettings` so a pet closed from its own menu moves it.
     @State private var petEnabled: Bool
+    /// The face the Avatar tab is showing right now — the editor's draft, reported by
+    /// `onFaceChange`. Nil until the Avatar tab has appeared (or when the bot has no face at all),
+    /// in which case the header draws the sheet's own copy of what the host stores.
+    @State private var liveFace: BotAvatarSelection?
     /// Which tab of the sheet is showing. Two, not more: what the bot is, and what its avatar looks
     /// like. The avatar is its own tab because editing a face is a different job from editing a
     /// description, and mixing them put a paste box under the name field.
@@ -148,6 +152,9 @@ struct MacBotSettingsSheet: View {
             stored: store.botAvatars[bot.id],
             face: store.botFaces[bot.id],
             previewState: OpenBotAvatarState(activity: store.activity(for: bot.id)),
+            // The header draws this same face: while the tab is open, what the person is choosing
+            // is what sits beside the bot's name, not the face they have not saved over yet.
+            onFaceChange: { liveFace = $0 },
             save: { selection in
                 try await store.saveBotAvatar(botID: bot.id, selection: selection)
             }
@@ -156,12 +163,36 @@ struct MacBotSettingsSheet: View {
 
     // MARK: Chrome
 
+    /// The face this bot wears everywhere else, so the sheet is recognisable before its name
+    /// is read — and while the Avatar tab is open, the face being *edited*: the editor reports its
+    /// draft through `onFaceChange`, so the header and the 200 pt preview cannot disagree. Before
+    /// this, the header drew the stored face only, so picking Cat and then Mug left a Cat up here
+    /// and read exactly like the preset row doing nothing.
+    @ViewBuilder
+    private var headerAvatar: some View {
+        // While the Avatar tab is open this is the draft; on any other tab it is what the host has,
+        // because a draft nobody is looking at should not be presented as the bot's face.
+        switch tab == .avatar ? liveFace : nil {
+        case .custom(let document):
+            BotAvatarView(identity: bot.id, size: BotAvatarSize.settingsHeader, animates: false,
+                          document: document)
+        case .classic(let choice):
+            // The other family: the chosen shape-and-palette face, not the stored drawing.
+            BotAvatarView(identity: bot.id, color: choice.raw, size: BotAvatarSize.settingsHeader,
+                          animates: false, ignoresStoredAvatar: true)
+        case nil:
+            // Nothing drawn yet in this session (the About tab, or a bot with neither family): the
+            // sheet's own copy of what the host stores — body, colour and material together — so
+            // this header never depends on the environment reaching a presented sheet.
+            BotAvatarView(identity: bot.id, color: store.botFaces[bot.id]?.raw,
+                          size: BotAvatarSize.settingsHeader, animates: false,
+                          document: store.botAvatars[bot.id])
+        }
+    }
+
     private var titleBar: some View {
         HStack(spacing: 10) {
-            // The face this bot wears everywhere else, so the sheet is recognisable before its name
-            // is read.
-            BotAvatarView(identity: bot.id, color: store.botFaces[bot.id]?.raw, size: 26,
-                          animates: false)
+            headerAvatar
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(bot.displayName)

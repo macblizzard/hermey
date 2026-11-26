@@ -20,6 +20,11 @@ public struct WorkingStatus: View {
 
     @State private var index: Int
 
+    /// The face on this line, in points: the old 16 pt, +15 %, because at 16 it read as too small
+    /// beside the phrase (asked for by the owner on 2026-11-26). One constant, so the number is
+    /// stated once and a guard can pin the ratio; the row's height still comes from the text.
+    public static let avatarSide: CGFloat = 16 * 1.15
+
     private let ticker = Timer.publish(every: 3.2, on: .main, in: .common).autoconnect()
 
     /// The rotations. They are written to be read quickly and to sound like a person thinking,
@@ -46,14 +51,19 @@ public struct WorkingStatus: View {
     }
 
     public var body: some View {
-        HStack(spacing: 8) {
+        // First baseline, not centre: the face is taller than the 13 pt phrase beside it, so a
+        // centring stack lets the taller of the two decide where the row sits. On the baseline the
+        // words sit where every other line sits and the face hangs off them — which is also why the
+        // face's size below is one named constant rather than a number at the call site: +15 % of
+        // the old 16 pt is a decision about this line, and it is stated where it is read.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             if let bot {
                 BotAvatarView(identity: bot,
                               color: color,
                               activity: activity,
-                              size: 16,
+                              size: Self.avatarSide,
                               // This row is only drawn while a turn is in flight, and the face is
-                              // the whole status indicator — so it moves even at 16 pt, past the
+                              // the whole status indicator — so it moves even at this size, past the
                               // house floor that keeps list-sized faces cheap.
                               animates: true,
                               animatingFrom: 0)

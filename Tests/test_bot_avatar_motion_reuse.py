@@ -269,10 +269,11 @@ class EveryCalmCaseHoldsTheRestPose(unittest.TestCase):
     def test_the_floor_and_its_callers_are_unchanged(self) -> None:
         self.assertIn("animatingFrom: Double = BotAvatarMotion.minimumAnimatingSize",
                       read(BOT_AVATAR_VIEW))
-        # A 26 pt face in a settings sheet is still static by its caller's own word, so the drawn
-        # branch cannot start performing there.
+        # A face in a settings sheet is still static by its caller's own word, so the drawn branch
+        # cannot start performing there; the size it is drawn at is one shared constant, so the Mac
+        # sheet and the iPhone screen cannot drift apart by a point.
         sheet = read(MAC_SETTINGS_SHEET)
-        self.assertIn("size: 26,", sheet)
+        self.assertIn("BotAvatarSize.settingsHeader", sheet)
         self.assertIn("animates: false", sheet)
 
 
