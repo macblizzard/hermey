@@ -708,7 +708,14 @@ enum HermeyGlassSource {
             // feather is what makes it a highlight rather than a painted gradient, and because `reflDirS`
             // is the bent normal it sweeps and narrows with the shoulder's own curvature — widest where the
             // surface turns evenly, sharpest where it turns fastest.
-            float shoulder = softbox(reflDirS, float3(-0.52, -0.68, 0.52), float2(0.30, 0.14), 0.030, -0.35);
+            //
+            // And a reflection is only as sharp as the pixel sampling it: where the bent normal sweeps
+            // further in one pixel than the panel's own feather, the panel is feathered by that sweep. It
+            // is the specular half of edge coverage — without it a bevel that turns quickly (an ear's
+            // diagonal) draws the key as a sawtooth of lit and unlit pixels, which is the dotted highlight
+            // in the pictures, and no amount of silhouette antialiasing touches it.
+            float specFoot = min(0.30, length(fwidth(reflDirS)) * 0.85);
+            float shoulder = softbox(reflDirS, float3(-0.52, -0.68, 0.52), float2(0.30, 0.14), 0.030 + specFoot, -0.35);
             accum += float3(1.0) * (shoulder * 1.95 * (0.55 + 0.45 * (1.0 - thick)) * (0.35 + 0.65 * (1.0 - cos1)));
 
             float weight = 1.0 - F1;
