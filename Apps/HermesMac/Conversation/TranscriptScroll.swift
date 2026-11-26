@@ -66,6 +66,10 @@ struct TranscriptScroll: View {
     /// a page the reader did not ask to move.
     @State private var anchorHold = TranscriptAnchorHold()
     @FocusState private var searchFocused: Bool
+    /// Which row the keyboard is on. Every row is a tab stop (see `messageRow`), and this is the one
+    /// value that names the row the menu bar's *Message Actions…* (⌘⇧M) acts on — and the row that
+    /// draws the focus hairline, since the system ring is off.
+    @FocusState private var focusedRow: String?
     private let streamingID = "conversation-streaming-search"
 
     /// The rows this conversation matches, in reading order, with the live turn last.
@@ -229,6 +233,9 @@ struct TranscriptScroll: View {
             .overlay(alignment: .bottom) { foot.padding(.bottom, bottomInset) }
             .onAppear { scrollRequest += 1 }
 
+            .onReceive(NotificationCenter.default.publisher(for: .messageActionsRequested)) { _ in
+                raiseMessageActions()
+            }
             .onChange(of: model.transcript.count) { _, _ in
                 // A count change is deliberately *not* a door to the hold. It is far too common a
                 // shape: a turn landing at the bottom, a rewind, and — the one that used to arm and
@@ -303,6 +310,63 @@ struct TranscriptScroll: View {
         proxy.scrollTo(scrollTarget(for: id), anchor: .center)
     }
 
+    // MARK: Message rows
+
+    /// One transcript row, with the keyboard's rules on it — the only place a row is built, so every
+    /// row (a message, a system line, a card inside an opened run) behaves the same way.
+    ///
+    /// **The keyboard's door.** The row used to carry a `⋯` whose only job was to be the tab stop
+    /// that raised the message menu. It is gone (asked for 2026-11-26), so the row itself is the tab
+    /// stop and the menu is raised from the menu bar's *Message Actions…* (⌘⇧M): Tab names a message,
+    /// ⌘⇧M opens that message's menu. Focus is drawn as a hairline in the border colour rather than
+    /// the system's accent ring — `hermeyFocusQuiet()` keeps that ring off, the same decision every
+    /// other control in the app makes (see `FocusQuiet`), and it is why the ring is drawn here.
+    ///
+    /// Nothing else about the row changes: its hover, its clamp, its reactions and its right-click
+    /// menu are all the row's own, and the overlay below is not a hit target.
+    @ViewBuilder
+    private func messageRow(_ entry: TranscriptEntry) -> some View {
+        TranscriptRowView(entry: entry,
+                          host: model.hostName,
+                          bot: model.selectedBotID ?? "",
+                          session: model.selectedSessionID,
+                          userBubbleTint: userBubbleTint,
+                          faces: faces,
+                          onSelectText: { selectionText = $0 },
+                          onReply: { model.reply(to: $0) },
+                          onEditAndResend: { model.requestEditAndResend($0) },
+                          onDelete: { model.requestDelete($0) },
+                          turnRunning: model.isStreaming,
+                          onOpenPair: { peer in pairPeer = peer },
+                          fetchCard: { id, session, message in
+                              try await model.fetchCard(id: id, session: session, message: message)
+                          },
+                          openAttachmentFile: { [model] location in
+                              try await model.attachmentFile(for: location)
+                          },
+                          reaction: { model.reaction(forMessage: $0) },
+                          onReact: { message, emoji in
+                              Task { await model.setReaction(emoji, forMessage: message) }
+                          })
+            .focusable()
+            .focused($focusedRow, equals: entry.id)
+            .hermeyFocusQuiet()
+            .overlay(
+                RoundedRectangle(cornerRadius: Tokens.radiusCard, style: .continuous)
+                    .strokeBorder(focusedRow == entry.id ? Tokens.borderStrong : .clear,
+                                  lineWidth: 1)
+                    .allowsHitTesting(false)
+            )
+    }
+
+    /// ⌘⇧M. The row the keyboard is on answers; with no row focused — the usual case, the composer
+    /// holds the keyboard — the newest message does, because that is the one a reader asks about when
+    /// nothing is selected. A row the lazy stack has not built has no menu on screen to raise, and
+    /// `present` says so by doing nothing rather than opening one against a row that is not there.
+    private func raiseMessageActions() {
+        MessageMenuDirectory.shared.present(for: focusedRow ?? model.visibleTranscript.last?.id)
+    }
+
     /// The messages, on the reading measure.
     private var rows: some View {
         // One pass for the highlight, not one per row: `matches` walks the whole conversation, and a
@@ -330,54 +394,12 @@ struct TranscriptScroll: View {
             ForEach(groupedRows, id: \.id) { row in
                 switch row {
                 case .entry(let entry):
-                    TranscriptRowView(entry: entry,
-                                      host: model.hostName,
-                                      bot: model.selectedBotID ?? "",
-                                      session: model.selectedSessionID,
-                                      userBubbleTint: userBubbleTint,
-                                      faces: faces,
-                                      onSelectText: { selectionText = $0 },
-                                      onReply: { model.reply(to: $0) },
-                                      onEditAndResend: { model.requestEditAndResend($0) },
-                                      onDelete: { model.requestDelete($0) },
-                                      turnRunning: model.isStreaming,
-                                      onOpenPair: { peer in pairPeer = peer },
-                                      fetchCard: { id, session, message in
-                                          try await model.fetchCard(id: id, session: session, message: message)
-                                      },
-                                      openAttachmentFile: { [model] location in
-                                          try await model.attachmentFile(for: location)
-                                      },
-                                      reaction: { model.reaction(forMessage: $0) },
-                                      onReact: { message, emoji in
-                                          Task { await model.setReaction(emoji, forMessage: message) }
-                                      })
+                    messageRow(entry)
                         .id(entry.id)
                         .background(fill([entry.id], among: matched, selected: selected))
                 case .toolRun(let run):
                     ToolRunGroup(run: run) { entry in
-                        TranscriptRowView(entry: entry,
-                                          host: model.hostName,
-                                          bot: model.selectedBotID ?? "",
-                                          session: model.selectedSessionID,
-                                          userBubbleTint: userBubbleTint,
-                                          faces: faces,
-                                          onSelectText: { selectionText = $0 },
-                                          onReply: { model.reply(to: $0) },
-                                          onEditAndResend: { model.requestEditAndResend($0) },
-                                          onDelete: { model.requestDelete($0) },
-                                          turnRunning: model.isStreaming,
-                                          onOpenPair: { peer in pairPeer = peer },
-                                          fetchCard: { id, session, message in
-                                              try await model.fetchCard(id: id, session: session, message: message)
-                                          },
-                                          openAttachmentFile: { [model] location in
-                                              try await model.attachmentFile(for: location)
-                                          },
-                                          reaction: { model.reaction(forMessage: $0) },
-                                          onReact: { message, emoji in
-                                              Task { await model.setReaction(emoji, forMessage: message) }
-                                          })
+                        messageRow(entry)
                             .background(fill([entry.id], among: matched, selected: selected))
                     }
                     .id(run.id)

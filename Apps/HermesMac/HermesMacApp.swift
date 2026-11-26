@@ -262,6 +262,19 @@ struct WorkspaceCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: .command)
 
+            // ⌘⇧M — the keyboard's door to a message's verbs, and it replaces the `⋯` that used to
+            // sit under every message. The right-click menu is the row's menu now; this opens that
+            // same `NSMenu` for the row Tab is on (or the newest message when no row holds focus), so
+            // nothing a mouse can reach — Select Text, Read Aloud, Add Reaction, Share, Copy, Edit and
+            // resend, Delete — became unreachable to the keyboard. Not `.disabled` when there is no
+            // conversation: a disabled item swallows its key equivalent for the rest of the run (the
+            // lesson ⌘E already carries), and the transcript is the only thing that knows whether a
+            // row can answer.
+            Button("Message Actions…") {
+                MessageMenuDirectory.requestActions()
+            }
+            .keyboardShortcut("m", modifiers: [.command, .shift])
+
             Divider()
 
             Button(store.isSidebarHidden ? "Show Bot Panel" : "Hide Bot Panel") {

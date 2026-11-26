@@ -21,11 +21,12 @@ import SwiftUI
 /// click inside these bounds is consumed (`nil` is returned from the monitor), which is also what
 /// stops a second, iconless menu from appearing behind ours.
 ///
-/// **The keyboard.** The row's action line carries a `⋯` whose button calls
-/// `MessageMenuAnchor.present()`: the same `NSMenu`, at the same rows, opened below the row instead
-/// of under the pointer. Tab reaches the button, Space or Return opens the menu, and the menu
-/// itself is a real `NSMenu`, so arrow keys, Return and Escape work exactly as they do in every
-/// other Mac menu — including the verbs SwiftUI's context menu never offered to the keyboard.
+/// **The keyboard.** There is no `⋯` on the row any more (asked for 2026-11-26: the right-click menu
+/// *is* the row's menu). The keyboard's door is instead the menu bar's **Message Actions…** (⌘⇧M,
+/// `WorkspaceCommands`): it posts `Notification.Name.messageActionsRequested`, the transcript asks
+/// `MessageMenuDirectory` for the menu of the row Tab is on and raises that same `NSMenu` below it.
+/// Once open it is a real `NSMenu`, so arrows, Return and Escape behave as in any Mac menu — and
+/// every row is a Tab stop, so a keyboard-only reader still names a message before opening it.
 struct MessageContextMenu: NSViewRepresentable {
     /// The rows, in order, from the shared `MessageMenuItem` description.
     var items: [MessageMenuItem]
@@ -53,17 +54,65 @@ struct MessageContextMenu: NSViewRepresentable {
     }
 }
 
-/// The row's handle on the AppKit view behind `MessageContextMenu`, so a SwiftUI button can raise
-/// the same menu. Weak: the view owns its own lifetime, and a row that scrolls away must not leave
-/// a menu that can still be opened. Deliberately outside the main actor so a row can hold one in
-/// `@State`; the raise is AppKit work and a button's action runs on the main thread.
+/// The row's handle on the AppKit view behind `MessageContextMenu`, so something outside the row can
+/// raise the same menu. Weak: the view owns its own lifetime, and a row that scrolls away must not
+/// leave a menu that can still be opened. Deliberately outside the main actor so a row can hold one
+/// in `@State`; the raise is AppKit work and a button's action runs on the main thread.
 final class MessageMenuAnchor {
     weak var host: MessageMenuHostView?
 
-    /// Raise the menu for the row this anchor belongs to, below its leading edge.
-    func present() {
-        host?.presentBelow()
+    /// True when the row's AppKit view is in a window — the only state in which its menu can be
+    /// raised. `MessageMenuDirectory` asks this before it promises a menu.
+    var isReady: Bool { host != nil }
+}
+
+/// Every built row's menu, by message id — the menu bar's way into a row it does not own.
+///
+/// The row presents its own `NSMenu` (see `MessageContextMenu`), so only the row can raise it. A
+/// menu-bar command has no row: it has a *name* for one — the row the keyboard is on. This is the
+/// one map between those two facts, filled by the rows themselves as a `LazyVStack` builds and
+/// tears them down, and it holds anchors weakly through `MessageMenuAnchor.host`.
+///
+/// A row that is not built is not here, which is the correct answer: a message scrolled out of the
+/// lazy stack has no menu on screen to raise, and `present(for:)` returning `false` is that fact
+/// rather than a crash or a menu pointing at nothing.
+final class MessageMenuDirectory {
+    static let shared = MessageMenuDirectory()
+
+    private var anchors: [String: MessageMenuAnchor] = [:]
+
+    /// A row entered the view tree: its menu is now reachable by name.
+    func register(_ anchor: MessageMenuAnchor, for row: String) {
+        anchors[row] = anchor
     }
+
+    /// A row left the view tree. Only its own anchor is removed — a rebuilt row registers its new
+    /// one, and a scroll must not leave a dead anchor answering for a live id.
+    func unregister(_ row: String) {
+        anchors[row] = nil
+    }
+
+    /// Raise the menu of `row`, below the row. `false` when that row is not on screen.
+    @discardableResult
+    func present(for row: String?) -> Bool {
+        guard let row, let anchor = anchors[row], anchor.isReady, let host = anchor.host else {
+            return false
+        }
+        host.presentBelow()
+        return true
+    }
+
+    /// The menu bar's *Message Actions…* (⌘⇧M). Posted rather than called so the command needs no
+    /// reference to the pane: the transcript on screen is the only thing that answers, and it owns
+    /// the decision about which row the keyboard means.
+    static func requestActions() {
+        NotificationCenter.default.post(name: .messageActionsRequested, object: nil)
+    }
+}
+
+extension Notification.Name {
+    /// ⌘⇧M, from the Conversation menu. `MessageMenuDirectory.requestActions()` posts it.
+    static let messageActionsRequested = Notification.Name("hermey.message.actions")
 }
 
 /// A pass-through overlay that shows the message menu on a right-click inside its bounds.
@@ -151,8 +200,8 @@ final class MessageMenuHostView: NSView {
         show(point: point)
     }
 
-    /// Below the row's leading edge, for the `⋯`: there is no pointer to anchor to when the menu is
-    /// asked for from the keyboard.
+    /// Below the row's leading edge, for the menu bar's *Message Actions…*: there is no pointer to
+    /// anchor to when the menu is asked for from the keyboard.
     func presentBelow() {
         // `popUp(positioning:at:in:)` puts the menu's upper-left corner at the point, so a point on
         // the row's bottom edge opens the menu beneath the row.
