@@ -188,6 +188,12 @@ public struct OpenBotAvatarView: View {
             let glass = BotAvatarGlassSurface.make(model: model, pose: pose, size: layerSize,
                                                    face: face, color: color, backdrop: surface,
                                                    material: material)
+            // **No painted body, ever, on this route.** Two things keep the flat fill from landing
+            // under the shader: this frame asks the renderer only for `.behind` and `.over`, and the
+            // renderer draws a body only for a pass that says it does. The assertion is that answer,
+            // checked where the passes are named — a future `.behind` that grew a body would fail
+            // here in debug and in the suite, rather than as an opaque blob on the owner's screen.
+            assert(!OpenBotAvatarRenderer.Pass.behind.drawsBody && !OpenBotAvatarRenderer.Pass.over.drawsBody)
             ZStack {
                 Canvas { context, canvasSize in
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,

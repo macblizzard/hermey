@@ -11,8 +11,23 @@
 //  What that costs, and what it must not: the library, both functions, the pipeline state and the
 //  sampler are built **once per process** in `HermeyGlassEngine.shared` and held; the per-frame path
 //  builds no objects at all except the command buffer the drawable needs. A frame uploads six
-//  `float4`s and one texture — the body's flat fill, which is the `SwiftUI::Layer` a runtime library
-//  cannot be handed.
+//  `float4`s and one texture — the body's silhouette, which is all a runtime library can be handed of
+//  a `SwiftUI::Layer`.
+//
+//  ## The view has to be transparent, all the way down
+//
+//  The glass is a translucent surface: what shows through it is the ribbons' `Canvas` and the page
+//  behind them. Every layer between the drawable and the screen therefore has to keep its alpha —
+//  the clear colour, the view, the backing layer and the blend — or an opaque black card is what the
+//  person sees, with the glass painted on it. `BotAvatarGlassMTKView` and `transparent(_:)` are that
+//  requirement in one place, and the blend below is premultiplied over, as the fragment writes.
+//
+//  ## The texture is a mask, not a fill
+//
+//  It holds the body's outline filled **white**. Its alpha is the silhouette the shader masks itself
+//  with; its colour is deliberately *not* the body's, because the shader must never read a flat fill
+//  back as "what is behind the glass" — that is what made the body an opaque coloured blob. See
+//  `HermeyGlassSource.msl`'s prologue.
 //
 //  What happens when it will not compile: `HermeyGlassEngine` logs Metal's own error once, stays
 //  not-ready, and `BotAvatarGlassRoute.decide` answers `.canvas` for the life of the process. The
@@ -38,7 +53,7 @@ private let glassLog = Logger(subsystem: "dev.hermey.app", category: "glass")
 /// Thread confinement: every stored property is a `let` written once in `init` and `shared` is a
 /// `static let`, so Swift's once-only initialisation is the whole of the synchronisation — any thread
 /// may read the library or the pipeline and never sees a half-built engine, and no lock is needed
-/// because nothing here mutates after init. The drawer, which does mutate (the texture cache), is
+/// because nothing here mutates after init. The drawer, which does mutate (the mask cache), is
 /// only ever touched from the main thread by `MTKView`'s own delegate calls.
 final class HermeyGlassEngine {
 
@@ -119,9 +134,21 @@ final class HermeyGlassEngine {
     }
 }
 
-/// Draws one glass body: the body's flat fill as a texture, and the runtime shader over it.
+/// A `MetalKit` view that cannot be opaque.
 ///
-/// One drawer per view. The texture is rebuilt only when the drawn pixels change size; a frame that
+/// `MTKView` inherits `NSView`'s default `isOpaque == true`, and AppKit's compositor then throws away
+/// the alpha of every pixel the drawable was presented with — the glass is drawn, and a black card is
+/// what shows. `isOpaque` is a read-only property on `NSView`, so it can only be answered by a
+/// subclass; on iOS the same flag is a settable property, set in `makeView`.
+final class BotAvatarGlassMTKView: MTKView {
+    #if !canImport(UIKit)
+    override var isOpaque: Bool { false }
+    #endif
+}
+
+/// Draws one glass body: the body's silhouette mask as a texture, and the runtime shader over it.
+///
+/// One drawer per view. The mask is rebuilt only when the drawn pixels change size; a frame that
 /// moves the pose re-uploads six `float4`s and nothing else.
 final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
 
@@ -133,24 +160,39 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// a new frame. No display link of its own — the avatar's own 10 Hz timeline is the clock.
     func makeView() -> MTKView? {
         guard let device = HermeyGlassEngine.shared.device else { return nil }
-        let view = MTKView(frame: .zero, device: device)
+        let view = BotAvatarGlassMTKView(frame: .zero, device: device)
         view.colorPixelFormat = HermeyGlassEngine.pixelFormat
+        // A zero-alpha clear: every pixel the body does not cover is *nothing*, not black.
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        // Not `framebufferOnly`: the drawable is presented only, but leaving it off keeps the view
-        // usable if anything ever needs to read it, and costs nothing here.
         view.framebufferOnly = false
         view.isPaused = true
         view.enableSetNeedsDisplay = true
         view.delegate = self
+        Self.transparent(view)
+        return view
+    }
+
+    /// Transparent end to end: the view, its backing layer, and — on iOS — the platform flag that
+    /// short-circuits them both.
+    ///
+    /// The layer is the one that matters. A `CAMetalLayer` is opaque by default and composites its
+    /// drawable as if every pixel were solid, whatever alpha the drawable holds; `backgroundColor`
+    /// nil is what leaves an uncovered pixel of the layer showing what is behind it.
+    private static func transparent(_ view: MTKView) {
+        view.layer?.isOpaque = false
+        if let metalLayer = view.layer as? CAMetalLayer {
+            metalLayer.isOpaque = false
+            metalLayer.backgroundColor = nil
+        }
         #if canImport(UIKit)
         view.isOpaque = false
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         view.isAccessibilityElement = false
         #else
-        view.layer?.isOpaque = false
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
         #endif
-        return view
     }
 
     /// The next frame's numbers and silhouette, from the surface the view decided on.
@@ -163,6 +205,8 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         texture = nil
+        // A view that was re-hosted can come back with its own idea of whether it is opaque.
+        Self.transparent(view)
         requestGlassFrame(view)
     }
 
@@ -177,12 +221,11 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
               let drawable = view.currentDrawable,
               let descriptor = view.currentRenderPassDescriptor else { return }
 
-        // One texture per pixel size: the body's flat fill, drawn the way the Canvas drew it (same
-        // path, same transform, same tint), at the drawable's own resolution.
+        // One mask per pixel size: the body's silhouette, drawn the way the Canvas draws it (same
+        // path, same transform), at the drawable's own resolution.
         let pixels = view.drawableSize
         if texture == nil || texture?.width != Int(pixels.width) || texture?.height != Int(pixels.height) {
-            texture = Self.makeTexture(path: path, tint: surface.tint,
-                                       points: surface.size, pixels: pixels, device: device)
+            texture = Self.makeMask(path: path, points: surface.size, pixels: pixels, device: device)
         }
         guard let texture else { return }
 
@@ -207,17 +250,18 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         commandBuffer.commit()
     }
 
-    /// The body's silhouette, filled flat in its own tint, into an RGBA texture whose first row is
-    /// the top of the view — the orientation `[[position]]` uses.
+    /// The body's silhouette, filled **white**, into an RGBA texture whose first row is the top of
+    /// the view — the orientation `[[position]]` uses.
     ///
-    /// This is the only drawing the pass needs: the shader reads its alpha as the true silhouette and
-    /// its colour as the refracted sample, which is exactly what `layer.sample` returned under the
-    /// `.layerEffect` version.
-    private static func makeTexture(path: Path,
-                                    tint: MaterialColor,
-                                    points: CGSize,
-                                    pixels: CGSize,
-                                    device: MTLDevice) -> MTLTexture? {
+    /// The shader reads its alpha and only its alpha. Filling it in the body's tint was the old
+    /// design's one mistake with consequences: the refraction sample read that tint back, so "what is
+    /// behind the glass" was the glass, and an opaque blob is what that composites to. White is a
+    /// guard as well as a mask — a fragment that read the colour would come out white, and the
+    /// `Tests/test_avatar_glass_shader.py` guard refuses any read of it.
+    static func makeMask(path: Path,
+                         points: CGSize,
+                         pixels: CGSize,
+                         device: MTLDevice) -> MTLTexture? {
         let width = max(1, Int(pixels.width.rounded()))
         let height = max(1, Int(pixels.height.rounded()))
         guard points.width > 0, points.height > 0,
@@ -233,8 +277,7 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         context.translateBy(x: 0, y: CGFloat(height))
         context.scaleBy(x: CGFloat(width) / points.width, y: -CGFloat(height) / points.height)
         context.addPath(path.cgPath)
-        context.setFillColor(CGColor(srgbRed: CGFloat(tint.red), green: CGFloat(tint.green),
-                                     blue: CGFloat(tint.blue), alpha: 1))
+        context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         context.fillPath()
 
         guard let data = context.data else { return nil }
