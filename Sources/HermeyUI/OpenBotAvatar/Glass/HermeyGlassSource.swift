@@ -873,7 +873,7 @@ enum HermeyGlassSource {
             // brightness is a stroked outline however thin it is.
             accum += rimLight * (rimBand * (0.55 + pose.z * tone.z)) * rimFacing * (0.25 + 0.75 * F1);
             accum += mix(rimLight, float3(1.0), 0.30)
-                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.55 * (0.35 + 0.65 * rimFacing));
+                   * (rimCore * smoothstep(0.25, 0.85, coverage) * 0.62 * (0.35 + 0.65 * rimFacing));
 
             // The second line: where the light stops leaving the glass. `criticalInset` is the point of
             // the bevel whose normal is at the critical angle — solved from `rxy`/`rz`, so it sits one
@@ -882,11 +882,11 @@ enum HermeyGlassSource {
             // a TIR'd ray comes back off the wall carrying the studio behind the body, which is the
             // darkest thing in the room.
             float darkInset = criticalInset(rxy, rz);
-            float darkWidth = max(0.45, rimWidth * 0.20);
+            float darkWidth = max(0.50, rimWidth * 0.24);
             float darkLine = bandCoverage(inset, darkInset, darkWidth, foot);
             darkLine *= smoothstep(0.30, 0.75, bodySide(inset, rxy));
             accum = mix(accum, accum * 0.30 + keyColour * 0.05,
-                        clamp(darkLine, 0.0, 1.0) * 0.78 * detail);
+                        clamp(darkLine, 0.0, 1.0) * 0.92 * detail);
 
             // A light page's hairline, outside the rim, so the silhouette holds on paper: the same job the
             // Canvas path's `outerHairline` does, done at the outermost point of the falloff.
