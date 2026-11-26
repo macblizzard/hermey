@@ -153,6 +153,7 @@ struct AboutSettingsTab: View {
                     .font(TypeScale.font(TypeScale.caption))
                     .foregroundStyle(hostLineTone)
                     .monospacedDigit()
+                    .lineLimit(2)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("aboutHostVersion")
 
@@ -241,28 +242,41 @@ struct AboutSettingsTab: View {
     /// warning because somebody has to look; a host that answered is plain muted text.
     private var hostLineTone: Color {
         guard store.isPaired, let status = store.model.hostStatus else { return Tokens.textMuted }
+        // A press that could not be answered is the warning tone even when the last answer was a
+        // good one: the number is a fact, but "and I just checked" is not, and saying nothing about
+        // that is how a press reads as a no-op.
+        if store.model.hostCheckFailure != nil { return Tokens.warning }
         if status.latest == nil { return Tokens.warning }
         // `accentText`, not `accent`: this is a 12 pt line of text, and the accent used as a wash
         // behind a selected row is not always readable as a sentence on the canvas.
-        if status.available { return status.canSelfUpdate ? Tokens.accentText : Tokens.warning }
+        if status.hasNewerRelease { return status.canSelfUpdate ? Tokens.accentText : Tokens.warning }
         return Tokens.textMuted
     }
 
     /// The host line: the version, and the truth about what it means — on one line, always.
     ///
-    /// Four different situations, four different sentences — "up to date" is only said when the host
-    /// answered and nothing newer exists. A host that cannot update itself still gets the news it is
-    /// behind; it just gets no button here either.
+    /// The version is the host's own `current` from the newest answer that arrived, whatever
+    /// `available` says: a feed still behind the running build (0.4.0 published, 0.8.14 running)
+    /// reads as "up to date" because that is what it is, and the number on the left is never a
+    /// cached or earlier one. A check that could not be answered keeps that number and says why
+    /// beside it — "up to date" is only ever said about a host that answered.
     private var hostLine: String {
         guard store.isPaired else { return "not paired" }
-        guard let status = store.model.hostStatus else { return "version unavailable" }
-        if let latest = status.latest, status.available {
-            return status.canSelfUpdate
-                ? "\(status.current) · \(latest) available"
-                : "\(status.current) · \(latest) is out; this host does not update itself"
+        if let status = store.model.hostStatus {
+            if status.hasNewerRelease, let latest = status.latest {
+                return status.canSelfUpdate
+                    ? "\(status.current) · \(latest) available"
+                    : "\(status.current) · \(latest) is out; this host does not update itself"
+            }
+            if let failure = store.model.hostCheckFailure {
+                return "\(status.current) · could not check: \(failure)"
+            }
+            if status.latest == nil { return "\(status.current) · could not check" }
+            return "\(status.current) · up to date"
         }
-        if status.latest == nil { return "\(status.current) · could not check" }
-        return "\(status.current) · up to date"
+        // No answer has ever arrived: the reason a press did nothing is the only thing worth saying.
+        if let failure = store.model.hostCheckFailure { return "could not check: \(failure)" }
+        return "version unavailable"
     }
 
     /// What the log is *about*: build, OS, host, connection. The same header the phone puts above

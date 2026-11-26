@@ -35,7 +35,11 @@ public struct HostUpdateTracker: Equatable, Sendable {
         guard let pressedAt, let target else {
             // Not pressing. The row is the host's answer and nothing else.
             guard !settled else { return }
-            guard status.available, status.canSelfUpdate, let latest = status.latest else {
+            // `hasNewerRelease`, not `available`: a feed still behind the running build (latest
+            // 0.4.0 beside a host on 0.8.14) answers `available: false`, and if it ever answered
+            // true the row must still not offer the older version as an update.
+            guard status.available, status.canSelfUpdate, status.hasNewerRelease,
+                  let latest = status.latest else {
                 update = nil
                 return
             }

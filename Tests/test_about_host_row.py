@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 ABOUT = (ROOT / "Apps" / "HermesMac" / "Views" / "AboutSettingsTab.swift").read_text(encoding="utf-8")
 MODEL = (ROOT / "Sources" / "HermesAppKit" / "AppModel.swift").read_text(encoding="utf-8")
+KIT = (ROOT / "Sources" / "HermesKit" / "HostUpdate.swift").read_text(encoding="utf-8")
 IOS_SETTINGS = (ROOT / "Apps" / "HermesMobile" / "Views" / "SettingsScreen.swift").read_text(
     encoding="utf-8")
 
@@ -93,7 +94,7 @@ class TheThreeAnswersReadDifferently(unittest.TestCase):
                       "a check that failed is not the same grey as one that answered")
 
     def test_an_available_update_is_the_accent_and_names_the_version_to_move_to(self) -> None:
-        self.assertIn("if status.available { return status.canSelfUpdate ? Tokens.accentText : Tokens.warning }",
+        self.assertIn("if status.hasNewerRelease { return status.canSelfUpdate ? Tokens.accentText : Tokens.warning }",
                       TONE)
         self.assertIn("\\(latest) available", LINE, "the version to move to is in the line")
 
@@ -101,6 +102,17 @@ class TheThreeAnswersReadDifferently(unittest.TestCase):
         self.assertIn("status.latest == nil", TONE)
         self.assertIn("Tokens.warning", TONE)
         self.assertIn("could not check", LINE)
+
+    def test_the_row_keeps_the_hosts_own_number_when_a_check_failed(self) -> None:
+        """The version the host reported is never replaced by "up to date" or by a cached value."""
+        self.assertIn('return "\\(status.current) · could not check: \\(failure)"', LINE)
+        # The failure sentence comes before either "up to date" return, so a press that 404s can
+        # never leave the row reading as if it had been answered.
+        self.assertLess(LINE.index("could not check: \\(failure)"), LINE.index('· up to date'),
+                        "a failed check must not fall through to the answered sentence")
+        self.assertIn("hostCheckFailure", TONE, "a failed press is not the same grey as a good one")
+        # And with no answer at all, the reason a press did nothing is the line.
+        self.assertIn('return "could not check: \\(failure)"', LINE)
 
     def test_a_host_that_cannot_update_itself_is_not_painted_as_an_offer(self) -> None:
         # Accent means "there is something to press"; this host has nothing to press.
@@ -158,7 +170,34 @@ class ACheckInFlightSaysSo(unittest.TestCase):
         # Launch, reconnect and the install poll call `checkHostUpdate()`; none of them may light up
         # the button as if somebody had pressed it.
         self.assertIn("if refresh {", CHECK)
-        self.assertIn("guard let client = hostUpdateClient else { return }", CHECK)
+        # A press with no client is answered, not swallowed: the row gets a reason and the log a
+        # line (this used to be `guard let client = hostUpdateClient else { return }`).
+        self.assertIn("guard let client = hostUpdateClient else {", CHECK)
+        self.assertIn("hostCheckFailure = why", CHECK)
+        self.assertIn('ClientLog.note("host update check now: \\(why)"', CHECK)
+
+    def test_the_press_always_writes_one_log_line_with_the_url_it_used(self) -> None:
+        # The trace lives in the client, where the URL is actually built, and names the URL, whether
+        # a bearer went with it, and the status that came back.
+        self.assertIn('"host update \\(word): GET \\(url.absoluteString) (\\(bearer)) → \\(outcome)"', KIT)
+        self.assertIn('category: "update"', KIT)
+        # A press is never quiet, even when the host answers 404.
+        self.assertIn("if refresh || !Self.isMissingUpdateRoute(error) {", CHECK)
+        self.assertIn('ClientLog.note("host update check\\(refresh ? " now" : "") failed: \\(reason)"',
+                      CHECK)
+
+    def test_the_press_url_is_a_query_not_an_escaped_path(self) -> None:
+        """The bug behind "Check now does nothing": `?refresh=1` appended as a path component.
+
+        `URL.appendingPathComponent("v1/update?refresh=1")` percent-encodes the question mark to
+        `%3F`, so the press sent `GET /v1/update%3Frefresh=1`, and the host answered 404 — which the
+        model read as "no updater here" and swallowed. Verified on the deployed host: that URL is a
+        404, and its audit log records the path as unparseable rather than `/v1/update`.
+        """
+        self.assertNotIn('appendingPathComponent(path)', KIT)
+        self.assertNotIn('path += "?refresh=1"', KIT)
+        self.assertIn('let url = Self.statusURL(base: prepared.baseURL, refresh: refresh)', KIT)
+        self.assertIn('components.queryItems = [URLQueryItem(name: "refresh", value: "1")]', KIT)
 
 
 class ThePhoneHasNoSuchBlock(unittest.TestCase):

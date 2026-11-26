@@ -846,6 +846,13 @@ public final class AppModel: ObservableObject {
     /// answer to that question when the host has never replied.
     @Published public private(set) var hostStatus: HostUpdateStatus?
 
+    /// Why the last check could not be answered, in the words the About row prints.
+    ///
+    /// `nil` after a check that answered. This is what a press shows instead of doing nothing: the
+    /// two silent exits that used to sit in `checkHostUpdate` (no client built, and a 404 swallowed
+    /// as "this host has no updater") are now a sentence on the row and a line in the log.
+    @Published public private(set) var hostCheckFailure: String?
+
     /// The version the host reported on the last successful check. Derived from `hostStatus`, so the
     /// row, the bell and About cannot disagree about which build is running.
     public var hostVersion: String? { hostStatus?.current }
@@ -898,7 +905,6 @@ public final class AppModel: ObservableObject {
     /// the host for six hours, so this is cheap; `refresh` asks the host to re-read its feed and is
     /// used only by Settings ▸ About's explicit check.
     public func checkHostUpdate(refresh: Bool = false) async {
-        guard let client = hostUpdateClient else { return }
         if refresh {
             // One press at a time, and the flag is what the button reads to say "Checking…".
             guard !hostCheckRunning else { return }
@@ -907,17 +913,42 @@ public final class AppModel: ObservableObject {
         // Cleared on every exit from here, including a thrown request: `defer` must live in the
         // function's scope, not inside the `if` above, or it would run the moment that block ended.
         defer { if refresh { hostCheckRunning = false } }
+
+        // No client is a press that cannot be answered, not a press that never happened. It used to
+        // be `return` — a button that says Check now and does and says nothing at all.
+        guard let client = hostUpdateClient else {
+            let why = "no update client for this window"
+            hostCheckFailure = why
+            if refresh {
+                ClientLog.note("host update check now: \(why)",
+                               level: .warning, category: "update")
+            }
+            return
+        }
         do {
             let status = try await client.status(refresh: refresh)
-            updateTracker.checked(status, at: Date(), socketDropped: !connection.isLive)
+            // The host's own `current`, kept whatever `available` says: the version a host reports
+            // is never overwritten by a stored or earlier value, and never held back because the
+            // feed was an older one.
             hostStatus = status
+            hostCheckFailure = nil
+            updateTracker.checked(status, at: Date(), socketDropped: !connection.isLive)
         } catch {
-            // A host without the route (404), an unpaired app, or a wire that is down: silence. A
-            // press in flight keeps the row it has — that is the restart, not a failure.
+            let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            // A host that answered 404 has no updater; one that could not be reached has a wire
+            // problem. Both are a sentence the press must be able to show, so the row can never sit
+            // on a stale number as if the press had been answered.
+            hostCheckFailure = Self.isMissingUpdateRoute(error)
+                ? "this host has no update route"
+                : reason
+            // A press in flight keeps the row it has — that is the restart, not a failure.
             updateTracker.silent()
-            if !Self.isMissingUpdateRoute(error) {
-                ClientLog.note("host update check: \(error.localizedDescription)",
-                               level: .info, category: "update")
+            // The old rule silenced a 404 to keep a pre-updater host quiet on every launch. That is
+            // still right for a background check, and wrong for a press: a person who just pressed
+            // Check now gets one line, always.
+            if refresh || !Self.isMissingUpdateRoute(error) {
+                ClientLog.note("host update check\(refresh ? " now" : "") failed: \(reason)",
+                               level: refresh ? .warning : .info, category: "update")
             }
         }
         hostUpdate = updateTracker.update
@@ -937,16 +968,32 @@ public final class AppModel: ObservableObject {
     /// conversation. The host verifies the download's checksum and rolls back if the new build does
     /// not start; the app is a button and a progress line, and claims nothing it did not see.
     public func beginHostUpdate() async {
-        guard let client = hostUpdateClient, let update = hostUpdate, update.canStartPress else { return }
+        // The button always says something: a press that cannot be sent is a row that reports why,
+        // not a click that falls into a `guard`.
+        guard let client = hostUpdateClient else {
+            updateTracker.refused("no update client for this window")
+            hostUpdate = updateTracker.update
+            ClientLog.note("host update press: no update client for this window",
+                           level: .warning, category: "update")
+            return
+        }
+        guard let update = hostUpdate, update.canStartPress else {
+            ClientLog.note("host update press ignored: nothing is on offer",
+                           level: .info, category: "update")
+            return
+        }
         do {
             let ack = try await client.apply()
             updateTracker.pressed(ack, at: Date())
             hostUpdate = updateTracker.update
+            ClientLog.note("host update press: installing \(ack.target) over \(update.current)",
+                           level: .info, category: "update")
             startUpdatePoll()
         } catch {
             let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             updateTracker.refused(reason)
             hostUpdate = updateTracker.update
+            ClientLog.note("host update press failed: \(reason)", level: .warning, category: "update")
         }
     }
 
@@ -6231,6 +6278,12 @@ public final class AppModel: ObservableObject {
             // the host is the authority: one read on every `ready` is cheap and makes the badge the
             // same on both devices after a reconnect.
             refreshReactions()
+            // A `ready` after a drop is usually a restarted host — the one moment the running
+            // version can change while the app stays open, and the moment this window's number goes
+            // stale. `start()` asks too; the host caches the feed for six hours, so the second ask
+            // is free. Without this, an app left open across a deploy kept showing the build it was
+            // paired to and only the explicit press could refresh it — and that press was broken.
+            Task { [weak self] in await self?.checkHostUpdate() }
         case .state(let state):
             switch state {
             case .open: connection = .connected

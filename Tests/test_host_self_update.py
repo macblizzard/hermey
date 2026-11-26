@@ -293,7 +293,14 @@ class TheAppsDrawItOnlyWhenTheHostSaysSo(unittest.TestCase):
         self.assertIn("public var wantsAttention: Bool { phase == .available }", ROW_TYPE)
 
     def test_an_old_host_or_an_unpaired_app_draws_nothing(self) -> None:
-        self.assertIn("guard let client = hostUpdateClient else { return }", MODEL)
+        # No bell row is drawn from a host that has no updater — but a *press* must still be
+        # answerable, so the missing client is recorded and logged rather than falling into a
+        # `return` that leaves Check now looking broken (reported twice: "0.8.9 · up to date" and a
+        # button that changed nothing).
+        self.assertNotIn("guard let client = hostUpdateClient else { return }", MODEL,
+                         "a press with no client must say why, not vanish")
+        self.assertIn("guard let client = hostUpdateClient else {", MODEL)
+        self.assertIn("hostCheckFailure = why", MODEL)
         self.assertIn("updateTracker.silent()",
                       block(MODEL, "public func checkHostUpdate(", "/// Press: ask the host"))
         self.assertIn("update = nil", SILENT)
@@ -301,9 +308,11 @@ class TheAppsDrawItOnlyWhenTheHostSaysSo(unittest.TestCase):
         self.assertIn("guard pressedAt == nil, !settled else { return }", SILENT)
 
     def test_a_row_needs_both_an_answer_and_permission(self) -> None:
-        self.assertIn("guard status.available, status.canSelfUpdate, let latest = status.latest else {",
+        self.assertIn("guard status.available, status.canSelfUpdate, status.hasNewerRelease,",
                       CHECKED)
         self.assertIn("update = nil", CHECKED)
+        # And the ordering is the client's: a `latest` older than `current` is not an offer.
+        self.assertIn("return HostVersion.isNewer(latest, than: current)", KIT)
 
     def test_about_shows_the_host_version_and_the_same_button(self) -> None:
         self.assertIn('SectionCaption("HOST SERVICE")', MAC_ABOUT)

@@ -35,6 +35,18 @@ public struct HostUpdateStatus: Equatable, Sendable {
     /// What the last install did — the record the rollback is read from.
     public let lastUpdate: HostUpdateRecord?
 
+    /// The published release is genuinely newer than the build this host is running.
+    ///
+    /// `available` is the host's own flag and it is trusted for *permission*, not for *ordering*:
+    /// a feed that is still behind (the owner's host ran 0.8.14 while the newest published tag was
+    /// 0.4.0) has nothing to offer, and drawing "0.4.0 available" beside "0.8.14" would ask the
+    /// reader to install a downgrade. The row reads this instead of `available` when it decides
+    /// which sentence to print, so an older `latest` can never mask a newer `current`.
+    public var hasNewerRelease: Bool {
+        guard let latest else { return false }
+        return HostVersion.isNewer(latest, than: current)
+    }
+
     public init(current: String,
                 latest: String? = nil,
                 available: Bool = false,
@@ -55,6 +67,35 @@ public struct HostUpdateStatus: Equatable, Sendable {
         self.error = error
         self.progress = progress
         self.lastUpdate = lastUpdate
+    }
+}
+
+/// Comparing two `hermeyd` versions, for the one question the row asks: is the published one newer
+/// than the running one?
+///
+/// Dotted integers, compared segment by segment, with a missing segment read as 0 so `0.8` and
+/// `0.8.0` are the same build. A segment that is not a number (`0.9.0-beta`) is read as 0 and the
+/// build after the dash is ignored: the release feed only ever offers published tags, and
+/// `parse_releases` on the host already refuses a prerelease, so this never has to order one.
+public enum HostVersion {
+    public static func isNewer(_ candidate: String, than current: String) -> Bool {
+        let a = segments(candidate)
+        let b = segments(current)
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        for index in 0..<max(a.count, b.count) {
+            let lhs = index < a.count ? a[index] : 0
+            let rhs = index < b.count ? b[index] : 0
+            if lhs != rhs { return lhs > rhs }
+        }
+        return false
+    }
+
+    static func segments(_ raw: String) -> [Int] {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let core = trimmed.split(separator: "-", maxSplits: 1).first.map(String.init) ?? trimmed
+        let parts = core.split(separator: ".", omittingEmptySubsequences: false)
+        guard !parts.isEmpty else { return [] }
+        return parts.map { Int($0) ?? 0 }
     }
 }
 
@@ -126,21 +167,58 @@ public struct HostUpdateClient: Sendable {
 
     /// `GET /v1/update`. `refresh` asks the host to re-read its release feed instead of using its
     /// six-hour cache — used by the About tab's own "check now", never by the poll.
+    ///
+    /// Every request this makes leaves one line in `ClientLog` (category `update`) with the URL it
+    /// really resolved to, whether a bearer went with it, and what came back. That line is the whole
+    /// reason this file is worth reading when "Check now does nothing": a press whose URL is wrong
+    /// answers 404, and a 404 used to be indistinguishable from a host that has no updater at all.
+    /// A quiet success is logged only for a press, so a launch does not write a line every time.
     public func status(refresh: Bool = false) async throws -> HostUpdateStatus {
-        var path = "v1/update"
-        if refresh { path += "?refresh=1" }
         let prepared = try await endpoint()
-        var request = URLRequest(url: prepared.baseURL.appendingPathComponent(path))
+        let url = Self.statusURL(base: prepared.baseURL, refresh: refresh)
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Bearer \(prepared.ticket)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw HostUpdateError.notHTTP }
+        guard let http = response as? HTTPURLResponse else {
+            Self.trace(refresh: refresh, url: url, ticket: prepared.ticket, outcome: "not HTTP")
+            throw HostUpdateError.notHTTP
+        }
+        Self.trace(refresh: refresh, url: url, ticket: prepared.ticket, outcome: "\(http.statusCode)")
         guard (200..<300).contains(http.statusCode) else {
             throw HostUpdateError.rejected(status: http.statusCode, detail: Self.detail(from: data))
         }
         return try Self.decode(data)
+    }
+
+    /// The one place the URL is built.
+    ///
+    /// `?refresh=1` is a **query**, so it is assembled as a query. Passing `"v1/update?refresh=1"`
+    /// to `appendingPathComponent` percent-encodes the question mark and sends the host
+    /// `GET /v1/update%3Frefresh=1`, which answers 404 — the press looked like a no-op for exactly
+    /// that reason (and the host logged it as an unparseable path, not as `/v1/update`).
+    public static func statusURL(base: URL, refresh: Bool) -> URL {
+        let path = base.appendingPathComponent("v1/update")
+        guard refresh else { return path }
+        guard var components = URLComponents(url: path, resolvingAgainstBaseURL: false) else {
+            return path
+        }
+        components.queryItems = [URLQueryItem(name: "refresh", value: "1")]
+        return components.url ?? path
+    }
+
+    /// The trace line. Never the ticket itself — only whether one was attached.
+    ///
+    /// A quiet success on a background check writes nothing: launch, reconnect and the two-second
+    /// install poll would otherwise fill the log with the same line. A press always writes one.
+    private static func trace(refresh: Bool, url: URL, ticket: String, outcome: String) {
+        if !refresh, outcome == "200" { return }
+        let bearer = ticket.isEmpty ? "no bearer" : "bearer attached"
+        let word = refresh ? "check now" : "check"
+        ClientLog.note("host update \(word): GET \(url.absoluteString) (\(bearer)) → \(outcome)",
+                       level: outcome == "200" ? .info : .warning, category: "update")
     }
 
     /// `POST /v1/update` — 202 and the target, while the host downloads. Nothing is installed
