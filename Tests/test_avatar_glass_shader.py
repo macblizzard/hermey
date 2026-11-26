@@ -532,6 +532,8 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         source = msl_code()
         self.assertIn("static inline float3 sampleGlassPlate(", source)
         self.assertIn("float3 plate = sampleGlassPlate(plateUV, jewelTint, detail);", source)
+        # The plate is lit neutral and carries the body's hue at 45 %, not in full.
+        self.assertIn("col *= mix(float3(1.0), jewelTint, 0.45);", source)
         self.assertIn("float3 through = plate * beer * mix(1.15, 0.78, thick);", source)
         # The key's own reflection on the face, and the rear surface seen through the front.
         self.assertIn("float hood = 1.0 - smoothstep(-0.04, 0.12", source)
@@ -599,6 +601,31 @@ class TheProofToolIsOptIn(unittest.TestCase):
         # No surface, view or model refers to it: the app cannot reach the proof at all.
         for path in list((ROOT / "Sources").rglob("*.swift")) + list((ROOT / "Apps").rglob("*.swift")):
             self.assertNotIn("glass-proof", code(read(path)), path.name)
+
+    def test_a_numeric_mirror_reports_the_same_terms(self):
+        # Without a Mac there is still a number for every claim: `numbers.py` mirrors the fragment
+        # and prints the centre, mid and rim pixel at 24, 48 and 200 pt. It is guarded so it cannot
+        # drift from the shader — every literal it relies on is pinned here.
+        mirror = read(self.PROOF / "numbers.py")
+        source = msl()
+        for literal in ("mix(1.15, 0.78, thick)",
+                        "math.exp(-sigma[i] * (optical * (0.30 + 0.60 * thick)))",
+                        "0.62 + 0.38 *",
+                        "1.0 - smoothstep(rim_width * 0.25, rim_width * 0.90",
+                        "edge_transparency * 1.15",
+                        "mix(0.120, 0.700, top)",
+                        "mix(1.0, jewel[i], 0.45)",
+                        "max(0.34, min(0.97,"):
+            self.assertIn(literal, mirror, literal)
+        for literal in ("mix(1.15, 0.78, thick)",
+                        "opticalDist * (0.30 + 0.60 * thick)",
+                        "0.62 + 0.38 * clamp(",
+                        "abs(inset - rimWidth * 1.70)",
+                        "edgeTransparency * 1.15",
+                        "float3(0.120, 0.126, 0.140), float3(0.700, 0.740, 0.840)",
+                        "mix(float3(1.0), jewelTint, 0.45)",
+                        "0.34, 0.97"):
+            self.assertIn(literal, source, literal)
 
     def test_it_runs_from_a_shell_script_on_the_mac(self):
         script = read(self.PROOF / "render.sh")

@@ -32,7 +32,15 @@ import SwiftUI
 // MARK: - Arguments
 
 var arguments = Array(CommandLine.arguments.dropFirst())
-let outArgument = arguments.first { !$0.hasPrefix("--") }
+// The first bare argument is the output directory; `--flag value` pairs are not.
+var outArgument: String?
+var scan = 0
+while scan < arguments.count {
+    let argument = arguments[scan]
+    if argument.hasPrefix("--") { scan += 2; continue }
+    outArgument = argument
+    break
+}
 let outDirectory = URL(fileURLWithPath: outArgument ?? FileManager.default.currentDirectoryPath
                         + "/glass-proof", isDirectory: true)
 

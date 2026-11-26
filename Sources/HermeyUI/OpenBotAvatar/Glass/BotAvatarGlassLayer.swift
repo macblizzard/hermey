@@ -184,20 +184,22 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// drawable as if every pixel were solid, whatever alpha the drawable holds; `backgroundColor`
     /// nil is what leaves an uncovered pixel of the layer showing what is behind it.
     private static func transparent(_ view: MTKView) {
-        view.layer?.isOpaque = false
-        if let metalLayer = view.layer as? CAMetalLayer {
-            metalLayer.isOpaque = false
-            metalLayer.backgroundColor = nil
-        }
         #if canImport(UIKit)
         view.isOpaque = false
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         view.isAccessibilityElement = false
         #else
+        // The backing layer has to exist before its flags mean anything, and `wantsLayer` is what
+        // creates it — so this comes first, not after.
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
         #endif
+        view.layer?.isOpaque = false
+        if let metalLayer = view.layer as? CAMetalLayer {
+            metalLayer.isOpaque = false
+            metalLayer.backgroundColor = nil
+        }
     }
 
     /// The next frame's numbers and silhouette, from the surface the view decided on.

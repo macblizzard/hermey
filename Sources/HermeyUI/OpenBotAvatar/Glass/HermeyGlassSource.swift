@@ -83,8 +83,9 @@ enum HermeyGlassSource {
         //    is a flat fill of the body's own tint. So "what is behind the glass" *was the glass*, at 96 %
         //    opacity in the middle, which is exactly the opaque blob. The plate below
         //    (`sampleGlassPlate`) is the same cyclorama, key and caustic pool, laid out positionally in the
-        //    body's plane; the refraction offset moves it, so the offset is visible at all, and the body's
-        //    tint reaches it only through Beer-Lambert.
+        //    body's plane; the refraction offset moves it, so the offset is visible at all, and it is lit
+        //    neutral — the body's hue reaches it at 45 % and again through Beer-Lambert, because a plate
+        //    tinted in full doubled the saturation until the body read as maroon rather than amber.
         //  * **The tint is decoded to linear light once.** The `Canvas` hands us the sRGB value it would
         //    have filled; the optics below are linear (as upstream's are), and the old code fed the sRGB
         //    value straight in and gamma-encoded it again at the end — a pastel, double-gamma gloss. One
@@ -224,9 +225,14 @@ enum HermeyGlassSource {
         /// Ours: where in the plane each sits, and the gaussian widths, so the whole studio stays inside
         /// the body at 24 pt as well as at 200.
         static inline float3 sampleGlassPlate(float2 uv, float3 jewelTint, float detail) {
-            float upFade = smoothstepR(0.95, -0.95, uv.y);                    // shaders.ts:171
-            float3 col = mix(float3(0.022), jewelTint * 0.22, 0.55)
-                       * (0.65 + 0.50 * upFade) * 2.40;
+            // Neutral studio light, not the body's hue: the tint is the absorption's job below, and a
+            // plate that carried it as well doubled the saturation until the body read as maroon.
+            float top = pow(clamp(0.5 - 0.5 * uv.y, 0.0, 1.0), 0.85);        // shaders.ts:167-172
+            float3 col = mix(float3(0.120, 0.126, 0.140), float3(0.700, 0.740, 0.840), top);
+            // The studio is neutral, but the light that reaches us through the body has crossed it:
+            // this is the hue of the glass, at 45 %, and it is what keeps a lit middle amber rather
+            // than the grey a neutral plate plus a weak absorption gives.
+            col *= mix(float3(1.0), jewelTint, 0.45);
 
             // The key: the wide, soft box high and to the left (shaders.ts:152), read at 13.0
             // (shaders.ts:161) and brought down to what survives the tone map at 24 pt.
@@ -236,14 +242,15 @@ enum HermeyGlassSource {
             if (detail > 0.5) {
                 // The narrow right-hand strip (shaders.ts:153): the second edge the eye reads the
                 // refraction against as the body turns.
-                float strip = exp(-pow((uv.x - 0.86) / 0.20, 2.0)) * smoothstepR(0.80, -0.95, uv.y);
-                col += float3(0.90, 0.96, 1.0) * (strip * 2.40);
+                float strip = exp(-pow((uv.x - 0.86) / 0.26, 2.0)) * smoothstepR(0.80, -0.95, uv.y);
+                col += float3(0.90, 0.96, 1.0) * (strip * 1.60);
             }
 
-            // The caustic tabletop pool beneath the body (shaders.ts:175-185), in the plane.
+            // The caustic tabletop pool beneath the body (shaders.ts:175-185), in the plane, and the
+            // only place the tint belongs in the plate.
             float2 c = float2(uv.x / 0.90, (uv.y - 0.94) / 0.34);
             float r2 = dot(c, c);
-            col += jewelTint * ((1.05 * exp(-r2 * 0.85) + 0.48 * exp(-r2 * 2.4)) * 1.55);
+            col += jewelTint * ((1.05 * exp(-r2 * 0.85) + 0.48 * exp(-r2 * 2.4)) * 3.00);
             return col;
         }
 
@@ -332,7 +339,7 @@ enum HermeyGlassSource {
                                  - float(bodyLayer.sample(bodySampler, (pos.xy - float2(texel.x, 0.0)) / pixels).g),
                                    float(bodyLayer.sample(bodySampler, (pos.xy + float2(0.0, texel.y)) / pixels).g)
                                  - float(bodyLayer.sample(bodySampler, (pos.xy - float2(0.0, texel.y)) / pixels).g));
-            gradSd = normalize(gradSd + float2(1e-6));
+            gradSd = normalize(gradSd + float2(1e-6f));
 
             // The tint arrives as the sRGB value the `Canvas` would have filled; the optics below are
             // linear light, as upstream's are. Decoded once here, encoded once at the end.
