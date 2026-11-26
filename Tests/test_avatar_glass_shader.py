@@ -612,9 +612,10 @@ class TheFieldIsAnalytic(unittest.TestCase):
         self.assertIn("packed[i * 4 + 2] = Self.halfBits(max(0, -field[i]))", layer)
         self.assertIn("for segment in segments {", layer)
         # The projection onto the segment: a clamped dot product, then the point's distance to it.
-        self.assertIn("let t = length2 > 1e-9 ? max(0, min(1, (wx * segment.ex + wy * segment.ey) "
-                      "/ length2)) : 0", layer)
-        self.assertIn("let qx = wx - segment.ex * t, qy = wy - segment.ey * t", layer)
+        self.assertIn("let t = length2 > 1e-9 ? max(0, min(1, (wx * ex + wy * ey) * invLength2)) : 0",
+                      layer)
+        self.assertIn("let qx = wx - ex * t, qy = wy - ey * t", layer)
+        self.assertIn("let distance2 = qx * qx + qy * qy", layer)
         # …and no two-sweep chamfer left anywhere: its `√2` diagonal step was the staircase.
         self.assertNotIn("distanceField(", layer)
         self.assertNotIn("squareRoot()\n        var field", layer)
@@ -633,13 +634,29 @@ class TheFieldIsAnalytic(unittest.TestCase):
     def test_the_sample_is_a_pixel_centre_in_the_path_s_own_points(self):
         layer = code(read(LAYER))
         self.assertIn("let stepX = Float(points.width) / Float(width)", layer)
-        self.assertIn("let sampleX = (Float(x) + 0.5) * stepX", layer)
         self.assertIn("let sampleY = (Float(y) + 0.5) * stepY", layer)
+        self.assertIn("let wx = (Float(x) + 0.5) * stepX - segment.ax", layer)
         # The sign is the drawn silhouette's — the same fill the Canvas draws.
         self.assertIn("let inside = coverage[index] > 127", layer)
         # Half the view's short side is the unit, exactly what the shader multiplies back by.
         self.assertIn("let span = Float(0.5 * min(points.width, points.height))", layer)
         self.assertIn("float maxInset = 0.5 * min(size.x, size.y);", msl_code())
+
+    def test_the_field_is_banded_at_the_inset_every_term_saturates_at(self):
+        layer = code(read(LAYER))
+        # The band is passed in from the body's own numbers, and it is past every saturation point in
+        # the fragment: `bodyHeight` stops at `rxy * 1.08`, the local absorption at `0.85 * halfDepth`.
+        self.assertIn("let reach = 1.15 * max(surface.profile.x, surface.shape.w)", layer)
+        self.assertIn("reach: Float,", layer)
+        self.assertIn("let band = min(max(reach.isFinite ? reach : span, 0.75), span)", layer)
+        self.assertIn("var best = [Float](repeating: band * band, count: width * height)", layer)
+        # Each segment visits only its own box grown by the band…
+        self.assertIn("let x0 = max(0, Int(((min(segment.minX, segment.maxX) - band) / stepX).rounded(.down)))",
+                      layer)
+        # …and an unvisited pixel keeps the band, which is the value the shader clamps to anyway.
+        self.assertIn("let distance = min(best[index].squareRoot(), band)", layer)
+        self.assertIn("1.08", msl_code())
+        self.assertIn("smoothstep(0.03, 0.85, inset / max(halfDepth, 0.001))", msl_code())
 
     def test_the_geometry_of_the_mask_is_unchanged(self):
         layer = code(read(LAYER))

@@ -160,6 +160,8 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     let maskStart = CFAbsoluteTimeGetCurrent()
     guard let mask = BotAvatarGlassDrawer.makeMask(path: model.silhouette.applying(face),
                                                    points: points, pixels: pixels,
+                                                   reach: 1.15 * max(surface.profile.x,
+                                                                     surface.shape.w),
                                                    device: device) else { return nil }
     lastMaskMilliseconds = (CFAbsoluteTimeGetCurrent() - maskStart) * 1000
 
