@@ -1916,7 +1916,15 @@ iPhone was never affected: it has no such hold, which is exactly why it felt smo
   carries a real refracted line instead of a streak, and the caustic's landing, width and brightness come from
   the body's measured thickness — the thin flanks and corners cast hotter and tighter than the belly.
 
-## [0.1.684] — 2026-11-26
+## [0.1.685] — 2026-11-26
+
+### Changed
+- **The glass transmits, and it is brighter.** The body no longer sits on an invented studio: its plate, its
+  twelve interior slices, its back wall and its internal focus all take the colour of the surface the avatar is
+  drawn on (the theme's own pane and page tokens). Absorption came down so light gets *through* it — at 200 pt
+  the path passes 94/55/31 % instead of 90/32/19 % — and the softbox is scaled by the room's own light instead
+  of being nine times brighter than it. Over the pane the centre sits within 10 % of the background instead of
+  163 % above it; over a light page it is bright rather than dim, and the eyes keep their contrast.
 
 ### Added
 - **Settings ▸ Shortcuts.** Every keyboard action in one list — Navigation, Conversation, Message, Window —
