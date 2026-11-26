@@ -76,6 +76,17 @@ final class HermeyGlassEngine {
     /// The pipeline's colour attachment format: what a `MetalKit` view presents by default.
     static let pixelFormat: MTLPixelFormat = .bgra8Unorm
 
+    /// Samples per pixel on the body's pass.
+    ///
+    /// The edge is the material: a one-pixel line of Fresnel at a silhouette is the whole difference
+    /// between glass and a tinted shape, and at one sample it snaps to the pixel grid — the rim
+    /// staircase and the broken highlight that made the edge read as a cut-out. Four samples are
+    /// resolved by the drawable itself (`MTKView` allocates the multisample texture when its own
+    /// `sampleCount` is set), so this is coverage the *app* draws with, not a proof-only filter, and it
+    /// costs three extra fragment invocations on a view that is at most 200 pt square — no pass, no
+    /// allocation, no loop, and the 10 Hz timeline is unchanged.
+    static let sampleCount = 4
+
     /// The shader compiled, the pipeline built and a queue exists — the whole of "available".
     var isReady: Bool { pipeline != nil && queue != nil }
 
@@ -103,6 +114,7 @@ final class HermeyGlassEngine {
                 descriptor.label = "HermeyGlassBody"
                 descriptor.vertexFunction = library.makeFunction(name: "hermeyGlassVertex")
                 descriptor.fragmentFunction = library.makeFunction(name: "hermeyGlassBody")
+                descriptor.rasterSampleCount = Self.sampleCount
                 if let attachment = descriptor.colorAttachments[0] {
                     attachment.pixelFormat = Self.pixelFormat
                     // Premultiplied over what is behind the body, which is the ribbons' `Canvas`:
@@ -167,6 +179,9 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         guard let device = HermeyGlassEngine.shared.device else { return nil }
         let view = BotAvatarGlassMTKView(frame: .zero, device: device)
         view.colorPixelFormat = HermeyGlassEngine.pixelFormat
+        // The same coverage the pipeline is built for; MetalKit allocates the multisample target and
+        // resolves it into the drawable on present.
+        view.sampleCount = HermeyGlassEngine.sampleCount
         // A zero-alpha clear: every pixel the body does not cover is *nothing*, not black.
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         view.framebufferOnly = false
