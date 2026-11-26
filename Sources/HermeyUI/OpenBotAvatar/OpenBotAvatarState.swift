@@ -11,10 +11,12 @@ import Foundation
 /// its eyes dart, `done` celebrates inside a cage of nine ribbons on three hoops, `thinking` leans
 /// and looks up and away, `waiting` leans aside and glances at what it waits on, `blocked` stops and
 /// stares straight back, `reading`/`computer` lean the face at a page or a screen — all over and
-/// above a calm breathing pose. None of them carries a mark: a mark is drawn instead of a face, so a
-/// marked state is an eyeless one, and at 24 pt a mark beside a body is mud — the motion says what
-/// the state is and the eyes stay. The mark machinery is real and lives in `OpenBotAvatarMarks`, for
-/// a definition of a host's own (`AvatarStateDefinition`).
+/// above a calm breathing pose, and `idle` alone also hovers: a slow, symmetric float of its own
+/// (`Self.hover`), because it is the one state whose body has nothing to say. None of them carries a
+/// mark: a mark is drawn instead of a face, so a marked state is an eyeless one, and at 24 pt a mark
+/// beside a body is mud — the motion says what the state is and the eyes stay. The mark machinery is
+/// real and lives in `OpenBotAvatarMarks`, for a definition of a host's own
+/// (`AvatarStateDefinition`).
 ///
 /// Nothing here allocates or reads a clock: a pose is a pure function of (state, mood, time, seed),
 /// so a frame can be reproduced and tested.
@@ -87,6 +89,20 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
                 pose.sy = 1 - 0.02 * air * live
                 pose.roll += 2.2 * wave(period * 2)
                 pose.arch = 1
+            } else {
+                // The hover. Idle is the only state that floats, because it is the only state with
+                // nothing to say: it does not lean, does not look anywhere in particular, and is
+                // therefore the one body that can be carried up and down without the movement
+                // meaning something. A happy bot hops instead — the hop is already idle's larger
+                // motion, and a hover under a hop would be two bodies in one — so the hover is the
+                // neutral idle's own, laid over the breath `rest` gave it.
+                //
+                // It is one more term in the pose, on the clock the pose already has: `t` is the
+                // time this frame was sampled at, already shifted by the seed's own phase, so this
+                // costs a sine and nothing else — no timer, no display link, no layer. `Self.hover`
+                // is where the amplitude, the period, the per-avatar offset and the Reduce Motion
+                // rule live, all four in one place.
+                pose.lift -= Self.hover(seed: seed, time: t, reducedMotion: reducedMotion)
             }
             pose.blink = reducedMotion ? 0 : Self.blink(seed: seed, time: t)
             let wander = Self.wander(seed: seed, time: t)
@@ -272,6 +288,52 @@ public enum OpenBotAvatarState: String, CaseIterable, Hashable, Sendable {
             return -0.5 + v * 2.15 + (1.25 * v * landed) / 4
         }
         return Double(doneSweeps) * 2 * .pi
+    }
+
+    // MARK: - The hover
+
+    /// How far an idle body is carried off its standing height, in the pose's own units — the
+    /// hundredth of the avatar's side that `lift`, `sx` and `sy` are measured in.
+    ///
+    /// Two units is 2 % of the side: the middle of the 1.5–2.5 % a hover wants, and the largest
+    /// movement in the pose that is not one of the eight states' own signals. It has to read at
+    /// every size a bot is drawn at, and it does, because it is the *side* it is a fraction of: ±2 %
+    /// is ±0.48 pt on a 24 pt row avatar, ±0.96 pt at 48 pt, ±4 pt at 200 pt. At 24 pt that is a
+    /// half-point drift over two seconds — far below what anyone would call movement at a glance and
+    /// well above the slow-motion threshold, so a list of them breathes without twitching.
+    ///
+    /// It cannot take the body out of its frame: the validator keeps every definition's body inside
+    /// 6…94 of the 0…100 box (`BODY_MIN`/`BODY_MAX`), which is three times this amplitude of margin
+    /// at each end, and `pose.lift` never changes the body's size.
+    static let hoverAmplitude = 2.0
+
+    /// One rise and fall per 4.2 s. Inside the 3.5–5 s band a hover wants, and the slowest thing an
+    /// idle bot does — slower than the 3.4 s breath `rest` runs and than the happy hop's 2.6 s beat,
+    /// so the hover reads as the body being carried rather than as another beat in the body's own
+    /// rhythm. 4.2 against the breath's 3.4 is 21:17, not a ratio that lands, so the two never line
+    /// up into the wait-a-beat pulse that a near-integer ratio would produce.
+    static let hoverPeriodSeconds = 4.2
+
+    /// How far up an idle body is carried at `time`, in the pose's units: a symmetric, sinusoidally
+    /// eased rise and fall about the height the bot stands at.
+    ///
+    /// Three things make this read as floating rather than pulsing, and all three are deliberate:
+    /// the body's *size* is untouched (`sx` and `sy` are left exactly as the breath set them, so
+    /// nothing grows or shrinks and the channel a breath lives in stays the breath's), the motion is
+    /// symmetric about the standing height rather than a one-way lift or a hop, and it is eased at
+    /// both ends, so the body hangs at the top and at the bottom instead of changing direction.
+    ///
+    /// `noise(seed, 3001)` is the per-avatar offset: a uniform turn of the cycle from the same seed
+    /// hash every other clock here is phased from, so a row of idle bots drifts out of step instead
+    /// of rising on one beat. `time` already carries the seed's own time shift (`+ phase` in `pose`),
+    /// so the float differs per bot twice over — once in the clock it rides, once in its own offset.
+    ///
+    /// Reduce Motion returns exactly 0, which is what today's idle draws: the pose a still surface
+    /// gets is the pose it got before this existed.
+    static func hover(seed: UInt32, time: Double, reducedMotion: Bool) -> Double {
+        guard !reducedMotion else { return 0 }
+        let turn = time / hoverPeriodSeconds + noise(seed, 3001)
+        return hoverAmplitude * sin(2 * .pi * turn)
     }
 
     // MARK: - Clocks

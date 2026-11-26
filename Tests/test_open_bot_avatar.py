@@ -725,6 +725,134 @@ class WaitingBlockedAndDoneAreIdleSizedWithTheirOwnLook(unittest.TestCase):
         self.assertNotEqual(float(waiting_gaze.group(1)), 0, "waiting stares at you like blocked")
 
 
+class AnIdleBotHoversAndOnlyAnIdleBot(unittest.TestCase):
+    """The ask: a gentle float while a bot is idle — noticeable in a 24 pt row and at 200 pt, never a
+    bob — on the clock the pose already has, phased per avatar, gone under Reduce Motion, and absent
+    from the other seven states.
+
+    The drawing is SwiftUI, so what a guard can hold from the source is this: the float is one more
+    term of the pose (one sine on the pose's own `time`, no timer, no display link, no layer of its
+    own), its numbers are in the band the ask named and cannot carry the body out of the validated
+    box, Reduce Motion returns exactly nothing, and the seven states that are not idle still draw the
+    lifts they drew before it existed.
+    """
+
+    def code(self, text: str) -> str:
+        """The source with its comments stripped: a guard must read the code, not the prose."""
+        return "\n".join(line.split("//")[0] for line in text.splitlines())
+
+    def pose(self) -> str:
+        source = read(STATE)
+        return source[source.index("public func pose("):source.index("    /// A state that starts part way through itself")]
+
+    def branch(self, label: str) -> str:
+        return self.code(self.pose().split(f"case .{label}:")[1].split("case .")[0])
+
+    def hover(self) -> str:
+        source = read(STATE)
+        return self.code(source[source.index("static func hover("):].split("// MARK:")[0])
+
+    def number(self, name: str) -> float:
+        found = re.search(rf"static let {name} = ([\d.]+)", self.code(read(STATE)))
+        assert found is not None, f"{name} is gone"
+        return float(found.group(1))
+
+    def test_the_hover_lives_in_one_place(self) -> None:
+        # One amplitude, one period, one function — the whole feature, named, in one block.
+        state = self.code(read(STATE))
+        for declaration in (r"static let hoverAmplitude\b", r"static let hoverPeriodSeconds\b",
+                            r"static func hover\("):
+            self.assertEqual(len(re.findall(declaration, state)), 1, f"{declaration} is declared twice")
+        # And nowhere else: no surface, no renderer and no definition file grows a hover of its own.
+        for path in (RENDERER, VIEW, DEFINITIONS):
+            with self.subTest(file=path.name):
+                self.assertNotIn("hoverAmplitude", read(path))
+                self.assertNotIn("hoverPeriodSeconds", read(path))
+                self.assertNotIn("static func hover(", read(path))
+
+    def test_only_idle_floats(self) -> None:
+        idle = self.branch("idle")
+        # It rides `lift`, the channel every state already draws its height on, so the renderer needs
+        # nothing new to draw it: positive `hover` is up, and `lift` is negative-up.
+        self.assertIn("pose.lift -= Self.hover(seed: seed, time: t, reducedMotion: reducedMotion)", idle)
+        # Exactly one call in the whole pose: a second one would be a second float to keep in step.
+        self.assertEqual(self.code(self.pose()).count("Self.hover("), 1)
+        for label in STATES:
+            if label == "idle":
+                continue
+            self.assertNotIn("hover", self.branch(label), f"{label} hovers too")
+        # A happy idle hops instead: the hover is the neutral idle's, not a second motion under the hop.
+        self.assertIn("pose.lift -= Self.hover(", idle.split("if mood == .happy {")[1])
+
+    def test_the_hover_rides_the_poses_own_clock(self) -> None:
+        # The phase comes from the pose's own time (`t`, already shifted per seed) — nothing here
+        # starts a clock, a queue, a task or a per-avatar animation object.
+        self.assertIn("time: t", self.branch("idle"))
+        self.assertIn("let turn = time / hoverPeriodSeconds + noise(seed, 3001)", self.hover())
+        state = self.code(read(STATE)) + self.code(read(RENDERER))
+        for forbidden in ("Timer", "CADisplayLink", "DispatchQueue", "withAnimation", "Task {",
+                          "TimelineView", ".animation(", "asyncAfter"):
+            self.assertNotIn(forbidden, state, f"the avatar started its own clock: {forbidden!r}")
+
+    def test_reduce_motion_draws_todays_pose(self) -> None:
+        # The gate is inside the one function, so no call site can forget it…
+        self.assertIn("guard !reducedMotion else { return 0 }", self.hover())
+        # …and the pose's flag reaches it.
+        self.assertIn("reducedMotion: reducedMotion", self.branch("idle"))
+        # Reduce Motion is also what a paused, offscreen or too-small avatar passes (a 20 pt row in a
+        # list, a window in the background), so those paths do no extra work: the timeline is paused
+        # and the pose is the still one.
+        view = read(VIEW)
+        self.assertIn("paused: !moves", view)
+        self.assertIn("reducedMotion: !moves", view)
+        self.assertIn("Double(size) >= animatingFrom", view)
+
+    def test_the_other_seven_states_draw_the_lifts_they_drew(self) -> None:
+        # Pinned as they were before the hover: the four states with a lift of their own…
+        for label, line in [
+            ("thinking", "pose.lift = reducedMotion ? 0 : -0.5 * (1 - cos(2 * .pi * t / 5.2))"),
+            ("working", "pose.lift += -0.3 * (0.5 + 0.5 * beat) * live"),
+            ("blocked", "pose.lift = reducedMotion ? 0 : -1.15 * (1 - cos(2 * .pi * t / 2.9))"),
+            ("done", "pose.lift -= 2.2 * swell"),
+        ]:
+            self.assertIn(line, self.branch(label), f"{label}'s lift changed")
+        # …and the three that take their height from `rest` alone, which still take it from `rest` alone.
+        for label, pace in (("reading", "rest(1.1)"), ("computer", "rest(1.2)"), ("waiting", "rest(0.9)")):
+            branch = self.branch(label)
+            self.assertIn(pace, branch, f"{label} changed its breath")
+            self.assertNotIn("pose.lift", branch, f"{label} grew a lift of its own")
+        # Idle owns exactly two writes to `lift`: its hop's and the hover's, one term more than today.
+        self.assertEqual(len(re.findall(r"pose\.lift", self.branch("idle"))), 2)
+
+    def test_the_numbers_are_in_the_band_and_stay_in_frame(self) -> None:
+        amplitude = self.number("hoverAmplitude")       # units: hundredths of the avatar's side
+        period = self.number("hoverPeriodSeconds")
+        self.assertGreaterEqual(amplitude, 1.5, "a hover this small cannot be seen at 24 pt")
+        self.assertLessEqual(amplitude, 2.5, "a hover this large is a hop")
+        self.assertGreaterEqual(period, 3.5, "faster than this reads as a bob")
+        self.assertLessEqual(period, 5.0, "slower than this stalls")
+        # Percent of the side, not points: the excursion at 24/48/200 pt is the same fraction of the
+        # body, so it is as visible on a row's avatar as on the pet.
+        for side in (24, 48, 200):
+            self.assertGreater(amplitude / 100 * side, 0.3, f"invisible at {side} pt")
+        # The body is validated inside 6…94 of the 0…100 box, so ± this amplitude cannot reach the
+        # frame's edge — the float trades height only.
+        body = self.hover()
+        self.assertLessEqual(amplitude, BODY_MIN)
+        self.assertLessEqual(amplitude, 100 - BODY_MAX)
+        # No size change at all: a body that grew and shrank is a breath, and the breath is `rest`'s.
+        for channel in ("pose.sx", "pose.sy", "pose.scale", "bodyScale"):
+            self.assertNotIn(channel, body + self.branch("idle").split("Self.hover")[0].split("else {")[-1])
+
+    def test_the_renderer_adds_no_layer_for_it(self) -> None:
+        renderer = self.code(read(RENDERER))
+        self.assertNotIn("hover", renderer, "the renderer learned about the hover")
+        # The float rides the transform a frame already takes: the body's root moves by `pose.lift`,
+        # and the ribbons' rim follows that same lift. Two readers, both older than the float.
+        self.assertIn("CGAffineTransform(translationX: 0, y: CGFloat(pose.lift))", renderer)
+        self.assertEqual(renderer.count("pose.lift"), 2)
+
+
 class TheVolumeIsInferredAndProjected(unittest.TestCase):
     """The point of the port: depth from a silhouette, not a flat fill."""
 
