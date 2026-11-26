@@ -40,6 +40,7 @@ import Foundation
 import SwiftUI
 import Metal
 import MetalKit
+import QuartzCore
 import os
 #if canImport(UIKit)
 import UIKit
@@ -73,6 +74,13 @@ final class HermeyGlassEngine {
     let sampler: MTLSamplerState?
     let queue: MTLCommandQueue?
 
+    /// One black texel, bound where a body has no page behind it.
+    ///
+    /// The fragment tests `uniforms.backdrop.w` before it samples, so this is never read; it exists
+    /// because a texture slot the pass declares is a slot the draw binds, and a 1×1 texture made once
+    /// per process is cheaper — and more honest — than a branch at every draw about whether to bind.
+    let placeholderTexture: MTLTexture?
+
     /// The pipeline's colour attachment format: what a `MetalKit` view presents by default.
     static let pixelFormat: MTLPixelFormat = .bgra8Unorm
 
@@ -87,6 +95,7 @@ final class HermeyGlassEngine {
         var pipeline: MTLRenderPipelineState?
         var sampler: MTLSamplerState?
         var queue: MTLCommandQueue?
+        var placeholder: MTLTexture?
 
         if let device {
             do {
@@ -126,16 +135,32 @@ final class HermeyGlassEngine {
             let samplerDescriptor = MTLSamplerDescriptor()
             samplerDescriptor.minFilter = .linear
             samplerDescriptor.magFilter = .linear
+            // The page's compressed band is sampled below one texel per pixel; without mip filtering
+            // that is a torn stripe, and the mask (which has no mip chain) is unaffected because its
+            // LOD clamps to level 0.
+            samplerDescriptor.mipFilter = .linear
             samplerDescriptor.sAddressMode = .clampToEdge
             samplerDescriptor.tAddressMode = .clampToEdge
             sampler = device.makeSamplerState(descriptor: samplerDescriptor)
             queue = device.makeCommandQueue()
+
+            // The no-page texture: one black texel, made here with everything else the process needs
+            // once, so a drawer with no snapshot never has to invent one per frame.
+            let texel: [UInt8] = [0, 0, 0, 255]
+            let placeholderDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
+                                                                                 width: 1, height: 1,
+                                                                                 mipmapped: false)
+            placeholderDescriptor.usage = .shaderRead
+            placeholder = device.makeTexture(descriptor: placeholderDescriptor)
+            placeholder?.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
+                                 withBytes: texel, bytesPerRow: 4)
         }
 
         self.library = library
         self.pipeline = pipeline
         self.sampler = sampler
         self.queue = queue
+        self.placeholderTexture = placeholder
     }
 }
 
@@ -154,12 +179,23 @@ final class BotAvatarGlassMTKView: MTKView {
 /// Draws one glass body: the body's silhouette mask as a texture, and the runtime shader over it.
 ///
 /// One drawer per view. The mask is rebuilt only when the drawn pixels change size; a frame that
-/// moves the pose re-uploads six `float4`s and nothing else.
+/// moves the pose re-uploads six `float4`s and nothing else. The page behind the body (`page`) is
+/// taken by `GlassBackdrop` when the body's box moves on the page — also not per frame.
 final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
 
     private var surface: BotAvatarGlassSurface?
     private var path: Path?
     private var texture: MTLTexture?
+
+    /// The host's own region behind the body, and the uniform that maps the body's points into it.
+    /// Nil until a capture succeeds, and nil again when the drawable resizes: a body with no page is
+    /// the studio plate, exactly as it was before there was a page at all.
+    private var page: GlassBackdropPage?
+    /// Where the body last was in its window, and when the page was last taken — the two things that
+    /// decide whether a snapshot is due. `CGRect.null` never equals a real box, so the first update
+    /// always captures.
+    private var lastBox: CGRect = .null
+    private var lastCapture: CFTimeInterval = 0
 
     /// The view the drawer paints into: transparent, paused, and redrawn only when SwiftUI hands it
     /// a new frame. No display link of its own — the avatar's own 10 Hz timeline is the clock.
@@ -217,11 +253,47 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         guard let view, HermeyGlassEngine.shared.isReady else { return }
         self.surface = surface
         self.path = path
+        refreshPage(view, points: surface.size)
         requestGlassFrame(view)
+    }
+
+    /// Take the page again if the body has moved on it, or if it is old enough to be stale.
+    ///
+    /// Three triggers, and none of them is a frame: the body's box in the window changed (a layout, a
+    /// scroll of the thing it is anchored to), the page has not been read for `refreshInterval` (the
+    /// page moved and the body did not — a list scrolling under a pinned avatar), or there is no page
+    /// yet because the last attempt found no window. The capture itself is a crop of the content view
+    /// and one texture upload; at 2 Hz against a 10 Hz body that is a fraction of a per-mille.
+    private func refreshPage(_ view: MTKView, points: CGSize) {
+        let now = CACurrentMediaTime()
+        // The body's box in the window's content view — the same view `GlassBackdrop.capture` crops,
+        // so "moved" means moved on the page and nothing else.
+        #if canImport(UIKit)
+        let box = view.window.map { view.convert(view.bounds, to: $0) } ?? .null
+        #else
+        let box = view.window?.contentView.map { view.convert(view.bounds, to: $0) } ?? .null
+        #endif
+        let moved = box != lastBox
+        let stale = now - lastCapture >= GlassBackdrop.refreshInterval
+        guard page == nil || moved || stale else { return }
+        // A host mid-layout has no box to snapshot yet; the next update tries again rather than
+        // remembering this failure as a decision.
+        guard let device = HermeyGlassEngine.shared.device else { return }
+        lastBox = box
+        lastCapture = now
+        guard let captured = GlassBackdrop.capture(of: view, points: points, device: device) else {
+            page = nil
+            return
+        }
+        page = captured
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         texture = nil
+        // A resize moves the page's mapping into the body's points, so the old snapshot is not just
+        // stale, it is in the wrong place.
+        page = nil
+        lastBox = .null
         // A view that was re-hosted can come back with its own idea of whether it is opaque.
         Self.transparent(view)
         requestGlassFrame(view)
@@ -249,6 +321,10 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         var uniforms = surface.uniforms
         uniforms.size = SIMD4<Float>(Float(surface.size.width), Float(surface.size.height),
                                      Float(pixels.width), Float(pixels.height))
+        // The page, if this host could give one: its frame in the body's points, and 1 in `w` so the
+        // fragment knows to sample it. Without one `w` stays 0 and every sample goes to the studio
+        // plate — the fallback named in `sampleBehind`.
+        uniforms.backdrop = page?.frame ?? .zero
 
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
@@ -260,6 +336,9 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<BotAvatarGlassUniforms>.stride, index: 0)
         encoder.setFragmentTexture(texture, index: 0)
+        // Bound on every frame, page or not: a slot the shader tests before it samples still has to
+        // hold something, and a placeholder is cheaper than a branch about whether to bind.
+        encoder.setFragmentTexture(page?.texture ?? engine.placeholderTexture, index: 1)
         encoder.setFragmentSamplerState(sampler, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         encoder.endEncoding()

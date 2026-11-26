@@ -537,8 +537,8 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("static inline float3 sampleGlassPlate(", source)
         # The plate is the studio's room where the surface cannot name its page, and the page itself
         # where it can: a body that transmits a bright cyclorama is a body with nothing behind it.
-        self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
-                      "pageLight, pageKnown);", source)
+        self.assertIn("float3 plate = sampleBehind(pagePoint, plateUV, plateFoot, jewelTint, detail, "
+                      "pageKnown,", source)
         self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
         self.assertIn("float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);", source)
         # The plate is lit neutral and carries the body's hue at 45 %, not in full.
@@ -767,11 +767,13 @@ class TheBodyTransmitsThePage(unittest.TestCase):
                       source)
         # The plate, the interior's slices and the wall's reflection all take the same mix, so the body's
         # light has one source and `pageKnown == 0` reproduces the pre-change body exactly.
-        self.assertIn("float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), "
-                      "pageLight, pageKnown);", source)
+        self.assertIn("float3 plate = sampleBehind(pagePoint, plateUV, plateFoot, jewelTint, detail, "
+                      "pageKnown,", source)
         self.assertIn("float3 slice = mix(sampleInternalStudio(posS, into, jewelTint, rearTIR ? 1.0 : 0.0,",
                       source)
-        self.assertIn("pageLight, pageKnown);", source)
+        # …and the slice takes the same page the exit ray landed on, which is the snapshot where there
+        # is one and the flat colour where there is not.
+        self.assertIn("plate, pageKnown);", source)
         # The pair of gains is chosen by whether there is a page: 1.35 of a bright cyclorama over a page
         # that is 0.01 up is the density the critique named.
         self.assertIn("float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);", source)
@@ -784,14 +786,14 @@ class TheBodyTransmitsThePage(unittest.TestCase):
         # The key's reflection on the face, scaled by the page's own luminance: on the dark pane it is a
         # hint, on a light surface the full studio. A 13.0-gain softbox over a 0.01 page is nine times
         # the page's light, measured — that highlight, not the plate, was the solid body.
-        self.assertIn("float pageLum = dot(pageLight, float3(0.2126, 0.7152, 0.0722));", source)
+        self.assertIn("float pageLum = dot(plate, float3(0.2126, 0.7152, 0.0722));", source)
         self.assertIn("float sheen = mix(1.0, clamp(pageLum * kPageSheenGain, kPageSheenFloor, 1.0), "
                       "pageKnown);", source)
         self.assertIn("accum *= sheen;", source)
         self.assertIn("#define kPageSheenGain 2.0", source)
         self.assertIn("#define kPageSheenFloor 0.03", source)
         # And the internal focus concentrates the page rather than painting a white studio spot on it.
-        self.assertIn("float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, pageLight * 1.20, "
+        self.assertIn("float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, plate * 1.20, "
                       "pageKnown);", source)
 
     def test_the_absorption_is_a_tint_and_still_a_function_of_the_path(self):
@@ -824,7 +826,104 @@ class TheBodyTransmitsThePage(unittest.TestCase):
         self.assertIn("let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)", main)
         self.assertIn('-pane.png', main)
         self.assertIn('-lit.png', main)
-        self.assertIn("contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink)", main)
+        self.assertIn("contrastRatio(relativeLuminance((body, body, body)), ink)", main)
+
+
+class TheBodyRefractsThePageBehindIt(unittest.TestCase):
+    """The page is sampled at the refracted coordinate, from a snapshot the host hands over.
+
+    The second half of the round, and the one with architectural risk: the body's backdrop is no longer
+    a studio painted inside the shader, it is a picture of the app's own region behind the avatar, taken
+    by the drawer when the body moves on the page, uploaded once per capture, and sampled where the
+    traced ray leaves the glass. The guards below are the things that can silently stop being true:
+    the sample must be *displaced*, the snapshot must not be taken per frame, the ladder must keep its
+    three rungs, and the picture must exist.
+    """
+
+    LAYER = LAYER
+    BACKDROP = GLASS / "GlassBackdrop.swift"
+
+    def test_the_ray_lands_on_the_page_and_is_displaced(self):
+        source = msl_code()
+        # The page plane is behind the body's back surface, and the landing is along the exit ray.
+        self.assertIn("float pageDepth = halfDepth * 1.35;", source)
+        self.assertIn("float pageTravel = max(0.0, pageDepth - exitHeight) / max(-leaving.z, 0.22);", source)
+        self.assertIn("float2 land = exitPoint.xy + (rearTIR ? float2(0.0) : leaving.xy * pageTravel);",
+                      source)
+        # …and the coordinate handed to the page is that landing, in the body's own points — so it is
+        # *not* the screen coordinate, which is the whole of the refraction.
+        self.assertIn("float2 pagePoint = centre + foldIntoPlate(land, 1.60 * max(halfExtent.x, "
+                      "halfExtent.y));", source)
+        # The sample itself: the snapshot, mapped by the frame the drawer wrote.
+        self.assertIn("float2 uv = (pagePoint - frame.xy) / max(frame.z, 1e-4) / max(texels, float2(1.0));",
+                      source)
+        self.assertIn("float3 srgb = float3(page.sample(pageSampler, uv).rgb);", source)
+        # A flat page cannot bend: the flat colour, when it is used, must be the *fallback*, not the
+        # thing the ray lands on.
+        behind = source.split("static inline float3 sampleBehind(")[1].split("\n        }")[0]
+        self.assertIn("frame.w > 0.5", behind)
+        self.assertIn("sampleBackdropPage(pagePoint, page, pageSampler, frame)", behind)
+        self.assertIn("return pageLight;", behind)
+        self.assertIn("return sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);", behind)
+
+    def test_the_snapshot_is_taken_on_a_move_and_never_per_frame(self):
+        backdrop = code(read(self.BACKDROP))
+        # One capture function, one crop of the host, one texture with its mip chain.
+        self.assertIn("static func capture(of view: MTKView, points: CGSize, device: MTLDevice) "
+                      "-> GlassBackdropPage?", backdrop)
+        self.assertIn("let crop = grown.intersection(container.bounds)", backdrop)
+        self.assertIn("static let refreshInterval: CFTimeInterval = 0.5", backdrop)
+        self.assertIn("view.layer?.isHidden = true", backdrop)
+        self.assertIn("blit.generateMipmaps(for: texture)", backdrop)
+        # The drawer takes it on a move or on staleness — never in `draw`, and never on a frame count.
+        layer = code(read(self.LAYER))
+        self.assertIn("refreshPage(view, points: surface.size)", layer)
+        refresh = layer.split("private func refreshPage(")[1].split("\n    }")[0]
+        self.assertIn("let moved = box != lastBox", refresh)
+        self.assertIn("let stale = now - lastCapture >= GlassBackdrop.refreshInterval", refresh)
+        self.assertIn("guard page == nil || moved || stale else { return }", refresh)
+        draw = layer.split("func draw(in view: MTKView)")[1]
+        self.assertNotIn("GlassBackdrop.capture", draw,
+                         "the capture must never be inside a frame")
+        # A resize invalidates the mapping rather than being reused.
+        self.assertIn("page = nil\n        lastBox = .null", layer)
+
+    def test_the_page_is_bound_on_every_frame_and_mip_filtered(self):
+        layer = code(read(self.LAYER))
+        self.assertIn("encoder.setFragmentTexture(page?.texture ?? engine.placeholderTexture, index: 1)",
+                      layer)
+        self.assertIn("uniforms.backdrop = page?.frame ?? .zero", layer)
+        self.assertIn("samplerDescriptor.mipFilter = .linear", layer)
+        self.assertIn("let placeholderTexture: MTLTexture?", layer)
+        # The shader declares the slot it samples.
+        source = msl_code()
+        self.assertIn("texture2d<half> pageLayer [[texture(1)]]", source)
+        self.assertIn("if (kBackdropPage > 0 && frame.w > 0.5) {", source)
+        self.assertIn("#define kBackdropPage 1", source)
+
+    def test_the_fallback_is_reachable_and_named(self):
+        source = msl()
+        # The ladder, rung by rung, in one place.
+        behind = source.split("static inline float3 sampleBehind(")[1].split("\n        }")[0]
+        self.assertIn("if (kBackdropPage > 0 && frame.w > 0.5)", behind)
+        self.assertIn("if (pageKnown > 0.5)", behind)
+        self.assertIn("return sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);", behind)
+        # The proof draws the bottom rung by recompiling this same string with both switches off.
+        main = read(ROOT / "Tools" / "glass-proof" / "main.swift")
+        self.assertIn('("#define kBackdropPage 1", "#define kBackdropPage 0")', main)
+        self.assertIn('("float pageKnown = uniforms.page.w;", "float pageKnown = 0.0;")', main)
+        self.assertIn("-page-studio.png", main)
+
+    def test_the_proof_renders_a_busy_page_and_measures_the_bend(self):
+        main = read(ROOT / "Tools" / "glass-proof" / "main.swift")
+        self.assertIn("func makePage(side: Double, pixels: CGSize, flat: (CGFloat, CGFloat, CGFloat)? = nil)",
+                      main)
+        self.assertIn("-page.png", main)
+        self.assertIn("GlassBackdrop.texture(rgba: base, width: page.width, height: page.height, "
+                      "device: device)", main)
+        bend = read(ROOT / "Tools" / "glass-proof" / "bend.py")
+        self.assertIn("verdict: {'BENDS' if moved > 1.5 else 'FLAT'}", bend)
+        self.assertIn("the bar's row moves", bend)
 
 
 class TheThreeTargetsAreSteps(unittest.TestCase):

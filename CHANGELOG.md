@@ -3,6 +3,21 @@
 All notable changes to Hermey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions are the app's build versions.
 
+### Changed
+- **The glass body transmits the page it stands on, and is brighter for it.** Both reviews of the
+  render 0.1.683 would have shipped said the same thing — the body is translucent only at its outer
+  edges, and its centre is "gummy candy, polished stone, or acrylic". Measured over the app's own pane,
+  the body's centre sat at **163 %** of the pane's luminance. The surface now names the page it is drawn
+  over (the theme's own `#232323` / `#F0EEE6` surface tokens, `.zero` for the desktop pet, which keeps
+  the old body exactly), the fragment transmits it through the plate, the twelve interior slices, the
+  back wall's reflection and the internal focus, and the absorption is a tint's (94/55/31 % of the 200 pt
+  path instead of 90/32/19). The invented studio is scaled by the page's own light, because the front
+  face's 13.0-softbox key was nine times the pane's luminance on its own. Centre against the page, and
+  the eyes against the body: pane **+10 %**, control **−5 %**, light theme **−17 %**; eyes **1.13:1** on
+  the dark pane and **10.9:1** on the light surface, up from 9.0:1. A following commit samples a real
+  snapshot of the app behind the body, so the page's own edges bend under the glass; where a host cannot
+  snapshot, the flat page colour above is what the body transmits, and only the bend is lost.
+  `docs/GLASS_ROUND5_TRANSMISSION.md`.
 ### Added
 - **Edit a saved secret, and never see it.** Every row in **Settings → Vault** — the Mac's tab and the
   phone's screen — now has **Edit**: rename the item, replace its value, or both, in one save. The value

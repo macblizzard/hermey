@@ -79,6 +79,123 @@ let surfaceBackground = (r: 0x23, g: 0x23, b: 0x23)
 let paneBackground = (r: 0x1E, g: 0x1E, b: 0x1E)
 let litBackground = (r: 0xF2, g: 0xF2, b: 0xF2)
 
+// MARK: - The page behind the body
+
+/// A synthetic app page: the pane and control colours the app actually draws, with rows of text-like
+/// bars through the middle where the body sits.
+///
+/// The pass's backdrop is a snapshot of the host's own region, and an offscreen tool has no host — so
+/// this is the closest honest stand-in, and it is deliberately *busy*: a flat pane would prove the
+/// body's translucency and nothing about its refraction, exactly as a smooth studio did. Straight
+/// edges and light/dark contrast are what a bent ray makes visible, so the page carries a control
+/// block, five rows of text at two weights, a hairline and a small accent square.
+struct PageImage {
+    /// RGBA, sRGB, first row is the top — the layout the shader's `position.y` uses.
+    var rgba: [UInt8]
+    var width: Int
+    var height: Int
+    /// The image's top-left corner in the body's own points (negative: the page reaches outside it).
+    var origin: CGPoint
+    /// The points one texel covers.
+    var pointsPerTexel: CGFloat
+}
+
+/// The drawable's pixel size for a body of `side` points, at this run's scale and supersampling.
+func drawableSize(side: Double) -> (points: CGSize, sample: CGSize, final: CGSize) {
+    let points = CGSize(width: side, height: side)
+    let final = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
+    let sample = CGSize(width: Int(final.width) * supersample, height: Int(final.height) * supersample)
+    return (points, sample, final)
+}
+
+/// The page, drawn at `pixels` resolution and mapped so the body's box sits in its middle.
+///
+/// The region is three body-widths across — a margin of one body on every side — because a shoulder
+/// sends its ray up to a body-width away and a page that stopped at the box would clamp every one of
+/// them to its own edge.
+func makePage(side: Double, pixels: CGSize, flat: (CGFloat, CGFloat, CGFloat)? = nil) -> PageImage? {
+    let width = Int(pixels.width), height = Int(pixels.height)
+    guard width >= 1, height >= 1,
+          let space = CGColorSpace(name: CGColorSpace.sRGB),
+          let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                  bytesPerRow: width * 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+    else { return nil }
+
+    let points = 3 * side
+    let unit = CGFloat(width) / CGFloat(points)      // pixels per point of the page
+    // y down from the top-left: the orientation the shader's `position` has.
+    context.translateBy(x: 0, y: CGFloat(height))
+    context.scaleBy(x: unit, y: -unit)
+
+    func fill(_ rect: CGRect, _ colour: (CGFloat, CGFloat, CGFloat)) {
+        context.setFillColor(CGColor(srgbRed: colour.0, green: colour.1, blue: colour.2, alpha: 1))
+        context.fill(rect)
+    }
+    func rounded(_ rect: CGRect, radius: CGFloat, _ colour: (CGFloat, CGFloat, CGFloat)) {
+        let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        context.addPath(path)
+        context.setFillColor(CGColor(srgbRed: colour.0, green: colour.1, blue: colour.2, alpha: 1))
+        context.fillPath()
+    }
+
+    let page = CGFloat(points)
+    // The app's own pane and control colours: `Theme`'s `#1E1E1E` pane, `#2B2B2B` control.
+    fill(CGRect(x: 0, y: 0, width: page, height: page), (0x1E / 255, 0x1E / 255, 0x1E / 255))
+
+    // A flat page is the *measurement*: the same pane, with nothing on it, so the body's centre can be
+    // compared with the backdrop it covers as a number. The busy page below is the *evidence*: it is
+    // what makes a bend visible.
+    if let flat {
+        fill(CGRect(x: 0, y: 0, width: page, height: page), flat)
+    } else {
+        // A control block, upper left — the mid-grey the app's rows and buttons use.
+        rounded(CGRect(x: page * 0.06, y: page * 0.07, width: page * 0.46, height: page * 0.17),
+                radius: page * 0.012, (0x2B / 255, 0x2B / 255, 0x2B / 255))
+        // …and one lower right, so the body's bottom shoulder has an edge to bend too.
+        rounded(CGRect(x: page * 0.60, y: page * 0.74, width: page * 0.32, height: page * 0.13),
+                radius: page * 0.010, (0x2B / 255, 0x2B / 255, 0x2B / 255))
+
+        // Text: five rows of bars through the band the body covers, two weights, ragged right edges —
+        // what a chat's message text looks like from a body's width away.
+        let rows: [(CGFloat, CGFloat, CGFloat)] = [   // y, width fraction, brightness
+            (0.36, 0.80, 0.86), (0.415, 0.70, 0.78), (0.47, 0.84, 0.86),
+            (0.525, 0.62, 0.72), (0.58, 0.74, 0.80),
+        ]
+        for (y, fraction, brightness) in rows {
+            let x = page * 0.09
+            let barWidth = page * (1 - 2 * 0.09) * fraction
+            fill(CGRect(x: x, y: page * y, width: barWidth, height: page * 0.016),
+                 (brightness * 0.92, brightness * 0.92, brightness))
+        }
+        // Two vertical rules through the body's middle. A horizontal bar can only be *shifted* by a
+        // displacement that is mostly vertical; a vertical edge across the body shows the lateral part of
+        // the bend too, which is the half of the lens an eye reads first. They are the proof's own
+        // device, not something the app draws.
+        for x in [CGFloat(0.45), CGFloat(0.55)] {
+            fill(CGRect(x: page * x, y: 0, width: max(1 / unit, page * 0.0018), height: page * 0.74),
+                 (0xDF / 255, 0xDF / 255, 0xE2 / 255))
+        }
+        // A hairline and an accent square: the two features narrow enough to read as a line through the
+        // wall, and the only saturated colour on the page.
+        fill(CGRect(x: 0, y: page * 0.665, width: page, height: max(1 / unit, page * 0.0016)),
+             (0x3A / 255, 0x3A / 255, 0x3C / 255))
+        fill(CGRect(x: page * 0.09, y: page * 0.70, width: page * 0.030, height: page * 0.030),
+             (0x3B / 255, 0x82 / 255, 0xF6 / 255))
+    }
+
+    guard let filled = context.data else { return nil }
+    // `CGContext`'s own buffer is the image already (premultiplied, opaque), so copy it out once.
+    let byteCount = width * height * 4
+    var rgba = [UInt8](repeating: 0, count: byteCount)
+    rgba.withUnsafeMutableBytes { destination in
+        destination.copyMemory(from: UnsafeRawBufferPointer(start: filled, count: byteCount))
+    }
+    return PageImage(rgba: rgba, width: width, height: height,
+                     origin: CGPoint(x: -side, y: -side),
+                     pointsPerTexel: CGFloat(points) / CGFloat(width))
+}
+
 // MARK: - The app's own pieces
 
 let engine = HermeyGlassEngine.shared
@@ -87,28 +204,43 @@ guard engine.isReady,
       let pipeline = engine.pipeline,
       let sampler = engine.sampler,
       let queue = engine.queue else {
+    // Say *why*, not just that. The engine logs Metal's own error to the unified log, which a shell
+    // cannot read; compiling the same string again here and printing the error is the difference
+    // between a diagnosis and a shrug.
+    if let device = MTLCreateSystemDefaultDevice() {
+        do {
+            _ = try device.makeLibrary(source: HermeyGlassSource.msl, options: nil)
+        } catch {
+            FileHandle.standardError.write(Data("glass-proof: the MSL did not compile:\n\(error)\n".utf8))
+        }
+    }
     FileHandle.standardError.write(Data("glass-proof: the glass shader is not available on this Mac\n".utf8))
     exit(2)
 }
 
-/// The same MSL with the proof's studio switched on, and a pipeline built from it.
+/// The same MSL with one or more of its compile-time switches changed, and a pipeline built from it.
 ///
-/// The app's engine is untouched: it compiles `HermeyGlassSource.msl` once per process and this is a
-/// second library in the *proof tool*, for a picture the app never draws. One substitution, no edited
-/// shader — so what the pattern picture shows is the transform the app's pass applies, including its
-/// absorption, its rim and its two edges.
-let patternPipeline: MTLRenderPipelineState? = {
-    let source = HermeyGlassSource.msl.replacingOccurrences(of: "#define kPlatePattern 0",
-                                                            with: "#define kPlatePattern 1")
-    guard source != HermeyGlassSource.msl,
-          let library = try? device.makeLibrary(source: source, options: nil),
+/// The app's engine is untouched: it compiles `HermeyGlassSource.msl` once per process and these are
+/// extra libraries in the *proof tool*, for pictures the app never draws. Every substitution is a
+/// `#define` this same string carries, so each picture is this pass with one constant different — not
+/// an illustration of it.
+func variantPipeline(_ substitutions: [(String, String)], label: String) -> MTLRenderPipelineState? {
+    var source = HermeyGlassSource.msl
+    for (from, to) in substitutions {
+        guard source.contains(from) else {
+            FileHandle.standardError.write(Data("glass-proof: \(label) found no '\(from)' to change\n".utf8))
+            return nil
+        }
+        source = source.replacingOccurrences(of: from, with: to)
+    }
+    guard let library = try? device.makeLibrary(source: source, options: nil),
           let vertex = library.makeFunction(name: "hermeyGlassVertex"),
           let fragment = library.makeFunction(name: "hermeyGlassBody") else {
-        FileHandle.standardError.write(Data("glass-proof: the pattern variant did not compile\n".utf8))
+        FileHandle.standardError.write(Data("glass-proof: the \(label) variant did not compile\n".utf8))
         return nil
     }
     let descriptor = MTLRenderPipelineDescriptor()
-    descriptor.label = "HermeyGlassProofPattern"
+    descriptor.label = "HermeyGlassProof.\(label)"
     descriptor.vertexFunction = vertex
     descriptor.fragmentFunction = fragment
     if let attachment = descriptor.colorAttachments[0] {
@@ -122,7 +254,24 @@ let patternPipeline: MTLRenderPipelineState? = {
         attachment.destinationAlphaBlendFactor = .oneMinusSourceAlpha
     }
     return try? device.makeRenderPipelineState(descriptor: descriptor)
-}()
+}
+
+/// The refraction proof: the studio plate is a coarse checkerboard, so the ray's own transform is what
+/// the picture shows.
+let patternPipeline = variantPipeline([("#define kPlatePattern 0", "#define kPlatePattern 1")],
+                                      label: "pattern")
+
+/// The fallback proof: the app's pass with **no page at all** — no snapshot and no surface colour, which
+/// is the desktop pet's path and the body 0.1.683 shipped. Same string, same uniforms, same page behind
+/// it, so the pair of pictures is "with the page" against "the studio plate", nothing else changed.
+let studioPipeline = variantPipeline([("#define kBackdropPage 1", "#define kBackdropPage 0"),
+                                     ("float pageKnown = uniforms.page.w;", "float pageKnown = 0.0;")],
+                                     label: "studio")
+
+/// The coordinate map: the same pass writing the page coordinate each pixel samples, so the
+/// displacement can be subtracted rather than eyeballed.
+let debugPipeline = variantPipeline([("#define kPageDebug 0", "#define kPageDebug 1")],
+                                    label: "pagedebug")
 
 guard let cat = OpenBotAvatarPresets.all.first(where: { $0.id == "cat" }),
       let model = OpenBotAvatarModel.model(for: cat) else {
@@ -144,14 +293,45 @@ struct Rendered {
     var height: Int
 }
 
+/// The masks this run has already built, keyed by the drawable's pixel size and the body's points.
+///
+/// The mask is the one expensive CPU step (7 s at 800×800 under `-Onone`), and a case is now rendered
+/// several times — over the canvas, the surface, a busy page, a flat pane, the fallback — all with the
+/// same silhouette. Building it once per case is what keeps the tool usable while it is being judged.
+var maskCache: [String: MTLTexture] = [:]
+
+/// One black texel, bound where a render has no page — the shader tests `backdrop.w` before it samples,
+/// so this is never read; the slot still has to hold something.
+let blackTexel: MTLTexture? = {
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: 1,
+                                                             height: 1, mipmapped: false)
+    descriptor.usage = .shaderRead
+    guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+    let texel: [UInt8] = [0, 0, 0, 255]
+    texture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: texel, bytesPerRow: 4)
+    return texture
+}()
+
+/// The page as the fragment's second texture — through the app's own upload, so the picture is of the
+/// same texture the app binds (sRGB bytes, row 0 at the top, with its mip chain).
+func pageTexture(_ page: PageImage) -> MTLTexture? {
+    var made: MTLTexture?
+    page.rgba.withUnsafeBytes { bytes in
+        guard let base = bytes.baseAddress else { return }
+        made = GlassBackdrop.texture(rgba: base, width: page.width, height: page.height, device: device)
+    }
+    return made
+}
+
 /// One case at `supersample` times the resolution, box-filtered down to `width` × `height`.
+///
+/// `page` is the app's own surface behind the body: bound and framed when it is given, left at
+/// `backdrop.w == 0` when it is not (which is the studio plate, the shader's named fallback).
 func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipelineState,
-            dark: Bool = true) -> Rendered? {
-    let points = CGSize(width: side, height: side)
-    let finalPixels = CGSize(width: (side * scale).rounded(), height: (side * scale).rounded())
+            page: PageImage?, dark: Bool = true) -> Rendered? {
+    let (points, pixels, finalPixels) = drawableSize(side: side)
     let width = Int(finalPixels.width), height = Int(finalPixels.height)
-    let sampleWidth = width * supersample, sampleHeight = height * supersample
-    let pixels = CGSize(width: sampleWidth, height: sampleHeight)
+    let sampleWidth = Int(pixels.width), sampleHeight = Int(pixels.height)
 
     // A still frame of the state, at the pose the app holds when it is not animating: the same
     // uniforms a screenshot of a paused avatar would be drawn with.
@@ -163,16 +343,32 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
                                              backdrop: .themed(dark: dark), material: .glass)
     // How long the mask costs, per case: the analytic field is the one part of this pass that runs on
     // the CPU, and it runs once per pixel size — so its number is the price of the fix, quoted rather
-    // than guessed.
-    let maskStart = CFAbsoluteTimeGetCurrent()
-    guard let mask = BotAvatarGlassDrawer.makeMask(path: model.silhouette.applying(face),
-                                                   points: points, pixels: pixels,
-                                                   device: device) else { return nil }
-    lastMaskMilliseconds = (CFAbsoluteTimeGetCurrent() - maskStart) * 1000
+    // than guessed. A second render of the same case reuses it.
+    let maskKey = "\(side)-\(sampleWidth)-\(sampleHeight)"
+    let mask: MTLTexture
+    if let cached = maskCache[maskKey] {
+        mask = cached
+    } else {
+        let maskStart = CFAbsoluteTimeGetCurrent()
+        guard let built = BotAvatarGlassDrawer.makeMask(path: model.silhouette.applying(face),
+                                                        points: points, pixels: pixels,
+                                                        device: device) else { return nil }
+        lastMaskMilliseconds = (CFAbsoluteTimeGetCurrent() - maskStart) * 1000
+        maskCache[maskKey] = built
+        mask = built
+    }
 
     var uniforms = surface.uniforms
     uniforms.size = SIMD4<Float>(Float(points.width), Float(points.height),
                                  Float(sampleWidth), Float(sampleHeight))
+    // The page, in the body's own points: its corner, and the points one texel covers. `w` is what the
+    // fragment reads to choose between the page and the studio plate — 0 here is the named fallback.
+    var backdropTexture = blackTexel
+    if let page, let bound = pageTexture(page) {
+        uniforms.backdrop = SIMD4<Float>(Float(page.origin.x), Float(page.origin.y),
+                                        Float(page.pointsPerTexel), 1)
+        backdropTexture = bound
+    }
 
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                                                               width: sampleWidth, height: sampleHeight,
@@ -193,6 +389,7 @@ func render(side: Double, state: OpenBotAvatarState, pipeline: MTLRenderPipeline
     encoder.setRenderPipelineState(pipeline)
     encoder.setFragmentBytes(&uniforms, length: MemoryLayout<BotAvatarGlassUniforms>.stride, index: 0)
     encoder.setFragmentTexture(mask, index: 0)
+    encoder.setFragmentTexture(backdropTexture, index: 1)
     encoder.setFragmentSamplerState(sampler, index: 0)
     encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
     encoder.endEncoding()
@@ -246,7 +443,7 @@ func downsampled(_ rgba: [UInt8], width: Int, height: Int) -> [UInt8] {
 
 // MARK: - Writing
 
-/// WCAG relative luminance of one sRGB channel triple 0…1, and the contrast ratio between two.
+/// WCAG relative luminance of one sRGB triple 0…1, and the contrast ratio between two.
 ///
 /// The number a person's eye uses for "how much darker", and the one an accessibility audit quotes:
 /// `(lighter + 0.05) / (darker + 0.05)`.
@@ -259,19 +456,6 @@ func relativeLuminance(_ rgb: (Double, Double, Double)) -> Double {
 
 func contrastRatio(_ a: Double, _ b: Double) -> Double {
     (max(a, b) + 0.05) / (min(a, b) + 0.05)
-}
-
-/// The mean luminance of a square of `rgba`, as an sRGB value 0…1.
-func meanLuminance(_ rgba: [UInt8], width: Int, height: Int, centre: (Int, Int), side: Int) -> Double {
-    var sum = 0.0, count = 0
-    for y in max(0, centre.1 - side / 2)..<min(height, centre.1 + side / 2) {
-        for x in max(0, centre.0 - side / 2)..<min(width, centre.0 + side / 2) {
-            let i = (y * width + x) * 4
-            sum += 0.2126 * Double(rgba[i]) + 0.7152 * Double(rgba[i + 1]) + 0.0722 * Double(rgba[i + 2])
-            count += 1
-        }
-    }
-    return count > 0 ? sum / Double(count) / 255.0 : 0
 }
 
 func composite(_ frame: Rendered, over background: (r: Int, g: Int, b: Int)) -> [UInt8] {
@@ -288,6 +472,35 @@ func composite(_ frame: Rendered, over background: (r: Int, g: Int, b: Int)) -> 
         out[i + 3] = 255
     }
     return out
+}
+
+/// The frame over an image — `image` is the page the body was drawn on, at the frame's own size.
+func composite(_ frame: Rendered, over image: [UInt8]) -> [UInt8] {
+    precondition(image.count == frame.rgba.count, "the page and the frame must be the same size")
+    var out = frame.rgba
+    for i in stride(from: 0, to: out.count, by: 4) {
+        let a = Double(out[i + 3]) / 255
+        for channel in 0..<3 {
+            out[i + channel] = UInt8(max(0, min(255,
+                (Double(out[i + channel]) + Double(image[i + channel]) * (1 - a)).rounded())))
+        }
+        out[i + 3] = 255
+    }
+    return out
+}
+
+/// The mean luminance of a square of `rgba`, in the sRGB units a person's eye uses for "how bright is
+/// this" — the number the translucency claim is actually about.
+func meanLuminance(_ rgba: [UInt8], width: Int, height: Int, centre: (Int, Int), side: Int) -> Double {
+    var sum = 0.0, count = 0
+    for y in max(0, centre.1 - side / 2)..<min(height, centre.1 + side / 2) {
+        for x in max(0, centre.0 - side / 2)..<min(width, centre.0 + side / 2) {
+            let i = (y * width + x) * 4
+            sum += 0.2126 * Double(rgba[i]) + 0.7152 * Double(rgba[i + 1]) + 0.0722 * Double(rgba[i + 2])
+            count += 1
+        }
+    }
+    return count > 0 ? sum / Double(count) / 255.0 : 0
 }
 
 func writePNG(_ rgba: [UInt8], width: Int, height: Int, to url: URL) {
@@ -331,7 +544,20 @@ for side in sides {
             FileHandle.standardError.write(Data("glass-proof: no state called \(name)\n".utf8))
             continue
         }
-        guard let frame = render(side: side, state: state, pipeline: pipeline) else {
+        // The page the body stands on, at the drawable's resolution: the app's own pane and control
+        // colours with text-like rows through the middle. `nil` here is the studio plate.
+        let pixels = drawableSize(side: side)
+        let page = makePage(side: side, pixels: pixels.sample)
+        let pane = makePage(side: side, pixels: pixels.sample, flat: (0x1E / 255, 0x1E / 255, 0x1E / 255))
+        let control = makePage(side: side, pixels: pixels.sample, flat: (0x2B / 255, 0x2B / 255, 0x2B / 255))
+        func final(_ page: PageImage?) -> Rendered? {
+            guard let page else { return nil }
+            return Rendered(rgba: downsampled(page.rgba, width: page.width, height: page.height),
+                            width: Int(pixels.final.width), height: Int(pixels.final.height))
+        }
+        let pageFinal = final(page), paneFinal = final(pane), controlFinal = final(control)
+        // The app's own pass, with the page behind it.
+        guard let frame = render(side: side, state: state, pipeline: pipeline, page: page) else {
             FileHandle.standardError.write(Data("glass-proof: \(name) at \(side) pt did not render\n".utf8))
             continue
         }
@@ -349,18 +575,55 @@ for side in sides {
                      to: outDirectory.appendingPathComponent("\(stem)-zoom.png"))
         }
 
-        // The two surfaces the body is actually drawn on. `-pane` is the dark theme's raised surface;
-        // `-lit` is the light theme's, drawn with the light scheme's own page.
-        writePNG(composite(frame, over: paneBackground), width: frame.width, height: frame.height,
-                 to: outDirectory.appendingPathComponent("\(stem)-pane.png"))
-        if let lit = render(side: side, state: state, pipeline: pipeline, dark: false) {
+        // The page picture — the acceptance test for this round. The same body, the same pass, over a
+        // page with text and controls on it: what a person sees when the avatar sits on the app's own
+        // surface. Edges inside the body that do not line up with the edges outside it are the bend.
+        if let pageFinal {
+            writePNG(composite(frame, over: pageFinal.rgba), width: frame.width, height: frame.height,
+                     to: outDirectory.appendingPathComponent("\(stem)-page.png"))
+            // And the same frame over the same page with the page *switched off* — the studio plate,
+            // i.e. the picture a host that cannot snapshot still gets.
+            if let studio = studioPipeline,
+               let studioFrame = render(side: side, state: state, pipeline: studio, page: nil) {
+                writePNG(composite(studioFrame, over: pageFinal.rgba),
+                         width: frame.width, height: frame.height,
+                         to: outDirectory.appendingPathComponent("\(stem)-page-studio.png"))
+            }
+        }
+        // The light theme's surface: the same body, drawn with the light scheme's own page, over
+        // `#F2F2F2` — the case the owner's "brighter" is judged on, and the one where a washed-out face
+        // would show first.
+        if let lit = render(side: side, state: state, pipeline: pipeline, page: nil, dark: false) {
             writePNG(composite(lit, over: litBackground), width: lit.width, height: lit.height,
                      to: outDirectory.appendingPathComponent("\(stem)-lit.png"))
         }
 
+        // The flat pane: the same body over `#1E1E1E`, which is what the app's surface actually is
+        // behind an avatar. It is the picture the translucency number is measured on, and the one a
+        // person would see in a list.
+        if let paneFinal {
+            writePNG(composite(frame, over: paneFinal.rgba), width: frame.width, height: frame.height,
+                     to: outDirectory.appendingPathComponent("\(stem)-pane.png"))
+            if let studio = studioPipeline,
+               let studioFrame = render(side: side, state: state, pipeline: studio, page: nil) {
+                writePNG(composite(studioFrame, over: paneFinal.rgba),
+                         width: frame.width, height: frame.height,
+                         to: outDirectory.appendingPathComponent("\(stem)-pane-studio.png"))
+            }
+        }
+
+        // The coordinate map, for `bend.py --uv`: red is the page's x, green its y, at the place the
+        // traced ray landed. Everything inside the silhouette is a displacement measurement.
+        if let debugPipeline,
+           let debugFrame = render(side: side, state: state, pipeline: debugPipeline, page: page) {
+            writePNG(composite(debugFrame, over: canvasBackground),
+                     width: debugFrame.width, height: debugFrame.height,
+                     to: outDirectory.appendingPathComponent("\(stem)-uv.png"))
+        }
+
         // The refraction proof: the same body over a studio that has edges in it.
         if let patternPipeline,
-           let patternFrame = render(side: side, state: state, pipeline: patternPipeline) {
+           let patternFrame = render(side: side, state: state, pipeline: patternPipeline, page: nil) {
             writePNG(composite(patternFrame, over: canvasBackground),
                      width: patternFrame.width, height: patternFrame.height,
                      to: outDirectory.appendingPathComponent("\(stem)-pattern.png"))
@@ -382,30 +645,39 @@ for side in sides {
                      padded, frame.width, frame.height, covered, mean, Double(alphaMax) / 255,
                      lastMaskMilliseconds))
 
-        // The brightness and the transmission, as numbers: the body's centre and its mid-ring over the
-        // two pages it is drawn on, and the eyes against both. The ink is opaque (`.082` in every
-        // channel), so what is checked is that the *body* has not climbed toward it — a body brighter
-        // than the ink is a washed-out face.
-        let centre = (frame.width / 2, frame.height / 2)
-        let ring = (frame.width / 2 + frame.width * 26 / 100, frame.height / 2)
+        // The translucency claim, as a number: the body's centre against the page it covers. A body
+        // that transmits reads within a fifth of its page; an opaque one reads at three times it.
+        // Measured on the flat pane and the flat control — the app's own two surface colours — because
+        // that is the claim; the busy page is measured too, and reported as what it is (a page with
+        // text on it is brighter, and a tinted body cannot match a page it absorbs).
         // A patch a twenty-fourth of the body wide: wide enough to average the dither, narrow enough
-        // that it cannot reach the dark features either side of the centre. A twelfth reads the eyes
-        // and the junction line into the "centre" and reports a body darker than it is.
-        let patch = max(6, frame.width / 24)
+        // that it cannot reach the dark features either side of the centre.
+        let centre = (frame.width / 2, frame.height / 2)
+        let square = max(6, frame.width / 24)
         let ink = relativeLuminance((0.082, 0.082, 0.082))
-        var line = ""
-        for (label, backdrop) in [("pane", paneBackground), ("lit", litBackground)] {
-            let over = composite(frame, over: backdrop)
-            let atCentre = meanLuminance(over, width: frame.width, height: frame.height,
-                                         centre: centre, side: patch)
-            let atRing = meanLuminance(over, width: frame.width, height: frame.height,
-                                       centre: ring, side: patch)
-            let page = Double(backdrop.r) / 255          // the flat page's own sRGB luminance
-            line += String(format: "  %@ centre %.3f (%+.0f%% of page)  ring %.3f  eyes %.2f:1",
-                           label, atCentre, (atCentre / max(page, 1e-4) - 1) * 100, atRing,
-                           contrastRatio(relativeLuminance((atCentre, atCentre, atCentre)), ink))
+        var numbers = "  centre:"
+        for (label, surface) in [("pane", paneFinal), ("control", controlFinal), ("page", pageFinal)] {
+            guard let surface else { continue }
+            let onPage = meanLuminance(surface.rgba, width: frame.width, height: frame.height,
+                                       centre: centre, side: square)
+            let body = meanLuminance(composite(frame, over: surface.rgba),
+                                     width: frame.width, height: frame.height,
+                                     centre: centre, side: square)
+            let eyes = contrastRatio(relativeLuminance((body, body, body)), ink)
+            numbers += String(format: "  %@ %.3f→%.3f (%+.0f%%) eyes %.1f:1", label, onPage, body,
+                              (body / max(onPage, 0.0001) - 1) * 100, eyes)
         }
-        print(line)
+        if let studio = studioPipeline, let paneFinal,
+           let studioFrame = render(side: side, state: state, pipeline: studio, page: nil) {
+            let onPage = meanLuminance(paneFinal.rgba, width: frame.width, height: frame.height,
+                                       centre: centre, side: square)
+            let studioBody = meanLuminance(composite(studioFrame, over: paneFinal.rgba),
+                                           width: frame.width, height: frame.height,
+                                           centre: centre, side: square)
+            numbers += String(format: "  | fallback on pane %.3f (%+.0f%%)", studioBody,
+                              (studioBody / max(onPage, 0.0001) - 1) * 100)
+        }
+        print(numbers)
     }
 }
 

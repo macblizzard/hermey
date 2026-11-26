@@ -278,6 +278,21 @@ enum HermeyGlassSource {
 
         #define kPlatePattern 0
 
+        /// Whether the pass may sample the app's own page behind the body.
+        ///
+        /// 1 in the app. `Tools/glass-proof` recompiles this same string with it 0 to draw the *fallback*
+        /// picture — the studio plate, exactly as the previous round drew it — so the two paths this file
+        /// names can be looked at side by side rather than argued about.
+        #define kBackdropPage 1
+
+        /// Proof only: draw the page coordinate the ray landed on instead of the body.
+        ///
+        /// `Tools/glass-proof` recompiles this string with it 1 to write a *coordinate map* — every pixel
+        /// of the body carries the place in the page it samples, encoded into the colour. That turns the
+        /// refraction into pixels a script can subtract, instead of a feature in the page an eye (or a
+        /// vision model) has to recognise. 0 in the app, and the code below is compiled out.
+        #define kPageDebug 0
+
         // MARK: - Upstream's constants
 
         /// shaders.ts:46 — the refractive index of the glass upstream draws.
@@ -510,6 +525,58 @@ enum HermeyGlassSource {
             return r < 1e-4 ? v : v * (limit * tanh(r / limit) / r);
         }
 
+        // MARK: - What is behind the body
+
+        /// The app's own page, sampled where the traced ray leaves the glass.
+        ///
+        /// `pagePoint` is a place in the body's *own* points, which is what `uniforms.backdrop` maps into
+        /// the snapshot, so an edge that exists in the app behind the avatar (a row's edge, a control's
+        /// corner, a line of text) arrives in the body displaced by the ray that reached it. That
+        /// displacement, not a tint, is what a person reads as glass.
+        ///
+        /// The snapshot is sRGB bytes — it is the page, drawn by the app's own renderer — and the optics
+        /// below are linear light, so it is decoded here exactly as the tint is. The sampler is
+        /// `clampToEdge` and carries a mip chain, so a ray that folds past the snapshot's edge repeats
+        /// its border instead of reading black, and a band the bevel compresses below one texel per pixel
+        /// blurs the way a camera's would rather than tearing.
+        static inline float3 sampleBackdropPage(float2 pagePoint, texture2d<half> page,
+                                                sampler pageSampler, float4 frame) {
+            float2 texels = float2(float(page.get_width()), float(page.get_height()));
+            float2 uv = (pagePoint - frame.xy) / max(frame.z, 1e-4) / max(texels, float2(1.0));
+            float3 srgb = float3(page.sample(pageSampler, uv).rgb);
+            return pow(max(srgb, float3(0.0)), float3(2.2));
+        }
+
+        /// What the traced ray sees, in the order the app can know it: **the snapshot**, then **the flat
+        /// page colour**, then **the studio plate**.
+        ///
+        /// **This is the one place the ladder is written.** The snapshot is the real thing — a picture of
+        /// the region behind the body, bent by the ray. `pageLight` is the theme's own surface colour,
+        /// which every themed surface knows and which is all a host that cannot snapshot can offer: the
+        /// level is right, the image is not, so nothing bends. The studio is the last resort, and the
+        /// picture the previous round shipped:
+        ///
+        /// * the Live Activity — it compiles neither this source nor the engine and draws the painted
+        ///   material, so it never reaches this line at all;
+        /// * Reduce Transparency — the route answers `.canvas` before a glass view exists;
+        /// * the desktop pet — `uniforms.page.w` is 0 (an unknown wallpaper) and no snapshot is taken;
+        /// * a host that refuses to be snapshotted — a preview, a view with no window yet, a capture the
+        ///   platform returned nothing for. Then `backdrop.w` is 0 and `page` still carries the theme's
+        ///   surface, so the body keeps its transmission and loses only the bend;
+        /// * the offscreen proof's fallback case, which recompiles this string with `kBackdropPage` 0.
+        static inline float3 sampleBehind(float2 pagePoint, float2 plateUV, float2 plateFoot,
+                                          float3 jewelTint, float detail, float pageKnown,
+                                          float3 pageLight, texture2d<half> page,
+                                          sampler pageSampler, float4 frame) {
+            if (kBackdropPage > 0 && frame.w > 0.5) {
+                return sampleBackdropPage(pagePoint, page, pageSampler, frame);
+            }
+            if (pageKnown > 0.5) {
+                return pageLight;
+            }
+            return sampleGlassPlate(plateUV, plateFoot, jewelTint, detail);
+        }
+
         // MARK: - The body's thickness
 
         /// renderer.ts:257 — `side`: how much of the bevel is left at `s` points inside the outline. One
@@ -649,8 +716,12 @@ enum HermeyGlassSource {
             float4 size;     // points x, points y, pixels x, pixels y
             /// The app's own surface behind the body, sRGB, with `w` 1 when it is known. A themed
             /// surface knows it (`BotAvatarGlassSurface.make` reads it off the backdrop); the desktop
-            /// pet does not, and there `w` is 0 and the studio plate is the whole of the body's light.
+            /// pet does not, and there `w` is 0.
             float4 page;
+            /// A *snapshot* of the page: its top-left corner in the body's own points, the points one
+            /// texel covers, and 1 when one is bound. 0 means the flat `page` above — or, where that is
+            /// unknown too, the studio plate. See `sampleBehind` for the whole ladder.
+            float4 backdrop;
         };
 
         // MARK: - The pass
@@ -668,12 +739,16 @@ enum HermeyGlassSource {
         /// `pose`    — yaw, pitch, the state's rim opacity and `detail` (0 compact, 1 full);
         /// `tone`    — the light-backdrop hairline, the exposure, the rim's gain and the absorption weight;
         /// `size`    — the layer in points and in pixels;
+        /// `pageLayer` — the app's own region behind the body, as the host handed it over (sRGB bytes).
+        ///               Sampled only where `uniforms.backdrop.w` is 1; the flat `page` colour or the
+        ///               studio plate stands in otherwise, so an unbound texture is never read.
         /// `bodyLayer` — the body's silhouette filled **white**, y down from the top-left as `[[position]]`
         ///               is. Its alpha is the true silhouette, `g` the distance inside it and `b` the
         ///               distance outside — and nothing else is read from it.
         fragment half4 hermeyGlassBody(float4 pos [[position]],
                                        constant HermeyGlassUniforms &uniforms [[buffer(0)]],
                                        texture2d<half> bodyLayer [[texture(0)]],
+                                       texture2d<half> pageLayer [[texture(1)]],
                                        sampler bodySampler [[sampler(0)]]) {
             // The layer's points, from the drawable's pixels: every number below is in the space the
             // Canvas drew in, which is what the uniforms were built in.
@@ -832,13 +907,20 @@ enum HermeyGlassSource {
                 leaving = normalize(reflect(into, -n2S));
             }
 
-            // What the exit ray sees: the studio, standing `kPlateStandoff` half-depths behind the body.
-            // Where it lands is the image of the background, so this is the whole of "the glass bends what
-            // is behind it" — no offset invented in the plane, the traced ray's own landing.
+            // What the exit ray sees, and where it lands. The page is the plane the body stands on — one
+            // small gap behind its back surface, not a cyclorama two bodies away — so the ray's own
+            // landing is the image the page's edges are drawn at, and the offset is the ray's, never an
+            // invented one. The gap scales with the body, so a lens twice the size bends its page twice
+            // as far and the same picture holds at 24 and at 200 pt.
+            //
+            // Inside the total-internal-reflection band nothing leaves the back face, so there is no exit
+            // landing to be had: the ray's own walk through the body is the whole displacement. Using the
+            // reflected direction there would put the page's image somewhere the ray never went — a torn
+            // ring where the band begins, which is a rendering artifact, not the fold a caustic has.
             float3 exitPoint = float3(p + into.xy * pathLength, -exitHeight);
-            float plateZ = -halfDepth * (1.0 + kPlateStandoff);
-            float travelZ = (plateZ - exitPoint.z) / min(leaving.z, -0.22);
-            float2 land = exitPoint.xy + leaving.xy * travelZ;
+            float pageDepth = halfDepth * 1.35;
+            float pageTravel = max(0.0, pageDepth - exitHeight) / max(-leaving.z, 0.22);
+            float2 land = exitPoint.xy + (rearTIR ? float2(0.0) : leaving.xy * pageTravel);
             float2 plateUV = foldIntoPlate(land / halfExtent, 1.55);
             float2 plateFoot = fwidth(plateUV) + 1e-5;
             // The page the body stands on, in linear light: the theme's own surface colour, which is
@@ -851,12 +933,20 @@ enum HermeyGlassSource {
             // one — the pet — the studio is all of it, exactly as before.
             float plateGain = mix(kPlateGain, kPlateGainPage, pageKnown);
             float interiorGain = mix(kInteriorGain, kInteriorGainPage, pageKnown);
-            // The plate: the studio's room where the page is unknown, the page itself where it is known —
-            // the same mix the interior and the wall's reflection take, so the body's light has one source.
-            float3 plate = mix(sampleGlassPlate(plateUV, plateFoot, jewelTint, detail), pageLight, pageKnown);
+            // The plate: the page itself where the host could hand one over, its flat colour where that is
+            // all the surface knows, and the studio only where neither exists. One function, one ladder.
+            float2 pagePoint = centre + foldIntoPlate(land, 1.60 * max(halfExtent.x, halfExtent.y));
+            float3 plate = sampleBehind(pagePoint, plateUV, plateFoot, jewelTint, detail, pageKnown,
+                                        pageLight, pageLayer, bodySampler, uniforms.backdrop);
+#if kPageDebug
+            // Proof only. The page coordinate, normalised so the whole page fits 0…1, written as colour:
+            // red is x, green is y. A flat body would write the identity; a lens writes its map.
+            float2 encoded = (pagePoint + size) / max(3.0 * size, float2(1.0));
+            return half4(half3(half2(encoded), 0.0h), 1.0h);
+#endif
             // And the room in front of the body, as bright as the room behind it: see `kPageSheenGain`.
             // `accum` so far is the front face's reflection and its key, and nothing else.
-            float pageLum = dot(pageLight, float3(0.2126, 0.7152, 0.0722));
+            float pageLum = dot(plate, float3(0.2126, 0.7152, 0.0722));
             float sheen = mix(1.0, clamp(pageLum * kPageSheenGain, kPageSheenFloor, 1.0), pageKnown);
             accum *= sheen;
 
@@ -878,7 +968,7 @@ enum HermeyGlassSource {
             float3 reflEnv = mix(sampleInternalStudio(exitPoint / max(u, 0.0001),
                                                       normalize(reflect(into, -n2S)),
                                                       jewelTint, 1.0, halfExtent.y / max(u, 0.0001), detail),
-                                 pageLight, pageKnown);
+                                 plate, pageKnown);
 
             // 4 — the interior, integrated. shaders.ts:346/371 read the internal studio once, at the exit;
             // a body with depth is not one point, so `kInteriorSteps` fixed slices are walked from the front
@@ -896,7 +986,7 @@ enum HermeyGlassSource {
                 // absorption stands between the slice and the viewer — or the studio, as it always was.
                 float3 slice = mix(sampleInternalStudio(posS, into, jewelTint, rearTIR ? 1.0 : 0.0,
                                                         eyeRel, detail),
-                                   pageLight, pageKnown);
+                                   plate, pageKnown);
                 gather += slice * exp(-absorbSigma * (optical * (walked / max(pathLength, 0.001))));
             }
             gather /= float(kInteriorSteps);
@@ -919,7 +1009,7 @@ enum HermeyGlassSource {
             // a belly full of amber swallows its own bounce — the weighting is `beer * beer`, unchanged.
             float3 wallLight = mix(sampleInternalStudio(exitPoint / max(u, 0.0001), -n2S, jewelTint,
                                                         rearTIR ? 1.0 : 0.0, eyeRel, detail),
-                                   pageLight, pageKnown);
+                                   plate, pageKnown);
             float3 bounce = wallLight * (wallFacing * wallFacing) * (beer * beer)
                           * (1.0 - F1) * kBounceGain * detail;
             through += bounce;
@@ -965,7 +1055,7 @@ enum HermeyGlassSource {
             // The focus concentrates *the light the body is passing*: with a page that is the page,
             // piled up — a fifth brighter than the patch it came from, not a bright studio spot painted
             // over the app.
-            float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, pageLight * 1.20, pageKnown);
+            float3 focusLight = mix(gather * 0.55 + keyColour * 0.45, plate * 1.20, pageKnown);
             through += focusLight * (focus * 0.55 * detail);
 
             // Two interfaces, two Fresnel losses, and the TIR'd share going back into the glass at 0.65 of

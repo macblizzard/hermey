@@ -155,6 +155,10 @@ struct BotAvatarGlassUniforms {
     /// cannot name one (the desktop pet, on a wallpaper it does not know). The fragment transmits this
     /// through the body, which is what makes the glass a tint over the page instead of a coloured block.
     var page: SIMD4<Float> = .zero
+    /// `(origin x, origin y, points per texel, 1)` — a *snapshot* of the page, where the host could take
+    /// one, as `GlassBackdrop.capture` framed it. `w` 0 means no snapshot and the fragment falls back to
+    /// `page` (the theme's own surface colour) and then to the studio plate. See `sampleBehind`.
+    var backdrop: SIMD4<Float> = .zero
 }
 
 /// One frame's numbers for the glass shader: the values themselves, and the uniforms built from them.

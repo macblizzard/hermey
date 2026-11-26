@@ -45,6 +45,7 @@ SOURCES=(
   "$AVATAR/OpenBotAvatarRandom.swift"
   "$AVATAR/OpenBotAvatarGlassRoute.swift"
   "$AVATAR/Glass/HermeyGlassSource.swift"
+  "$AVATAR/Glass/GlassBackdrop.swift"
   "$AVATAR/Glass/BotAvatarGlassLayer.swift"
   Tools/glass-proof/main.swift
 )
