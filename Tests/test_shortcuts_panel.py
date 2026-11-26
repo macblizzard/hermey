@@ -268,6 +268,18 @@ class OneDocument(unittest.TestCase):
         self.assertIn("try container.encodeNil()", document)
 
 
+class Compiles(unittest.TestCase):
+    def test_every_file_that_draws_a_token_imports_the_design_system(self) -> None:
+        # `Tokens` and `TypeScale` are HermeyUI's, not SwiftUI's. A new file that uses either
+        # without `import HermeyUI` fails the Mac build with "cannot find 'Tokens' in scope" —
+        # which is exactly how the recorder's chip first compiled on Linux-only review.
+        files = [CENTER, SYNC, RECORDER, PANE, SETTINGS, APP, STORE]
+        for path in files:
+            text = read(path)
+            if "Tokens." in text or "TypeScale." in text:
+                self.assertIn("import HermeyUI", text, f"{path.name} draws tokens without HermeyUI")
+
+
 class MessageVerbs(unittest.TestCase):
     def test_the_last_message_verbs_go_through_the_models_own_methods(self) -> None:
         store = read(STORE)

@@ -139,9 +139,9 @@ public struct ShortcutDocument: Equatable, Sendable, Codable {
     /// Drop anything this build cannot draw: an id that no longer exists, or a binding equal to the
     /// default (which is the same state, spelled shorter).
     public mutating func prune() {
-        bindings = bindings.filter { id, binding in
-            guard let action = ShortcutRegistry.action(id) else { return false }
-            return binding.combo != action.defaultCombo
+        bindings = bindings.filter { entry in
+            guard let action = ShortcutRegistry.action(entry.key) else { return false }
+            return entry.value.combo != action.defaultCombo
         }
     }
 

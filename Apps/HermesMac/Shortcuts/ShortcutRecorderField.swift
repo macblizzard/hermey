@@ -1,5 +1,6 @@
 import AppKit
 import HermesKit
+import HermeyUI
 import SwiftUI
 
 /// The field that records a shortcut: click it, press a combination, and it reports what you pressed.
