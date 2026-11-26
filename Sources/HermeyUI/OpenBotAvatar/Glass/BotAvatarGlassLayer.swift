@@ -242,11 +242,7 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         // path, same transform), at the drawable's own resolution.
         let pixels = view.drawableSize
         if texture == nil || texture?.width != Int(pixels.width) || texture?.height != Int(pixels.height) {
-            // The band: past this inset the bevel's height and the body's local absorption have both
-            // saturated, so the field's value there cannot change a pixel.
-            let reach = 1.15 * max(surface.profile.x, surface.shape.w)
-            texture = Self.makeMask(path: path, points: surface.size, pixels: pixels,
-                                    reach: reach, device: device)
+            texture = Self.makeMask(path: path, points: surface.size, pixels: pixels, device: device)
         }
         guard let texture else { return }
 
@@ -307,12 +303,9 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     ///
     /// Cost: two chamfer passes per rebuild, and a rebuild only when the pixel size changes — never
     /// per frame.
-    /// - Parameter reach: the inset, in points, past which every term of the fragment has saturated —
-    ///   the band the distance field is computed over. The lens passes `1.15 × max(rxy, halfDepth)`.
     static func makeMask(path: Path,
                          points: CGSize,
                          pixels: CGSize,
-                         reach: Float,
                          device: MTLDevice) -> MTLTexture? {
         guard pixels.width.isFinite, pixels.height.isFinite,
               pixels.width >= 1, pixels.height >= 1,
@@ -347,7 +340,7 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         // signed distance in points, normalised to half the view's short side — the one unit the
         // shader can read back from `size`, so no seventh uniform is needed. Positive is inside.
         let field = Self.analyticField(path: path, coverage: coverage, points: points,
-                                       width: width, height: height, reach: reach)
+                                       width: width, height: height)
 
         var packed = [UInt16](repeating: 0, count: width * height * 4)
         for i in 0..<(width * height) {
@@ -390,12 +383,12 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// One straight piece of the outline, with the vector it runs along kept beside it.
     ///
     /// The flattening's own scratch type: a `Path` is curves, and a point-to-*segment* distance needs
-    /// segments, so the curves are cut into chords once per rebuild and the field's loop only ever does
-    /// `a + e·t`. The box is there so each segment can visit the pixels it can possibly be nearest to.
+    /// segments, so the curves are cut into chords once per rebuild and the loop below only ever does
+    /// `ax + ex·t`.
     private struct GlassSegment {
         var ax: Float, ay: Float      // the start
         var ex: Float, ey: Float      // end − start
-        var minX: Float, minY: Float  // the segment's own box, which bounds the pixels it visits
+        var minX: Float, minY: Float  // the segment's own box, for the cheap rejection below
         var maxX: Float, maxY: Float
     }
 
@@ -406,16 +399,13 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
     /// the drawn silhouette: positive inside, negative outside. Nothing in it is a whole pixel, so the
     /// fragment's finite difference of it is the outline's normal rather than the grid's.
     ///
-    /// Cost, and why it is shaped this way: a point-to-segment test per pixel per segment is
-    /// 640 000 × 64 at the proof's 800 px mask, which measured seven seconds in an unoptimised build.
-    /// So the field is computed as a *band* instead: `reach` is the inset past which every term in the
-    /// fragment has saturated (the bevel's height stops at `rxy * 1.08`, the body's local absorption at
-    /// `0.85` of the half depth), the array starts at that value, and each segment only visits the
-    /// pixels inside its own box grown by the band. Pixels nobody visits keep the saturated value,
-    /// which is the value the shader would have clamped to anyway — so the change is exact, not an
-    /// approximation, and it is nine times less work.
+    /// Cost: one point-to-segment test per pixel per segment, once per rebuild — the cat's outline is
+    /// ~90 segments at 200 pt — so tens of millions of multiply-adds on the main thread when the
+    /// avatar's pixel size changes, and nothing at all per frame. A segment whose own box is already
+    /// further away than the nearest hit so far is rejected without projecting onto it, and a
+    /// distance past the `span` the texture can hold is clamped, because the shader clamps it too.
     private static func analyticField(path: Path, coverage: [UInt8], points: CGSize,
-                                      width: Int, height: Int, reach: Float) -> [Float] {
+                                      width: Int, height: Int) -> [Float] {
         let span = Float(0.5 * min(points.width, points.height))
         // A zero-sized or not-yet-laid-out surface would divide by zero, and a non-finite value in
         // the texture is a normal that is not a direction.
@@ -425,44 +415,37 @@ final class BotAvatarGlassDrawer: NSObject, MTKViewDelegate {
         let segments = Self.segments(of: path)
         guard !segments.isEmpty else { return [Float](repeating: 0, count: width * height) }
 
-        // The band: the lens' own numbers where it has them, and never more than the texture holds.
-        let band = min(max(reach.isFinite ? reach : span, 0.75), span)
-        // One sample per pixel centre, in the path's own points.
+        // The points the mask is drawn in: the path's own coordinates, at one sample per pixel centre.
         let stepX = Float(points.width) / Float(width)
         let stepY = Float(points.height) / Float(height)
-
-        var best = [Float](repeating: band * band, count: width * height)
-        for segment in segments {
-            let ex = segment.ex, ey = segment.ey
-            let length2 = ex * ex + ey * ey
-            let invLength2 = length2 > 1e-9 ? 1 / length2 : 0
-            // This segment's pixels: its box, grown by the band, clipped to the texture.
-            let x0 = max(0, Int(((min(segment.minX, segment.maxX) - band) / stepX).rounded(.down)))
-            let x1 = min(width, Int(((max(segment.minX, segment.maxX) + band) / stepX).rounded(.up)) + 1)
-            let y0 = max(0, Int(((min(segment.minY, segment.maxY) - band) / stepY).rounded(.down)))
-            let y1 = min(height, Int(((max(segment.minY, segment.maxY) + band) / stepY).rounded(.up)) + 1)
-            guard x0 < x1, y0 < y1 else { continue }
-            for y in y0..<y1 {
-                let sampleY = (Float(y) + 0.5) * stepY
-                let wy = sampleY - segment.ay
-                let row = y * width
-                for x in x0..<x1 {
-                    let wx = (Float(x) + 0.5) * stepX - segment.ax
-                    let t = length2 > 1e-9 ? max(0, min(1, (wx * ex + wy * ey) * invLength2)) : 0
-                    let qx = wx - ex * t, qy = wy - ey * t
-                    let distance2 = qx * qx + qy * qy
-                    if distance2 < best[row + x] { best[row + x] = distance2 }
-                }
-            }
-        }
+        let far = span * span
 
         var field = [Float](repeating: 0, count: width * height)
-        for index in 0..<(width * height) {
-            let distance = min(best[index].squareRoot(), band)
-            // The sign is the drawn silhouette's own: the raster is the authority on which side of
-            // the outline a pixel is, because it is the same fill the Canvas draws.
-            let inside = coverage[index] > 127
-            field[index] = (inside ? distance : -distance) / span
+        for y in 0..<height {
+            let sampleY = (Float(y) + 0.5) * stepY
+            for x in 0..<width {
+                let sampleX = (Float(x) + 0.5) * stepX
+                var best = far
+                for segment in segments {
+                    // The box's own distance is a floor for the segment's, so a segment that cannot
+                    // beat what is already found is rejected in six comparisons instead of a projection.
+                    let dx = max(segment.minX - sampleX, 0) + max(sampleX - segment.maxX, 0)
+                    let dy = max(segment.minY - sampleY, 0) + max(sampleY - segment.maxY, 0)
+                    if dx * dx + dy * dy >= best { continue }
+                    let wx = sampleX - segment.ax, wy = sampleY - segment.ay
+                    let length2 = segment.ex * segment.ex + segment.ey * segment.ey
+                    let t = length2 > 1e-9 ? max(0, min(1, (wx * segment.ex + wy * segment.ey) / length2)) : 0
+                    let qx = wx - segment.ex * t, qy = wy - segment.ey * t
+                    let distance2 = qx * qx + qy * qy
+                    if distance2 < best { best = distance2 }
+                }
+                let distance = min(best.squareRoot(), span)
+                let index = y * width + x
+                // The sign is the drawn silhouette's own: the raster is the authority on which side
+                // of the outline a pixel is, because it is the same fill the Canvas draws.
+                let inside = coverage[index] > 127
+                field[index] = (inside ? distance : -distance) / span
+            }
         }
         return field
     }
