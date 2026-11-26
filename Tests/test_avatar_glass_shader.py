@@ -558,7 +558,8 @@ class TheBodyLooksLikeAGlass(unittest.TestCase):
         self.assertIn("float flatZ = max(0.0, halfDepth - rz);", source)
         self.assertIn("#define kCrown 0.055", source)
         self.assertIn("float rimFacing = 0.62", source)
-        self.assertIn("float landing = causticLanding(rxy, rz, flatZ);", source)
+        self.assertIn("float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);",
+                      source)
         self.assertIn("float shadowAlpha = tight + penumbra;", source)
         # The studio it stands in is the plate's, in the body's own hue, not a flat tint.
         self.assertIn("sampleGlassPlate(plateUV, plateFoot, jewelTint, detail)", source)
@@ -646,6 +647,80 @@ class TheFieldIsAnalytic(unittest.TestCase):
         self.assertIn("if texture == nil || texture?.width != Int(pixels.width)", layer)
 
 
+class TheLightIsReadFromTheFields(unittest.TestCase):
+    """The two new terms are measurements of the body, not constants tuned to a look.
+
+    A bounce that does not depend on the path through the glass is a brightening; a junction line
+    that is not the field's own ridge is a painted streak; a caustic at one distance for the whole
+    body is a U. Each of these would survive an eye, and each is what the previous round's critique
+    named, so each is pinned to the quantity that makes it physical.
+    """
+
+    PROOF = ROOT / "Tools" / "glass-proof"
+
+    def test_the_bounce_is_the_thickness_field_s_own(self):
+        source = msl()
+        # The wall's light, how square it stands to the ray, and the two-way path: `beer * beer` is
+        # the transmittance of the ray's own optical path, so a thin fin bounces and a belly does not.
+        self.assertIn("float wallFacing = clamp(dot(into, n2S), 0.0, 1.0);", source)
+        self.assertIn("float3 bounce = wallLight * (wallFacing * wallFacing) * (beer * beer)", source)
+        self.assertIn("* (1.0 - F1) * kBounceGain * detail;", source)
+        self.assertIn("#define kBounceGain 1.05", source)
+        # …and both factors it multiplies are the path's, which is the body's thickness.
+        self.assertIn("float3 beer = absorptionAlong(optical, absorbSigma);", source)
+        self.assertIn("float optical = opticalThickness(absorbingPath, halfDepth);", source)
+        self.assertIn("through += bounce;", source)
+        mirror = read(self.PROOF / "numbers.py")
+        self.assertIn("BOUNCE_GAIN = 1.05", mirror)
+        self.assertIn("bounce = [wall_light[i] * (wall_facing * wall_facing) * (beer[i] * beer[i])",
+                      mirror)
+
+    def test_the_junction_line_is_the_field_s_ridge(self):
+        source = msl()
+        # Four taps of the same mask at a one-point stencil: the field's own second difference.
+        self.assertIn("float2 joinTexel = kJoinStencil * (pixels / max(size, float2(1.0)));", source)
+        self.assertIn("float joinRidge = max(0.0, (float(silhouette.g) - joinAround * 0.25) * maxInset);",
+                      source)
+        self.assertIn("float joinLine = smoothstep(0.12, 0.40, joinRidge);", source)
+        self.assertIn("#define kJoinStencil 1.0", source)
+        # Gated to the wall: the belly's medial axis has a ridge too and must not light up.
+        self.assertIn("joinLine *= (1.0 - smoothstep(0.10, 0.45, inset / max(halfDepth, 0.001)))",
+                      source)
+        mirror = read(self.PROOF / "numbers.py")
+        self.assertIn("JOIN_GAIN = 0.85", mirror)
+        self.assertIn("join_line = smoothstep(0.12, 0.40, join_ridge_value)", mirror)
+
+    def test_the_caustic_lands_by_the_silhouette_s_own_thickness(self):
+        source = msl()
+        # The probe: a step into the body from this contour, read back as the *outside* distance,
+        # which is positive only where the step crossed the far wall — the thin parts.
+        self.assertIn("float probeDistance = max(0.75, kThinProbe * rxy);", source)
+        self.assertIn("half4 probeField = bodyLayer.sample(bodySampler,", source)
+        self.assertIn("float probeOutside = max(0.0, float(probeField.b) * maxInset);", source)
+        self.assertIn("float localThin = clamp(probeOutside / probeDistance, 0.0, 1.0);", source)
+        # Closer, narrower and hotter where the wall is thin, so the arc is not one width.
+        self.assertIn("float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);",
+                      source)
+        self.assertIn("float arcWidth = max(0.60, landing * 0.055) * mix(1.0, kThinWidth, localThin);",
+                      source)
+        self.assertIn("* mix(1.0, kThinBright, localThin)", source)
+        mirror = read(self.PROOF / "numbers.py")
+        self.assertIn("THIN_LANDING = 0.35", mirror)
+        self.assertIn("landing = caustic_landing(rxy, rz, flat_z) * mix(1.0, THIN_LANDING, local_thin)",
+                      mirror)
+
+    def test_the_untouched_parts_are_still_untouched(self):
+        # The three things this round must not move, restated where the new terms are pinned: the
+        # interior's step count, the Reduce Transparency fallback, and the widget's exclusion.
+        source = msl()
+        self.assertIn("#define kInteriorSteps 12u", source)
+        self.assertIn("for (uint i = 0u; i < kInteriorSteps; ++i)", source)
+        self.assertIn("guard !reduceTransparency else { return .canvas }", decide_body())
+        self.assertIn("guard material == .glass else { return .canvas }", decide_body())
+        self.assertIn(f"#if !{WIDGET_CONDITION}", code(read(SOURCE)))
+        self.assertNotIn("Float16(", code(read(LAYER)))
+
+
 class TheThreeTargetsAreSteps(unittest.TestCase):
     """Each thing that was wrong with the glass is a term the source must keep — not a look.
 
@@ -675,7 +750,8 @@ class TheThreeTargetsAreSteps(unittest.TestCase):
         body = source.split("static inline float causticLanding")[1].split("\n        }")[0]
         for term in ("criticalInset(", "bodyRise(", "bodyHeight(", "kIOR"):
             self.assertIn(term, body, term)
-        self.assertIn("float landing = causticLanding(rxy, rz, flatZ);", source)
+        self.assertIn("float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);",
+                      source)
         # An offset curve of the silhouette at that distance — never a disc around the body.
         self.assertNotIn("poolAt", source)
         self.assertNotIn("length(p - centre", source)
@@ -735,7 +811,7 @@ class TheProofToolIsOptIn(unittest.TestCase):
                         "0.62 + 0.38 *",
                         "ABSORPTION_OPACITY * (1.0 - lum_through)",
                         "band_coverage(inset, 0.0, max(0.30, rim_width * 0.13), foot)",
-                        "caustic_landing(rxy, rz, flat_z)",
+                        "caustic_landing(rxy, rz, flat_z) * mix(1.0, THIN_LANDING, local_thin)",
                         "caustic_rgb = tuple(", 
                         "mix(0.120, 0.700, top)",
                         "mix(1.0, jewel[i], 0.45)",
@@ -748,7 +824,7 @@ class TheProofToolIsOptIn(unittest.TestCase):
                         "0.62 + 0.38 * clamp(",
                         "+ kAbsorptionOpacity * (1.0 - lumThrough)",
                         "bandCoverage(inset, 0.0, max(0.30, rimWidth * 0.13), foot)",
-                        "float landing = causticLanding(rxy, rz, flatZ);",
+                        "float landing = causticLanding(rxy, rz, flatZ) * mix(1.0, kThinLanding, localThin);",
                         "float3(0.120, 0.126, 0.140), float3(0.700, 0.740, 0.840)",
                         "mix(float3(1.0), jewelTint, 0.45)",
                         "0.34, 0.97",
