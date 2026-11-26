@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.686",
-          "buildVersion": "686",
-          "date": "2026-11-26T21:58:46Z",
-          "localizedDescription": "Hotfix for the black faces: the glass now carries the bot's own colour on top of whatever it transmits, so a face never collapses into a dark background; eyes stay above 3:1 and light pages keep the brighter look.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.686/Hermey-0.1.686-b686.ipa",
-          "size": 6234023,
+          "version": "0.1.687",
+          "buildVersion": "687",
+          "date": "2026-11-26T23:11:32Z",
+          "localizedDescription": "Faces are brighter with a short tinted glow so they pop on dark surfaces (eyes keep their contrast), and choosing an avatar preset now changes the shape itself, not just the caption.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.687/Hermey-0.1.687-b687.ipa",
+          "size": 6235805,
           "minOSVersion": "17.0",
-          "sha256": "4da19f37ec72091693de188e36ea90c500fcea5827c136526a2de5136a515d16"
+          "sha256": "a52fe6113f9d61ebeb1f5c85a759147e21bc2007b478fcfbded2804ca2bcd849"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.686 (686)",
-      "identifier": "hermes-0.1.686-686",
-      "caption": "Hotfix for the black faces: the glass now carries the bot's own colour on top of whatever it transmits, so a face never collapses into a dark background; eyes stay above 3:1 and light pages keep the brighter look.",
-      "date": "2026-11-26T21:58:46Z",
+      "title": "Hermes 0.1.687 (687)",
+      "identifier": "hermes-0.1.687-687",
+      "caption": "Faces are brighter with a short tinted glow so they pop on dark surfaces (eyes keep their contrast), and choosing an avatar preset now changes the shape itself, not just the caption.",
+      "date": "2026-11-26T23:11:32Z",
       "tintColor": "#9A9AA0"
     }
   ],
