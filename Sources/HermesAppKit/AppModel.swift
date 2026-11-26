@@ -5730,6 +5730,18 @@ public final class AppModel: ObservableObject {
         try await client.memory(profile)
     }
 
+    /// One memory document, read fresh as the editor opens.
+    public func memoryDocument(named name: String, for profile: String) async throws -> BotMemoryDocument {
+        try await client.memoryDocument(profile, name: name)
+    }
+
+    /// Write one memory document back. The host answers with the document it now holds, so the pane's
+    /// count, size and edited time come from the file rather than from what was sent.
+    public func saveMemoryDocument(_ text: String, named name: String,
+                                   for profile: String) async throws -> BotMemoryDocument {
+        try await client.saveMemoryDocument(text, name: name, for: profile)
+    }
+
     /// Where this device's banners go while the app is shut.
     ///
     /// Registering is the whole of the setup: the URL is the Bark app's own push address, and the

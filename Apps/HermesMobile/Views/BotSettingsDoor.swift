@@ -30,7 +30,14 @@ struct BotSettingsDoor: View {
                 try await model.configureDescription(botID: botID, description: text)
             },
             editSoul: { soulBot = bot },
-            loadMemory: { try await model.memory(for: bot.id) },
+            // One value for the whole memory pane, so the list, the read the editor opens with and the
+            // save all speak to the same bot's own two files.
+            memory: BotMemoryAccess(
+                load: { try await model.memory(for: bot.id) },
+                read: { name in try await model.memoryDocument(named: name, for: bot.id) },
+                save: { name, text in
+                    try await model.saveMemoryDocument(text, named: name, for: bot.id)
+                }),
             deleteBot: { try await model.deleteBot(bot.id) },
             avatar: app.botAvatars[bot.id],
             saveAvatar: { selection in

@@ -93,7 +93,7 @@ class ThePhoneHasOneSettingsDoor(unittest.TestCase):
     def testTheDoorCarriesEverySectionTheListHad(self) -> None:
         # `saveIcon:` is gone on purpose: a bot's face is chosen in the Avatar tab now, not in the
         # settings sheet's Identity section (2026-11-24). `saveAvatar:` is what the door carries.
-        for section in ("saveDescription:", "editSoul:", "saveAvatar:", "loadMemory:", "deleteBot:"):
+        for section in ("saveDescription:", "editSoul:", "saveAvatar:", "memory:", "deleteBot:"):
             with self.subTest(section=section):
                 self.assertIn(section, DOOR,
                               f"{section} is a section the conversation's copy had lost")

@@ -354,8 +354,15 @@ struct ConversationScreen: View {
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showMemory) {
+            // The same pane the settings door opens: the conversation's own drawer must not offer a
+            // read-only copy of a screen that can now edit.
             BotMemorySheet(botName: bot.displayName,
-                           load: { try await model.memory(for: bot.id) })
+                           access: BotMemoryAccess(
+                               load: { try await model.memory(for: bot.id) },
+                               read: { name in try await model.memoryDocument(named: name, for: bot.id) },
+                               save: { name, text in
+                                   try await model.saveMemoryDocument(text, named: name, for: bot.id)
+                               }))
             .hermesSheetChrome()
         }
         // The routines list reads the host each time it opens: a schedule paused on the desktop

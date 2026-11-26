@@ -754,6 +754,19 @@ public actor GatewayClient: GatewayClientProtocol {
         return try await sessionPointer.memory(profile)
     }
 
+    /// One document, read fresh: the same file, the same route, one at a time.
+    public func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.memoryDocument(profile, name: name)
+    }
+
+    /// A save is the bridge's too: the owner's text replaces the file the agent reads.
+    public func saveMemoryDocument(_ text: String, name: String,
+                                   for profile: String) async throws -> BotMemoryDocument {
+        guard let sessionPointer else { throw BotAdminUnavailable() }
+        return try await sessionPointer.saveMemoryDocument(text, name: name, for: profile)
+    }
+
     /// Notes are the bridge's, like the memory beside them.
     public func notes(_ profile: String) async throws -> BotNotes {
         guard let sessionPointer else { throw BotAdminUnavailable() }

@@ -157,6 +157,17 @@ public protocol BotSessionPointerStore: Sendable {
     /// `GET /v1/bots/{profile}/memory` — the two documents this bot carries into every turn.
     func memory(_ profile: String) async throws -> BotMemory
 
+    /// `GET /v1/bots/{profile}/memory/{name}` — one document, read fresh for the editor.
+    ///
+    /// Separate from `memory(_:)` because the editor opens *after* the list was drawn, and the agent may
+    /// have written in between: opening the list's copy would show — and then save back — what was true
+    /// a minute ago.
+    func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument
+
+    /// `PUT /v1/bots/{profile}/memory/{name}` — the whole document, back within its budget.
+    func saveMemoryDocument(_ text: String, name: String,
+                            for profile: String) async throws -> BotMemoryDocument
+
     /// `GET /v1/bots/{profile}/notes` — the owner's own note for this bot.
     func notes(_ profile: String) async throws -> BotNotes
 
@@ -338,6 +349,13 @@ public extension BotSessionPointerStore {
         throw BotAdminUnavailable()
     }
     func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
+    func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument {
+        throw BotAdminUnavailable()
+    }
+    func saveMemoryDocument(_ text: String, name: String,
+                            for profile: String) async throws -> BotMemoryDocument {
+        throw BotAdminUnavailable()
+    }
     func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
     func saveNotes(_ text: String, for profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
     func botCategories() async throws -> BotCategoryState { throw BotAdminUnavailable() }
@@ -983,6 +1001,45 @@ enum Failure: Error, Equatable, LocalizedError {
             throw Failure.rejected(status: 502, detail: "the host sent no memory")
         }
         return memory
+    }
+
+    /// `GET /v1/bots/{profile}/memory/{name}`.
+    ///
+    /// The document name is checked against the same allow-list the host enforces before a request is
+    /// built: a name that is not `MEMORY.md` or `USER.md` could only ever be answered with a 422, so
+    /// sending it would be a request this app already knows is impossible.
+    public func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument {
+        let bot = try Self.pathComponent(profile)
+        let document = try Self.pathComponent(try Self.memoryName(name))
+        let data = try await bridgeGET("v1/bots/\(bot)/memory/\(document)", timeout: 20)
+        guard let doc = BotMemoryDocument.decode(data) else {
+            throw Failure.rejected(status: 502, detail: "the host sent no memory document")
+        }
+        return doc
+    }
+
+    /// `PUT /v1/bots/{profile}/memory/{name}` — whole document, whole replacement.
+    public func saveMemoryDocument(_ text: String, name: String,
+                                   for profile: String) async throws -> BotMemoryDocument {
+        let bot = try Self.pathComponent(profile)
+        let document = try Self.pathComponent(try Self.memoryName(name))
+        let data = try await bridgePUT("v1/bots/\(bot)/memory/\(document)",
+                                       body: ["text": text], timeout: 20)
+        guard let doc = BotMemoryDocument.decode(data) else {
+            throw Failure.rejected(status: 502, detail: "the host sent no memory document")
+        }
+        return doc
+    }
+
+    /// The two names a bot's memory consists of, or a refusal naming them.
+    static func memoryName(_ name: String) throws -> String {
+        guard BotMemoryDocument.isAllowedName(name) else {
+            throw Failure.rejected(
+                status: 422,
+                detail: "a memory document is \(BotMemoryDocument.allowedNames.joined(separator: " or "))"
+            )
+        }
+        return name
     }
 
     public func notes(_ profile: String) async throws -> BotNotes {

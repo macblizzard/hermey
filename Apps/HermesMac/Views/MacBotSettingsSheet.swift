@@ -88,8 +88,15 @@ struct MacBotSettingsSheet: View {
         .frame(minHeight: 420, idealHeight: 560, maxHeight: 560)
         .background(Tokens.canvas)
         .sheet(isPresented: $showingMemory) {
+            // The bot's memory, edited here: both files listed with their counts, one opened as plain
+            // text, saved back through the host's own route.
             BotMemorySheet(botName: bot.displayName,
-                           load: { try await model.memory(for: bot.id) })
+                           access: BotMemoryAccess(
+                               load: { try await model.memory(for: bot.id) },
+                               read: { name in try await model.memoryDocument(named: name, for: bot.id) },
+                               save: { name, text in
+                                   try await model.saveMemoryDocument(text, named: name, for: bot.id)
+                               }))
             .hermesSheetChrome()
         }
         .sheet(isPresented: $showingSoul) {

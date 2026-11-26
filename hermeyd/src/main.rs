@@ -444,7 +444,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             axum::routing::put(bridge_routes::put_icon),
         )
         .route("/v1/bots/disabled", get(bridge_routes::get_disabled))
+        // What a bot remembers: `memories/MEMORY.md` and `memories/USER.md`, read whole and written
+        // whole. The name in the path is an allow-list of exactly those two files (never a path), a
+        // save is refused over the runtime's own character budget, and the write is temp+rename so a
+        // turn that reads the file mid-save never sees half of one. See bot_docs.rs.
         .route("/v1/bots/{profile}/memory", get(bot_docs::memory_get))
+        .route(
+            "/v1/bots/{profile}/memory/{name}",
+            get(bot_docs::memory_get_one).put(bot_docs::memory_put).layer(
+                // A memory's own 256 KiB cap answers 413 with a sentence; the framework ceiling sits
+                // above it so a body that is merely too large still reads as that sentence instead of
+                // an empty rejection.
+                axum::extract::DefaultBodyLimit::max(bot_docs::MAX_DOCUMENT_BYTES * 4),
+            ),
+        )
+
         .route(
             "/v1/bots/{profile}/session",
             // The shared pointer two paired devices agree on. An unknown bot answers 200/null,

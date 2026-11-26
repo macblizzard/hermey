@@ -313,8 +313,15 @@ public protocol GatewayClientProtocol: AnyObject, Sendable {
     /// Create one (`POST /v1/bots/{profile}/routines` on the bridge) and return the row it made.
     func createRoutine(_ profile: String, draft: RoutineDraft) async throws -> BotRoutine
 
-    /// What this bot remembers: its own notes and the owner's profile, read-only.
+    /// What this bot remembers: its own notes and the owner's profile.
     func memory(_ profile: String) async throws -> BotMemory
+
+    /// One memory document, read fresh for the editor (`GET /v1/bots/{profile}/memory/{name}`).
+    func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument
+
+    /// Write one memory document back (`PUT /v1/bots/{profile}/memory/{name}`).
+    func saveMemoryDocument(_ text: String, name: String,
+                            for profile: String) async throws -> BotMemoryDocument
 
     /// The owner's own note for this bot (`GET /v1/bots/{profile}/notes`).
     func notes(_ profile: String) async throws -> BotNotes
@@ -592,6 +599,14 @@ extension GatewayClientProtocol {
         throw BotAdminUnavailable()
     }
     public func memory(_ profile: String) async throws -> BotMemory { throw BotAdminUnavailable() }
+    public func memoryDocument(_ profile: String, name: String) async throws -> BotMemoryDocument {
+        throw BotAdminUnavailable()
+    }
+    public func saveMemoryDocument(_ text: String, name: String,
+                                   for profile: String) async throws -> BotMemoryDocument {
+        throw BotAdminUnavailable()
+    }
+
     public func notes(_ profile: String) async throws -> BotNotes { throw BotAdminUnavailable() }
     public func botCategories() async throws -> BotCategoryState { throw BotAdminUnavailable() }
     public func createBotCategory(name: String) async throws -> BotCategoryState {

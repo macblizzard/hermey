@@ -22,8 +22,9 @@ struct BotModelSettingsScreen: View {
     /// Opens this bot's real SOUL.md. `nil` hides the row: a client that cannot write it must not
     /// offer it, the same rule the description follows.
     var editSoul: (() -> Void)? = nil
-    /// Reads the two documents this bot carries into every turn. `nil` hides the row.
-    var loadMemory: (() async throws -> BotMemory)? = nil
+    /// The three calls the memory pane makes — list, open one, save one. `nil` hides the row: a
+    /// client that cannot write memory must not offer an editor.
+    var memory: BotMemoryAccess? = nil
     /// Deletes this bot on the host. `nil` hides the row — the rule every verb here follows: a
     /// client that cannot do it must not offer it.
     var deleteBot: (() async throws -> Void)? = nil
@@ -59,7 +60,7 @@ struct BotModelSettingsScreen: View {
          icon: BotFaceChoice? = nil,
          saveDescription: ((String, String) async throws -> Void)? = nil,
          editSoul: (() -> Void)? = nil,
-         loadMemory: (() async throws -> BotMemory)? = nil,
+         memory: BotMemoryAccess? = nil,
          deleteBot: (() async throws -> Void)? = nil,
          avatar: BotAvatarDocument? = nil,
          saveAvatar: ((BotAvatarSelection?) async throws -> Void)? = nil) {
@@ -67,7 +68,7 @@ struct BotModelSettingsScreen: View {
         self.icon = icon
         self.saveDescription = saveDescription
         self.editSoul = editSoul
-        self.loadMemory = loadMemory
+        self.memory = memory
         self.deleteBot = deleteBot
         self.avatar = avatar
         self.saveAvatar = saveAvatar
@@ -188,7 +189,7 @@ struct BotModelSettingsScreen: View {
 
     @ViewBuilder
     private var identitySection: some View {
-        if editSoul != nil || loadMemory != nil {
+        if editSoul != nil || memory != nil {
             Section {
                 if let editSoul {
                     Button(action: editSoul) {
@@ -196,14 +197,16 @@ struct BotModelSettingsScreen: View {
                     }
                     .hermeyFocusQuiet()
                 }
-                if let loadMemory {
+                if let memory {
                     Button {
                         showingMemory = true
                     } label: {
                         Label("Memory", systemImage: "brain")
                     }
                     .sheet(isPresented: $showingMemory) {
-                        BotMemorySheet(botName: bot.displayName, load: loadMemory)
+                        // Lists MEMORY.md and USER.md with their counts against the runtime's budget,
+                        // and opens either as plain text that saves back to the host.
+                        BotMemorySheet(botName: bot.displayName, access: memory)
                         .hermesSheetChrome()
                     }
                     .hermeyFocusQuiet()

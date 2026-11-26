@@ -59,21 +59,28 @@ class TheBotKnowsItself(unittest.TestCase):
         settings = read(SETTINGS)
         self.assertIn('Label("Soul", systemImage: "doc.text")', settings)
         self.assertIn('Label("Memory", systemImage: "brain")', settings)
-        self.assertIn("BotMemorySheet(botName: bot.displayName, load: loadMemory)", settings)
+        # The pane is handed one value carrying all three calls it makes (list, open, save), so the
+        # settings sheet cannot wire a read-only memory beside an editor that exists elsewhere.
+        self.assertIn("BotMemorySheet(botName: bot.displayName, access: memory)", settings)
         # The face is not chosen here any more: the Avatar tab is the one door, and the Identity
         # section no longer carries a second picker beside it (reported 2026-11-24).
         self.assertNotIn('Label("Bot icon"', settings)
         self.assertNotIn("BotIconPicker", settings)
         self.assertNotIn("saveIcon", settings)
-        # Each remaining row is optional: a client that cannot write it must not be shown the row.
-        self.assertIn("var loadMemory: (() async throws -> BotMemory)? = nil", settings)
+        # The row is optional: a client that cannot write memory must not be shown an editor.
+        self.assertIn("var memory: BotMemoryAccess? = nil", settings)
 
     def test_the_list_hands_its_writers_to_the_settings_sheet(self) -> None:
         listing = read(LIST)
         # The memory writer and the avatar moved into the shared door when the list's copy became
         # one; the list still has to reach that door rather than build its own sheet.
         door = (ROOT / "Apps/HermesMobile/Views/BotSettingsDoor.swift").read_text(encoding="utf-8")
-        self.assertIn("loadMemory: { try await model.memory(for: bot.id) }", door)
+        self.assertIn("memory: BotMemoryAccess(", door)
+        self.assertIn("load: { try await model.memory(for: bot.id) },", door)
+        self.assertIn("read: { name in try await model.memoryDocument(named: name, for: bot.id) },", door)
+        self.assertIn(
+            "try await model.saveMemoryDocument(text, named: name, for: bot.id)", door
+        )
         # Retargeted when the Classic row arrived: the door hands the store a `BotAvatarSelection`
         # (one family of face, the other cleared) rather than a bare document.
         self.assertIn("saveAvatar: { selection in", door)
@@ -88,8 +95,9 @@ class TheHostServesMemory(unittest.TestCase):
         source = read(BRIDGE / "bot_docs.rs")
         self.assertIn('"MEMORY.md"', source)
         self.assertIn('"USER.md"', source)
-        # Read-only: the memory route has no writer, no configure call, nothing that could rewrite
-        # the agent's own notes.
+        # The memory route reads and writes *files* — `bot_docs::memory_put` — so it never touches the
+        # host's document store (`set_doc`), which is where the vault's labels and other small host
+        # state live. Editing a memory is not a document-store write.
         self.assertNotIn("set_doc", source.split("memory_get", 1)[1].split("NotesPut", 1)[0])
         self.assertIn("is_symlink()", source, "a link named MEMORY.md must not hand over a host file")
 
