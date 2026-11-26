@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.679",
-          "buildVersion": "679",
-          "date": "2026-11-26T14:47:03Z",
-          "localizedDescription": "Memory you can edit: a Memory pane in every bot's settings, with the character budget and an atomic save. Fixes the launch crash (a non-finite Float trapped the glass mask).",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.679/Hermey-0.1.679-b679.ipa",
-          "size": 6184015,
+          "version": "0.1.680",
+          "buildVersion": "680",
+          "date": "2026-11-26T15:26:23Z",
+          "localizedDescription": "Settings > About: Check now actually asks the host, and the row shows the version the host reports (0.8.14) instead of a stale value.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.680/Hermey-0.1.680-b680.ipa",
+          "size": 6187302,
           "minOSVersion": "17.0",
-          "sha256": "7737dde0b8f3611c4d25e65537974f43e52bee5ce07120e49de28d56eb4ee7cf"
+          "sha256": "cabd977c9bcd0626acceb2f4c2c581674556f249d77ab49a0559ba48edfea158"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.679 (679)",
-      "identifier": "hermes-0.1.679-679",
-      "caption": "Memory you can edit: a Memory pane in every bot's settings, with the character budget and an atomic save. Fixes the launch crash (a non-finite Float trapped the glass mask).",
-      "date": "2026-11-26T14:47:03Z",
+      "title": "Hermes 0.1.680 (680)",
+      "identifier": "hermes-0.1.680-680",
+      "caption": "Settings > About: Check now actually asks the host, and the row shows the version the host reports (0.8.14) instead of a stale value.",
+      "date": "2026-11-26T15:26:23Z",
       "tintColor": "#9A9AA0"
     }
   ],
