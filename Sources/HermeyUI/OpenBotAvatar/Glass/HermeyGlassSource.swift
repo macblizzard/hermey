@@ -915,12 +915,16 @@ enum HermeyGlassSource {
             // light catches the edge.
             float lum = max(col.r, max(col.g, col.b));
             float edgeTransparency = mix(0.36, 0.68, pow(1.0 - cos1, 1.55));
-            float alpha = clamp(edgeTransparency * 1.15
+            // What the body hides is what the path absorbed. The grazing term is kept small beside it
+            // because it is a *surface* term — for clear glass the surface is all there is — and a cat's
+            // ear is a fin a few points wide: every normal on it is a bevel, so a grazing-weighted alpha
+            // made the thinnest part the most opaque, which is exactly backwards and is what made the
+            // interior read as one cloudy wash.
+            float alpha = clamp(0.26
+                                + 0.62 * (1.0 - lumThrough)
+                                + 0.18 * edgeTransparency
                                 - 0.06 * clamp(directTrans, 0.0, 1.0)
-                                - 0.08 * weight
-                                + 0.30 * smoothstep(0.30, 0.95, lum)
                                 + 0.16 * clamp(tirEnergy, 0.0, 1.0)
-                                + kAbsorptionOpacity * (1.0 - lumThrough)
                                 + 0.30 * rimBand,
                                 0.34, 0.97);
 
