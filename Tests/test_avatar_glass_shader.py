@@ -1,18 +1,23 @@
 """The glass shader path, guarded from the source text.
 
-Glass on an app surface is a Metal fragment pass (`Apps/Shared/Glass/OpenBotAvatarGlass.metal`) and
-everything else in the app is `Canvas` drawing, so neither side can be exercised from this suite.
-What *can* be checked — and is, below — is every fact the split can silently get wrong:
+Glass on an app surface is a Metal fragment pass compiled from its own source at run time
+(`Sources/HermeyUI/OpenBotAvatar/Glass/HermeyGlassSource.swift`) and everything else in the app is
+`Canvas` drawing, so neither side can be exercised from this suite. What *can* be checked — and is,
+below — is every fact the split can silently get wrong:
 
-* **one decision**: exactly one function answers shader-or-Canvas, it is called once, and the
-  renderer follows the answer instead of asking again;
+* **one decision**: exactly one function answers shader-or-Canvas, it is called once, and nothing
+  else in the app answers it again;
 * **one fallback**: the painted material is still there, and Reduce Transparency, a preview, a body
   under the shader's floor, the Live Activity and every material but glass all still get it;
+* **the shader is compiled, not built**: the MSL is a string, it is compiled by
+  `device.makeLibrary(source:)` **once per process** into one library and one pipeline pair, and a
+  compile that fails falls back to the painted material instead of crashing;
 * **Solid never reaches the shader**, and neither does a body drawn below the floor;
-* **the `.metal` file is an app file**: it is in the Mac's and the phone's sources in `project.yml`
-  and in the Live Activity's not at all, and there is no `.metal` under `Sources/`;
-* **no per-frame allocation**: every probe is read once, and the per-frame uniform builder allocates
-  nothing;
+* **the Live Activity gets neither the source nor the shader**: no `.metal` file exists at all, the
+  MSL string is behind the widget target's own compilation condition, and that target sets it while
+  neither app does;
+* **no per-frame compilation**: the library, the pipeline and the sampler are built once, and the
+  per-frame uniform builder allocates nothing;
 * **the terms are upstream's**, constant by constant, with the line each one was read from checked
   against `packages/core/src/dom/glass/shaders.ts` when that checkout is on this machine;
 * **the eight built-in states still take no mark and never shrink the body**, and the shader path
@@ -38,10 +43,17 @@ PAINT = AVATAR / "OpenBotAvatarMaterialPaint.swift"
 STATE = AVATAR / "OpenBotAvatarState.swift"
 MATERIAL = AVATAR / "BotAvatarMaterial.swift"
 
-METAL = ROOT / "Apps" / "Shared" / "Glass" / "OpenBotAvatarGlass.metal"
+GLASS = AVATAR / "Glass"
+SOURCE = GLASS / "HermeyGlassSource.swift"
+LAYER = GLASS / "BotAvatarGlassLayer.swift"
+GLASS_VIEW = GLASS / "BotAvatarGlassView.swift"
 PROJECT = ROOT / "project.yml"
+PACKAGE = ROOT / "Package.swift"
 
 UPSTREAM = Path("/root/jobs/oba-upstream/packages/core/src/dom/glass/shaders.ts")
+
+#: The one condition that keeps the MSL out of the widget binary. Only the Live Activity sets it.
+WIDGET_CONDITION = "HERMEY_LIVE_ACTIVITY"
 
 
 def read(path: Path) -> str:
@@ -53,6 +65,23 @@ def code(text: str) -> str:
     return "\n".join(line.split("///")[0].split("//")[0] for line in text.splitlines())
 
 
+def msl() -> str:
+    """The MSL source, exactly as the process receives it: the string, not the file around it."""
+    source = read(SOURCE)
+    start = source.index('static let msl = """') + len('static let msl = """')
+    end = source.index('"""', start)
+    body = source[start:end]
+    # The Swift file indents the string to its own level; the MSL sees the same lines, unindented,
+    # and stripping the common margin keeps the `assertIn` checks reading like the source.
+    indents = [len(line) - len(line.lstrip()) for line in body.splitlines() if line.strip()]
+    margin = min(indents) if indents else 0
+    return "\n".join(line[margin:] for line in body.splitlines())
+
+
+def msl_code() -> str:
+    return code(msl())
+
+
 def decide_body() -> str:
     """The body of `BotAvatarGlassRoute.decide`, from its signature to its closing brace."""
     source = code(read(ROUTE))
@@ -60,8 +89,20 @@ def decide_body() -> str:
     return source[start:source.index("\n    }", start)]
 
 
-def metal_code() -> str:
-    return code(read(METAL))
+def target_blocks() -> dict[str, str]:
+    """Each target's own block of `project.yml`, so a path is checked in the target that lists it."""
+    text = read(PROJECT)
+    body = text.split("\ntargets:\n", 1)[1].split("\nschemes:\n", 1)[0]
+    blocks: dict[str, str] = {}
+    current = ""
+    for line in body.splitlines():
+        match = re.match(r"^  (\w+):\s*$", line)
+        if match:
+            current = match.group(1)
+            blocks[current] = ""
+        elif current:
+            blocks[current] += line + "\n"
+    return blocks
 
 
 class TheOneDecision(unittest.TestCase):
@@ -74,20 +115,21 @@ class TheOneDecision(unittest.TestCase):
         self.assertEqual([path.name for path in deciders], ["OpenBotAvatarGlassRoute.swift"])
 
     def test_it_is_called_once_and_the_answer_travels(self):
-        # One call site — the view's — and the renderer receives the answer as a parameter.
+        # One call site — the view's. Nothing else may ask, and the frame it answers draws.
         sources = list(UI.rglob("*.swift")) + list((ROOT / "Apps").rglob("*.swift"))
         calls = [(path.name, len(re.findall(r"BotAvatarGlassRoute\.decide\(", code(read(path)))))
                  for path in sources]
         self.assertEqual(sum(count for _, count in calls), 1, calls)
         self.assertIn(("OpenBotAvatarView.swift", 1), calls)
 
-    def test_the_renderer_does_not_answer_it_again(self):
+    def test_the_renderer_never_sees_the_route(self):
         renderer = code(read(RENDERER))
-        # The renderer takes the route and tests it exactly once, as a value.
-        self.assertIn("route: BotAvatarGlassRoute = .canvas", renderer)
-        self.assertEqual(len(re.findall(r"route == \.metal", renderer)), 1)
-        # …and it never asks the process, the bundle or Metal itself.
-        for probe in ("MTLCreateSystemDefaultDevice", "default.metallib", "ShaderLibrary"):
+        # The renderer draws a frame; it has no opinion about which drawing the surface got, so the
+        # question cannot be re-asked — or half-answered — behind the decision's back.
+        self.assertNotIn("BotAvatarGlassRoute", renderer)
+        self.assertNotIn("route == .metal", renderer)
+        for probe in ("MTLCreateSystemDefaultDevice", "default.metallib", "ShaderLibrary",
+                      "makeLibrary", "MakeLibrary"):
             self.assertNotIn(probe, renderer)
 
     def test_the_view_is_the_only_place_that_asks(self):
@@ -118,13 +160,17 @@ class SolidNeverReachesIt(unittest.TestCase):
         self.assertEqual(len(re.findall(r"return \.metal", body)), 1)
         self.assertGreater(body.index("return .metal"), body.index("guard BotAvatarGlassShader.isAvailable"))
 
-    def test_the_metal_body_never_reads_the_material_spec(self):
-        renderer = code(read(RENDERER))
-        block = renderer.split("if pass.drawsBody, route == .metal {")[1].split("} else if pass.drawsBody {")[0]
-        # A flat fill and a tint: no fill case, no spec, no plan — so a `solid` spec cannot be
-        # drawn through the fragment pass by any edit that keeps this block's shape.
-        for token in ("case .flat", "case .ramp", "spec.fill", "BotAvatarMaterialRender.render"):
-            self.assertNotIn(token, block)
+    def test_the_shader_body_never_reads_the_material_spec(self):
+        # The body's pass is a silhouette and a tint: `BotAvatarGlassSurface.make` reads the spec
+        # once, for the colour `bodyColor` derives, and nothing below it can paint a material.
+        layer = code(read(LAYER))
+        fill = layer.split("private static func makeTexture(")[1].split("guard let data = context.data")[0]
+        for token in ("spec", "BotAvatarMaterialRender", "case .flat", "case .ramp", "paint("):
+            self.assertNotIn(token, fill, token)
+        # …and the tint arrives as a colour, not as the material it came from.
+        self.assertIn("tint: MaterialColor", layer)
+        self.assertIn("let tint = OpenBotAvatarMaterialPaint.bodyColor(spec, light: pose.light, tint: color)",
+                      code(read(ROUTE)))
 
     def test_every_material_but_glass_takes_the_painter(self):
         # The material is compared to `.glass` with `==` against the stored value, so `solid`, `matte`
@@ -151,10 +197,27 @@ class TheFallbackStays(unittest.TestCase):
     def test_a_process_without_the_shader_gets_the_painter(self):
         self.assertIn("guard BotAvatarGlassShader.isAvailable else { return .canvas }", decide_body())
         shader = code(read(ROUTE))
-        # A device, a compiled shader in *this* bundle, and not a preview — read once, together.
-        self.assertIn('Bundle.main.url(forResource: "default", withExtension: "metallib")', shader)
+        # A device, the source *compiled in this process*, and not a preview — read once, together.
+        self.assertIn("static let isAvailable: Bool = hasDevice && hasRuntimeShader && !isPreview", shader)
         self.assertIn('"XCODE_RUNNING_FOR_PREVIEWS"', shader)
-        self.assertIn("static let isAvailable: Bool = hasDevice && hasShader && !isPreview", shader)
+        self.assertIn("static let hasRuntimeShader: Bool", shader)
+        self.assertIn("HermeyGlassEngine.shared.isReady", shader)
+        # The old test was a file look-up in the bundle. There is no such file any more.
+        self.assertNotIn("metallib", shader)
+        self.assertNotIn("Bundle.main", shader)
+
+    def test_a_compile_that_fails_is_the_painted_material(self):
+        layer = read(LAYER)
+        # The library is the only thing that can fail silently into a crash if the error is dropped:
+        # it is caught, logged with Metal's own text, and the pipeline stays nil.
+        self.assertIn("library = try device.makeLibrary(source: HermeyGlassSource.msl, options: nil)", layer)
+        caught = layer.split("catch {", 1)[1].split("}", 1)[0]
+        self.assertIn("glassLog.error", caught)
+        self.assertIn("the painted material draws instead", caught)
+        # "Available" is the pipeline *and* the queue, so a half-built engine never answers yes.
+        self.assertIn("var isReady: Bool { pipeline != nil && queue != nil }", layer)
+        # …and the painter is what the route then answers, for the life of the process.
+        self.assertIn("guard BotAvatarGlassShader.isAvailable else { return .canvas }", decide_body())
 
     def test_the_painter_still_paints_the_six_layers(self):
         paint = code(read(PAINT))
@@ -188,91 +251,154 @@ class TheFallbackStays(unittest.TestCase):
         self.assertNotIn("pass: .", canvas_route)
 
 
-class TheMetalFileIsAnAppFile(unittest.TestCase):
-    """One shader, in the two app bundles, and in no extension and no package."""
+class TheShaderIsCompiledNotBuilt(unittest.TestCase):
+    """One shader, as a string, compiled by Metal at run time — and one target kept out of it."""
 
-    def test_there_is_one_shader_and_it_is_shared(self):
-        metal = list(ROOT.rglob("*.metal"))
-        self.assertEqual([path.relative_to(ROOT).as_posix() for path in metal],
-                         ["Apps/Shared/Glass/OpenBotAvatarGlass.metal"])
+    def test_there_is_no_shader_file_left(self):
+        # A `.metal` file is what needed Apple's Metal toolchain, and what the app could not build.
+        self.assertEqual([path.relative_to(ROOT).as_posix() for path in ROOT.rglob("*.metal")], [])
+        self.assertEqual([path.relative_to(ROOT).as_posix()
+                          for path in ROOT.rglob("*.metallib")], [])
 
-    def test_nothing_under_sources_carries_one(self):
-        # A package target's shader lands in the package's resource bundle, which is not the library
-        # the renderer looks a function up in: it would be compiled and never found.
-        self.assertEqual(list((ROOT / "Sources").rglob("*.metal")), [])
+    def test_the_source_lives_in_one_swift_string(self):
+        carriers = [path for path in (ROOT / "Sources").rglob("*.swift")
+                    if 'static let msl = """' in read(path)]
+        self.assertEqual([path.name for path in carriers], ["HermeyGlassSource.swift"])
+        source = msl()
+        self.assertIn("#include <metal_stdlib>", source)
+        self.assertIn("using namespace metal;", source)
+        # The SwiftUI shader's own bridge is gone: a runtime library cannot be handed a `Layer`.
+        self.assertNotIn("SwiftUI_Metal", msl_code())
+        self.assertNotIn("stitchable", msl_code())
+        self.assertNotIn("SwiftUI::Layer", msl_code())
+        # …and the prologue says why, where the next person reads it.
+        self.assertIn("a `SwiftUI::Layer` is not reachable from a runtime-compiled library", source)
 
-    def project_targets(self) -> dict[str, str]:
-        """Each target's own block of `project.yml`, so a path is checked in the target that lists it."""
-        text = read(PROJECT)
-        body = text.split("\ntargets:\n", 1)[1].split("\nschemes:\n", 1)[0]
-        blocks: dict[str, str] = {}
-        current = ""
-        for line in body.splitlines():
-            match = re.match(r"^  (\w+):\s*$", line)
-            if match:
-                current = match.group(1)
-                blocks[current] = ""
-            elif current:
-                blocks[current] += line + "\n"
-        return blocks
+    def test_the_string_is_one_library_one_pipeline(self):
+        layer = read(LAYER)
+        swift = code(layer)
+        # Compiled once, in the singleton's init: not in a view, not in a draw, not per frame.
+        self.assertEqual(swift.count("makeLibrary("), 1)
+        self.assertIn("static let shared = HermeyGlassEngine()", swift)
+        self.assertIn('library.makeFunction(name: "hermeyGlassBody")', swift)
+        self.assertIn('library.makeFunction(name: "hermeyGlassVertex")', swift)
+        self.assertEqual(swift.count("makeRenderPipelineState"), 1)
+        # The pipeline is built for the format a `MetalKit` view presents.
+        self.assertIn("static let pixelFormat: MTLPixelFormat = .bgra8Unorm", layer)
+        self.assertIn("attachment.pixelFormat = Self.pixelFormat", layer)
 
-    def test_both_apps_compile_it(self):
-        targets = self.project_targets()
+    def test_nothing_compiles_per_frame(self):
+        layer = read(LAYER)
+        draw = layer.split("func draw(in view: MTKView)")[1].split("private static func makeTexture")[0]
+        for token in ("makeLibrary", "makeRenderPipelineState", "makeFunction", "makeSamplerState",
+                      "makeCommandQueue"):
+            self.assertNotIn(token, draw, token)
+        # What a frame does do: one texture when the pixels change, and six `float4`s.
+        self.assertIn("setFragmentBytes(&uniforms", draw)
+        self.assertIn("MemoryLayout<BotAvatarGlassUniforms>.stride", draw)
+        self.assertIn("if texture == nil || texture?.width != Int(pixels.width)", draw)
+
+    def test_the_library_is_lazy_and_held(self):
+        layer = read(LAYER)
+        # Stored properties on the singleton: an answer the route can read at any moment, without
+        # paying for the compile again.
+        for held in ("let library: MTLLibrary?", "let pipeline: MTLRenderPipelineState?",
+                     "let sampler: MTLSamplerState?", "let queue: MTLCommandQueue?"):
+            self.assertIn(held, layer)
+
+    def test_the_two_apps_build_no_metallib(self):
+        targets = target_blocks()
         for app in ("HermesMac", "HermesMobile"):
-            self.assertIn("- path: Apps/Shared/Glass", targets[app], app)
-
-    def test_the_live_activity_does_not(self):
-        targets = self.project_targets()
-        self.assertIn("HermesLiveActivity", targets)
-        self.assertNotIn("Apps/Shared/Glass", targets["HermesLiveActivity"])
-        # …and it still compiles the avatar's Swift, which is why the probe has to be the bundle's.
-        self.assertIn("- path: Sources/HermeyUI/OpenBotAvatar", targets["HermesLiveActivity"])
-
-    def test_the_deployment_targets_already_carry_swiftui_shaders(self):
+            self.assertNotIn("Apps/Shared/Glass", targets[app], app)
+            self.assertNotIn(WIDGET_CONDITION, targets[app], app)
         text = read(PROJECT)
-        self.assertIn('macOS: "14.0"', text)
-        self.assertIn('iOS: "17.0"', text)
-        # `Shader`, `.layerEffect` and `ShaderLibrary` are macOS 14 / iOS 17, so nothing was raised.
-        package = read(ROOT / "Package.swift")
-        self.assertIn(".macOS(.v14)", package)
-        self.assertIn(".iOS(.v17)", package)
+        self.assertNotIn("- path: Apps/Shared/Glass", text)
+
+    def test_the_live_activity_gets_neither_the_source_nor_the_shader(self):
+        targets = target_blocks()
+        self.assertIn("HermesLiveActivity", targets)
+        # It does not build a shader file…
+        self.assertNotIn("Apps/Shared/Glass", targets["HermesLiveActivity"])
+        # …and it is the only target that compiles the source out, which is how the MSL string stays
+        # out of the widget binary while the folder it lives in is still compiled there.
+        self.assertIn(f"SWIFT_ACTIVE_COMPILATION_CONDITIONS: {WIDGET_CONDITION}",
+                      targets["HermesLiveActivity"])
+        self.assertNotIn(WIDGET_CONDITION, targets["HermesMac"])
+        self.assertNotIn(WIDGET_CONDITION, targets["HermesMobile"])
+        # …and it still compiles the avatar's Swift, which is why the condition has to exist.
+        self.assertIn("- path: Sources/HermeyUI/OpenBotAvatar", targets["HermesLiveActivity"])
+        # The condition wraps the source and the engine, and answers "no shader" to the route.
+        source_file = code(read(SOURCE))
+        self.assertIn(f"#if !{WIDGET_CONDITION}", source_file)
+        self.assertLess(source_file.index(f"#if !{WIDGET_CONDITION}"),
+                        source_file.index("static let msl"))
+        self.assertTrue(source_file.rstrip().endswith("#endif"))
+        self.assertIn(f"#if canImport(Metal) && !{WIDGET_CONDITION}", read(LAYER))
+        route = code(read(ROUTE))
+        widget = route.split(f"#if !{WIDGET_CONDITION}")[1]
+        self.assertIn("HermeyGlassEngine.shared.isReady", widget.split("#else")[0])
+        self.assertIn("return false", widget.split("#else")[1].split("#endif")[0])
+        # The view it compiles falls back to nothing, so a widget never builds a `MetalKit` view.
+        self.assertIn("Color.clear", read(GLASS_VIEW))
+
+    def test_the_package_still_compiles_the_source(self):
+        # The apps get the shader through the package, whose HermeyUI target is the whole folder —
+        # so the string is Swift source in the module and nothing has to be listed for it.
+        package = read(PACKAGE)
+        self.assertIn('.macOS(.v14)', package)
+        self.assertIn('.iOS(.v17)', package)
+        self.assertIn('path: "Sources/HermeyUI"', package)
+        self.assertTrue(SOURCE.exists())
+        self.assertTrue(SOURCE.is_relative_to(ROOT / "Sources" / "HermeyUI"))
+
+    def test_no_layer_effect_survives(self):
+        # `.layerEffect` and `ShaderLibrary` are exactly the path that needed `default.metallib`.
+        for path in list(UI.rglob("*.swift")) + list((ROOT / "Apps").rglob("*.swift")):
+            text = code(read(path))
+            for token in ("layerEffect", "ShaderLibrary", "ShaderBo" + "olean",
+                          "maxSampleOffset"):
+                self.assertNotIn(token, text, f"{path.name}: {token}")
 
 
 class NoPerFrameAllocation(unittest.TestCase):
-    """The animating path builds six small vectors and samples a layer; it allocates nothing."""
+    """The animating path builds six small vectors and one texture; it allocates no images."""
 
     def test_every_probe_is_read_once(self):
         shader = code(read(ROUTE))
         self.assertEqual(len(re.findall(r"MTLCreateSystemDefaultDevice\(\)", shader)), 1)
-        self.assertEqual(len(re.findall(r"Bundle\.main", shader)), 1)
         # Both inside `static let`s: a `var` would be re-answered, and a `func` could be called.
-        for name in ("hasDevice", "hasShader", "isPreview", "isAvailable", "minimumSide"):
+        for name in ("hasDevice", "hasRuntimeShader", "isPreview", "isAvailable", "minimumSide"):
             self.assertRegex(shader, r"static let " + name)
 
     def test_the_uniform_builder_allocates_nothing(self):
         source = code(read(ROUTE))
         build = source.split("static func make(model:")[1].split("\n    }")[0]
         for allocation in (".map(", ".filter(", "Array(", "Data(", "CGImage", "UIGraphics",
-                           "MTLTexture", "makeBuffer", "Path(", "boundingRect"):
+                           "MTLTexture", "makeBuffer", "boundingRect"):
             self.assertNotIn(allocation, build, allocation)
+        # One path is measured, and it is the four corners of the drawn box.
+        self.assertIn(".applying(face)", build)
 
-    def test_the_shader_is_a_function_lookup_not_a_file_read(self):
-        shader = code(read(ROUTE))
-        self.assertIn("ShaderLibrary.default.hermeyGlassBody(", shader)
-        self.assertNotIn("MTLLibrary(", shader)
-        self.assertNotIn("makeDefaultLibrary", shader)
+    def test_the_vertex_function_draws_no_buffer(self):
+        source = msl_code()
+        self.assertIn("vertex float4 hermeyGlassVertex(uint vertexID [[vertex_id]])", source)
+        self.assertIn("encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)",
+                      read(LAYER))
 
-    def test_the_layer_is_sampled_within_the_declared_offset(self):
-        shader = code(read(ROUTE))
-        self.assertIn("maxSampleOffset = CGSize(width: 8, height: 8)", shader)
-        self.assertIn("float2(-8.0), float2(8.0)", metal_code())
+    def test_the_texture_covers_what_the_shader_may_sample(self):
+        # The refraction reads 8 points out and the texture is the whole view, so a sample at the
+        # body's edge is still on a pixel — the job `maxSampleOffset` did for `.layerEffect`.
+        self.assertIn("float2(-8.0), float2(8.0)", msl_code())
+        layer = read(LAYER)
+        self.assertIn("makeTexture(path: path, tint: surface.tint,", layer)
+        self.assertIn("points: surface.size, pixels: pixels", layer)
 
 
 class TheTermsAreUpstreams(unittest.TestCase):
     """Every constant in the fragment function is the reference's, not a guess."""
 
     def test_the_optics_are_the_reference_s(self):
-        metal = read(METAL)
+        source = read(SOURCE)
         for literal, why in (
             ("constant float kIOR = 1.50;", "IOR"),
             ("constant float kF0 = 0.04;", "F0"),
@@ -288,12 +414,12 @@ class TheTermsAreUpstreams(unittest.TestCase):
             ("0.28, 0.98", "its clamp"),
             ("float3(1.0 / 2.2)", "the gamma"),
         ):
-            self.assertIn(literal, metal, why)
+            self.assertIn(literal, source, why)
 
     def test_the_prologue_cites_where_each_one_came_from(self):
-        metal = read(METAL)
+        source = read(SOURCE)
         # A citation may name a range (`shaders.ts:391-399`), so every number in one counts.
-        cited = {number for run in re.findall(r"shaders\.ts:\s*([\d,\s-]+)", metal)
+        cited = {number for run in re.findall(r"shaders\.ts:\s*([\d,\s-]+)", source)
                  for number in re.findall(r"\d+", run)}
         for line in ("46", "47", "137", "152", "161", "289", "340", "391", "408", "422"):
             self.assertIn(line, cited, f"shaders.ts:{line}")
@@ -328,34 +454,37 @@ class TheEightStatesAreUntouched(unittest.TestCase):
                         renderer.index("markShapes(pose.marks"))
 
     def test_the_body_is_filled_at_its_own_scale(self):
-        renderer = code(read(RENDERER))
-        metal_block = renderer.split("if pass.drawsBody, route == .metal {")[1]
-        metal_block = metal_block.split("} else if pass.drawsBody {")[0]
-        # The shader's fill is the silhouette through the body's own transform — no `shrink`, and no
-        # `bodyScale` anywhere near it.
-        self.assertIn("model.silhouette.applying(face)", metal_block)
-        self.assertNotIn("bodyScale", metal_block)
-        self.assertNotIn("shrink", metal_block)
+        # The silhouette is the body's own, through the frame's one transform — no `shrink`, and no
+        # `bodyScale` anywhere near the pass that draws it.
+        view = code(read(VIEW))
+        metal_route = view.split("case .metal:")[1]
+        self.assertIn("BotAvatarGlassView(surface: glass, path: model.silhouette.applying(face))",
+                      metal_route)
+        self.assertNotIn("bodyScale", metal_route)
+        self.assertNotIn("shrink", metal_route)
+        # …and the texture is filled from that path, in the body's own tint.
+        layer = read(LAYER)
+        self.assertIn("context.addPath(path.cgPath)", layer)
 
     def test_the_state_s_light_still_reaches_the_shader(self):
         shader = code(read(ROUTE))
         self.assertIn("Float(pose.light.rim)", shader)
         # The eight-state light table is unmoved: `light(time:reducedMotion:)` still drives it.
-        # The pose still takes the state's own light, and the eight-state table is unmoved.
         self.assertIn("pose.light = light(time: t, reducedMotion: reducedMotion)", code(read(STATE)))
         paint = code(read(PAINT))
         self.assertIn("func light(time: Double, reducedMotion: Bool) -> OpenBotAvatarLight", paint)
         self.assertIn("var glassPulse: GlassPulse", paint)
 
-    def test_the_shader_path_is_three_passes_in_paint_order(self):
+    def test_the_shader_path_is_three_parts_in_paint_order(self):
         view = code(read(VIEW))
         metal_route = view.split("case .metal:")[1]
-        order = [metal_route.index(f"pass: .{name}") for name in ("behind", "body", "over")]
+        order = [metal_route.index("pass: .behind"),
+                 metal_route.index("BotAvatarGlassView(surface: glass"),
+                 metal_route.index("pass: .over")]
         self.assertEqual(order, sorted(order))
-        self.assertIn(".layerEffect(glass.shader", metal_route)
-        # The effect is applied to the body's pass and to nothing else.
-        body = metal_route.split("pass: .body")[1].split("pass: .over")[0]
-        self.assertIn(".layerEffect(", body)
+        # The shader's pass is between the two `Canvas` passes and nothing else is between them.
+        self.assertEqual(metal_route.count("Canvas {"), 2)
+        self.assertEqual(metal_route.count("BotAvatarGlassView("), 1)
 
 
 if __name__ == "__main__":

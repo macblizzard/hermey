@@ -15,31 +15,33 @@ import Metal
 /// is a raymarched surface: a Fresnel reflection of a studio, a refracted path through the body with
 /// Beer-Lambert absorption, and a tone map.
 ///
-/// So glass has a second drawing: `Apps/Shared/Glass/OpenBotAvatarGlass.metal`, one fragment pass over
-/// the silhouette the `Canvas` fills, which ports those terms. This file is the only place that
-/// chooses between them.
+/// So glass has a second drawing: `HermeyGlassSource.msl` — upstream's fragment pass, kept as source
+/// and compiled by Metal at run time — over the silhouette the `Canvas` fills. This file is the only
+/// place that chooses between them.
 ///
 /// ## The rule
 ///
 /// Shader **when all four hold**: the material is glass; the surface is an app surface (the process
-/// has a Metal device *and* a bundle that carries the compiled shader); Reduce Transparency is off;
-/// and the body is at least `BotAvatarGlassShader.minimumSide` points across.
+/// has a Metal device *and* the MSL source compiled into a library in it); Reduce Transparency is
+/// off; and the body is at least `BotAvatarGlassShader.minimumSide` points across.
 ///
 /// Canvas otherwise — and "otherwise" is not an error path. It is the drawing the Live Activity
-/// compiles (its bundle has no `default.metallib`, so `isAvailable` is false there without a
-/// `#if`); the drawing a preview, a test process, an older Mac and Reduce Transparency get; and the
-/// drawing a list row gets, because below 24 pt a Fresnel term and two softboxes land inside the same
-/// pixel as the rim and the compact plan's three layers are the legible drawing.
+/// compiles (its bundle carries neither the shader's source nor a library, so `isAvailable` is false
+/// there without a `#if` at the call site); the drawing a preview, a test process, an older Mac, a
+/// Mac whose Metal compiler refuses the source, and Reduce Transparency get; and the drawing a list
+/// row gets, because below 24 pt a Fresnel term and two softboxes land inside the same pixel as the
+/// rim and the compact plan's three layers are the legible drawing.
 ///
 /// There is no third route, and no call site chooses: a surface passes its material and its size and
-/// gets what that surface should draw (`OpenBotAvatarView`), and the renderer follows the route it is
-/// handed (`OpenBotAvatarRenderer.draw(_:pass:route:…)`). `Tests/test_bot_avatar_glass.py` holds the
-/// single decision point and the single fallback to exactly that shape.
+/// gets what that surface should draw (`OpenBotAvatarView`), and the frame that follows it draws the
+/// ribbons' `Canvas`, the body's Metal pass and the eyes' `Canvas` in the renderer's paint order.
+/// `Tests/test_bot_avatar_glass.py` holds the single decision point and the single fallback to
+/// exactly that shape.
 public enum BotAvatarGlassRoute: Hashable, Sendable {
 
     /// The painted material: the six `Canvas` layers. The fallback, and the only drawing for Solid,
-    /// Matte and Metal, for the Live Activity, for previews, for Reduce Transparency, and for a body
-    /// under the shader's floor.
+    /// Matte and Metal, for the Live Activity, for previews, for Reduce Transparency, for a process
+    /// whose Metal compiler refused the source, and for a body under the shader's floor.
     case canvas
 
     /// One Metal pass over the body: the reference's lit, refracting surface.
@@ -60,7 +62,7 @@ public enum BotAvatarGlassRoute: Hashable, Sendable {
         guard !reduceTransparency else { return .canvas }
         // Below this the shader's speculars are sub-pixel and its refraction is one pixel of tint.
         guard side >= BotAvatarGlassShader.minimumSide else { return .canvas }
-        // The process itself: a Metal device, a compiled shader in this bundle, and not a preview.
+        // The process itself: a Metal device, the shader compiled in it, and not a preview.
         guard BotAvatarGlassShader.isAvailable else { return .canvas }
         return .metal
     }
@@ -70,7 +72,8 @@ public enum BotAvatarGlassRoute: Hashable, Sendable {
 ///
 /// Every probe here is read **once** and held: `MTLCreateSystemDefaultDevice()` walks the system's
 /// GPU list, and asking it per frame would be a cost paid by every avatar in a list for an answer
-/// that cannot change while the process lives.
+/// that cannot change while the process lives. The library is compiled on first access for the same
+/// reason — once per process, never per frame (`HermeyGlassEngine`).
 enum BotAvatarGlassShader {
 
     /// The smallest body the shader draws, in points.
@@ -81,22 +84,29 @@ enum BotAvatarGlassShader {
     /// softboxes would land inside that same point: the shader would be softer, not sharper.
     static let minimumSide: Double = 24
 
-    /// How far the shader may sample from the pixel it is shading. The refraction sample is the only
-    /// offset read, and it is clamped to this in the shader; SwiftUI refuses samples past it.
-    static let maxSampleOffset = CGSize(width: 8, height: 8)
-
-    /// A Metal device, a compiled shader and not a preview.
-    static let isAvailable: Bool = hasDevice && hasShader && !isPreview
+    /// A Metal device, the shader compiled in this process, and not a preview.
+    static let isAvailable: Bool = hasDevice && hasRuntimeShader && !isPreview
 
     /// Xcode's preview host compiles the app but draws outside a real render loop, and a preview is
     /// the one place a person is looking at the *drawing* rather than at the app: it takes the
     /// painted material, which is the reference the shader is checked against.
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
 
-    /// The shader is compiled into a target's `default.metallib`; the app bundles carry it and the
-    /// Live Activity's does not, which is what keeps a widget process out of this path without a
-    /// compilation condition that a Swift package build could not see.
-    private static let hasShader = Bundle.main.url(forResource: "default", withExtension: "metallib") != nil
+    /// The shader is a string now (`HermeyGlassSource.msl`), compiled by `device.makeLibrary(source:)`
+    /// the first time anything asks — no `.metal` file, no `default.metallib`, and so no Xcode Metal
+    /// toolchain on the machine that builds the app. This is that compile's answer, held for the life
+    /// of the process: a failure here is the painted material, for good, rather than a retry per frame.
+    ///
+    /// The Live Activity compiles neither the source nor the engine (`project.yml` sets
+    /// `HERMEY_LIVE_ACTIVITY` for that target alone), so there is nothing to compile there and the
+    /// answer is false without the extension ever touching Metal.
+    private static let hasRuntimeShader: Bool = {
+        #if !HERMEY_LIVE_ACTIVITY
+        return HermeyGlassEngine.shared.isReady
+        #else
+        return false
+        #endif
+    }()
 
     private static let hasDevice: Bool = {
         #if canImport(Metal)
@@ -107,12 +117,30 @@ enum BotAvatarGlassShader {
     }()
 }
 
-/// One frame's numbers for the glass shader: everything the fragment function is fed, and the shader
-/// itself, in the order the `.metal` file declares them.
+/// One frame's numbers for the glass shader: everything the fragment function is fed, in the order
+/// the MSL declares it.
 ///
-/// Nothing here is a texture, a buffer or a bitmap: the arguments are six small vectors built from
-/// values the frame already holds (the body's box, the volume's profile, the pose), so the animating
-/// path allocates nothing per frame and uploads no image of the avatar.
+/// Six `float4`s and nothing else: no texture, no buffer, no bitmap is built here. The frame's values
+/// are already in hand (the body's box, the volume's profile, the pose), so the animating path
+/// allocates nothing and uploads no image of the avatar; the one texture the pass reads is the
+/// body's flat fill, which the Metal drawer builds from the same silhouette path.
+struct BotAvatarGlassUniforms {
+    /// `rgb` — the body's colour after the state's own desaturation (`blocked` calms the tint).
+    var tint: SIMD4<Float>
+    /// `(half width, half height, corner radius, half depth)` in points.
+    var shape: SIMD4<Float>
+    /// `(inset radius rxy, rise rz, centre x, centre y)` in points.
+    var profile: SIMD4<Float>
+    /// `(yaw, pitch, rim opacity, detail)`.
+    var pose: SIMD4<Float>
+    /// `(hairline, exposure, rim gain, absorption)`.
+    var tone: SIMD4<Float>
+    /// `(points x, points y, pixels x, pixels y)` — filled in at draw time, where the drawable's own
+    /// size is the authority on the second pair.
+    var size: SIMD4<Float> = .zero
+}
+
+/// One frame's numbers for the glass shader: the values themselves, and the uniforms built from them.
 struct BotAvatarGlassSurface: Sendable {
 
     /// The layer's size in points — the shader's `position` space.
@@ -128,22 +156,22 @@ struct BotAvatarGlassSurface: Sendable {
     /// `(hairline, exposure, rim gain, absorption)`.
     var tone: SIMD4<Float>
 
-    /// The fragment function, ready for `.layerEffect`.
-    var shader: Shader {
-        ShaderLibrary.default.hermeyGlassBody(
-            .float2(Float(size.width), Float(size.height)),
-            .float3(Float(tint.red), Float(tint.green), Float(tint.blue)),
-            .float4(shape.x, shape.y, shape.z, shape.w),
-            .float4(profile.x, profile.y, profile.z, profile.w),
-            .float4(pose.x, pose.y, pose.z, pose.w),
-            .float4(tone.x, tone.y, tone.z, tone.w))
+    /// The fragment function's bindings, ready for `setFragmentBytes`.
+    ///
+    /// `size` is left zero here and set from the drawable in `BotAvatarGlassDrawer.draw`: the pixel
+    /// size is the drawable's, and it is only known once there is one.
+    var uniforms: BotAvatarGlassUniforms {
+        BotAvatarGlassUniforms(tint: SIMD4(Float(tint.red), Float(tint.green), Float(tint.blue), 1),
+                               shape: shape, profile: profile, pose: pose, tone: tone)
     }
 
     /// The numbers for one frame, from the values the painter already computed.
     ///
     /// `face` is the transform the body's silhouette is drawn with (the plane's, the body's motion,
     /// the viewport) — the same matrix the `Canvas` fills the outline through, so the shader's box is
-    /// the box that was drawn, whichever way the pose has turned it.
+    /// the box that was drawn, whichever way the pose has turned it. It is also the transform the
+    /// body's texture is filled through, so the silhouette the fragment masks itself with is the one
+    /// the `Canvas` route draws.
     static func make(model: OpenBotAvatarModel,
                      pose: OpenBotAvatarPose,
                      size: CGSize,

@@ -42,12 +42,11 @@ targets:
           - "Resources/novnc/**"
       - path: Apps/Shared/BrandAssets.xcassets
         buildPhase: resources
-      # The glass material's shader, compiled into this app's `default.metallib`. It is a *source*
-      # here and not in `Sources/HermeyUI` because a package target's shaders land in the package's
-      # resource bundle, and the renderer looks the fragment function up in the app's own library;
-      # and it is not in the Live Activity's sources because a widget process draws the painted
-      # material — the fallback — and has no business carrying a metallib it never loads.
-      - path: Apps/Shared/Glass
+      # No shader source here. The glass material's MSL is a Swift string in
+      # `Sources/HermeyUI/OpenBotAvatar/Glass` and the process compiles it with Metal itself, because
+      # a `.metal` file needs Xcode's Metal toolchain component (`xcodebuild -downloadComponent
+      # MetalToolchain`) — a 1–2 GB download this machine and CI do not have, and the build failed at
+      # that step for it. Nothing in this target builds a `default.metallib`.
       # A folder reference, not a group: noVNC's ES modules import each other by relative path, so
       # the tree must land in the bundle with its shape intact.
       - path: Apps/HermesMac/Resources/novnc
@@ -147,9 +146,8 @@ targets:
       # came to show six logos while the Mac showed thirteen.
       - path: Apps/Shared/BrandAssets.xcassets
         buildPhase: resources
-      # The same one shader file as the Mac (see there): compiled into this app's `default.metallib`
-      # and deliberately absent from the Live Activity, which draws the painted glass.
-      - path: Apps/Shared/Glass
+      # No shader source here either (see the Mac target): the MSL ships as a string and is compiled
+      # at run time, so neither app builds a metallib.
       # Same reason as the Mac: a folder reference keeps noVNC's relative module imports working.
       - path: Apps/HermesMobile/Resources/novnc
         type: folder
@@ -294,6 +292,14 @@ targets:
         # would either fail to build or be rejected at load.
         APPLICATION_EXTENSION_API_ONLY: "YES"
         SKIP_INSTALL: "YES"
+        # The one condition that keeps the glass shader out of this process. The extension compiles
+        # `Sources/HermeyUI/OpenBotAvatar` — the drawing, so the Lock Screen face blinks on the same
+        # clock as the chat header's — and that folder now holds the shader's source. Under this
+        # condition `HermeyGlassSource.msl` and `HermeyGlassEngine` are not built at all: the widget
+        # carries no MSL text and never compiles a library, and `BotAvatarGlassShader.isAvailable` is
+        # false, so every surface in it takes the painted material. Only this target sets it; both
+        # apps, the package and CI never see it.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: HERMEY_LIVE_ACTIVITY
 
 schemes:
   HermesMac:

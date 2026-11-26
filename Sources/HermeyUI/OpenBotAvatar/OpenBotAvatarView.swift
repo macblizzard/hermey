@@ -146,18 +146,18 @@ public struct OpenBotAvatarView: View {
         .accessibilityHidden(label == nil)
     }
 
-    /// One frame, in the number of `Canvas` passes the route needs.
+    /// One frame, in the number of passes the route needs.
     ///
     /// `.canvas` is the drawing this view has always made: one pass, all of it. `.metal` is the same
     /// frame split into three — the ribbons that pass behind the body, the body alone, and everything
-    /// over it — because `.layerEffect` shades every pixel of the layer it is applied to, and the
-    /// shader must not touch an eye, a ribbon or a mark. The body's pass is filled flat by the
-    /// renderer and replaced, pixel for pixel, by the fragment pass; the other two are the renderer's
-    /// own drawing, unchanged.
+    /// over it — because the shader draws the body and must not touch an eye, a ribbon or a mark. The
+    /// body's pass is a `MetalKit` view over the body's own box: the shader paints it from the
+    /// silhouette the `Canvas` route fills, and the other two are the renderer's own drawing,
+    /// unchanged.
     ///
-    /// The three passes are the shader path's whole cost: two extra `Canvas` draws per avatar, and
-    /// only on an app surface that is drawing a glass body at 24 pt or more. A body under a mark, a
-    /// still frame and a reduced-transparency surface all take `.canvas`, which is one.
+    /// The three passes are the shader path's whole cost: two `Canvas` draws and one Metal draw per
+    /// avatar, and only on an app surface that is drawing a glass body at 24 pt or more. A body under
+    /// a mark, a still frame and a reduced-transparency surface all take `.canvas`, which is one.
     @ViewBuilder
     private func frame(model: OpenBotAvatarModel,
                        pose: OpenBotAvatarPose,
@@ -181,7 +181,7 @@ public struct OpenBotAvatarView: View {
                                            time: time)
             }
         case .metal:
-            // The layer's own size: the `Canvas` fills this view's frame, so the shader's `position`
+            // The layer's own size: the frame fills this view's bounds, so the shader's `position`
             // space is exactly it — the numbers below are in the same points the drawing is in.
             let layerSize = CGSize(width: size, height: size)
             let face = OpenBotAvatarRenderer.bodyTransform(model, pose: pose, size: layerSize)
@@ -193,20 +193,16 @@ public struct OpenBotAvatarView: View {
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
                                                backdrop: surface, into: &context, size: canvasSize,
                                                color: color, ink: Self.ink(for: color),
-                                               still: still, time: time, pass: .behind, route: route)
+                                               still: still, time: time, pass: .behind)
                 }
+                // The body: the reference's lit, refracting surface, drawn by the runtime shader over
+                // the same silhouette the `Canvas` route fills.
+                BotAvatarGlassView(surface: glass, path: model.silhouette.applying(face))
                 Canvas { context, canvasSize in
                     OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
                                                backdrop: surface, into: &context, size: canvasSize,
                                                color: color, ink: Self.ink(for: color),
-                                               still: still, time: time, pass: .body, route: route)
-                }
-                .layerEffect(glass.shader, maxSampleOffset: BotAvatarGlassShader.maxSampleOffset)
-                Canvas { context, canvasSize in
-                    OpenBotAvatarRenderer.draw(model, pose: pose, material: material,
-                                               backdrop: surface, into: &context, size: canvasSize,
-                                               color: color, ink: Self.ink(for: color),
-                                               still: still, time: time, pass: .over, route: route)
+                                               still: still, time: time, pass: .over)
                 }
             }
         }

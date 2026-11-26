@@ -54,13 +54,15 @@ public enum OpenBotAvatarRenderer {
     /// The default eye ink.
     public static let defaultInk = Color(red: 0.082, green: 0.082, blue: 0.082)
 
-    /// Which of the three things one frame draws, for a surface that has to composite them apart.
+    /// Which of the parts one frame draws, for a surface that has to composite them apart.
     ///
-    /// A `Canvas` is one pass, and `.all` is that pass. The glass shader needs the body on its own —
-    /// a `.layerEffect` covers everything in the layer it is applied to, and the shader must not touch
-    /// an eye or a ribbon — so the view draws the body's `Canvas` between the ribbons' and the
-    /// eyes'. Three passes, in the renderer's own paint order, so a shader surface composes exactly
-    /// the frame the one-pass drawing would.
+    /// A `Canvas` is one pass, and `.all` is that pass. The glass surface needs the ribbons on their
+    /// own — the shader draws the body between them and must not touch an eye or a ribbon — so the
+    /// view draws the ribbons' `Canvas`, the body's Metal pass and then the eyes' `Canvas`. Three
+    /// parts, in the renderer's own paint order, so a shader surface composes exactly the frame the
+    /// one-pass drawing would. The body's part is the Metal view's, not this renderer's: `.body`
+    /// remains what a painted surface would use to draw its own body alone, and the shader path never
+    /// asks for it.
     public enum Pass: Hashable, Sendable {
         case all
         case behind
@@ -88,9 +90,8 @@ public enum OpenBotAvatarRenderer {
     /// `pass` splits one frame into the pieces a shader surface has to composite separately: the
     /// ribbons that pass behind the body, the body, and everything drawn over it (the eyes, the front
     /// of the ribbons, the marks). `.all` is one pass, which is what every surface but the glass
-    /// shader draws. `route` is the caller's answer from `BotAvatarGlassRoute.decide` — this function
-    /// does not choose, it follows: `.metal` draws the body as the flat silhouette the fragment pass
-    /// replaces, `.canvas` paints the material's six layers.
+    /// shader draws; the glass body is not drawn here at all — it is the Metal view's
+    /// (`BotAvatarGlassView`), so the shader surface asks this renderer only for `.behind` and `.over`.
     public static func draw(_ model: OpenBotAvatarModel,
                             pose: OpenBotAvatarPose,
                             material: BotAvatarMaterial = .solid,
@@ -101,8 +102,7 @@ public enum OpenBotAvatarRenderer {
                             ink: Color,
                             still: Bool = false,
                             time: Double = 0,
-                            pass: Pass = .all,
-                            route: BotAvatarGlassRoute = .canvas) {
+                            pass: Pass = .all) {
         let volume = model.volume
         let side = min(size.width, size.height)
         guard side > 0 else { return }
@@ -148,17 +148,7 @@ public enum OpenBotAvatarRenderer {
                  color: color, fit: fit, about: rim)
         }
 
-        if pass.drawsBody, route == .metal {
-            // The glass shader's base: the silhouette filled flat, in the same tint every layer of the
-            // painted material starts from. Nothing of the material is painted here — the fragment
-            // pass replaces every pixel inside this fill — which is why this is not a call through
-            // `BotAvatarMaterialRender.render`: there is no layer to paint, only a shape to cover.
-            let face = bodyTransform(model, pose: pose, size: size)
-            var layer = context
-            layer.fill(model.silhouette.applying(face),
-                       with: .color(OpenBotAvatarMaterialPaint.bodyColor(spec, light: pose.light,
-                                                                        tint: color).color))
-        } else if pass.drawsBody {
+        if pass.drawsBody {
             switch spec.fill {
             case .flat:
                 // The 0.1.648 body: the inferred volume's cross-sections, back to front, each filled
