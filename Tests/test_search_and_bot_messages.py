@@ -180,7 +180,11 @@ class TheMacPanelSearchesEveryConversation(unittest.TestCase):
 class ABotMessageReadsAsAPerson(unittest.TestCase):
     def test_the_label_names_the_sender_when_the_caller_knows_it(self) -> None:
         self.assertIn("sender_profile", MESSAGE)
-        self.assertIn('format!("{} ({profile})", python_title(sender))', MESSAGE)
+        # The name is title-cased, except for the pet: its wire id is `desktop-pet` and the sentence
+        # must read `Desktop Pet`, so the branch names that title instead of slug-casing the id.
+        self.assertIn("fn label(", MESSAGE)
+        self.assertIn('format!("{} ({profile})", sender_title)', MESSAGE)
+        self.assertIn('if sender == PET_SENDER { PET_TITLE.to_string() }', MESSAGE)
 
     def test_every_exchange_is_recorded(self) -> None:
         self.assertIn("fn record_transfer(", MESSAGE)
