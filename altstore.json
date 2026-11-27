@@ -22,14 +22,14 @@
       "screenshots": [],
       "versions": [
         {
-          "version": "0.1.688",
-          "buildVersion": "688",
-          "date": "2026-11-26T23:23:45Z",
-          "localizedDescription": "The avatar halo no longer bands, and hermeyd 0.8.22 is deployed; releases now publish their matching hermeyd tag, so About's Check now keeps working.",
-          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.688/Hermey-0.1.688-b688.ipa",
-          "size": 6235768,
+          "version": "0.1.689",
+          "buildVersion": "689",
+          "date": "2026-11-27T01:13:29Z",
+          "localizedDescription": "Hands-free voice conversations: tap the waveform, speak, hear the answer, keep talking - with barge-in, a spoken stop, and the mic released on every exit. Plus the desktop pet now follows a saved avatar, and the glass halo no longer bands.",
+          "downloadURL": "https://github.com/macblizzard/hermey/releases/download/v0.1.689/Hermey-0.1.689-b689.ipa",
+          "size": 6300668,
           "minOSVersion": "17.0",
-          "sha256": "1d8590ebecc0a8ce9cacd0846dcc00bd92be83bae39e6f91ab0986ddcf614bb9"
+          "sha256": "4f8f7298281e2aa26fb51d7768f5001458b833f19f474d8f9f11267fdd5fb988"
         }
       ],
       "appPermissions": {
@@ -43,10 +43,10 @@
   ],
   "news": [
     {
-      "title": "Hermes 0.1.688 (688)",
-      "identifier": "hermes-0.1.688-688",
-      "caption": "The avatar halo no longer bands, and hermeyd 0.8.22 is deployed; releases now publish their matching hermeyd tag, so About's Check now keeps working.",
-      "date": "2026-11-26T23:23:45Z",
+      "title": "Hermes 0.1.689 (689)",
+      "identifier": "hermes-0.1.689-689",
+      "caption": "Hands-free voice conversations: tap the waveform, speak, hear the answer, keep talking - with barge-in, a spoken stop, and the mic released on every exit. Plus the desktop pet now follows a saved avatar, and the glass halo no longer bands.",
+      "date": "2026-11-27T01:13:29Z",
       "tintColor": "#9A9AA0"
     }
   ],
